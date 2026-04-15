@@ -12,9 +12,9 @@ import { describe, it, expect, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { BundledCircuitLoader } from "../src/circuits.js";
 import {
   XochiProver,
-  BundledCircuitLoader,
   BrowserCircuitLoader,
   encodePublicInputs,
   decodePublicInputs,

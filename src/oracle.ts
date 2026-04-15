@@ -87,6 +87,15 @@ export class XochiOracle {
     })) as ComplianceAttestation;
   }
 
+  async getProofType(proofHash: Hex): Promise<number> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "getProofType",
+      args: [proofHash],
+    })) as number;
+  }
+
   async getAttestationHistory(subject: Address, jurisdictionId: number): Promise<readonly Hex[]> {
     return (await this.publicClient.readContract({
       address: this.address,

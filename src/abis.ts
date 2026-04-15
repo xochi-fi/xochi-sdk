@@ -69,6 +69,13 @@ export const ORACLE_ABI = [
   },
   {
     type: "function",
+    name: "getProofType",
+    inputs: [{ name: "proofHash", type: "bytes32" }],
+    outputs: [{ name: "proofType", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "getAttestationHistory",
     inputs: [
       { name: "subject", type: "address" },

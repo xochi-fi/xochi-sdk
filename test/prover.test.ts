@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, afterAll } from "vitest";
-import { XochiProver, BundledCircuitLoader } from "../src/index.js";
+import { XochiProver } from "../src/index.js";
+import { BundledCircuitLoader } from "../src/circuits.js";
 
 const loader = new BundledCircuitLoader();
 const prover = new XochiProver(loader);
