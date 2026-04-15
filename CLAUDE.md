@@ -25,6 +25,22 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/scoring.ts**: Attestation score calculation with diminishing returns (whitepaper I.8)
 - **src/tier-proofs.ts**: Tier proof generation/verification -- proves "score >= threshold" via risk_score circuit
 
+### Settlement Splitting (XIP-1)
+
+- **src/split.ts**: `planSplit` -- split a large trade into sub-trades
+- **src/batch-prover.ts**: `proveBatch` -- generate compliance proofs for all sub-trades
+- **src/settlement-registry.ts**: `SettlementRegistryClient` -- on-chain SettlementRegistry interaction (viem)
+
+### Execution Planning (XIP-2)
+
+- **src/venue-router.ts**: `assignVenues` -- route sub-trades to optimal execution venues
+- **src/diffusion-scheduler.ts**: `scheduleDiffusion` -- schedule sub-trade execution over time
+- **src/execution-orchestrator.ts**: `planExecution` -- orchestrate full split -> route -> schedule pipeline
+
+### Bridge Integration
+
+- **src/pxe-bridge-client.ts**: `PxeBridgeClient` -- JSON-RPC client for pxe-bridge
+
 ### Encoding & Constants
 
 - **src/encoding.ts**: Public input/proof encoding for EVM submission, `normalizeInputs()` for Noir

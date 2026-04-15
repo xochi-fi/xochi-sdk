@@ -329,6 +329,19 @@ PUBLIC_INPUT_COUNTS; // { 0x01: 6, 0x02: 8, ... }
 proofTypeToCircuit; // ProofType -> CircuitName
 circuitToProofType; // CircuitName -> ProofType
 
+// Settlement splitting (XIP-1)
+planSplit; // Plan sub-trade split for a large trade
+proveBatch; // Generate proofs for all sub-trades in batch
+SettlementRegistryClient; // On-chain SettlementRegistry interaction (viem)
+
+// Execution planning (XIP-2)
+assignVenues; // Route sub-trades to optimal venues
+scheduleDiffusion; // Schedule sub-trade execution over time
+planExecution; // Orchestrate full split -> route -> schedule pipeline
+
+// Bridge integration
+PxeBridgeClient; // JSON-RPC client for pxe-bridge
+
 // ABIs
 ORACLE_ABI; // Full XochiZKPOracle ABI
 VERIFIER_ABI; // Full XochiZKPVerifier ABI

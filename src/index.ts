@@ -69,6 +69,19 @@ export {
   getProvenTierName,
 } from "./tier-proofs.js";
 
+// XIP-1: Settlement splitting
+export { planSplit, DEFAULT_SPLIT_CONFIG } from "./split.js";
+export { proveBatch } from "./batch-prover.js";
+export { SettlementRegistryClient, SETTLEMENT_REGISTRY_ABI } from "./settlement-registry.js";
+
+// XIP-2: Adaptive settlement controls
+export { assignVenues, DEFAULT_GAS_ESTIMATES, VENUE_MIN_SCORES } from "./venue-router.js";
+export { scheduleDiffusion } from "./diffusion-scheduler.js";
+export { planExecution, DEFAULT_EXECUTION_CONFIG } from "./execution-orchestrator.js";
+
+// PXE Bridge
+export { PxeBridgeClient } from "./pxe-bridge-client.js";
+
 // Types
 export type { CircuitName, CircuitLoader, CompiledCircuit, ProofResult } from "./types.js";
 export type { ProofType, JurisdictionId } from "./constants.js";
@@ -99,3 +112,10 @@ export type { MembershipInput } from "./inputs/membership.js";
 export type { NonMembershipInput } from "./inputs/non-membership.js";
 export type { PatternInput } from "./inputs/pattern.js";
 export type { AttestationInput } from "./inputs/attestation.js";
+export type { SplitConfig, SplitPlan, SubTrade } from "./split.js";
+export type { BatchProveResult } from "./batch-prover.js";
+export type { Settlement, SubSettlement } from "./settlement-registry.js";
+export type { VenueId, VenueAssignment, VenueConstraints } from "./venue-router.js";
+export type { ScheduledSubTrade } from "./diffusion-scheduler.js";
+export type { ExecutionConfig, ExecutionPlan } from "./execution-orchestrator.js";
+export type { CreateNoteParams, CreateNoteResult } from "./pxe-bridge-client.js";
