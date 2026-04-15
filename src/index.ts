@@ -71,7 +71,7 @@ export {
 
 // XIP-1: Settlement splitting
 export { planSplit, DEFAULT_SPLIT_CONFIG } from "./split.js";
-export { proveBatch } from "./batch-prover.js";
+export { proveBatch, provePlan } from "./batch-prover.js";
 export { SettlementRegistryClient, SETTLEMENT_REGISTRY_ABI } from "./settlement-registry.js";
 
 // XIP-2: Adaptive settlement controls

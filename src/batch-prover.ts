@@ -11,7 +11,8 @@ import type { XochiProver } from "./prover.js";
 import type { ProofResult } from "./types.js";
 import type { ComplianceInput } from "./inputs/compliance.js";
 import type { RiskScoreInput } from "./inputs/risk-score.js";
-import type { SplitPlan } from "./split.js";
+import type { SplitPlan, SplitConfig } from "./split.js";
+import type { ExecutionPlan } from "./execution-orchestrator.js";
 
 export interface BatchProveResult {
   tradeId: Hex;
@@ -50,4 +51,23 @@ export async function proveBatch(
     tradeId: plan.tradeId,
     proofs,
   };
+}
+
+/**
+ * Generate proofs for an ExecutionPlan (XIP-2).
+ * Adapter over proveBatch -- extracts the SplitPlan fields
+ * from the execution plan.
+ */
+export async function provePlan(
+  prover: XochiProver,
+  plan: ExecutionPlan,
+  baseInput: ComplianceInput | RiskScoreInput,
+): Promise<BatchProveResult> {
+  const splitPlan: SplitPlan = {
+    tradeId: plan.tradeId,
+    subTrades: plan.subTrades.map((st) => ({ index: st.index, amount: st.amount })),
+    totalAmount: plan.totalAmount,
+    splitConfig: plan.config.splitConfig,
+  };
+  return proveBatch(prover, splitPlan, baseInput);
 }
