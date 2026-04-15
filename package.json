@@ -7,6 +7,14 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./browser": {
+      "import": "./dist/circuits-browser.js",
+      "types": "./dist/circuits-browser.d.ts"
+    },
+    "./node": {
+      "import": "./dist/circuits.js",
+      "types": "./dist/circuits.d.ts"
+    },
     "./circuits/*": "./circuits/*"
   },
   "files": [

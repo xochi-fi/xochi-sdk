@@ -4,8 +4,8 @@ export { XochiOracle } from "./oracle.js";
 export { XochiVerifier } from "./verifier.js";
 export { OracleLite } from "./oracle-lite.js";
 
-// Circuit loaders
-export { BundledCircuitLoader, NodeCircuitLoader, BrowserCircuitLoader } from "./circuits.js";
+// Circuit loaders (browser-safe only; Node loaders available via @xochi/sdk/node)
+export { BrowserCircuitLoader } from "./circuits-browser.js";
 
 // Encoding
 export {
