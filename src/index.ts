@@ -82,6 +82,14 @@ export { planExecution, DEFAULT_EXECUTION_CONFIG } from "./execution-orchestrato
 // PXE Bridge
 export { PxeBridgeClient } from "./pxe-bridge-client.js";
 
+// Input builders
+export { buildComplianceInputs } from "./inputs/compliance.js";
+export { buildRiskScoreInputs } from "./inputs/risk-score.js";
+export { buildPatternInputs } from "./inputs/pattern.js";
+export { buildAttestationInputs } from "./inputs/attestation.js";
+export { buildMembershipInputs } from "./inputs/membership.js";
+export { buildNonMembershipInputs } from "./inputs/non-membership.js";
+
 // Types
 export type { CircuitName, CircuitLoader, CompiledCircuit, ProofResult } from "./types.js";
 export type { ProofType, JurisdictionId } from "./constants.js";
@@ -95,7 +103,12 @@ export type {
   PrivacyLevel,
 } from "./tiers.js";
 export type { TierProof, TierProofVerification } from "./tier-proofs.js";
-export type { ComplianceAttestation, SubmitComplianceParams } from "./oracle.js";
+export type {
+  ComplianceAttestation,
+  SubmitComplianceParams,
+  BatchSubmitParams,
+  BatchSubmitResult,
+} from "./oracle.js";
 export type {
   OracleLiteConfig,
   ComplianceAttestationLite,

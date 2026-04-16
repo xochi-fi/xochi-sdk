@@ -2,7 +2,7 @@
 
 TypeScript SDK for generating and verifying [Xochi ZKP](https://github.com/xochi-fi/erc-xochi-zkp) compliance proofs. Produce EVM-compatible zero-knowledge proofs client-side using Noir circuits and Barretenberg UltraHonk.
 
-Also provides trust tier system, privacy level modeling, attestation scoring, and tier proof generation.
+Also provides trust tier system, privacy level modeling, attestation scoring, settlement splitting (XIP-1), and execution planning (XIP-2).
 
 ## Install
 
@@ -10,12 +10,13 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 npm install @xochi/sdk
 ```
 
-Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier clients and type compatibility).
+Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
 
-## Quick Start
+## Quick start
 
 ```typescript
-import { XochiProver, BundledCircuitLoader } from "@xochi/sdk";
+import { XochiProver } from "@xochi/sdk";
+import { BundledCircuitLoader } from "@xochi/sdk/node";
 
 const prover = new XochiProver(new BundledCircuitLoader());
 
@@ -24,24 +25,19 @@ const result = await prover.proveCompliance({
   score: 25,
   jurisdictionId: 0, // EU
   providerSetHash: "0x14b6becf...",
-  submitter: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", // address that will submit on-chain
+  submitter: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   timestamp: String(Math.floor(Date.now() / 1000)),
 });
 
 // result.proofHex and result.publicInputsHex are ready for on-chain submission
-console.log(result.proofHex);
-console.log(result.publicInputsHex);
-
-// Verify locally before submitting
 const valid = await prover.verify("compliance", result.proof, result.publicInputs);
 
-// Clean up Barretenberg instance
 await prover.destroy();
 ```
 
-## Proof Types
+## Proof types
 
-| Type           | Method                 | Use Case                                      |
+| Type           | Method                 | Use case                                      |
 | -------------- | ---------------------- | --------------------------------------------- |
 | Compliance     | `proveCompliance()`    | Risk score below jurisdiction threshold       |
 | Risk Score     | `proveRiskScore()`     | Custom threshold (GT/LT) or range proofs      |
@@ -50,7 +46,7 @@ await prover.destroy();
 | Membership     | `proveMembership()`    | Merkle inclusion (whitelist)                  |
 | Non-Membership | `proveNonMembership()` | Sorted Merkle adjacency (sanctions exclusion) |
 
-## Multi-Provider Support
+## Multi-provider support
 
 Both compliance and risk score accept multiple screening providers:
 
@@ -58,36 +54,33 @@ Both compliance and risk score accept multiple screening providers:
 const result = await prover.proveCompliance({
   signals: [25, 30, 20], // risk scores from 3 providers (0-100)
   weights: [50, 30, 20], // importance weights
-  providerIds: ["1", "2", "3"], // provider identifiers
+  providerIds: ["1", "2", "3"],
   jurisdictionId: 0,
   providerSetHash: "0x...",
   submitter: account.address, // binds proof to this address (anti-frontrun)
 });
 ```
 
-Or use the single-provider shorthand:
+Single-provider shorthand:
 
 ```typescript
 const result = await prover.proveCompliance({
-  score: 25, // single provider score
+  score: 25,
   jurisdictionId: 0,
   providerSetHash: "0x...",
   submitter: account.address,
 });
 ```
 
-## Trust Tiers
+## Trust tiers
 
-Five trust tiers with fee rates and MEV rebates:
+Five tiers with fee rates and MEV rebates:
 
 ```typescript
-import { getTierFromScore, getFeeRate, getTierName, getMevRebate } from "@xochi/sdk";
+import { getTierFromScore, getFeeRate, getMevRebate } from "@xochi/sdk";
 
-const tier = getTierFromScore(60);
-// { name: "Verified", min: 50, max: 74, rate: 0.2 }
-
+getTierFromScore(60); // { name: "Verified", min: 50, max: 74, rate: 0.2 }
 getFeeRate(60); // 0.2  (0.20%)
-getTierName(60); // "Verified"
 getMevRebate(60); // 0.2  (20%)
 ```
 
@@ -99,9 +92,9 @@ getMevRebate(60); // 0.2  (20%)
 | Premium       | 75-99 | 0.15% | 25%        |
 | Institutional | 100+  | 0.10% | 30%        |
 
-## Privacy Levels
+## Privacy levels
 
-Six privacy levels gated by trust score:
+Six levels gated by trust score:
 
 ```typescript
 import { getMaxPrivacyLevel, isPrivacyLevelAllowed } from "@xochi/sdk";
@@ -118,7 +111,7 @@ isPrivacyLevelAllowed("stealth", 60); // true
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
 
-## Attestation Scoring
+## Attestation scoring
 
 Calculate trust scores from attestations with diminishing returns:
 
@@ -134,33 +127,35 @@ const result = calculateScoreFromAttestations([
 // { total: 83, byCategory: { humanity: 20, identity: 30, reputation: 8, compliance: 25 } }
 ```
 
-Diminishing returns within each category: 1st provider 100%, 2nd 25%, 3rd+ 10%. Category caps: humanity (25), identity (35), reputation (20), compliance (40).
+Within each category, the 1st provider contributes at 100%, 2nd at 25%, 3rd+ at 10%. Category caps: humanity (25), identity (35), reputation (20), compliance (40).
 
-## Tier Proofs
+## Tier proofs
 
 Prove "score >= threshold" without revealing exact score:
 
 ```typescript
-import { generateTierProof, verifyTierProof, BundledCircuitLoader } from "@xochi/sdk";
+import { generateTierProof, verifyTierProof } from "@xochi/sdk";
+import { BundledCircuitLoader } from "@xochi/sdk/node";
 
 const loader = new BundledCircuitLoader();
-
-// Generate proof that score meets Trusted tier (25+)
 const proof = await generateTierProof(loader, 60, 25, account.address);
 
-// Verify client-side
 const result = await verifyTierProof(loader, proof);
 // { valid: true, threshold: 25, tierName: "Trusted", feeRate: 0.25 }
+```
 
-// Or find the highest tier automatically
+`generateHighestTierProof` picks the best tier automatically:
+
+```typescript
 import { generateHighestTierProof } from "@xochi/sdk";
+
 const highest = await generateHighestTierProof(loader, 60, account.address);
 // Proves score >= 50 (Verified tier)
 ```
 
-## On-Chain Submission
+## On-chain submission
 
-Use `XochiOracle` to submit proofs and query attestations:
+`XochiOracle` submits proofs and queries attestations:
 
 ```typescript
 import { XochiOracle, PROOF_TYPES } from "@xochi/sdk";
@@ -174,7 +169,7 @@ const oracle = new XochiOracle(
   mainnet,
 );
 
-// Submit proof
+// Submit a single proof
 const txHash = await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
@@ -185,11 +180,30 @@ const txHash = await oracle.submitCompliance({
 
 // Check compliance status
 const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
+
+// Retrieve historical proofs
+const history = await oracle.getAttestationHistory("0x...", 0);
+const proof = await oracle.getHistoricalProof(history[0]);
 ```
 
-## On-Chain Verification
+### Batch submission
 
-Use `XochiVerifier` to verify proofs on-chain:
+Submit all proofs from a `proveBatch` or `provePlan` result in one call. Each proof goes as a separate transaction (the Oracle doesn't have an on-chain batch yet), but `submitBatch` handles sequencing and returns the proofHashes you need for settlement recording.
+
+```typescript
+const batchResult = await oracle.submitBatch({
+  batch, // from proveBatch() or provePlan()
+  jurisdictionId: 0,
+  proofType: PROOF_TYPES.COMPLIANCE,
+  providerSetHash: "0x...",
+});
+
+// batchResult.submissions[i].proofHash -> pass to SettlementRegistryClient
+```
+
+## On-chain verification
+
+`XochiVerifier` verifies proofs directly against the on-chain verifier contracts:
 
 ```typescript
 import { XochiVerifier, PROOF_TYPES } from "@xochi/sdk";
@@ -215,7 +229,7 @@ const historicalValid = await verifier.verifyProofAtVersion(
 );
 ```
 
-## Lightweight Oracle Client
+## Lightweight oracle client
 
 For environments without viem (Cloudflare Workers, edge functions):
 
@@ -227,37 +241,130 @@ const oracle = new OracleLite({
   rpcUrl: "https://rpc.example.com",
 });
 
-// Check compliance via eth_call
 const status = await oracle.checkCompliance("0x...", 0);
 
-// Verify a proof via eth_call (simulates submitCompliance)
 const result = await oracle.verifyProof(
-  "0x...", // wallet (used as msg.sender)
+  "0x...", // wallet (used as msg.sender in simulation)
   PROOF_TYPES.RISK_SCORE,
   proofHex,
   publicInputsHex,
 );
 ```
 
-## Circuit Loaders
+## Settlement splitting (XIP-1)
+
+Split large trades into sub-trades, generate compliance proofs for each, submit them, and settle on-chain. The full pipeline:
+
+```typescript
+import {
+  planSplit,
+  proveBatch,
+  planExecution,
+  provePlan,
+  SettlementRegistryClient,
+  PROOF_TYPES,
+} from "@xochi/sdk";
+import { BundledCircuitLoader } from "@xochi/sdk/node";
+
+const loader = new BundledCircuitLoader();
+const prover = new XochiProver(loader);
+
+// 1. Plan the split
+const splitPlan = planSplit(500n * 10n ** 18n, 0, account.address, {
+  splitThreshold: 100n * 10n ** 18n, // split above 100 ETH
+  maxSubTrades: 10,
+  minSubTradeSize: 1n * 10n ** 18n,
+});
+// splitPlan.subTrades: [{ index: 0, amount: 100e18 }, ..., { index: 4, amount: 100e18 }]
+
+// 2. Generate compliance proofs for all sub-trades
+const batch = await proveBatch(prover, splitPlan, {
+  score: 25,
+  jurisdictionId: 0,
+  providerSetHash: "0x...",
+  submitter: account.address,
+});
+
+// 3. Submit all proofs to oracle
+const batchResult = await oracle.submitBatch({
+  batch,
+  jurisdictionId: 0,
+  proofType: PROOF_TYPES.COMPLIANCE,
+  providerSetHash: "0x...",
+});
+
+// 4. Register trade and record sub-settlements
+const registry = new SettlementRegistryClient(registryAddr, publicClient, walletClient, chain);
+await registry.registerTrade(splitPlan.tradeId, 0, splitPlan.subTrades.length);
+
+for (const sub of batchResult.submissions) {
+  await registry.recordSubSettlement(splitPlan.tradeId, sub.index, sub.proofHash);
+}
+
+// 5. Finalize with a pattern proof (anti-structuring)
+await registry.finalizeTrade(splitPlan.tradeId, patternProofHash);
+```
+
+## Execution planning (XIP-2)
+
+`planExecution` composes split planning, venue routing, and diffusion scheduling into a single call:
+
+```typescript
+import { planExecution, provePlan } from "@xochi/sdk";
+
+const plan = planExecution(
+  500n * 10n ** 18n, // total amount
+  0, // jurisdiction (EU)
+  account.address,
+  { trustScore: 60, gasEstimates: { public: 65_000n, stealth: 150_000n, shielded: 400_000n } },
+  { diffusionWindow: 300 }, // spread submissions over 5 minutes
+);
+
+// plan.subTrades includes venue assignment and target timestamps
+// plan.subTrades[i].venue: "public" | "stealth" | "shielded"
+// plan.subTrades[i].targetTimestamp: seconds relative to T0
+
+// Generate proofs for the execution plan
+const batch = await provePlan(prover, plan, complianceInput);
+```
+
+Venue assignment respects trust score thresholds: public (0+), stealth (25+), shielded (50+). The diffusion scheduler enforces a minimum 12-second gap between consecutive submissions.
+
+## Circuit loaders
 
 Three loaders for different environments:
 
 ```typescript
-import {
-  BundledCircuitLoader, // Node.js: loads from SDK's bundled circuits/
-  NodeCircuitLoader, // Node.js: loads from erc-xochi-zkp repo path
-  BrowserCircuitLoader, // Browser: loads from URL via fetch
-} from "@xochi/sdk";
+// Node.js: bundled circuit artifacts
+import { BundledCircuitLoader } from "@xochi/sdk/node";
 
-// Development against circuit source
+// Node.js: load from erc-xochi-zkp repo path (development)
+import { NodeCircuitLoader } from "@xochi/sdk/node";
 const loader = new NodeCircuitLoader("/path/to/erc-xochi-zkp");
 
-// Browser with custom base URL
+// Browser: load via fetch
+import { BrowserCircuitLoader } from "@xochi/sdk/browser";
 const loader = new BrowserCircuitLoader("https://cdn.example.com/circuits");
 ```
 
-## Proof Type Mappings
+## Input builders
+
+If you need to construct circuit inputs manually (outside of `XochiProver`):
+
+```typescript
+import {
+  buildComplianceInputs,
+  buildRiskScoreInputs,
+  buildPatternInputs,
+  buildAttestationInputs,
+  buildMembershipInputs,
+  buildNonMembershipInputs,
+} from "@xochi/sdk";
+```
+
+Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
+
+## Proof type mappings
 
 ```typescript
 import {
@@ -272,97 +379,26 @@ circuitToProofType("risk_score"); // 0x02
 PUBLIC_INPUT_COUNTS[0x01]; // 6
 ```
 
-## Exports
-
-```typescript
-// Classes
-XochiProver; // Proof generation + verification
-XochiOracle; // On-chain Oracle client (viem)
-XochiVerifier; // On-chain Verifier client (viem)
-OracleLite; // Lightweight Oracle client (fetch-only)
-
-// Circuit loaders
-BundledCircuitLoader; // Bundled artifacts (Node.js)
-NodeCircuitLoader; // Filesystem path (development)
-BrowserCircuitLoader; // HTTP fetch (browser)
-
-// Tier proofs
-generateTierProof; // Prove score >= threshold
-generateHighestTierProof; // Auto-select highest qualifying tier
-verifyTierProof; // Client-side bb.js verification
-createScoreCommitment; // Display-only score commitment
-hasShieldedEligibility; // Check if proofs include stealth eligibility
-getProvenFeeRate; // Fee rate from highest valid proof
-getProvenTierName; // Tier name from highest valid proof
-
-// Tiers & privacy
-TIERS; // 5 trust tiers with fee rates
-TRUST_THRESHOLDS; // { trusted: 25, verified: 50, ... }
-PRIVACY_LEVELS; // 6 privacy levels with min scores
-getFeeRate; // score -> fee rate
-getTierName; // score -> tier name
-getTierFromScore; // score -> full TierInfo
-getNextTier; // score -> next tier or null
-getMevRebate; // score -> MEV rebate %
-getMaxPrivacyLevel; // score -> max privacy level name
-isPrivacyLevelAllowed; // (level, score) -> boolean
-
-// Scoring
-calculateScoreFromAttestations; // Attestations -> score with diminishing returns
-ATTESTATION_MULTIPLIERS; // { first: 1.0, second: 0.25, subsequent: 0.1 }
-CATEGORY_MAX; // { humanity: 25, identity: 35, ... }
-
-// Encoding
-encodePublicInputs; // string[] -> Hex (32-byte padded)
-decodePublicInputs; // Hex -> string[]
-encodeProof; // Uint8Array -> Hex
-normalizeInputs; // Record<string, unknown> -> Record<string, string | string[]>
-
-// Constants
-PROOF_TYPES; // { COMPLIANCE: 0x01, ... }
-JURISDICTIONS; // { EU: 0, US: 1, UK: 2, SG: 3 }
-DEFAULT_CONFIG_HASH; // Single-provider default
-BPS_DENOMINATOR; // 10000
-PROOF_TYPE_NAMES; // { 0x01: "compliance", ... }
-CIRCUIT_TO_PROOF_TYPE; // { compliance: 0x01, ... }
-PUBLIC_INPUT_COUNTS; // { 0x01: 6, 0x02: 8, ... }
-proofTypeToCircuit; // ProofType -> CircuitName
-circuitToProofType; // CircuitName -> ProofType
-
-// Settlement splitting (XIP-1)
-planSplit; // Plan sub-trade split for a large trade
-proveBatch; // Generate proofs for all sub-trades in batch
-SettlementRegistryClient; // On-chain SettlementRegistry interaction (viem)
-
-// Execution planning (XIP-2)
-assignVenues; // Route sub-trades to optimal venues
-scheduleDiffusion; // Schedule sub-trade execution over time
-planExecution; // Orchestrate full split -> route -> schedule pipeline
-
-// Bridge integration
-PxeBridgeClient; // JSON-RPC client for pxe-bridge
-
-// ABIs
-ORACLE_ABI; // Full XochiZKPOracle ABI
-VERIFIER_ABI; // Full XochiZKPVerifier ABI
-```
-
 ## Development
 
 ```bash
 npm install
-npm test                 # unit tests (fast, 80 tests)
-npm run test:integration # proof generation tests (slow, ~3min)
+npm test                 # unit tests (145 tests)
+npm run test:integration # proof generation + anvil tests (45 tests, ~20s)
 npm run build            # compile to dist/
+npm run typecheck         # tsc --noEmit
 
 # Sync circuit artifacts from erc-xochi-zkp
 ./scripts/sync-circuits.sh ../erc-xochi-zkp
 ```
 
+Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOracle, SettlementRegistry) on a local anvil node. Requires [foundry](https://book.getfoundry.sh/getting-started/installation) and a local clone of [erc-xochi-zkp](https://github.com/xochi-fi/erc-xochi-zkp) with compiled artifacts.
+
 ## Related
 
 - [erc-xochi-zkp](https://github.com/xochi-fi/erc-xochi-zkp) -- On-chain contracts and Noir circuit source
-- [xochi](https://github.com/xochi-fi/xochi) -- Protocol frontend and documentation
+- [XIPs](https://github.com/xochi-fi/XIPs) -- Protocol improvement proposals (XIP-1: settlement splitting, XIP-2: adaptive settlement)
+- [xochi](https://github.com/xochi-fi/xochi) -- Protocol frontend
 
 ## License
 

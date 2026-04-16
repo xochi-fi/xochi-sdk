@@ -58,8 +58,8 @@ export class OracleLite {
     wallet: string,
     jurisdictionId: JurisdictionId = JURISDICTIONS.EU,
   ): Promise<ComplianceCheckResult | null> {
-    // selector: keccak256("checkCompliance(address,uint8)") = 0x9ec48178
-    const selector = "0x9ec48178";
+    // selector: keccak256("checkCompliance(address,uint8)") = 0xd1e8eba9
+    const selector = "0xd1e8eba9";
     const paddedAddress = wallet.slice(2).toLowerCase().padStart(64, "0");
     const paddedJurisdiction = jurisdictionId.toString(16).padStart(64, "0");
     const data = `${selector}${paddedAddress}${paddedJurisdiction}`;
@@ -73,8 +73,8 @@ export class OracleLite {
     }
 
     const valid = BigInt(`0x${hex.slice(0, 64)}`) !== 0n;
-    const attestationOffset = Number(BigInt(`0x${hex.slice(64, 128)}`)) * 2;
-    const attestation = decodeAttestation(hex.slice(attestationOffset));
+    // Struct with all static fields is encoded inline (no offset pointer)
+    const attestation = decodeAttestation(hex.slice(64));
 
     return { valid, attestation, source: "on-chain" };
   }
@@ -121,9 +121,8 @@ export class OracleLite {
       return { valid: false, attestation: null, error: "Response too short" };
     }
 
-    // submitCompliance returns (ComplianceAttestation) -- dynamic tuple
-    const tupleOffset = Number(BigInt(`0x${hex.slice(0, 64)}`)) * 2;
-    const attestation = decodeAttestation(hex.slice(tupleOffset));
+    // submitCompliance returns ComplianceAttestation (static tuple, encoded inline)
+    const attestation = decodeAttestation(hex);
 
     if (!attestation) {
       return { valid: false, attestation: null, error: "Failed to decode attestation" };

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { planExecution, DEFAULT_EXECUTION_CONFIG } from "../src/execution-orchestrator.js";
+import { planExecution, DEFAULT_EXECUTION_CONFIG, type ExecutionConfig } from "../src/execution-orchestrator.js";
 import { DEFAULT_GAS_ESTIMATES } from "../src/venue-router.js";
 import type { VenueConstraints } from "../src/venue-router.js";
 
@@ -136,10 +136,10 @@ describe("planExecution", () => {
   // -- End-to-end invariant --
 
   it("sub-trade sum equals totalAmount regardless of config", () => {
-    const configs = [
+    const configs: Partial<ExecutionConfig>[] = [
       { diffusionWindow: 0 },
       { diffusionWindow: 600 },
-      { venuePreference: ["public"] as const },
+      { venuePreference: ["public"] },
       { splitConfig: { splitThreshold: 50n * ETH, maxSubTrades: 20, minSubTradeSize: 1n * ETH } },
     ];
 

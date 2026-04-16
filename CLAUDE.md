@@ -14,7 +14,8 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/oracle.ts**: `XochiOracle` -- typed viem client for on-chain Oracle contract interaction
 - **src/verifier.ts**: `XochiVerifier` -- typed viem client for on-chain Verifier (single, batch, versioned)
 - **src/oracle-lite.ts**: `OracleLite` -- fetch-only oracle client for environments without viem (Cloudflare Workers)
-- **src/circuits.ts**: Circuit loaders (BundledCircuitLoader, NodeCircuitLoader, BrowserCircuitLoader)
+- **src/circuits.ts**: Node.js circuit loaders (BundledCircuitLoader, NodeCircuitLoader)
+- **src/circuits-browser.ts**: Browser circuit loader (BrowserCircuitLoader) -- no node:fs dependency
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
 - **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types)
 - **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts
@@ -28,8 +29,10 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 ### Settlement Splitting (XIP-1)
 
 - **src/split.ts**: `planSplit` -- split a large trade into sub-trades
-- **src/batch-prover.ts**: `proveBatch` -- generate compliance proofs for all sub-trades
+- **src/batch-prover.ts**: `proveBatch` / `provePlan` -- generate compliance proofs for all sub-trades
 - **src/settlement-registry.ts**: `SettlementRegistryClient` -- on-chain SettlementRegistry interaction (viem)
+
+`XochiOracle.submitBatch()` submits all proofs from a BatchProveResult sequentially and returns proofHashes for settlement recording.
 
 ### Execution Planning (XIP-2)
 
@@ -56,11 +59,13 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ```bash
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (all tests)
-npm run test:integration  # integration tests (requires Barretenberg, ~3min)
-npx tsc --noEmit       # type check without emit
+npm test               # vitest run (all tests, 190 tests)
+npm run test:integration  # proof generation + anvil contract tests (~20s)
+npm run typecheck      # tsc --noEmit
 ./scripts/sync-circuits.sh [path-to-erc-xochi-zkp]  # sync circuit artifacts
 ```
+
+Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOracle, SettlementRegistry) on anvil. Requires foundry and compiled artifacts from erc-xochi-zkp (`../erc-xochi-zkp/out/`).
 
 ## Proof Types
 
@@ -133,11 +138,13 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## On-Chain Clients
 
-**XochiOracle** (viem): submitCompliance, checkCompliance, history queries, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient.
+**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient.
 
 **XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion. Read-only, requires viem PublicClient.
 
-**OracleLite** (fetch): Same oracle operations via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
+**OracleLite** (fetch): checkCompliance and verifyProof via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
+
+**SettlementRegistryClient** (viem): registerTrade, recordSubSettlement, finalizeTrade, expireTrade, getSettlement, getSubSettlements. Requires viem PublicClient + optional WalletClient.
 
 ## Dependencies
 
@@ -159,7 +166,7 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **erc-xochi-zkp** (upstream): Noir circuit source code, Solidity contracts, generated UltraHonk verifiers, Foundry test suite. This SDK bundles compiled circuit artifacts and provides client-side typed interfaces. Circuit names, proof type IDs, public input counts, and encoding must stay aligned.
 
-**XIPs** (proposals): Protocol improvement proposals. [XIP-1](https://github.com/xochi-fi/XIPs) specifies settlement splitting (next major feature).
+**XIPs** (proposals): Protocol improvement proposals. XIP-1 (settlement splitting) and XIP-2 (adaptive settlement) are implemented in the SDK.
 
 **@xochi/shared** (xochi monorepo): Contains trading constants, validators, schemas. Re-exports proof constants (`PROOF_TYPES`, `JURISDICTIONS`, `ORACLE_ABI`) from the SDK to avoid divergence.
 

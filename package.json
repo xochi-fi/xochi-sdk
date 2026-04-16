@@ -23,8 +23,10 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run test/integration.test.ts"
+    "test:integration": "vitest run test/integration*.test.ts",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",

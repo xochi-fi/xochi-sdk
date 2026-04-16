@@ -4,8 +4,10 @@
 
 import type { Address, Chain, Hex, PublicClient, WalletClient } from "viem";
 import { ORACLE_ABI } from "./abis.js";
+import type { ProofType } from "./constants.js";
 import { PROOF_TYPES } from "./constants.js";
 import { assertProofRecent, DEFAULT_MAX_PROOF_AGE } from "./recency.js";
+import type { BatchProveResult } from "./batch-prover.js";
 
 export interface ComplianceAttestation {
   subject: Address;
@@ -21,7 +23,7 @@ export interface ComplianceAttestation {
 
 export interface SubmitComplianceParams {
   jurisdictionId: number;
-  proofType: (typeof PROOF_TYPES)[keyof typeof PROOF_TYPES];
+  proofType: ProofType;
   proof: Hex;
   publicInputs: Hex;
   providerSetHash: Hex;
@@ -29,6 +31,23 @@ export interface SubmitComplianceParams {
   proofTimestamp?: number;
   /** Max proof age in seconds (default: 3600). Only used when proofTimestamp is set. */
   maxProofAge?: number;
+}
+
+export interface BatchSubmitParams {
+  batch: BatchProveResult;
+  jurisdictionId: number;
+  proofType: ProofType;
+  providerSetHash: Hex;
+}
+
+export interface BatchSubmitResult {
+  tradeId: Hex;
+  submissions: Array<{
+    index: number;
+    amount: bigint;
+    txHash: Hex;
+    proofHash: Hex;
+  }>;
 }
 
 export class XochiOracle {
@@ -162,5 +181,62 @@ export class XochiOracle {
       functionName: "isValidReportingThreshold",
       args: [threshold],
     })) as boolean;
+  }
+
+  /**
+   * Submit all proofs from a BatchProveResult to the Oracle sequentially.
+   *
+   * Each proof is submitted as a separate transaction and confirmed before
+   * the next is sent. Returns the proofHash for each submission, which can
+   * be passed to SettlementRegistryClient.recordSubSettlement.
+   */
+  async submitBatch(params: BatchSubmitParams): Promise<BatchSubmitResult> {
+    if (!this.walletClient) {
+      throw new Error("WalletClient required for write operations");
+    }
+
+    const submissions: BatchSubmitResult["submissions"] = [];
+
+    for (const entry of params.batch.proofs) {
+      const txHash = await this.submitCompliance({
+        jurisdictionId: params.jurisdictionId,
+        proofType: params.proofType,
+        proof: entry.proofResult.proofHex,
+        publicInputs: entry.proofResult.publicInputsHex,
+        providerSetHash: params.providerSetHash,
+      });
+
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+
+      if (receipt.status === "reverted") {
+        throw new Error(
+          `submitCompliance reverted for sub-trade ${String(entry.index)} (tx: ${txHash})`,
+        );
+      }
+
+      // Extract proofHash from ComplianceVerified event (topic[3])
+      // keccak256("ComplianceVerified(address,uint8,bool,bytes32,uint256,uint256)")
+      const complianceVerifiedSelector =
+        "0xe12796e59faa257427491b754971ac0139bc3390f73fbf02a62527ebcb82933d";
+      const log = receipt.logs.find((l) => l.topics[0] === complianceVerifiedSelector);
+
+      if (!log || !log.topics[3]) {
+        throw new Error(
+          `ComplianceVerified event not found for sub-trade ${String(entry.index)} (tx: ${txHash})`,
+        );
+      }
+
+      submissions.push({
+        index: entry.index,
+        amount: entry.amount,
+        txHash,
+        proofHash: log.topics[3] as Hex,
+      });
+    }
+
+    return {
+      tradeId: params.batch.tradeId,
+      submissions,
+    };
   }
 }

@@ -22,3 +22,6 @@ coverage/
 
 # Session artifacts
 HANDOVER.md
+
+# Claude Code
+.claude/
