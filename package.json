@@ -17,6 +17,7 @@
     },
     "./circuits/*": "./circuits/*"
   },
+  "license": "MIT",
   "files": [
     "dist",
     "circuits"
