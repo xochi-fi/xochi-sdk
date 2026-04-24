@@ -51,7 +51,7 @@ function loadBytecode(contractPath: string, contractName: string): Hex {
 // ============================================================
 
 const VERIFIER_SETUP_ABI = parseAbi([
-  "function setVerifier(uint8 proofType, address verifier) external",
+  "function setVerifierInitial(uint8 proofType, address verifier) external",
 ]);
 
 const ORACLE_SETUP_ABI = parseAbi([
@@ -110,11 +110,12 @@ async function deployContract(
 
 // Build compliance public inputs matching the Oracle's _validateComplianceInputs layout
 function buildCompliancePublicInputs(subject: Address, jurisdictionId: number): Hex {
+  const now = Math.floor(Date.now() / 1000);
   const fields = [
     padHex(toHex(jurisdictionId), { size: 32 }),
     padHex("0xaabb", { size: 32 }), // provider_set_hash
     configHash,
-    padHex(toHex(1700000000), { size: 32 }), // timestamp
+    padHex(toHex(now), { size: 32 }), // timestamp (must be within MAX_PROOF_AGE of block.timestamp)
     padHex("0x01", { size: 32 }), // meets_threshold
     padHex(subject.toLowerCase() as Hex, { size: 32 }), // submitter
   ];
@@ -161,7 +162,7 @@ beforeAll(async () => {
     const hash = await ownerWallet.writeContract({
       address: verifierAddress,
       abi: VERIFIER_SETUP_ABI,
-      functionName: "setVerifier",
+      functionName: "setVerifierInitial",
       args: [pt, stubVerifierAddr],
       chain: foundry,
     });

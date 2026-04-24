@@ -6,6 +6,7 @@
 export const COMPLIANCE_ATTESTATION_COMPONENTS = [
   { name: "subject", type: "address" },
   { name: "jurisdictionId", type: "uint8" },
+  { name: "proofType", type: "uint8" },
   { name: "meetsThreshold", type: "bool" },
   { name: "timestamp", type: "uint256" },
   { name: "expiresAt", type: "uint256" },

@@ -50,7 +50,7 @@ function loadBytecode(contractPath: string, contractName: string): Hex {
 // ============================================================
 
 const VERIFIER_SETUP_ABI = parseAbi([
-  "function setVerifier(uint8 proofType, address verifier) external",
+  "function setVerifierInitial(uint8 proofType, address verifier) external",
 ]);
 
 const ORACLE_SETUP_ABI = parseAbi([
@@ -153,7 +153,7 @@ describe("SettlementRegistryClient (anvil)", () => {
       const hash = await ownerWallet.writeContract({
         address: verifierAddress,
         abi: VERIFIER_SETUP_ABI,
-        functionName: "setVerifier",
+        functionName: "setVerifierInitial",
         args: [proofType, stubVerifierAddr],
         chain: foundry,
       });
@@ -228,6 +228,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     const configHash = keccak256(toHex("test-config"));
     const providerSetHash = padHex("0xaabb", { size: 32 });
     const submitterPadded = padHex(subject.toLowerCase() as Hex, { size: 32 });
+    const now = Math.floor(Date.now() / 1000);
 
     let publicInputs: Hex[];
 
@@ -237,18 +238,19 @@ describe("SettlementRegistryClient (anvil)", () => {
         padHex(toHex(jurisdictionId), { size: 32 }),
         providerSetHash,
         configHash,
-        padHex(toHex(1700000000), { size: 32 }), // timestamp
+        padHex(toHex(now), { size: 32 }), // timestamp (must be within MAX_PROOF_AGE)
         padHex("0x01", { size: 32 }), // meets_threshold = true
         submitterPadded,
       ];
     } else if (proofType === PROOF_TYPES.PATTERN) {
-      // pattern layout: [analysis_type, result, reporting_threshold, time_window, tx_set_hash]
+      // pattern layout: [analysis_type, result, reporting_threshold, time_window, tx_set_hash, submitter]
       publicInputs = [
         padHex(toHex(1), { size: 32 }), // analysis_type
         padHex(toHex(1), { size: 32 }), // result = pass
         padHex(toHex(10000), { size: 32 }), // reporting_threshold (must be registered)
-        padHex(toHex(86400), { size: 32 }), // time_window
+        padHex(toHex(86400), { size: 32 }), // time_window (>= MIN_TIME_WINDOW)
         padHex("0xdead", { size: 32 }), // tx_set_hash (non-zero)
+        submitterPadded, // submitter (must match msg.sender)
       ];
     } else {
       throw new Error(`unsupported proof type for test helper: ${proofType}`);
@@ -449,6 +451,7 @@ describe("SettlementRegistryClient (anvil)", () => {
   function fakeBatchProveResult(subTradeCount: number): BatchProveResult {
     const providerSetHash = padHex("0xaabb", { size: 32 });
     const submitterPadded = padHex(ALICE.toLowerCase() as Hex, { size: 32 });
+    const now = Math.floor(Date.now() / 1000);
 
     const proofs: BatchProveResult["proofs"] = [];
     for (let i = 0; i < subTradeCount; i++) {
@@ -458,7 +461,7 @@ describe("SettlementRegistryClient (anvil)", () => {
         padHex(toHex(0), { size: 32 }), // EU
         providerSetHash,
         configHash,
-        padHex(toHex(1700000000), { size: 32 }),
+        padHex(toHex(now), { size: 32 }),
         padHex("0x01", { size: 32 }),
         submitterPadded,
       ];

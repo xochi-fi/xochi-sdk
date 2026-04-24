@@ -32,6 +32,15 @@ Bug fixes found during implementation:
 - Full XIP-1 lifecycle test: proveBatch -> submitBatch -> registerTrade -> recordSubSettlements -> finalize
 - Total: 190 tests passing (145 unit + 45 integration)
 
+## Completed (2026-04-24)
+
+- Contract alignment: `setVerifier` -> `setVerifierInitial` (verifier timelock pattern)
+- ABI: `ComplianceAttestation` struct gained `proofType` field (10 fields, was 9)
+- OracleLite: `decodeAttestation` updated for 10-field struct layout
+- Integration tests: timestamps use current time (contract enforces `MAX_PROOF_AGE = 1h`)
+- Integration tests: pattern public inputs include `submitter` (contract enforces for all proof types)
+- CLAUDE.md: documented circuit vs on-chain public input count gap, verifier timelock, MAX_PROOF_AGE
+
 ## Future
 
 ### Settlement splitting

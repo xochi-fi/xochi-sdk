@@ -169,7 +169,7 @@ const oracle = new XochiOracle(
   mainnet,
 );
 
-// Submit a single proof
+// Submit a single proof (timestamp in publicInputs must be within 1 hour of block.timestamp)
 const txHash = await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
@@ -180,6 +180,8 @@ const txHash = await oracle.submitCompliance({
 
 // Check compliance status
 const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
+// attestation: { subject, jurisdictionId, proofType, meetsThreshold, timestamp,
+//   expiresAt, proofHash, providerSetHash, publicInputsHash, verifierUsed }
 
 // Retrieve historical proofs
 const history = await oracle.getAttestationHistory("0x...", 0);
@@ -363,6 +365,8 @@ import {
 ```
 
 Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
+
+> **Submitter binding**: Compliance and risk_score circuits include a `submitter` public input. For pattern, attestation, membership, and non_membership, the Oracle contract still enforces `submitter == msg.sender` -- you must append the submitter (as a padded bytes32) to `publicInputsHex` before on-chain submission. This gap will close when the upstream circuits add `submitter` as a public input.
 
 ## Proof type mappings
 

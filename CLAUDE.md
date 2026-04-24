@@ -71,14 +71,16 @@ Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOrac
 
 Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use `proofTypeToCircuit()` and `circuitToProofType()` for conversions.
 
-| ID   | Name           | Circuit        | Public Inputs | Use Case                                  |
-| ---- | -------------- | -------------- | ------------- | ----------------------------------------- |
-| 0x01 | COMPLIANCE     | compliance     | 6             | Risk score below jurisdiction threshold   |
-| 0x02 | RISK_SCORE     | risk_score     | 8             | Custom threshold/range proofs             |
-| 0x03 | PATTERN        | pattern        | 5             | Anti-structuring, velocity, round amounts |
-| 0x04 | ATTESTATION    | attestation    | 5             | KYC/credential verification               |
-| 0x05 | MEMBERSHIP     | membership     | 4             | Merkle inclusion (whitelist)              |
-| 0x06 | NON_MEMBERSHIP | non_membership | 4             | Sorted Merkle adjacency (sanctions)       |
+| ID   | Name           | Circuit        | Circuit Inputs | On-Chain Inputs | Use Case                                  |
+| ---- | -------------- | -------------- | -------------- | --------------- | ----------------------------------------- |
+| 0x01 | COMPLIANCE     | compliance     | 6              | 6               | Risk score below jurisdiction threshold   |
+| 0x02 | RISK_SCORE     | risk_score     | 8              | 8               | Custom threshold/range proofs             |
+| 0x03 | PATTERN        | pattern        | 5              | 6 (+submitter)  | Anti-structuring, velocity, round amounts |
+| 0x04 | ATTESTATION    | attestation    | 5              | 6 (+submitter)  | KYC/credential verification               |
+| 0x05 | MEMBERSHIP     | membership     | 4              | 5 (+submitter)  | Merkle inclusion (whitelist)              |
+| 0x06 | NON_MEMBERSHIP | non_membership | 4              | 5 (+submitter)  | Sorted Merkle adjacency (sanctions)       |
+
+**Submitter gap**: Compliance and risk_score circuits include `submitter` as a circuit public input. The other 4 circuits do not yet -- the Oracle contract validates `submitter == msg.sender` for all proof types, so the submitter bytes32 must be appended to `publicInputsHex` before on-chain submission for pattern/attestation/membership/non_membership. `PUBLIC_INPUT_COUNTS` in `constants.ts` reflects circuit output counts (not contract expectations).
 
 ## Trust Tiers (Whitepaper Appendix F)
 
@@ -119,7 +121,7 @@ Each `buildXInputs()` function validates constraints before passing to the prove
 
 Supports both single-provider shorthand (`{ score: 60 }`) and multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`). Max 8 providers.
 
-Compliance and risk_score inputs require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` to prevent front-running.
+Compliance and risk_score inputs require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for ALL proof types to prevent front-running. For pattern/attestation/membership/non_membership, the submitter must be appended to the encoded public inputs at submission time (the circuits don't include it yet).
 
 ## Circuit Binaries
 
@@ -138,9 +140,11 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## On-Chain Clients
 
-**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient.
+**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis.
 
-**XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion. Read-only, requires viem PublicClient.
+**ComplianceAttestation** struct includes a `proofType` field (uint8) between `jurisdictionId` and `meetsThreshold`. Both `ComplianceAttestation` (viem) and `ComplianceAttestationLite` (OracleLite) reflect this layout.
+
+**XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion. Read-only, requires viem PublicClient. The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes.
 
 **OracleLite** (fetch): checkCompliance and verifyProof via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
 

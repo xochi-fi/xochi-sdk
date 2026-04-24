@@ -22,6 +22,7 @@ export interface OracleLiteConfig {
 export interface ComplianceAttestationLite {
   subject: string;
   jurisdictionId: number;
+  proofType: number;
   meetsThreshold: boolean;
   timestamp: bigint;
   expiresAt: bigint;
@@ -237,18 +238,19 @@ function encodeSubmitCompliance(
 // ============================================================
 
 function decodeAttestation(hex: string): ComplianceAttestationLite | null {
-  // 9 fields x 32 bytes = 576 hex chars minimum
-  if (hex.length < 64 * 9) return null;
+  // 10 fields x 32 bytes = 640 hex chars minimum
+  if (hex.length < 64 * 10) return null;
 
   return {
     subject: `0x${hex.slice(24, 64)}`,
     jurisdictionId: Number(BigInt(`0x${hex.slice(64, 128)}`)),
-    meetsThreshold: BigInt(`0x${hex.slice(128, 192)}`) !== 0n,
-    timestamp: BigInt(`0x${hex.slice(192, 256)}`),
-    expiresAt: BigInt(`0x${hex.slice(256, 320)}`),
-    proofHash: `0x${hex.slice(320, 384)}`,
-    providerSetHash: `0x${hex.slice(384, 448)}`,
-    publicInputsHash: `0x${hex.slice(448, 512)}`,
-    verifierUsed: `0x${hex.slice(536, 576)}`,
+    proofType: Number(BigInt(`0x${hex.slice(128, 192)}`)),
+    meetsThreshold: BigInt(`0x${hex.slice(192, 256)}`) !== 0n,
+    timestamp: BigInt(`0x${hex.slice(256, 320)}`),
+    expiresAt: BigInt(`0x${hex.slice(320, 384)}`),
+    proofHash: `0x${hex.slice(384, 448)}`,
+    providerSetHash: `0x${hex.slice(448, 512)}`,
+    publicInputsHash: `0x${hex.slice(512, 576)}`,
+    verifierUsed: `0x${hex.slice(600, 640)}`,
   };
 }

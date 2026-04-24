@@ -12,6 +12,7 @@ import type { BatchProveResult } from "./batch-prover.js";
 export interface ComplianceAttestation {
   subject: Address;
   jurisdictionId: number;
+  proofType: number;
   meetsThreshold: boolean;
   timestamp: bigint;
   expiresAt: bigint;
