@@ -71,9 +71,9 @@ describe("PUBLIC_INPUT_COUNTS", () => {
   it("matches Noir circuit public input counts", () => {
     expect(PUBLIC_INPUT_COUNTS[0x01]).toBe(6); // compliance (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x02]).toBe(8); // risk_score (+ submitter)
-    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(5); // pattern
-    expect(PUBLIC_INPUT_COUNTS[0x04]).toBe(5); // attestation
-    expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(4); // membership
-    expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(4); // non_membership
+    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(6); // pattern (+ submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x04]).toBe(6); // attestation (+ submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(5); // membership (+ submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(5); // non_membership (+ submitter)
   });
 });

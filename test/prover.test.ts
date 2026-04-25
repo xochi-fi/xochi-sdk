@@ -3,13 +3,14 @@
  */
 
 import { describe, it, expect, afterAll } from "vitest";
+import type { Address } from "viem";
 import { XochiProver } from "../src/index.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
 
 const loader = new BundledCircuitLoader();
 const prover = new XochiProver(loader);
 
-const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
 
 afterAll(async () => {
   await prover.destroy();

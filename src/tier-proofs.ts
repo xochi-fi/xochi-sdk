@@ -7,10 +7,11 @@
  * Ported from xochi frontend src/lib/tier-proofs.ts.
  */
 
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 import type { CircuitLoader, ProofResult } from "./types.js";
 import { encodeProof, encodePublicInputs, decodePublicInputs } from "./encoding.js";
 import { DEFAULT_CONFIG_HASH } from "./constants.js";
+import { validateSubmitter } from "./inputs/validate.js";
 import {
   type TierThreshold,
   type TierName,
@@ -104,9 +105,11 @@ function generateBlindingFactor(): Hex {
 function buildTierProofInputs(
   score: number,
   threshold: TierThreshold,
-  submitter: string,
+  submitter: Address,
   configHash?: string,
 ): Record<string, string | string[]> {
+  validateSubmitter(submitter);
+
   const thresholdBps = threshold * 100;
   const scoreBps = score * 100;
 
@@ -138,7 +141,7 @@ export async function generateTierProof(
   loader: CircuitLoader,
   score: number,
   threshold: TierThreshold,
-  submitter: string,
+  submitter: Address,
   configHash?: string,
 ): Promise<TierProof> {
   const { Noir } = await import("@noir-lang/noir_js");
@@ -183,7 +186,7 @@ export async function generateTierProof(
 export async function generateHighestTierProof(
   loader: CircuitLoader,
   score: number,
-  submitter: string,
+  submitter: Address,
   configHash?: string,
 ): Promise<TierProof | null> {
   const thresholds: TierThreshold[] = [100, 75, 50, 25, 0];

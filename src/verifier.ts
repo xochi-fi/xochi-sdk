@@ -5,14 +5,19 @@
  * single, batch, and versioned verification.
  */
 
-import type { Address, Hex, PublicClient } from "viem";
+import type { Address, Chain, Hex, PublicClient } from "viem";
+import { writeContract } from "viem/actions";
 import { VERIFIER_ABI } from "./abis.js";
 import type { ProofType } from "./constants.js";
+import type { ConfiguredWalletClient } from "./oracle.js";
+import { withDecodedErrors } from "./errors.js";
 
 export class XochiVerifier {
   constructor(
     private address: Address,
     private publicClient: PublicClient,
+    private walletClient?: ConfiguredWalletClient,
+    private chain?: Chain,
   ) {}
 
   /**
@@ -94,5 +99,38 @@ export class XochiVerifier {
       functionName: "getVerifierAtVersion",
       args: [proofType, version],
     })) as Address;
+  }
+
+  /**
+   * Check whether a specific verifier version has been emergency-revoked.
+   * Revoked versions reject all `verifyProofAtVersion` calls.
+   */
+  async isVersionRevoked(proofType: ProofType, version: bigint): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: VERIFIER_ABI,
+      functionName: "isVersionRevoked",
+      args: [proofType, version],
+    })) as boolean;
+  }
+
+  /**
+   * Emergency-revoke a historical verifier version (owner-only).
+   * The current version cannot be revoked -- propose+execute a new verifier first.
+   */
+  async revokeVerifierVersion(proofType: ProofType, version: bigint): Promise<Hex> {
+    if (!this.walletClient) {
+      throw new Error("WalletClient required for write operations");
+    }
+    const wallet = this.walletClient;
+    return withDecodedErrors(VERIFIER_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: VERIFIER_ABI,
+        chain: this.chain,
+        functionName: "revokeVerifierVersion",
+        args: [proofType, version],
+      }),
+    );
   }
 }

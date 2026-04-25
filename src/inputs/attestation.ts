@@ -1,4 +1,5 @@
-import { validateCredentialType, validateTimestamp } from "./validate.js";
+import type { Address } from "viem";
+import { validateCredentialType, validateSubmitter, validateTimestamp } from "./validate.js";
 
 export interface AttestationInput {
   credentialHash: string;
@@ -11,6 +12,8 @@ export interface AttestationInput {
   credentialType: number; // 1=KYC basic, 4=institutional
   merkleRoot: string;
   currentTimestamp?: number;
+  /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
+  submitter: Address;
 }
 
 export function buildAttestationInputs(opts: AttestationInput): Record<string, string | string[]> {
@@ -24,6 +27,7 @@ export function buildAttestationInputs(opts: AttestationInput): Record<string, s
 
   validateCredentialType(opts.credentialType);
   validateTimestamp(currentTimestamp);
+  validateSubmitter(opts.submitter);
 
   if (currentTimestamp >= opts.expiryTimestamp) {
     throw new Error("Credential has expired");
@@ -41,5 +45,6 @@ export function buildAttestationInputs(opts: AttestationInput): Record<string, s
     is_valid: "1",
     merkle_root: opts.merkleRoot,
     current_timestamp: String(currentTimestamp),
+    submitter: opts.submitter,
   };
 }

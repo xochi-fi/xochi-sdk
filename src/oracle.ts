@@ -2,12 +2,17 @@
  * XochiOracle -- typed client for the on-chain XochiZKPOracle contract.
  */
 
-import type { Address, Chain, Hex, PublicClient, WalletClient } from "viem";
+import type { Account, Address, Chain, Hex, PublicClient, Transport, WalletClient } from "viem";
+import { writeContract } from "viem/actions";
 import { ORACLE_ABI } from "./abis.js";
 import type { ProofType } from "./constants.js";
 import { PROOF_TYPES } from "./constants.js";
 import { assertProofRecent, DEFAULT_MAX_PROOF_AGE } from "./recency.js";
 import type { BatchProveResult } from "./batch-prover.js";
+import { withDecodedErrors } from "./errors.js";
+
+/** WalletClient with a bound account -- required for writeContract calls. */
+export type ConfiguredWalletClient = WalletClient<Transport, Chain | undefined, Account>;
 
 export interface ComplianceAttestation {
   subject: Address;
@@ -43,45 +48,57 @@ export interface BatchSubmitParams {
 
 export interface BatchSubmitResult {
   tradeId: Hex;
+  /** Single transaction hash for the atomic batch submission. */
+  txHash: Hex;
   submissions: Array<{
     index: number;
     amount: bigint;
+    /** Same as the parent BatchSubmitResult.txHash -- kept for backwards compatibility. */
     txHash: Hex;
     proofHash: Hex;
   }>;
 }
 
+/** Matches XochiZKPOracle.MAX_BATCH_SIZE. */
+export const MAX_BATCH_SIZE = 100;
+
 export class XochiOracle {
   constructor(
     private address: Address,
     private publicClient: PublicClient,
-    private walletClient?: WalletClient,
+    private walletClient?: ConfiguredWalletClient,
     private chain?: Chain,
   ) {}
 
-  async submitCompliance(params: SubmitComplianceParams): Promise<Hex> {
+  private requireWallet(): ConfiguredWalletClient {
     if (!this.walletClient) {
       throw new Error("WalletClient required for write operations");
     }
+    return this.walletClient;
+  }
+
+  async submitCompliance(params: SubmitComplianceParams): Promise<Hex> {
+    const wallet = this.requireWallet();
 
     if (params.proofTimestamp !== undefined) {
       assertProofRecent(params.proofTimestamp, params.maxProofAge ?? DEFAULT_MAX_PROOF_AGE);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this.walletClient as any).writeContract({
-      address: this.address,
-      abi: ORACLE_ABI,
-      chain: this.chain ?? null,
-      functionName: "submitCompliance",
-      args: [
-        params.jurisdictionId,
-        params.proofType,
-        params.proof,
-        params.publicInputs,
-        params.providerSetHash,
-      ],
-    });
+    return withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "submitCompliance",
+        args: [
+          params.jurisdictionId,
+          params.proofType,
+          params.proof,
+          params.publicInputs,
+          params.providerSetHash,
+        ],
+      }),
+    );
   }
 
   async checkCompliance(
@@ -93,6 +110,21 @@ export class XochiOracle {
       abi: ORACLE_ABI,
       functionName: "checkCompliance",
       args: [subject, jurisdictionId],
+    })) as [boolean, ComplianceAttestation];
+
+    return { valid, attestation };
+  }
+
+  async checkComplianceByType(
+    subject: Address,
+    jurisdictionId: number,
+    proofType: ProofType,
+  ): Promise<{ valid: boolean; attestation: ComplianceAttestation }> {
+    const [valid, attestation] = (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "checkComplianceByType",
+      args: [subject, jurisdictionId, proofType],
     })) as [boolean, ComplianceAttestation];
 
     return { valid, attestation };
@@ -185,58 +217,81 @@ export class XochiOracle {
   }
 
   /**
-   * Submit all proofs from a BatchProveResult to the Oracle sequentially.
+   * Submit all proofs from a BatchProveResult atomically via the on-chain
+   * `submitComplianceBatch` function (one transaction).
    *
-   * Each proof is submitted as a separate transaction and confirmed before
-   * the next is sent. Returns the proofHash for each submission, which can
-   * be passed to SettlementRegistryClient.recordSubSettlement.
+   * The Oracle emits one `ComplianceVerified` event per sub-trade, in input
+   * order. Returns the proofHash for each submission, which can be passed to
+   * `SettlementRegistryClient.recordSubSettlement`.
+   *
+   * Reverts atomically if any sub-trade fails verification. Max 100 proofs
+   * per batch (see {@link MAX_BATCH_SIZE}).
    */
   async submitBatch(params: BatchSubmitParams): Promise<BatchSubmitResult> {
-    if (!this.walletClient) {
-      throw new Error("WalletClient required for write operations");
+    const wallet = this.requireWallet();
+
+    const entries = params.batch.proofs;
+    if (entries.length === 0) {
+      throw new Error("Cannot submit empty batch");
+    }
+    if (entries.length > MAX_BATCH_SIZE) {
+      throw new Error(
+        `Batch size ${String(entries.length)} exceeds MAX_BATCH_SIZE (${String(MAX_BATCH_SIZE)})`,
+      );
     }
 
-    const submissions: BatchSubmitResult["submissions"] = [];
+    const proofTypes = entries.map(() => params.proofType);
+    const proofs = entries.map((e) => e.proofResult.proofHex);
+    const publicInputs = entries.map((e) => e.proofResult.publicInputsHex);
+    const providerSetHashes = entries.map(() => params.providerSetHash);
 
-    for (const entry of params.batch.proofs) {
-      const txHash = await this.submitCompliance({
-        jurisdictionId: params.jurisdictionId,
-        proofType: params.proofType,
-        proof: entry.proofResult.proofHex,
-        publicInputs: entry.proofResult.publicInputsHex,
-        providerSetHash: params.providerSetHash,
-      });
+    const txHash = await withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "submitComplianceBatch",
+        args: [params.jurisdictionId, proofTypes, proofs, publicInputs, providerSetHashes],
+      }),
+    );
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
 
-      if (receipt.status === "reverted") {
-        throw new Error(
-          `submitCompliance reverted for sub-trade ${String(entry.index)} (tx: ${txHash})`,
-        );
+    if (receipt.status === "reverted") {
+      throw new Error(`submitComplianceBatch reverted (tx: ${txHash})`);
+    }
+
+    // Extract proofHashes from ComplianceVerified events.
+    // keccak256("ComplianceVerified(address,uint8,bool,bytes32,uint256,uint256)")
+    // proofHash is indexed at topics[3]. Events are emitted in input order.
+    const complianceVerifiedSelector =
+      "0xe12796e59faa257427491b754971ac0139bc3390f73fbf02a62527ebcb82933d";
+    const proofHashes = receipt.logs
+      .filter((l) => l.topics[0] === complianceVerifiedSelector)
+      .map((l) => l.topics[3] as Hex | undefined);
+
+    if (proofHashes.length !== entries.length) {
+      throw new Error(
+        `Expected ${String(entries.length)} ComplianceVerified events, got ${String(proofHashes.length)} (tx: ${txHash})`,
+      );
+    }
+
+    const submissions: BatchSubmitResult["submissions"] = entries.map((entry, i) => {
+      const proofHash = proofHashes[i];
+      if (!proofHash) {
+        throw new Error(`proofHash missing for sub-trade ${String(entry.index)} (tx: ${txHash})`);
       }
-
-      // Extract proofHash from ComplianceVerified event (topic[3])
-      // keccak256("ComplianceVerified(address,uint8,bool,bytes32,uint256,uint256)")
-      const complianceVerifiedSelector =
-        "0xe12796e59faa257427491b754971ac0139bc3390f73fbf02a62527ebcb82933d";
-      const log = receipt.logs.find((l) => l.topics[0] === complianceVerifiedSelector);
-
-      if (!log || !log.topics[3]) {
-        throw new Error(
-          `ComplianceVerified event not found for sub-trade ${String(entry.index)} (tx: ${txHash})`,
-        );
-      }
-
-      submissions.push({
+      return {
         index: entry.index,
         amount: entry.amount,
         txHash,
-        proofHash: log.topics[3] as Hex,
-      });
-    }
+        proofHash,
+      };
+    });
 
     return {
       tradeId: params.batch.tradeId,
+      txHash,
       submissions,
     };
   }

@@ -24,12 +24,7 @@ const lowTrust: VenueConstraints = {
 describe("assignVenues", () => {
   // -- XIP-2 test case 1 --
   it("assigns all to shielded when qualified and no gas constraint", () => {
-    const result = assignVenues(
-      makeTrades(5),
-      ["shielded", "stealth", "public"],
-      highTrust,
-      0n,
-    );
+    const result = assignVenues(makeTrades(5), ["shielded", "stealth", "public"], highTrust, 0n);
 
     expect(result).toHaveLength(5);
     for (const a of result) {
@@ -39,12 +34,7 @@ describe("assignVenues", () => {
 
   // -- XIP-2 test case 2 --
   it("falls back to public when trust score too low", () => {
-    const result = assignVenues(
-      makeTrades(5),
-      ["shielded", "stealth", "public"],
-      lowTrust,
-      0n,
-    );
+    const result = assignVenues(makeTrades(5), ["shielded", "stealth", "public"], lowTrust, 0n);
 
     expect(result).toHaveLength(5);
     for (const a of result) {
@@ -54,12 +44,7 @@ describe("assignVenues", () => {
 
   // -- XIP-2 test case 3 --
   it("mixes venues when gas budget constrains", () => {
-    const result = assignVenues(
-      makeTrades(5, 100n),
-      ["shielded", "public"],
-      highTrust,
-      1_000_000n,
-    );
+    const result = assignVenues(makeTrades(5, 100n), ["shielded", "public"], highTrust, 1_000_000n);
 
     const shielded = result.filter((a) => a.venue === "shielded");
     const pub = result.filter((a) => a.venue === "public");
@@ -74,18 +59,13 @@ describe("assignVenues", () => {
 
   // -- XIP-2 test case 4 --
   it("throws when gas budget insufficient for any venue", () => {
-    expect(() =>
-      assignVenues(makeTrades(5), ["shielded", "public"], highTrust, 100_000n),
-    ).toThrow("no venue in preference list fits");
+    expect(() => assignVenues(makeTrades(5), ["shielded", "public"], highTrust, 100_000n)).toThrow(
+      "no venue in preference list fits",
+    );
   });
 
   it("preserves original index ordering in output", () => {
-    const result = assignVenues(
-      makeTrades(5),
-      ["public"],
-      lowTrust,
-      0n,
-    );
+    const result = assignVenues(makeTrades(5), ["public"], lowTrust, 0n);
 
     for (let i = 0; i < result.length; i++) {
       expect(result[i].index).toBe(i);
@@ -132,9 +112,9 @@ describe("assignVenues", () => {
   });
 
   it("throws on unknown venue", () => {
-    expect(() =>
-      assignVenues(makeTrades(1), ["quantum" as any], lowTrust, 0n),
-    ).toThrow("Unknown venue");
+    expect(() => assignVenues(makeTrades(1), ["quantum" as any], lowTrust, 0n)).toThrow(
+      "Unknown venue",
+    );
   });
 
   it("uses custom gas estimates", () => {

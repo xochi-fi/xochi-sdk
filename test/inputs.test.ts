@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { Address } from "viem";
 import { buildRiskScoreInputs } from "../src/inputs/risk-score.js";
 import { buildComplianceInputs } from "../src/inputs/compliance.js";
 import { buildMembershipInputs } from "../src/inputs/membership.js";
@@ -12,7 +13,7 @@ import { buildAttestationInputs } from "../src/inputs/attestation.js";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 
-const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
 
 // ============================================================
 // Risk Score
@@ -290,6 +291,7 @@ describe("buildMembershipInputs", () => {
       merkleRoot: "0x1234",
       setId: "1",
       timestamp: "1700000000",
+      submitter: SUBMITTER,
     });
 
     expect(result.element).toBe("42");
@@ -297,6 +299,7 @@ describe("buildMembershipInputs", () => {
     expect(result.merkle_path).toHaveLength(20);
     expect(result.is_member).toBe("1");
     expect(result.timestamp).toBe("1700000000");
+    expect(result.submitter).toBe(SUBMITTER);
   });
 
   it("defaults timestamp to now", () => {
@@ -307,6 +310,7 @@ describe("buildMembershipInputs", () => {
       merklePath: Array(20).fill("0"),
       merkleRoot: "0",
       setId: "1",
+      submitter: SUBMITTER,
     });
     const after = Math.floor(Date.now() / 1000);
 
@@ -323,6 +327,7 @@ describe("buildMembershipInputs", () => {
         merklePath: Array(10).fill("0"),
         merkleRoot: "0",
         setId: "1",
+        submitter: SUBMITTER,
       }),
     ).toThrow("20 elements");
   });
@@ -344,6 +349,7 @@ describe("buildNonMembershipInputs", () => {
       highPath: Array(20).fill("0"),
       merkleRoot: "0",
       setId: "1",
+      submitter: SUBMITTER,
     });
 
     expect(result.element).toBe("50");
@@ -352,6 +358,7 @@ describe("buildNonMembershipInputs", () => {
     expect(result.low_path).toHaveLength(20);
     expect(result.high_path).toHaveLength(20);
     expect(result.is_non_member).toBe("1");
+    expect(result.submitter).toBe(SUBMITTER);
   });
 
   it("rejects wrong low_path length", () => {
@@ -366,6 +373,7 @@ describe("buildNonMembershipInputs", () => {
         highPath: Array(20).fill("0"),
         merkleRoot: "0",
         setId: "1",
+        submitter: SUBMITTER,
       }),
     ).toThrow("20 elements");
   });
@@ -382,6 +390,7 @@ describe("buildNonMembershipInputs", () => {
         highPath: Array(5).fill("0"),
         merkleRoot: "0",
         setId: "1",
+        submitter: SUBMITTER,
       }),
     ).toThrow("20 elements");
   });
@@ -401,6 +410,7 @@ describe("buildPatternInputs", () => {
       reportingThreshold: 10000,
       timeWindow: 86400,
       txSetHash: "0xabcd",
+      submitter: SUBMITTER,
     });
 
     expect(result.analysis_type).toBe("1");
@@ -410,6 +420,7 @@ describe("buildPatternInputs", () => {
     expect((result.amounts as string[])[0]).toBe("9000");
     expect((result.amounts as string[])[3]).toBe("0"); // padded zero
     expect(result.num_transactions).toBe("3");
+    expect(result.submitter).toBe(SUBMITTER);
   });
 
   it("builds velocity analysis", () => {
@@ -421,6 +432,7 @@ describe("buildPatternInputs", () => {
       reportingThreshold: 10000,
       timeWindow: 86400,
       txSetHash: "0x1234",
+      submitter: SUBMITTER,
     });
 
     expect(result.analysis_type).toBe("2");
@@ -436,6 +448,7 @@ describe("buildPatternInputs", () => {
       reportingThreshold: 10000,
       timeWindow: 86400,
       txSetHash: "0x5678",
+      submitter: SUBMITTER,
     });
 
     expect(result.analysis_type).toBe("3");
@@ -451,6 +464,7 @@ describe("buildPatternInputs", () => {
         reportingThreshold: 10000,
         timeWindow: 3600,
         txSetHash: "0x",
+        submitter: SUBMITTER,
       }),
     ).toThrow("below minimum");
   });
@@ -465,6 +479,7 @@ describe("buildPatternInputs", () => {
         reportingThreshold: 10000,
         timeWindow: 8_000_000,
         txSetHash: "0x",
+        submitter: SUBMITTER,
       }),
     ).toThrow("exceeds maximum");
   });
@@ -477,6 +492,7 @@ describe("buildPatternInputs", () => {
       analysisType: 1 as const,
       reportingThreshold: 10000,
       txSetHash: "0x",
+      submitter: SUBMITTER,
     };
 
     expect(() => buildPatternInputs({ ...base, timeWindow: 86400 })).not.toThrow();
@@ -494,6 +510,7 @@ describe("buildPatternInputs", () => {
         reportingThreshold: 10000,
         timeWindow: 86400,
         txSetHash: "0x",
+        submitter: SUBMITTER,
       }),
     ).toThrow("Max 16");
   });
@@ -515,6 +532,7 @@ describe("buildAttestationInputs", () => {
     credentialType: 1,
     merkleRoot: "0xddd",
     currentTimestamp: 1700000000,
+    submitter: SUBMITTER,
   };
 
   it("builds attestation inputs", () => {
@@ -526,6 +544,7 @@ describe("buildAttestationInputs", () => {
     expect(result.provider_merkle_path).toHaveLength(20);
     expect(result.current_timestamp).toBe("1700000000");
     expect(result.expiry_timestamp).toBe("1800000000");
+    expect(result.submitter).toBe(SUBMITTER);
   });
 
   it("builds institutional credential type", () => {

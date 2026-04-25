@@ -77,17 +77,13 @@ export class PxeBridgeClient {
     });
 
     if (!response.ok) {
-      throw new Error(
-        `pxe-bridge HTTP error: ${String(response.status)} ${response.statusText}`,
-      );
+      throw new Error(`pxe-bridge HTTP error: ${String(response.status)} ${response.statusText}`);
     }
 
     const body = (await response.json()) as JsonRpcResponse<T>;
 
     if (body.error) {
-      throw new Error(
-        `pxe-bridge RPC error ${String(body.error.code)}: ${body.error.message}`,
-      );
+      throw new Error(`pxe-bridge RPC error ${String(body.error.code)}: ${body.error.message}`);
     }
 
     if (body.result === undefined) {

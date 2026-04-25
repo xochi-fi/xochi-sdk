@@ -143,27 +143,27 @@ describe("planSplit", () => {
   // -- Validation --
 
   it("rejects splitThreshold below 10 ETH", () => {
-    expect(() =>
-      planSplit(100n * ETH, EU, SUBMITTER, { splitThreshold: 5n * ETH }),
-    ).toThrow("splitThreshold must be >= 10 ETH");
+    expect(() => planSplit(100n * ETH, EU, SUBMITTER, { splitThreshold: 5n * ETH })).toThrow(
+      "splitThreshold must be >= 10 ETH",
+    );
   });
 
   it("rejects maxSubTrades below 2", () => {
-    expect(() =>
-      planSplit(100n * ETH, EU, SUBMITTER, { maxSubTrades: 1 }),
-    ).toThrow("maxSubTrades must be in [2, 100]");
+    expect(() => planSplit(100n * ETH, EU, SUBMITTER, { maxSubTrades: 1 })).toThrow(
+      "maxSubTrades must be in [2, 100]",
+    );
   });
 
   it("rejects maxSubTrades above 100", () => {
-    expect(() =>
-      planSplit(100n * ETH, EU, SUBMITTER, { maxSubTrades: 101 }),
-    ).toThrow("maxSubTrades must be in [2, 100]");
+    expect(() => planSplit(100n * ETH, EU, SUBMITTER, { maxSubTrades: 101 })).toThrow(
+      "maxSubTrades must be in [2, 100]",
+    );
   });
 
   it("rejects minSubTradeSize of 0", () => {
-    expect(() =>
-      planSplit(100n * ETH, EU, SUBMITTER, { minSubTradeSize: 0n }),
-    ).toThrow("minSubTradeSize must be > 0");
+    expect(() => planSplit(100n * ETH, EU, SUBMITTER, { minSubTradeSize: 0n })).toThrow(
+      "minSubTradeSize must be > 0",
+    );
   });
 
   it("rejects totalAmount of 0", () => {

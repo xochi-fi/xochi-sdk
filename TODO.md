@@ -41,19 +41,37 @@ Bug fixes found during implementation:
 - Integration tests: pattern public inputs include `submitter` (contract enforces for all proof types)
 - CLAUDE.md: documented circuit vs on-chain public input count gap, verifier timelock, MAX_PROOF_AGE
 
+## Completed (2026-04-25)
+
+Aligned SDK with `erc-xochi-zkp@828a41b` (security hardening + emergency verifier revocation) and bumped to `0.1.1` for first publish.
+
+**Upstream alignment:**
+
+- Re-synced 6 circuit artifacts after recompiling upstream with nargo `1.0.0-beta.20` (upstream source had drifted to beta.20 syntax; CI pin was stale)
+- `PUBLIC_INPUT_COUNTS`: pattern 5→6, attestation 5→6, membership 4→5, non_membership 4→5 (all 4 circuits gained `submitter` as a public input -- "submitter gap" closed)
+- `submitter` now required on all 4 affected input builders (was previously appended SDK-side at submission time)
+- `XochiOracle.checkComplianceByType()` -- query attestations filtered by proof type
+- `XochiVerifier.isVersionRevoked()` + `revokeVerifierVersion()` + `VerifierVersionRevoked` event -- emergency revocation API
+- `XochiOracle.submitBatch` rewired to on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs); `MAX_BATCH_SIZE` constant exported
+
+**Polish (publish hygiene):**
+
+- Typed contract errors (`src/errors.ts`): `XochiContractError` base + 12 named subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, etc.); `decodeContractError` + `withDecodedErrors` helpers; all write methods now throw typed errors. Full ABI error entries added to `ORACLE_ABI` and `VERIFIER_ABI`.
+- `submitter` typed as viem `Address` (was `string`); new `validateSubmitter` rejects zero address fail-fast
+- Killed `as any` on all `writeContract` calls via `viem/actions` and tightened generics; new `ConfiguredWalletClient` type alias
+- Centralized `EXPECTED_NOIR_VERSION` in `src/noir-version.ts`
+- Drift test for `DEFAULT_CONFIG_HASH` (asserts the hardcoded value matches the circuit's `config_hash` for single-provider proofs)
+- `CHANGELOG.md` added; `package.json` bumped to `0.1.1`
+- Test count: 199 (was 190) -- +8 unit (errors), +1 integration (drift)
+
 ## Future
-
-### Settlement splitting
-
-Specified in [XIP-1](https://github.com/xochi-fi/XIPs/blob/main/XIPS/xip-draft_settlement-splitting.md). Three layers:
-
-- Layer 0 (SDK): SplitPlanner + BatchProver -- done
-- Layer 1 (Contract): SettlementRegistry client -- done
-- Layer 2: Oracle.submitBatch (SDK-side sequential) -- done
-- Layer 2b (Optional): On-chain submitComplianceBatch (single-tx, needs contract change)
 
 ### Follow-on XIPs (candidates)
 
 - Dynamic re-splitting (retry failed sub-trades with new split plan)
 - Relayer/meta-transaction support (bind to recipient instead of msg.sender)
 - Cross-chain settlement coordination
+
+### Other
+
+- Bump `@noir-lang/noir_js` to `1.0.0-beta.20` once a stable (non-nightly) release lands on npm

@@ -132,13 +132,7 @@ describe("XIP-2: provePlan", () => {
   };
 
   it("split -> route -> schedule -> prove -> verify (compliance)", async () => {
-    const plan = planExecution(
-      250n * ETH,
-      EU,
-      ADDRESS,
-      highTrust,
-      { diffusionWindow: 120 },
-    );
+    const plan = planExecution(250n * ETH, EU, ADDRESS, highTrust, { diffusionWindow: 120 });
 
     expect(plan.subTrades.length).toBeGreaterThan(1);
 
@@ -164,12 +158,7 @@ describe("XIP-2: provePlan", () => {
   });
 
   it("sub-trade amounts in batch match execution plan", async () => {
-    const plan = planExecution(
-      400n * ETH,
-      EU,
-      ADDRESS,
-      highTrust,
-    );
+    const plan = planExecution(400n * ETH, EU, ADDRESS, highTrust);
 
     const batch = await provePlan(prover, plan, riskScoreInput);
 
@@ -188,13 +177,9 @@ describe("XIP-2: provePlan", () => {
       gasEstimates: { public: 65_000n, stealth: 150_000n, shielded: 400_000n },
     };
 
-    const plan = planExecution(
-      200n * ETH,
-      EU,
-      ADDRESS,
-      lowTrust,
-      { venuePreference: ["shielded", "stealth", "public"] },
-    );
+    const plan = planExecution(200n * ETH, EU, ADDRESS, lowTrust, {
+      venuePreference: ["shielded", "stealth", "public"],
+    });
 
     // Trust score 10 only qualifies for "public" (min 0)
     for (const st of plan.subTrades) {

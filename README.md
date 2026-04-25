@@ -183,6 +183,9 @@ const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
 // attestation: { subject, jurisdictionId, proofType, meetsThreshold, timestamp,
 //   expiresAt, proofHash, providerSetHash, publicInputsHash, verifierUsed }
 
+// Filter by proof type (e.g., require an attestation backed by a PATTERN proof)
+const patternStatus = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.PATTERN);
+
 // Retrieve historical proofs
 const history = await oracle.getAttestationHistory("0x...", 0);
 const proof = await oracle.getHistoricalProof(history[0]);
@@ -190,7 +193,7 @@ const proof = await oracle.getHistoricalProof(history[0]);
 
 ### Batch submission
 
-Submit all proofs from a `proveBatch` or `provePlan` result in one call. Each proof goes as a separate transaction (the Oracle doesn't have an on-chain batch yet), but `submitBatch` handles sequencing and returns the proofHashes you need for settlement recording.
+Submit all proofs from a `proveBatch` or `provePlan` result atomically in a single transaction via the on-chain `submitComplianceBatch`. Reverts atomically if any sub-trade fails. Max 100 proofs per batch (`MAX_BATCH_SIZE`).
 
 ```typescript
 const batchResult = await oracle.submitBatch({
@@ -229,6 +232,11 @@ const historicalValid = await verifier.verifyProofAtVersion(
   proofHex,
   publicInputsHex,
 );
+
+// Emergency revocation (owner-only, requires WalletClient)
+const adminVerifier = new XochiVerifier("0x...", publicClient, walletClient, mainnet);
+const revoked = await adminVerifier.isVersionRevoked(PROOF_TYPES.COMPLIANCE, 1n);
+await adminVerifier.revokeVerifierVersion(PROOF_TYPES.COMPLIANCE, 1n);
 ```
 
 ## Lightweight oracle client
@@ -366,7 +374,7 @@ import {
 
 Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
 
-> **Submitter binding**: Compliance and risk_score circuits include a `submitter` public input. For pattern, attestation, membership, and non_membership, the Oracle contract still enforces `submitter == msg.sender` -- you must append the submitter (as a padded bytes32) to `publicInputsHex` before on-chain submission. This gap will close when the upstream circuits add `submitter` as a public input.
+> **Submitter binding**: All 6 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
 
 ## Proof type mappings
 
@@ -380,17 +388,52 @@ import {
 
 proofTypeToCircuit(0x01); // "compliance"
 circuitToProofType("risk_score"); // 0x02
-PUBLIC_INPUT_COUNTS[0x01]; // 6
+PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, attestation: 6, membership: 5, non_membership: 5
 ```
+
+## Typed contract errors
+
+Solidity reverts from `XochiZKPOracle`, `XochiZKPVerifier`, and `SettlementRegistry` are decoded into named JS error classes so you can branch on them in `try/catch` instead of regex-matching messages.
+
+```typescript
+import {
+  SubmitterMismatchError,
+  ProofAlreadyUsedError,
+  BatchTooLargeError,
+  VersionRevokedError,
+  XochiContractError,
+} from "@xochi/sdk";
+
+try {
+  await oracle.submitCompliance(params);
+} catch (err) {
+  if (err instanceof SubmitterMismatchError) {
+    // proof was bound to a different address -- regenerate with the right submitter
+  } else if (err instanceof ProofAlreadyUsedError) {
+    console.log(`Replay rejected, proof already used: ${err.proofHash}`);
+  } else if (err instanceof XochiContractError) {
+    // any other decoded contract revert -- err.errorName + err.args available
+    console.error(`Contract reverted with ${err.errorName}`, err.args);
+  } else {
+    throw err; // network error, gas estimation failure, etc.
+  }
+}
+```
+
+Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`. Any other Solidity custom error decodes to a base `XochiContractError` with `errorName` + `args` populated.
+
+For lower-level use, `decodeContractError(err, abi)` returns the typed error or `null`, and `withDecodedErrors(abi, fn)` wraps any async call.
 
 ## Development
 
 ```bash
 npm install
-npm test                 # unit tests (145 tests)
-npm run test:integration # proof generation + anvil tests (45 tests, ~20s)
+npm test                 # all tests (199 tests)
+npm run test:integration # proof generation + anvil tests (46 tests, ~20s)
+npm run typecheck        # tsc --noEmit
+npm run format           # prettier --write
+npm run format:check     # prettier --check (run in CI / prepublishOnly)
 npm run build            # compile to dist/
-npm run typecheck         # tsc --noEmit
 
 # Sync circuit artifacts from erc-xochi-zkp
 ./scripts/sync-circuits.sh ../erc-xochi-zkp

@@ -12,6 +12,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Address } from "viem";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import {
   XochiProver,
@@ -21,6 +22,7 @@ import {
   encodeProof,
   PUBLIC_INPUT_COUNTS,
   PROOF_TYPES,
+  DEFAULT_CONFIG_HASH,
   generateTierProof,
   verifyTierProof,
 } from "../src/index.js";
@@ -38,7 +40,7 @@ afterAll(async () => {
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 
-const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
 
 // ============================================================
 // Risk Score (already in prover.test.ts, included here for completeness)
@@ -102,6 +104,31 @@ describe("compliance proof", () => {
     const valid = await prover.verify("compliance", result.proof, result.publicInputs);
     expect(valid).toBe(true);
   });
+
+  // Drift detector: DEFAULT_CONFIG_HASH must equal pedersen_hash([100, 0, 0, 0, 0, 0, 0, 0])
+  // as computed by the circuit in single-provider mode. If providers.nr changes the hash
+  // function or the canonical single-provider weight vector, this test catches it
+  // before downstream consumers silently break.
+  it("DEFAULT_CONFIG_HASH matches the circuit-computed config_hash", async () => {
+    const result = await prover.proveCompliance({
+      score: 25,
+      jurisdictionId: 0,
+      providerSetHash: PROVIDER_SET_HASH,
+      timestamp: "1700000000",
+      submitter: SUBMITTER,
+    });
+
+    // Public input order for compliance: [jurisdiction_id, provider_set_hash,
+    // config_hash, timestamp, meets_threshold, submitter]
+    const configHashInput = result.publicInputs[2];
+
+    const normalize = (s: string) => {
+      const hex = s.startsWith("0x") ? s.slice(2) : s;
+      return ("0x" + hex.padStart(64, "0").toLowerCase()) as `0x${string}`;
+    };
+
+    expect(normalize(configHashInput)).toBe(normalize(DEFAULT_CONFIG_HASH));
+  });
 });
 
 // ============================================================
@@ -118,6 +145,7 @@ describe("pattern proof", () => {
       reportingThreshold: 10000,
       timeWindow: 86400,
       txSetHash: "0x2231d26d52515af30cbb6e91834cdb9e3d1d36575f160cbb4f6ebbb3c3dd8dad",
+      submitter: SUBMITTER,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
@@ -147,6 +175,7 @@ describe("attestation proof", () => {
       credentialType: 1,
       merkleRoot: "0x15861259068f1398397423d4b3bad764e19c1a68699115ef9ccd090a8a5eba3e",
       currentTimestamp: 1700000000,
+      submitter: SUBMITTER,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
@@ -172,6 +201,7 @@ describe("membership proof", () => {
       merkleRoot: "0x30211953f68b315a285af9496cdaa51517aba83cb3bb40bdd20b2e42eb189fe6",
       setId: "1",
       timestamp: "1700000000",
+      submitter: SUBMITTER,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
@@ -243,6 +273,7 @@ describe("non_membership proof", () => {
       merkleRoot: "0x12d001bc3463cb4d3a745f802dffd80c00a2927f77110d1b0a59b9a3bd787b86",
       setId: "1",
       timestamp: "1700000000",
+      submitter: SUBMITTER,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);

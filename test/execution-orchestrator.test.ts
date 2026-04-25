@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { planExecution, DEFAULT_EXECUTION_CONFIG, type ExecutionConfig } from "../src/execution-orchestrator.js";
+import {
+  planExecution,
+  DEFAULT_EXECUTION_CONFIG,
+  type ExecutionConfig,
+} from "../src/execution-orchestrator.js";
 import { DEFAULT_GAS_ESTIMATES } from "../src/venue-router.js";
 import type { VenueConstraints } from "../src/venue-router.js";
 
@@ -96,7 +100,9 @@ describe("planExecution", () => {
     });
 
     expect(plan.config.maxSlippagePerSubTrade).toBe(100);
-    expect(plan.config.splitConfig.splitThreshold).toBe(DEFAULT_EXECUTION_CONFIG.splitConfig.splitThreshold);
+    expect(plan.config.splitConfig.splitThreshold).toBe(
+      DEFAULT_EXECUTION_CONFIG.splitConfig.splitThreshold,
+    );
   });
 
   // -- Validation --

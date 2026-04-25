@@ -1,5 +1,6 @@
+import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
-import { validateActiveProviders, validateTimestamp } from "./validate.js";
+import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 
 const MAX_PROVIDERS = 8;
 
@@ -20,7 +21,7 @@ interface MultiProviderCompliance {
   configHash?: string;
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
-  submitter: string;
+  submitter: Address;
 }
 
 interface SingleProviderCompliance {
@@ -30,7 +31,7 @@ interface SingleProviderCompliance {
   configHash?: string;
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
-  submitter: string;
+  submitter: Address;
 }
 
 export type ComplianceInput = MultiProviderCompliance | SingleProviderCompliance;
@@ -94,6 +95,7 @@ export function buildComplianceInputs(opts: ComplianceInput): Record<string, str
 
   const ts = Number(opts.timestamp ?? String(Math.floor(Date.now() / 1000)));
   validateTimestamp(ts);
+  validateSubmitter(opts.submitter);
   validateActiveProviders(signals.map(Number), weights.map(Number), providerIds, numProviders);
 
   return {

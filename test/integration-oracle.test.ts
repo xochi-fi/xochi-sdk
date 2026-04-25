@@ -97,7 +97,7 @@ async function deployContract(
   bytecode: Hex,
   args: Hex = "0x",
 ): Promise<Address> {
-  const data = (args === "0x" ? bytecode : (bytecode + args.slice(2))) as Hex;
+  const data = (args === "0x" ? bytecode : bytecode + args.slice(2)) as Hex;
   const hash = await walletClient.sendTransaction({
     data,
     chain: foundry,
@@ -172,11 +172,9 @@ beforeAll(async () => {
   // Deploy XochiZKPOracle
   configHash = keccak256(toHex("test-config"));
   const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
-  const oracleArgs = (
-    padHex(verifierAddress, { size: 32 }) +
+  const oracleArgs = (padHex(verifierAddress, { size: 32 }) +
     padHex(OWNER, { size: 32 }).slice(2) +
-    configHash.slice(2)
-  ) as Hex;
+    configHash.slice(2)) as Hex;
   oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);
 
   // Register reporting threshold

@@ -1,5 +1,6 @@
+import type { Address } from "viem";
 import { PATTERN_TIME_WINDOW_MIN, PATTERN_TIME_WINDOW_MAX } from "../constants.js";
-import { validateReportingThreshold, validateTimestamp } from "./validate.js";
+import { validateReportingThreshold, validateSubmitter, validateTimestamp } from "./validate.js";
 
 export interface PatternInput {
   amounts: number[];
@@ -9,6 +10,8 @@ export interface PatternInput {
   reportingThreshold: number;
   timeWindow: number;
   txSetHash: string;
+  /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
+  submitter: Address;
 }
 
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
@@ -17,6 +20,7 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
   }
 
   validateReportingThreshold(opts.reportingThreshold);
+  validateSubmitter(opts.submitter);
 
   if (opts.timeWindow < PATTERN_TIME_WINDOW_MIN) {
     throw new Error(
@@ -53,5 +57,6 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     reporting_threshold: String(opts.reportingThreshold),
     time_window: String(opts.timeWindow),
     tx_set_hash: opts.txSetHash,
+    submitter: opts.submitter,
   };
 }

@@ -46,9 +46,7 @@ describe("scheduleDiffusion", () => {
 
   it("throws when window too short for minimum spacing", () => {
     // 10 sub-trades need 9 * 12 = 108s minimum
-    expect(() => scheduleDiffusion(makeTrades(10), makeVenues(10), 100)).toThrow(
-      "too short",
-    );
+    expect(() => scheduleDiffusion(makeTrades(10), makeVenues(10), 100)).toThrow("too short");
   });
 
   it("handles single sub-trade", () => {

@@ -1,5 +1,6 @@
+import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
-import { validateActiveProviders } from "./validate.js";
+import { validateActiveProviders, validateSubmitter } from "./validate.js";
 
 interface ProviderSignals {
   signals: number[]; // 1-8 provider risk scores (0-100)
@@ -20,7 +21,7 @@ interface ThresholdBase {
   providerSetHash: string;
   configHash?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
-  submitter: string;
+  submitter: Address;
 }
 
 interface RangeBase {
@@ -30,7 +31,7 @@ interface RangeBase {
   providerSetHash: string;
   configHash?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
-  submitter: string;
+  submitter: Address;
 }
 
 export type RiskScoreThresholdInput = ThresholdBase & ProviderInput;
@@ -95,6 +96,7 @@ function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
 
 export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, string | string[]> {
   const configHash = opts.configHash ?? DEFAULT_CONFIG_HASH;
+  validateSubmitter(opts.submitter);
   const p = resolveProviders(opts);
 
   validateActiveProviders(

@@ -17,8 +17,10 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/circuits.ts**: Node.js circuit loaders (BundledCircuitLoader, NodeCircuitLoader)
 - **src/circuits-browser.ts**: Browser circuit loader (BrowserCircuitLoader) -- no node:fs dependency
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
-- **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types)
-- **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts
+- **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types, submitter non-zero)
+- **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts (functions, events, custom errors)
+- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 12 named subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/noir-version.ts**: Pinned `EXPECTED_NOIR_VERSION` + shared `assertCompatibleNoirVersion` (used by both circuit loaders)
 
 ### Trust & Compliance
 
@@ -32,7 +34,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/batch-prover.ts**: `proveBatch` / `provePlan` -- generate compliance proofs for all sub-trades
 - **src/settlement-registry.ts**: `SettlementRegistryClient` -- on-chain SettlementRegistry interaction (viem)
 
-`XochiOracle.submitBatch()` submits all proofs from a BatchProveResult sequentially and returns proofHashes for settlement recording.
+`XochiOracle.submitBatch()` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs per `MAX_BATCH_SIZE`), parses one `ComplianceVerified` event per sub-trade from the receipt, and returns proofHashes for settlement recording.
 
 ### Execution Planning (XIP-2)
 
@@ -59,11 +61,15 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ```bash
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (all tests, 190 tests)
+npm test               # vitest run (all tests, 199 tests)
 npm run test:integration  # proof generation + anvil contract tests (~20s)
 npm run typecheck      # tsc --noEmit
+npm run format         # prettier --write src/ test/
+npm run format:check   # prettier --check (runs in prepublishOnly + CI)
 ./scripts/sync-circuits.sh [path-to-erc-xochi-zkp]  # sync circuit artifacts
 ```
+
+Formatting: Prettier with `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (see `.prettierrc.json`). `dist/` and `circuits/` are excluded.
 
 Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOracle, SettlementRegistry) on anvil. Requires foundry and compiled artifacts from erc-xochi-zkp (`../erc-xochi-zkp/out/`).
 
@@ -71,16 +77,16 @@ Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOrac
 
 Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use `proofTypeToCircuit()` and `circuitToProofType()` for conversions.
 
-| ID   | Name           | Circuit        | Circuit Inputs | On-Chain Inputs | Use Case                                  |
-| ---- | -------------- | -------------- | -------------- | --------------- | ----------------------------------------- |
-| 0x01 | COMPLIANCE     | compliance     | 6              | 6               | Risk score below jurisdiction threshold   |
-| 0x02 | RISK_SCORE     | risk_score     | 8              | 8               | Custom threshold/range proofs             |
-| 0x03 | PATTERN        | pattern        | 5              | 6 (+submitter)  | Anti-structuring, velocity, round amounts |
-| 0x04 | ATTESTATION    | attestation    | 5              | 6 (+submitter)  | KYC/credential verification               |
-| 0x05 | MEMBERSHIP     | membership     | 4              | 5 (+submitter)  | Merkle inclusion (whitelist)              |
-| 0x06 | NON_MEMBERSHIP | non_membership | 4              | 5 (+submitter)  | Sorted Merkle adjacency (sanctions)       |
+| ID   | Name           | Circuit        | Public Inputs | Use Case                                  |
+| ---- | -------------- | -------------- | ------------- | ----------------------------------------- |
+| 0x01 | COMPLIANCE     | compliance     | 6             | Risk score below jurisdiction threshold   |
+| 0x02 | RISK_SCORE     | risk_score     | 8             | Custom threshold/range proofs             |
+| 0x03 | PATTERN        | pattern        | 6             | Anti-structuring, velocity, round amounts |
+| 0x04 | ATTESTATION    | attestation    | 6             | KYC/credential verification               |
+| 0x05 | MEMBERSHIP     | membership     | 5             | Merkle inclusion (whitelist)              |
+| 0x06 | NON_MEMBERSHIP | non_membership | 5             | Sorted Merkle adjacency (sanctions)       |
 
-**Submitter gap**: Compliance and risk_score circuits include `submitter` as a circuit public input. The other 4 circuits do not yet -- the Oracle contract validates `submitter == msg.sender` for all proof types, so the submitter bytes32 must be appended to `publicInputsHex` before on-chain submission for pattern/attestation/membership/non_membership. `PUBLIC_INPUT_COUNTS` in `constants.ts` reflects circuit output counts (not contract expectations).
+All 6 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
 
 ## Trust Tiers (Whitepaper Appendix F)
 
@@ -121,11 +127,11 @@ Each `buildXInputs()` function validates constraints before passing to the prove
 
 Supports both single-provider shorthand (`{ score: 60 }`) and multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`). Max 8 providers.
 
-Compliance and risk_score inputs require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for ALL proof types to prevent front-running. For pattern/attestation/membership/non_membership, the submitter must be appended to the encoded public inputs at submission time (the circuits don't include it yet).
+All 6 input builders require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running.
 
 ## Circuit Binaries
 
-Pre-compiled Noir 1.0.0-beta.19 circuit artifacts in `circuits/`. Synced from erc-xochi-zkp compiled output. To update:
+Pre-compiled Noir 1.0.0-beta.20 circuit artifacts in `circuits/`. Synced from erc-xochi-zkp compiled output. The `@noir-lang/noir_js` runtime stays pinned at the latest stable (beta.19), which is forward-compatible with beta.20 circuits. To update:
 
 ```bash
 # Automated (preferred):
@@ -140,15 +146,19 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## On-Chain Clients
 
-**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis.
+**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis. `XochiOracle.submitBatch` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs) and parses one `ComplianceVerified` event per sub-trade from the receipt.
 
 **ComplianceAttestation** struct includes a `proofType` field (uint8) between `jurisdictionId` and `meetsThreshold`. Both `ComplianceAttestation` (viem) and `ComplianceAttestationLite` (OracleLite) reflect this layout.
 
-**XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion. Read-only, requires viem PublicClient. The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes.
+**XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion, isVersionRevoked, revokeVerifierVersion. Requires viem PublicClient + optional WalletClient (write methods need a wallet). The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes. Owner can emergency-revoke any historical (non-current) verifier version via `revokeVerifierVersion`; revoked versions reject all `verifyProofAtVersion` calls.
 
 **OracleLite** (fetch): checkCompliance and verifyProof via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
 
 **SettlementRegistryClient** (viem): registerTrade, recordSubSettlement, finalizeTrade, expireTrade, getSettlement, getSubSettlements. Requires viem PublicClient + optional WalletClient.
+
+**Wallet typing**: All three write-capable clients (`XochiOracle`, `XochiVerifier`, `SettlementRegistryClient`) accept a `ConfiguredWalletClient = WalletClient<Transport, Chain | undefined, Account>` -- the wallet must have a bound account. Calls go through viem's functional `writeContract` action (no `as any` casts), and contract reverts are wrapped in `withDecodedErrors` so callers receive typed `XochiContractError` instances (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `TradeNotFoundError`, etc.) instead of bare `Error`s.
+
+**Submitter typing**: Input builders + `generateTierProof` accept `submitter: Address` (viem). `validateSubmitter` rejects the zero address fail-fast (mirrors the circuit's `assert(submitter != 0)`).
 
 ## Dependencies
 
@@ -165,6 +175,7 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 - Merkle depth is always 20 (paths must have exactly 20 elements)
 - Pedersen hash for all circuit commitments
 - Sequential test execution (Barretenberg is not concurrency-safe)
+- Contract reverts surface as typed `XochiContractError` subclasses -- consumers can `instanceof` them in error handlers (see `src/errors.ts`)
 
 ## Relationship to Other Repos
 

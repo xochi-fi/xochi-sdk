@@ -1,6 +1,6 @@
 // Core classes
 export { XochiProver } from "./prover.js";
-export { XochiOracle } from "./oracle.js";
+export { XochiOracle, MAX_BATCH_SIZE } from "./oracle.js";
 export { XochiVerifier } from "./verifier.js";
 export { OracleLite } from "./oracle-lite.js";
 
@@ -35,6 +35,25 @@ export {
 
 // ABIs
 export { ORACLE_ABI, VERIFIER_ABI } from "./abis.js";
+
+// Typed contract errors
+export {
+  XochiContractError,
+  SubmitterMismatchError,
+  ProofAlreadyUsedError,
+  ProofTimestampStaleError,
+  TimeWindowTooSmallError,
+  EmptyBatchError,
+  BatchTooLargeError,
+  BatchLengthMismatchError,
+  VersionRevokedError,
+  TimelockNotElapsedError,
+  TradeAlreadyExistsError,
+  TradeNotFoundError,
+  AttestationNotFoundError,
+  decodeContractError,
+  withDecodedErrors,
+} from "./errors.js";
 
 // Tiers & privacy levels
 export {

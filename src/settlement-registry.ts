@@ -5,7 +5,10 @@
  * methods map to contract functions with typed inputs/outputs.
  */
 
-import type { Address, Chain, Hex, PublicClient, WalletClient } from "viem";
+import type { Address, Chain, Hex, PublicClient } from "viem";
+import { writeContract } from "viem/actions";
+import type { ConfiguredWalletClient } from "./oracle.js";
+import { withDecodedErrors } from "./errors.js";
 
 export interface Settlement {
   tradeId: Hex;
@@ -214,67 +217,67 @@ export class SettlementRegistryClient {
   constructor(
     private address: Address,
     private publicClient: PublicClient,
-    private walletClient?: WalletClient,
+    private walletClient?: ConfiguredWalletClient,
     private chain?: Chain,
   ) {}
 
-  private requireWallet(): WalletClient {
+  private requireWallet(): ConfiguredWalletClient {
     if (!this.walletClient) {
       throw new Error("WalletClient required for write operations");
     }
     return this.walletClient;
   }
 
-  async registerTrade(
-    tradeId: Hex,
-    jurisdictionId: number,
-    subTradeCount: number,
-  ): Promise<Hex> {
+  async registerTrade(tradeId: Hex, jurisdictionId: number, subTradeCount: number): Promise<Hex> {
     const wallet = this.requireWallet();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (wallet as any).writeContract({
-      address: this.address,
-      abi: SETTLEMENT_REGISTRY_ABI,
-      chain: this.chain ?? null,
-      functionName: "registerTrade",
-      args: [tradeId, jurisdictionId, BigInt(subTradeCount)],
-    });
+    return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: SETTLEMENT_REGISTRY_ABI,
+        chain: this.chain,
+        functionName: "registerTrade",
+        args: [tradeId, jurisdictionId, subTradeCount],
+      }),
+    );
   }
 
   async recordSubSettlement(tradeId: Hex, index: number, proofHash: Hex): Promise<Hex> {
     const wallet = this.requireWallet();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (wallet as any).writeContract({
-      address: this.address,
-      abi: SETTLEMENT_REGISTRY_ABI,
-      chain: this.chain ?? null,
-      functionName: "recordSubSettlement",
-      args: [tradeId, BigInt(index), proofHash],
-    });
+    return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: SETTLEMENT_REGISTRY_ABI,
+        chain: this.chain,
+        functionName: "recordSubSettlement",
+        args: [tradeId, index, proofHash],
+      }),
+    );
   }
 
   async finalizeTrade(tradeId: Hex, patternProofHash: Hex): Promise<Hex> {
     const wallet = this.requireWallet();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (wallet as any).writeContract({
-      address: this.address,
-      abi: SETTLEMENT_REGISTRY_ABI,
-      chain: this.chain ?? null,
-      functionName: "finalizeTrade",
-      args: [tradeId, patternProofHash],
-    });
+    return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: SETTLEMENT_REGISTRY_ABI,
+        chain: this.chain,
+        functionName: "finalizeTrade",
+        args: [tradeId, patternProofHash],
+      }),
+    );
   }
 
   async expireTrade(tradeId: Hex): Promise<Hex> {
     const wallet = this.requireWallet();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (wallet as any).writeContract({
-      address: this.address,
-      abi: SETTLEMENT_REGISTRY_ABI,
-      chain: this.chain ?? null,
-      functionName: "expireTrade",
-      args: [tradeId],
-    });
+    return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: SETTLEMENT_REGISTRY_ABI,
+        chain: this.chain,
+        functionName: "expireTrade",
+        args: [tradeId],
+      }),
+    );
   }
 
   async getSettlement(tradeId: Hex): Promise<Settlement> {

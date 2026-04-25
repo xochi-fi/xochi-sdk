@@ -54,6 +54,43 @@ export const ORACLE_ABI = [
     ],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "checkComplianceByType",
+    inputs: [
+      { name: "subject", type: "address" },
+      { name: "jurisdictionId", type: "uint8" },
+      { name: "proofType", type: "uint8" },
+    ],
+    outputs: [
+      { name: "valid", type: "bool" },
+      {
+        name: "attestation",
+        type: "tuple",
+        components: COMPLIANCE_ATTESTATION_COMPONENTS,
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "submitComplianceBatch",
+    inputs: [
+      { name: "jurisdictionId", type: "uint8" },
+      { name: "proofTypes", type: "uint8[]" },
+      { name: "proofs", type: "bytes[]" },
+      { name: "publicInputs", type: "bytes[]" },
+      { name: "providerSetHashes", type: "bytes32[]" },
+    ],
+    outputs: [
+      {
+        name: "attestations",
+        type: "tuple[]",
+        components: COMPLIANCE_ATTESTATION_COMPONENTS,
+      },
+    ],
+    stateMutability: "nonpayable",
+  },
   // --- Historical ---
   {
     type: "function",
@@ -274,6 +311,45 @@ export const ORACLE_ABI = [
     name: "ReportingThresholdRevoked",
     inputs: [{ name: "threshold", type: "bytes32", indexed: true }],
   },
+  // --- Errors ---
+  { type: "error", name: "ProofVerificationFailed", inputs: [] },
+  { type: "error", name: "ProofAlreadyUsed", inputs: [{ name: "proofHash", type: "bytes32" }] },
+  { type: "error", name: "InvalidTTL", inputs: [] },
+  { type: "error", name: "AttestationNotFound", inputs: [{ name: "proofHash", type: "bytes32" }] },
+  { type: "error", name: "PublicInputMismatch", inputs: [] },
+  { type: "error", name: "InvalidConfigHash", inputs: [{ name: "configHash", type: "bytes32" }] },
+  { type: "error", name: "InvalidMerkleRoot", inputs: [{ name: "merkleRoot", type: "bytes32" }] },
+  {
+    type: "error",
+    name: "InvalidReportingThreshold",
+    inputs: [{ name: "threshold", type: "bytes32" }],
+  },
+  { type: "error", name: "CannotRevokeCurrentConfig", inputs: [] },
+  { type: "error", name: "ProofResultNegative", inputs: [] },
+  { type: "error", name: "SubmitterMismatch", inputs: [] },
+  { type: "error", name: "ConfigHistoryFull", inputs: [] },
+  { type: "error", name: "ConfigAlreadyCurrent", inputs: [] },
+  { type: "error", name: "AlreadyRegistered", inputs: [] },
+  { type: "error", name: "NotRegistered", inputs: [] },
+  { type: "error", name: "BatchLengthMismatch", inputs: [] },
+  { type: "error", name: "EmptyBatch", inputs: [] },
+  { type: "error", name: "BatchTooLarge", inputs: [] },
+  {
+    type: "error",
+    name: "TimeWindowTooSmall",
+    inputs: [
+      { name: "timeWindow", type: "uint256" },
+      { name: "minimum", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ProofTimestampStale",
+    inputs: [
+      { name: "proofTimestamp", type: "uint256" },
+      { name: "blockTimestamp", type: "uint256" },
+    ],
+  },
 ] as const;
 
 export const VERIFIER_ABI = [
@@ -335,4 +411,80 @@ export const VERIFIER_ABI = [
     outputs: [{ name: "verifier", type: "address" }],
     stateMutability: "view",
   },
+  // --- Emergency revocation ---
+  {
+    type: "function",
+    name: "revokeVerifierVersion",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "isVersionRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [{ name: "revoked", type: "bool" }],
+    stateMutability: "view",
+  },
+  // --- Events ---
+  {
+    type: "event",
+    name: "VerifierVersionRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8", indexed: true },
+      { name: "version", type: "uint256", indexed: true },
+      { name: "verifier", type: "address", indexed: true },
+    ],
+  },
+  // --- Errors ---
+  { type: "error", name: "VerifierNotSet", inputs: [{ name: "proofType", type: "uint8" }] },
+  { type: "error", name: "VerifierAlreadySet", inputs: [{ name: "proofType", type: "uint8" }] },
+  {
+    type: "error",
+    name: "InvalidVersion",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "TimelockNotElapsed",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "readyAt", type: "uint256" },
+    ],
+  },
+  { type: "error", name: "NoPendingProposal", inputs: [{ name: "proofType", type: "uint8" }] },
+  { type: "error", name: "ProposalAlreadyPending", inputs: [{ name: "proofType", type: "uint8" }] },
+  {
+    type: "error",
+    name: "VersionRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "CannotRevokeCurrentVersion",
+    inputs: [{ name: "proofType", type: "uint8" }],
+  },
+  {
+    type: "error",
+    name: "AlreadyRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+  },
+  { type: "error", name: "BatchLengthMismatch", inputs: [] },
+  { type: "error", name: "EmptyBatch", inputs: [] },
+  { type: "error", name: "BatchTooLarge", inputs: [] },
 ] as const;

@@ -87,11 +87,7 @@ export function planExecution(
 
   // Step 3: Diffusion scheduling
   const venues = venueAssignments.map((a) => a.venue);
-  const scheduled = scheduleDiffusion(
-    splitPlan.subTrades,
-    venues,
-    resolved.diffusionWindow,
-  );
+  const scheduled = scheduleDiffusion(splitPlan.subTrades, venues, resolved.diffusionWindow);
 
   return {
     tradeId: splitPlan.tradeId,

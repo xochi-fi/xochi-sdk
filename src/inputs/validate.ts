@@ -59,6 +59,20 @@ export function validateCredentialType(ct: number): void {
   }
 }
 
+/**
+ * Reject a zero or malformed submitter. Mirrors `assert(submitter != 0)` in
+ * every circuit -- the contract also rejects `submitter == address(0)`.
+ */
+export function validateSubmitter(submitter: string): void {
+  if (typeof submitter !== "string" || !submitter.startsWith("0x")) {
+    throw new Error(`submitter must be a 0x-prefixed hex string, got ${String(submitter)}`);
+  }
+  const body = submitter.slice(2);
+  if (body.length === 0 || /^0+$/.test(body)) {
+    throw new Error("submitter cannot be the zero address");
+  }
+}
+
 export function validateActiveProviders(
   signals: number[],
   weights: number[],

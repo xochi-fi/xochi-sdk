@@ -77,8 +77,8 @@ export const PATTERN_TIME_WINDOW_MAX = 7_776_000;
 export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x01: 6, // compliance (+ submitter)
   0x02: 8, // risk_score (+ submitter)
-  0x03: 5, // pattern
-  0x04: 5, // attestation
-  0x05: 4, // membership
-  0x06: 4, // non_membership
+  0x03: 6, // pattern (+ submitter)
+  0x04: 6, // attestation (+ submitter)
+  0x05: 5, // membership (+ submitter)
+  0x06: 5, // non_membership (+ submitter)
 };

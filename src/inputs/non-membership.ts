@@ -1,3 +1,6 @@
+import type { Address } from "viem";
+import { validateSubmitter } from "./validate.js";
+
 export interface NonMembershipInput {
   element: string;
   lowLeaf: string;
@@ -9,6 +12,8 @@ export interface NonMembershipInput {
   merkleRoot: string;
   setId: string;
   timestamp?: string;
+  /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
+  submitter: Address;
 }
 
 export function buildNonMembershipInputs(
@@ -17,6 +22,7 @@ export function buildNonMembershipInputs(
   if (opts.lowPath.length !== 20 || opts.highPath.length !== 20) {
     throw new Error("Merkle paths must have 20 elements each");
   }
+  validateSubmitter(opts.submitter);
 
   return {
     element: opts.element,
@@ -30,5 +36,6 @@ export function buildNonMembershipInputs(
     set_id: opts.setId,
     timestamp: opts.timestamp ?? String(Math.floor(Date.now() / 1000)),
     is_non_member: "1",
+    submitter: opts.submitter,
   };
 }
