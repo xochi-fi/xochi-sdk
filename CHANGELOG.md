@@ -32,6 +32,7 @@ First public release. Aligned with `erc-xochi-zkp@828a41b` (security hardening +
 ### Tooling
 
 - Prettier added (`prettier@^3.3.3`) with `.prettierrc.json` (`printWidth: 100`, `trailingComma: "all"`). New scripts: `npm run format` and `npm run format:check`. `prepublishOnly` now runs `format:check` before typecheck/test/build.
+- Added `prepare` script that runs `npm run build`. Required for `npm install github:xochi-fi/xochi-sdk#<ref>` consumers, since npm doesn't run `prepublishOnly` for git-installed packages and `dist/` is gitignored.
 
 ## [0.1.0] - 2026-04-15
 
