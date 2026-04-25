@@ -10,7 +10,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, se
 npm install @xochi/sdk
 ```
 
-Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
+Latest published: `0.1.1`. Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
 
 ## Quick start
 
