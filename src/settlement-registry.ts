@@ -73,6 +73,7 @@ export const SETTLEMENT_REGISTRY_ABI = [
     inputs: [
       { name: "tradeId", type: "bytes32" },
       { name: "patternProofHash", type: "bytes32" },
+      { name: "patternPublicInputs", type: "bytes" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -211,6 +212,24 @@ export const SETTLEMENT_REGISTRY_ABI = [
   { type: "error", name: "TradeNotExpired", inputs: [{ name: "tradeId", type: "bytes32" }] },
   { type: "error", name: "PatternProofRequired", inputs: [{ name: "tradeId", type: "bytes32" }] },
   { type: "error", name: "InvalidSubTradeCount", inputs: [{ name: "count", type: "uint8" }] },
+  // H-2: caller-supplied public inputs must hash to attestation.publicInputsHash
+  {
+    type: "error",
+    name: "PatternPublicInputsMismatch",
+    inputs: [
+      { name: "expected", type: "bytes32" },
+      { name: "actual", type: "bytes32" },
+    ],
+  },
+  // H-2: pattern analysis_type must equal STRUCTURING (1) for trade finalization
+  {
+    type: "error",
+    name: "PatternAnalysisTypeMismatch",
+    inputs: [
+      { name: "expected", type: "uint256" },
+      { name: "actual", type: "uint256" },
+    ],
+  },
 ] as const;
 
 export class SettlementRegistryClient {
@@ -254,7 +273,24 @@ export class SettlementRegistryClient {
     );
   }
 
-  async finalizeTrade(tradeId: Hex, patternProofHash: Hex): Promise<Hex> {
+  /**
+   * Finalize a trade after all sub-settlements are recorded.
+   *
+   * Per audit fix H-2, the registry no longer accepts an arbitrary PATTERN proof:
+   * the caller must supply the same `publicInputs` bytes that were used at
+   * `submitCompliance` time, and the registry verifies (a) hash equality with the
+   * stored `publicInputsHash` and (b) `analysis_type == 1` (anti-structuring).
+   * VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected.
+   *
+   * @param tradeId trade identifier
+   * @param patternProofHash proofHash of the PATTERN attestation (anti-structuring)
+   * @param patternPublicInputs original public inputs bytes from when the PATTERN proof was submitted
+   */
+  async finalizeTrade(
+    tradeId: Hex,
+    patternProofHash: Hex,
+    patternPublicInputs: Hex,
+  ): Promise<Hex> {
     const wallet = this.requireWallet();
     return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
       writeContract(wallet, {
@@ -262,7 +298,7 @@ export class SettlementRegistryClient {
         abi: SETTLEMENT_REGISTRY_ABI,
         chain: this.chain,
         functionName: "finalizeTrade",
-        args: [tradeId, patternProofHash],
+        args: [tradeId, patternProofHash, patternPublicInputs],
       }),
     );
   }

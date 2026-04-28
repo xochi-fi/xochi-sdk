@@ -241,6 +241,109 @@ export const ORACLE_ABI = [
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
   },
+  // --- Per-provider credential roots (post-audit C-1 redesign) ---
+  {
+    type: "function",
+    name: "setProviderPublisher",
+    inputs: [
+      { name: "providerId", type: "uint256" },
+      { name: "publisher", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "publishCredentialRoot",
+    inputs: [
+      { name: "providerId", type: "uint256" },
+      { name: "root", type: "bytes32" },
+      { name: "cid", type: "string" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "revokeCredentialRoot",
+    inputs: [{ name: "root", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "isValidCredentialRoot",
+    inputs: [{ name: "root", type: "bytes32" }],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getCredentialRoot",
+    inputs: [{ name: "root", type: "bytes32" }],
+    outputs: [
+      {
+        name: "info",
+        type: "tuple",
+        components: [
+          { name: "providerId", type: "uint256" },
+          { name: "registeredAt", type: "uint64" },
+          { name: "revoked", type: "bool" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getProviderPublisher",
+    inputs: [{ name: "providerId", type: "uint256" }],
+    outputs: [{ name: "publisher", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isRevokedConfig",
+    inputs: [{ name: "configHash", type: "bytes32" }],
+    outputs: [{ name: "revoked", type: "bool" }],
+    stateMutability: "view",
+  },
+  // Public constants exposed via getters (so dApps can read them at call time)
+  {
+    type: "function",
+    name: "CREDENTIAL_ROOT_TTL",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PATTERN_STRUCTURING",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PATTERN_VELOCITY",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PATTERN_ROUND_AMOUNT",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MAX_RISK_SCORE_BPS",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
   // --- Emergency ---
   {
     type: "function",
@@ -311,6 +414,31 @@ export const ORACLE_ABI = [
     name: "ReportingThresholdRevoked",
     inputs: [{ name: "threshold", type: "bytes32", indexed: true }],
   },
+  // --- Credential root events ---
+  {
+    type: "event",
+    name: "ProviderPublisherSet",
+    inputs: [
+      { name: "providerId", type: "uint256", indexed: true },
+      { name: "previous", type: "address", indexed: true },
+      { name: "publisher", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "CredentialRootPublished",
+    inputs: [
+      { name: "providerId", type: "uint256", indexed: true },
+      { name: "root", type: "bytes32", indexed: true },
+      { name: "cid", type: "string", indexed: false },
+      { name: "registeredAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "CredentialRootRevoked",
+    inputs: [{ name: "root", type: "bytes32", indexed: true }],
+  },
   // --- Errors ---
   { type: "error", name: "ProofVerificationFailed", inputs: [] },
   { type: "error", name: "ProofAlreadyUsed", inputs: [{ name: "proofHash", type: "bytes32" }] },
@@ -350,6 +478,61 @@ export const ORACLE_ABI = [
       { name: "blockTimestamp", type: "uint256" },
     ],
   },
+  // --- Audit-fix errors ---
+  // H-1: RISK_SCORE validation
+  { type: "error", name: "InvalidRiskProofType", inputs: [{ name: "proofType", type: "uint256" }] },
+  { type: "error", name: "InvalidRiskDirection", inputs: [{ name: "direction", type: "uint256" }] },
+  {
+    type: "error",
+    name: "TrivialRiskBound",
+    inputs: [
+      { name: "boundLower", type: "uint256" },
+      { name: "boundUpper", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "InvalidRiskBound",
+    inputs: [
+      { name: "boundLower", type: "uint256" },
+      { name: "boundUpper", type: "uint256" },
+    ],
+  },
+  // H-2: PATTERN analysis_type
+  { type: "error", name: "InvalidAnalysisType", inputs: [{ name: "analysisType", type: "uint256" }] },
+  // M-3: permanent config revocation
+  { type: "error", name: "ConfigPermanentlyRevoked", inputs: [{ name: "configHash", type: "bytes32" }] },
+  // C-1 / Phase 1 infra: per-provider credential roots
+  {
+    type: "error",
+    name: "NotProviderPublisher",
+    inputs: [
+      { name: "providerId", type: "uint256" },
+      { name: "caller", type: "address" },
+    ],
+  },
+  { type: "error", name: "CredentialRootAlreadyPublished", inputs: [{ name: "root", type: "bytes32" }] },
+  { type: "error", name: "CredentialRootNotFound", inputs: [{ name: "root", type: "bytes32" }] },
+  { type: "error", name: "InvalidProviderId", inputs: [] },
+  {
+    type: "error",
+    name: "CredentialRootExpired",
+    inputs: [
+      { name: "root", type: "bytes32" },
+      { name: "registeredAt", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "CredentialRootProviderMismatch",
+    inputs: [
+      { name: "expected", type: "uint256" },
+      { name: "actual", type: "uint256" },
+    ],
+  },
+  // Per-proof-type pause
+  { type: "error", name: "ProofTypePaused", inputs: [{ name: "proofType", type: "uint8" }] },
+  { type: "error", name: "ProofTypeNotPaused", inputs: [{ name: "proofType", type: "uint8" }] },
 ] as const;
 
 export const VERIFIER_ABI = [
@@ -411,7 +594,7 @@ export const VERIFIER_ABI = [
     outputs: [{ name: "verifier", type: "address" }],
     stateMutability: "view",
   },
-  // --- Emergency revocation ---
+  // --- Emergency revocation (immediate) ---
   {
     type: "function",
     name: "revokeVerifierVersion",
@@ -421,6 +604,54 @@ export const VERIFIER_ABI = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  // --- Timelocked revocation (recommended path, audit I-3b) ---
+  {
+    type: "function",
+    name: "proposeVersionRevocation",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "executeVersionRevocation",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "cancelVersionRevocation",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getPendingRevocation",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "version", type: "uint256" },
+    ],
+    outputs: [{ name: "readyAt", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "REVOCATION_TIMELOCK",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -440,6 +671,23 @@ export const VERIFIER_ABI = [
       { name: "proofType", type: "uint8", indexed: true },
       { name: "version", type: "uint256", indexed: true },
       { name: "verifier", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "VersionRevocationProposed",
+    inputs: [
+      { name: "proofType", type: "uint8", indexed: true },
+      { name: "version", type: "uint256", indexed: true },
+      { name: "readyAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "VersionRevocationCancelled",
+    inputs: [
+      { name: "proofType", type: "uint8", indexed: true },
+      { name: "version", type: "uint256", indexed: true },
     ],
   },
   // --- Errors ---

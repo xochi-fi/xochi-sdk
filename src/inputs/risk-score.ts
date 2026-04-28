@@ -94,6 +94,12 @@ function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
   return Math.floor((sum * 100) / p.weightSum);
 }
 
+/**
+ * Maximum risk score in basis points. Mirrors XochiZKPOracle.MAX_RISK_SCORE_BPS.
+ * Used for client-side rejection of trivially-true threshold/range claims (audit H-1).
+ */
+const MAX_RISK_SCORE_BPS = 10000;
+
 export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, string | string[]> {
   const configHash = opts.configHash ?? DEFAULT_CONFIG_HASH;
   validateSubmitter(opts.submitter);
@@ -109,6 +115,24 @@ export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, strin
   const scoreBps = computeScoreBps(p);
 
   if (opts.type === "threshold") {
+    // Audit H-1: reject trivially-true bounds client-side. The Oracle's
+    // _validateRiskScoreInputs enforces the same rules on-chain; failing
+    // fast here saves a wasted proof generation.
+    if (opts.direction === "gt") {
+      if (opts.threshold === 0 || opts.threshold >= MAX_RISK_SCORE_BPS) {
+        throw new Error(
+          `Trivial threshold/GT bound: bound_lower=${String(opts.threshold)} (must be 1..${String(MAX_RISK_SCORE_BPS - 1)})`,
+        );
+      }
+    } else {
+      // direction === "lt"
+      if (opts.threshold === 0 || opts.threshold > MAX_RISK_SCORE_BPS) {
+        throw new Error(
+          `Trivial threshold/LT bound: bound_lower=${String(opts.threshold)} (must be 1..${String(MAX_RISK_SCORE_BPS)})`,
+        );
+      }
+    }
+
     const directionCode = opts.direction === "gt" ? "1" : "2";
     const passes = opts.direction === "gt" ? scoreBps > opts.threshold : scoreBps < opts.threshold;
 
@@ -135,7 +159,21 @@ export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, strin
     };
   }
 
-  // Range proof
+  // Range proof. Audit H-1: reject inverted/over-max/full-domain ranges.
+  if (opts.lowerBound >= opts.upperBound) {
+    throw new Error(
+      `Invalid range: lowerBound (${String(opts.lowerBound)}) must be < upperBound (${String(opts.upperBound)})`,
+    );
+  }
+  if (opts.upperBound > MAX_RISK_SCORE_BPS) {
+    throw new Error(
+      `Range upperBound (${String(opts.upperBound)}) exceeds MAX_RISK_SCORE_BPS (${String(MAX_RISK_SCORE_BPS)})`,
+    );
+  }
+  if (opts.lowerBound === 0 && opts.upperBound === MAX_RISK_SCORE_BPS) {
+    throw new Error("Trivial full-domain range [0, 10000] is rejected (any score satisfies)");
+  }
+
   const passes = scoreBps >= opts.lowerBound && scoreBps <= opts.upperBound;
   if (!passes) {
     throw new Error(

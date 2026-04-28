@@ -2,6 +2,95 @@
 
 All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [0.2.0] - 2026-04-28
+
+**Breaking** -- aligned with the post-audit contracts in `erc-xochi-zkp`. Every consumer must migrate; old SDK proofs do not verify against the new verifiers and old call signatures fail typecheck. The breaking changes fall in three buckets: input-builder shapes (audit fixes H-3, M-2, C-1), the new ATTESTATION circuit (C-1), and the SettlementRegistry `finalizeTrade` signature (H-2).
+
+### Breaking
+
+- **`buildMembershipInputs`** -- removed `element`, added optional `subjectSalt` (defaults to `"0"` for public sets). Per audit fix H-3, the leaf is now `leaf_hash_subject(submitter, set_id, salt)` and binds to the submitter; the prover no longer claims membership of an arbitrary value.
+- **`buildNonMembershipInputs`** -- removed `element`. Added `lowLeafSalt` and `highLeafSalt` (default `"0"`). The submitter is the value being proven non-member. New client-side adjacency check (H-4): throws if `highIndex !== lowIndex + 1` to mirror the in-circuit constraint.
+- **`buildAttestationInputs`** -- redesigned for the credentials-tree model (C-1). Removed `credentialHash`, `credentialSubject`, `providerMerkleIndex`, `providerMerklePath`. Renamed `merkleRoot` to `credentialRoot`. New required fields: `credentialAttribute`, `merkleIndex`, `merklePath`. The credential hash is computed in-circuit and bound to (provider_id, submitter, type, attribute, expiry); the leaf is `leaf_hash_value(credential_hash)` in the provider's per-provider credentials Merkle tree.
+- **`SettlementRegistryClient.finalizeTrade(tradeId, patternProofHash)`** -- now takes a third argument `patternPublicInputs: Hex`. Per audit fix H-2, the registry verifies `keccak256(patternPublicInputs) == attestation.publicInputsHash` and that `analysis_type == 1` (anti-structuring). VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected at the registry. Pass the same `publicInputsHex` you sent to `submitCompliance`.
+- **`buildRiskScoreInputs`** -- now rejects trivially-true bounds client-side (audit H-1): throws on `bound_lower=0` for THRESHOLD/GT, `bound_lower>=10000` for THRESHOLD/LT, inverted ranges, and the full-domain `[0, 10000]` range. The Oracle enforces the same rules on-chain via the new `InvalidRiskProofType`/`InvalidRiskDirection`/`TrivialRiskBound`/`InvalidRiskBound` errors.
+
+### Added
+
+- **Per-provider credential-root API on `XochiOracle`** (audit C-1 + Phase 1 infra):
+  - `getProviderPublisher(providerId)` -- read the publisher EOA.
+  - `setProviderPublisher(providerId, publisher)` -- owner-only authorization.
+  - `publishCredentialRoot(providerId, root, cid)` -- publisher-only; emits `CredentialRootPublished`.
+  - `revokeCredentialRoot(root)` -- owner OR provider publisher.
+  - `isValidCredentialRoot(root)` -- view; checks registered + not revoked + within 48h TTL.
+  - `getCredentialRoot(root)` -- returns `{providerId, registeredAt, revoked}`.
+  - `isRevokedConfig(configHash)` -- view (audit M-3: permanent config revocation).
+- **Timelocked verifier-version revocation on `XochiVerifier`** (audit I-3b):
+  - `proposeVersionRevocation(proofType, version)` -- schedules with 6h delay.
+  - `executeVersionRevocation(proofType, version)` -- executes after delay.
+  - `cancelVersionRevocation(proofType, version)` -- aborts.
+  - `getPendingRevocation(proofType, version)` -- read pending readyAt.
+  - `revocationTimelock()` -- read the 6h constant.
+  The existing immediate `revokeVerifierVersion` is now documented as emergency-only; routine revocations should use the timelocked path.
+- **Pattern analysis-type constants** exported from `inputs/pattern.ts`:
+  `PATTERN_STRUCTURING = 1`, `PATTERN_VELOCITY = 2`, `PATTERN_ROUND_AMOUNT = 3`. Doc note that SettlementRegistry requires STRUCTURING.
+- **New ABI surface in `ORACLE_ABI` / `VERIFIER_ABI` / `SETTLEMENT_REGISTRY_ABI`**:
+  - Oracle events: `ProviderPublisherSet`, `CredentialRootPublished`, `CredentialRootRevoked`.
+  - Oracle constant getters: `CREDENTIAL_ROOT_TTL`, `PATTERN_STRUCTURING`, `PATTERN_VELOCITY`, `PATTERN_ROUND_AMOUNT`, `MAX_RISK_SCORE_BPS`.
+  - Oracle errors: `InvalidRiskProofType`, `InvalidRiskDirection`, `TrivialRiskBound`, `InvalidRiskBound`, `InvalidAnalysisType`, `ConfigPermanentlyRevoked`, `NotProviderPublisher`, `CredentialRootAlreadyPublished`, `CredentialRootNotFound`, `InvalidProviderId`, `CredentialRootExpired`, `CredentialRootProviderMismatch`, `ProofTypePaused`, `ProofTypeNotPaused`.
+  - Verifier events: `VersionRevocationProposed`, `VersionRevocationCancelled`.
+  - SettlementRegistry errors: `PatternPublicInputsMismatch`, `PatternAnalysisTypeMismatch`.
+
+### Changed
+
+- **Circuit JSON regenerated** (`circuits/*.json`) from `nargo 1.0.0-beta.20` against the post-audit Noir circuits. New `VK_HASH` values for all six verifiers; proofs generated against 0.1.x circuits do not verify against 0.2.x verifiers. No public-input count changes (still 6, 8, 6, 6, 5, 5 for the six proof types).
+- **MEMBERSHIP / NON_MEMBERSHIP merkle leaves now use `leaf_hash_subject(submitter, set_id, salt)`** (post-H-3). Tree publishers MUST construct each leaf this way and supply each user's `subjectSalt` (or `0` for public sets such as sanctions lists). The previous `hash2(element, set_id)` format is incompatible.
+- **NON_MEMBERSHIP comparison now uses full Field ordering** (post-M-2): no u64 ceiling, supports Ethereum addresses (160-bit) and any value < BN254 prime. The previous u64 cast-and-compare path was removed.
+- **Merkle internal nodes use a domain-separated `internal_hash`** (post-L-2). Older trees built with `hash2(left, right)` for internals do not produce the same root. Regenerate your trees off-chain with the published `leaf_hash_subject` / `internal_hash` helpers.
+
+### Migration
+
+```ts
+// MEMBERSHIP -- before (0.1.x)
+buildMembershipInputs({ element: "42", merkleIndex, merklePath, ... });
+
+// MEMBERSHIP -- after (0.2.0)
+buildMembershipInputs({ subjectSalt: "0", merkleIndex, merklePath, ... });
+// (the leaf is now derived from `submitter` + `set_id` + `subjectSalt` in-circuit)
+
+// NON_MEMBERSHIP -- before
+buildNonMembershipInputs({ element: "0xabc...", lowLeaf, highLeaf, lowIndex, highIndex, ... });
+
+// NON_MEMBERSHIP -- after
+buildNonMembershipInputs({
+  lowLeaf, lowLeafSalt: "0", lowIndex,
+  highLeaf, highLeafSalt: "0", highIndex,    // MUST be lowIndex + 1
+  ...
+});
+
+// ATTESTATION -- before
+buildAttestationInputs({
+  credentialHash, credentialSubject, credentialAttribute,
+  providerMerkleIndex, providerMerklePath, merkleRoot, ...
+});
+
+// ATTESTATION -- after
+buildAttestationInputs({
+  credentialAttribute, expiryTimestamp,
+  merkleIndex, merklePath,
+  providerId, credentialType,
+  credentialRoot,                   // from oracle.publishCredentialRoot
+  currentTimestamp, submitter,
+});
+
+// SettlementRegistry.finalizeTrade -- before
+await registry.finalizeTrade(tradeId, patternProofHash);
+
+// after (audit H-2)
+await registry.finalizeTrade(tradeId, patternProofHash, patternPublicInputs);
+```
+
+For ATTESTATION integrators, the provider must register a publisher EOA via the oracle owner (`oracle.setProviderPublisher`) and then publish credential roots (`oracle.publishCredentialRoot`) before any user can prove against that provider. Roots have a 48-hour TTL.
+
 ## [0.1.1] - 2026-04-25
 
 First public release. Aligned with `erc-xochi-zkp@828a41b` (security hardening + emergency verifier revocation) and `erc-xochi-zkp@9527804`.

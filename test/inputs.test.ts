@@ -283,9 +283,9 @@ describe("buildComplianceInputs", () => {
 // ============================================================
 
 describe("buildMembershipInputs", () => {
-  it("builds membership inputs", () => {
+  it("builds membership inputs (post-H-3: subject-bound leaf)", () => {
     const result = buildMembershipInputs({
-      element: "42",
+      subjectSalt: "0",
       merkleIndex: "0",
       merklePath: Array(20).fill("0"),
       merkleRoot: "0x1234",
@@ -294,7 +294,7 @@ describe("buildMembershipInputs", () => {
       submitter: SUBMITTER,
     });
 
-    expect(result.element).toBe("42");
+    expect(result.subject_salt).toBe("0");
     expect(result.merkle_index).toBe("0");
     expect(result.merkle_path).toHaveLength(20);
     expect(result.is_member).toBe("1");
@@ -302,10 +302,9 @@ describe("buildMembershipInputs", () => {
     expect(result.submitter).toBe(SUBMITTER);
   });
 
-  it("defaults timestamp to now", () => {
+  it("defaults timestamp to now and subjectSalt to 0", () => {
     const before = Math.floor(Date.now() / 1000);
     const result = buildMembershipInputs({
-      element: "42",
       merkleIndex: "0",
       merklePath: Array(20).fill("0"),
       merkleRoot: "0",
@@ -314,15 +313,27 @@ describe("buildMembershipInputs", () => {
     });
     const after = Math.floor(Date.now() / 1000);
 
+    expect(result.subject_salt).toBe("0");
     const ts = Number(result.timestamp);
     expect(ts).toBeGreaterThanOrEqual(before);
     expect(ts).toBeLessThanOrEqual(after);
   });
 
+  it("preserves a non-zero salt for private sets", () => {
+    const result = buildMembershipInputs({
+      subjectSalt: "0xdeadbeef",
+      merkleIndex: "0",
+      merklePath: Array(20).fill("0"),
+      merkleRoot: "0",
+      setId: "1",
+      submitter: SUBMITTER,
+    });
+    expect(result.subject_salt).toBe("0xdeadbeef");
+  });
+
   it("rejects wrong path length", () => {
     expect(() =>
       buildMembershipInputs({
-        element: "42",
         merkleIndex: "0",
         merklePath: Array(10).fill("0"),
         merkleRoot: "0",
@@ -338,9 +349,8 @@ describe("buildMembershipInputs", () => {
 // ============================================================
 
 describe("buildNonMembershipInputs", () => {
-  it("builds non-membership inputs", () => {
+  it("builds non-membership inputs (post-H-3 + M-2 + H-4)", () => {
     const result = buildNonMembershipInputs({
-      element: "50",
       lowLeaf: "10",
       highLeaf: "100",
       lowIndex: "0",
@@ -352,19 +362,53 @@ describe("buildNonMembershipInputs", () => {
       submitter: SUBMITTER,
     });
 
-    expect(result.element).toBe("50");
     expect(result.low_leaf).toBe("10");
     expect(result.high_leaf).toBe("100");
+    expect(result.low_leaf_salt).toBe("0");
+    expect(result.high_leaf_salt).toBe("0");
     expect(result.low_path).toHaveLength(20);
     expect(result.high_path).toHaveLength(20);
     expect(result.is_non_member).toBe("1");
     expect(result.submitter).toBe(SUBMITTER);
   });
 
+  it("rejects non-adjacent indices (H-4 fix)", () => {
+    expect(() =>
+      buildNonMembershipInputs({
+        lowLeaf: "10",
+        highLeaf: "100",
+        lowIndex: "0",
+        lowPath: Array(20).fill("0"),
+        highIndex: "5", // not adjacent
+        highPath: Array(20).fill("0"),
+        merkleRoot: "0",
+        setId: "1",
+        submitter: SUBMITTER,
+      }),
+    ).toThrow("adjacency");
+  });
+
+  it("preserves per-leaf salts for private sets", () => {
+    const result = buildNonMembershipInputs({
+      lowLeaf: "10",
+      lowLeafSalt: "0xaa",
+      highLeaf: "100",
+      highLeafSalt: "0xbb",
+      lowIndex: "0",
+      lowPath: Array(20).fill("0"),
+      highIndex: "1",
+      highPath: Array(20).fill("0"),
+      merkleRoot: "0",
+      setId: "1",
+      submitter: SUBMITTER,
+    });
+    expect(result.low_leaf_salt).toBe("0xaa");
+    expect(result.high_leaf_salt).toBe("0xbb");
+  });
+
   it("rejects wrong low_path length", () => {
     expect(() =>
       buildNonMembershipInputs({
-        element: "50",
         lowLeaf: "10",
         highLeaf: "100",
         lowIndex: "0",
@@ -381,7 +425,6 @@ describe("buildNonMembershipInputs", () => {
   it("rejects wrong high_path length", () => {
     expect(() =>
       buildNonMembershipInputs({
-        element: "50",
         lowLeaf: "10",
         highLeaf: "100",
         lowIndex: "0",
@@ -520,17 +563,15 @@ describe("buildPatternInputs", () => {
 // Attestation (tier verification)
 // ============================================================
 
-describe("buildAttestationInputs", () => {
+describe("buildAttestationInputs (post C-1: credentials tree)", () => {
   const baseInput = {
-    credentialHash: "0xaaa",
-    credentialSubject: "0xbbb",
     credentialAttribute: "0xccc",
     expiryTimestamp: 1800000000,
-    providerMerkleIndex: "0",
-    providerMerklePath: Array(20).fill("0"),
+    merkleIndex: "0",
+    merklePath: Array(20).fill("0"),
     providerId: "1",
     credentialType: 1,
-    merkleRoot: "0xddd",
+    credentialRoot: "0xddd",
     currentTimestamp: 1700000000,
     submitter: SUBMITTER,
   };
@@ -538,21 +579,19 @@ describe("buildAttestationInputs", () => {
   it("builds attestation inputs", () => {
     const result = buildAttestationInputs(baseInput);
 
-    expect(result.credential_hash).toBe("0xaaa");
+    expect(result.credential_attribute).toBe("0xccc");
     expect(result.credential_type).toBe("1");
     expect(result.is_valid).toBe("1");
-    expect(result.provider_merkle_path).toHaveLength(20);
+    expect(result.merkle_path).toHaveLength(20);
+    expect(result.credential_root).toBe("0xddd");
     expect(result.current_timestamp).toBe("1700000000");
     expect(result.expiry_timestamp).toBe("1800000000");
+    expect(result.provider_id).toBe("1");
     expect(result.submitter).toBe(SUBMITTER);
   });
 
   it("builds institutional credential type", () => {
-    const result = buildAttestationInputs({
-      ...baseInput,
-      credentialType: 4,
-    });
-
+    const result = buildAttestationInputs({ ...baseInput, credentialType: 4 });
     expect(result.credential_type).toBe("4");
   });
 
@@ -569,7 +608,7 @@ describe("buildAttestationInputs", () => {
     expect(() =>
       buildAttestationInputs({
         ...baseInput,
-        providerMerklePath: Array(10).fill("0"),
+        merklePath: Array(10).fill("0"),
       }),
     ).toThrow("20 elements");
   });

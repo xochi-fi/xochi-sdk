@@ -40,7 +40,9 @@ afterAll(async () => {
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 
-const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
+// Matches submitter="0xdead" in circuits/*/Prover.toml so the integration tests can
+// re-use the regenerated fixture merkle roots without recomputing them in JS.
+const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
 
 // ============================================================
 // Risk Score (already in prover.test.ts, included here for completeness)
@@ -163,17 +165,17 @@ describe("pattern proof", () => {
 // ============================================================
 
 describe("attestation proof", () => {
-  it("generates and verifies a KYC attestation proof", async () => {
+  it("generates and verifies a KYC attestation proof (post C-1: credentials tree)", async () => {
+    // Test vector matches erc-xochi-zkp/circuits/attestation/Prover.toml
+    // with submitter=0xdead, provider 42, KYC basic, attribute=999, expiry=2000000000
     const result = await prover.proveAttestation({
-      credentialHash: "0x06e460459bc8bb062b18c39324cf2ea46aea0cd229de6f14756eeb528562ea93",
-      credentialSubject: "123",
       credentialAttribute: "999",
       expiryTimestamp: 2000000000,
-      providerMerkleIndex: "0",
-      providerMerklePath: Array(20).fill("0"),
+      merkleIndex: "0",
+      merklePath: Array(20).fill("0"),
       providerId: "42",
       credentialType: 1,
-      merkleRoot: "0x15861259068f1398397423d4b3bad764e19c1a68699115ef9ccd090a8a5eba3e",
+      credentialRoot: "0x24ce58f9ed6ca066d25f66b15b0eb1dccebe6e457f5aa0fcd353d82d539f5ed5",
       currentTimestamp: 1700000000,
       submitter: SUBMITTER,
     });
@@ -193,12 +195,13 @@ describe("attestation proof", () => {
 // ============================================================
 
 describe("membership proof", () => {
-  it("generates and verifies a Merkle inclusion proof", async () => {
+  it("generates and verifies a Merkle inclusion proof (post H-3: subject-bound)", async () => {
+    // Test vector matches circuits/membership/Prover.toml: submitter=0xdead, salt=0, set 1.
     const result = await prover.proveMembership({
-      element: "42",
+      subjectSalt: "0",
       merkleIndex: "0",
       merklePath: Array(20).fill("0"),
-      merkleRoot: "0x30211953f68b315a285af9496cdaa51517aba83cb3bb40bdd20b2e42eb189fe6",
+      merkleRoot: "0x1d7de002251083fdc312a329d46abde0680cbccc27935c33815c18b1beb3da8c",
       setId: "1",
       timestamp: "1700000000",
       submitter: SUBMITTER,
@@ -219,58 +222,25 @@ describe("membership proof", () => {
 // ============================================================
 
 describe("non_membership proof", () => {
-  it("generates and verifies a sorted Merkle adjacency proof", async () => {
+  it("generates and verifies a sorted Merkle adjacency proof (post H-3 + M-2 + H-4)", async () => {
+    // Test vector matches circuits/non_membership/Prover.toml:
+    // submitter=0xdead is bracketed by low=0x100 and high=0x10000, indices 0/1.
     const result = await prover.proveNonMembership({
-      element: "50",
-      lowLeaf: "10",
-      highLeaf: "100",
+      lowLeaf: "0x100",
+      lowLeafSalt: "0",
+      highLeaf: "0x10000",
+      highLeafSalt: "0",
       lowIndex: "0",
       lowPath: [
-        "0x221e24eef47a71db7759851c68c8652da18b4f09c4769f2d5b8c297fbb83f07b",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
+        "0x2e3a62a21fa1706df17be5649ad62e45a4dbdbe9a9ce3923058d940cdc6b929d",
+        ...Array(19).fill("0"),
       ],
       highIndex: "1",
       highPath: [
-        "0x05d75a4240c69473571bb84967f03169b71440533e7d372a93dc254f9582fc7f",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
+        "0x0c57a3ac2ba9abef99b6ab714e307311687782f270b6517717e181e5cd50cce5",
+        ...Array(19).fill("0"),
       ],
-      merkleRoot: "0x12d001bc3463cb4d3a745f802dffd80c00a2927f77110d1b0a59b9a3bd787b86",
+      merkleRoot: "0x138f818fd4f2eec91e4fd93e14bcc47bc06a3ba333e5a2e7795d0beb752d247c",
       setId: "1",
       timestamp: "1700000000",
       submitter: SUBMITTER,

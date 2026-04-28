@@ -115,14 +115,16 @@ export class XochiVerifier {
   }
 
   /**
-   * Emergency-revoke a historical verifier version (owner-only).
+   * IMMEDIATE emergency-revoke a historical verifier version (owner-only, no delay).
    * The current version cannot be revoked -- propose+execute a new verifier first.
+   *
+   * Per audit fix I-3, prefer the timelocked path
+   * ({@link proposeVersionRevocation} + {@link executeVersionRevocation}) for routine
+   * revocation. The immediate path is documented as emergency-only because it gives
+   * up the protection against compromised-owner mass-revocation.
    */
   async revokeVerifierVersion(proofType: ProofType, version: bigint): Promise<Hex> {
-    if (!this.walletClient) {
-      throw new Error("WalletClient required for write operations");
-    }
-    const wallet = this.walletClient;
+    const wallet = this.requireWallet();
     return withDecodedErrors(VERIFIER_ABI, () =>
       writeContract(wallet, {
         address: this.address,
@@ -132,5 +134,88 @@ export class XochiVerifier {
         args: [proofType, version],
       }),
     );
+  }
+
+  /**
+   * Schedule a timelocked verifier version revocation (audit I-3b).
+   * Takes effect after `REVOCATION_TIMELOCK` (6h). Multiple versions of the same
+   * proof type may be in flight simultaneously, but each (proofType, version) pair
+   * allows only one pending proposal.
+   */
+  async proposeVersionRevocation(proofType: ProofType, version: bigint): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(VERIFIER_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: VERIFIER_ABI,
+        chain: this.chain,
+        functionName: "proposeVersionRevocation",
+        args: [proofType, version],
+      }),
+    );
+  }
+
+  /**
+   * Execute a previously-scheduled revocation after the delay has elapsed.
+   * Re-checks eligibility at execution time.
+   */
+  async executeVersionRevocation(proofType: ProofType, version: bigint): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(VERIFIER_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: VERIFIER_ABI,
+        chain: this.chain,
+        functionName: "executeVersionRevocation",
+        args: [proofType, version],
+      }),
+    );
+  }
+
+  /**
+   * Cancel a pending revocation proposal.
+   */
+  async cancelVersionRevocation(proofType: ProofType, version: bigint): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(VERIFIER_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: VERIFIER_ABI,
+        chain: this.chain,
+        functionName: "cancelVersionRevocation",
+        args: [proofType, version],
+      }),
+    );
+  }
+
+  /**
+   * Get the readyAt timestamp for a pending revocation proposal.
+   * Returns 0n if no proposal is pending for the given (proofType, version).
+   */
+  async getPendingRevocation(proofType: ProofType, version: bigint): Promise<bigint> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: VERIFIER_ABI,
+      functionName: "getPendingRevocation",
+      args: [proofType, version],
+    })) as bigint;
+  }
+
+  /**
+   * Read the on-chain REVOCATION_TIMELOCK constant (6h).
+   */
+  async revocationTimelock(): Promise<bigint> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: VERIFIER_ABI,
+      functionName: "REVOCATION_TIMELOCK",
+    })) as bigint;
+  }
+
+  private requireWallet(): ConfiguredWalletClient {
+    if (!this.walletClient) {
+      throw new Error("WalletClient required for write operations");
+    }
+    return this.walletClient;
   }
 }

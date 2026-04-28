@@ -2,11 +2,24 @@ import type { Address } from "viem";
 import { PATTERN_TIME_WINDOW_MIN, PATTERN_TIME_WINDOW_MAX } from "../constants.js";
 import { validateReportingThreshold, validateSubmitter, validateTimestamp } from "./validate.js";
 
+/** Pattern analysis identifiers (must match circuits/pattern). */
+export const PATTERN_STRUCTURING = 1;
+export const PATTERN_VELOCITY = 2;
+export const PATTERN_ROUND_AMOUNT = 3;
+
 export interface PatternInput {
   amounts: number[];
   timestamps: number[];
   numTransactions: number;
-  analysisType: 1 | 2 | 3; // 1=structuring, 2=velocity, 3=round amounts
+  /**
+   * Analysis kind: 1 = STRUCTURING (anti-structuring), 2 = VELOCITY, 3 = ROUND_AMOUNT.
+   *
+   * Note: SettlementRegistry.finalizeTrade requires `analysisType === 1`
+   * (audit fix H-2). VELOCITY and ROUND_AMOUNT proofs are valid for general
+   * Oracle submission but are rejected by the settlement registry's
+   * anti-structuring guard.
+   */
+  analysisType: typeof PATTERN_STRUCTURING | typeof PATTERN_VELOCITY | typeof PATTERN_ROUND_AMOUNT;
   reportingThreshold: number;
   timeWindow: number;
   txSetHash: string;
@@ -17,6 +30,18 @@ export interface PatternInput {
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
   if (opts.amounts.length > 16 || opts.timestamps.length > 16) {
     throw new Error("Max 16 transactions supported");
+  }
+
+  // Defensive runtime check: H-2 enforces this on-chain too, but failing fast
+  // off-chain saves a wasted proof generation if a TS caller bypasses the type.
+  if (
+    opts.analysisType !== PATTERN_STRUCTURING &&
+    opts.analysisType !== PATTERN_VELOCITY &&
+    opts.analysisType !== PATTERN_ROUND_AMOUNT
+  ) {
+    throw new Error(
+      `Invalid analysisType ${String(opts.analysisType)}; must be 1 (STRUCTURING), 2 (VELOCITY), or 3 (ROUND_AMOUNT)`,
+    );
   }
 
   validateReportingThreshold(opts.reportingThreshold);

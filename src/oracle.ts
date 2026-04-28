@@ -216,6 +216,120 @@ export class XochiOracle {
     })) as boolean;
   }
 
+  // ── Per-provider credential roots (post-audit C-1) ──────────
+
+  /**
+   * Read the publisher EOA authorized to publish credential roots for a provider.
+   * Returns the zero address if the provider has not been registered.
+   */
+  async getProviderPublisher(providerId: bigint | number): Promise<Address> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "getProviderPublisher",
+      args: [BigInt(providerId)],
+    })) as Address;
+  }
+
+  /**
+   * Check whether a credential root is currently provable.
+   * Valid iff registered, not revoked, and within the TTL window.
+   */
+  async isValidCredentialRoot(root: Hex): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "isValidCredentialRoot",
+      args: [root],
+    })) as boolean;
+  }
+
+  /**
+   * Read the full metadata for a published credential root.
+   * Reverts via {@link CredentialRootNotFound} if the root has never been published.
+   */
+  async getCredentialRoot(root: Hex): Promise<{
+    providerId: bigint;
+    registeredAt: bigint;
+    revoked: boolean;
+  }> {
+    const info = (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "getCredentialRoot",
+      args: [root],
+    })) as { providerId: bigint; registeredAt: bigint; revoked: boolean };
+    return info;
+  }
+
+  /**
+   * Owner-only: authorize an EOA to publish credential roots for a provider.
+   * Set publisher = address(0) to disable a provider.
+   */
+  async setProviderPublisher(providerId: bigint | number, publisher: Address): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "setProviderPublisher",
+        args: [BigInt(providerId), publisher],
+      }),
+    );
+  }
+
+  /**
+   * Provider-publisher-only: publish a new credential tree root for a provider.
+   * Emits {@link CredentialRootPublished} with the IPFS CID for tree contents.
+   */
+  async publishCredentialRoot(
+    providerId: bigint | number,
+    root: Hex,
+    cid: string,
+  ): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "publishCredentialRoot",
+        args: [BigInt(providerId), root, cid],
+      }),
+    );
+  }
+
+  /**
+   * Revoke a credential root before its TTL elapses.
+   * Either the contract owner or the provider's publisher may revoke.
+   */
+  async revokeCredentialRoot(root: Hex): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "revokeCredentialRoot",
+        args: [root],
+      }),
+    );
+  }
+
+  /**
+   * Check whether a config hash has been permanently revoked (audit M-3).
+   * Permanently-revoked hashes cannot be re-registered via updateProviderConfig.
+   */
+  async isRevokedConfig(configHash: Hex): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "isRevokedConfig",
+      args: [configHash],
+    })) as boolean;
+  }
+
   /**
    * Submit all proofs from a BatchProveResult atomically via the on-chain
    * `submitComplianceBatch` function (one transaction).

@@ -212,7 +212,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     subject: Address,
     jurisdictionId: number,
     proofType: number,
-  ): Promise<Hex> {
+  ): Promise<{ proofHash: Hex; publicInputs: Hex }> {
     const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
     const wallet = createWalletClient({
       chain: foundry,
@@ -288,7 +288,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     // proofHash is indexed as topic[3]
     const proofHash = log.topics[3];
     if (!proofHash) throw new Error("proofHash topic missing");
-    return proofHash;
+    return { proofHash, publicInputs: publicInputsEncoded };
   }
 
   // ============================================================
@@ -328,14 +328,14 @@ describe("SettlementRegistryClient (anvil)", () => {
     await publicClient.waitForTransactionReceipt({ hash: regHash });
 
     // Submit 2 compliance proofs to oracle
-    const proofHash0 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-    const proofHash1 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const r0 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const r1 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
 
     // Record sub-settlements
-    const sub0Hash = await registryClient.recordSubSettlement(tradeId, 0, proofHash0);
+    const sub0Hash = await registryClient.recordSubSettlement(tradeId, 0, r0.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub0Hash });
 
-    const sub1Hash = await registryClient.recordSubSettlement(tradeId, 1, proofHash1);
+    const sub1Hash = await registryClient.recordSubSettlement(tradeId, 1, r1.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub1Hash });
 
     // Verify
@@ -344,8 +344,8 @@ describe("SettlementRegistryClient (anvil)", () => {
 
     const subs = await registryClient.getSubSettlements(tradeId);
     expect(subs).toHaveLength(2);
-    expect(subs[0].proofHash).toBe(proofHash0);
-    expect(subs[1].proofHash).toBe(proofHash1);
+    expect(subs[0].proofHash).toBe(r0.proofHash);
+    expect(subs[1].proofHash).toBe(r1.proofHash);
     expect(subs[0].settledAt).toBeGreaterThan(0n);
     expect(subs[1].settledAt).toBeGreaterThan(0n);
   });
@@ -359,19 +359,21 @@ describe("SettlementRegistryClient (anvil)", () => {
     await publicClient.waitForTransactionReceipt({ hash: regHash });
 
     // Submit compliance proofs and record sub-settlements
-    const proofHash0 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-    const sub0 = await registryClient.recordSubSettlement(tradeId, 0, proofHash0);
+    const r0 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const sub0 = await registryClient.recordSubSettlement(tradeId, 0, r0.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub0 });
 
-    const proofHash1 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-    const sub1 = await registryClient.recordSubSettlement(tradeId, 1, proofHash1);
+    const r1 = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const sub1 = await registryClient.recordSubSettlement(tradeId, 1, r1.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub1 });
 
-    // Submit a pattern proof for anti-structuring finalization
-    const patternProofHash = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    // Submit a pattern proof for anti-structuring finalization (analysisType=1).
+    // Audit H-2: SettlementRegistry now requires the original publicInputs bytes
+    // to verify analysis_type == STRUCTURING (1) -- VELOCITY/ROUND_AMOUNT rejected.
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
 
     // Finalize trade
-    const finHash = await registryClient.finalizeTrade(tradeId, patternProofHash);
+    const finHash = await registryClient.finalizeTrade(tradeId, pat.proofHash, pat.publicInputs);
     await publicClient.waitForTransactionReceipt({ hash: finHash });
 
     // Verify finalization
@@ -406,11 +408,11 @@ describe("SettlementRegistryClient (anvil)", () => {
     const hash = await registryClient.registerTrade(tradeId, 0, 2);
     await publicClient.waitForTransactionReceipt({ hash });
 
-    const proofHash = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const r = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
 
     // Index 5 is out of bounds for a trade with 2 sub-trades
     try {
-      const oobHash = await registryClient.recordSubSettlement(tradeId, 5, proofHash);
+      const oobHash = await registryClient.recordSubSettlement(tradeId, 5, r.proofHash);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: oobHash });
       expect(receipt.status).toBe("reverted");
     } catch {
@@ -426,15 +428,15 @@ describe("SettlementRegistryClient (anvil)", () => {
     await publicClient.waitForTransactionReceipt({ hash: regHash });
 
     // Only settle 1 of 2 sub-trades
-    const proofHash = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-    const sub0 = await registryClient.recordSubSettlement(tradeId, 0, proofHash);
+    const r = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+    const sub0 = await registryClient.recordSubSettlement(tradeId, 0, r.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub0 });
 
-    const patternProofHash = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
 
     // Should reject -- only 1/2 settled
     try {
-      const finHash = await registryClient.finalizeTrade(tradeId, patternProofHash);
+      const finHash = await registryClient.finalizeTrade(tradeId, pat.proofHash, pat.publicInputs);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: finHash });
       expect(receipt.status).toBe("reverted");
     } catch {
@@ -535,9 +537,9 @@ describe("SettlementRegistryClient (anvil)", () => {
       await publicClient.waitForTransactionReceipt({ hash: recHash });
     }
 
-    // Step 4: Submit pattern proof and finalize
-    const patternProofHash = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
-    const finHash = await registryClient.finalizeTrade(batch.tradeId, patternProofHash);
+    // Step 4: Submit pattern proof and finalize (audit H-2: pass publicInputs)
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    const finHash = await registryClient.finalizeTrade(batch.tradeId, pat.proofHash, pat.publicInputs);
     await publicClient.waitForTransactionReceipt({ hash: finHash });
 
     // Verify
