@@ -7,7 +7,15 @@ import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import type { CircuitLoader, CircuitName, ProofResult } from "./types.js";
 import { encodeProof, encodePublicInputs } from "./encoding.js";
 import { buildRiskScoreInputs, type RiskScoreInput } from "./inputs/risk-score.js";
+import {
+  buildRiskScoreSignedInputs,
+  type RiskScoreSignedInput,
+} from "./inputs/risk-score-signed.js";
 import { buildComplianceInputs, type ComplianceInput } from "./inputs/compliance.js";
+import {
+  buildComplianceSignedInputs,
+  type ComplianceSignedInput,
+} from "./inputs/compliance-signed.js";
 import { buildMembershipInputs, type MembershipInput } from "./inputs/membership.js";
 import { buildNonMembershipInputs, type NonMembershipInput } from "./inputs/non-membership.js";
 import { buildPatternInputs, type PatternInput } from "./inputs/pattern.js";
@@ -56,6 +64,29 @@ export class XochiProver {
   async proveCompliance(opts: ComplianceInput): Promise<ProofResult> {
     const inputs = buildComplianceInputs(opts);
     return this.prove("compliance", inputs);
+  }
+
+  /**
+   * Generate a COMPLIANCE_SIGNED proof.
+   *
+   * Caller MUST provide a `signedBundle` produced by
+   * `signSignals()` (in `src/provider`) -- the circuit verifies the provider's
+   * secp256k1 signature in-circuit. The `signer_pubkey_hash` from the bundle
+   * also becomes a public input that the Oracle validates against
+   * `_validSignerPubkeyHashes`.
+   *
+   * Use this for jurisdictions where `JurisdictionConfig.requireSignedSignals`
+   * is true (US, SG); permissive jurisdictions (EU, UK) accept either variant.
+   */
+  async proveComplianceSigned(opts: ComplianceSignedInput): Promise<ProofResult> {
+    const inputs = buildComplianceSignedInputs(opts);
+    return this.prove("compliance_signed", inputs);
+  }
+
+  /** Generate a RISK_SCORE_SIGNED proof. */
+  async proveRiskScoreSigned(opts: RiskScoreSignedInput): Promise<ProofResult> {
+    const inputs = buildRiskScoreSignedInputs(opts);
+    return this.prove("risk_score_signed", inputs);
   }
 
   async proveMembership(opts: MembershipInput): Promise<ProofResult> {

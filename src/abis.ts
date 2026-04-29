@@ -241,7 +241,7 @@ export const ORACLE_ABI = [
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
   },
-  // --- Per-provider credential roots (post-audit C-1 redesign) ---
+  // --- Per-provider credential roots ---
   {
     type: "function",
     name: "setProviderPublisher",
@@ -499,9 +499,17 @@ export const ORACLE_ABI = [
     ],
   },
   // H-2: PATTERN analysis_type
-  { type: "error", name: "InvalidAnalysisType", inputs: [{ name: "analysisType", type: "uint256" }] },
+  {
+    type: "error",
+    name: "InvalidAnalysisType",
+    inputs: [{ name: "analysisType", type: "uint256" }],
+  },
   // M-3: permanent config revocation
-  { type: "error", name: "ConfigPermanentlyRevoked", inputs: [{ name: "configHash", type: "bytes32" }] },
+  {
+    type: "error",
+    name: "ConfigPermanentlyRevoked",
+    inputs: [{ name: "configHash", type: "bytes32" }],
+  },
   // C-1 / Phase 1 infra: per-provider credential roots
   {
     type: "error",
@@ -511,7 +519,11 @@ export const ORACLE_ABI = [
       { name: "caller", type: "address" },
     ],
   },
-  { type: "error", name: "CredentialRootAlreadyPublished", inputs: [{ name: "root", type: "bytes32" }] },
+  {
+    type: "error",
+    name: "CredentialRootAlreadyPublished",
+    inputs: [{ name: "root", type: "bytes32" }],
+  },
   { type: "error", name: "CredentialRootNotFound", inputs: [{ name: "root", type: "bytes32" }] },
   { type: "error", name: "InvalidProviderId", inputs: [] },
   {

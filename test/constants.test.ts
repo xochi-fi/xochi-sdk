@@ -37,14 +37,16 @@ describe("BPS_DENOMINATOR", () => {
 });
 
 describe("proof type <-> circuit name mappings", () => {
-  it("PROOF_TYPE_NAMES maps all 6 types", () => {
-    expect(Object.keys(PROOF_TYPE_NAMES)).toHaveLength(6);
+  it("PROOF_TYPE_NAMES maps all 8 types (incl. signed variants)", () => {
+    expect(Object.keys(PROOF_TYPE_NAMES)).toHaveLength(8);
     expect(PROOF_TYPE_NAMES[0x01]).toBe("compliance");
     expect(PROOF_TYPE_NAMES[0x02]).toBe("risk_score");
     expect(PROOF_TYPE_NAMES[0x03]).toBe("pattern");
     expect(PROOF_TYPE_NAMES[0x04]).toBe("attestation");
     expect(PROOF_TYPE_NAMES[0x05]).toBe("membership");
     expect(PROOF_TYPE_NAMES[0x06]).toBe("non_membership");
+    expect(PROOF_TYPE_NAMES[0x07]).toBe("compliance_signed");
+    expect(PROOF_TYPE_NAMES[0x08]).toBe("risk_score_signed");
   });
 
   it("CIRCUIT_TO_PROOF_TYPE is inverse of PROOF_TYPE_NAMES", () => {
@@ -75,5 +77,7 @@ describe("PUBLIC_INPUT_COUNTS", () => {
     expect(PUBLIC_INPUT_COUNTS[0x04]).toBe(6); // attestation (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(5); // membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(5); // non_membership (+ submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x07]).toBe(7); // compliance_signed (compliance + signer_pubkey_hash)
+    expect(PUBLIC_INPUT_COUNTS[0x08]).toBe(9); // risk_score_signed (risk_score + signer_pubkey_hash)
   });
 });

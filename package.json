@@ -15,6 +15,10 @@
       "import": "./dist/circuits.js",
       "types": "./dist/circuits.d.ts"
     },
+    "./provider": {
+      "import": "./dist/provider/index.js",
+      "types": "./dist/provider/index.d.ts"
+    },
     "./circuits/*": "./circuits/*"
   },
   "license": "MIT",
@@ -24,16 +28,18 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
     "test:integration": "vitest run test/integration*.test.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
+    "daemon": "node --experimental-strip-types daemon/src/index.ts",
     "prepare": "npm run build",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
+    "@noble/curves": "^1.9.0",
     "@noir-lang/noir_js": "1.0.0-beta.19"
   },
   "peerDependencies": {

@@ -216,7 +216,7 @@ export class XochiOracle {
     })) as boolean;
   }
 
-  // ── Per-provider credential roots (post-audit C-1) ──────────
+  // ── Per-provider credential roots ──────────
 
   /**
    * Read the publisher EOA authorized to publish credential roots for a provider.
@@ -283,11 +283,7 @@ export class XochiOracle {
    * Provider-publisher-only: publish a new credential tree root for a provider.
    * Emits {@link CredentialRootPublished} with the IPFS CID for tree contents.
    */
-  async publishCredentialRoot(
-    providerId: bigint | number,
-    root: Hex,
-    cid: string,
-  ): Promise<Hex> {
+  async publishCredentialRoot(providerId: bigint | number, root: Hex, cid: string): Promise<Hex> {
     const wallet = this.requireWallet();
     return withDecodedErrors(ORACLE_ABI, () =>
       writeContract(wallet, {
@@ -318,7 +314,7 @@ export class XochiOracle {
   }
 
   /**
-   * Check whether a config hash has been permanently revoked (audit M-3).
+   * Check whether a config hash has been permanently revoked.
    * Permanently-revoked hashes cannot be re-registered via updateProviderConfig.
    */
   async isRevokedConfig(configHash: Hex): Promise<boolean> {

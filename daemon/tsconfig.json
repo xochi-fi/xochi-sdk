@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Typecheck only. The daemon ships as TS source and runs via
+    // `node --experimental-strip-types daemon/src/index.ts` (Node 22+) or
+    // tsx. Building to JS is intentionally not supported -- the daemon's
+    // canonical install path is "copy the source", not a published binary.
+    "noEmit": true
+  },
+  "include": ["src", "../src/provider"]
+}

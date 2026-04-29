@@ -2,7 +2,7 @@ import type { Address } from "viem";
 import { validateCredentialType, validateSubmitter, validateTimestamp } from "./validate.js";
 
 /**
- * ATTESTATION proof inputs (post-audit C-1 redesign).
+ * ATTESTATION proof inputs.
  *
  * The circuit no longer takes a "providers tree" path. Instead it proves
  * inclusion of `leaf_hash_value(credential_hash)` in the provider's per-provider
@@ -43,9 +43,7 @@ export interface AttestationInput {
 
 export function buildAttestationInputs(opts: AttestationInput): Record<string, string | string[]> {
   if (opts.merklePath.length !== 20) {
-    throw new Error(
-      `Merkle path must have 20 elements, got ${String(opts.merklePath.length)}`,
-    );
+    throw new Error(`Merkle path must have 20 elements, got ${String(opts.merklePath.length)}`);
   }
 
   const currentTimestamp = opts.currentTimestamp ?? Math.floor(Date.now() / 1000);

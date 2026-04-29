@@ -16,7 +16,16 @@ if [[ ! -d "${ERC_REPO}" ]]; then
   exit 1
 fi
 
-CIRCUITS=(compliance risk_score pattern attestation membership non_membership)
+CIRCUITS=(
+  compliance
+  compliance_signed
+  risk_score
+  risk_score_signed
+  pattern
+  attestation
+  membership
+  non_membership
+)
 
 printf "Syncing circuits from %s\n" "${ERC_REPO}"
 

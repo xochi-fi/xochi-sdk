@@ -8,6 +8,10 @@ export const PROOF_TYPES = {
   ATTESTATION: 0x04,
   MEMBERSHIP: 0x05,
   NON_MEMBERSHIP: 0x06,
+  /** Provider-signed compliance. */
+  COMPLIANCE_SIGNED: 0x07,
+  /** Provider-signed risk-score. */
+  RISK_SCORE_SIGNED: 0x08,
 } as const;
 
 export type ProofType = (typeof PROOF_TYPES)[keyof typeof PROOF_TYPES];
@@ -40,6 +44,8 @@ export const PROOF_TYPE_NAMES: Record<ProofType, CircuitName> = {
   0x04: "attestation",
   0x05: "membership",
   0x06: "non_membership",
+  0x07: "compliance_signed",
+  0x08: "risk_score_signed",
 };
 
 export const CIRCUIT_TO_PROOF_TYPE: Record<CircuitName, ProofType> = {
@@ -49,6 +55,8 @@ export const CIRCUIT_TO_PROOF_TYPE: Record<CircuitName, ProofType> = {
   attestation: 0x04,
   membership: 0x05,
   non_membership: 0x06,
+  compliance_signed: 0x07,
+  risk_score_signed: 0x08,
 };
 
 export function proofTypeToCircuit(proofType: ProofType): CircuitName {
@@ -81,4 +89,6 @@ export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x04: 6, // attestation (+ submitter)
   0x05: 5, // membership (+ submitter)
   0x06: 5, // non_membership (+ submitter)
+  0x07: 7, // compliance_signed (compliance + signer_pubkey_hash)
+  0x08: 9, // risk_score_signed (risk_score + signer_pubkey_hash)
 };

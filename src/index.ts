@@ -103,7 +103,9 @@ export { PxeBridgeClient } from "./pxe-bridge-client.js";
 
 // Input builders
 export { buildComplianceInputs } from "./inputs/compliance.js";
+export { buildComplianceSignedInputs } from "./inputs/compliance-signed.js";
 export { buildRiskScoreInputs } from "./inputs/risk-score.js";
+export { buildRiskScoreSignedInputs } from "./inputs/risk-score-signed.js";
 export { buildPatternInputs } from "./inputs/pattern.js";
 export { buildAttestationInputs } from "./inputs/attestation.js";
 export { buildMembershipInputs } from "./inputs/membership.js";
@@ -139,7 +141,13 @@ export type {
   RiskScoreThresholdInput,
   RiskScoreRangeInput,
 } from "./inputs/risk-score.js";
+export type {
+  RiskScoreSignedInput,
+  RiskScoreSignedThresholdInput,
+  RiskScoreSignedRangeInput,
+} from "./inputs/risk-score-signed.js";
 export type { ComplianceInput } from "./inputs/compliance.js";
+export type { ComplianceSignedInput, SignedSignalsBundle } from "./inputs/compliance-signed.js";
 export type { MembershipInput } from "./inputs/membership.js";
 export type { NonMembershipInput } from "./inputs/non-membership.js";
 export type { PatternInput } from "./inputs/pattern.js";

@@ -537,9 +537,13 @@ describe("SettlementRegistryClient (anvil)", () => {
       await publicClient.waitForTransactionReceipt({ hash: recHash });
     }
 
-    // Step 4: Submit pattern proof and finalize (audit H-2: pass publicInputs)
+    // Step 4: Submit pattern proof and finalize (pass publicInputs)
     const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
-    const finHash = await registryClient.finalizeTrade(batch.tradeId, pat.proofHash, pat.publicInputs);
+    const finHash = await registryClient.finalizeTrade(
+      batch.tradeId,
+      pat.proofHash,
+      pat.publicInputs,
+    );
     await publicClient.waitForTransactionReceipt({ hash: finHash });
 
     // Verify

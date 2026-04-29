@@ -286,11 +286,7 @@ export class SettlementRegistryClient {
    * @param patternProofHash proofHash of the PATTERN attestation (anti-structuring)
    * @param patternPublicInputs original public inputs bytes from when the PATTERN proof was submitted
    */
-  async finalizeTrade(
-    tradeId: Hex,
-    patternProofHash: Hex,
-    patternPublicInputs: Hex,
-  ): Promise<Hex> {
+  async finalizeTrade(tradeId: Hex, patternProofHash: Hex, patternPublicInputs: Hex): Promise<Hex> {
     const wallet = this.requireWallet();
     return withDecodedErrors(SETTLEMENT_REGISTRY_ABI, () =>
       writeContract(wallet, {
