@@ -61,8 +61,8 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ```bash
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (all tests, 199 tests)
-npm run test:integration  # proof generation + anvil contract tests (~20s)
+npm test               # vitest run (unit tests only, 219 tests; integration excluded via vitest.config.ts)
+npm run test:integration  # proof generation + anvil contract tests (50 tests, uses vitest.integration.config.ts)
 npm run typecheck      # tsc --noEmit
 npm run format         # prettier --write src/ test/
 npm run format:check   # prettier --check (runs in prepublishOnly + CI)
@@ -77,16 +77,20 @@ Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOrac
 
 Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use `proofTypeToCircuit()` and `circuitToProofType()` for conversions.
 
-| ID   | Name           | Circuit        | Public Inputs | Use Case                                  |
-| ---- | -------------- | -------------- | ------------- | ----------------------------------------- |
-| 0x01 | COMPLIANCE     | compliance     | 6             | Risk score below jurisdiction threshold   |
-| 0x02 | RISK_SCORE     | risk_score     | 8             | Custom threshold/range proofs             |
-| 0x03 | PATTERN        | pattern        | 6             | Anti-structuring, velocity, round amounts |
-| 0x04 | ATTESTATION    | attestation    | 6             | KYC/credential verification               |
-| 0x05 | MEMBERSHIP     | membership     | 5             | Merkle inclusion (whitelist)              |
-| 0x06 | NON_MEMBERSHIP | non_membership | 5             | Sorted Merkle adjacency (sanctions)       |
+| ID   | Name              | Circuit           | Public Inputs | Use Case                                  |
+| ---- | ----------------- | ----------------- | ------------- | ----------------------------------------- |
+| 0x01 | COMPLIANCE        | compliance        | 6             | Risk score below jurisdiction threshold   |
+| 0x02 | RISK_SCORE        | risk_score        | 8             | Custom threshold/range proofs             |
+| 0x03 | PATTERN           | pattern           | 6             | Anti-structuring, velocity, round amounts |
+| 0x04 | ATTESTATION       | attestation       | 6             | KYC/credential verification               |
+| 0x05 | MEMBERSHIP        | membership        | 5             | Merkle inclusion (whitelist)              |
+| 0x06 | NON_MEMBERSHIP    | non_membership    | 5             | Sorted Merkle adjacency (sanctions)       |
+| 0x07 | COMPLIANCE_SIGNED | compliance_signed | 9             | Compliance + provider-signed signals      |
+| 0x08 | RISK_SCORE_SIGNED | risk_score_signed | 11            | Risk score + provider-signed signals      |
 
-All 6 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
+All 8 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
+
+The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs over (audit F-6). The Oracle asserts these match `block.chainid` and `address(this)` so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
 
 ## Trust Tiers (Whitepaper Appendix F)
 
@@ -127,7 +131,9 @@ Each `buildXInputs()` function validates constraints before passing to the prove
 
 Supports both single-provider shorthand (`{ score: 60 }`) and multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`). Max 8 providers.
 
-All 6 input builders require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running.
+All 8 input builders require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running.
+
+The signed-variant builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`) additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest that ECDSA verify checks against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)` (audit F-6).
 
 ## Circuit Binaries
 
