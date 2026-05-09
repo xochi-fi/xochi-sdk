@@ -86,6 +86,8 @@ export async function signSignalsWithReplayProtection(
   req: SignSignalsRequest,
 ): Promise<SignSignalsResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
+    chainId: req.chainId,
+    oracleAddress: req.oracleAddress,
     providerSetHash: req.providerSetHash,
     signals: req.signals,
     weights: req.weights,

@@ -112,7 +112,11 @@ describe("Noir parity vectors", () => {
    */
 
   it("signed payload hash for fixture inputs", async () => {
+    // Audit F-6: digest now binds chain_id + oracle_address. Fixture vector
+    // matches sig.nr's test_parity_with_sdk_signed_payload_hash.
     const digest = await computeSignedPayloadHash(api, {
+      chainId: 1n,
+      oracleAddress: 0xabcd1234n,
       providerSetHash: 0xdeadn,
       signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
       weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
