@@ -24,6 +24,7 @@ import {
   keccak256,
   toHex,
   padHex,
+  encodeAbiParameters,
   type Hex,
   type Address,
 } from "viem";
@@ -157,8 +158,10 @@ beforeAll(async () => {
     padHex(OWNER, { size: 32 }) as Hex,
   );
 
-  // Set stub verifier for all proof types
-  for (let pt = 1; pt <= 6; pt++) {
+  // Set stub verifier for every registered proof type. The signed variants
+  // (0x07, 0x08) live in PROOF_TYPES too; missing them yields 0x0 from
+  // getVerifier and breaks the verifier-router assertions below.
+  for (const pt of Object.values(PROOF_TYPES) as ProofType[]) {
     const hash = await ownerWallet.writeContract({
       address: verifierAddress,
       abi: VERIFIER_SETUP_ABI,
@@ -169,12 +172,15 @@ beforeAll(async () => {
     await publicClient.waitForTransactionReceipt({ hash });
   }
 
-  // Deploy XochiZKPOracle
+  // Deploy XochiZKPOracle. Audit F-2: constructor takes initialProviderIds
+  // atomically with the initial config so denylist enforcement is in effect
+  // from block one. Use encodeAbiParameters for the dynamic uint256[] tail.
   configHash = keccak256(toHex("test-config"));
   const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
-  const oracleArgs = (padHex(verifierAddress, { size: 32 }) +
-    padHex(OWNER, { size: 32 }).slice(2) +
-    configHash.slice(2)) as Hex;
+  const oracleArgs = encodeAbiParameters(
+    [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
+    [verifierAddress, OWNER, configHash, [1n]],
+  );
   oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);
 
   // Register reporting threshold

@@ -29,7 +29,18 @@ interface SingleProviderShorthand {
 
 type ProviderInput = ProviderSignals | SingleProviderShorthand;
 
-interface ThresholdBaseSigned {
+/**
+ * Audit F-6: chain_id and oracle_address are committed in the in-circuit signed
+ * digest. They MUST equal the values the provider used when signing -- the
+ * on-chain Oracle additionally asserts they match `block.chainid` and
+ * `address(this)`.
+ */
+interface SignedDigestBinding {
+  chainId: bigint | string | number;
+  oracleAddress: Address;
+}
+
+interface ThresholdBaseSigned extends SignedDigestBinding {
   type: "threshold";
   threshold: number;
   direction: "gt" | "lt";
@@ -41,7 +52,7 @@ interface ThresholdBaseSigned {
   signedTimestamp: string | bigint;
 }
 
-interface RangeBaseSigned {
+interface RangeBaseSigned extends SignedDigestBinding {
   type: "range";
   lowerBound: number;
   upperBound: number;
@@ -149,6 +160,8 @@ export function buildRiskScoreSignedInputs(
     pubkey_y: bytesToNumStrings(opts.signedBundle.pubkeyY, 32, "pubkey_y"),
     signed_timestamp: signedTimestamp,
     signer_pubkey_hash: bytesToHexField(opts.signedBundle.signerPubkeyHash),
+    chain_id: BigInt(opts.chainId).toString(),
+    oracle_address: opts.oracleAddress,
   };
 
   if (opts.type === "threshold") {

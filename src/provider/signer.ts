@@ -18,6 +18,18 @@ import type { SignerKey } from "./keystore.js";
 
 /** What the provider knows / produces about a screening result. */
 export interface SignSignalsRequest {
+  /**
+   * EVM chain ID of the consuming Oracle deployment. Audit F-6: committed in
+   * the in-circuit signed digest so a single signature cannot be replayed
+   * across chains.
+   */
+  chainId: bigint;
+  /**
+   * Address of the consuming Oracle (uint160 packed into a Field). Audit F-6:
+   * committed in the in-circuit signed digest so a signature cannot be
+   * replayed against an alternate Oracle on the same chain.
+   */
+  oracleAddress: bigint;
   /** Pedersen commitment to (provider_ids, weights), as a Field bigint. */
   providerSetHash: bigint;
   /** Per-provider risk signals (0..100). MUST be length 8 (zero-pad inactive). */
@@ -55,6 +67,8 @@ export async function signSignals(
   req: SignSignalsRequest,
 ): Promise<SignSignalsResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
+    chainId: req.chainId,
+    oracleAddress: req.oracleAddress,
     providerSetHash: req.providerSetHash,
     signals: req.signals,
     weights: req.weights,

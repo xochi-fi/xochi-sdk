@@ -37,14 +37,16 @@ await prover.destroy();
 
 ## Proof types
 
-| Type           | Method                 | Use case                                      |
-| -------------- | ---------------------- | --------------------------------------------- |
-| Compliance     | `proveCompliance()`    | Risk score below jurisdiction threshold       |
-| Risk Score     | `proveRiskScore()`     | Custom threshold (GT/LT) or range proofs      |
-| Pattern        | `provePattern()`       | Anti-structuring, velocity, round amounts     |
-| Attestation    | `proveAttestation()`   | KYC/credential verification                   |
-| Membership     | `proveMembership()`    | Merkle inclusion (whitelist)                  |
-| Non-Membership | `proveNonMembership()` | Sorted Merkle adjacency (sanctions exclusion) |
+| Type              | Method                    | Use case                                                |
+| ----------------- | ------------------------- | ------------------------------------------------------- |
+| Compliance        | `proveCompliance()`       | Risk score below jurisdiction threshold                 |
+| Risk Score        | `proveRiskScore()`        | Custom threshold (GT/LT) or range proofs                |
+| Pattern           | `provePattern()`          | Anti-structuring, velocity, round amounts               |
+| Attestation       | `proveAttestation()`      | KYC/credential verification                             |
+| Membership        | `proveMembership()`       | Merkle inclusion (whitelist)                            |
+| Non-Membership    | `proveNonMembership()`    | Sorted Merkle adjacency (sanctions exclusion)           |
+| Compliance Signed | `proveComplianceSigned()` | Compliance with provider-signed signals (anti-grinding) |
+| Risk Score Signed | `proveRiskScoreSigned()`  | Risk score claim with provider-signed signals           |
 
 ## Multi-provider support
 
@@ -369,12 +371,16 @@ import {
   buildAttestationInputs,
   buildMembershipInputs,
   buildNonMembershipInputs,
+  buildComplianceSignedInputs,
+  buildRiskScoreSignedInputs,
 } from "@xochi/sdk";
 ```
 
 Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
 
-> **Submitter binding**: All 6 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
+> **Submitter binding**: All 8 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
+>
+> **Signed-variant binding (audit F-6)**: `buildComplianceSignedInputs` and `buildRiskScoreSignedInputs` additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest the ECDSA signature is checked against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)`, so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
 
 ## Proof type mappings
 
@@ -388,7 +394,10 @@ import {
 
 proofTypeToCircuit(0x01); // "compliance"
 circuitToProofType("risk_score"); // 0x02
-PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, attestation: 6, membership: 5, non_membership: 5
+PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, attestation: 6,
+//      membership: 5, non_membership: 5,
+//      compliance_signed: 9, risk_score_signed: 11
+// (signed variants include signer_pubkey_hash + chain_id + oracle_address)
 ```
 
 ## Typed contract errors
@@ -428,8 +437,8 @@ For lower-level use, `decodeContractError(err, abi)` returns the typed error or 
 
 ```bash
 npm install
-npm test                 # all tests (199 tests)
-npm run test:integration # proof generation + anvil tests (46 tests, ~20s)
+npm test                 # unit tests only (219 tests; integration excluded via vitest.config.ts)
+npm run test:integration # proof generation + anvil tests (50 tests, ~30s; uses vitest.integration.config.ts)
 npm run typecheck        # tsc --noEmit
 npm run format           # prettier --write
 npm run format:check     # prettier --check (run in CI / prepublishOnly)

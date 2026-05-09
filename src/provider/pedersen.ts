@@ -72,10 +72,14 @@ export async function pedersenHash(api: Barretenberg, inputs: bigint[]): Promise
 /**
  * Compute the signed-signals payload digest the provider signs over.
  *
- * Mirrors `xochi_shared::sig::compute_signed_payload_hash` exactly:
+ * Mirrors `xochi_shared::sig::compute_signed_payload_hash` exactly. Audit F-6:
+ * the digest now binds chain_id and oracle_address so a single signature
+ * cannot be replayed across chains or alternate Oracle deployments.
  *
  *   pedersen_hash([
  *     DOMAIN_SIGNED_SIGNALS,
+ *     chain_id,
+ *     oracle_address,
  *     provider_set_hash,
  *     signals[0..8],
  *     weights[0..8],
@@ -88,6 +92,8 @@ export async function pedersenHash(api: Barretenberg, inputs: bigint[]): Promise
 export async function computeSignedPayloadHash(
   api: Barretenberg,
   args: {
+    chainId: bigint;
+    oracleAddress: bigint;
     providerSetHash: bigint;
     signals: bigint[];
     weights: bigint[];
@@ -103,6 +109,8 @@ export async function computeSignedPayloadHash(
   }
   const inputs: bigint[] = [
     DOMAIN_SIGNED_SIGNALS,
+    args.chainId,
+    args.oracleAddress,
     args.providerSetHash,
     ...args.signals,
     ...args.weights,

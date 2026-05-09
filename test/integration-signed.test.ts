@@ -25,6 +25,11 @@ import { RawKeyLoader, loadSignerKey, signSignals, type SignerKey } from "../src
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
 const TIMESTAMP = 1700000000n;
+// Audit F-6: chain_id + oracle_address are committed in the in-circuit signed
+// digest. Off-chain integration tests use deterministic stand-ins; on-chain the
+// Oracle asserts these equal block.chainid and address(this).
+const TEST_CHAIN_ID = 1n;
+const TEST_ORACLE_ADDRESS = 0xabcd1234n;
 
 // Fixed test private key (NOT a secret).
 const TEST_PRIVATE_KEY = new Uint8Array(32);
@@ -51,6 +56,8 @@ describe("compliance_signed end-to-end", () => {
     // digest from. signals/weights match the single-provider Prover.toml that
     // pinned PROVIDER_SET_HASH, score=25 stays under EU's 7100 bps threshold.
     const signed = await signSignals(api, signerKey, {
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: TEST_ORACLE_ADDRESS,
       providerSetHash: BigInt(PROVIDER_SET_HASH),
       signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
       weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
@@ -68,6 +75,8 @@ describe("compliance_signed end-to-end", () => {
       submitter: SUBMITTER,
       timestamp: TIMESTAMP.toString(),
       signedBundle: signed,
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
@@ -82,6 +91,8 @@ describe("compliance_signed end-to-end", () => {
     // Sign payload A, then try to use that signature with payload B inputs.
     // Witness generation should fail in the in-circuit ECDSA verify.
     const signed = await signSignals(api, signerKey, {
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: TEST_ORACLE_ADDRESS,
       providerSetHash: BigInt(PROVIDER_SET_HASH),
       signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
       weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
@@ -99,6 +110,8 @@ describe("compliance_signed end-to-end", () => {
         submitter: SUBMITTER,
         timestamp: TIMESTAMP.toString(),
         signedBundle: signed,
+        chainId: TEST_CHAIN_ID,
+        oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
       }),
     ).rejects.toThrow();
   }, 180_000);
@@ -107,6 +120,8 @@ describe("compliance_signed end-to-end", () => {
 describe("risk_score_signed end-to-end", () => {
   it("signs and proves a threshold/GT claim", async () => {
     const signed = await signSignals(api, signerKey, {
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: TEST_ORACLE_ADDRESS,
       providerSetHash: BigInt(PROVIDER_SET_HASH),
       signals: [60n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
       weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
@@ -123,6 +138,8 @@ describe("risk_score_signed end-to-end", () => {
       submitter: SUBMITTER,
       signedTimestamp: TIMESTAMP.toString(),
       signedBundle: signed,
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
     });
 
     expect(result.publicInputs).toHaveLength(PUBLIC_INPUT_COUNTS[PROOF_TYPES.RISK_SCORE_SIGNED]);
