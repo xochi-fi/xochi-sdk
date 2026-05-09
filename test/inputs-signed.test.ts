@@ -14,6 +14,10 @@ import {
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
+// Audit F-6: deterministic stand-ins. The on-chain Oracle asserts these match
+// block.chainid / address(this); the input builder only checks they're present.
+const CHAIN_ID = 1n;
+const ORACLE_ADDRESS = "0x00000000000000000000000000000000abcd1234" as Address;
 
 function dummyBundle(): SignedSignalsBundle {
   // Deterministic pattern bytes (NOT a real signature). Builder only checks
@@ -34,6 +38,8 @@ describe("buildComplianceSignedInputs", () => {
       providerSetHash: PROVIDER_SET_HASH,
       submitter: SUBMITTER,
       timestamp: "1700000000",
+      chainId: CHAIN_ID,
+      oracleAddress: ORACLE_ADDRESS,
       signedBundle: dummyBundle(),
     });
 
@@ -55,6 +61,8 @@ describe("buildComplianceSignedInputs", () => {
         jurisdictionId: 0,
         providerSetHash: PROVIDER_SET_HASH,
         submitter: SUBMITTER,
+        chainId: CHAIN_ID,
+        oracleAddress: ORACLE_ADDRESS,
         signedBundle: dummyBundle(),
       }),
     ).toThrow(/exceeds jurisdiction threshold/);
@@ -67,6 +75,8 @@ describe("buildComplianceSignedInputs", () => {
         jurisdictionId: 0,
         providerSetHash: PROVIDER_SET_HASH,
         submitter: SUBMITTER,
+        chainId: CHAIN_ID,
+        oracleAddress: ORACLE_ADDRESS,
         signedBundle: {
           signature: new Uint8Array(63), // wrong length
           pubkeyX: new Uint8Array(32),
@@ -85,6 +95,8 @@ describe("buildComplianceSignedInputs", () => {
       jurisdictionId: 1, // US (strict; signed mandatory)
       providerSetHash: PROVIDER_SET_HASH,
       submitter: SUBMITTER,
+      chainId: CHAIN_ID,
+      oracleAddress: ORACLE_ADDRESS,
       signedBundle: dummyBundle(),
     });
     expect((out.signals as string[]).length).toBe(8);
@@ -104,6 +116,8 @@ describe("buildRiskScoreSignedInputs", () => {
       providerSetHash: PROVIDER_SET_HASH,
       submitter: SUBMITTER,
       signedTimestamp: "1700000000",
+      chainId: CHAIN_ID,
+      oracleAddress: ORACLE_ADDRESS,
       signedBundle: dummyBundle(),
     });
     expect(out.proof_type).toBe("1");
@@ -123,6 +137,8 @@ describe("buildRiskScoreSignedInputs", () => {
       providerSetHash: PROVIDER_SET_HASH,
       submitter: SUBMITTER,
       signedTimestamp: 1700000000n,
+      chainId: CHAIN_ID,
+      oracleAddress: ORACLE_ADDRESS,
       signedBundle: dummyBundle(),
     });
     expect(out.proof_type).toBe("2");
@@ -141,6 +157,8 @@ describe("buildRiskScoreSignedInputs", () => {
         providerSetHash: PROVIDER_SET_HASH,
         submitter: SUBMITTER,
         signedTimestamp: "1700000000",
+        chainId: CHAIN_ID,
+        oracleAddress: ORACLE_ADDRESS,
         signedBundle: dummyBundle(),
       }),
     ).toThrow(/Trivial threshold\/GT/);
@@ -156,6 +174,8 @@ describe("buildRiskScoreSignedInputs", () => {
         providerSetHash: PROVIDER_SET_HASH,
         submitter: SUBMITTER,
         signedTimestamp: "1700000000",
+        chainId: CHAIN_ID,
+        oracleAddress: ORACLE_ADDRESS,
         signedBundle: dummyBundle(),
       }),
     ).toThrow(/full-domain range/);

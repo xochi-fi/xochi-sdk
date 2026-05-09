@@ -89,6 +89,6 @@ export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x04: 6, // attestation (+ submitter)
   0x05: 5, // membership (+ submitter)
   0x06: 5, // non_membership (+ submitter)
-  0x07: 7, // compliance_signed (compliance + signer_pubkey_hash)
-  0x08: 9, // risk_score_signed (risk_score + signer_pubkey_hash)
+  0x07: 9, // compliance_signed (+ signer_pubkey_hash, chain_id, oracle_address)
+  0x08: 11, // risk_score_signed (+ signer_pubkey_hash, chain_id, oracle_address)
 };

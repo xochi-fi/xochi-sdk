@@ -250,12 +250,7 @@ beforeAll(async () => {
   configHash = "0x18574f427f33c6c77af53be06544bd749c9a1db855599d950af61ea613df8405" as Hex;
   const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
   const oracleArgs = encodeAbiParameters(
-    [
-      { type: "address" },
-      { type: "address" },
-      { type: "bytes32" },
-      { type: "uint256[]" },
-    ],
+    [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
     [verifierAddress, OWNER, configHash, [1n]],
   );
   oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);
@@ -338,6 +333,8 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
         Authorization: `Bearer ${TEST_API_KEY}`,
       },
       body: JSON.stringify({
+        chainId: foundry.id,
+        oracleAddress,
         providerSetHash: PROVIDER_SET_HASH,
         signals: [25, 0, 0, 0, 0, 0, 0, 0],
         weights: [100, 0, 0, 0, 0, 0, 0, 0],
@@ -369,6 +366,8 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
         Authorization: `Bearer ${TEST_API_KEY}`,
       },
       body: JSON.stringify({
+        chainId: foundry.id,
+        oracleAddress,
         providerSetHash: PROVIDER_SET_HASH,
         signals: [25, 0, 0, 0, 0, 0, 0, 0],
         weights: [100, 0, 0, 0, 0, 0, 0, 0],
@@ -387,6 +386,8 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
       configHash,
       submitter: ALICE,
       timestamp: now.toString(),
+      chainId: BigInt(foundry.id),
+      oracleAddress,
       signedBundle: {
         signature: hexToBytes(freshSigned.signature),
         pubkeyX: hexToBytes(freshSigned.pubkeyX),

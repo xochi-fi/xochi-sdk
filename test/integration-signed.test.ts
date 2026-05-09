@@ -75,6 +75,8 @@ describe("compliance_signed end-to-end", () => {
       submitter: SUBMITTER,
       timestamp: TIMESTAMP.toString(),
       signedBundle: signed,
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
@@ -108,6 +110,8 @@ describe("compliance_signed end-to-end", () => {
         submitter: SUBMITTER,
         timestamp: TIMESTAMP.toString(),
         signedBundle: signed,
+        chainId: TEST_CHAIN_ID,
+        oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
       }),
     ).rejects.toThrow();
   }, 180_000);
@@ -134,6 +138,8 @@ describe("risk_score_signed end-to-end", () => {
       submitter: SUBMITTER,
       signedTimestamp: TIMESTAMP.toString(),
       signedBundle: signed,
+      chainId: TEST_CHAIN_ID,
+      oracleAddress: ("0x" + TEST_ORACLE_ADDRESS.toString(16).padStart(40, "0")) as Address,
     });
 
     expect(result.publicInputs).toHaveLength(PUBLIC_INPUT_COUNTS[PROOF_TYPES.RISK_SCORE_SIGNED]);

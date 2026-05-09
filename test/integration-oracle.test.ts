@@ -158,8 +158,10 @@ beforeAll(async () => {
     padHex(OWNER, { size: 32 }) as Hex,
   );
 
-  // Set stub verifier for all proof types
-  for (let pt = 1; pt <= 6; pt++) {
+  // Set stub verifier for every registered proof type. The signed variants
+  // (0x07, 0x08) live in PROOF_TYPES too; missing them yields 0x0 from
+  // getVerifier and breaks the verifier-router assertions below.
+  for (const pt of Object.values(PROOF_TYPES) as ProofType[]) {
     const hash = await ownerWallet.writeContract({
       address: verifierAddress,
       abi: VERIFIER_SETUP_ABI,
@@ -176,12 +178,7 @@ beforeAll(async () => {
   configHash = keccak256(toHex("test-config"));
   const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
   const oracleArgs = encodeAbiParameters(
-    [
-      { type: "address" },
-      { type: "address" },
-      { type: "bytes32" },
-      { type: "uint256[]" },
-    ],
+    [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
     [verifierAddress, OWNER, configHash, [1n]],
   );
   oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);

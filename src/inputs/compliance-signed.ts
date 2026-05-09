@@ -35,7 +35,19 @@ export interface SignedSignalsBundle {
   signerPubkeyHash: Uint8Array;
 }
 
-interface MultiProviderComplianceSigned {
+/**
+ * Audit F-6: chain_id and oracle_address are committed in the in-circuit signed
+ * digest so a single signature cannot be replayed across chains or alternate
+ * Oracle deployments. The on-chain Oracle asserts these match `block.chainid`
+ * and `address(this)`. They MUST equal the values the provider used when
+ * signing -- otherwise in-circuit signature verification fails.
+ */
+interface SignedDigestBinding {
+  chainId: bigint | string | number;
+  oracleAddress: Address;
+}
+
+interface MultiProviderComplianceSigned extends SignedDigestBinding {
   signals: number[];
   weights: number[];
   providerIds: string[];
@@ -47,7 +59,7 @@ interface MultiProviderComplianceSigned {
   signedBundle: SignedSignalsBundle;
 }
 
-interface SingleProviderComplianceSigned {
+interface SingleProviderComplianceSigned extends SignedDigestBinding {
   score: number;
   jurisdictionId: number;
   providerSetHash: string;
@@ -156,6 +168,8 @@ export function buildComplianceSignedInputs(
     timestamp: opts.timestamp ?? String(Math.floor(Date.now() / 1000)),
     meets_threshold: "1",
     signer_pubkey_hash: bytesToHexField(opts.signedBundle.signerPubkeyHash),
+    chain_id: BigInt(opts.chainId).toString(),
+    oracle_address: opts.oracleAddress,
     submitter: opts.submitter,
   };
 }
