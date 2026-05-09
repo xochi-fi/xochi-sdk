@@ -22,6 +22,7 @@ import {
   keccak256,
   toHex,
   padHex,
+  encodeAbiParameters,
   type Hex,
   type Address,
 } from "viem";
@@ -160,12 +161,19 @@ describe("SettlementRegistryClient (anvil)", () => {
       await publicClient.waitForTransactionReceipt({ hash });
     }
 
-    // Deploy XochiZKPOracle(verifier, owner, configHash)
+    // Deploy XochiZKPOracle(verifier, owner, configHash, providerIds).
+    // Audit F-2: constructor takes initialProviderIds atomically.
     configHash = keccak256(toHex("test-config"));
     const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
-    const oracleArgs = (padHex(verifierAddress, { size: 32 }) +
-      padHex(OWNER, { size: 32 }).slice(2) +
-      configHash.slice(2)) as Hex;
+    const oracleArgs = encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "uint256[]" },
+      ],
+      [verifierAddress, OWNER, configHash, [1n]],
+    );
     oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);
 
     // Register a reporting threshold for pattern proofs

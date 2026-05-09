@@ -61,6 +61,10 @@ const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda81
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD";
 
 const SAMPLE_BODY = {
+  // Audit F-6: chain_id + oracle_address bind the signed digest to a
+  // specific deployment.
+  chainId: 1,
+  oracleAddress: "0xabcd1234",
   providerSetHash: PROVIDER_SET_HASH,
   signals: [25, 0, 0, 0, 0, 0, 0, 0],
   weights: [100, 0, 0, 0, 0, 0, 0, 0],

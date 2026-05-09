@@ -36,6 +36,7 @@ import {
   keccak256,
   toHex,
   padHex,
+  encodeAbiParameters,
   type Hex,
   type Address,
 } from "viem";
@@ -244,12 +245,19 @@ beforeAll(async () => {
   await publicClient.waitForTransactionReceipt({ hash: wireHash });
 
   // Deploy the Oracle. Register the bundled compliance config hash so the
-  // Oracle accepts proofs whose `config_hash` public input matches.
+  // Oracle accepts proofs whose `config_hash` public input matches. Audit F-2:
+  // initialProviderIds bound atomically with the config in the constructor.
   configHash = "0x18574f427f33c6c77af53be06544bd749c9a1db855599d950af61ea613df8405" as Hex;
   const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
-  const oracleArgs = (padHex(verifierAddress, { size: 32 }) +
-    padHex(OWNER, { size: 32 }).slice(2) +
-    configHash.slice(2)) as Hex;
+  const oracleArgs = encodeAbiParameters(
+    [
+      { type: "address" },
+      { type: "address" },
+      { type: "bytes32" },
+      { type: "uint256[]" },
+    ],
+    [verifierAddress, OWNER, configHash, [1n]],
+  );
   oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);
 
   // Start the signing daemon in-process.
