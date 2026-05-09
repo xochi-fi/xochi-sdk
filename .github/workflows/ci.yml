@@ -48,10 +48,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Clone erc-xochi-zkp (for contract artifacts)
-        uses: actions/checkout@v4
-        with:
-          repository: xochi-fi/erc-xochi-zkp
-          path: ../erc-xochi-zkp
+        run: git clone --depth=1 https://github.com/xochi-fi/erc-xochi-zkp.git ../erc-xochi-zkp
 
       - name: Build contracts
         working-directory: ../erc-xochi-zkp
