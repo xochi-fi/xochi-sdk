@@ -36,6 +36,10 @@ const TEST_PRIVATE_KEY = new Uint8Array(32);
 for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 
 const SAMPLE_REQUEST: SignSignalsRequest = {
+  // Audit F-6: chain_id + oracle_address bind the signed digest to a
+  // specific deployment.
+  chainId: 1n,
+  oracleAddress: 0xabcd1234n,
   providerSetHash: 0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2n,
   signals: [25n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
   weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],

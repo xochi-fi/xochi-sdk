@@ -29,6 +29,16 @@ export interface HandlerContext {
 }
 
 export interface SignRequestBody {
+  /**
+   * EVM chain ID of the consuming Oracle deployment (audit F-6 binding).
+   * Decimal string or number.
+   */
+  chainId: string | number;
+  /**
+   * Address of the consuming Oracle as a hex string (audit F-6 binding).
+   * Bound into the in-circuit signed digest.
+   */
+  oracleAddress: string;
   /** Hex Field for the (provider_ids, weights) Pedersen commitment. */
   providerSetHash: string;
   /** 8 numeric strings or numbers (zero-padded). */
@@ -94,8 +104,16 @@ function parseSignBody(raw: unknown): SignSignalsRequest {
     throw new Error("timestamp required (string or number)");
   }
   if (typeof body.submitter !== "string") throw new Error("submitter required (hex)");
+  if (typeof body.chainId !== "string" && typeof body.chainId !== "number") {
+    throw new Error("chainId required (string or number)");
+  }
+  if (typeof body.oracleAddress !== "string") {
+    throw new Error("oracleAddress required (hex)");
+  }
 
   return {
+    chainId: asBigint(body.chainId, "chainId"),
+    oracleAddress: asBigint(body.oracleAddress, "oracleAddress"),
     providerSetHash: asBigint(body.providerSetHash, "providerSetHash"),
     signals: body.signals.map((s, i) => asBigint(s, `signals[${String(i)}]`)),
     weights: body.weights.map((w, i) => asBigint(w, `weights[${String(i)}]`)),
