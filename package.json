@@ -30,7 +30,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "test:integration": "vitest run test/integration*.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "daemon": "node --experimental-strip-types daemon/src/index.ts",
