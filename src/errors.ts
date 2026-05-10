@@ -84,7 +84,33 @@ export class EmptyBatchError extends XochiContractError {
 
 export class BatchTooLargeError extends XochiContractError {
   constructor() {
-    super("BatchTooLarge", [], "Batch exceeds MAX_BATCH_SIZE (100)");
+    super("BatchTooLarge", [], "Batch exceeds MAX_BATCH_SIZE (10)");
+  }
+}
+
+export class SignedSignalsRequiredError extends XochiContractError {
+  readonly jurisdictionId: number;
+  readonly proofType: number;
+  constructor(jurisdictionId: number, proofType: number) {
+    super(
+      "SignedSignalsRequired",
+      [jurisdictionId, proofType],
+      `Jurisdiction ${String(jurisdictionId)} requires a signed-variant proof; got proofType ${String(proofType)}`,
+    );
+    this.jurisdictionId = jurisdictionId;
+    this.proofType = proofType;
+  }
+}
+
+export class InvalidSignerPubkeyHashError extends XochiContractError {
+  readonly signerPubkeyHash: string;
+  constructor(signerPubkeyHash: string) {
+    super(
+      "InvalidSignerPubkeyHash",
+      [signerPubkeyHash],
+      `Signer pubkey hash not registered with the Oracle: ${signerPubkeyHash}`,
+    );
+    this.signerPubkeyHash = signerPubkeyHash;
   }
 }
 
@@ -196,6 +222,10 @@ export function decodeContractError(err: unknown, abi: Abi): XochiContractError 
       return new BatchTooLargeError();
     case "BatchLengthMismatch":
       return new BatchLengthMismatchError();
+    case "SignedSignalsRequired":
+      return new SignedSignalsRequiredError(Number(args[0]), Number(args[1]));
+    case "InvalidSignerPubkeyHash":
+      return new InvalidSignerPubkeyHashError(args[0] as string);
     case "VersionRevoked":
       return new VersionRevokedError(Number(args[0]), args[1] as bigint);
     case "TimelockNotElapsed":
