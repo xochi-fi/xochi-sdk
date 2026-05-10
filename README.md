@@ -10,7 +10,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, se
 npm install @xochi/sdk
 ```
 
-Latest published: `0.1.1`. Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
+Latest published on npm: `0.1.1`. Current source: `0.2.0` (unpublished -- adds the F-1..F-9 audit fixes, signed-variant proofs, the `@xochi/sdk/provider` signing module, and additional typed contract errors). Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
 
 ## Quick start
 
@@ -154,6 +154,75 @@ import { generateHighestTierProof } from "@xochi/sdk";
 const highest = await generateHighestTierProof(loader, 60, account.address);
 // Proves score >= 50 (Verified tier)
 ```
+
+## Provider-signed proofs
+
+The signed-variant proofs (`COMPLIANCE_SIGNED`, `RISK_SCORE_SIGNED`) cryptographically anchor the screening signals to a registered provider's secp256k1 signature, closing audit finding I-1 (signal honesty). The Oracle authenticates the signer via its on-chain `_validSignerPubkeyHashes` registry -- only proofs whose `signer_pubkey_hash` public input was previously registered are accepted.
+
+### Direct (server-side) via `signSignals`
+
+```typescript
+import { Barretenberg } from "@aztec/bb.js";
+import { XochiProver } from "@xochi/sdk";
+import { BundledCircuitLoader } from "@xochi/sdk/node";
+import { RawKeyLoader, loadSignerKey, signSignals } from "@xochi/sdk/provider";
+
+const api = await Barretenberg.new();
+const signerKey = await loadSignerKey(new RawKeyLoader(privateKeyBytes, "provider-1"));
+
+// 1. Provider signs the screening bundle. chainId + oracleAddress (audit F-6)
+//    are committed in the in-circuit Pedersen digest the signature is over.
+const signed = await signSignals(api, signerKey, {
+  chainId: 1n, // EVM chain ID of the consuming Oracle
+  oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
+  providerSetHash: BigInt("0x..."),
+  signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n], // length 8, zero-pad inactive
+  weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
+  timestamp: BigInt(Math.floor(Date.now() / 1000)),
+  submitter: BigInt(account.address),
+});
+
+// 2. Generate the signed-variant proof. chainId + oracleAddress MUST match
+//    what was signed -- the in-circuit ECDSA verify recomputes the digest.
+const prover = new XochiProver(new BundledCircuitLoader());
+const result = await prover.proveComplianceSigned({
+  score: 25,
+  jurisdictionId: 0,
+  providerSetHash: "0x...",
+  submitter: account.address,
+  timestamp: String(Math.floor(Date.now() / 1000)),
+  chainId: 1n,
+  oracleAddress: "0x...",
+  signedBundle: signed,
+});
+```
+
+### Via the signing daemon
+
+The repo also ships a daemon (`daemon/src/server.ts`) that holds the signing key and exposes `POST /sign`. Useful when the signing key shouldn't live in the proof-generating process:
+
+```typescript
+const res = await fetch(`${daemonUrl}/sign`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+  body: JSON.stringify({
+    chainId: 1,
+    oracleAddress: "0x...",
+    providerSetHash: "0x...",
+    signals: [25, 0, 0, 0, 0, 0, 0, 0],
+    weights: [100, 0, 0, 0, 0, 0, 0, 0],
+    timestamp: Math.floor(Date.now() / 1000),
+    submitter: account.address,
+  }),
+});
+// 200: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as 0x-hex
+// 409: replay detected (MemoryReplayDb / persistent backing store)
+// 400: validation error
+```
+
+`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(...)`. The daemon enforces replay protection per request.
+
+> **Binding (audit F-6)**: the `chainId` + `oracleAddress` you pass to the signer and the prover MUST be the values you submit against. The on-chain Oracle asserts they match `block.chainid` and `address(this)`; mismatches revert with `PublicInputMismatch`. A mismatch between signer-side and prover-side fails witness generation with `invalid provider signature on signals`.
 
 ## On-chain submission
 
