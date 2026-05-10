@@ -51,6 +51,8 @@ export {
   TradeAlreadyExistsError,
   TradeNotFoundError,
   AttestationNotFoundError,
+  SignedSignalsRequiredError,
+  InvalidSignerPubkeyHashError,
   decodeContractError,
   withDecodedErrors,
 } from "./errors.js";

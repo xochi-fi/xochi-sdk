@@ -17,6 +17,8 @@ import {
   EmptyBatchError,
   VersionRevokedError,
   TradeNotFoundError,
+  SignedSignalsRequiredError,
+  InvalidSignerPubkeyHashError,
 } from "../src/errors.js";
 import { ORACLE_ABI, VERIFIER_ABI } from "../src/abis.js";
 import { SETTLEMENT_REGISTRY_ABI } from "../src/settlement-registry.js";
@@ -88,6 +90,21 @@ describe("decodeContractError", () => {
     );
     expect(err).toBeInstanceOf(TradeNotFoundError);
     expect((err as TradeNotFoundError).tradeId).toBe(tradeId);
+  });
+
+  it("decodes SignedSignalsRequired with jurisdiction + proofType args", () => {
+    const err = decodeContractError(makeRevert("SignedSignalsRequired", [1, 1]), ORACLE_ABI);
+    expect(err).toBeInstanceOf(SignedSignalsRequiredError);
+    expect((err as SignedSignalsRequiredError).jurisdictionId).toBe(1);
+    expect((err as SignedSignalsRequiredError).proofType).toBe(1);
+    expect(err?.message).toMatch(/signed-variant/);
+  });
+
+  it("decodes InvalidSignerPubkeyHash with hash arg", () => {
+    const hash = "0xdeadbeef";
+    const err = decodeContractError(makeRevert("InvalidSignerPubkeyHash", [hash]), ORACLE_ABI);
+    expect(err).toBeInstanceOf(InvalidSignerPubkeyHashError);
+    expect((err as InvalidSignerPubkeyHashError).signerPubkeyHash).toBe(hash);
   });
 
   it("falls back to base XochiContractError for unrecognized error names", () => {

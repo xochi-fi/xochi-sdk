@@ -19,7 +19,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
 - **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types, submitter non-zero)
 - **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts (functions, events, custom errors)
-- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 12 named subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 14 named subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: Pinned `EXPECTED_NOIR_VERSION` + shared `assertCompatibleNoirVersion` (used by both circuit loaders)
 
 ### Trust & Compliance

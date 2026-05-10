@@ -429,7 +429,7 @@ try {
 }
 ```
 
-Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`. Any other Solidity custom error decodes to a base `XochiContractError` with `errorName` + `args` populated.
+Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`. Any other Solidity custom error decodes to a base `XochiContractError` with `errorName` + `args` populated.
 
 For lower-level use, `decodeContractError(err, abi)` returns the typed error or `null`, and `withDecodedErrors(abi, fn)` wraps any async call.
 

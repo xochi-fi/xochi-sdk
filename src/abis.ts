@@ -158,6 +158,9 @@ export const ORACLE_ABI = [
     inputs: [
       { name: "newConfigHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
+      // Audit F-2: providerIds bound atomically with the new config so the
+      // denylist enforcement is in effect before any proof can reference it.
+      { name: "providerIds", type: "uint256[]" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -545,6 +548,20 @@ export const ORACLE_ABI = [
   // Per-proof-type pause
   { type: "error", name: "ProofTypePaused", inputs: [{ name: "proofType", type: "uint8" }] },
   { type: "error", name: "ProofTypeNotPaused", inputs: [{ name: "proofType", type: "uint8" }] },
+  // Signed-variant gating (F-6 lockstep)
+  {
+    type: "error",
+    name: "SignedSignalsRequired",
+    inputs: [
+      { name: "jurisdictionId", type: "uint8" },
+      { name: "proofType", type: "uint8" },
+    ],
+  },
+  {
+    type: "error",
+    name: "InvalidSignerPubkeyHash",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+  },
 ] as const;
 
 export const VERIFIER_ABI = [

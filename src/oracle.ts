@@ -59,8 +59,8 @@ export interface BatchSubmitResult {
   }>;
 }
 
-/** Matches XochiZKPOracle.MAX_BATCH_SIZE. */
-export const MAX_BATCH_SIZE = 100;
+/** Matches XochiZKPOracle.MAX_BATCH_SIZE (audit F-3: lowered to fit mainnet block gas). */
+export const MAX_BATCH_SIZE = 10;
 
 export class XochiOracle {
   constructor(
