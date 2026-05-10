@@ -166,12 +166,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     configHash = keccak256(toHex("test-config"));
     const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
     const oracleArgs = encodeAbiParameters(
-      [
-        { type: "address" },
-        { type: "address" },
-        { type: "bytes32" },
-        { type: "uint256[]" },
-      ],
+      [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
       [verifierAddress, OWNER, configHash, [1n]],
     );
     oracleAddress = await deployContract(ownerWallet, publicClient, oracleBytecode, oracleArgs);

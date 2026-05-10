@@ -2,9 +2,9 @@
 
 All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
-## [0.2.0] - 2026-04-28
+## [0.2.0] - 2026-05-10
 
-**Breaking** -- aligned with the post-audit contracts in `erc-xochi-zkp`. Every consumer must migrate; old SDK proofs do not verify against the new verifiers and old call signatures fail typecheck. The breaking changes fall in three buckets: input-builder shapes (audit fixes H-3, M-2, C-1), the new ATTESTATION circuit (C-1), and the SettlementRegistry `finalizeTrade` signature (H-2).
+**Breaking** -- aligned with the post-audit contracts in `erc-xochi-zkp`. Every consumer must migrate; old SDK proofs do not verify against the new verifiers and old call signatures fail typecheck. The breaking changes fall in five buckets: input-builder shapes (audit fixes H-3, M-2, C-1), the new ATTESTATION circuit (C-1), the SettlementRegistry `finalizeTrade` signature (H-2), the signed-variant digest layout (audit F-6), and the `updateProviderConfig` ABI (audit F-2).
 
 ### Breaking
 
@@ -13,6 +13,9 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 - **`buildAttestationInputs`** -- redesigned for the credentials-tree model (C-1). Removed `credentialHash`, `credentialSubject`, `providerMerkleIndex`, `providerMerklePath`. Renamed `merkleRoot` to `credentialRoot`. New required fields: `credentialAttribute`, `merkleIndex`, `merklePath`. The credential hash is computed in-circuit and bound to (provider_id, submitter, type, attribute, expiry); the leaf is `leaf_hash_value(credential_hash)` in the provider's per-provider credentials Merkle tree.
 - **`SettlementRegistryClient.finalizeTrade(tradeId, patternProofHash)`** -- now takes a third argument `patternPublicInputs: Hex`. Per audit fix H-2, the registry verifies `keccak256(patternPublicInputs) == attestation.publicInputsHash` and that `analysis_type == 1` (anti-structuring). VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected at the registry. Pass the same `publicInputsHex` you sent to `submitCompliance`.
 - **`buildRiskScoreInputs`** -- now rejects trivially-true bounds client-side (audit H-1): throws on `bound_lower=0` for THRESHOLD/GT, `bound_lower>=10000` for THRESHOLD/LT, inverted ranges, and the full-domain `[0, 10000]` range. The Oracle enforces the same rules on-chain via the new `InvalidRiskProofType`/`InvalidRiskDirection`/`TrivialRiskBound`/`InvalidRiskBound` errors.
+- **`buildComplianceSignedInputs` / `buildRiskScoreSignedInputs`** -- now require `chainId: bigint | string | number` and `oracleAddress: Address`. Audit F-6 binds these into the in-circuit Pedersen digest the provider signs over so a single signature cannot mint attestations on multiple Oracle instances or chains. They MUST equal the values the provider used when signing AND the deployment's `block.chainid` / `address(this)` -- the on-chain Oracle reverts with `PublicInputMismatch` otherwise. Public input counts grew accordingly: `COMPLIANCE_SIGNED` 7 → 9, `RISK_SCORE_SIGNED` 9 → 11.
+- **`XochiOracle.updateProviderConfig` ABI** -- gained a third argument `providerIds: uint256[]` (audit F-2). The contract now requires the provider denylist and the config metadata to be bound atomically so denied providers can never reference the new config. Existing two-arg callers fail viem ABI encoding.
+- **`MAX_BATCH_SIZE`** -- lowered 100 → 10 (audit F-3, mainnet block-gas budget). Batches submitted via `XochiOracle.submitBatch` are now capped at 10 sub-trades; oversize batches are rejected client-side and on-chain (`BatchTooLarge`).
 
 ### Added
 
@@ -30,7 +33,7 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
   - `cancelVersionRevocation(proofType, version)` -- aborts.
   - `getPendingRevocation(proofType, version)` -- read pending readyAt.
   - `revocationTimelock()` -- read the 6h constant.
-  The existing immediate `revokeVerifierVersion` is now documented as emergency-only; routine revocations should use the timelocked path.
+    The existing immediate `revokeVerifierVersion` is now documented as emergency-only; routine revocations should use the timelocked path.
 - **Pattern analysis-type constants** exported from `inputs/pattern.ts`:
   `PATTERN_STRUCTURING = 1`, `PATTERN_VELOCITY = 2`, `PATTERN_ROUND_AMOUNT = 3`. Doc note that SettlementRegistry requires STRUCTURING.
 - **New ABI surface in `ORACLE_ABI` / `VERIFIER_ABI` / `SETTLEMENT_REGISTRY_ABI`**:
@@ -39,6 +42,15 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
   - Oracle errors: `InvalidRiskProofType`, `InvalidRiskDirection`, `TrivialRiskBound`, `InvalidRiskBound`, `InvalidAnalysisType`, `ConfigPermanentlyRevoked`, `NotProviderPublisher`, `CredentialRootAlreadyPublished`, `CredentialRootNotFound`, `InvalidProviderId`, `CredentialRootExpired`, `CredentialRootProviderMismatch`, `ProofTypePaused`, `ProofTypeNotPaused`.
   - Verifier events: `VersionRevocationProposed`, `VersionRevocationCancelled`.
   - SettlementRegistry errors: `PatternPublicInputsMismatch`, `PatternAnalysisTypeMismatch`.
+  - Oracle errors (signed-variant gating): `SignedSignalsRequired(uint8 jurisdictionId, uint8 proofType)`, `InvalidSignerPubkeyHash(bytes32 signerPubkeyHash)`.
+- **Signed-variant proof types** (closes audit I-1, signal honesty):
+  - `PROOF_TYPES.COMPLIANCE_SIGNED` (`0x07`) -- compliance with provider-signed signals.
+  - `PROOF_TYPES.RISK_SCORE_SIGNED` (`0x08`) -- risk-score claim with provider-signed signals.
+  - `XochiProver.proveComplianceSigned()` / `XochiProver.proveRiskScoreSigned()`.
+  - `buildComplianceSignedInputs` / `buildRiskScoreSignedInputs` input builders.
+- **`@xochi/sdk/provider` subpath export** -- server-side signing surface for provider operators. Public exports include `signSignals`, `loadSignerKey`, `RawKeyLoader` / `HexKeyLoader`, `MemoryReplayDb` + `signSignalsWithReplayProtection`, EIP-712 credential-root signing helpers, and the Pedersen primitives (`computeSignedPayloadHash`, `computeSignerPubkeyHash`). Excluded from the browser bundle.
+- **Reference signing daemon** in `daemon/` -- HTTP server hosting the signer key with `POST /sign` (replay-protected, audit-logged), `POST /sign-credential-root`, and `GET /pubkey-hash` for one-time on-chain registration. Not part of the npm package; run from source.
+- **Typed contract errors** -- new wrappers `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError` decoded from the matching ORACLE_ABI errors via `decodeContractError` / `withDecodedErrors`. Total typed wrappers now 14.
 
 ### Changed
 
@@ -87,9 +99,34 @@ await registry.finalizeTrade(tradeId, patternProofHash);
 
 // after (audit H-2)
 await registry.finalizeTrade(tradeId, patternProofHash, patternPublicInputs);
+
+// updateProviderConfig -- before
+await oracle.updateProviderConfig(newConfigHash, metadataURI);
+
+// after (audit F-2)
+await oracle.updateProviderConfig(newConfigHash, metadataURI, providerIds);
+
+// MAX_BATCH_SIZE consumers -- batches > 10 now revert (audit F-3)
+const batches = chunk(allSubTrades, MAX_BATCH_SIZE); // MAX_BATCH_SIZE === 10
+
+// Signed-variant proofs -- new since 0.1.x; require chainId + oracleAddress (audit F-6)
+import { signSignals } from "@xochi/sdk/provider";
+const signed = await signSignals(api, signerKey, {
+  chainId: 1n,
+  oracleAddress: BigInt("0x..."), // bound into the in-circuit signed digest
+  providerSetHash, signals, weights, timestamp, submitter,
+});
+const proof = await prover.proveComplianceSigned({
+  ...complianceFields,
+  chainId: 1n,                    // MUST equal what was signed
+  oracleAddress: "0x...",
+  signedBundle: signed,
+});
 ```
 
 For ATTESTATION integrators, the provider must register a publisher EOA via the oracle owner (`oracle.setProviderPublisher`) and then publish credential roots (`oracle.publishCredentialRoot`) before any user can prove against that provider. Roots have a 48-hour TTL.
+
+For COMPLIANCE_SIGNED / RISK_SCORE_SIGNED integrators, the provider's signing pubkey must be registered on the Oracle via `oracle.registerSignerPubkeyHash(signerPubkeyHash)` (read it from the daemon's `GET /pubkey-hash` or compute it locally via `computeSignerPubkeyHash`). Unregistered hashes revert with `InvalidSignerPubkeyHash`.
 
 ## [0.1.1] - 2026-04-25
 
