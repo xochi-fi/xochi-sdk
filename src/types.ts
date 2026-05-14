@@ -3,6 +3,7 @@ import type { Hex } from "viem";
 export type CircuitName =
   | "compliance"
   | "compliance_signed"
+  | "compliance_multi_signed"
   | "risk_score"
   | "risk_score_signed"
   | "pattern"

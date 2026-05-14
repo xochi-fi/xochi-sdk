@@ -13,7 +13,13 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
 import type { Barretenberg } from "@aztec/bb.js";
 
-import { computeSignedPayloadHash, computeSignerPubkeyHash, bytesToHex } from "./pedersen.js";
+import {
+  computeSignedPayloadHash,
+  computeSlotPayloadHash,
+  computeSignerPubkeyHash,
+  bytesToHex,
+  MAX_PROVIDERS_MULTI,
+} from "./pedersen.js";
 import type { SignerKey } from "./keystore.js";
 
 /** What the provider knows / produces about a screening result. */
@@ -81,6 +87,86 @@ export async function signSignals(
   // the malleability factor.
   const sig = secp256k1.sign(payloadHash, key.privateKey, { lowS: true });
   const signature = sig.toCompactRawBytes(); // 64 bytes: r || s
+
+  const signerPubkeyHash = await computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY);
+
+  return {
+    signature,
+    pubkeyX: key.publicKeyX,
+    pubkeyY: key.publicKeyY,
+    signerPubkeyHash,
+    payloadHash,
+  };
+}
+
+/**
+ * Per-slot request for the multi-provider signed proof type (0x09).
+ *
+ * Each slot signs a digest that embeds `slotIndex`, so a signature minted for
+ * slot i CANNOT be placed in slot j -- the in-circuit ECDSA verify will fail.
+ * Orchestrating M independent signers across N slots is the caller's job;
+ * `signSlotPayload` only produces one slot's signature.
+ */
+export interface SignSlotRequest {
+  /** Slot position in the proof's signer array. MUST be in [0, MAX_PROVIDERS_MULTI). */
+  slotIndex: number;
+  /** EVM chain ID of the consuming Oracle deployment (audit F-6). */
+  chainId: bigint;
+  /** Address of the consuming Oracle as a Field bigint (audit F-6). */
+  oracleAddress: bigint;
+  /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG). */
+  jurisdictionId: number;
+  /** Pedersen commitment to (provider_ids, weights), shared across slots. */
+  providerSetHash: bigint;
+  /** Config hash, shared across slots. */
+  configHash: bigint;
+  /** Per-provider risk signals (0..100). MUST be length 8. */
+  signals: bigint[];
+  /** Per-provider weights. MUST be length 8. */
+  weights: bigint[];
+  /** Block-aligned timestamp the proof binds to (seconds). */
+  timestamp: bigint;
+  /** Submitter EOA address as a Field bigint (uint160). */
+  submitter: bigint;
+}
+
+/**
+ * Sign a single slot of a COMPLIANCE_MULTI_SIGNED bundle. Output matches the
+ * shape `proveComplianceMultiSigned` expects for the corresponding slot.
+ *
+ * `slotIndex` is part of the signed digest -- copying the signature to a
+ * different slot at proof-generation time will fail the in-circuit verifier.
+ */
+export async function signSlotPayload(
+  api: Barretenberg,
+  key: SignerKey,
+  req: SignSlotRequest,
+): Promise<SignSignalsResult> {
+  if (
+    !Number.isInteger(req.slotIndex) ||
+    req.slotIndex < 0 ||
+    req.slotIndex >= MAX_PROVIDERS_MULTI
+  ) {
+    throw new Error(
+      `slotIndex must be an integer in [0, ${String(MAX_PROVIDERS_MULTI)}); got ${String(req.slotIndex)}`,
+    );
+  }
+
+  const payloadHash = await computeSlotPayloadHash(api, {
+    slotIndex: req.slotIndex,
+    chainId: req.chainId,
+    oracleAddress: req.oracleAddress,
+    jurisdictionId: req.jurisdictionId,
+    providerSetHash: req.providerSetHash,
+    configHash: req.configHash,
+    signals: req.signals,
+    weights: req.weights,
+    timestamp: req.timestamp,
+    submitter: req.submitter,
+  });
+
+  const sig = secp256k1.sign(payloadHash, key.privateKey, { lowS: true });
+  const signature = sig.toCompactRawBytes();
 
   const signerPubkeyHash = await computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY);
 

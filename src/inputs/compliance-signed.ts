@@ -12,6 +12,7 @@
 
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
+import { bytesToHexField } from "../provider/pedersen.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 
 const MAX_PROVIDERS = 8;
@@ -78,15 +79,6 @@ function bytesToNumStrings(bytes: Uint8Array, expected: number, label: string): 
   return Array.from(bytes, (b) => String(b));
 }
 
-function bytesToHexField(bytes: Uint8Array): string {
-  if (bytes.length !== 32) {
-    throw new Error(`field must be 32 bytes; got ${String(bytes.length)}`);
-  }
-  let hex = "0x";
-  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return hex;
-}
-
 export function buildComplianceSignedInputs(
   opts: ComplianceSignedInput,
 ): Record<string, string | string[]> {
@@ -132,10 +124,9 @@ export function buildComplianceSignedInputs(
   }
 
   // Score must be below the jurisdiction threshold (same constraint as unsigned).
-  let sum = 0;
-  for (let i = 0; i < numProviders; i++) {
-    sum += Number(signals[i]) * Number(weights[i]);
-  }
+  const sum = signals
+    .slice(0, numProviders)
+    .reduce((acc, s, i) => acc + Number(s) * Number(weights[i]), 0);
   const scoreBps = Math.floor((sum * 100) / weightSum);
   if (scoreBps >= threshold) {
     throw new Error(

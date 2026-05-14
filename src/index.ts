@@ -29,6 +29,8 @@ export {
   PUBLIC_INPUT_COUNTS,
   PATTERN_TIME_WINDOW_MIN,
   PATTERN_TIME_WINDOW_MAX,
+  MAX_PROVIDERS_MULTI,
+  MIN_MULTI_PROVIDER_THRESHOLDS,
   proofTypeToCircuit,
   circuitToProofType,
 } from "./constants.js";
@@ -53,6 +55,13 @@ export {
   AttestationNotFoundError,
   SignedSignalsRequiredError,
   InvalidSignerPubkeyHashError,
+  InsufficientSignersError,
+  BelowJurisdictionMinProvidersError,
+  DuplicateSignerError,
+  InvalidThresholdMError,
+  InvalidPublicInputLengthError,
+  UnalignedPublicInputsError,
+  SettlementRootMismatchError,
   decodeContractError,
   withDecodedErrors,
 } from "./errors.js";
@@ -106,6 +115,7 @@ export { PxeBridgeClient } from "./pxe-bridge-client.js";
 // Input builders
 export { buildComplianceInputs } from "./inputs/compliance.js";
 export { buildComplianceSignedInputs } from "./inputs/compliance-signed.js";
+export { buildComplianceMultiSignedInputs } from "./inputs/compliance-multi-signed.js";
 export { buildRiskScoreInputs } from "./inputs/risk-score.js";
 export { buildRiskScoreSignedInputs } from "./inputs/risk-score-signed.js";
 export { buildPatternInputs } from "./inputs/pattern.js";
@@ -150,6 +160,10 @@ export type {
 } from "./inputs/risk-score-signed.js";
 export type { ComplianceInput } from "./inputs/compliance.js";
 export type { ComplianceSignedInput, SignedSignalsBundle } from "./inputs/compliance-signed.js";
+export type {
+  ComplianceMultiSignedInput,
+  MultiSignedSlot,
+} from "./inputs/compliance-multi-signed.js";
 export type { MembershipInput } from "./inputs/membership.js";
 export type { NonMembershipInput } from "./inputs/non-membership.js";
 export type { PatternInput } from "./inputs/pattern.js";

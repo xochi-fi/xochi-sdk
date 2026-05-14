@@ -148,6 +148,7 @@ describe("pattern proof", () => {
       timeWindow: 86400,
       txSetHash: "0x2231d26d52515af30cbb6e91834cdb9e3d1d36575f160cbb4f6ebbb3c3dd8dad",
       submitter: SUBMITTER,
+      settlementRoot: "0x" + "0".repeat(64),
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);

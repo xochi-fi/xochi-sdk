@@ -17,6 +17,7 @@ import { Barretenberg } from "@aztec/bb.js";
 import {
   pedersenHash,
   computeSignedPayloadHash,
+  computeSlotPayloadHash,
   computeSignerPubkeyHash,
   coordinateToFields,
   fieldToBytes,
@@ -24,6 +25,8 @@ import {
   bytesToHex,
   DOMAIN_SIGNED_SIGNALS,
   DOMAIN_SIGNER_PUBKEY,
+  DOMAIN_MULTI_SIGNED_SIGNALS,
+  MAX_PROVIDERS_MULTI,
 } from "../src/provider/pedersen.js";
 
 let api: Barretenberg;
@@ -97,9 +100,17 @@ describe("pedersenHash basic shape", () => {
   it("differs across DOMAIN tags", async () => {
     const sigInputs = [DOMAIN_SIGNED_SIGNALS, 0n, 0n, 0n];
     const pkInputs = [DOMAIN_SIGNER_PUBKEY, 0n, 0n, 0n];
+    const multiInputs = [DOMAIN_MULTI_SIGNED_SIGNALS, 0n, 0n, 0n];
     const h1 = await pedersenHash(api, sigInputs);
     const h2 = await pedersenHash(api, pkInputs);
+    const h3 = await pedersenHash(api, multiInputs);
     expect(bytesToHex(h1)).not.toBe(bytesToHex(h2));
+    expect(bytesToHex(h1)).not.toBe(bytesToHex(h3));
+    expect(bytesToHex(h2)).not.toBe(bytesToHex(h3));
+  });
+
+  it("exports stable MAX_PROVIDERS_MULTI", () => {
+    expect(MAX_PROVIDERS_MULTI).toBe(5);
   });
 });
 
@@ -131,6 +142,75 @@ describe("Noir parity vectors", () => {
     expect(digest.length).toBe(32);
     // PARITY_VECTOR_1 -- regenerate via Noir test if Pedersen layout ever changes.
     expect(bytesToHex(digest)).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("slot payload hash for fixture inputs (multi-signed)", async () => {
+    // Fixture mirrors `circuits/shared/src/multi_sig.nr::test_slot_payload_hash_deterministic`
+    // (slot_index=0, chain_id=1, oracle_address=0xabcd1234, jurisdiction_id=0,
+    // provider_set_hash=0xdead, config_hash=0xbeef, ...). The circuit-side
+    // parity test (`test_parity_with_sdk_slot_payload_hash`) must hardcode the
+    // value this test prints.
+    const digest = await computeSlotPayloadHash(api, {
+      slotIndex: 0,
+      chainId: 1n,
+      oracleAddress: 0xabcd1234n,
+      jurisdictionId: 0,
+      providerSetHash: 0xdeadn,
+      configHash: 0xbeefn,
+      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
+      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
+      timestamp: 1700000000n,
+      submitter: 0xcafen,
+    });
+    // eslint-disable-next-line no-console
+    console.log("[parity] slot_payload_hash =", bytesToHex(digest));
+    expect(digest.length).toBe(32);
+    expect(bytesToHex(digest)).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("slot payload hash domain-separates from single-signer payload", async () => {
+    // Same fields as test_signed_payload_hash but routed through the multi-signed
+    // helper -- domain tag and extra fields (slot_index, jurisdiction, config_hash)
+    // must produce a distinct digest.
+    const single = await computeSignedPayloadHash(api, {
+      chainId: 1n,
+      oracleAddress: 0xabcd1234n,
+      providerSetHash: 0xdeadn,
+      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
+      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
+      timestamp: 1700000000n,
+      submitter: 0xcafen,
+    });
+    const multi = await computeSlotPayloadHash(api, {
+      slotIndex: 0,
+      chainId: 1n,
+      oracleAddress: 0xabcd1234n,
+      jurisdictionId: 0,
+      providerSetHash: 0xdeadn,
+      configHash: 0n,
+      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
+      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
+      timestamp: 1700000000n,
+      submitter: 0xcafen,
+    });
+    expect(bytesToHex(single)).not.toBe(bytesToHex(multi));
+  });
+
+  it("slot payload hash changes when slot_index changes", async () => {
+    const base = {
+      chainId: 1n,
+      oracleAddress: 0xabcd1234n,
+      jurisdictionId: 0,
+      providerSetHash: 0xdeadn,
+      configHash: 0xbeefn,
+      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
+      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
+      timestamp: 1700000000n,
+      submitter: 0xcafen,
+    };
+    const a = await computeSlotPayloadHash(api, { ...base, slotIndex: 0 });
+    const b = await computeSlotPayloadHash(api, { ...base, slotIndex: 1 });
+    expect(bytesToHex(a)).not.toBe(bytesToHex(b));
   });
 
   it("signer pubkey hash for fixture pubkey", async () => {

@@ -336,6 +336,126 @@ describe("POST /sign-credential-root", () => {
   });
 });
 
+describe("POST /sign-multi", () => {
+  const SAMPLE_MULTI_BODY = {
+    slotIndex: 0,
+    chainId: 1,
+    oracleAddress: "0xabcd1234",
+    jurisdictionId: 0, // EU
+    providerSetHash: PROVIDER_SET_HASH,
+    configHash: "0xbeef",
+    signals: [25, 0, 0, 0, 0, 0, 0, 0],
+    weights: [100, 0, 0, 0, 0, 0, 0, 0],
+    timestamp: "1700000000",
+    submitter: SUBMITTER,
+  };
+
+  it("returns a signature that ECDSA-verifies against the slot payload digest", async () => {
+    replayDb.reset();
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      signature: string;
+      pubkeyX: string;
+      pubkeyY: string;
+      payloadHash: string;
+    };
+
+    const sigBytes = Buffer.from(body.signature.slice(2), "hex");
+    const xBytes = Buffer.from(body.pubkeyX.slice(2), "hex");
+    const yBytes = Buffer.from(body.pubkeyY.slice(2), "hex");
+    const digest = Buffer.from(body.payloadHash.slice(2), "hex");
+    const uncompressed = new Uint8Array(65);
+    uncompressed[0] = 0x04;
+    uncompressed.set(xBytes, 1);
+    uncompressed.set(yBytes, 33);
+    expect(secp256k1.verify(sigBytes, digest, uncompressed)).toBe(true);
+  });
+
+  it("produces a distinct payloadHash when slotIndex changes", async () => {
+    replayDb.reset();
+    const r0 = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ ...SAMPLE_MULTI_BODY, slotIndex: 0 }),
+    });
+    expect(r0.status).toBe(200);
+    const r1 = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ ...SAMPLE_MULTI_BODY, slotIndex: 1 }),
+    });
+    expect(r1.status).toBe(200);
+    const b0 = (await r0.json()) as { payloadHash: string };
+    const b1 = (await r1.json()) as { payloadHash: string };
+    expect(b0.payloadHash).not.toBe(b1.payloadHash);
+  });
+
+  it("rejects malformed body with 400", async () => {
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ slotIndex: 0 }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("BAD_REQUEST");
+  });
+
+  it("rejects slotIndex out of range with 400", async () => {
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ ...SAMPLE_MULTI_BODY, slotIndex: 5 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects duplicate request with 409 REPLAY", async () => {
+    replayDb.reset();
+    const ok = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(ok.status).toBe(200);
+    const dup = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(dup.status).toBe(409);
+    const body = (await dup.json()) as { code: string };
+    expect(body.code).toBe("REPLAY");
+  });
+
+  it("audits each accepted sign", async () => {
+    replayDb.reset();
+    audit.events.length = 0;
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(res.status).toBe(200);
+    expect(audit.events.length).toBe(1);
+    expect(audit.events[0].outcome).toBe("signed");
+  });
+
+  it("rejects /sign-multi without bearer token", async () => {
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("404", () => {
   it("returns 404 for unknown routes", async () => {
     const res = await fetch(`${baseUrl}/nope`, { headers: authHeaders() });

@@ -37,16 +37,17 @@ await prover.destroy();
 
 ## Proof types
 
-| Type              | Method                    | Use case                                                |
-| ----------------- | ------------------------- | ------------------------------------------------------- |
-| Compliance        | `proveCompliance()`       | Risk score below jurisdiction threshold                 |
-| Risk Score        | `proveRiskScore()`        | Custom threshold (GT/LT) or range proofs                |
-| Pattern           | `provePattern()`          | Anti-structuring, velocity, round amounts               |
-| Attestation       | `proveAttestation()`      | KYC/credential verification                             |
-| Membership        | `proveMembership()`       | Merkle inclusion (whitelist)                            |
-| Non-Membership    | `proveNonMembership()`    | Sorted Merkle adjacency (sanctions exclusion)           |
-| Compliance Signed | `proveComplianceSigned()` | Compliance with provider-signed signals (anti-grinding) |
-| Risk Score Signed | `proveRiskScoreSigned()`  | Risk score claim with provider-signed signals           |
+| Type                    | Method                         | Use case                                                |
+| ----------------------- | ------------------------------ | ------------------------------------------------------- |
+| Compliance              | `proveCompliance()`            | Risk score below jurisdiction threshold                 |
+| Risk Score              | `proveRiskScore()`             | Custom threshold (GT/LT) or range proofs                |
+| Pattern                 | `provePattern()`               | Anti-structuring, velocity, round amounts               |
+| Attestation             | `proveAttestation()`           | KYC/credential verification                             |
+| Membership              | `proveMembership()`            | Merkle inclusion (whitelist)                            |
+| Non-Membership          | `proveNonMembership()`         | Sorted Merkle adjacency (sanctions exclusion)           |
+| Compliance Signed       | `proveComplianceSigned()`      | Compliance with provider-signed signals (anti-grinding) |
+| Risk Score Signed       | `proveRiskScoreSigned()`       | Risk score claim with provider-signed signals           |
+| Compliance Multi-Signed | `proveComplianceMultiSigned()` | M-of-N independent provider signatures (up to 5 slots)  |
 
 ## Multi-provider support
 
@@ -223,6 +224,103 @@ const res = await fetch(`${daemonUrl}/sign`, {
 `GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(...)`. The daemon enforces replay protection per request.
 
 > **Binding (audit F-6)**: the `chainId` + `oracleAddress` you pass to the signer and the prover MUST be the values you submit against. The on-chain Oracle asserts they match `block.chainid` and `address(this)`; mismatches revert with `PublicInputMismatch`. A mismatch between signer-side and prover-side fails witness generation with `invalid provider signature on signals`.
+
+## M-of-N multi-provider proofs
+
+`COMPLIANCE_MULTI_SIGNED` (`0x09`) bundles up to **5 parallel signer slots** in a single proof. M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest AND each must individually attest the subject is below the jurisdiction's high-risk floor. Trust upgrade over `0x07`: one signer says "compliant" vs. M independent signers each saying "compliant", AND-aggregated.
+
+Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `JurisdictionConfig.minMultiProviderThreshold` on the Oracle):
+
+| Jurisdiction | Floor on M |
+| ------------ | ---------- |
+| EU           | 1          |
+| US           | 2          |
+| UK           | 1          |
+| SG           | 2          |
+
+### Slot semantics
+
+- Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
+- A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically -- callers never have to know it.
+- Active count must be `>= thresholdM`. Distinct signers required across active slots.
+- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(...)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
+
+### Direct (server-side) via `signSlotPayload`
+
+```typescript
+import { Barretenberg } from "@aztec/bb.js";
+import { XochiProver } from "@xochi/sdk";
+import { BundledCircuitLoader } from "@xochi/sdk/node";
+import { RawKeyLoader, loadSignerKey, signSlotPayload } from "@xochi/sdk/provider";
+
+const api = await Barretenberg.new();
+const keyA = await loadSignerKey(new RawKeyLoader(privKeyA, "provider-A"));
+const keyB = await loadSignerKey(new RawKeyLoader(privKeyB, "provider-B"));
+
+const shared = {
+  chainId: 1n,
+  oracleAddress: BigInt("0x..."),
+  jurisdictionId: 1, // US -> floor = 2
+  providerSetHash: BigInt("0x..."),
+  configHash: BigInt("0x..."),
+  signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
+  weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
+  timestamp: BigInt(Math.floor(Date.now() / 1000)),
+  submitter: BigInt(account.address),
+};
+
+// Two daemons each sign their assigned slot. Slot indices are NOT interchangeable.
+const slotA = await signSlotPayload(api, keyA, { ...shared, slotIndex: 0 });
+const slotB = await signSlotPayload(api, keyB, { ...shared, slotIndex: 1 });
+
+const prover = new XochiProver(new BundledCircuitLoader());
+const result = await prover.proveComplianceMultiSigned({
+  jurisdictionId: 1,
+  thresholdM: 2,
+  providerSetHash: "0x...",
+  configHash: "0x...",
+  timestamp: String(shared.timestamp),
+  submitter: account.address,
+  chainId: 1n,
+  oracleAddress: "0x...",
+  slots: [
+    { signals: [25, 0, 0, 0, 0, 0, 0, 0], weights: [100, 0, 0, 0, 0, 0, 0, 0], ...slotA },
+    { signals: [25, 0, 0, 0, 0, 0, 0, 0], weights: [100, 0, 0, 0, 0, 0, 0, 0], ...slotB },
+    null,
+    null,
+    null,
+  ],
+});
+```
+
+### Via the signing daemon
+
+`POST /sign-multi` signs ONE slot per call. Orchestrating M daemons across N slots is the caller's job:
+
+```typescript
+const res = await fetch(`${daemonAUrl}/sign-multi`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+  body: JSON.stringify({
+    slotIndex: 0,
+    chainId: 1,
+    oracleAddress: "0x...",
+    jurisdictionId: 1,
+    providerSetHash: "0x...",
+    configHash: "0x...",
+    signals: [25, 0, 0, 0, 0, 0, 0, 0],
+    weights: [100, 0, 0, 0, 0, 0, 0, 0],
+    timestamp: Math.floor(Date.now() / 1000),
+    submitter: account.address,
+  }),
+});
+// 200: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as 0x-hex
+// 409: replay detected   400: validation error   401: unauthorized
+```
+
+> **Inactive-slot padding.** If you build the witness yourself instead of using `buildComplianceMultiSignedInputs`, inactive slots MUST use `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`. All-zero weights cause `compute_risk_score` to divide by zero. The input builder handles this for `null` slots automatically.
+
+> **New typed errors.** Reverts from the Oracle decode to `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError` via `decodeContractError` / `withDecodedErrors`.
 
 ## On-chain submission
 
@@ -465,8 +563,10 @@ proofTypeToCircuit(0x01); // "compliance"
 circuitToProofType("risk_score"); // 0x02
 PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, attestation: 6,
 //      membership: 5, non_membership: 5,
-//      compliance_signed: 9, risk_score_signed: 11
-// (signed variants include signer_pubkey_hash + chain_id + oracle_address)
+//      compliance_signed: 9, risk_score_signed: 11,
+//      compliance_multi_signed: 14
+// (signed variants include signer_pubkey_hash + chain_id + oracle_address;
+//  multi-signed adds threshold_m + 5x signer_pubkey_hash)
 ```
 
 ## Typed contract errors

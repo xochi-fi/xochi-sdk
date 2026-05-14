@@ -14,6 +14,7 @@
 
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
+import { bytesToHexField } from "../provider/pedersen.js";
 import { validateActiveProviders, validateSubmitter } from "./validate.js";
 import type { SignedSignalsBundle } from "./compliance-signed.js";
 
@@ -118,20 +119,10 @@ function bytesToNumStrings(bytes: Uint8Array, expected: number, label: string): 
   return Array.from(bytes, (b) => String(b));
 }
 
-function bytesToHexField(bytes: Uint8Array): string {
-  if (bytes.length !== 32) {
-    throw new Error(`field must be 32 bytes; got ${String(bytes.length)}`);
-  }
-  let hex = "0x";
-  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return hex;
-}
-
 function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
-  let sum = 0;
-  for (let i = 0; i < p.numProviders; i++) {
-    sum += Number(p.signals[i]) * Number(p.weights[i]);
-  }
+  const sum = p.signals
+    .slice(0, p.numProviders)
+    .reduce((acc, s, i) => acc + Number(s) * Number(p.weights[i]), 0);
   return Math.floor((sum * 100) / p.weightSum);
 }
 

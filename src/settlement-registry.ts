@@ -118,6 +118,14 @@ export const SETTLEMENT_REGISTRY_ABI = [
     outputs: [{ name: "oracle", type: "address" }],
     stateMutability: "view",
   },
+  // H-1: opaque declarative binding between PATTERN proofs and a trade's sub-settlements.
+  {
+    type: "function",
+    name: "computeSettlementRoot",
+    inputs: [{ name: "tradeId", type: "bytes32" }],
+    outputs: [{ name: "root", type: "bytes32" }],
+    stateMutability: "view",
+  },
   // Events
   {
     type: "event",
@@ -230,6 +238,15 @@ export const SETTLEMENT_REGISTRY_ABI = [
       { name: "actual", type: "uint256" },
     ],
   },
+  // H-1: pattern.settlement_root must equal computeSettlementRoot(tradeId)
+  {
+    type: "error",
+    name: "SettlementRootMismatch",
+    inputs: [
+      { name: "expected", type: "bytes32" },
+      { name: "actual", type: "bytes32" },
+    ],
+  },
 ] as const;
 
 export class SettlementRegistryClient {
@@ -319,6 +336,26 @@ export class SettlementRegistryClient {
       functionName: "getSettlement",
       args: [tradeId],
     })) as Settlement;
+  }
+
+  /**
+   * Compute the `settlement_root` value a PATTERN proof MUST commit to in order
+   * to finalize `tradeId` (audit H-1).
+   *
+   * Provers MUST call this BEFORE generating the PATTERN proof and pass the
+   * result as `settlementRoot` in `PatternInput`. The registry's `finalizeTrade`
+   * compares the proof's `settlement_root` public input to this value byte-for-byte;
+   * mismatches revert with `SettlementRootMismatch`.
+   *
+   * Reverts on-chain with `TradeNotFound` if the trade isn't registered.
+   */
+  async computeSettlementRoot(tradeId: Hex): Promise<Hex> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: SETTLEMENT_REGISTRY_ABI,
+      functionName: "computeSettlementRoot",
+      args: [tradeId],
+    })) as Hex;
   }
 
   async getSubSettlements(tradeId: Hex): Promise<SubSettlement[]> {

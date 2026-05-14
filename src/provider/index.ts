@@ -13,8 +13,12 @@
 export {
   DOMAIN_SIGNED_SIGNALS,
   DOMAIN_SIGNER_PUBKEY,
+  DOMAIN_MULTI_SIGNED_SIGNALS,
+  MAX_PROVIDERS_MULTI,
   bytesToHex,
+  bytesToHexField,
   computeSignedPayloadHash,
+  computeSlotPayloadHash,
   computeSignerPubkeyHash,
   pedersenHash,
   fieldToBytes,
@@ -34,7 +38,9 @@ export {
 export {
   type SignSignalsRequest,
   type SignSignalsResult,
+  type SignSlotRequest,
   signSignals,
+  signSlotPayload,
   formatSignSignalsResult,
 } from "./signer.js";
 
@@ -59,4 +65,5 @@ export {
   MemoryReplayDb,
   ReplayDetected,
   signSignalsWithReplayProtection,
+  signSlotPayloadWithReplayProtection,
 } from "./replay-db.js";

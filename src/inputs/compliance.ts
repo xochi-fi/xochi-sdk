@@ -81,10 +81,9 @@ export function buildComplianceInputs(opts: ComplianceInput): Record<string, str
   }
 
   // Compute weighted score in basis points
-  let sum = 0;
-  for (let i = 0; i < numProviders; i++) {
-    sum += Number(signals[i]) * Number(weights[i]);
-  }
+  const sum = signals
+    .slice(0, numProviders)
+    .reduce((acc, s, i) => acc + Number(s) * Number(weights[i]), 0);
   const scoreBps = Math.floor((sum * 100) / weightSum);
 
   if (scoreBps >= threshold) {

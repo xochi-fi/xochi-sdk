@@ -14,6 +14,7 @@ import { buildAttestationInputs } from "../src/inputs/attestation.js";
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 
 const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
+const ZERO_SETTLEMENT_ROOT = "0x" + "0".repeat(64);
 
 // ============================================================
 // Risk Score
@@ -454,10 +455,12 @@ describe("buildPatternInputs", () => {
       timeWindow: 86400,
       txSetHash: "0xabcd",
       submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
     });
 
     expect(result.analysis_type).toBe("1");
     expect(result.result).toBe("1");
+    expect(result.settlement_root).toBe(ZERO_SETTLEMENT_ROOT);
     expect(result.amounts).toHaveLength(16); // padded
     expect(result.timestamps).toHaveLength(16);
     expect((result.amounts as string[])[0]).toBe("9000");
@@ -476,6 +479,7 @@ describe("buildPatternInputs", () => {
       timeWindow: 86400,
       txSetHash: "0x1234",
       submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
     });
 
     expect(result.analysis_type).toBe("2");
@@ -492,6 +496,7 @@ describe("buildPatternInputs", () => {
       timeWindow: 86400,
       txSetHash: "0x5678",
       submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
     });
 
     expect(result.analysis_type).toBe("3");
@@ -508,6 +513,7 @@ describe("buildPatternInputs", () => {
         timeWindow: 3600,
         txSetHash: "0x",
         submitter: SUBMITTER,
+        settlementRoot: ZERO_SETTLEMENT_ROOT,
       }),
     ).toThrow("below minimum");
   });
@@ -523,6 +529,7 @@ describe("buildPatternInputs", () => {
         timeWindow: 8_000_000,
         txSetHash: "0x",
         submitter: SUBMITTER,
+        settlementRoot: ZERO_SETTLEMENT_ROOT,
       }),
     ).toThrow("exceeds maximum");
   });
@@ -536,6 +543,7 @@ describe("buildPatternInputs", () => {
       reportingThreshold: 10000,
       txSetHash: "0x",
       submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
     };
 
     expect(() => buildPatternInputs({ ...base, timeWindow: 86400 })).not.toThrow();
@@ -554,6 +562,7 @@ describe("buildPatternInputs", () => {
         timeWindow: 86400,
         txSetHash: "0x",
         submitter: SUBMITTER,
+        settlementRoot: ZERO_SETTLEMENT_ROOT,
       }),
     ).toThrow("Max 16");
   });

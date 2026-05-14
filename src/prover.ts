@@ -16,6 +16,10 @@ import {
   buildComplianceSignedInputs,
   type ComplianceSignedInput,
 } from "./inputs/compliance-signed.js";
+import {
+  buildComplianceMultiSignedInputs,
+  type ComplianceMultiSignedInput,
+} from "./inputs/compliance-multi-signed.js";
 import { buildMembershipInputs, type MembershipInput } from "./inputs/membership.js";
 import { buildNonMembershipInputs, type NonMembershipInput } from "./inputs/non-membership.js";
 import { buildPatternInputs, type PatternInput } from "./inputs/pattern.js";
@@ -35,7 +39,7 @@ export class XochiProver {
 
   private async prove(
     circuitName: CircuitName,
-    inputs: Record<string, string | string[]>,
+    inputs: Record<string, unknown>,
   ): Promise<ProofResult> {
     const circuit = await this.loader.load(circuitName);
     const api = await this.getApi();
@@ -43,7 +47,8 @@ export class XochiProver {
     const noir = new Noir(circuit as any);
     const backend = new UltraHonkBackend(circuit.bytecode, api);
 
-    const { witness } = await noir.execute(inputs);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { witness } = await noir.execute(inputs as any);
     const proofData = await backend.generateProof(witness, {
       verifierTarget: "evm",
     });
@@ -87,6 +92,34 @@ export class XochiProver {
   async proveRiskScoreSigned(opts: RiskScoreSignedInput): Promise<ProofResult> {
     const inputs = buildRiskScoreSignedInputs(opts);
     return this.prove("risk_score_signed", inputs);
+  }
+
+  /**
+   * Generate a COMPLIANCE_MULTI_SIGNED proof (proof type 0x09).
+   *
+   * Bundles up to MAX_PROVIDERS_MULTI (=5) provider signatures into a single
+   * proof. M of them (`thresholdM`) must each be a valid secp256k1 signature
+   * over a slot-specific Pedersen digest AND each must individually attest the
+   * subject is below the jurisdiction's high-risk floor.
+   *
+   * Per-slot signatures are produced by `signSlotPayload()` in src/provider --
+   * each signer signs the digest that embeds its own `slotIndex`. Inactive
+   * slots are passed as `null` in `opts.slots`; the builder fills the
+   * inactive-slot witness convention (weight_sum=1, weights=[1,0..0],
+   * signals=[0;8], zero pubkey/sig) automatically.
+   *
+   * Jurisdiction floors on M (mirrors `JurisdictionConfig.minMultiProviderThreshold`):
+   *   - EU=1, UK=1
+   *   - US=2, SG=2
+   *
+   * The Oracle additionally requires each active signer's pubkey hash to be in
+   * its `_validSignerPubkeyHashes` registry; reverts that come back as typed
+   * errors are `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`,
+   * `DuplicateSignerError`, and `InvalidThresholdMError`.
+   */
+  async proveComplianceMultiSigned(opts: ComplianceMultiSignedInput): Promise<ProofResult> {
+    const inputs = buildComplianceMultiSignedInputs(opts);
+    return this.prove("compliance_multi_signed", inputs);
   }
 
   async proveMembership(opts: MembershipInput): Promise<ProofResult> {

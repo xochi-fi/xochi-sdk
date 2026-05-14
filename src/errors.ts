@@ -120,6 +120,92 @@ export class BatchLengthMismatchError extends XochiContractError {
   }
 }
 
+// COMPLIANCE_MULTI_SIGNED (0x09)
+
+export class InsufficientSignersError extends XochiContractError {
+  readonly active: number;
+  readonly required: number;
+  constructor(active: number, required: number) {
+    super(
+      "InsufficientSigners",
+      [active, required],
+      `Multi-signed proof has ${String(active)} active signer(s); need at least ${String(required)}`,
+    );
+    this.active = active;
+    this.required = required;
+  }
+}
+
+export class BelowJurisdictionMinProvidersError extends XochiContractError {
+  readonly jurisdictionId: number;
+  readonly m: number;
+  readonly floor: number;
+  constructor(jurisdictionId: number, m: number, floor: number) {
+    super(
+      "BelowJurisdictionMinProviders",
+      [jurisdictionId, m, floor],
+      `threshold_m=${String(m)} below jurisdiction ${String(jurisdictionId)} floor=${String(floor)}`,
+    );
+    this.jurisdictionId = jurisdictionId;
+    this.m = m;
+    this.floor = floor;
+  }
+}
+
+export class DuplicateSignerError extends XochiContractError {
+  readonly signerPubkeyHash: string;
+  constructor(signerPubkeyHash: string) {
+    super(
+      "DuplicateSigner",
+      [signerPubkeyHash],
+      `Duplicate signer pubkey hash across active slots: ${signerPubkeyHash}`,
+    );
+    this.signerPubkeyHash = signerPubkeyHash;
+  }
+}
+
+export class InvalidThresholdMError extends XochiContractError {
+  readonly thresholdM: number;
+  constructor(thresholdM: number) {
+    super(
+      "InvalidThresholdM",
+      [thresholdM],
+      `threshold_m must be in [1, 5]; got ${String(thresholdM)}`,
+    );
+    this.thresholdM = thresholdM;
+  }
+}
+
+// Public-input shape errors (ProofTypes library)
+
+export class InvalidPublicInputLengthError extends XochiContractError {
+  readonly proofType: number;
+  readonly expected: bigint;
+  readonly actual: bigint;
+  constructor(proofType: number, expected: bigint, actual: bigint) {
+    super(
+      "InvalidPublicInputLength",
+      [proofType, expected, actual],
+      `proofType=${String(proofType)} expected ${String(expected)} public inputs, got ${String(actual)}`,
+    );
+    this.proofType = proofType;
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+export class UnalignedPublicInputsError extends XochiContractError {
+  readonly length: bigint;
+  constructor(length: bigint) {
+    super(
+      "UnalignedPublicInputs",
+      [length],
+      `publicInputs length ${String(length)} is not a multiple of 32`,
+    );
+    this.length = length;
+  }
+}
+
 // ============================================================
 // Verifier errors
 // ============================================================
@@ -180,6 +266,20 @@ export class AttestationNotFoundError extends XochiContractError {
   }
 }
 
+export class SettlementRootMismatchError extends XochiContractError {
+  readonly expected: string;
+  readonly actual: string;
+  constructor(expected: string, actual: string) {
+    super(
+      "SettlementRootMismatch",
+      [expected, actual],
+      `pattern settlement_root mismatch (audit H-1): expected ${expected}, got ${actual}`,
+    );
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
 // ============================================================
 // Decoder
 // ============================================================
@@ -226,6 +326,28 @@ export function decodeContractError(err: unknown, abi: Abi): XochiContractError 
       return new SignedSignalsRequiredError(Number(args[0]), Number(args[1]));
     case "InvalidSignerPubkeyHash":
       return new InvalidSignerPubkeyHashError(args[0] as string);
+    case "InsufficientSigners":
+      return new InsufficientSignersError(Number(args[0]), Number(args[1]));
+    case "BelowJurisdictionMinProviders":
+      return new BelowJurisdictionMinProvidersError(
+        Number(args[0]),
+        Number(args[1]),
+        Number(args[2]),
+      );
+    case "DuplicateSigner":
+      return new DuplicateSignerError(args[0] as string);
+    case "InvalidThresholdM":
+      return new InvalidThresholdMError(Number(args[0]));
+    case "InvalidPublicInputLength":
+      return new InvalidPublicInputLengthError(
+        Number(args[0]),
+        args[1] as bigint,
+        args[2] as bigint,
+      );
+    case "UnalignedPublicInputs":
+      return new UnalignedPublicInputsError(args[0] as bigint);
+    case "SettlementRootMismatch":
+      return new SettlementRootMismatchError(args[0] as string, args[1] as string);
     case "VersionRevoked":
       return new VersionRevokedError(Number(args[0]), args[1] as bigint);
     case "TimelockNotElapsed":

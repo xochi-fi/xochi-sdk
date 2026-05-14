@@ -2,6 +2,35 @@
 
 All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Breaking
+
+- **`buildPatternInputs` / `PatternInput`** -- now requires `settlementRoot: string` (audit H-1). Pre-this-change PATTERN proofs are unsubmittable: the on-chain `ProofTypes.expectedPublicInputCount(PATTERN)` was bumped to 7 with `settlement_root` as input[6], but the SDK was still producing 6-input witnesses. 0.2.0 absorbed the H-2 piece (`patternPublicInputs` arg on `finalizeTrade`) but missed H-1. Callers that intend to finalize a trade MUST first call `SettlementRegistryClient.computeSettlementRoot(tradeId)` and pass the result as `settlementRoot`; callers that don't intend to finalize pass `"0x" + "0".repeat(64)`. The on-chain Oracle is transparent to this value, but `SettlementRegistry.finalizeTrade` enforces equality and reverts with `SettlementRootMismatch` on mismatch.
+- **`PUBLIC_INPUT_COUNTS[0x03]`** -- bumped 6 → 7. The bundled `circuits/pattern.json` was re-synced from `erc-xochi-zkp/circuits/target/` to pick up the post-H-1 ABI.
+
+### Added
+
+- **`SettlementRegistryClient.computeSettlementRoot(tradeId)`** -- view that returns the `bytes32` value a PATTERN proof must commit to in order to bind to `tradeId`. Mirrors `_computeSettlementRoot` on-chain: `bytes32(uint256(keccak256(abi.encode(subTradeCount, proofHashes))) % BN254_FR_MODULUS)`. Provers MUST call this before generating the proof.
+- **Typed contract errors** -- `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `SettlementRootMismatchError`. The first two surface ABI-shape mismatches that were previously opaque selectors (the H-1 absorption gap was originally diagnosed via raw `0xf0b9e463`); the third decodes the H-1 binding-check revert. Total typed wrappers now 21.
+- **`COMPLIANCE_MULTI_SIGNED` (proof type `0x09`)** -- M-of-N multi-provider signed compliance. Bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest AND each must individually attest the subject is below the jurisdiction's high-risk floor. Trust upgrade over `0x07` (one signer "compliant" vs. M independent signers "compliant", AND-aggregated). Mirrors the on-chain validator and verifier shipped in `erc-xochi-zkp` 2026-05-14.
+  - `XochiProver.proveComplianceMultiSigned(opts)` -- new entry point.
+  - `buildComplianceMultiSignedInputs` -- input builder. Takes `slots: (MultiSignedSlot | null)[]` with length exactly 5; `null` slots get the inactive-slot witness padding (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically.
+  - `signSlotPayload(api, key, req)` -- mints one slot's secp256k1 signature over the slot-specific Pedersen digest. Orchestration across M daemons is the caller's responsibility; the signer only signs its own slot.
+  - `signSlotPayloadWithReplayProtection` -- same with the existing `ReplayDb` integration. Replay key is `(submitter, slot_payload_hash)`; `slot_index` is embedded in the digest so a single daemon signing different slots for the same subject produces distinct keys.
+  - `computeSlotPayloadHash` -- bb.js mirror of `xochi_shared::multi_sig::compute_slot_payload_hash`. New domain tag `DOMAIN_MULTI_SIGNED_SIGNALS = 0x4d554c54495f5349` (ASCII "MULTI_SI"); 25-field layout: `[tag, slot_index, chain_id, oracle_address, jurisdiction_id, provider_set_hash, config_hash, signals[0..8], weights[0..8], timestamp, submitter]`. Parity vector locked end-to-end (`test_parity_with_sdk_slot_payload_hash` on the circuit side).
+  - `MAX_PROVIDERS_MULTI` and `MIN_MULTI_PROVIDER_THRESHOLDS` constants (`EU=1, US=2, UK=1, SG=2`, mirrors `JurisdictionConfig.minMultiProviderThreshold` on the Oracle).
+  - Daemon `POST /sign-multi` route -- bearer-/mTLS-authed, replay-protected, audit-logged. Signs ONE slot per call.
+  - Typed contract errors: `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`. Decoded via existing `decodeContractError` / `withDecodedErrors`. Total typed wrappers now 18.
+  - `PUBLIC_INPUT_COUNTS[0x09] = 14` (jurisdiction_id, provider_set_hash, config_hash, timestamp, meets_threshold, threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address, submitter). The Oracle requires all non-zero signer hashes to be in `_validSignerPubkeyHashes` (the same registry `0x07` uses).
+  - `circuits/compliance_multi_signed.json` synced from `erc-xochi-zkp/circuits/target/`. `scripts/sync-circuits.sh` now includes the new circuit.
+
+### Notes
+
+- Proof type `0x0a` is **reserved** for a future `compliance_multi_signed_large` variant (N > 5). Bumping `MAX_PROVIDERS_MULTI` past 5 doubles per-proof gas for everyone using 2-of-3; a parallel large-N circuit is the right shape when demand emerges.
+- M-of-N for `risk_score_signed` (would-be `0x08` analogue) is intentionally out of scope; same shape, different circuit, follow-up if integrators ask for it.
+- Aggregate-score semantics (mean / weighted) are out of scope. The current circuit AND-aggregates: each active slot must individually be below the floor (regulators want "M independent yeses", not "average is OK").
+
 ## [0.2.0] - 2026-05-10
 
 **Breaking** -- aligned with the post-audit contracts in `erc-xochi-zkp`. Every consumer must migrate; old SDK proofs do not verify against the new verifiers and old call signatures fail typecheck. The breaking changes fall in five buckets: input-builder shapes (audit fixes H-3, M-2, C-1), the new ATTESTATION circuit (C-1), the SettlementRegistry `finalizeTrade` signature (H-2), the signed-variant digest layout (audit F-6), and the `updateProviderConfig` ABI (audit F-2).

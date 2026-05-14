@@ -12,6 +12,8 @@ export const PROOF_TYPES = {
   COMPLIANCE_SIGNED: 0x07,
   /** Provider-signed risk-score. */
   RISK_SCORE_SIGNED: 0x08,
+  /** Multi-provider signed compliance (M-of-N, up to 5 slots). */
+  COMPLIANCE_MULTI_SIGNED: 0x09,
 } as const;
 
 export type ProofType = (typeof PROOF_TYPES)[keyof typeof PROOF_TYPES];
@@ -46,6 +48,7 @@ export const PROOF_TYPE_NAMES: Record<ProofType, CircuitName> = {
   0x06: "non_membership",
   0x07: "compliance_signed",
   0x08: "risk_score_signed",
+  0x09: "compliance_multi_signed",
 };
 
 export const CIRCUIT_TO_PROOF_TYPE: Record<CircuitName, ProofType> = {
@@ -57,6 +60,7 @@ export const CIRCUIT_TO_PROOF_TYPE: Record<CircuitName, ProofType> = {
   non_membership: 0x06,
   compliance_signed: 0x07,
   risk_score_signed: 0x08,
+  compliance_multi_signed: 0x09,
 };
 
 export function proofTypeToCircuit(proofType: ProofType): CircuitName {
@@ -85,10 +89,40 @@ export const PATTERN_TIME_WINDOW_MAX = 7_776_000;
 export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x01: 6, // compliance (+ submitter)
   0x02: 8, // risk_score (+ submitter)
-  0x03: 6, // pattern (+ submitter)
+  0x03: 7, // pattern (+ submitter, settlement_root from audit H-1)
   0x04: 6, // attestation (+ submitter)
   0x05: 5, // membership (+ submitter)
   0x06: 5, // non_membership (+ submitter)
   0x07: 9, // compliance_signed (+ signer_pubkey_hash, chain_id, oracle_address)
   0x08: 11, // risk_score_signed (+ signer_pubkey_hash, chain_id, oracle_address)
+  0x09: 14, // compliance_multi_signed (+ threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address)
+};
+
+// ============================================================
+// Multi-signed (M-of-N) constants
+// ============================================================
+
+/**
+ * Compile-time bound on the number of signer slots in COMPLIANCE_MULTI_SIGNED.
+ * Mirrors `xochi_shared::multi_sig::MAX_PROVIDERS_MULTI`. Runtime threshold M
+ * satisfies 1 <= M <= MAX_PROVIDERS_MULTI.
+ *
+ * Increasing this is not a config change: it requires recompiling the circuit
+ * and rotating the on-chain verifier. The reserved proof type `0x0a` is
+ * intended for a future `compliance_multi_signed_large` variant.
+ */
+export const MAX_PROVIDERS_MULTI = 5;
+
+/**
+ * Jurisdiction floor on M for COMPLIANCE_MULTI_SIGNED. Mirrors
+ * `JurisdictionConfig.minMultiProviderThreshold` on the Oracle. The Oracle
+ * reverts `BelowJurisdictionMinProviders` if a submitted proof's `threshold_m`
+ * is below this floor; the SDK validates fail-fast to surface the same
+ * constraint client-side.
+ */
+export const MIN_MULTI_PROVIDER_THRESHOLDS: Record<JurisdictionId, number> = {
+  [0]: 1, // EU
+  [1]: 2, // US
+  [2]: 1, // UK
+  [3]: 2, // SG
 };

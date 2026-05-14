@@ -48,9 +48,7 @@ export class MemoryReplayDb implements ReplayDb {
   }
 
   private keyFor(submitter: bigint, payloadHash: Uint8Array): string {
-    let hex = "";
-    for (const b of payloadHash) hex += b.toString(16).padStart(2, "0");
-    return `${submitter.toString(16)}:${hex}`;
+    return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
   }
 }
 
@@ -64,8 +62,14 @@ export class MemoryReplayDb implements ReplayDb {
  */
 import type { Barretenberg } from "@aztec/bb.js";
 import type { SignerKey } from "./keystore.js";
-import { computeSignedPayloadHash } from "./pedersen.js";
-import { signSignals, type SignSignalsRequest, type SignSignalsResult } from "./signer.js";
+import { bytesToHex, computeSignedPayloadHash, computeSlotPayloadHash } from "./pedersen.js";
+import {
+  signSignals,
+  signSlotPayload,
+  type SignSignalsRequest,
+  type SignSignalsResult,
+  type SignSlotRequest,
+} from "./signer.js";
 
 export class ReplayDetected extends Error {
   constructor(
@@ -96,9 +100,39 @@ export async function signSignalsWithReplayProtection(
   });
   const reserved = await db.reserve(req.submitter, payloadHash, req.timestamp);
   if (!reserved) {
-    let hex = "0x";
-    for (const b of payloadHash) hex += b.toString(16).padStart(2, "0");
-    throw new ReplayDetected(req.submitter, hex);
+    throw new ReplayDetected(req.submitter, bytesToHex(payloadHash));
   }
   return signSignals(api, key, req);
+}
+
+/**
+ * Multi-signed analogue of `signSignalsWithReplayProtection`. Replay key is
+ * (submitter, slot_payload_hash) -- because `slot_index` is embedded in the
+ * digest, the same daemon being asked to sign slot 0 and slot 1 for the same
+ * subject produces distinct keys and does not collide. This is the property
+ * the turnover doc relies on for daemon-orchestrated M-of-N flows.
+ */
+export async function signSlotPayloadWithReplayProtection(
+  api: Barretenberg,
+  key: SignerKey,
+  db: ReplayDb,
+  req: SignSlotRequest,
+): Promise<SignSignalsResult> {
+  const payloadHash = await computeSlotPayloadHash(api, {
+    slotIndex: req.slotIndex,
+    chainId: req.chainId,
+    oracleAddress: req.oracleAddress,
+    jurisdictionId: req.jurisdictionId,
+    providerSetHash: req.providerSetHash,
+    configHash: req.configHash,
+    signals: req.signals,
+    weights: req.weights,
+    timestamp: req.timestamp,
+    submitter: req.submitter,
+  });
+  const reserved = await db.reserve(req.submitter, payloadHash, req.timestamp);
+  if (!reserved) {
+    throw new ReplayDetected(req.submitter, bytesToHex(payloadHash));
+  }
+  return signSlotPayload(api, key, req);
 }

@@ -215,6 +215,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     subject: Address,
     jurisdictionId: number,
     proofType: number,
+    tradeId?: Hex,
   ): Promise<{ proofHash: Hex; publicInputs: Hex }> {
     const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
     const wallet = createWalletClient({
@@ -244,7 +245,15 @@ describe("SettlementRegistryClient (anvil)", () => {
         submitterPadded,
       ];
     } else if (proofType === PROOF_TYPES.PATTERN) {
-      // pattern layout: [analysis_type, result, reporting_threshold, time_window, tx_set_hash, submitter]
+      // pattern layout (post audit H-1):
+      //   [analysis_type, result, reporting_threshold, time_window, tx_set_hash,
+      //    submitter, settlement_root]
+      // settlement_root must equal SettlementRegistry.computeSettlementRoot(tradeId)
+      // at the time finalizeTrade is called -- callers that intend to finalize
+      // MUST pass the matching tradeId here so the off-chain helper can fetch it.
+      const settlementRoot: Hex = tradeId
+        ? await registryClient.computeSettlementRoot(tradeId)
+        : (("0x" + "0".repeat(64)) as Hex);
       publicInputs = [
         padHex(toHex(1), { size: 32 }), // analysis_type
         padHex(toHex(1), { size: 32 }), // result = pass
@@ -252,6 +261,7 @@ describe("SettlementRegistryClient (anvil)", () => {
         padHex(toHex(86400), { size: 32 }), // time_window (>= MIN_TIME_WINDOW)
         padHex("0xdead", { size: 32 }), // tx_set_hash (non-zero)
         submitterPadded, // submitter (must match msg.sender)
+        settlementRoot, // settlement_root (audit H-1)
       ];
     } else {
       throw new Error(`unsupported proof type for test helper: ${proofType}`);
@@ -373,7 +383,9 @@ describe("SettlementRegistryClient (anvil)", () => {
     // Submit a pattern proof for anti-structuring finalization (analysisType=1).
     // Audit H-2: SettlementRegistry now requires the original publicInputs bytes
     // to verify analysis_type == STRUCTURING (1) -- VELOCITY/ROUND_AMOUNT rejected.
-    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    // Audit H-1: pattern.settlement_root must equal computeSettlementRoot(tradeId)
+    // -- pass tradeId so the helper fetches the expected value.
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN, tradeId);
 
     // Finalize trade
     const finHash = await registryClient.finalizeTrade(tradeId, pat.proofHash, pat.publicInputs);
@@ -435,7 +447,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     const sub0 = await registryClient.recordSubSettlement(tradeId, 0, r.proofHash);
     await publicClient.waitForTransactionReceipt({ hash: sub0 });
 
-    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN, tradeId);
 
     // Should reject -- only 1/2 settled
     try {
@@ -540,8 +552,9 @@ describe("SettlementRegistryClient (anvil)", () => {
       await publicClient.waitForTransactionReceipt({ hash: recHash });
     }
 
-    // Step 4: Submit pattern proof and finalize (pass publicInputs)
-    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN);
+    // Step 4: Submit pattern proof and finalize (pass publicInputs + tradeId so
+    // settlement_root binds to the recorded sub-settlements per audit H-1)
+    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN, batch.tradeId);
     const finHash = await registryClient.finalizeTrade(
       batch.tradeId,
       pat.proofHash,

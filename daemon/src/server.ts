@@ -24,6 +24,7 @@ import {
   handleHealthz,
   handlePubkeyHash,
   handleSign,
+  handleSignMulti,
   handleSignCredentialRoot,
   type HandlerContext,
 } from "./handlers.js";
@@ -159,6 +160,27 @@ export function createDaemonServer(ctx: HandlerContext, config: DaemonConfig): D
           return;
         }
         const result = await handleSign(ctx, body, source);
+        if (result.ok) sendJson(res, result.status, result.body);
+        else sendJson(res, result.error.status, result.error.body);
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/sign-multi") {
+        let raw: string;
+        try {
+          raw = await readBody(req);
+        } catch (err) {
+          sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
+          return;
+        }
+        let body: unknown;
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
+          return;
+        }
+        const result = await handleSignMulti(ctx, body, source);
         if (result.ok) sendJson(res, result.status, result.body);
         else sendJson(res, result.error.status, result.error.body);
         return;

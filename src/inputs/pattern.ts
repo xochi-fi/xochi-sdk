@@ -25,6 +25,20 @@ export interface PatternInput {
   txSetHash: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;
+  /**
+   * Audit H-1: opaque declarative binding to a downstream settlement.
+   *
+   * The Oracle does not validate this (it's transparent on `submitCompliance`),
+   * but `SettlementRegistry.finalizeTrade` enforces
+   * `settlement_root == computeSettlementRoot(tradeId)` -- a `bytes32(uint256(...) % BN254_FR_MODULUS)`
+   * reduction of `keccak256(abi.encode(subTradeCount, proofHashes))`.
+   *
+   * For PATTERN proofs that are NOT used for a SettlementRegistry finalization,
+   * pass `"0x" + "0".repeat(64)`. For finalizing trades, call
+   * `SettlementRegistryClient.computeSettlementRoot(tradeId)` BEFORE generating
+   * the proof and pass that value here.
+   */
+  settlementRoot: string;
 }
 
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
@@ -83,5 +97,6 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     time_window: String(opts.timeWindow),
     tx_set_hash: opts.txSetHash,
     submitter: opts.submitter,
+    settlement_root: opts.settlementRoot,
   };
 }

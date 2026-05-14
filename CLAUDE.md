@@ -10,7 +10,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ### Core Proof System
 
-- **src/prover.ts**: `XochiProver` -- high-level proof generation for all 6 circuit types
+- **src/prover.ts**: `XochiProver` -- high-level proof generation for all 9 circuit types
 - **src/oracle.ts**: `XochiOracle` -- typed viem client for on-chain Oracle contract interaction
 - **src/verifier.ts**: `XochiVerifier` -- typed viem client for on-chain Verifier (single, batch, versioned)
 - **src/oracle-lite.ts**: `OracleLite` -- fetch-only oracle client for environments without viem (Cloudflare Workers)
@@ -19,7 +19,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
 - **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types, submitter non-zero)
 - **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts (functions, events, custom errors)
-- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 14 named subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 18 named subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: Pinned `EXPECTED_NOIR_VERSION` + shared `assertCompatibleNoirVersion` (used by both circuit loaders)
 
 ### Trust & Compliance
@@ -61,7 +61,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ```bash
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (unit tests only, 219 tests; integration excluded via vitest.config.ts)
+npm test               # vitest run (unit tests only, 243 tests; integration excluded via vitest.config.ts)
 npm run test:integration  # proof generation + anvil contract tests (50 tests, uses vitest.integration.config.ts)
 npm run typecheck      # tsc --noEmit
 npm run format         # prettier --write src/ test/
@@ -77,20 +77,25 @@ Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOrac
 
 Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use `proofTypeToCircuit()` and `circuitToProofType()` for conversions.
 
-| ID   | Name              | Circuit           | Public Inputs | Use Case                                  |
-| ---- | ----------------- | ----------------- | ------------- | ----------------------------------------- |
-| 0x01 | COMPLIANCE        | compliance        | 6             | Risk score below jurisdiction threshold   |
-| 0x02 | RISK_SCORE        | risk_score        | 8             | Custom threshold/range proofs             |
-| 0x03 | PATTERN           | pattern           | 6             | Anti-structuring, velocity, round amounts |
-| 0x04 | ATTESTATION       | attestation       | 6             | KYC/credential verification               |
-| 0x05 | MEMBERSHIP        | membership        | 5             | Merkle inclusion (whitelist)              |
-| 0x06 | NON_MEMBERSHIP    | non_membership    | 5             | Sorted Merkle adjacency (sanctions)       |
-| 0x07 | COMPLIANCE_SIGNED | compliance_signed | 9             | Compliance + provider-signed signals      |
-| 0x08 | RISK_SCORE_SIGNED | risk_score_signed | 11            | Risk score + provider-signed signals      |
+| ID   | Name                    | Circuit                 | Public Inputs | Use Case                                    |
+| ---- | ----------------------- | ----------------------- | ------------- | ------------------------------------------- |
+| 0x01 | COMPLIANCE              | compliance              | 6             | Risk score below jurisdiction threshold     |
+| 0x02 | RISK_SCORE              | risk_score              | 8             | Custom threshold/range proofs               |
+| 0x03 | PATTERN                 | pattern                 | 7             | Anti-structuring, velocity, round amounts   |
+| 0x04 | ATTESTATION             | attestation             | 6             | KYC/credential verification                 |
+| 0x05 | MEMBERSHIP              | membership              | 5             | Merkle inclusion (whitelist)                |
+| 0x06 | NON_MEMBERSHIP          | non_membership          | 5             | Sorted Merkle adjacency (sanctions)         |
+| 0x07 | COMPLIANCE_SIGNED       | compliance_signed       | 9             | Compliance + provider-signed signals        |
+| 0x08 | RISK_SCORE_SIGNED       | risk_score_signed       | 11            | Risk score + provider-signed signals        |
+| 0x09 | COMPLIANCE_MULTI_SIGNED | compliance_multi_signed | 14            | M-of-N (up to 5) provider-signed compliance |
 
-All 8 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
+All 9 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
+
+PATTERN's 7th public input is `settlement_root` (audit H-1) -- the Oracle does not validate it on submission, but `SettlementRegistry.finalizeTrade` enforces equality with `computeSettlementRoot(tradeId)`. Provers that intend to finalize a trade MUST call `SettlementRegistryClient.computeSettlementRoot(tradeId)` before generating the PATTERN proof; provers that do not (general Oracle submission) pass `bytes32(0)`.
 
 The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs over (audit F-6). The Oracle asserts these match `block.chainid` and `address(this)` so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
+
+The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
 
 ## Trust Tiers (Whitepaper Appendix F)
 
@@ -131,9 +136,11 @@ Each `buildXInputs()` function validates constraints before passing to the prove
 
 Supports both single-provider shorthand (`{ score: 60 }`) and multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`). Max 8 providers.
 
-All 8 input builders require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running.
+All 9 input builders require a `submitter` field (the address that will submit the proof on-chain). The oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running.
 
-The signed-variant builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`) additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest that ECDSA verify checks against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)` (audit F-6).
+The signed-variant builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`, `buildComplianceMultiSignedInputs`) additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest that ECDSA verify checks against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)` (audit F-6).
+
+`buildComplianceMultiSignedInputs` takes `slots: (MultiSignedSlot | null)[]` with length exactly `MAX_PROVIDERS_MULTI = 5`. Each non-null slot is one signer's output from `signSlotPayload` / `POST /sign-multi` (carrying `signals`, `weights`, `pubkeyX`, `pubkeyY`, `signature`, `signerPubkeyHash`). `null` slots get the inactive-slot witness padding automatically; the active count MUST be `>= thresholdM` and `thresholdM` MUST satisfy the jurisdiction floor.
 
 ## Circuit Binaries
 

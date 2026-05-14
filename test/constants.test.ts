@@ -18,6 +18,9 @@ describe("PROOF_TYPES", () => {
     expect(PROOF_TYPES.ATTESTATION).toBe(0x04);
     expect(PROOF_TYPES.MEMBERSHIP).toBe(0x05);
     expect(PROOF_TYPES.NON_MEMBERSHIP).toBe(0x06);
+    expect(PROOF_TYPES.COMPLIANCE_SIGNED).toBe(0x07);
+    expect(PROOF_TYPES.RISK_SCORE_SIGNED).toBe(0x08);
+    expect(PROOF_TYPES.COMPLIANCE_MULTI_SIGNED).toBe(0x09);
   });
 });
 
@@ -37,8 +40,8 @@ describe("BPS_DENOMINATOR", () => {
 });
 
 describe("proof type <-> circuit name mappings", () => {
-  it("PROOF_TYPE_NAMES maps all 8 types (incl. signed variants)", () => {
-    expect(Object.keys(PROOF_TYPE_NAMES)).toHaveLength(8);
+  it("PROOF_TYPE_NAMES maps all 9 types (incl. signed + multi-signed variants)", () => {
+    expect(Object.keys(PROOF_TYPE_NAMES)).toHaveLength(9);
     expect(PROOF_TYPE_NAMES[0x01]).toBe("compliance");
     expect(PROOF_TYPE_NAMES[0x02]).toBe("risk_score");
     expect(PROOF_TYPE_NAMES[0x03]).toBe("pattern");
@@ -47,6 +50,7 @@ describe("proof type <-> circuit name mappings", () => {
     expect(PROOF_TYPE_NAMES[0x06]).toBe("non_membership");
     expect(PROOF_TYPE_NAMES[0x07]).toBe("compliance_signed");
     expect(PROOF_TYPE_NAMES[0x08]).toBe("risk_score_signed");
+    expect(PROOF_TYPE_NAMES[0x09]).toBe("compliance_multi_signed");
   });
 
   it("CIRCUIT_TO_PROOF_TYPE is inverse of PROOF_TYPE_NAMES", () => {
@@ -73,11 +77,12 @@ describe("PUBLIC_INPUT_COUNTS", () => {
   it("matches Noir circuit public input counts", () => {
     expect(PUBLIC_INPUT_COUNTS[0x01]).toBe(6); // compliance (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x02]).toBe(8); // risk_score (+ submitter)
-    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(6); // pattern (+ submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(7); // pattern (+ submitter, settlement_root from audit H-1)
     expect(PUBLIC_INPUT_COUNTS[0x04]).toBe(6); // attestation (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(5); // membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(5); // non_membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x07]).toBe(9); // compliance_signed (+ signer_pubkey_hash, chain_id, oracle_address)
     expect(PUBLIC_INPUT_COUNTS[0x08]).toBe(11); // risk_score_signed (+ signer_pubkey_hash, chain_id, oracle_address)
+    expect(PUBLIC_INPUT_COUNTS[0x09]).toBe(14); // compliance_multi_signed (+ threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address)
   });
 });

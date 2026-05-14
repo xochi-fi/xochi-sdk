@@ -21,6 +21,12 @@ export const DOMAIN_SIGNED_SIGNALS = 0x5349475f53494753n;
 /** Domain tag for the secp256k1 signer pubkey commitment. ASCII "SIG_PK". */
 export const DOMAIN_SIGNER_PUBKEY = 0x5349475f504bn;
 
+/** Domain tag for the multi-provider signed-signals digest. ASCII "MULTI_SI". */
+export const DOMAIN_MULTI_SIGNED_SIGNALS = 0x4d554c54495f5349n;
+
+/** Max parallel signer slots in a COMPLIANCE_MULTI_SIGNED proof. */
+export const MAX_PROVIDERS_MULTI = 5;
+
 /** Hash index passed to bb's Pedersen. Noir's default `pedersen_hash` uses 0. */
 const NOIR_PEDERSEN_HASH_INDEX = 0;
 
@@ -121,6 +127,81 @@ export async function computeSignedPayloadHash(
 }
 
 /**
+ * Compute the per-slot digest the i-th provider signs over for COMPLIANCE_MULTI_SIGNED.
+ *
+ * Mirrors `xochi_shared::multi_sig::compute_slot_payload_hash` exactly.
+ * Differences vs. `computeSignedPayloadHash`:
+ *   - distinct domain tag (DOMAIN_MULTI_SIGNED_SIGNALS) so a 0x07 signature
+ *     cannot satisfy a 0x09 slot
+ *   - embeds slot_index so a signature signed for slot i cannot be placed in
+ *     slot j
+ *   - adds config_hash alongside provider_set_hash (both shared across slots)
+ *   - adds jurisdiction_id
+ *
+ *   pedersen_hash([
+ *     DOMAIN_MULTI_SIGNED_SIGNALS,
+ *     slot_index,
+ *     chain_id,
+ *     oracle_address,
+ *     jurisdiction_id,
+ *     provider_set_hash,
+ *     config_hash,
+ *     signals[0..8],
+ *     weights[0..8],
+ *     timestamp,
+ *     submitter,
+ *   ])  // 25 elements
+ *
+ * `signals` and `weights` MUST each be length 8.
+ * `slotIndex` MUST be in [0, MAX_PROVIDERS_MULTI).
+ */
+export async function computeSlotPayloadHash(
+  api: Barretenberg,
+  args: {
+    slotIndex: number;
+    chainId: bigint;
+    oracleAddress: bigint;
+    jurisdictionId: number;
+    providerSetHash: bigint;
+    configHash: bigint;
+    signals: bigint[];
+    weights: bigint[];
+    timestamp: bigint;
+    submitter: bigint;
+  },
+): Promise<Uint8Array> {
+  if (
+    !Number.isInteger(args.slotIndex) ||
+    args.slotIndex < 0 ||
+    args.slotIndex >= MAX_PROVIDERS_MULTI
+  ) {
+    throw new Error(
+      `slotIndex must be an integer in [0, ${String(MAX_PROVIDERS_MULTI)}); got ${String(args.slotIndex)}`,
+    );
+  }
+  if (args.signals.length !== 8) {
+    throw new Error(`signals must have length 8; got ${String(args.signals.length)}`);
+  }
+  if (args.weights.length !== 8) {
+    throw new Error(`weights must have length 8; got ${String(args.weights.length)}`);
+  }
+  const inputs: bigint[] = [
+    DOMAIN_MULTI_SIGNED_SIGNALS,
+    BigInt(args.slotIndex),
+    args.chainId,
+    args.oracleAddress,
+    BigInt(args.jurisdictionId),
+    args.providerSetHash,
+    args.configHash,
+    ...args.signals,
+    ...args.weights,
+    args.timestamp,
+    args.submitter,
+  ];
+  return pedersenHash(api, inputs);
+}
+
+/**
  * Split a 32-byte secp256k1 pubkey coordinate into two 16-byte field halves.
  * Mirrors `xochi_shared::sig::coordinate_to_fields`.
  */
@@ -153,6 +234,18 @@ export async function computeSignerPubkeyHash(
   const x = coordinateToFields(pubkeyX);
   const y = coordinateToFields(pubkeyY);
   return pedersenHash(api, [DOMAIN_SIGNER_PUBKEY, x.hi, x.lo, y.hi, y.lo]);
+}
+
+/**
+ * Hex string for a 32-byte Field. Same as `bytesToHex` but asserts the
+ * Field-width precondition; mirrors `bytesToBigint`'s 32-byte assertion. Use
+ * this when stringifying a value that flows back into a Noir public-input slot.
+ */
+export function bytesToHexField(bytes: Uint8Array): `0x${string}` {
+  if (bytes.length !== 32) {
+    throw new Error(`field must be 32 bytes; got ${String(bytes.length)}`);
+  }
+  return bytesToHex(bytes);
 }
 
 /** Convenience: hex string for a 32-byte digest. */
