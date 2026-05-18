@@ -1,6 +1,6 @@
 # @xochi/sdk
 
-TypeScript SDK for generating and verifying [Xochi ZKP](https://github.com/xochi-fi/erc-xochi-zkp) compliance proofs. Produce EVM-compatible zero-knowledge proofs client-side using Noir circuits and Barretenberg UltraHonk.
+TypeScript SDK for generating and verifying [ERC-8262](https://github.com/xochi-fi/ERC-8262) compliance proofs. Produce EVM-compatible zero-knowledge proofs client-side using Noir circuits and Barretenberg UltraHonk.
 
 Also provides trust tier system, privacy level modeling, attestation scoring, settlement splitting (XIP-1), and execution planning (XIP-2).
 
@@ -15,10 +15,10 @@ Latest published on npm: `0.1.1`. Current source: `0.2.0` (unpublished -- adds t
 ## Quick start
 
 ```typescript
-import { XochiProver } from "@xochi/sdk";
+import { ERC8262Prover } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 
-const prover = new XochiProver(new BundledCircuitLoader());
+const prover = new ERC8262Prover(new BundledCircuitLoader());
 
 // Generate a compliance proof (EU jurisdiction, single provider)
 const result = await prover.proveCompliance({
@@ -164,7 +164,7 @@ The signed-variant proofs (`COMPLIANCE_SIGNED`, `RISK_SCORE_SIGNED`) cryptograph
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
-import { XochiProver } from "@xochi/sdk";
+import { ERC8262Prover } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 import { RawKeyLoader, loadSignerKey, signSignals } from "@xochi/sdk/provider";
 
@@ -185,7 +185,7 @@ const signed = await signSignals(api, signerKey, {
 
 // 2. Generate the signed-variant proof. chainId + oracleAddress MUST match
 //    what was signed -- the in-circuit ECDSA verify recomputes the digest.
-const prover = new XochiProver(new BundledCircuitLoader());
+const prover = new ERC8262Prover(new BundledCircuitLoader());
 const result = await prover.proveComplianceSigned({
   score: 25,
   jurisdictionId: 0,
@@ -249,7 +249,7 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
-import { XochiProver } from "@xochi/sdk";
+import { ERC8262Prover } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 import { RawKeyLoader, loadSignerKey, signSlotPayload } from "@xochi/sdk/provider";
 
@@ -273,7 +273,7 @@ const shared = {
 const slotA = await signSlotPayload(api, keyA, { ...shared, slotIndex: 0 });
 const slotB = await signSlotPayload(api, keyB, { ...shared, slotIndex: 1 });
 
-const prover = new XochiProver(new BundledCircuitLoader());
+const prover = new ERC8262Prover(new BundledCircuitLoader());
 const result = await prover.proveComplianceMultiSigned({
   jurisdictionId: 1,
   thresholdM: 2,
@@ -324,14 +324,14 @@ const res = await fetch(`${daemonAUrl}/sign-multi`, {
 
 ## On-chain submission
 
-`XochiOracle` submits proofs and queries attestations:
+`ERC8262Oracle` submits proofs and queries attestations:
 
 ```typescript
-import { XochiOracle, PROOF_TYPES } from "@xochi/sdk";
+import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { mainnet } from "viem/chains";
 
-const oracle = new XochiOracle(
+const oracle = new ERC8262Oracle(
   "0x...", // oracle contract address
   createPublicClient({ chain: mainnet, transport: http() }),
   createWalletClient({ chain: mainnet, transport: http(), account }),
@@ -377,12 +377,12 @@ const batchResult = await oracle.submitBatch({
 
 ## On-chain verification
 
-`XochiVerifier` verifies proofs directly against the on-chain verifier contracts:
+`ERC8262Verifier` verifies proofs directly against the on-chain verifier contracts:
 
 ```typescript
-import { XochiVerifier, PROOF_TYPES } from "@xochi/sdk";
+import { ERC8262Verifier, PROOF_TYPES } from "@xochi/sdk";
 
-const verifier = new XochiVerifier("0x...", publicClient);
+const verifier = new ERC8262Verifier("0x...", publicClient);
 
 // Single proof
 const valid = await verifier.verifyProof(PROOF_TYPES.COMPLIANCE, proofHex, publicInputsHex);
@@ -403,7 +403,7 @@ const historicalValid = await verifier.verifyProofAtVersion(
 );
 
 // Emergency revocation (owner-only, requires WalletClient)
-const adminVerifier = new XochiVerifier("0x...", publicClient, walletClient, mainnet);
+const adminVerifier = new ERC8262Verifier("0x...", publicClient, walletClient, mainnet);
 const revoked = await adminVerifier.isVersionRevoked(PROOF_TYPES.COMPLIANCE, 1n);
 await adminVerifier.revokeVerifierVersion(PROOF_TYPES.COMPLIANCE, 1n);
 ```
@@ -446,7 +446,7 @@ import {
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 
 const loader = new BundledCircuitLoader();
-const prover = new XochiProver(loader);
+const prover = new ERC8262Prover(loader);
 
 // 1. Plan the split
 const splitPlan = planSplit(500n * 10n ** 18n, 0, account.address, {
@@ -517,9 +517,9 @@ Three loaders for different environments:
 // Node.js: bundled circuit artifacts
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 
-// Node.js: load from erc-xochi-zkp repo path (development)
+// Node.js: load from ERC-8262 repo path (development)
 import { NodeCircuitLoader } from "@xochi/sdk/node";
-const loader = new NodeCircuitLoader("/path/to/erc-xochi-zkp");
+const loader = new NodeCircuitLoader("/path/to/ERC-8262");
 
 // Browser: load via fetch
 import { BrowserCircuitLoader } from "@xochi/sdk/browser";
@@ -528,7 +528,7 @@ const loader = new BrowserCircuitLoader("https://cdn.example.com/circuits");
 
 ## Input builders
 
-If you need to construct circuit inputs manually (outside of `XochiProver`):
+If you need to construct circuit inputs manually (outside of `ERC8262Prover`):
 
 ```typescript
 import {
@@ -571,7 +571,7 @@ PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, att
 
 ## Typed contract errors
 
-Solidity reverts from `XochiZKPOracle`, `XochiZKPVerifier`, and `SettlementRegistry` are decoded into named JS error classes so you can branch on them in `try/catch` instead of regex-matching messages.
+Solidity reverts from `ERC8262Oracle`, `ERC8262Verifier`, and `SettlementRegistry` are decoded into named JS error classes so you can branch on them in `try/catch` instead of regex-matching messages.
 
 ```typescript
 import {
@@ -579,7 +579,7 @@ import {
   ProofAlreadyUsedError,
   BatchTooLargeError,
   VersionRevokedError,
-  XochiContractError,
+  ERC8262ContractError,
 } from "@xochi/sdk";
 
 try {
@@ -589,7 +589,7 @@ try {
     // proof was bound to a different address -- regenerate with the right submitter
   } else if (err instanceof ProofAlreadyUsedError) {
     console.log(`Replay rejected, proof already used: ${err.proofHash}`);
-  } else if (err instanceof XochiContractError) {
+  } else if (err instanceof ERC8262ContractError) {
     // any other decoded contract revert -- err.errorName + err.args available
     console.error(`Contract reverted with ${err.errorName}`, err.args);
   } else {
@@ -598,7 +598,7 @@ try {
 }
 ```
 
-Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`. Any other Solidity custom error decodes to a base `XochiContractError` with `errorName` + `args` populated.
+Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`. Any other Solidity custom error decodes to a base `ERC8262ContractError` with `errorName` + `args` populated.
 
 For lower-level use, `decodeContractError(err, abi)` returns the typed error or `null`, and `withDecodedErrors(abi, fn)` wraps any async call.
 
@@ -613,15 +613,15 @@ npm run format           # prettier --write
 npm run format:check     # prettier --check (run in CI / prepublishOnly)
 npm run build            # compile to dist/
 
-# Sync circuit artifacts from erc-xochi-zkp
-./scripts/sync-circuits.sh ../erc-xochi-zkp
+# Sync circuit artifacts from ERC-8262
+./scripts/sync-circuits.sh ../ERC-8262
 ```
 
-Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOracle, SettlementRegistry) on a local anvil node. Requires [foundry](https://book.getfoundry.sh/getting-started/installation) and a local clone of [erc-xochi-zkp](https://github.com/xochi-fi/erc-xochi-zkp) with compiled artifacts.
+Integration tests deploy the full contract stack (ERC8262Verifier, ERC8262Oracle, SettlementRegistry) on a local anvil node. Requires [foundry](https://book.getfoundry.sh/getting-started/installation) and a local clone of [ERC-8262](https://github.com/xochi-fi/ERC-8262) with compiled artifacts.
 
 ## Related
 
-- [erc-xochi-zkp](https://github.com/xochi-fi/erc-xochi-zkp) -- On-chain contracts and Noir circuit source
+- [ERC-8262](https://github.com/xochi-fi/ERC-8262) -- On-chain contracts and Noir circuit source
 - [XIPs](https://github.com/xochi-fi/XIPs) -- Protocol improvement proposals (XIP-1: settlement splitting, XIP-2: adaptive settlement)
 - [xochi](https://github.com/xochi-fi/xochi) -- Protocol frontend
 

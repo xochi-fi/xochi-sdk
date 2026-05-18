@@ -1,9 +1,9 @@
-# Xochi Provider Signing Daemon (reference)
+# ERC-8262 Provider Signing Daemon (reference)
 
 A small HTTP daemon that wraps `@xochi/sdk/provider`'s `signSignals` so a
 provider can host their secp256k1 signing key behind an authenticated API.
 Anchors signal honesty cryptographically by anchoring screening signals to a registered
-provider's signature; the on-chain `XochiZKPOracle` validates the
+provider's signature; the on-chain `ERC8262Oracle` validates the
 `signer_pubkey_hash` against `_validSignerPubkeyHashes`.
 
 This is a **reference implementation**. It ships as source, not as a
@@ -21,7 +21,7 @@ published npm package. Production deployments should:
 | Method | Path           | Auth | Purpose |
 | ------ | -------------- | ---- | ------- |
 | GET    | `/healthz`     | none | Liveness |
-| GET    | `/pubkey-hash` | yes  | Returns `signer_pubkey_hash` for one-time registry registration via `XochiZKPOracle.registerSignerPubkeyHash` |
+| GET    | `/pubkey-hash` | yes  | Returns `signer_pubkey_hash` for one-time registry registration via `ERC8262Oracle.registerSignerPubkeyHash` |
 | POST   | `/sign`        | yes  | Sign a screening bundle |
 
 `POST /sign` body:

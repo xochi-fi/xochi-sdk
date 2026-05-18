@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-`@xochi/sdk`: TypeScript SDK for generating and verifying Xochi ZKP compliance proofs. Client-side proof generation using Noir circuits and Barretenberg UltraHonk backend. Proofs are EVM-compatible for on-chain verification via the XochiZKPOracle and XochiZKPVerifier contracts defined in [erc-xochi-zkp](https://github.com/xochi-fi/erc-xochi-zkp).
+`@xochi/sdk`: TypeScript SDK for generating and verifying ERC-8262 ZK compliance proofs. Client-side proof generation using Noir circuits and Barretenberg UltraHonk backend. Proofs are EVM-compatible for on-chain verification via the ERC8262Oracle and ERC8262Verifier contracts defined in [ERC-8262](https://github.com/xochi-fi/ERC-8262).
 
 Also provides trust tier system, privacy level modeling, attestation scoring, and tier proof generation -- the shared business logic that both the xochi frontend and backend consume.
 
@@ -10,16 +10,16 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ### Core Proof System
 
-- **src/prover.ts**: `XochiProver` -- high-level proof generation for all 9 circuit types
-- **src/oracle.ts**: `XochiOracle` -- typed viem client for on-chain Oracle contract interaction
-- **src/verifier.ts**: `XochiVerifier` -- typed viem client for on-chain Verifier (single, batch, versioned)
+- **src/prover.ts**: `ERC8262Prover` -- high-level proof generation for all 9 circuit types
+- **src/oracle.ts**: `ERC8262Oracle` -- typed viem client for on-chain Oracle contract interaction
+- **src/verifier.ts**: `ERC8262Verifier` -- typed viem client for on-chain Verifier (single, batch, versioned)
 - **src/oracle-lite.ts**: `OracleLite` -- fetch-only oracle client for environments without viem (Cloudflare Workers)
 - **src/circuits.ts**: Node.js circuit loaders (BundledCircuitLoader, NodeCircuitLoader)
 - **src/circuits-browser.ts**: Browser circuit loader (BrowserCircuitLoader) -- no node:fs dependency
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
 - **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types, submitter non-zero)
 - **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts (functions, events, custom errors)
-- **src/errors.ts**: Typed contract error classes (`XochiContractError` base + 18 named subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/errors.ts**: Typed contract error classes (`ERC8262ContractError` base + 18 named subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: Pinned `EXPECTED_NOIR_VERSION` + shared `assertCompatibleNoirVersion` (used by both circuit loaders)
 
 ### Trust & Compliance
@@ -34,7 +34,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/batch-prover.ts**: `proveBatch` / `provePlan` -- generate compliance proofs for all sub-trades
 - **src/settlement-registry.ts**: `SettlementRegistryClient` -- on-chain SettlementRegistry interaction (viem)
 
-`XochiOracle.submitBatch()` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs per `MAX_BATCH_SIZE`), parses one `ComplianceVerified` event per sub-trade from the receipt, and returns proofHashes for settlement recording.
+`ERC8262Oracle.submitBatch()` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs per `MAX_BATCH_SIZE`), parses one `ComplianceVerified` event per sub-trade from the receipt, and returns proofHashes for settlement recording.
 
 ### Execution Planning (XIP-2)
 
@@ -54,8 +54,8 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ### Artifacts
 
-- **circuits/**: Pre-compiled Noir circuit JSON artifacts (synced from erc-xochi-zkp)
-- **scripts/sync-circuits.sh**: Copies compiled artifacts from erc-xochi-zkp, validates noir_version
+- **circuits/**: Pre-compiled Noir circuit JSON artifacts (synced from ERC-8262)
+- **scripts/sync-circuits.sh**: Copies compiled artifacts from ERC-8262, validates noir_version
 
 ## Key Commands
 
@@ -66,12 +66,12 @@ npm run test:integration  # proof generation + anvil contract tests (50 tests, u
 npm run typecheck      # tsc --noEmit
 npm run format         # prettier --write src/ test/
 npm run format:check   # prettier --check (runs in prepublishOnly + CI)
-./scripts/sync-circuits.sh [path-to-erc-xochi-zkp]  # sync circuit artifacts
+./scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
 ```
 
 Formatting: Prettier with `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (see `.prettierrc.json`). `dist/` and `circuits/` are excluded.
 
-Integration tests deploy the full contract stack (XochiZKPVerifier, XochiZKPOracle, SettlementRegistry) on anvil. Requires foundry and compiled artifacts from erc-xochi-zkp (`../erc-xochi-zkp/out/`).
+Integration tests deploy the full contract stack (ERC8262Verifier, ERC8262Oracle, SettlementRegistry) on anvil. Requires foundry and compiled artifacts from ERC-8262 (`../ERC-8262/out/`).
 
 ## Proof Types
 
@@ -144,14 +144,14 @@ The signed-variant builders (`buildComplianceSignedInputs`, `buildRiskScoreSigne
 
 ## Circuit Binaries
 
-Pre-compiled Noir 1.0.0-beta.20 circuit artifacts in `circuits/`. Synced from erc-xochi-zkp compiled output. The `@noir-lang/noir_js` runtime stays pinned at the latest stable (beta.19), which is forward-compatible with beta.20 circuits. To update:
+Pre-compiled Noir 1.0.0-beta.20 circuit artifacts in `circuits/`. Synced from ERC-8262 compiled output. The `@noir-lang/noir_js` runtime stays pinned at the latest stable (beta.19), which is forward-compatible with beta.20 circuits. To update:
 
 ```bash
 # Automated (preferred):
-./scripts/sync-circuits.sh ../erc-xochi-zkp
+./scripts/sync-circuits.sh ../ERC-8262
 
 # Manual:
-cd ../erc-xochi-zkp/circuits && nargo compile --workspace
+cd ../ERC-8262/circuits && nargo compile --workspace
 cp circuits/{name}/target/{name}.json ../xochi-sdk/circuits/
 ```
 
@@ -159,17 +159,17 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## On-Chain Clients
 
-**XochiOracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis. `XochiOracle.submitBatch` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs) and parses one `ComplianceVerified` event per sub-trade from the receipt.
+**ERC8262Oracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis. `ERC8262Oracle.submitBatch` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs) and parses one `ComplianceVerified` event per sub-trade from the receipt.
 
 **ComplianceAttestation** struct includes a `proofType` field (uint8) between `jurisdictionId` and `meetsThreshold`. Both `ComplianceAttestation` (viem) and `ComplianceAttestationLite` (OracleLite) reflect this layout.
 
-**XochiVerifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion, isVersionRevoked, revokeVerifierVersion. Requires viem PublicClient + optional WalletClient (write methods need a wallet). The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes. Owner can emergency-revoke any historical (non-current) verifier version via `revokeVerifierVersion`; revoked versions reject all `verifyProofAtVersion` calls.
+**ERC8262Verifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion, isVersionRevoked, revokeVerifierVersion. Requires viem PublicClient + optional WalletClient (write methods need a wallet). The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes. Owner can emergency-revoke any historical (non-current) verifier version via `revokeVerifierVersion`; revoked versions reject all `verifyProofAtVersion` calls.
 
 **OracleLite** (fetch): checkCompliance and verifyProof via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
 
 **SettlementRegistryClient** (viem): registerTrade, recordSubSettlement, finalizeTrade, expireTrade, getSettlement, getSubSettlements. Requires viem PublicClient + optional WalletClient.
 
-**Wallet typing**: All three write-capable clients (`XochiOracle`, `XochiVerifier`, `SettlementRegistryClient`) accept a `ConfiguredWalletClient = WalletClient<Transport, Chain | undefined, Account>` -- the wallet must have a bound account. Calls go through viem's functional `writeContract` action (no `as any` casts), and contract reverts are wrapped in `withDecodedErrors` so callers receive typed `XochiContractError` instances (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `TradeNotFoundError`, etc.) instead of bare `Error`s.
+**Wallet typing**: All three write-capable clients (`ERC8262Oracle`, `ERC8262Verifier`, `SettlementRegistryClient`) accept a `ConfiguredWalletClient = WalletClient<Transport, Chain | undefined, Account>` -- the wallet must have a bound account. Calls go through viem's functional `writeContract` action (no `as any` casts), and contract reverts are wrapped in `withDecodedErrors` so callers receive typed `ERC8262ContractError` instances (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `TradeNotFoundError`, etc.) instead of bare `Error`s.
 
 **Submitter typing**: Input builders + `generateTierProof` accept `submitter: Address` (viem). `validateSubmitter` rejects the zero address fail-fast (mirrors the circuit's `assert(submitter != 0)`).
 
@@ -188,11 +188,11 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 - Merkle depth is always 20 (paths must have exactly 20 elements)
 - Pedersen hash for all circuit commitments
 - Sequential test execution (Barretenberg is not concurrency-safe)
-- Contract reverts surface as typed `XochiContractError` subclasses -- consumers can `instanceof` them in error handlers (see `src/errors.ts`)
+- Contract reverts surface as typed `ERC8262ContractError` subclasses -- consumers can `instanceof` them in error handlers (see `src/errors.ts`)
 
 ## Relationship to Other Repos
 
-**erc-xochi-zkp** (upstream): Noir circuit source code, Solidity contracts, generated UltraHonk verifiers, Foundry test suite. This SDK bundles compiled circuit artifacts and provides client-side typed interfaces. Circuit names, proof type IDs, public input counts, and encoding must stay aligned.
+**ERC-8262** (upstream): Noir circuit source code, Solidity contracts, generated UltraHonk verifiers, Foundry test suite. This SDK bundles compiled circuit artifacts and provides client-side typed interfaces. Circuit names, proof type IDs, public input counts, and encoding must stay aligned.
 
 **XIPs** (proposals): Protocol improvement proposals. XIP-1 (settlement splitting) and XIP-2 (adaptive settlement) are implemented in the SDK.
 

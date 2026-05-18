@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     // Integration tests live in a separate file pattern and require foundry
-    // (anvil + erc-xochi-zkp artifacts). They are gated to the dedicated
+    // (anvil + ERC-8262 artifacts). They are gated to the dedicated
     // `test:integration` npm script with its own vitest invocation. Excluding
     // them here so `npm test` skips them in environments without foundry.
     include: ["test/**/*.test.ts"],

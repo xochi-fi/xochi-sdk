@@ -6,8 +6,12 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ### Breaking
 
+- **EIP-712 domain rename: `XochiZKPOracle` → `ERC8262Oracle`** -- the EIP-712 domain separator that providers sign over for credential-root publications now uses `name = "ERC8262Oracle"` (was `"XochiZKPOracle"`). Any signed payloads minted under the old domain will fail to recover to the registered signer on-chain. Providers must re-sign all in-flight credential-root publications. Mirrors the contract-side rename in [`ERC-8262`](https://github.com/xochi-fi/ERC-8262) (project renamed to drop the project name from the ERC reviewer's surface).
+- **TS class renames** -- `XochiOracle` → `ERC8262Oracle`, `XochiVerifier` → `ERC8262Verifier`, `XochiProver` → `ERC8262Prover`, `XochiContractError` → `ERC8262ContractError`. Callers must update imports and `instanceof` checks. The 18 typed-error subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, etc.) keep their names; only the base class renames. Package name `@xochi/sdk` is unchanged.
+- **Forge artifact paths** -- integration tests now load bytecode from `../../ERC-8262/out/ERC8262Oracle.sol/...` (was `../../erc-xochi-zkp/out/XochiZKPOracle.sol/...`). The CI workflow clones `xochi-fi/ERC-8262` instead of `xochi-fi/erc-xochi-zkp`.
+
 - **`buildPatternInputs` / `PatternInput`** -- now requires `settlementRoot: string` (audit H-1). Pre-this-change PATTERN proofs are unsubmittable: the on-chain `ProofTypes.expectedPublicInputCount(PATTERN)` was bumped to 7 with `settlement_root` as input[6], but the SDK was still producing 6-input witnesses. 0.2.0 absorbed the H-2 piece (`patternPublicInputs` arg on `finalizeTrade`) but missed H-1. Callers that intend to finalize a trade MUST first call `SettlementRegistryClient.computeSettlementRoot(tradeId)` and pass the result as `settlementRoot`; callers that don't intend to finalize pass `"0x" + "0".repeat(64)`. The on-chain Oracle is transparent to this value, but `SettlementRegistry.finalizeTrade` enforces equality and reverts with `SettlementRootMismatch` on mismatch.
-- **`PUBLIC_INPUT_COUNTS[0x03]`** -- bumped 6 → 7. The bundled `circuits/pattern.json` was re-synced from `erc-xochi-zkp/circuits/target/` to pick up the post-H-1 ABI.
+- **`PUBLIC_INPUT_COUNTS[0x03]`** -- bumped 6 → 7. The bundled `circuits/pattern.json` was re-synced from `ERC-8262/circuits/target/` to pick up the post-H-1 ABI.
 
 ### Added
 

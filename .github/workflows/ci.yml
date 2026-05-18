@@ -47,11 +47,11 @@ jobs:
       - name: Install foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Clone erc-xochi-zkp (for contract artifacts)
-        run: git clone --depth=1 https://github.com/xochi-fi/erc-xochi-zkp.git ../erc-xochi-zkp
+      - name: Clone ERC-8262 (for contract artifacts)
+        run: git clone --depth=1 https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
 
       - name: Build contracts
-        working-directory: ../erc-xochi-zkp
+        working-directory: ../ERC-8262
         run: forge build
 
       - name: Integration tests
