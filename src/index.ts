@@ -1,7 +1,7 @@
 // Core classes
-export { XochiProver } from "./prover.js";
-export { XochiOracle, MAX_BATCH_SIZE } from "./oracle.js";
-export { XochiVerifier } from "./verifier.js";
+export { ERC8262Prover } from "./prover.js";
+export { ERC8262Oracle, MAX_BATCH_SIZE } from "./oracle.js";
+export { ERC8262Verifier } from "./verifier.js";
 export { OracleLite } from "./oracle-lite.js";
 
 // Circuit loaders (browser-safe only; Node loaders available via @xochi/sdk/node)
@@ -40,7 +40,7 @@ export { ORACLE_ABI, VERIFIER_ABI } from "./abis.js";
 
 // Typed contract errors
 export {
-  XochiContractError,
+  ERC8262ContractError,
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,

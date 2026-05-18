@@ -7,7 +7,7 @@
  */
 
 import type { Hex } from "viem";
-import type { XochiProver } from "./prover.js";
+import type { ERC8262Prover } from "./prover.js";
 import type { ProofResult } from "./types.js";
 import type { ComplianceInput } from "./inputs/compliance.js";
 import type { RiskScoreInput } from "./inputs/risk-score.js";
@@ -24,7 +24,7 @@ export interface BatchProveResult {
 }
 
 export async function proveBatch(
-  prover: XochiProver,
+  prover: ERC8262Prover,
   plan: SplitPlan,
   baseInput: ComplianceInput | RiskScoreInput,
 ): Promise<BatchProveResult> {
@@ -59,7 +59,7 @@ export async function proveBatch(
  * from the execution plan.
  */
 export async function provePlan(
-  prover: XochiProver,
+  prover: ERC8262Prover,
   plan: ExecutionPlan,
   baseInput: ComplianceInput | RiskScoreInput,
 ): Promise<BatchProveResult> {

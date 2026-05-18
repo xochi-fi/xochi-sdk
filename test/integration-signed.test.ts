@@ -19,7 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Address } from "viem";
 import { Barretenberg } from "@aztec/bb.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
-import { XochiProver, PUBLIC_INPUT_COUNTS, PROOF_TYPES } from "../src/index.js";
+import { ERC8262Prover, PUBLIC_INPUT_COUNTS, PROOF_TYPES } from "../src/index.js";
 import { RawKeyLoader, loadSignerKey, signSignals, type SignerKey } from "../src/provider/index.js";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
@@ -38,7 +38,7 @@ for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 let api: Barretenberg;
 let signerKey: SignerKey;
 const loader = new BundledCircuitLoader();
-const prover = new XochiProver(loader);
+const prover = new ERC8262Prover(loader);
 
 beforeAll(async () => {
   api = await Barretenberg.new();

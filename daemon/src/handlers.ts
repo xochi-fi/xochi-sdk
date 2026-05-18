@@ -400,7 +400,7 @@ export async function handleSignMulti(
 export interface SignCredentialRootBody {
   /** EVM chain ID where the Oracle lives. */
   chainId: string | number;
-  /** XochiZKPOracle deployment address (0x-prefixed hex). */
+  /** ERC8262Oracle deployment address (0x-prefixed hex). */
   oracleAddress: string;
   /** Provider this credential tree belongs to. */
   providerId: string | number;

@@ -19,7 +19,7 @@ import type { SignerKey } from "./keystore.js";
 export interface SignCredentialRootRequest {
   /** EVM chain ID where the Oracle lives. */
   chainId: bigint;
-  /** XochiZKPOracle deployment address. */
+  /** ERC8262Oracle deployment address. */
   oracleAddress: `0x${string}`;
   /** Provider this credential tree belongs to. */
   providerId: bigint;

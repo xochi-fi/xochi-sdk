@@ -5,7 +5,7 @@
  * lives at `xochi-sdk/test/eip712-credential-root.test.ts`; if either side
  * drifts, both test suites fail.
  *
- * Domain: name="XochiZKPOracle", version="1", chainId, verifyingContract
+ * Domain: name="ERC8262Oracle", version="1", chainId, verifyingContract
  * (same domain as `EIP712Attestation` so wallets render a familiar prompt).
  */
 
@@ -21,7 +21,7 @@ export const CREDENTIAL_ROOT_TYPEHASH = keccak256(
   ),
 );
 
-const DOMAIN_NAME_HASH = keccak256(toBytes("XochiZKPOracle"));
+const DOMAIN_NAME_HASH = keccak256(toBytes("ERC8262Oracle"));
 const DOMAIN_VERSION_HASH = keccak256(toBytes("1"));
 
 export function buildDomainSeparator(chainId: bigint, verifyingContract: Hex): Hex {

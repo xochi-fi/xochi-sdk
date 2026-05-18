@@ -95,7 +95,7 @@ function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
 }
 
 /**
- * Maximum risk score in basis points. Mirrors XochiZKPOracle.MAX_RISK_SCORE_BPS.
+ * Maximum risk score in basis points. Mirrors ERC8262Oracle.MAX_RISK_SCORE_BPS.
  * Used for client-side rejection of trivially-true threshold/range claims.
  */
 const MAX_RISK_SCORE_BPS = 10000;

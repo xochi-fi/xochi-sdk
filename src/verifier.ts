@@ -1,5 +1,5 @@
 /**
- * XochiVerifier -- typed client for the on-chain XochiZKPVerifier contract.
+ * ERC8262Verifier -- typed client for the on-chain ERC8262Verifier contract.
  *
  * Routes proofs to the correct per-type UltraHonk verifier. Supports
  * single, batch, and versioned verification.
@@ -12,7 +12,7 @@ import type { ProofType } from "./constants.js";
 import type { ConfiguredWalletClient } from "./oracle.js";
 import { withDecodedErrors } from "./errors.js";
 
-export class XochiVerifier {
+export class ERC8262Verifier {
   constructor(
     private address: Address,
     private publicClient: PublicClient,

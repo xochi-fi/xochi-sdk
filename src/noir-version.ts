@@ -1,4 +1,4 @@
-/** Pinned Noir compiler version. Circuit JSONs from erc-xochi-zkp must match. */
+/** Pinned Noir compiler version. Circuit JSONs from ERC-8262 must match. */
 export const EXPECTED_NOIR_VERSION = "1.0.0-beta.20";
 
 import type { CompiledCircuit } from "./types.js";

@@ -5,7 +5,7 @@
  * signed a payload for a given submitter MUST refuse to sign it again, so
  * that even if the orchestrator double-calls (network blip, retry, malicious
  * caller), the signer cannot be tricked into producing two distinct signatures
- * over the same data. For Xochi this isn't slashing-grade -- the on-chain
+ * over the same data. For ERC-8262 this isn't slashing-grade -- the on-chain
  * Oracle's `_usedProofs` already prevents on-chain replay -- but it's the
  * right place to refuse identical sign requests at the source.
  *

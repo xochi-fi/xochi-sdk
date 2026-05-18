@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { BaseError, ContractFunctionRevertedError } from "viem";
 import {
   decodeContractError,
-  XochiContractError,
+  ERC8262ContractError,
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,
@@ -44,7 +44,7 @@ describe("decodeContractError", () => {
   it("decodes SubmitterMismatch", () => {
     const err = decodeContractError(makeRevert("SubmitterMismatch", []), ORACLE_ABI);
     expect(err).toBeInstanceOf(SubmitterMismatchError);
-    expect(err).toBeInstanceOf(XochiContractError);
+    expect(err).toBeInstanceOf(ERC8262ContractError);
     expect(err?.errorName).toBe("SubmitterMismatch");
     expect(err?.message).toMatch(/anti-frontrun/);
   });
@@ -107,9 +107,9 @@ describe("decodeContractError", () => {
     expect((err as InvalidSignerPubkeyHashError).signerPubkeyHash).toBe(hash);
   });
 
-  it("falls back to base XochiContractError for unrecognized error names", () => {
+  it("falls back to base ERC8262ContractError for unrecognized error names", () => {
     const err = decodeContractError(makeRevert("SomeUnknownError", [42]), ORACLE_ABI);
-    expect(err).toBeInstanceOf(XochiContractError);
+    expect(err).toBeInstanceOf(ERC8262ContractError);
     expect(err?.errorName).toBe("SomeUnknownError");
     expect(err?.args).toEqual([42]);
   });

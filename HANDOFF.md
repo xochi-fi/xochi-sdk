@@ -15,16 +15,16 @@ updates to stay byte-for-byte parity with the on-chain contracts.
 
 ## Contract rename map
 
-| Old                            | New                             |
-| ------------------------------ | ------------------------------- |
-| `IXochiZKPVerifier`            | `IERC8262Verifier`              |
-| `IXochiZKPOracle`              | `IERC8262Oracle`                |
-| `XochiZKPVerifier`             | `ERC8262Verifier`               |
-| `XochiZKPOracle`               | `ERC8262Oracle`                 |
-| `XochiTimelock`                | `Timelock`                      |
-| `src/XochiZKPVerifier.sol`     | `src/ERC8262Verifier.sol`       |
-| `src/XochiZKPOracle.sol`       | `src/ERC8262Oracle.sol`         |
-| `src/XochiTimelock.sol`        | `src/Timelock.sol`              |
+| Old                        | New                       |
+| -------------------------- | ------------------------- |
+| `IXochiZKPVerifier`        | `IERC8262Verifier`        |
+| `IXochiZKPOracle`          | `IERC8262Oracle`          |
+| `XochiZKPVerifier`         | `ERC8262Verifier`         |
+| `XochiZKPOracle`           | `ERC8262Oracle`           |
+| `XochiTimelock`            | `Timelock`                |
+| `src/XochiZKPVerifier.sol` | `src/ERC8262Verifier.sol` |
+| `src/XochiZKPOracle.sol`   | `src/ERC8262Oracle.sol`   |
+| `src/XochiTimelock.sol`    | `src/Timelock.sol`        |
 
 ## Critical: EIP-712 domain name change
 

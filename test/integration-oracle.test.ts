@@ -1,12 +1,12 @@
 /**
- * Integration tests for XochiOracle, XochiVerifier, and OracleLite against
+ * Integration tests for ERC8262Oracle, ERC8262Verifier, and OracleLite against
  * real contracts on anvil.
  *
- * Deploys the full stack (AlwaysPassVerifier, XochiZKPVerifier, XochiZKPOracle)
+ * Deploys the full stack (AlwaysPassVerifier, ERC8262Verifier, ERC8262Oracle)
  * and exercises the SDK clients:
- *   - XochiOracle: submitCompliance, checkCompliance, history, config queries
- *   - XochiVerifier: verifyProof, verifyProofBatch, getVerifier, versioning
- *   - OracleLite: checkCompliance, verifyProof (parity with XochiOracle)
+ *   - ERC8262Oracle: submitCompliance, checkCompliance, history, config queries
+ *   - ERC8262Verifier: verifyProof, verifyProofBatch, getVerifier, versioning
+ *   - OracleLite: checkCompliance, verifyProof (parity with ERC8262Oracle)
  *
  * Requires anvil (foundry). Run with:
  *   npm run test:integration
@@ -29,8 +29,8 @@ import {
   type Address,
 } from "viem";
 import { foundry } from "viem/chains";
-import { XochiOracle } from "../src/oracle.js";
-import { XochiVerifier } from "../src/verifier.js";
+import { ERC8262Oracle } from "../src/oracle.js";
+import { ERC8262Verifier } from "../src/verifier.js";
 import { OracleLite } from "../src/oracle-lite.js";
 import { PROOF_TYPES, type ProofType } from "../src/constants.js";
 
@@ -38,11 +38,11 @@ import { PROOF_TYPES, type ProofType } from "../src/constants.js";
 // Contract bytecodes
 // ============================================================
 
-const ERC_XOCHI_ZKP = resolve(new URL(".", import.meta.url).pathname, "../../erc-xochi-zkp");
+const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 function loadBytecode(contractPath: string, contractName: string): Hex {
   const artifact = JSON.parse(
-    readFileSync(resolve(ERC_XOCHI_ZKP, `out/${contractPath}/${contractName}.json`), "utf-8"),
+    readFileSync(resolve(ERC_8262, `out/${contractPath}/${contractName}.json`), "utf-8"),
   );
   return artifact.bytecode.object as Hex;
 }
@@ -71,8 +71,8 @@ const OWNER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
 const ALICE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 
 let anvil: ChildProcess;
-let oracleClient: XochiOracle;
-let verifierClient: XochiVerifier;
+let oracleClient: ERC8262Oracle;
+let verifierClient: ERC8262Verifier;
 let oracleLite: OracleLite;
 let oracleAddress: Address;
 let verifierAddress: Address;
@@ -149,8 +149,8 @@ beforeAll(async () => {
     loadBytecode("SettlementRegistry.t.sol", "AlwaysPassVerifier"),
   );
 
-  // Deploy XochiZKPVerifier
-  const verifierBytecode = loadBytecode("XochiZKPVerifier.sol", "XochiZKPVerifier");
+  // Deploy ERC8262Verifier
+  const verifierBytecode = loadBytecode("ERC8262Verifier.sol", "ERC8262Verifier");
   verifierAddress = await deployContract(
     ownerWallet,
     publicClient,
@@ -172,11 +172,11 @@ beforeAll(async () => {
     await publicClient.waitForTransactionReceipt({ hash });
   }
 
-  // Deploy XochiZKPOracle. Audit F-2: constructor takes initialProviderIds
+  // Deploy ERC8262Oracle. Audit F-2: constructor takes initialProviderIds
   // atomically with the initial config so denylist enforcement is in effect
   // from block one. Use encodeAbiParameters for the dynamic uint256[] tail.
   configHash = keccak256(toHex("test-config"));
-  const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
+  const oracleBytecode = loadBytecode("ERC8262Oracle.sol", "ERC8262Oracle");
   const oracleArgs = encodeAbiParameters(
     [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
     [verifierAddress, OWNER, configHash, [1n]],
@@ -200,8 +200,8 @@ beforeAll(async () => {
     account: ALICE,
   });
 
-  oracleClient = new XochiOracle(oracleAddress, publicClient, aliceWallet, foundry);
-  verifierClient = new XochiVerifier(verifierAddress, publicClient);
+  oracleClient = new ERC8262Oracle(oracleAddress, publicClient, aliceWallet, foundry);
+  verifierClient = new ERC8262Verifier(verifierAddress, publicClient);
   oracleLite = new OracleLite({ address: oracleAddress, rpcUrl: ANVIL_URL });
 }, 30_000);
 
@@ -210,10 +210,10 @@ afterAll(() => {
 });
 
 // ============================================================
-// XochiVerifier
+// ERC8262Verifier
 // ============================================================
 
-describe("XochiVerifier (anvil)", () => {
+describe("ERC8262Verifier (anvil)", () => {
   it("getVerifier returns the stub verifier for each proof type", async () => {
     const allTypes = Object.values(PROOF_TYPES) as ProofType[];
     for (const pt of allTypes) {
@@ -270,10 +270,10 @@ describe("XochiVerifier (anvil)", () => {
 });
 
 // ============================================================
-// XochiOracle
+// ERC8262Oracle
 // ============================================================
 
-describe("XochiOracle (anvil)", () => {
+describe("ERC8262Oracle (anvil)", () => {
   it("providerConfigHash matches initial config", async () => {
     const hash = await oracleClient.providerConfigHash();
     expect(hash).toBe(configHash);
@@ -372,7 +372,7 @@ describe("OracleLite parity (anvil)", () => {
     await publicClient.waitForTransactionReceipt({ hash: txHash });
   });
 
-  it("checkCompliance returns same validity as XochiOracle", async () => {
+  it("checkCompliance returns same validity as ERC8262Oracle", async () => {
     const viemResult = await oracleClient.checkCompliance(ALICE, 0);
     const liteResult = await oracleLite.checkCompliance(ALICE, 0);
 
@@ -381,7 +381,7 @@ describe("OracleLite parity (anvil)", () => {
     expect(liteResult!.source).toBe("on-chain");
   });
 
-  it("checkCompliance attestation fields match XochiOracle", async () => {
+  it("checkCompliance attestation fields match ERC8262Oracle", async () => {
     const viemResult = await oracleClient.checkCompliance(ALICE, 0);
     const liteResult = await oracleLite.checkCompliance(ALICE, 0);
 

@@ -2,7 +2,7 @@
  * Provider signing key storage.
  *
  * Each provider running a signing daemon owns one or more secp256k1 keys whose
- * pubkey hashes are registered with the on-chain `XochiZKPOracle` via
+ * pubkey hashes are registered with the on-chain `ERC8262Oracle` via
  * `registerSignerPubkeyHash`. Loss of the private key means an attacker can
  * forge "compliant" attestations for any user until the hash is revoked.
  *

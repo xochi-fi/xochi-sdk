@@ -6,12 +6,12 @@
  *
  *   provider signing daemon  →  POST /sign
  *   xochi-sdk                →  proveComplianceSigned
- *   on-chain                 →  ComplianceSignedVerifier + XochiZKPOracle
+ *   on-chain                 →  ComplianceSignedVerifier + ERC8262Oracle
  *
  * Steps:
  *   1. Spawn anvil with code-size limit raised (signed-circuit verifier is
  *      slightly over EIP-170's 24 KB).
- *   2. Deploy ComplianceSignedVerifier, XochiZKPVerifier router, XochiZKPOracle.
+ *   2. Deploy ComplianceSignedVerifier, ERC8262Verifier router, ERC8262Oracle.
  *   3. Wire the router so proofType 0x07 routes to ComplianceSignedVerifier.
  *   4. Start the signing daemon in-process on an ephemeral port.
  *   5. Bootstrap: read the daemon's signer_pubkey_hash, register it on
@@ -20,7 +20,7 @@
  *      via proveComplianceSigned, submit on-chain via submitCompliance.
  *   7. Read back the attestation and confirm proofType == 0x07.
  *
- * Requires anvil + a fresh `forge build` in erc-xochi-zkp. Skipped quickly
+ * Requires anvil + a fresh `forge build` in ERC-8262. Skipped quickly
  * if either is unavailable. ~40s on a typical laptop.
  */
 
@@ -44,7 +44,7 @@ import { foundry } from "viem/chains";
 import { Barretenberg } from "@aztec/bb.js";
 
 import { BundledCircuitLoader } from "../src/circuits.js";
-import { XochiProver, PROOF_TYPES } from "../src/index.js";
+import { ERC8262Prover, PROOF_TYPES } from "../src/index.js";
 import {
   RawKeyLoader,
   loadSignerKey,
@@ -60,7 +60,7 @@ import type { DaemonConfig } from "../daemon/src/config.js";
 // Locations
 // ============================================================
 
-const ERC_XOCHI_ZKP = resolve(new URL(".", import.meta.url).pathname, "../../erc-xochi-zkp");
+const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 interface LinkRefEntry {
   start: number; // byte offset
@@ -73,10 +73,10 @@ interface BytecodeArtifact {
 }
 
 function loadArtifact(contractPath: string, contractName: string): BytecodeArtifact {
-  const path = resolve(ERC_XOCHI_ZKP, `out/${contractPath}/${contractName}.json`);
+  const path = resolve(ERC_8262, `out/${contractPath}/${contractName}.json`);
   if (!existsSync(path)) {
     throw new Error(
-      `forge artifact missing at ${path} -- run \`forge build\` in erc-xochi-zkp first`,
+      `forge artifact missing at ${path} -- run \`forge build\` in ERC-8262 first`,
     );
   }
   return JSON.parse(readFileSync(path, "utf-8")) as BytecodeArtifact;
@@ -160,7 +160,7 @@ let api: Barretenberg;
 let signerKey: SignerKey;
 let daemonServer: DaemonServer;
 let daemonUrl: string;
-let prover: XochiProver;
+let prover: ERC8262Prover;
 
 async function waitForAnvil(): Promise<void> {
   const client = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
@@ -227,7 +227,7 @@ beforeAll(async () => {
   // Deploy the verifier router and wire up only proofType 0x07 (the only
   // path this test exercises). Other proof types stay unset; submissions
   // for them would fail VerifierNotSet, which is the correct behavior.
-  const verifierBytecode = loadBytecode("XochiZKPVerifier.sol", "XochiZKPVerifier");
+  const verifierBytecode = loadBytecode("ERC8262Verifier.sol", "ERC8262Verifier");
   verifierAddress = await deployContract(
     ownerWallet,
     publicClient,
@@ -248,7 +248,7 @@ beforeAll(async () => {
   // Oracle accepts proofs whose `config_hash` public input matches. Audit F-2:
   // initialProviderIds bound atomically with the config in the constructor.
   configHash = "0x18574f427f33c6c77af53be06544bd749c9a1db855599d950af61ea613df8405" as Hex;
-  const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
+  const oracleBytecode = loadBytecode("ERC8262Oracle.sol", "ERC8262Oracle");
   const oracleArgs = encodeAbiParameters(
     [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
     [verifierAddress, OWNER, configHash, [1n]],
@@ -275,7 +275,7 @@ beforeAll(async () => {
   const { host, port } = await daemonServer.listen();
   daemonUrl = `http://${host}:${String(port)}`;
 
-  prover = new XochiProver(new BundledCircuitLoader());
+  prover = new ERC8262Prover(new BundledCircuitLoader());
 }, 120_000);
 
 afterAll(async () => {

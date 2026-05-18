@@ -5,7 +5,7 @@
  * the values the in-circuit `xochi_shared::sig::*` helpers produce in Noir.
  *
  * The "expected" constants below are reproduced as `assert(actual == EXPECTED)`
- * test vectors in the erc-xochi-zkp repo at
+ * test vectors in the ERC-8262 repo at
  *   circuits/shared/src/sig.nr (test_parity_with_sdk_*).
  *
  * If you change either side without updating the other, both test suites will fail.
@@ -117,7 +117,7 @@ describe("pedersenHash basic shape", () => {
 describe("Noir parity vectors", () => {
   /*
    * Inputs identical to the Noir `test_parity_with_sdk_*` tests in
-   * circuits/shared/src/sig.nr. Run that test in the erc-xochi-zkp workspace
+   * circuits/shared/src/sig.nr. Run that test in the ERC-8262 workspace
    * with `cd circuits && nargo test sig::test_parity` to confirm both sides
    * produce the same value.
    */

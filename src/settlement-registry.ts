@@ -1,7 +1,7 @@
 /**
  * SettlementRegistryClient -- XIP-1 typed viem wrapper for the SettlementRegistry contract.
  *
- * Follows the same pattern as XochiOracle: constructor takes address + clients,
+ * Follows the same pattern as ERC8262Oracle: constructor takes address + clients,
  * methods map to contract functions with typed inputs/outputs.
  */
 

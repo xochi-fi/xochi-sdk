@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Sync compiled Noir circuit artifacts from erc-xochi-zkp to xochi-sdk.
-# Usage: ./scripts/sync-circuits.sh [path-to-erc-xochi-zkp]
+# Sync compiled Noir circuit artifacts from ERC-8262 to xochi-sdk.
+# Usage: ./scripts/sync-circuits.sh [path-to-ERC-8262]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SDK_CIRCUITS="${SDK_ROOT}/circuits"
 
-ERC_REPO="${1:-${SDK_ROOT}/../erc-xochi-zkp}"
+ERC_REPO="${1:-${SDK_ROOT}/../ERC-8262}"
 
 if [[ ! -d "${ERC_REPO}" ]]; then
-  printf "Error: erc-xochi-zkp repo not found at %s\n" "${ERC_REPO}" >&2
-  printf "Usage: %s [path-to-erc-xochi-zkp]\n" "$0" >&2
+  printf "Error: ERC-8262 repo not found at %s\n" "${ERC_REPO}" >&2
+  printf "Usage: %s [path-to-ERC-8262]\n" "$0" >&2
   exit 1
 fi
 

@@ -93,16 +93,15 @@ describe("credentialRootDigest", () => {
   });
 
   it("matches the Solidity digest for the canonical fixture", () => {
-    // PARITY_VECTOR -- regenerate the matching value in
-    // test/EIP712CredentialRootParity.t.sol if this changes.
+    // PARITY_VECTOR -- mirrors test/EIP712CredentialRootParity.t.sol in ERC-8262.
+    // If either side drifts, both this assertion and the forge test will fail.
+    const expected = "0x82109ef42010d7a55f19c7b22fb75d1ebf990ec91663fc8c7fa9dd13ead2b3dd";
     const d = credentialRootDigest({
       chainId: CHAIN_ID,
       oracleAddress: ORACLE_ADDRESS,
       publication: SAMPLE,
     });
-    // eslint-disable-next-line no-console
-    console.log("[parity] credential_root_digest =", d);
-    expect(d).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(d).toBe(expected);
   });
 });
 

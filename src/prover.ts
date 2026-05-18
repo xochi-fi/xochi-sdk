@@ -1,5 +1,5 @@
 /**
- * XochiProver -- high-level proof generation for all 6 circuit types.
+ * ERC8262Prover -- high-level proof generation for all 6 circuit types.
  */
 
 import { Noir } from "@noir-lang/noir_js";
@@ -25,7 +25,7 @@ import { buildNonMembershipInputs, type NonMembershipInput } from "./inputs/non-
 import { buildPatternInputs, type PatternInput } from "./inputs/pattern.js";
 import { buildAttestationInputs, type AttestationInput } from "./inputs/attestation.js";
 
-export class XochiProver {
+export class ERC8262Prover {
   private api: Barretenberg | null = null;
 
   constructor(private loader: CircuitLoader) {}

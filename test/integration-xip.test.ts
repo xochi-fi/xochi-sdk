@@ -9,7 +9,7 @@
 
 import { describe, it, expect, afterAll } from "vitest";
 import { BundledCircuitLoader } from "../src/circuits.js";
-import { XochiProver } from "../src/prover.js";
+import { ERC8262Prover } from "../src/prover.js";
 import { planSplit } from "../src/split.js";
 import { proveBatch, provePlan } from "../src/batch-prover.js";
 import { planExecution } from "../src/execution-orchestrator.js";
@@ -18,7 +18,7 @@ import type { RiskScoreInput } from "../src/inputs/risk-score.js";
 import type { VenueConstraints } from "../src/venue-router.js";
 
 const loader = new BundledCircuitLoader();
-const prover = new XochiProver(loader);
+const prover = new ERC8262Prover(loader);
 
 afterAll(async () => {
   await prover.destroy();

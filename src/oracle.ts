@@ -1,5 +1,5 @@
 /**
- * XochiOracle -- typed client for the on-chain XochiZKPOracle contract.
+ * ERC8262Oracle -- typed client for the on-chain ERC8262Oracle contract.
  */
 
 import type { Account, Address, Chain, Hex, PublicClient, Transport, WalletClient } from "viem";
@@ -59,10 +59,10 @@ export interface BatchSubmitResult {
   }>;
 }
 
-/** Matches XochiZKPOracle.MAX_BATCH_SIZE (audit F-3: lowered to fit mainnet block gas). */
+/** Matches ERC8262Oracle.MAX_BATCH_SIZE (audit F-3: lowered to fit mainnet block gas). */
 export const MAX_BATCH_SIZE = 10;
 
-export class XochiOracle {
+export class ERC8262Oracle {
   constructor(
     private address: Address,
     private publicClient: PublicClient,

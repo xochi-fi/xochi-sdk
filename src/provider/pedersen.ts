@@ -224,7 +224,7 @@ export function coordinateToFields(coord: Uint8Array): { hi: bigint; lo: bigint 
  *
  *   pedersen_hash([DOMAIN_SIGNER_PUBKEY, x_hi, x_lo, y_hi, y_lo])
  *
- * Off-chain match to register with `XochiZKPOracle.registerSignerPubkeyHash`.
+ * Off-chain match to register with `ERC8262Oracle.registerSignerPubkeyHash`.
  */
 export async function computeSignerPubkeyHash(
   api: Barretenberg,

@@ -5,7 +5,7 @@
  * Requires Barretenberg (~3min total). Run with:
  *   npm run test:integration
  *
- * Test vectors sourced from erc-xochi-zkp Prover.toml files.
+ * Test vectors sourced from ERC-8262 Prover.toml files.
  */
 
 import { describe, it, expect, afterAll } from "vitest";
@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import type { Address } from "viem";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import {
-  XochiProver,
+  ERC8262Prover,
   BrowserCircuitLoader,
   encodePublicInputs,
   decodePublicInputs,
@@ -32,7 +32,7 @@ import {
 // ============================================================
 
 const loader = new BundledCircuitLoader();
-const prover = new XochiProver(loader);
+const prover = new ERC8262Prover(loader);
 
 afterAll(async () => {
   await prover.destroy();
@@ -134,7 +134,7 @@ describe("compliance proof", () => {
 });
 
 // ============================================================
-// Pattern (test vector from erc-xochi-zkp/circuits/pattern/Prover.toml)
+// Pattern (test vector from ERC-8262/circuits/pattern/Prover.toml)
 // ============================================================
 
 describe("pattern proof", () => {
@@ -162,12 +162,12 @@ describe("pattern proof", () => {
 });
 
 // ============================================================
-// Attestation (test vector from erc-xochi-zkp/circuits/attestation/Prover.toml)
+// Attestation (test vector from ERC-8262/circuits/attestation/Prover.toml)
 // ============================================================
 
 describe("attestation proof", () => {
   it("generates and verifies a KYC attestation proof (post C-1: credentials tree)", async () => {
-    // Test vector matches erc-xochi-zkp/circuits/attestation/Prover.toml
+    // Test vector matches ERC-8262/circuits/attestation/Prover.toml
     // with submitter=0xdead, provider 42, KYC basic, attribute=999, expiry=2000000000
     const result = await prover.proveAttestation({
       credentialAttribute: "999",
@@ -192,7 +192,7 @@ describe("attestation proof", () => {
 });
 
 // ============================================================
-// Membership (test vector from erc-xochi-zkp/circuits/membership/Prover.toml)
+// Membership (test vector from ERC-8262/circuits/membership/Prover.toml)
 // ============================================================
 
 describe("membership proof", () => {
@@ -219,7 +219,7 @@ describe("membership proof", () => {
 });
 
 // ============================================================
-// Non-Membership (test vector from erc-xochi-zkp/circuits/non_membership/Prover.toml)
+// Non-Membership (test vector from ERC-8262/circuits/non_membership/Prover.toml)
 // ============================================================
 
 describe("non_membership proof", () => {

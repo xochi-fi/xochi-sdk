@@ -1,6 +1,6 @@
 /**
- * ABI definitions for Xochi ZKP on-chain contracts.
- * Matches erc-xochi-zkp src/interfaces/IXochiZKPOracle.sol and IXochiZKPVerifier.sol.
+ * ABI definitions for ERC-8262 on-chain contracts.
+ * Matches ERC-8262 src/interfaces/IERC8262Oracle.sol and IERC8262Verifier.sol.
  */
 
 export const COMPLIANCE_ATTESTATION_COMPONENTS = [

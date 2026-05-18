@@ -1,8 +1,8 @@
 /**
  * Integration tests for SettlementRegistryClient against real contracts on anvil.
  *
- * Deploys the full contract stack (AlwaysPassVerifier, XochiZKPVerifier,
- * XochiZKPOracle, SettlementRegistry) on a local anvil node, then exercises
+ * Deploys the full contract stack (AlwaysPassVerifier, ERC8262Verifier,
+ * ERC8262Oracle, SettlementRegistry) on a local anvil node, then exercises
  * the SDK client through the full settlement lifecycle:
  *   register trade -> submit compliance proofs -> record sub-settlements -> finalize
  *
@@ -28,20 +28,20 @@ import {
 } from "viem";
 import { foundry } from "viem/chains";
 import { SettlementRegistryClient, SETTLEMENT_REGISTRY_ABI } from "../src/settlement-registry.js";
-import { XochiOracle } from "../src/oracle.js";
+import { ERC8262Oracle } from "../src/oracle.js";
 import { ORACLE_ABI } from "../src/abis.js";
 import { PROOF_TYPES } from "../src/constants.js";
 import type { BatchProveResult } from "../src/batch-prover.js";
 
 // ============================================================
-// Contract bytecodes from erc-xochi-zkp compiled artifacts
+// Contract bytecodes from ERC-8262 compiled artifacts
 // ============================================================
 
-const ERC_XOCHI_ZKP = resolve(new URL(".", import.meta.url).pathname, "../../erc-xochi-zkp");
+const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 function loadBytecode(contractPath: string, contractName: string): Hex {
   const artifact = JSON.parse(
-    readFileSync(resolve(ERC_XOCHI_ZKP, `out/${contractPath}/${contractName}.json`), "utf-8"),
+    readFileSync(resolve(ERC_8262, `out/${contractPath}/${contractName}.json`), "utf-8"),
   );
   return artifact.bytecode.object as Hex;
 }
@@ -71,7 +71,7 @@ const ALICE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 
 let anvil: ChildProcess;
 let registryClient: SettlementRegistryClient;
-let oracleClient: XochiOracle;
+let oracleClient: ERC8262Oracle;
 let oracleAddress: Address;
 let registryAddress: Address;
 let configHash: Hex;
@@ -139,8 +139,8 @@ describe("SettlementRegistryClient (anvil)", () => {
       loadBytecode("SettlementRegistry.t.sol", "AlwaysPassVerifier"),
     );
 
-    // Deploy XochiZKPVerifier(owner)
-    const verifierBytecode = loadBytecode("XochiZKPVerifier.sol", "XochiZKPVerifier");
+    // Deploy ERC8262Verifier(owner)
+    const verifierBytecode = loadBytecode("ERC8262Verifier.sol", "ERC8262Verifier");
     const verifierArgs = padHex(OWNER, { size: 32 }) as Hex;
     const verifierAddress = await deployContract(
       ownerWallet,
@@ -161,10 +161,10 @@ describe("SettlementRegistryClient (anvil)", () => {
       await publicClient.waitForTransactionReceipt({ hash });
     }
 
-    // Deploy XochiZKPOracle(verifier, owner, configHash, providerIds).
+    // Deploy ERC8262Oracle(verifier, owner, configHash, providerIds).
     // Audit F-2: constructor takes initialProviderIds atomically.
     configHash = keccak256(toHex("test-config"));
-    const oracleBytecode = loadBytecode("XochiZKPOracle.sol", "XochiZKPOracle");
+    const oracleBytecode = loadBytecode("ERC8262Oracle.sol", "ERC8262Oracle");
     const oracleArgs = encodeAbiParameters(
       [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }],
       [verifierAddress, OWNER, configHash, [1n]],
@@ -192,7 +192,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     );
 
     // Create clients with Alice's wallet (she'll be the trade subject)
-    oracleClient = new XochiOracle(oracleAddress, publicClient, aliceWallet, foundry);
+    oracleClient = new ERC8262Oracle(oracleAddress, publicClient, aliceWallet, foundry);
     registryClient = new SettlementRegistryClient(
       registryAddress,
       publicClient,

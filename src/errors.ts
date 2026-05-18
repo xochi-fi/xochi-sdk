@@ -1,7 +1,7 @@
 /**
  * Typed contract errors.
  *
- * Solidity custom errors thrown by XochiZKPOracle, XochiZKPVerifier, and
+ * Solidity custom errors thrown by ERC8262Oracle, ERC8262Verifier, and
  * SettlementRegistry are decoded into named JavaScript classes so consumers
  * can `instanceof` them in error handlers instead of regex-matching messages.
  *
@@ -10,7 +10,7 @@
  *   catch (err) {
  *     if (err instanceof SubmitterMismatchError) { ... }
  *     if (err instanceof ProofAlreadyUsedError) { ... }
- *     if (err instanceof XochiContractError) { ... }  // any decoded revert
+ *     if (err instanceof ERC8262ContractError) { ... }  // any decoded revert
  *   }
  */
 
@@ -18,7 +18,7 @@ import type { Abi } from "viem";
 import { BaseError, ContractFunctionRevertedError } from "viem";
 
 /** Base class for all decoded contract errors. */
-export class XochiContractError extends Error {
+export class ERC8262ContractError extends Error {
   readonly errorName: string;
   readonly args: readonly unknown[];
 
@@ -34,13 +34,13 @@ export class XochiContractError extends Error {
 // Oracle errors
 // ============================================================
 
-export class SubmitterMismatchError extends XochiContractError {
+export class SubmitterMismatchError extends ERC8262ContractError {
   constructor() {
     super("SubmitterMismatch", [], "Proof submitter does not match msg.sender (anti-frontrun)");
   }
 }
 
-export class ProofAlreadyUsedError extends XochiContractError {
+export class ProofAlreadyUsedError extends ERC8262ContractError {
   readonly proofHash: string;
   constructor(proofHash: string) {
     super("ProofAlreadyUsed", [proofHash], `Proof already submitted: ${proofHash}`);
@@ -48,7 +48,7 @@ export class ProofAlreadyUsedError extends XochiContractError {
   }
 }
 
-export class ProofTimestampStaleError extends XochiContractError {
+export class ProofTimestampStaleError extends ERC8262ContractError {
   readonly proofTimestamp: bigint;
   readonly blockTimestamp: bigint;
   constructor(proofTimestamp: bigint, blockTimestamp: bigint) {
@@ -62,7 +62,7 @@ export class ProofTimestampStaleError extends XochiContractError {
   }
 }
 
-export class TimeWindowTooSmallError extends XochiContractError {
+export class TimeWindowTooSmallError extends ERC8262ContractError {
   readonly timeWindow: bigint;
   readonly minimum: bigint;
   constructor(timeWindow: bigint, minimum: bigint) {
@@ -76,19 +76,19 @@ export class TimeWindowTooSmallError extends XochiContractError {
   }
 }
 
-export class EmptyBatchError extends XochiContractError {
+export class EmptyBatchError extends ERC8262ContractError {
   constructor() {
     super("EmptyBatch", [], "Cannot submit empty batch");
   }
 }
 
-export class BatchTooLargeError extends XochiContractError {
+export class BatchTooLargeError extends ERC8262ContractError {
   constructor() {
     super("BatchTooLarge", [], "Batch exceeds MAX_BATCH_SIZE (10)");
   }
 }
 
-export class SignedSignalsRequiredError extends XochiContractError {
+export class SignedSignalsRequiredError extends ERC8262ContractError {
   readonly jurisdictionId: number;
   readonly proofType: number;
   constructor(jurisdictionId: number, proofType: number) {
@@ -102,7 +102,7 @@ export class SignedSignalsRequiredError extends XochiContractError {
   }
 }
 
-export class InvalidSignerPubkeyHashError extends XochiContractError {
+export class InvalidSignerPubkeyHashError extends ERC8262ContractError {
   readonly signerPubkeyHash: string;
   constructor(signerPubkeyHash: string) {
     super(
@@ -114,7 +114,7 @@ export class InvalidSignerPubkeyHashError extends XochiContractError {
   }
 }
 
-export class BatchLengthMismatchError extends XochiContractError {
+export class BatchLengthMismatchError extends ERC8262ContractError {
   constructor() {
     super("BatchLengthMismatch", [], "Batch arrays have inconsistent lengths");
   }
@@ -122,7 +122,7 @@ export class BatchLengthMismatchError extends XochiContractError {
 
 // COMPLIANCE_MULTI_SIGNED (0x09)
 
-export class InsufficientSignersError extends XochiContractError {
+export class InsufficientSignersError extends ERC8262ContractError {
   readonly active: number;
   readonly required: number;
   constructor(active: number, required: number) {
@@ -136,7 +136,7 @@ export class InsufficientSignersError extends XochiContractError {
   }
 }
 
-export class BelowJurisdictionMinProvidersError extends XochiContractError {
+export class BelowJurisdictionMinProvidersError extends ERC8262ContractError {
   readonly jurisdictionId: number;
   readonly m: number;
   readonly floor: number;
@@ -152,7 +152,7 @@ export class BelowJurisdictionMinProvidersError extends XochiContractError {
   }
 }
 
-export class DuplicateSignerError extends XochiContractError {
+export class DuplicateSignerError extends ERC8262ContractError {
   readonly signerPubkeyHash: string;
   constructor(signerPubkeyHash: string) {
     super(
@@ -164,7 +164,7 @@ export class DuplicateSignerError extends XochiContractError {
   }
 }
 
-export class InvalidThresholdMError extends XochiContractError {
+export class InvalidThresholdMError extends ERC8262ContractError {
   readonly thresholdM: number;
   constructor(thresholdM: number) {
     super(
@@ -178,7 +178,7 @@ export class InvalidThresholdMError extends XochiContractError {
 
 // Public-input shape errors (ProofTypes library)
 
-export class InvalidPublicInputLengthError extends XochiContractError {
+export class InvalidPublicInputLengthError extends ERC8262ContractError {
   readonly proofType: number;
   readonly expected: bigint;
   readonly actual: bigint;
@@ -194,7 +194,7 @@ export class InvalidPublicInputLengthError extends XochiContractError {
   }
 }
 
-export class UnalignedPublicInputsError extends XochiContractError {
+export class UnalignedPublicInputsError extends ERC8262ContractError {
   readonly length: bigint;
   constructor(length: bigint) {
     super(
@@ -210,7 +210,7 @@ export class UnalignedPublicInputsError extends XochiContractError {
 // Verifier errors
 // ============================================================
 
-export class VersionRevokedError extends XochiContractError {
+export class VersionRevokedError extends ERC8262ContractError {
   readonly proofType: number;
   readonly version: bigint;
   constructor(proofType: number, version: bigint) {
@@ -224,7 +224,7 @@ export class VersionRevokedError extends XochiContractError {
   }
 }
 
-export class TimelockNotElapsedError extends XochiContractError {
+export class TimelockNotElapsedError extends ERC8262ContractError {
   readonly proofType: number;
   readonly readyAt: bigint;
   constructor(proofType: number, readyAt: bigint) {
@@ -242,7 +242,7 @@ export class TimelockNotElapsedError extends XochiContractError {
 // Settlement registry errors
 // ============================================================
 
-export class TradeAlreadyExistsError extends XochiContractError {
+export class TradeAlreadyExistsError extends ERC8262ContractError {
   readonly tradeId: string;
   constructor(tradeId: string) {
     super("TradeAlreadyExists", [tradeId], `Trade already registered: ${tradeId}`);
@@ -250,7 +250,7 @@ export class TradeAlreadyExistsError extends XochiContractError {
   }
 }
 
-export class TradeNotFoundError extends XochiContractError {
+export class TradeNotFoundError extends ERC8262ContractError {
   readonly tradeId: string;
   constructor(tradeId: string) {
     super("TradeNotFound", [tradeId], `Trade not found: ${tradeId}`);
@@ -258,7 +258,7 @@ export class TradeNotFoundError extends XochiContractError {
   }
 }
 
-export class AttestationNotFoundError extends XochiContractError {
+export class AttestationNotFoundError extends ERC8262ContractError {
   readonly proofHash: string;
   constructor(proofHash: string) {
     super("AttestationNotFound", [proofHash], `Attestation not found for proof: ${proofHash}`);
@@ -266,7 +266,7 @@ export class AttestationNotFoundError extends XochiContractError {
   }
 }
 
-export class SettlementRootMismatchError extends XochiContractError {
+export class SettlementRootMismatchError extends ERC8262ContractError {
   readonly expected: string;
   readonly actual: string;
   constructor(expected: string, actual: string) {
@@ -291,7 +291,7 @@ export class SettlementRootMismatchError extends XochiContractError {
  * Returns `null` if the error is not a contract revert (e.g., network issue,
  * gas estimation failure with no revert data) so callers can rethrow.
  */
-export function decodeContractError(err: unknown, abi: Abi): XochiContractError | null {
+export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractError | null {
   if (!(err instanceof BaseError)) return null;
 
   const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError) as
@@ -301,7 +301,7 @@ export function decodeContractError(err: unknown, abi: Abi): XochiContractError 
 
   const data = revertError.data;
   if (!data) {
-    return new XochiContractError("UnknownRevert", [], revertError.shortMessage);
+    return new ERC8262ContractError("UnknownRevert", [], revertError.shortMessage);
   }
 
   const errorName = data.errorName;
@@ -359,7 +359,7 @@ export function decodeContractError(err: unknown, abi: Abi): XochiContractError 
     case "AttestationNotFound":
       return new AttestationNotFoundError(args[0] as string);
     default:
-      return new XochiContractError(errorName, args, `Contract reverted: ${errorName}`);
+      return new ERC8262ContractError(errorName, args, `Contract reverted: ${errorName}`);
   }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void abi;

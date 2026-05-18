@@ -29,7 +29,7 @@ export class BundledCircuitLoader implements CircuitLoader {
 }
 
 /**
- * Load circuits from a filesystem path (e.g., erc-xochi-zkp repo).
+ * Load circuits from a filesystem path (e.g., ERC-8262 repo).
  *
  * Tries the per-circuit target layout first (`circuits/<name>/target/<name>.json`,
  * pre-beta.20) then falls back to the workspace target layout
