@@ -69,4 +69,6 @@ for name in "${CIRCUITS[@]}"; do
   fi
 done
 
-printf "Done.\n"
+printf "Done.\n\n"
+printf "Verify the synced artifacts with:\n"
+printf "  npm run drift-check\n"
