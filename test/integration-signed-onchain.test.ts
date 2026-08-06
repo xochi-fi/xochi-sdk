@@ -75,9 +75,7 @@ interface BytecodeArtifact {
 function loadArtifact(contractPath: string, contractName: string): BytecodeArtifact {
   const path = resolve(ERC_8262, `out/${contractPath}/${contractName}.json`);
   if (!existsSync(path)) {
-    throw new Error(
-      `forge artifact missing at ${path} -- run \`forge build\` in ERC-8262 first`,
-    );
+    throw new Error(`forge artifact missing at ${path} -- run \`forge build\` in ERC-8262 first`);
   }
   return JSON.parse(readFileSync(path, "utf-8")) as BytecodeArtifact;
 }
