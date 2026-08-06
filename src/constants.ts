@@ -23,6 +23,7 @@ export const JURISDICTIONS = {
   US: 1,
   UK: 2,
   SG: 3,
+  UAE: 4,
 } as const;
 
 export type JurisdictionId = (typeof JURISDICTIONS)[keyof typeof JURISDICTIONS];
@@ -114,6 +115,23 @@ export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
 export const MAX_PROVIDERS_MULTI = 5;
 
 /**
+ * Per-jurisdiction high-risk floor in basis points. Mirrors `highThreshold()`
+ * in the ERC-8262 Circuit Conventions, which the compliance circuits use for
+ * `meets_threshold == (score < highThreshold(jurisdiction_id))`. A compliance
+ * proof is only satisfiable when the weighted score is strictly below this.
+ *
+ * Keyed by `number` rather than `JurisdictionId` so callers can pass an
+ * unvalidated id and get `undefined` back rather than a type error.
+ */
+export const HIGH_RISK_THRESHOLDS_BPS: Record<number, number> = {
+  0: 7100, // EU (AMLD6)
+  1: 6600, // US (BSA)
+  2: 7100, // UK (MLR)
+  3: 7600, // SG (MAS)
+  4: 7100, // UAE (VARA)
+};
+
+/**
  * Jurisdiction floor on M for COMPLIANCE_MULTI_SIGNED. Mirrors
  * `JurisdictionConfig.minMultiProviderThreshold` on the Oracle. The Oracle
  * reverts `BelowJurisdictionMinProviders` if a submitted proof's `threshold_m`
@@ -125,4 +143,5 @@ export const MIN_MULTI_PROVIDER_THRESHOLDS: Record<JurisdictionId, number> = {
   [1]: 2, // US
   [2]: 1, // UK
   [3]: 2, // SG
+  [4]: 2, // UAE
 };

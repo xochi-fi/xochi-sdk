@@ -1,22 +1,14 @@
 import type { Address } from "viem";
-import { DEFAULT_CONFIG_HASH } from "../constants.js";
+import { DEFAULT_CONFIG_HASH, HIGH_RISK_THRESHOLDS_BPS } from "../constants.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 
 const MAX_PROVIDERS = 8;
-
-// Jurisdiction thresholds in basis points (from shared lib)
-const THRESHOLDS: Record<number, number> = {
-  0: 7100, // EU
-  1: 6600, // US
-  2: 7100, // UK
-  3: 7600, // SG
-};
 
 interface MultiProviderCompliance {
   signals: number[]; // 1-8 provider risk scores (0-100)
   weights: number[]; // corresponding weights
   providerIds: string[]; // provider identifiers
-  jurisdictionId: number; // 0=EU, 1=US, 2=UK, 3=SG
+  jurisdictionId: number; // 0=EU, 1=US, 2=UK, 3=SG, 4=UAE
   providerSetHash: string;
   configHash?: string;
   timestamp?: string;
@@ -38,7 +30,7 @@ export type ComplianceInput = MultiProviderCompliance | SingleProviderCompliance
 
 export function buildComplianceInputs(opts: ComplianceInput): Record<string, string | string[]> {
   const configHash = opts.configHash ?? DEFAULT_CONFIG_HASH;
-  const threshold = THRESHOLDS[opts.jurisdictionId];
+  const threshold = HIGH_RISK_THRESHOLDS_BPS[opts.jurisdictionId];
   if (threshold === undefined) {
     throw new Error(`Unknown jurisdiction ID: ${String(opts.jurisdictionId)}`);
   }

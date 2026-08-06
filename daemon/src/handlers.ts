@@ -231,7 +231,7 @@ export interface SignMultiRequestBody {
   chainId: string | number;
   /** Address of the consuming Oracle as a hex string (audit F-6 binding). */
   oracleAddress: string;
-  /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG). */
+  /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG, 4=UAE). */
   jurisdictionId: string | number;
   /** Hex Field for the (provider_ids, weights) Pedersen commitment. */
   providerSetHash: string;

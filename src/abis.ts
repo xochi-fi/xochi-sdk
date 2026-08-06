@@ -562,6 +562,114 @@ export const ORACLE_ABI = [
     name: "InvalidSignerPubkeyHash",
     inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
   },
+
+  // COMPLIANCE_MULTI_SIGNED (0x09). errors.ts has decode cases for these, which
+  // could never fire while the ABI entries were absent.
+  {
+    type: "error",
+    name: "InvalidThresholdM",
+    inputs: [{ name: "thresholdM", type: "uint8" }],
+  },
+  {
+    type: "error",
+    name: "DuplicateSigner",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "InsufficientSigners",
+    inputs: [
+      { name: "active", type: "uint8" },
+      { name: "required", type: "uint8" },
+    ],
+  },
+  {
+    type: "error",
+    name: "BelowJurisdictionMinProviders",
+    inputs: [
+      { name: "jurisdictionId", type: "uint8" },
+      { name: "m", type: "uint8" },
+      { name: "floor", type: "uint8" },
+    ],
+  },
+
+  // Timestamp freshness and ratchet.
+  {
+    type: "error",
+    name: "ProofTimestampInFuture",
+    inputs: [
+      { name: "proofTimestamp", type: "uint256" },
+      { name: "blockTimestamp", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ProofTimestampNotMonotonic",
+    inputs: [
+      { name: "proofTimestamp", type: "uint256" },
+      { name: "lastTimestamp", type: "uint256" },
+    ],
+  },
+
+  // Provider deny-list and config expansion.
+  {
+    type: "error",
+    name: "ProviderDenied",
+    inputs: [{ name: "providerId", type: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "ConfigExpansionNotRegistered",
+    inputs: [{ name: "configHash", type: "bytes32" }],
+  },
+  { type: "error", name: "EmptyProviderExpansion", inputs: [] },
+
+  // Credential root signing.
+  {
+    type: "error",
+    name: "CredentialRootAlreadyRevoked",
+    inputs: [{ name: "root", type: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "CredentialSignerNotSet",
+    inputs: [{ name: "providerId", type: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "CredentialSignatureOutOfWindow",
+    inputs: [
+      { name: "notBefore", type: "uint64" },
+      { name: "notAfter", type: "uint64" },
+    ],
+  },
+  { type: "error", name: "InvalidCredentialSignature", inputs: [] },
+  {
+    type: "error",
+    name: "InvalidSignatureLength",
+    inputs: [{ name: "length", type: "uint256" }],
+  },
+
+  // Raised by the ProofTypes library through Oracle and Verifier calls.
+  {
+    type: "error",
+    name: "InvalidProofType",
+    inputs: [{ name: "proofType", type: "uint8" }],
+  },
+  {
+    type: "error",
+    name: "InvalidPublicInputLength",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "expected", type: "uint256" },
+      { name: "actual", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "UnalignedPublicInputs",
+    inputs: [{ name: "length", type: "uint256" }],
+  },
 ] as const;
 
 export const VERIFIER_ABI = [

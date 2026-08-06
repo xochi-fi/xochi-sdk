@@ -114,7 +114,7 @@ export interface SignSlotRequest {
   chainId: bigint;
   /** Address of the consuming Oracle as a Field bigint (audit F-6). */
   oracleAddress: bigint;
-  /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG). */
+  /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG, 4=UAE). */
   jurisdictionId: number;
   /** Pedersen commitment to (provider_ids, weights), shared across slots. */
   providerSetHash: bigint;
