@@ -18,7 +18,7 @@ import {
   getTierName,
   getFeeRate,
   TIER_PROOF_EXPIRY_MS,
-  TIERS,
+  SHIELDED_MIN_SCORE,
 } from "./tiers.js";
 
 export type { TierThreshold };
@@ -259,10 +259,14 @@ export async function verifyTierProof(
 // ============================================================
 
 /**
- * Check if a set of proofs includes shielded settlement eligibility (score >= 25).
+ * Check if a set of proofs includes shielded (Aztec L2) settlement eligibility.
+ *
+ * Reads SHIELDED_MIN_SCORE rather than a literal. The literal here was 25, the
+ * pre-ungating L1-stealth threshold, so this admitted proofs at half the score
+ * shielded settlement actually requires.
  */
 export function hasShieldedEligibility(proofs: readonly TierProof[]): boolean {
-  return proofs.some((p) => p.threshold >= 25 && p.expiresAt > Date.now());
+  return proofs.some((p) => p.threshold >= SHIELDED_MIN_SCORE && p.expiresAt > Date.now());
 }
 
 /**
@@ -273,7 +277,10 @@ export function getProvenFeeRate(proofs: readonly TierProof[]): number {
     .filter((p) => p.expiresAt > Date.now())
     .sort((a, b) => b.threshold - a.threshold);
 
-  if (valid.length === 0) return 0.3;
+  // No valid proof means no proven trust, which is Standard. Derive it rather
+  // than hardcoding: the literal here was 0.3, the retired Standard rate, so
+  // this returned a stale figure even after the schedule was corrected.
+  if (valid.length === 0) return getFeeRate(0);
   return getFeeRate(valid[0].threshold);
 }
 

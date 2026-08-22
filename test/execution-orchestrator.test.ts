@@ -56,12 +56,21 @@ describe("planExecution", () => {
     }
   });
 
-  it("falls back to public for low trust", () => {
+  // Low trust no longer means public: L1 stealth is open to all, so the plan
+  // lands on stealth. Only shielded (Aztec) stays gated at Verified.
+  it("plans stealth for low trust, shielded only when qualified", () => {
     const plan = planExecution(500n * ETH, EU, SUBMITTER, lowTrust, {
       venuePreference: ["shielded", "stealth", "public"],
     });
 
     for (const st of plan.subTrades) {
+      expect(st.venue).toBe("stealth");
+    }
+
+    const shieldedOnly = planExecution(500n * ETH, EU, SUBMITTER, lowTrust, {
+      venuePreference: ["shielded", "public"],
+    });
+    for (const st of shieldedOnly.subTrades) {
       expect(st.venue).toBe("public");
     }
   });

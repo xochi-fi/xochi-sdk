@@ -112,23 +112,36 @@ const result = await prover.proveCompliance({
 
 ## Trust tiers
 
-Five tiers with fee rates and MEV rebates:
+Five tiers. A quote is three additive layers on a never-discounted cost floor:
+the solver spread (Riddler), the venue fee (Xochi), and the routing fee (Raxol).
+The trust discount carves only venue + routing, never the solver floor, so every
+tier stays cash-positive. Stablecoin routes are cheaper than volatile ones.
 
 ```typescript
-import { getTierFromScore, getFeeRate, getMevRebate } from "@xochi/sdk";
+import { getTierFromScore, getFeeRate, getFeeSchedule } from "@xochi/sdk/tiers";
 
-getTierFromScore(60); // { name: "Verified", min: 50, max: 74, rate: 0.2 }
-getFeeRate(60); // 0.2  (0.20%)
-getMevRebate(60); // 0.2  (20%)
+getTierFromScore(60); // { name: "Verified", min: 50, max: 74, rate: 0.15 }
+getFeeRate(60); // 0.15  (0.15%, stablecoin route)
+getFeeRate(60, "volatile"); // 0.29  (0.29%)
+getFeeSchedule(60); // { solverBps: 8, venueBps: 3, routingBps: 4 }
 ```
 
-| Tier          | Score | Fee   | MEV Rebate |
-| ------------- | ----- | ----- | ---------- |
-| Standard      | 0-24  | 0.30% | 10%        |
-| Trusted       | 25-49 | 0.25% | 15%        |
-| Verified      | 50-74 | 0.20% | 20%        |
-| Premium       | 75-99 | 0.15% | 25%        |
-| Institutional | 100+  | 0.10% | 30%        |
+| Tier          | Score | Fee (stable / volatile) |
+| ------------- | ----- | ----------------------- |
+| Standard      | 0-24  | 0.22% / 0.40%           |
+| Trusted       | 25-49 | 0.19% / 0.35%           |
+| Verified      | 50-74 | 0.15% / 0.29%           |
+| Premium       | 75-99 | 0.12% / 0.25%           |
+| Institutional | 100+  | 0.10% / 0.22%           |
+
+Plus 15% of intent surplus (price improvement); the user keeps 85%.
+
+`getFeeRate` defaults to the stable column, so the one-argument call still works
+— but a volatile route priced as stable under-charges by roughly half. Pass the
+asset class when the route is not a stablecoin pair.
+
+There are no MEV rebates. They were retired from the protocol; `MEV_REBATES` and
+`getMevRebate` are gone.
 
 ## Privacy levels
 
@@ -139,15 +152,19 @@ import { getMaxPrivacyLevel, isPrivacyLevelAllowed } from "@xochi/sdk";
 
 getMaxPrivacyLevel(60); // "private"
 isPrivacyLevelAllowed("sovereign", 60); // false (needs 75+)
-isPrivacyLevelAllowed("stealth", 60); // true
+isPrivacyLevelAllowed("stealth", 0); // true -- stealth is ungated
 ```
 
 | Level                    | Min Score | Settlement |
 | ------------------------ | --------- | ---------- |
 | open / public / standard | 0         | Public L1  |
-| stealth                  | 25        | ERC-5564   |
+| stealth                  | 0         | ERC-5564   |
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
+
+L1 stealth is **open to all** — base-level privacy is not a paid or earned
+upgrade, and it is never separately priced. Only the Aztec tiers are trust-gated.
+Higher trust earns both deeper privacy and a lower fee.
 
 ## Attestation scoring
 
@@ -179,7 +196,7 @@ const loader = new BundledCircuitLoader();
 const proof = await generateTierProof(loader, 60, 25, account.address);
 
 const result = await verifyTierProof(loader, proof);
-// { valid: true, threshold: 25, tierName: "Trusted", feeRate: 0.25 }
+// { valid: true, threshold: 25, tierName: "Trusted", feeRate: 0.19 }
 ```
 
 `generateHighestTierProof` picks the best tier automatically:

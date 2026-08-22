@@ -6,6 +6,24 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ### Breaking
 
+- **Fee schedule corrected to the canonical one; `getFeeRate` gains an asset class.** This package shipped a schedule that had been retired protocol-wide: a single flat rate per tier of 0.30% / 0.25% / 0.20% / 0.15% / 0.10%, with no notion of asset class. The live schedule is two-rate and three-layer. Every tier except Institutional now returns a different number, and `getFeeRate(score)` answers `0.22` at score 0 where it used to answer `0.3`.
+
+  `getFeeRate(score, assetClass?)` defaults to `"stable"`, so the one-argument call still compiles — but it now prices volatile routes as stable, which under-charges by roughly half. Pass the asset class for non-stablecoin pairs. New: `FEE_SCHEDULE`, `getFeeSchedule`, `getFeeBps`, `headlineBps`, `SURPLUS_SHARE_PCT`, types `AssetClass` and `FeeLayers`. `TIERS[].rate` is now derived from `FEE_SCHEDULE` rather than a literal beside a hardcoded ladder holding the same five numbers a second time.
+
+  | Tier          | was   | now (stable / volatile) |
+  | ------------- | ----- | ----------------------- |
+  | Standard      | 0.30% | 0.22% / 0.40%           |
+  | Trusted       | 0.25% | 0.19% / 0.35%           |
+  | Verified      | 0.20% | 0.15% / 0.29%           |
+  | Premium       | 0.15% | 0.12% / 0.25%           |
+  | Institutional | 0.10% | 0.10% / 0.22%           |
+
+- **`SHIELDED_MIN_SCORE` is 50, was 25.** Shielded is the Aztec L2 tier and requires Verified. The old value was the pre-ungating L1-stealth threshold, so any consumer trusting this constant admitted shielded settlement at half the required score. `hasShieldedEligibility` had the same 25 hardcoded separately and now reads the constant.
+
+- **L1 stealth is ungated: `PRIVACY_LEVELS` stealth `minTrustScore` is 0, was 25.** Base-level privacy is not a paid or earned upgrade. `getMaxPrivacyLevel` therefore returns `"stealth"` rather than `"standard"` for any score below 50, and `isPrivacyLevelAllowed("stealth", 0)` is now `true`. `VENUE_MIN_SCORES` in the venue router had the same 25 restated and had already drifted from this table; it now derives from it, so a low-trust wallet is routed to `stealth` rather than falling back to `public`.
+
+- **MEV rebates removed.** `MEV_REBATES` and `getMevRebate` are gone from `./tiers` and the root barrel. The mechanism was retired from the protocol; this package went on exporting and documenting it.
+
 - **EIP-712 domain rename: `XochiZKPOracle` → `ERC8262Oracle`** -- the EIP-712 domain separator that providers sign over for credential-root publications now uses `name = "ERC8262Oracle"` (was `"XochiZKPOracle"`). Any signed payloads minted under the old domain will fail to recover to the registered signer on-chain. Providers must re-sign all in-flight credential-root publications. Mirrors the contract-side rename in [`ERC-8262`](https://github.com/xochi-fi/ERC-8262) (project renamed to drop the project name from the ERC reviewer's surface).
 - **TS class renames** -- `XochiOracle` → `ERC8262Oracle`, `XochiVerifier` → `ERC8262Verifier`, `XochiProver` → `ERC8262Prover`, `XochiContractError` → `ERC8262ContractError`. Callers must update imports and `instanceof` checks. The 18 typed-error subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, etc.) keep their names; only the base class renames. Package name `@xochi/sdk` is unchanged.
 - **Forge artifact paths** -- integration tests now load bytecode from `../../ERC-8262/out/ERC8262Oracle.sol/...` (was `../../erc-xochi-zkp/out/XochiZKPOracle.sol/...`). The CI workflow clones `xochi-fi/ERC-8262` instead of `xochi-fi/erc-xochi-zkp`.

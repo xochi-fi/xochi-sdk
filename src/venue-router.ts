@@ -6,6 +6,7 @@
  */
 
 import type { SubTrade } from "./split.js";
+import { getPrivacyLevel, SHIELDED_MIN_SCORE } from "./tiers.js";
 
 export type VenueId = "public" | "stealth" | "shielded";
 
@@ -26,10 +27,18 @@ export const DEFAULT_GAS_ESTIMATES: Record<VenueId, bigint> = {
   shielded: 400_000n,
 };
 
+/**
+ * Minimum trust score per venue.
+ *
+ * DERIVED from the privacy levels rather than restated, because it was restated
+ * and it did drift: this table kept `stealth: 25` after the stealth gate was
+ * removed, and nothing tested that the two agreed. A venue and a privacy level
+ * are the same gate seen from two sides, so they get one source.
+ */
 export const VENUE_MIN_SCORES: Record<VenueId, number> = {
-  public: 0,
-  stealth: 25,
-  shielded: 50,
+  public: getPrivacyLevel("public").minTrustScore,
+  stealth: getPrivacyLevel("stealth").minTrustScore,
+  shielded: SHIELDED_MIN_SCORE,
 };
 
 function validateConstraints(constraints: VenueConstraints): void {
