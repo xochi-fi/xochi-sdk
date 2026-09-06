@@ -33,10 +33,22 @@ describe("assignVenues", () => {
   });
 
   // -- XIP-2 test case 2 --
-  it("falls back to public when trust score too low", () => {
+  // L1 stealth is open to all, so a low-trust wallet is NOT pushed to public --
+  // it lands on the best venue it qualifies for, which is stealth. Shielded
+  // (Aztec) is the one that stays gated. This asserted all-public back when
+  // stealth was gated at 25.
+  it("gives a low-trust wallet stealth, not public", () => {
     const result = assignVenues(makeTrades(5), ["shielded", "stealth", "public"], lowTrust, 0n);
 
     expect(result).toHaveLength(5);
+    for (const a of result) {
+      expect(a.venue).toBe("stealth");
+    }
+  });
+
+  it("still falls back to public when only shielded is on offer", () => {
+    const result = assignVenues(makeTrades(5), ["shielded", "public"], lowTrust, 0n);
+
     for (const a of result) {
       expect(a.venue).toBe("public");
     }
@@ -85,17 +97,26 @@ describe("assignVenues", () => {
     }
   });
 
-  it("falls back from stealth to public at score 24", () => {
-    const result = assignVenues(
-      makeTrades(3),
-      ["stealth", "public"],
-      { trustScore: 24, gasEstimates: DEFAULT_GAS_ESTIMATES },
-      0n,
-    );
-
-    for (const a of result) {
-      expect(a.venue).toBe("public");
+  // Score 24 was the boundary case for the old stealth-at-25 gate. With stealth
+  // ungated there is no boundary left: every score reaches it, including 0.
+  it("keeps stealth at score 24, and at score 0", () => {
+    for (const trustScore of [24, 0]) {
+      const result = assignVenues(
+        makeTrades(3),
+        ["stealth", "public"],
+        { trustScore, gasEstimates: DEFAULT_GAS_ESTIMATES },
+        0n,
+      );
+      for (const a of result) {
+        expect(a.venue, `score ${trustScore}`).toBe("stealth");
+      }
     }
+  });
+
+  // The gate table is derived from the privacy levels rather than restated, so
+  // this pins the wiring: it drifted to stealth:25 once already, silently.
+  it("derives its gates from the privacy levels", () => {
+    expect(VENUE_MIN_SCORES).toEqual({ public: 0, stealth: 0, shielded: 50 });
   });
 
   it("returns empty for empty input", () => {

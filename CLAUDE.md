@@ -97,15 +97,31 @@ The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_addres
 
 The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
 
-## Trust Tiers (Whitepaper Appendix F)
+## Trust Tiers
 
-| Tier          | Score | Fee   | MEV Rebate |
-| ------------- | ----- | ----- | ---------- |
-| Standard      | 0-24  | 0.30% | 10%        |
-| Trusted       | 25-49 | 0.25% | 15%        |
-| Verified      | 50-74 | 0.20% | 20%        |
-| Premium       | 75-99 | 0.15% | 25%        |
-| Institutional | 100+  | 0.10% | 30%        |
+Source of truth is `docs/planning/economics.md` Part 1 in the xochi repo. Its
+in-code mirrors are xochi's `packages/shared/src/tiers.ts` and Riddler's
+`fee_policy.ex`; the normalized wire form is
+`riddler-sdk/packages/spec/fee/schedule.json`, which Riddler asserts itself
+against. `src/tiers.ts` here conforms to that same vector via
+`test/fee-schedule-drift.test.ts` (`npm run drift-check`). Do not hand-edit the
+numbers below without moving the vector, or the check will catch you.
+
+| Tier          | Score | Fee (stable / volatile) |
+| ------------- | ----- | ----------------------- |
+| Standard      | 0-24  | 0.22% / 0.40%           |
+| Trusted       | 25-49 | 0.19% / 0.35%           |
+| Verified      | 50-74 | 0.15% / 0.29%           |
+| Premium       | 75-99 | 0.12% / 0.25%           |
+| Institutional | 100+  | 0.10% / 0.22%           |
+
+Each cell is `solverBps + venueBps + routingBps`. The solver spread (8 stable /
+18 volatile) is identical across tiers and never discounted; only venue and
+routing taper with trust. Plus 15% of intent surplus.
+
+This table previously read 0.30% down to 0.10% with an MEV rebate column, and
+cited "Whitepaper Appendix F". That schedule was retired protocol-wide and the
+citation went stale with it; MEV rebates no longer exist.
 
 ## Privacy Levels (Whitepaper Section 4)
 
@@ -114,9 +130,16 @@ The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel
 | open      | 0         | public     |
 | public    | 0         | public     |
 | standard  | 0         | public     |
-| stealth   | 25        | ERC-5564   |
+| stealth   | 0         | ERC-5564   |
 | private   | 50        | Aztec L2   |
 | sovereign | 75        | Aztec L2   |
+
+L1 stealth is open to all: base-level privacy is not gated and is never
+separately priced. It read 25 here, and that same 25 was baked separately into
+`VENUE_MIN_SCORES` (venue-router) and `hasShieldedEligibility` (tier-proofs);
+both now derive from this table instead of restating it. `SHIELDED_MIN_SCORE` is
+the Aztec threshold (50), not the stealth one -- it was 25, which halved the
+score required to reach shielded settlement.
 
 ## Attestation Scoring (Whitepaper I.8)
 

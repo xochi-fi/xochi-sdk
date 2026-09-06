@@ -69,17 +69,20 @@ export {
 // Tiers & privacy levels
 export {
   TIERS,
+  FEE_SCHEDULE,
+  SURPLUS_SHARE_PCT,
   TRUST_THRESHOLDS,
   SHIELDED_MIN_SCORE,
   TIER_PROOF_EXPIRY_MS,
-  MEV_REBATES,
   CATEGORY_MAX,
   PRIVACY_LEVELS,
+  headlineBps,
   getFeeRate,
+  getFeeBps,
+  getFeeSchedule,
   getTierName,
   getTierFromScore,
   getNextTier,
-  getMevRebate,
   getMaxPrivacyLevel,
   getPrivacyLevel,
   isPrivacyLevelAllowed,
@@ -134,6 +137,8 @@ export type {
   CategoryScores,
   PrivacyLevelName,
   PrivacyLevel,
+  AssetClass,
+  FeeLayers,
 } from "./tiers.js";
 export type { TierProof, TierProofVerification } from "./tier-proofs.js";
 export type {

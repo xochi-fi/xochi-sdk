@@ -1,6 +1,6 @@
 {
   "name": "@xochi/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "exports": {
     ".": {
@@ -51,7 +51,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "drift-check": "vitest run test/circuit-drift.test.ts test/jurisdiction-parity.test.ts",
+    "drift-check": "vitest run test/circuit-drift.test.ts test/jurisdiction-parity.test.ts test/fee-schedule-drift.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",

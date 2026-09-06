@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   TIERS,
   TRUST_THRESHOLDS,
-  MEV_REBATES,
+  FEE_SCHEDULE,
   CATEGORY_MAX,
   PRIVACY_LEVELS,
   SHIELDED_MIN_SCORE,
@@ -11,7 +11,8 @@ import {
   getTierName,
   getTierFromScore,
   getNextTier,
-  getMevRebate,
+  getFeeBps,
+  getFeeSchedule,
   getMaxPrivacyLevel,
   getPrivacyLevel,
   isPrivacyLevelAllowed,
@@ -31,8 +32,10 @@ describe("Tiers", () => {
     expect(TRUST_THRESHOLDS.institutional).toBe(100);
   });
 
-  it("shielded min score is 25", () => {
-    expect(SHIELDED_MIN_SCORE).toBe(25);
+  // Shielded is the Aztec L2 tier and requires Verified. It read 25 here, the
+  // pre-ungating L1-stealth threshold, which halved the score required.
+  it("shielded min score is 50 (Verified)", () => {
+    expect(SHIELDED_MIN_SCORE).toBe(50);
   });
 
   it("tier proof expiry is 7 days", () => {
@@ -41,35 +44,50 @@ describe("Tiers", () => {
 });
 
 describe("getFeeRate", () => {
-  it("returns 0.3 for Standard tier", () => {
-    expect(getFeeRate(0)).toBe(0.3);
-    expect(getFeeRate(24)).toBe(0.3);
+  // Canonical schedule (docs/planning/economics.md Part 1). These were 0.3 /
+  // 0.25 / 0.2 / 0.15 / 0.1 -- a schedule retired before this SDK published, and
+  // never corrected here.
+  it("returns the stable headline per tier", () => {
+    expect([0, 25, 50, 75, 100].map((s) => getFeeRate(s))).toEqual([0.22, 0.19, 0.15, 0.12, 0.1]);
   });
 
-  it("returns 0.25 for Trusted tier", () => {
-    expect(getFeeRate(25)).toBe(0.25);
-    expect(getFeeRate(49)).toBe(0.25);
+  it("returns the volatile headline when asked", () => {
+    expect([0, 25, 50, 75, 100].map((s) => getFeeRate(s, "volatile"))).toEqual([
+      0.4, 0.35, 0.29, 0.25, 0.22,
+    ]);
   });
 
-  it("returns 0.2 for Verified tier", () => {
-    expect(getFeeRate(50)).toBe(0.2);
-    expect(getFeeRate(74)).toBe(0.2);
+  it("holds the rate across each band", () => {
+    expect(getFeeRate(24)).toBe(0.22);
+    expect(getFeeRate(49)).toBe(0.19);
+    expect(getFeeRate(74)).toBe(0.15);
+    expect(getFeeRate(99)).toBe(0.12);
   });
 
-  it("returns 0.15 for Premium tier", () => {
-    expect(getFeeRate(75)).toBe(0.15);
-    expect(getFeeRate(99)).toBe(0.15);
+  it("defaults to stable, preserving the one-argument call shape", () => {
+    expect(getFeeRate(0)).toBe(getFeeRate(0, "stable"));
   });
 
-  it("returns 0.1 for Institutional tier", () => {
-    expect(getFeeRate(100)).toBe(0.1);
-    expect(getFeeRate(200)).toBe(0.1);
+  it("treats invalid scores as Standard", () => {
+    expect(getFeeRate(-1)).toBe(0.22);
+    expect(getFeeRate(NaN)).toBe(0.22);
   });
 
-  it("returns 0.3 for invalid scores", () => {
-    expect(getFeeRate(-1)).toBe(0.3);
-    expect(getFeeRate(NaN)).toBe(0.3);
-    expect(getFeeRate(Infinity)).toBe(0.3);
+  it("exposes the layer split, not just the headline", () => {
+    expect(getFeeSchedule(0)).toEqual({ solverBps: 8, venueBps: 6, routingBps: 8 });
+    expect(getFeeBps(0)).toBe(22);
+    expect(getFeeBps(0, "volatile")).toBe(40);
+  });
+
+  // TIERS[].rate is derived from FEE_SCHEDULE. It used to be a literal table
+  // sitting beside a hardcoded getFeeRate ladder holding the same five numbers,
+  // so correcting one did not move the other.
+  it("keeps TIERS[].rate derived from FEE_SCHEDULE", () => {
+    for (const tier of TIERS) {
+      const layers = FEE_SCHEDULE[tier.name].stable;
+      expect(tier.rate).toBe((layers.solverBps + layers.venueBps + layers.routingBps) / 100);
+      expect(tier.rate).toBe(getFeeRate(tier.min));
+    }
   });
 });
 
@@ -89,7 +107,7 @@ describe("getTierFromScore", () => {
     expect(tier.name).toBe("Verified");
     expect(tier.min).toBe(50);
     expect(tier.max).toBe(74);
-    expect(tier.rate).toBe(0.2);
+    expect(tier.rate).toBe(0.15); // Verified stable: 8 + 3 + 4 bps
   });
 
   it("returns Standard for zero", () => {
@@ -109,19 +127,17 @@ describe("getNextTier", () => {
   });
 });
 
-describe("getMevRebate", () => {
-  it("maps scores to rebates", () => {
-    expect(getMevRebate(0)).toBe(0.1);
-    expect(getMevRebate(25)).toBe(0.15);
-    expect(getMevRebate(50)).toBe(0.2);
-    expect(getMevRebate(75)).toBe(0.25);
-    expect(getMevRebate(100)).toBe(0.3);
-  });
-});
-
-describe("MEV_REBATES", () => {
-  it("has entries for all 5 tiers", () => {
-    expect(Object.keys(MEV_REBATES)).toHaveLength(5);
+// MEV rebates were retired from the protocol and purged from xochi. They lived
+// on here, exported and documented, so the SDK advertised a benefit that no
+// longer exists. Pinned as absent so they cannot quietly return.
+describe("MEV rebates (retired)", () => {
+  it("are gone from the public surface", async () => {
+    const tiers = await import("../src/tiers.js");
+    const barrel = await import("../src/index.js");
+    for (const mod of [tiers, barrel]) {
+      expect(Object.keys(mod)).not.toContain("MEV_REBATES");
+      expect(Object.keys(mod)).not.toContain("getMevRebate");
+    }
   });
 });
 
@@ -144,9 +160,11 @@ describe("Privacy Levels", () => {
     expect(PRIVACY_LEVELS).toHaveLength(6);
   });
 
+  // L1 stealth is open to all, so it is the ceiling for every score below
+  // Verified rather than something unlocked at 25.
   it("getMaxPrivacyLevel maps scores", () => {
-    expect(getMaxPrivacyLevel(0)).toBe("standard");
-    expect(getMaxPrivacyLevel(24)).toBe("standard");
+    expect(getMaxPrivacyLevel(0)).toBe("stealth");
+    expect(getMaxPrivacyLevel(24)).toBe("stealth");
     expect(getMaxPrivacyLevel(25)).toBe("stealth");
     expect(getMaxPrivacyLevel(50)).toBe("private");
     expect(getMaxPrivacyLevel(75)).toBe("sovereign");
@@ -154,13 +172,17 @@ describe("Privacy Levels", () => {
 
   it("getPrivacyLevel returns level info", () => {
     const level = getPrivacyLevel("stealth");
-    expect(level.minTrustScore).toBe(25);
+    expect(level.minTrustScore).toBe(0); // ungated
     expect(level.settlement).toBe("erc5564");
   });
 
   it("isPrivacyLevelAllowed checks score", () => {
-    expect(isPrivacyLevelAllowed("stealth", 24)).toBe(false);
-    expect(isPrivacyLevelAllowed("stealth", 25)).toBe(true);
+    // Stealth is open: a score-0 wallet settles privately on L1 and simply pays
+    // its own tier's fee. It was gated at 25 here.
+    expect(isPrivacyLevelAllowed("stealth", 0)).toBe(true);
+    expect(isPrivacyLevelAllowed("stealth", 24)).toBe(true);
+    expect(isPrivacyLevelAllowed("private", 49)).toBe(false);
+    expect(isPrivacyLevelAllowed("private", 50)).toBe(true);
     expect(isPrivacyLevelAllowed("sovereign", 74)).toBe(false);
     expect(isPrivacyLevelAllowed("sovereign", 75)).toBe(true);
     expect(isPrivacyLevelAllowed("standard", 0)).toBe(true);
