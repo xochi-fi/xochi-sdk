@@ -12,6 +12,41 @@ npm install @xochi/sdk
 
 Latest published on npm: `0.1.1`. Current source: `0.2.0` (unpublished -- adds the F-1..F-9 audit fixes, signed-variant proofs, the `@xochi/sdk/provider` signing module, and additional typed contract errors). Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
 
+### Import from the narrow subpaths when you only need data
+
+The root barrel statically re-exports `ERC8262Prover`, which imports
+`@noir-lang/noir_js` and `@aztec/bb.js`. Any root import therefore pulls a
+proving stack into your module graph. Bundlers that emit WASM and worker assets
+during transform (Vite) emit them _before_ tree-shaking runs, so the dead
+JavaScript gets stripped correctly and the assets ship anyway. A consumer wanting
+three plain constants shipped 3.1 MB of WASM that nothing ever loaded
+(xochi-fi/xochi#409).
+
+These entry points reach no proving stack. `constants` and `oracle-lite` reach
+only `viem`, which consumers already have; `tiers`, `scoring` and `abis` have no
+runtime dependencies at all.
+
+| Subpath                  | Contents                                            |
+| ------------------------ | --------------------------------------------------- |
+| `@xochi/sdk/tiers`       | `TIERS`, `getFeeRate`, privacy levels               |
+| `@xochi/sdk/scoring`     | attestation multipliers, score derivation           |
+| `@xochi/sdk/constants`   | `JURISDICTIONS`, `PROOF_TYPES`, proof-type mappings |
+| `@xochi/sdk/abis`        | `ORACLE_ABI`, `VERIFIER_ABI`                        |
+| `@xochi/sdk/oracle-lite` | `OracleLite` (fetch-only, Workers-safe)             |
+
+```ts
+import { JURISDICTIONS, PROOF_TYPES } from "@xochi/sdk/constants";
+import { ORACLE_ABI } from "@xochi/sdk/abis";
+```
+
+`test/light-subpaths.test.ts` walks the real import graph of each entry above and
+fails if one ever reaches `@noir-lang` or `@aztec`, so "light" stays a checked
+property rather than a claim in a README.
+
+Note that `package.json` cannot carry comments: a `"//"` key inside `exports`
+makes the map invalid to Node (`ERR_INVALID_PACKAGE_CONFIG`) and breaks _every_
+subpath at once, root included. That is why this explanation lives here.
+
 ## Quick start
 
 ```typescript

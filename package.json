@@ -19,8 +19,29 @@
       "import": "./dist/provider/index.js",
       "types": "./dist/provider/index.d.ts"
     },
-    "./circuits/*": "./circuits/*"
+    "./circuits/*": "./circuits/*",
+    "./tiers": {
+      "import": "./dist/tiers.js",
+      "types": "./dist/tiers.d.ts"
+    },
+    "./scoring": {
+      "import": "./dist/scoring.js",
+      "types": "./dist/scoring.d.ts"
+    },
+    "./constants": {
+      "import": "./dist/constants.js",
+      "types": "./dist/constants.d.ts"
+    },
+    "./abis": {
+      "import": "./dist/abis.js",
+      "types": "./dist/abis.d.ts"
+    },
+    "./oracle-lite": {
+      "import": "./dist/oracle-lite.js",
+      "types": "./dist/oracle-lite.d.ts"
+    }
   },
+  "sideEffects": false,
   "license": "MIT",
   "files": [
     "dist",
