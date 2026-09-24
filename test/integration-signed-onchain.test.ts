@@ -256,6 +256,7 @@ beforeAll(async () => {
   // Start the signing daemon in-process.
   api = await Barretenberg.new();
   signerKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "onchain-integration"));
+  // Ledger clock = wall clock, like anvil's block time and the daemon policy.
   const replayDb = new MemoryReplayDb();
   const audit = new MemoryAuditSink();
   const config: DaemonConfig = {
@@ -263,11 +264,22 @@ beforeAll(async () => {
     port: 0,
     signerKeyHex: "0x" + Buffer.from(TEST_PRIVATE_KEY).toString("hex"),
     apiKey: TEST_API_KEY,
+    credentialRootApiKey: undefined,
     tlsCertPath: undefined,
     tlsKeyPath: undefined,
     clientCaPath: undefined,
+    signalsClientCns: undefined,
+    credentialRootClientCns: undefined,
     auditLogPath: undefined,
     providerLabel: "onchain-test",
+    // Pin the daemon to the Oracle deployed above.
+    chainId: BigInt(foundry.id),
+    oracleAddress,
+    providerId: undefined,
+    maxTimestampAgeSeconds: 300,
+    maxTimestampSkewSeconds: 30,
+    credentialRootMaxValiditySeconds: 3600,
+    allowInsecureBind: false,
   };
   daemonServer = createDaemonServer({ api, signerKey, replayDb, audit }, config);
   const { host, port } = await daemonServer.listen();
@@ -323,25 +335,42 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
     });
     await publicClient.waitForTransactionReceipt({ hash: regHash });
 
-    // 3. Daemon: sign the screening payload for Alice.
-    const signRes = await fetch(`${daemonUrl}/sign`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${TEST_API_KEY}`,
-      },
-      body: JSON.stringify({
+    // 3. Daemon: a stale timestamp is refused at the source. The Oracle would
+    //    reject it anyway (MAX_PROOF_AGE = 1h), and for 0x08 nothing on-chain
+    //    would -- so the daemon's freshness window is the bound.
+    const signBody = (timestamp: bigint): string =>
+      JSON.stringify({
         chainId: foundry.id,
         oracleAddress,
         providerSetHash: PROVIDER_SET_HASH,
         signals: [25, 0, 0, 0, 0, 0, 0, 0],
         weights: [100, 0, 0, 0, 0, 0, 0, 0],
-        timestamp: TIMESTAMP.toString(),
+        timestamp: timestamp.toString(),
         submitter: ALICE,
-      }),
+      });
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${TEST_API_KEY}`,
+    };
+    const staleRes = await fetch(`${daemonUrl}/sign`, {
+      method: "POST",
+      headers,
+      body: signBody(TIMESTAMP),
+    });
+    expect(staleRes.status).toBe(403);
+    expect(((await staleRes.json()) as { code: string }).code).toBe("TIMESTAMP_OUT_OF_WINDOW");
+
+    // 4. Daemon: sign the screening payload for Alice at the current time.
+    //    Anvil starts at the wall clock by default, so `now` satisfies both the
+    //    Oracle's freshness guard and the in-circuit `validate_timestamp`.
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const signRes = await fetch(`${daemonUrl}/sign`, {
+      method: "POST",
+      headers,
+      body: signBody(now),
     });
     expect(signRes.status).toBe(200);
-    const signed = (await signRes.json()) as {
+    const freshSigned = (await signRes.json()) as {
       signature: Hex;
       pubkeyX: Hex;
       pubkeyY: Hex;
@@ -349,34 +378,7 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
       payloadHash: Hex;
     };
 
-    // 4. Generate the COMPLIANCE_SIGNED proof from the bundle.
-    // Critical: the proof's `timestamp` public input must be within
-    // `MAX_PROOF_AGE` (1h) of the chain's `block.timestamp`. Anvil starts
-    // at the wall clock by default, so a recent timestamp matches both
-    // the freshness guard and the in-circuit `validate_timestamp`.
-    // The signer signed `TIMESTAMP = 1700000000` (2023), which is too old
-    // for the freshness guard. Use `now` for the proof and re-sign.
-    const now = BigInt(Math.floor(Date.now() / 1000));
-    const reSignRes = await fetch(`${daemonUrl}/sign`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${TEST_API_KEY}`,
-      },
-      body: JSON.stringify({
-        chainId: foundry.id,
-        oracleAddress,
-        providerSetHash: PROVIDER_SET_HASH,
-        signals: [25, 0, 0, 0, 0, 0, 0, 0],
-        weights: [100, 0, 0, 0, 0, 0, 0, 0],
-        timestamp: now.toString(),
-        submitter: ALICE,
-      }),
-    });
-    expect(reSignRes.status).toBe(200);
-    const freshSigned = (await reSignRes.json()) as typeof signed;
-    void signed; // initial sign was a sanity check; unused for the actual submission
-
+    // 5. Generate the COMPLIANCE_SIGNED proof from the bundle.
     const proof = await prover.proveComplianceSigned({
       score: 25,
       jurisdictionId: 0, // EU (permissive)
@@ -394,7 +396,7 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
       },
     });
 
-    // 5. Submit on-chain as Alice. Oracle enforces submitter == msg.sender.
+    // 6. Submit on-chain as Alice. Oracle enforces submitter == msg.sender.
     const submitHash = await aliceWallet.writeContract({
       address: oracleAddress,
       abi: ORACLE_QUERY_ABI,
@@ -411,7 +413,7 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
     const receipt = await publicClient.waitForTransactionReceipt({ hash: submitHash });
     expect(receipt.status).toBe("success");
 
-    // 6. Read back the attestation -- must reflect the signed proof type.
+    // 7. Read back the attestation -- must reflect the signed proof type.
     const [valid, att] = await publicClient.readContract({
       address: oracleAddress,
       abi: ORACLE_QUERY_ABI,

@@ -1,65 +1,24 @@
 /**
- * Replay-protection store for the provider signing daemon.
+ * Signing ledger for the provider signing daemon.
  *
- * Inspired by Vouch/Dirk's slashing-protection DB: a signer that has already
- * signed a payload for a given submitter MUST refuse to sign it again, so
- * that even if the orchestrator double-calls (network blip, retry, malicious
- * caller), the signer cannot be tricked into producing two distinct signatures
- * over the same data. For ERC-8262 this isn't slashing-grade -- the on-chain
- * Oracle's `_usedProofs` already prevents on-chain replay -- but it's the
- * right place to refuse identical sign requests at the source.
+ * Records every signed bundle keyed by `(submitter, payloadHash)` so an
+ * identical retry (network blip, orchestrator restart) gets the SAME signature
+ * back instead of an error. That is safe because the signature is
+ * deterministic: secp256k1 signing uses RFC 6979 nonces, so signing the same
+ * digest with the same key always yields the same bytes. Refusing a repeat --
+ * what this module used to do -- protected nothing (the caller already held
+ * the identical signature) and turned every legitimate retry into a permanent
+ * 409. On-chain replay is prevented by the Oracle's `_usedProofs`, not here.
  *
- * V1 ships an in-memory map (good for tests and short-lived processes).
+ * Because every record is reproducible from its request, evicting one never
+ * changes what a later retry receives; it only costs a re-sign. The in-memory
+ * ledger therefore evicts records whose signed timestamp has aged out of the
+ * retention window, and caps its size.
+ *
  * Production deployments wire a persistent store (sqlite, redis, postgres)
  * via the `ReplayDb` interface without touching the signer.
  */
 
-/** A record of a signed payload, keyed by `(submitter, payloadHash)`. */
-export interface ReplayDb {
-  /**
-   * Atomically check-and-mark a (submitter, payloadHash) pair. Returns true if
-   * the pair was newly inserted (sign permitted), false if a duplicate.
-   * Implementations MUST be safe under concurrent calls.
-   */
-  reserve(submitter: bigint, payloadHash: Uint8Array, timestamp: bigint): Promise<boolean>;
-
-  /** Optional: count of records, surfaced in metrics. */
-  size(): Promise<number>;
-}
-
-/** In-memory map. Cleared on process restart. */
-export class MemoryReplayDb implements ReplayDb {
-  private readonly seen = new Map<string, { timestamp: bigint; insertedAt: number }>();
-
-  async reserve(submitter: bigint, payloadHash: Uint8Array, timestamp: bigint): Promise<boolean> {
-    const key = this.keyFor(submitter, payloadHash);
-    if (this.seen.has(key)) return false;
-    this.seen.set(key, { timestamp, insertedAt: Date.now() });
-    return true;
-  }
-
-  async size(): Promise<number> {
-    return this.seen.size;
-  }
-
-  /** Test-only: clear all records. */
-  reset(): void {
-    this.seen.clear();
-  }
-
-  private keyFor(submitter: bigint, payloadHash: Uint8Array): string {
-    return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
-  }
-}
-
-/**
- * Compose a signer with a replay DB. Returns a function that signs only if
- * the (submitter, payloadHash) is unseen, throws `ReplayDetected` otherwise.
- *
- * We deliberately compute the payload hash *before* taking the DB slot so a
- * failed Pedersen call doesn't reserve a slot. The DB reservation is the
- * commit point.
- */
 import type { Barretenberg } from "@aztec/bb.js";
 import type { SignerKey } from "./keystore.js";
 import { bytesToHex, computeSignedPayloadHash, computeSlotPayloadHash } from "./pedersen.js";
@@ -71,24 +30,150 @@ import {
   type SignSlotRequest,
 } from "./signer.js";
 
-export class ReplayDetected extends Error {
-  constructor(
-    public readonly submitter: bigint,
-    public readonly payloadHashHex: string,
-  ) {
-    super(
-      `provider signer refused replay: submitter=${submitter.toString(16)} payload=${payloadHashHex}`,
-    );
-    this.name = "ReplayDetected";
+/** Ledger of signed bundles, keyed by `(submitter, payloadHash)`. */
+export interface ReplayDb {
+  /** The recorded bundle for this key, or `undefined` if none is retained. */
+  lookup(submitter: bigint, payloadHash: Uint8Array): Promise<SignSignalsResult | undefined>;
+
+  /**
+   * Record a signed bundle. `timestamp` is the signed timestamp (seconds) and
+   * drives retention. Recording an existing key replaces it (the new bundle is
+   * identical unless the signing key rotated).
+   */
+  record(
+    submitter: bigint,
+    payloadHash: Uint8Array,
+    timestamp: bigint,
+    result: SignSignalsResult,
+  ): Promise<void>;
+
+  /** Count of retained records, surfaced in metrics. */
+  size(): Promise<number>;
+}
+
+export interface MemoryReplayDbOptions {
+  /**
+   * Keep a record until its signed timestamp is this many seconds old.
+   * Default 3600 (the Oracle's `MAX_PROOF_AGE`: an older bundle cannot be
+   * submitted anyway).
+   */
+  retentionSeconds?: number;
+  /** Hard cap on retained records; the oldest-inserted are dropped first. Default 100000. */
+  maxEntries?: number;
+  /** Clock in unix seconds. Default wall clock. */
+  now?: () => number;
+}
+
+interface LedgerEntry {
+  timestamp: bigint;
+  result: SignSignalsResult;
+}
+
+/** In-memory ledger. Cleared on process restart. */
+export class MemoryReplayDb implements ReplayDb {
+  private readonly entries = new Map<string, LedgerEntry>();
+  private readonly retentionSeconds: bigint;
+  private readonly maxEntries: number;
+  private readonly now: () => number;
+
+  constructor(options: MemoryReplayDbOptions = {}) {
+    const retention = options.retentionSeconds ?? 3600;
+    const maxEntries = options.maxEntries ?? 100_000;
+    if (!Number.isInteger(retention) || retention < 0) {
+      throw new Error(`retentionSeconds must be a non-negative integer; got ${String(retention)}`);
+    }
+    if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+      throw new Error(`maxEntries must be a positive integer; got ${String(maxEntries)}`);
+    }
+    this.retentionSeconds = BigInt(retention);
+    this.maxEntries = maxEntries;
+    this.now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  }
+
+  async lookup(submitter: bigint, payloadHash: Uint8Array): Promise<SignSignalsResult | undefined> {
+    this.evictExpired();
+    return this.entries.get(keyFor(submitter, payloadHash))?.result;
+  }
+
+  async record(
+    submitter: bigint,
+    payloadHash: Uint8Array,
+    timestamp: bigint,
+    result: SignSignalsResult,
+  ): Promise<void> {
+    this.evictExpired();
+    const key = keyFor(submitter, payloadHash);
+    // delete-then-set moves a replaced key to the newest insertion position.
+    this.entries.delete(key);
+    this.entries.set(key, { timestamp, result });
+    // Map iteration order is insertion order, so the first key is the oldest.
+    while (this.entries.size > this.maxEntries) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest);
+    }
+  }
+
+  async size(): Promise<number> {
+    this.evictExpired();
+    return this.entries.size;
+  }
+
+  /** Test-only: clear all records. */
+  reset(): void {
+    this.entries.clear();
+  }
+
+  private evictExpired(): void {
+    const cutoff = BigInt(this.now()) - this.retentionSeconds;
+    for (const [key, entry] of this.entries) {
+      if (entry.timestamp < cutoff) this.entries.delete(key);
+    }
   }
 }
 
+function keyFor(submitter: bigint, payloadHash: Uint8Array): string {
+  return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
+}
+
+/** A signed bundle plus whether it was served from the ledger (an identical retry). */
+export interface LedgeredSignResult extends SignSignalsResult {
+  replayed: boolean;
+}
+
+async function signThroughLedger(
+  db: ReplayDb,
+  key: SignerKey,
+  submitter: bigint,
+  timestamp: bigint,
+  payloadHash: Uint8Array,
+  sign: () => Promise<SignSignalsResult>,
+): Promise<LedgeredSignResult> {
+  const recorded = await db.lookup(submitter, payloadHash);
+  // A record is only reusable if the key loaded now produced it: a persistent
+  // ledger can outlive a key rotation.
+  if (
+    recorded &&
+    bytesToHex(recorded.pubkeyX) === bytesToHex(key.publicKeyX) &&
+    bytesToHex(recorded.pubkeyY) === bytesToHex(key.publicKeyY)
+  ) {
+    return { ...recorded, replayed: true };
+  }
+  const result = await sign();
+  await db.record(submitter, payloadHash, timestamp, result);
+  return { ...result, replayed: false };
+}
+
+/**
+ * Sign a screening bundle through the ledger. An identical request returns the
+ * recorded bundle (`replayed: true`), byte-identical to the first response.
+ */
 export async function signSignalsWithReplayProtection(
   api: Barretenberg,
   key: SignerKey,
   db: ReplayDb,
   req: SignSignalsRequest,
-): Promise<SignSignalsResult> {
+): Promise<LedgeredSignResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
     chainId: req.chainId,
     oracleAddress: req.oracleAddress,
@@ -98,26 +183,23 @@ export async function signSignalsWithReplayProtection(
     timestamp: req.timestamp,
     submitter: req.submitter,
   });
-  const reserved = await db.reserve(req.submitter, payloadHash, req.timestamp);
-  if (!reserved) {
-    throw new ReplayDetected(req.submitter, bytesToHex(payloadHash));
-  }
-  return signSignals(api, key, req);
+  return signThroughLedger(db, key, req.submitter, req.timestamp, payloadHash, () =>
+    signSignals(api, key, req),
+  );
 }
 
 /**
- * Multi-signed analogue of `signSignalsWithReplayProtection`. Replay key is
- * (submitter, slot_payload_hash) -- because `slot_index` is embedded in the
- * digest, the same daemon being asked to sign slot 0 and slot 1 for the same
- * subject produces distinct keys and does not collide. This is the property
- * the turnover doc relies on for daemon-orchestrated M-of-N flows.
+ * Multi-signed analogue of `signSignalsWithReplayProtection`. The ledger key is
+ * (submitter, slot_payload_hash); `slot_index` is embedded in the digest, so
+ * the same daemon signing slot 0 and slot 1 for one subject records two
+ * distinct entries.
  */
 export async function signSlotPayloadWithReplayProtection(
   api: Barretenberg,
   key: SignerKey,
   db: ReplayDb,
   req: SignSlotRequest,
-): Promise<SignSignalsResult> {
+): Promise<LedgeredSignResult> {
   const payloadHash = await computeSlotPayloadHash(api, {
     slotIndex: req.slotIndex,
     chainId: req.chainId,
@@ -130,9 +212,7 @@ export async function signSlotPayloadWithReplayProtection(
     timestamp: req.timestamp,
     submitter: req.submitter,
   });
-  const reserved = await db.reserve(req.submitter, payloadHash, req.timestamp);
-  if (!reserved) {
-    throw new ReplayDetected(req.submitter, bytesToHex(payloadHash));
-  }
-  return signSlotPayload(api, key, req);
+  return signThroughLedger(db, key, req.submitter, req.timestamp, payloadHash, () =>
+    signSlotPayload(api, key, req),
+  );
 }

@@ -2,11 +2,17 @@
  * HTTP/HTTPS server for the signing daemon.
  *
  * Patterned on pxe-bridge's server: Node http core (no framework), strict
- * body limits, security headers, optional bearer auth + optional mTLS.
+ * body limits, security headers, bearer auth or mTLS.
  *
  * mTLS, when enabled, is the canonical pattern from Vouch/Dirk -- a CA
  * authorizes specific client certs to call /sign. Clients that present an
  * unknown cert are TLS-rejected before we read any request bytes.
+ *
+ * Credentials are scoped per route group. The signal routes (/sign,
+ * /sign-multi) and /sign-credential-root are separate trust roles: a
+ * credential-root signature lets its holder publish credential roots, which
+ * `EIP712CredentialRoot` deliberately keeps apart from whoever drives signal
+ * signing. Each group has its own credential, and neither opens the other.
  */
 
 import {
@@ -26,9 +32,12 @@ import {
   handleSign,
   handleSignMulti,
   handleSignCredentialRoot,
+  signingPolicy,
   type HandlerContext,
-} from "./handlers.js";
-import type { DaemonConfig } from "./config.js";
+  type HandlerResult,
+  type SigningPolicy,
+} from "./handlers.ts";
+import { assertSafeBind, type DaemonConfig } from "./config.ts";
 
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB; sign body is ~1 KB
 
@@ -38,6 +47,49 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
 };
+
+/** Route groups a credential can be scoped to. */
+export type Scope = "signals" | "credentialRoot";
+
+/** What the caller presented: a verified client cert, or a bearer token. */
+export type Credential =
+  | { kind: "mtls"; commonName: string | undefined }
+  | { kind: "bearer"; token: string | undefined };
+
+function tokenEquals(provided: string, expected: string): boolean {
+  const a = Buffer.from(expected, "utf-8");
+  const b = Buffer.from(provided, "utf-8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Scopes held by a credential. mTLS: a CN listed in `credentialRootClientCns`
+ * holds only `credentialRoot`; any other verified cert holds `signals` (or only
+ * CNs in `signalsClientCns`, when that allowlist is set). Bearer: `apiKey`
+ * holds `signals`, `credentialRootApiKey` holds `credentialRoot`.
+ */
+export function scopesFor(credential: Credential, config: DaemonConfig): Scope[] {
+  if (credential.kind === "mtls") {
+    const cn = credential.commonName;
+    if (cn !== undefined && config.credentialRootClientCns?.includes(cn)) {
+      return ["credentialRoot"];
+    }
+    if (config.signalsClientCns && (cn === undefined || !config.signalsClientCns.includes(cn))) {
+      return [];
+    }
+    return ["signals"];
+  }
+  const token = credential.token;
+  if (token === undefined) return [];
+  // Compare against both keys unconditionally so timing does not reveal which matched.
+  const signals = config.apiKey !== undefined && tokenEquals(token, config.apiKey);
+  const credentialRoot =
+    config.credentialRootApiKey !== undefined && tokenEquals(token, config.credentialRootApiKey);
+  const scopes: Scope[] = [];
+  if (signals) scopes.push("signals");
+  if (credentialRoot) scopes.push("credentialRoot");
+  return scopes;
+}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -73,42 +125,49 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.end(body);
 }
 
-function authBearer(req: IncomingMessage, expectedKey: string): boolean {
-  const header = req.headers["authorization"];
-  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
-  const provided = header.slice("Bearer ".length);
-  const expected = Buffer.from(expectedKey, "utf-8");
-  const got = Buffer.from(provided, "utf-8");
-  if (got.length !== expected.length) return false;
-  return timingSafeEqual(expected, got);
+function sendResult<T>(res: ServerResponse, result: HandlerResult<T>): void {
+  if (result.ok) sendJson(res, result.status, result.body);
+  else sendJson(res, result.error.status, result.error.body);
 }
 
-function clientSourceLabel(req: IncomingMessage, config: DaemonConfig): string {
-  // mTLS path: extract Common Name from peer cert.
-  const sock = req.socket as TLSSocket;
-  if (config.clientCaPath && typeof sock.getPeerCertificate === "function") {
-    const cert = sock.getPeerCertificate(false);
-    if (cert?.subject?.CN) return `mtls:${cert.subject.CN}`;
-  }
-  if (config.apiKey) return "bearer";
-  return "unknown";
-}
-
-function isAuthorized(req: IncomingMessage, config: DaemonConfig): boolean {
-  // mTLS implicitly authorizes via the Node TLS layer (rejectUnauthorized=true).
-  // If the server is mTLS and we got here, the cert chain validated against the CA.
-  // For belt-and-suspenders we still check the socket is authorized.
-  const sock = req.socket as TLSSocket;
+/**
+ * Identify the caller. Under mTLS the TLS layer already rejected unknown
+ * certs (rejectUnauthorized); the `authorized` check is belt-and-suspenders
+ * and never falls back to bearer.
+ */
+function presentedCredential(req: IncomingMessage, config: DaemonConfig): Credential | undefined {
   if (config.clientCaPath) {
-    if (typeof sock.authorized === "boolean" && sock.authorized) return true;
-    // mTLS configured but cert didn't validate: hard-fail (don't fall back to bearer).
-    return false;
+    const sock = req.socket as TLSSocket;
+    if (sock.authorized !== true || typeof sock.getPeerCertificate !== "function") {
+      return undefined;
+    }
+    const cn = sock.getPeerCertificate(false)?.subject?.CN;
+    return { kind: "mtls", commonName: typeof cn === "string" ? cn : undefined };
   }
-  if (config.apiKey) {
-    return authBearer(req, config.apiKey);
+  const header = req.headers["authorization"];
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) {
+    return { kind: "bearer", token: undefined };
   }
-  return false;
+  return { kind: "bearer", token: header.slice("Bearer ".length) };
 }
+
+function sourceLabel(credential: Credential, scope: Scope): string {
+  if (credential.kind === "mtls") return `mtls:${credential.commonName ?? "unknown"}`;
+  return scope === "credentialRoot" ? "bearer:credential-root" : "bearer:signals";
+}
+
+type PostHandler = (
+  ctx: HandlerContext,
+  policy: SigningPolicy,
+  body: unknown,
+  source: string,
+) => Promise<HandlerResult<unknown>>;
+
+const POST_ROUTES: Record<string, { scope: Scope; handle: PostHandler }> = {
+  "/sign": { scope: "signals", handle: handleSign },
+  "/sign-multi": { scope: "signals", handle: handleSignMulti },
+  "/sign-credential-root": { scope: "credentialRoot", handle: handleSignCredentialRoot },
+};
 
 export interface DaemonServer {
   /** Start listening. Resolves when the server is bound. */
@@ -117,7 +176,12 @@ export interface DaemonServer {
   close(): Promise<void>;
 }
 
-export function createDaemonServer(ctx: HandlerContext, config: DaemonConfig): DaemonServer {
+export function createDaemonServer(
+  ctx: HandlerContext,
+  config: DaemonConfig,
+  policy: SigningPolicy = signingPolicy(config),
+): DaemonServer {
+  assertSafeBind(config);
   const useTls = Boolean(config.tlsCertPath && config.tlsKeyPath);
   const useMtls = Boolean(config.clientCaPath);
 
@@ -125,89 +189,56 @@ export function createDaemonServer(ctx: HandlerContext, config: DaemonConfig): D
     try {
       // Health check is unauthenticated (typical for liveness probes).
       if (req.method === "GET" && req.url === "/healthz") {
-        const r = handleHealthz();
-        if (r.ok) sendJson(res, r.status, r.body);
-        else sendJson(res, r.error.status, r.error.body);
+        sendResult(res, handleHealthz());
         return;
       }
 
-      if (!isAuthorized(req, config)) {
+      // Authenticate before routing or reading the body.
+      const credential = presentedCredential(req, config);
+      const scopes = credential ? scopesFor(credential, config) : [];
+      if (!credential || scopes.length === 0) {
         sendJson(res, 401, { error: "unauthorized", code: "UNAUTHORIZED" });
         return;
       }
-      const source = clientSourceLabel(req, config);
 
       if (req.method === "GET" && req.url === "/pubkey-hash") {
-        const r = await handlePubkeyHash(ctx);
-        if (r.ok) sendJson(res, r.status, r.body);
-        else sendJson(res, r.error.status, r.error.body);
+        sendResult(res, await handlePubkeyHash(ctx));
         return;
       }
 
-      if (req.method === "POST" && req.url === "/sign") {
-        let raw: string;
-        try {
-          raw = await readBody(req);
-        } catch (err) {
-          sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
-          return;
-        }
-        let body: unknown;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
-          return;
-        }
-        const result = await handleSign(ctx, body, source);
-        if (result.ok) sendJson(res, result.status, result.body);
-        else sendJson(res, result.error.status, result.error.body);
+      // Own-property check: the URL is caller input and must not resolve to an
+      // inherited Object property (a request target of "constructor", say).
+      const route =
+        req.method === "POST" && req.url && Object.hasOwn(POST_ROUTES, req.url)
+          ? POST_ROUTES[req.url]
+          : undefined;
+      if (!route) {
+        sendJson(res, 404, { error: "not found", code: "NOT_FOUND" });
+        return;
+      }
+      if (!scopes.includes(route.scope)) {
+        sendJson(res, 403, {
+          error: "credential not permitted on this route",
+          code: "ROUTE_NOT_PERMITTED",
+        });
         return;
       }
 
-      if (req.method === "POST" && req.url === "/sign-multi") {
-        let raw: string;
-        try {
-          raw = await readBody(req);
-        } catch (err) {
-          sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
-          return;
-        }
-        let body: unknown;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
-          return;
-        }
-        const result = await handleSignMulti(ctx, body, source);
-        if (result.ok) sendJson(res, result.status, result.body);
-        else sendJson(res, result.error.status, result.error.body);
+      let raw: string;
+      try {
+        raw = await readBody(req);
+      } catch (err) {
+        sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
         return;
       }
-
-      if (req.method === "POST" && req.url === "/sign-credential-root") {
-        let raw: string;
-        try {
-          raw = await readBody(req);
-        } catch (err) {
-          sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
-          return;
-        }
-        let body: unknown;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
-          return;
-        }
-        const result = handleSignCredentialRoot(ctx, body, source);
-        if (result.ok) sendJson(res, result.status, result.body);
-        else sendJson(res, result.error.status, result.error.body);
+      let body: unknown;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
         return;
       }
-
-      sendJson(res, 404, { error: "not found", code: "NOT_FOUND" });
+      sendResult(res, await route.handle(ctx, policy, body, sourceLabel(credential, route.scope)));
     } catch (err) {
       sendJson(res, 500, { error: (err as Error).message ?? "internal error", code: "INTERNAL" });
     }
