@@ -277,6 +277,27 @@ describe("buildComplianceInputs", () => {
       }),
     ).toThrow("not compliant");
   });
+
+  it("rejects NaN and malformed values before witness generation", () => {
+    const base = { score: 25, jurisdictionId: 0, providerSetHash: PROVIDER_SET_HASH };
+    expect(() =>
+      buildComplianceInputs({ ...base, submitter: SUBMITTER, timestamp: "abc" }),
+    ).toThrow("Timestamp must be an integer");
+    expect(() => buildComplianceInputs({ ...base, submitter: "0x1" as Address })).toThrow(
+      "submitter must be a 0x-prefixed 20-byte address",
+    );
+    // A NaN weight made the score NaN, which skipped the non-compliance check.
+    expect(() =>
+      buildComplianceInputs({
+        signals: [99],
+        weights: [Number.NaN],
+        providerIds: ["1"],
+        jurisdictionId: 0,
+        providerSetHash: PROVIDER_SET_HASH,
+        submitter: SUBMITTER,
+      }),
+    ).toThrow("Weight[0] must be an integer in [0, 10000]");
+  });
 });
 
 // ============================================================
