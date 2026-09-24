@@ -84,7 +84,7 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const WORD_HEX = 64;
 const ATTESTATION_WORDS = 10;
 
-// keccak256 selectors (verified against viem.toFunctionSelector in the tests)
+// keccak256 selectors (the tests compare full calldata against viem's encodeFunctionData)
 const SELECTOR_CHECK_COMPLIANCE = "0xd1e8eba9"; // checkCompliance(address,uint8)
 const SELECTOR_CHECK_COMPLIANCE_BY_TYPE = "0x0916d812"; // checkComplianceByType(address,uint8,uint8)
 const SELECTOR_SUBMIT_COMPLIANCE = "0xf33bc62b"; // submitCompliance(uint8,uint8,bytes,bytes,bytes32)
