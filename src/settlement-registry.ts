@@ -126,6 +126,13 @@ export const SETTLEMENT_REGISTRY_ABI = [
     outputs: [{ name: "root", type: "bytes32" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "isPatternProofUsed",
+    inputs: [{ name: "patternProofHash", type: "bytes32" }],
+    outputs: [{ name: "used", type: "bool" }],
+    stateMutability: "view",
+  },
   // Events
   {
     type: "event",
@@ -247,6 +254,23 @@ export const SETTLEMENT_REGISTRY_ABI = [
       { name: "actual", type: "bytes32" },
     ],
   },
+  // recordSubSettlement: the referenced attestation must be a compliance-type
+  // proof (0x01, 0x07, 0x09).
+  {
+    type: "error",
+    name: "NonComplianceProofType",
+    inputs: [
+      { name: "proofHash", type: "bytes32" },
+      { name: "proofType", type: "uint8" },
+    ],
+  },
+  // finalizeTrade: a PATTERN proof finalizes at most one trade.
+  {
+    type: "error",
+    name: "PatternProofAlreadyUsed",
+    inputs: [{ name: "patternProofHash", type: "bytes32" }],
+  },
+  { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;
 
 export class SettlementRegistryClient {

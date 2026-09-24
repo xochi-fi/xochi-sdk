@@ -4,9 +4,10 @@
  *
  * Deploys the full stack (AlwaysPassVerifier, ERC8262Verifier, ERC8262Oracle)
  * and exercises the SDK clients:
- *   - ERC8262Oracle: submitCompliance, checkCompliance, history, config queries
+ *   - ERC8262Oracle: submitCompliance, checkCompliance (compliance-type policy),
+ *     history, config queries, signer registry, credential-root publication
  *   - ERC8262Verifier: verifyProof, verifyProofBatch, getVerifier, versioning
- *   - OracleLite: checkCompliance, verifyProof (parity with ERC8262Oracle)
+ *   - OracleLite: checkCompliance, checkComplianceByType, verifyProof (parity with ERC8262Oracle)
  *
  * Requires anvil (foundry). Run with:
  *   npm run test:integration
@@ -32,7 +33,11 @@ import { foundry } from "viem/chains";
 import { ERC8262Oracle } from "../src/oracle.js";
 import { ERC8262Verifier } from "../src/verifier.js";
 import { OracleLite } from "../src/oracle-lite.js";
+import { ORACLE_ABI } from "../src/abis.js";
 import { PROOF_TYPES, type ProofType } from "../src/constants.js";
+import { loadSignerKey, RawKeyLoader } from "../src/provider/keystore.js";
+import { signCredentialRoot } from "../src/provider/credential-root-signer.js";
+import { withDecodedErrors } from "../src/errors.js";
 
 // ============================================================
 // Contract bytecodes
@@ -69,6 +74,9 @@ const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 
 const OWNER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
 const ALICE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
+const BOB = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" as Address;
+
+const chainClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
 
 let anvil: ChildProcess;
 let oracleClient: ERC8262Oracle;
@@ -401,19 +409,13 @@ describe("OracleLite parity (anvil)", () => {
     expect(liteAtt.verifierUsed.toLowerCase()).toBe(viemAtt.verifierUsed.toLowerCase());
   });
 
-  it("checkCompliance returns invalid for unknown address", async () => {
-    // Oracle's checkCompliance reverts for subjects with no attestation.
-    // OracleLite propagates the RPC error.
-    try {
-      const result = await oracleLite.checkCompliance(
-        "0x0000000000000000000000000000000000000001",
-        0,
-      );
-      // If it doesn't throw, it should return invalid
-      expect(result === null || !result.valid).toBe(true);
-    } catch {
-      // Expected: Oracle reverts with AttestationNotFound
-    }
+  it("checkCompliance reports no attestation for an unknown address", async () => {
+    // The Oracle returns a zeroed struct (valid=false) rather than reverting.
+    const result = await oracleLite.checkCompliance(
+      "0x0000000000000000000000000000000000000001",
+      0,
+    );
+    expect(result).toEqual({ valid: false, attestation: null, source: "on-chain" });
   });
 
   it("verifyProof succeeds with AlwaysPassVerifier", async () => {
@@ -430,14 +432,168 @@ describe("OracleLite parity (anvil)", () => {
       0,
     );
 
-    // verifyProof uses eth_call to simulate submitCompliance.
-    // If it returns valid=false, check the error for diagnosis.
-    if (!result.valid) {
-      // OracleLite's error field captures revert reasons
-      expect(result.error).toBeUndefined();
-    }
+    expect(result.error).toBeUndefined();
     expect(result.valid).toBe(true);
     expect(result.attestation).not.toBeNull();
     expect(result.attestation!.subject.toLowerCase()).toBe(ALICE.toLowerCase());
+    expect(result.publicInputs).toEqual(
+      publicInputs
+        .slice(2)
+        .match(/.{64}/g)!
+        .map((w) => `0x${w}`),
+    );
+  });
+});
+
+// ============================================================
+// Signer registry, compliance-type policy, typed errors
+// ============================================================
+
+describe("signer registry and compliance-type policy (anvil)", () => {
+  const US = 1;
+  const signerPubkeyHash = keccak256(toHex("integration-signer"));
+  let ownerOracle: ERC8262Oracle;
+  let bobOracle: ERC8262Oracle;
+
+  beforeAll(() => {
+    const wallet = (account: Address) =>
+      createWalletClient({ chain: foundry, transport: http(ANVIL_URL), account });
+    ownerOracle = new ERC8262Oracle(oracleAddress, chainClient, wallet(OWNER), foundry);
+    bobOracle = new ERC8262Oracle(oracleAddress, chainClient, wallet(BOB), foundry);
+  });
+
+  it("registerSignerPubkeyHash authorizes a signer", async () => {
+    expect(await ownerOracle.isValidSignerPubkeyHash(signerPubkeyHash)).toBe(false);
+    await chainClient.waitForTransactionReceipt({
+      hash: await ownerOracle.registerSignerPubkeyHash(signerPubkeyHash),
+    });
+    expect(await ownerOracle.isValidSignerPubkeyHash(signerPubkeyHash)).toBe(true);
+  });
+
+  it("decodes a role revert into a typed error", async () => {
+    // NotRole was missing from ORACLE_ABI, so this decoded as UnknownRevert.
+    await expect(
+      withDecodedErrors(ORACLE_ABI, () =>
+        chainClient.simulateContract({
+          address: oracleAddress,
+          abi: ORACLE_ABI,
+          functionName: "registerSignerPubkeyHash",
+          args: [signerPubkeyHash],
+          account: BOB,
+        }),
+      ),
+    ).rejects.toMatchObject({ errorName: "NotRole" });
+  });
+
+  it("does not report a RISK_SCORE_SIGNED attestation as compliance", async () => {
+    // Review #2 PoC: "risk > 10%" under US. AlwaysPassVerifier stands in for a
+    // real proof of that (true) statement.
+    const fields = [
+      toHex(1), // proof_type: threshold
+      toHex(1), // direction: GT
+      toHex(1000), // bound_lower: 10%
+      toHex(0), // bound_upper
+      toHex(1), // result
+      configHash,
+      "0xaabb",
+      signerPubkeyHash,
+      toHex(foundry.id),
+      oracleAddress,
+      BOB,
+    ] as Hex[];
+    const publicInputs = `0x${fields.map((f) => padHex(f, { size: 32 }).slice(2)).join("")}` as Hex;
+
+    await chainClient.waitForTransactionReceipt({
+      hash: await bobOracle.submitCompliance({
+        jurisdictionId: US,
+        proofType: PROOF_TYPES.RISK_SCORE_SIGNED,
+        proof: toHex(crypto.getRandomValues(new Uint8Array(32))),
+        publicInputs,
+        providerSetHash: padHex("0xaabb", { size: 32 }),
+      }),
+    });
+
+    // ERC-8262 itself still says valid (meetsThreshold is hard-coded true).
+    const [onChainValid] = (await chainClient.readContract({
+      address: oracleAddress,
+      abi: ORACLE_ABI,
+      functionName: "checkCompliance",
+      args: [BOB, US],
+    })) as [boolean, unknown];
+    expect(onChainValid).toBe(true);
+
+    expect((await bobOracle.checkCompliance(BOB, US)).valid).toBe(false);
+    expect((await oracleLite.checkCompliance(BOB, US))?.valid).toBe(false);
+    expect(
+      (await oracleLite.checkComplianceByType(BOB, US, PROOF_TYPES.RISK_SCORE_SIGNED))?.valid,
+    ).toBe(true);
+    expect(
+      (
+        await bobOracle.checkCompliance(BOB, US, {
+          acceptedProofTypes: [PROOF_TYPES.RISK_SCORE_SIGNED],
+        })
+      ).valid,
+    ).toBe(true);
+  });
+
+  it("revokeSignerPubkeyHash deauthorizes the signer", async () => {
+    await chainClient.waitForTransactionReceipt({
+      hash: await ownerOracle.revokeSignerPubkeyHash(signerPubkeyHash),
+    });
+    expect(await ownerOracle.isValidSignerPubkeyHash(signerPubkeyHash)).toBe(false);
+  });
+});
+
+// ============================================================
+// Credential roots (audit C-1 signed publication)
+// ============================================================
+
+describe("publishCredentialRoot (anvil)", () => {
+  it("publishes a root signed by the registered credential signer", async () => {
+    const providerId = 7n;
+    const root = keccak256(toHex("credential-tree-root"));
+    const cid = "bafybeigdyrztxample";
+    const key = await loadSignerKey(new RawKeyLoader(new Uint8Array(32).fill(7), "credential"));
+
+    const ownerOracle = new ERC8262Oracle(
+      oracleAddress,
+      chainClient,
+      createWalletClient({ chain: foundry, transport: http(ANVIL_URL), account: OWNER }),
+      foundry,
+    );
+    const { timestamp } = await chainClient.getBlock();
+    const notBefore = timestamp - 60n;
+    const notAfter = timestamp + 3600n;
+    const { signature, signer } = signCredentialRoot(key, {
+      chainId: BigInt(foundry.id),
+      oracleAddress,
+      providerId,
+      root,
+      cid,
+      notBefore,
+      notAfter,
+    });
+
+    await chainClient.waitForTransactionReceipt({
+      hash: await ownerOracle.setProviderPublisher(providerId, ALICE),
+    });
+    await chainClient.waitForTransactionReceipt({
+      hash: await ownerOracle.setCredentialSigner(providerId, signer),
+    });
+    expect((await ownerOracle.getCredentialSigner(providerId)).toLowerCase()).toBe(signer);
+
+    // ALICE is the publisher EOA; the signature comes from the separate signing key.
+    await chainClient.waitForTransactionReceipt({
+      hash: await oracleClient.publishCredentialRoot(
+        providerId,
+        root,
+        cid,
+        notBefore,
+        notAfter,
+        signature,
+      ),
+    });
+    expect(await oracleClient.isValidCredentialRoot(root)).toBe(true);
+    expect((await oracleClient.getCredentialRoot(root)).providerId).toBe(providerId);
   });
 });
