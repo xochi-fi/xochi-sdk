@@ -1,5 +1,5 @@
 /**
- * ERC8262Prover -- high-level proof generation for all 6 circuit types.
+ * ERC8262Prover -- high-level proof generation for all 9 circuit types.
  */
 
 import { Noir } from "@noir-lang/noir_js";
@@ -110,7 +110,7 @@ export class ERC8262Prover {
    *
    * Jurisdiction floors on M (mirrors `JurisdictionConfig.minMultiProviderThreshold`):
    *   - EU=1, UK=1
-   *   - US=2, SG=2
+   *   - US=2, SG=2, UAE=2
    *
    * The Oracle additionally requires each active signer's pubkey hash to be in
    * its `_validSignerPubkeyHashes` registry; reverts that come back as typed
