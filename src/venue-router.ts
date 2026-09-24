@@ -42,8 +42,13 @@ export const VENUE_MIN_SCORES: Record<VenueId, number> = {
 };
 
 function validateConstraints(constraints: VenueConstraints): void {
-  if (constraints.trustScore < 0 || constraints.trustScore > 100) {
-    throw new Error(`trustScore must be in [0, 100], got ${String(constraints.trustScore)}`);
+  // No upper bound: Institutional is 100+ (attestation scores reach ~120).
+  // NaN fails every `<` comparison, so it must be rejected explicitly or it
+  // would clear every venue gate, shielded included.
+  if (!Number.isFinite(constraints.trustScore) || constraints.trustScore < 0) {
+    throw new Error(
+      `trustScore must be a finite number >= 0, got ${String(constraints.trustScore)}`,
+    );
   }
 }
 

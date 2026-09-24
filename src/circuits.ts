@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { CircuitLoader, CircuitName, CompiledCircuit } from "./types.js";
 import { assertCompatibleNoirVersion } from "./noir-version.js";
 
@@ -11,9 +12,9 @@ export class BundledCircuitLoader implements CircuitLoader {
   private circuitsDir: string;
 
   constructor(circuitsDir?: string) {
-    // import.meta.dirname available in Node 21.2+
-    this.circuitsDir =
-      circuitsDir || resolve(new URL(".", import.meta.url).pathname, "../circuits");
+    // fileURLToPath, not URL.pathname: pathname keeps percent-encoding, so an
+    // install path containing a space resolved to ".../sdk%20space/..." (ENOENT).
+    this.circuitsDir = circuitsDir || fileURLToPath(new URL("../circuits", import.meta.url));
   }
 
   async load(name: CircuitName): Promise<CompiledCircuit> {
