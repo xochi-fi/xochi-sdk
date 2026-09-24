@@ -18,6 +18,23 @@ export const PROOF_TYPES = {
 
 export type ProofType = (typeof PROOF_TYPES)[keyof typeof PROOF_TYPES];
 
+/**
+ * Proof types whose attestation means "the subject scored below the
+ * jurisdiction's high-risk threshold" -- the same set ERC-8262's
+ * `SettlementRegistry.recordSubSettlement` accepts.
+ *
+ * ERC-8262's on-chain `checkCompliance` returns `valid: true` after ANY accepted
+ * proof type: `_buildAttestation` hard-codes `meetsThreshold: true` and
+ * `checkCompliance` ignores `proofType`. A RISK_SCORE_SIGNED "score > 10%" proof
+ * therefore reads as compliant. The SDK clients (`ERC8262Oracle`, `OracleLite`)
+ * only report `valid` for these types unless the caller passes its own list.
+ */
+export const COMPLIANCE_PROOF_TYPES: readonly ProofType[] = [
+  PROOF_TYPES.COMPLIANCE,
+  PROOF_TYPES.COMPLIANCE_SIGNED,
+  PROOF_TYPES.COMPLIANCE_MULTI_SIGNED,
+];
+
 export const JURISDICTIONS = {
   EU: 0,
   US: 1,
