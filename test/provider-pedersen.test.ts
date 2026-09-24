@@ -4,9 +4,13 @@
  * These tests compute Pedersen digests via @aztec/bb.js and assert they match
  * the values the in-circuit `xochi_shared::sig::*` helpers produce in Noir.
  *
- * The "expected" constants below are reproduced as `assert(actual == EXPECTED)`
+ * The expected constants below are hard-coded as `assert(actual == expected)`
  * test vectors in the ERC-8262 repo at
- *   circuits/shared/src/sig.nr (test_parity_with_sdk_*).
+ *   circuits/shared/src/sig.nr       (test_parity_with_sdk_signed_payload_hash,
+ *                                     test_parity_with_sdk_signer_pubkey_hash)
+ *   circuits/shared/src/multi_sig.nr (test_parity_with_sdk_slot_payload_hash)
+ * and those Noir tests pass under nargo 1.0.0-beta.20
+ * (`cd circuits/shared && nargo test parity`).
  *
  * If you change either side without updating the other, both test suites will fail.
  * That is intentional -- this is the ground-truth contract for off-chain signers.
@@ -116,11 +120,18 @@ describe("pedersenHash basic shape", () => {
 
 describe("Noir parity vectors", () => {
   /*
-   * Inputs identical to the Noir `test_parity_with_sdk_*` tests in
-   * circuits/shared/src/sig.nr. Run that test in the ERC-8262 workspace
-   * with `cd circuits && nargo test sig::test_parity` to confirm both sides
-   * produce the same value.
+   * Inputs AND expected digests identical to the Noir `test_parity_with_sdk_*`
+   * tests in ERC-8262 circuits/shared/src/{sig,multi_sig}.nr. Run
+   * `cd circuits/shared && nargo test parity` in the ERC-8262 workspace to
+   * confirm the circuit side produces the same values.
    */
+
+  /** sig.nr::test_parity_with_sdk_signed_payload_hash `expected`. */
+  const SIGNED_PAYLOAD_HASH = "0x161ce9164a86defd6b8c44e9923690407bea0488eb15bd91b99ce71438dae106";
+  /** multi_sig.nr::test_parity_with_sdk_slot_payload_hash `expected`. */
+  const SLOT_PAYLOAD_HASH = "0x2fb6d465edad72085a6d9cdd0fa2bba97c6f946e55762c0d53d96abe5d8e547f";
+  /** sig.nr::test_parity_with_sdk_signer_pubkey_hash `expected`. */
+  const SIGNER_PUBKEY_HASH = "0x058715a847c033508c9f675ad51831993ea45169b097bd064942295ee24e4f19";
 
   it("signed payload hash for fixture inputs", async () => {
     // Audit F-6: digest now binds chain_id + oracle_address. Fixture vector
@@ -134,22 +145,18 @@ describe("Noir parity vectors", () => {
       timestamp: 1700000000n,
       submitter: 0xcafen,
     });
-    // The hex string emitted here is the value the Noir test must hardcode.
-    // First-time bootstrap: run this test, copy console output, paste into Noir.
-    // Subsequent runs: the assertion below catches drift.
+    // Printed so a deliberate layout change can be copied into sig.nr; the
+    // assertion below fails on any drift from the circuit-side constant.
     // eslint-disable-next-line no-console
     console.log("[parity] signed_payload_hash =", bytesToHex(digest));
-    expect(digest.length).toBe(32);
-    // PARITY_VECTOR_1 -- regenerate via Noir test if Pedersen layout ever changes.
-    expect(bytesToHex(digest)).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(bytesToHex(digest)).toBe(SIGNED_PAYLOAD_HASH);
   });
 
   it("slot payload hash for fixture inputs (multi-signed)", async () => {
-    // Fixture mirrors `circuits/shared/src/multi_sig.nr::test_slot_payload_hash_deterministic`
+    // Fixture mirrors `circuits/shared/src/multi_sig.nr::test_parity_with_sdk_slot_payload_hash`
     // (slot_index=0, chain_id=1, oracle_address=0xabcd1234, jurisdiction_id=0,
-    // provider_set_hash=0xdead, config_hash=0xbeef, ...). The circuit-side
-    // parity test (`test_parity_with_sdk_slot_payload_hash`) must hardcode the
-    // value this test prints.
+    // provider_set_hash=0xdead, config_hash=0xbeef, ...), which hard-codes the
+    // same expected digest.
     const digest = await computeSlotPayloadHash(api, {
       slotIndex: 0,
       chainId: 1n,
@@ -164,8 +171,7 @@ describe("Noir parity vectors", () => {
     });
     // eslint-disable-next-line no-console
     console.log("[parity] slot_payload_hash =", bytesToHex(digest));
-    expect(digest.length).toBe(32);
-    expect(bytesToHex(digest)).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(bytesToHex(digest)).toBe(SLOT_PAYLOAD_HASH);
   });
 
   it("slot payload hash domain-separates from single-signer payload", async () => {
@@ -214,7 +220,8 @@ describe("Noir parity vectors", () => {
   });
 
   it("signer pubkey hash for fixture pubkey", async () => {
-    // A deterministic test pubkey pattern (NOT a real key).
+    // Same pattern as sig.nr::test_parity_with_sdk_signer_pubkey_hash
+    // (x = 0x00..0x1F, y = 0x40..0x5F). NOT a real key.
     const pubkeyX = new Uint8Array(32);
     const pubkeyY = new Uint8Array(32);
     for (let i = 0; i < 32; i++) {
@@ -224,7 +231,6 @@ describe("Noir parity vectors", () => {
     const digest = await computeSignerPubkeyHash(api, pubkeyX, pubkeyY);
     // eslint-disable-next-line no-console
     console.log("[parity] signer_pubkey_hash =", bytesToHex(digest));
-    expect(digest.length).toBe(32);
-    expect(bytesToHex(digest)).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(bytesToHex(digest)).toBe(SIGNER_PUBKEY_HASH);
   });
 });
