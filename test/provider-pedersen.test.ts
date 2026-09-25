@@ -7,6 +7,7 @@
  * The expected constants below are hard-coded as `assert(actual == expected)`
  * test vectors in the ERC-8262 repo at
  *   circuits/shared/src/sig.nr       (test_parity_with_sdk_signed_payload_hash,
+ *                                     test_parity_with_sdk_risk_signed_payload_hash,
  *                                     test_parity_with_sdk_signer_pubkey_hash)
  *   circuits/shared/src/multi_sig.nr (test_parity_with_sdk_slot_payload_hash)
  * and those Noir tests pass under nargo 1.0.0-beta.20
@@ -28,6 +29,7 @@ import {
   bytesToBigint,
   bytesToHex,
   DOMAIN_SIGNED_SIGNALS,
+  DOMAIN_RISK_SIGNED_SIGNALS,
   DOMAIN_SIGNER_PUBKEY,
   DOMAIN_MULTI_SIGNED_SIGNALS,
   MAX_PROVIDERS_MULTI,
@@ -102,15 +104,14 @@ describe("pedersenHash basic shape", () => {
   });
 
   it("differs across DOMAIN tags", async () => {
-    const sigInputs = [DOMAIN_SIGNED_SIGNALS, 0n, 0n, 0n];
-    const pkInputs = [DOMAIN_SIGNER_PUBKEY, 0n, 0n, 0n];
-    const multiInputs = [DOMAIN_MULTI_SIGNED_SIGNALS, 0n, 0n, 0n];
-    const h1 = await pedersenHash(api, sigInputs);
-    const h2 = await pedersenHash(api, pkInputs);
-    const h3 = await pedersenHash(api, multiInputs);
-    expect(bytesToHex(h1)).not.toBe(bytesToHex(h2));
-    expect(bytesToHex(h1)).not.toBe(bytesToHex(h3));
-    expect(bytesToHex(h2)).not.toBe(bytesToHex(h3));
+    const tags = [
+      DOMAIN_SIGNED_SIGNALS,
+      DOMAIN_RISK_SIGNED_SIGNALS,
+      DOMAIN_SIGNER_PUBKEY,
+      DOMAIN_MULTI_SIGNED_SIGNALS,
+    ];
+    const digests = await Promise.all(tags.map((t) => pedersenHash(api, [t, 0n, 0n, 0n])));
+    expect(new Set(digests.map(bytesToHex)).size).toBe(tags.length);
   });
 
   it("exports stable MAX_PROVIDERS_MULTI", () => {
@@ -126,30 +127,55 @@ describe("Noir parity vectors", () => {
    * confirm the circuit side produces the same values.
    */
 
-  /** sig.nr::test_parity_with_sdk_signed_payload_hash `expected`. */
+  /** sig.nr::test_parity_with_sdk_signed_payload_hash `expected` (COMPLIANCE_SIGNED). */
   const SIGNED_PAYLOAD_HASH = "0x161ce9164a86defd6b8c44e9923690407bea0488eb15bd91b99ce71438dae106";
+  /** sig.nr::test_parity_with_sdk_risk_signed_payload_hash `expected` (RISK_SCORE_SIGNED). */
+  const RISK_SIGNED_PAYLOAD_HASH =
+    "0x237db3dd775fcc4721519a93dbab793d4971ddba8ed977495de3d4ea88088007";
   /** multi_sig.nr::test_parity_with_sdk_slot_payload_hash `expected`. */
   const SLOT_PAYLOAD_HASH = "0x2fb6d465edad72085a6d9cdd0fa2bba97c6f946e55762c0d53d96abe5d8e547f";
   /** sig.nr::test_parity_with_sdk_signer_pubkey_hash `expected`. */
   const SIGNER_PUBKEY_HASH = "0x058715a847c033508c9f675ad51831993ea45169b097bd064942295ee24e4f19";
 
-  it("signed payload hash for fixture inputs", async () => {
-    // Audit F-6: digest now binds chain_id + oracle_address. Fixture vector
+  /** Inputs shared by the sig.nr parity tests; only the domain differs. */
+  const SIGNED_FIXTURE = {
+    chainId: 1n,
+    oracleAddress: 0xabcd1234n,
+    providerSetHash: 0xdeadn,
+    signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
+    weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
+    timestamp: 1700000000n,
+    submitter: 0xcafen,
+  };
+
+  it("signed payload hash for fixture inputs (COMPLIANCE_SIGNED)", async () => {
+    // Audit F-6: digest binds chain_id + oracle_address. Fixture vector
     // matches sig.nr's test_parity_with_sdk_signed_payload_hash.
-    const digest = await computeSignedPayloadHash(api, {
-      chainId: 1n,
-      oracleAddress: 0xabcd1234n,
-      providerSetHash: 0xdeadn,
-      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
-      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
-      timestamp: 1700000000n,
-      submitter: 0xcafen,
-    });
+    const digest = await computeSignedPayloadHash(api, { ...SIGNED_FIXTURE, proofType: 0x07 });
     // Printed so a deliberate layout change can be copied into sig.nr; the
     // assertion below fails on any drift from the circuit-side constant.
     // eslint-disable-next-line no-console
     console.log("[parity] signed_payload_hash =", bytesToHex(digest));
     expect(bytesToHex(digest)).toBe(SIGNED_PAYLOAD_HASH);
+  });
+
+  it("signed payload hash for fixture inputs (RISK_SCORE_SIGNED)", async () => {
+    // Review #5: 0x08 signs under its own domain tag, so the same bundle has a
+    // different digest than for 0x07. Matches
+    // sig.nr's test_parity_with_sdk_risk_signed_payload_hash.
+    const digest = await computeSignedPayloadHash(api, { ...SIGNED_FIXTURE, proofType: 0x08 });
+    // eslint-disable-next-line no-console
+    console.log("[parity] risk_signed_payload_hash =", bytesToHex(digest));
+    expect(bytesToHex(digest)).toBe(RISK_SIGNED_PAYLOAD_HASH);
+  });
+
+  it("rejects a proof type without a signed-signals domain", async () => {
+    await expect(
+      computeSignedPayloadHash(api, {
+        ...SIGNED_FIXTURE,
+        proofType: 0x09 as unknown as 0x07,
+      }),
+    ).rejects.toThrow(/proofType must be 0x07 .* or 0x08/);
   });
 
   it("slot payload hash for fixture inputs (multi-signed)", async () => {
@@ -178,15 +204,7 @@ describe("Noir parity vectors", () => {
     // Same fields as test_signed_payload_hash but routed through the multi-signed
     // helper -- domain tag and extra fields (slot_index, jurisdiction, config_hash)
     // must produce a distinct digest.
-    const single = await computeSignedPayloadHash(api, {
-      chainId: 1n,
-      oracleAddress: 0xabcd1234n,
-      providerSetHash: 0xdeadn,
-      signals: [10n, 20n, 30n, 0n, 0n, 0n, 0n, 0n],
-      weights: [50n, 30n, 20n, 0n, 0n, 0n, 0n, 0n],
-      timestamp: 1700000000n,
-      submitter: 0xcafen,
-    });
+    const single = await computeSignedPayloadHash(api, { ...SIGNED_FIXTURE, proofType: 0x07 });
     const multi = await computeSlotPayloadHash(api, {
       slotIndex: 0,
       chainId: 1n,

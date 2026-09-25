@@ -66,6 +66,12 @@ export function signingPolicy(
 
 export interface SignRequestBody {
   /**
+   * Proof type the bundle is signed for: 7 (COMPLIANCE_SIGNED) or 8
+   * (RISK_SCORE_SIGNED). Selects the digest's domain tag; the signature
+   * verifies only in that type's circuit. Decimal, 0x-hex string, or number.
+   */
+  proofType: string | number;
+  /**
    * EVM chain ID of the consuming Oracle deployment (audit F-6 binding).
    * Decimal string or number. Must equal the daemon's SIGNER_CHAIN_ID.
    */
@@ -334,9 +340,27 @@ async function handleSignalRoute<R extends SignalFields>(
   );
 }
 
+function parseSignBody(raw: unknown): SignSignalsRequest {
+  const fields = parseSignalFields(raw, true);
+  const { proofType } = raw as Record<string, unknown>;
+  if (proofType === undefined) {
+    throw new Error("proofType required (7 = COMPLIANCE_SIGNED, 8 = RISK_SCORE_SIGNED)");
+  }
+  const n = asNumber(proofType, "proofType", 0xff);
+  const type = n === 0x07 ? 0x07 : n === 0x08 ? 0x08 : undefined;
+  if (type === undefined) {
+    throw new Error(
+      `proofType must be 7 (COMPLIANCE_SIGNED) or 8 (RISK_SCORE_SIGNED); got ${String(proofType)}`,
+    );
+  }
+  return { ...fields, proofType: type };
+}
+
 /**
- * POST /sign. An identical retry returns the identical signature (the signing
- * ledger serves it; signing is deterministic), audited as `replayed`.
+ * POST /sign. The signature is for the requested `proofType` only (its digest
+ * carries that type's domain tag). An identical retry returns the identical
+ * signature (the signing ledger serves it; signing is deterministic), audited
+ * as `replayed`.
  */
 export function handleSign(
   ctx: HandlerContext,
@@ -344,8 +368,7 @@ export function handleSign(
   body: unknown,
   source: string,
 ): Promise<HandlerResult<SignResponseBody>> {
-  const parse = (raw: unknown): SignSignalsRequest => parseSignalFields(raw, true);
-  return handleSignalRoute(ctx, policy, "/sign", body, source, parse, (req) =>
+  return handleSignalRoute(ctx, policy, "/sign", body, source, parseSignBody, (req) =>
     signSignalsWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req),
   );
 }
@@ -379,7 +402,7 @@ export function handleHealthz(): HandlerResult<{ status: "ok" }> {
 // Multi-signed slot signing (COMPLIANCE_MULTI_SIGNED / proof type 0x09)
 // ---------------------------------------------------------------------------
 
-export interface SignMultiRequestBody extends SignRequestBody {
+export interface SignMultiRequestBody extends Omit<SignRequestBody, "proofType"> {
   /** Slot position in the proof's signer array. MUST be in [0, MAX_PROVIDERS_MULTI). */
   slotIndex: string | number;
   /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG, 4=UAE). */

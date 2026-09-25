@@ -488,6 +488,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
   it("does not report a RISK_SCORE_SIGNED attestation as compliance", async () => {
     // Review #2 PoC: "risk > 10%" under US. AlwaysPassVerifier stands in for a
     // real proof of that (true) statement.
+    const { timestamp } = await chainClient.getBlock();
     const fields = [
       toHex(1), // proof_type: threshold
       toHex(1), // direction: GT
@@ -496,6 +497,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
       toHex(1), // result
       configHash,
       "0xaabb",
+      toHex(timestamp), // signed timestamp: fresh
       signerPubkeyHash,
       toHex(foundry.id),
       oracleAddress,

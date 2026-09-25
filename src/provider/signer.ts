@@ -5,6 +5,8 @@
  * secp256k1 ECDSA signing to produce the bundle the COMPLIANCE_SIGNED /
  * RISK_SCORE_SIGNED circuits consume. Output is the exact set of fields the
  * circuit expects as private witnesses + the `signer_pubkey_hash` public input.
+ * Each signature is for one proof type: the digest carries that type's domain
+ * tag, so a 0x07 bundle cannot be used as 0x08 or the reverse.
  *
  * Replay protection lives next to the signer (see `replay-db.ts`) -- the
  * signer itself is stateless beyond the loaded key.
@@ -19,11 +21,18 @@ import {
   computeSignerPubkeyHash,
   bytesToHex,
   MAX_PROVIDERS_MULTI,
+  type SignedSignalsProofType,
 } from "./pedersen.js";
 import type { SignerKey } from "./keystore.js";
 
 /** What the provider knows / produces about a screening result. */
 export interface SignSignalsRequest {
+  /**
+   * Proof type the bundle is for: 0x07 (COMPLIANCE_SIGNED) or 0x08
+   * (RISK_SCORE_SIGNED). Selects the digest's domain tag; the signature
+   * verifies only in that type's circuit.
+   */
+  proofType: SignedSignalsProofType;
   /**
    * EVM chain ID of the consuming Oracle deployment. Audit F-6: committed in
    * the in-circuit signed digest so a single signature cannot be replayed
@@ -42,7 +51,11 @@ export interface SignSignalsRequest {
   signals: bigint[];
   /** Per-provider weights. MUST be length 8 (zero-pad inactive). */
   weights: bigint[];
-  /** Block-aligned timestamp the proof binds to (seconds). */
+  /**
+   * Seconds since epoch the bundle is signed at. Both signed types expose it as
+   * the `timestamp` public input, and the Oracle accepts the proof only while
+   * it is at most `MAX_PROOF_AGE` (1 hour) old and not in the future.
+   */
   timestamp: bigint;
   /** Submitter EOA address as a Field bigint (uint160). */
   submitter: bigint;
@@ -73,6 +86,7 @@ export async function signSignals(
   req: SignSignalsRequest,
 ): Promise<SignSignalsResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
+    proofType: req.proofType,
     chainId: req.chainId,
     oracleAddress: req.oracleAddress,
     providerSetHash: req.providerSetHash,

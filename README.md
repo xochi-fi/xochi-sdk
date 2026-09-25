@@ -223,22 +223,25 @@ The signed-variant proofs (`COMPLIANCE_SIGNED`, `RISK_SCORE_SIGNED`) cryptograph
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
-import { ERC8262Prover } from "@xochi/sdk";
+import { ERC8262Prover, PROOF_TYPES } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 import { RawKeyLoader, loadSignerKey, signSignals } from "@xochi/sdk/provider";
 
 const api = await Barretenberg.new();
 const signerKey = await loadSignerKey(new RawKeyLoader(privateKeyBytes, "provider-1"));
 
-// 1. Provider signs the screening bundle. chainId + oracleAddress (audit F-6)
-//    are committed in the in-circuit Pedersen digest the signature is over.
+// 1. Provider signs the screening bundle for ONE proof type: the digest carries
+//    that type's domain tag, so a COMPLIANCE_SIGNED signature cannot be used for
+//    RISK_SCORE_SIGNED (or the reverse). chainId + oracleAddress (audit F-6) are
+//    committed in the same digest.
 const signed = await signSignals(api, signerKey, {
+  proofType: PROOF_TYPES.COMPLIANCE_SIGNED,
   chainId: 1n, // EVM chain ID of the consuming Oracle
   oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
   providerSetHash: BigInt("0x..."),
   signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n], // length 8, zero-pad inactive
   weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
-  timestamp: BigInt(Math.floor(Date.now() / 1000)),
+  timestamp: BigInt(Math.floor(Date.now() / 1000)), // the proof must reach the Oracle within 1 h
   submitter: BigInt(account.address),
 });
 
@@ -266,6 +269,7 @@ const res = await fetch(`${daemonUrl}/sign`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
   body: JSON.stringify({
+    proofType: 7, // 7 = COMPLIANCE_SIGNED, 8 = RISK_SCORE_SIGNED
     chainId: 8453, // must equal the daemon's SIGNER_CHAIN_ID
     oracleAddress: "0x...", // must equal the daemon's SIGNER_ORACLE_ADDRESS
     providerSetHash: "0x...",
@@ -647,6 +651,8 @@ Each builder validates constraints (signal range, weight bounds, timestamp limit
 > **Submitter binding**: All 9 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
 >
 > **Signed-variant binding (audit F-6)**: `buildComplianceSignedInputs` and `buildRiskScoreSignedInputs` additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest the ECDSA signature is checked against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)`, so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
+>
+> **Signed-variant proof type and freshness (review #5)**: the `signedBundle` must come from `signSignals` with the matching `proofType` (`0x07` for `buildComplianceSignedInputs`, `0x08` for `buildRiskScoreSignedInputs`); the other type's signature fails in-circuit verification. Both circuits expose the signed timestamp as a public input (`timestamp`, or `signedTimestamp` for the 0x08 builder), and the Oracle rejects it once it is more than `MAX_PROOF_AGE` (1 hour) old.
 
 ## Proof type mappings
 
@@ -662,11 +668,11 @@ proofTypeToCircuit(0x01); // "compliance"
 circuitToProofType("risk_score"); // 0x02
 PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 7, attestation: 6,
 //      membership: 5, non_membership: 5,
-//      compliance_signed: 9, risk_score_signed: 11,
+//      compliance_signed: 9, risk_score_signed: 12,
 //      compliance_multi_signed: 14
 // (pattern's 7th input is settlement_root, audit H-1; signed variants include
-//  signer_pubkey_hash + chain_id + oracle_address; multi-signed adds
-//  threshold_m + 5x signer_pubkey_hash)
+//  signer_pubkey_hash + chain_id + oracle_address, and risk_score_signed also the
+//  signed timestamp; multi-signed adds threshold_m + 5x signer_pubkey_hash)
 ```
 
 ## Typed contract errors
@@ -707,7 +713,6 @@ For lower-level use, `decodeContractError(err, abi)` returns the typed error or 
 These need changes in [ERC-8262](https://github.com/xochi-fi/ERC-8262) first; the SDK documents or mitigates them until then.
 
 - **The Oracle's `checkCompliance` is proof-type blind.** It reports `meetsThreshold: true` for every proof type. `ERC8262Oracle.checkCompliance` and `OracleLite.checkCompliance` apply the compliance-type policy client-side; any other caller of the contract still sees `valid: true` for, e.g., a RISK_SCORE_SIGNED attestation.
-- **`RISK_SCORE_SIGNED` (0x08) signatures do not expire, and 0x07/0x08 share one signed digest.** The circuit takes the signed timestamp as a private witness and the Oracle uses `block.timestamp`, so any bundle a provider ever signed (including one issued for 0x07) can mint fresh 0x08 attestations. Providers should sign only fresh timestamps -- the reference daemon enforces a freshness window -- until ERC-8262 makes the timestamp public and gives 0x08 its own domain tag.
 - **Tier proofs are self-attested** (see "Tier proofs").
 
 ## Development

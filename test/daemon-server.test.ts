@@ -106,6 +106,7 @@ const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda81
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD";
 
 const SAMPLE_BODY = {
+  proofType: 7, // COMPLIANCE_SIGNED
   // Audit F-6: chain_id + oracle_address bind the signed digest to a
   // specific deployment. Both must match the daemon's pins.
   chainId: CHAIN_ID,
@@ -282,6 +283,15 @@ describe("POST /sign", () => {
     expect(secp256k1.verify(sigBytes, digest, uncompressed)).toBe(true);
   });
 
+  it("signs RISK_SCORE_SIGNED under its own domain (review #5)", async () => {
+    replayDb.reset();
+    const compliance = (await (await post("/sign", SAMPLE_BODY)).json()) as { payloadHash: string };
+    const res = await post("/sign", { ...SAMPLE_BODY, proofType: "0x08" });
+    expect(res.status).toBe(200);
+    const risk = (await res.json()) as { payloadHash: string };
+    expect(risk.payloadHash).not.toBe(compliance.payloadHash);
+  });
+
   it("rejects malformed body with 400", async () => {
     await expectRejected(
       await post("/sign", { providerSetHash: PROVIDER_SET_HASH }),
@@ -399,6 +409,8 @@ describe("POST /sign", () => {
       ["zero submitter", { submitter: "0x" + "00".repeat(20) }],
       ["short submitter", { submitter: "0xdead" }],
       ["short oracleAddress", { oracleAddress: "0xabcd1234" }],
+      ["missing proofType", { proofType: undefined }],
+      ["proofType without a signed-signals domain", { proofType: 9 }],
     ];
     it.each(cases)("rejects %s with 400", async (_label, patch) => {
       await expectRejected(await post("/sign", { ...SAMPLE_BODY, ...patch }), 400, "BAD_REQUEST");

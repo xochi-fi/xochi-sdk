@@ -193,7 +193,7 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
   },
   {
     name: "risk_score_signed",
-    publicInputs: 11,
+    publicInputs: 12,
     build: () =>
       buildRiskScoreSignedInputs({
         type: "threshold",

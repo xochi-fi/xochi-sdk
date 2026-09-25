@@ -1,21 +1,22 @@
 /**
  * Input builder for the RISK_SCORE_SIGNED circuit.
  *
- * Mirrors `buildRiskScoreInputs` but adds the four extra fields the signed
- * variant requires:
- *   - private: signature [u8; 64], pubkey_x [u8; 32], pubkey_y [u8; 32], signed_timestamp Field
- *   - public:  signer_pubkey_hash Field
+ * Mirrors `buildRiskScoreInputs` but adds the fields the signed variant
+ * requires:
+ *   - private: signature [u8; 64], pubkey_x [u8; 32], pubkey_y [u8; 32]
+ *   - public:  timestamp Field, signer_pubkey_hash Field, chain_id, oracle_address
  *
- * Note: RISK_SCORE has no public timestamp. The signed-payload digest binds
- * a `signed_timestamp` as a private witness so the provider can attest to
- * signal freshness without leaking it. Caller MUST pass the same timestamp
- * value the provider used when signing.
+ * `timestamp` is the time the provider signed (`signedTimestamp`; RISK_SCORE
+ * has no counterpart). The digest commits to it, and the Oracle accepts the
+ * proof only while it is at most `MAX_PROOF_AGE` (1 hour) old. The bundle MUST
+ * have been signed for RISK_SCORE_SIGNED (`signSignals({ proofType: 0x08 })`):
+ * a COMPLIANCE_SIGNED signature fails in-circuit verification.
  */
 
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
 import { bytesToHexField } from "../provider/pedersen.js";
-import { validateActiveProviders, validateSubmitter } from "./validate.js";
+import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 import type { SignedSignalsBundle } from "./compliance-signed.js";
 
 interface ProviderSignals {
@@ -49,7 +50,7 @@ interface ThresholdBaseSigned extends SignedDigestBinding {
   configHash?: string;
   submitter: Address;
   signedBundle: SignedSignalsBundle;
-  /** Timestamp the provider signed over (must match signSignals input). */
+  /** Timestamp the provider signed over (must match the signSignals input). */
   signedTimestamp: string | bigint;
 }
 
@@ -144,12 +145,13 @@ export function buildRiskScoreSignedInputs(
     typeof opts.signedTimestamp === "bigint"
       ? opts.signedTimestamp.toString()
       : opts.signedTimestamp;
+  validateTimestamp(Number(signedTimestamp));
 
   const sharedSignedFields = {
     signature: bytesToNumStrings(opts.signedBundle.signature, 64, "signature"),
     pubkey_x: bytesToNumStrings(opts.signedBundle.pubkeyX, 32, "pubkey_x"),
     pubkey_y: bytesToNumStrings(opts.signedBundle.pubkeyY, 32, "pubkey_y"),
-    signed_timestamp: signedTimestamp,
+    timestamp: signedTimestamp,
     signer_pubkey_hash: bytesToHexField(opts.signedBundle.signerPubkeyHash),
     chain_id: BigInt(opts.chainId).toString(),
     oracle_address: opts.oracleAddress,

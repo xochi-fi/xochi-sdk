@@ -36,6 +36,7 @@ returned).
 
 ```json
 {
+  "proofType": 8,
   "chainId": 8453,
   "oracleAddress": "0x<40 hex>",
   "providerSetHash": "0x14b6becf...",
@@ -61,6 +62,11 @@ Response:
 Range checks mirror the circuits' `validate_provider_slots`: 8 signals each in
 `[0, 100]`, 8 `u32` weights, at least one positive weight, a zero-weight slot
 carries signal `0`, and for `/sign` the active slots are contiguous from index 0. `submitter` and `oracleAddress` must be `0x`-prefixed 20-byte addresses.
+
+`proofType` is required: `7` (`COMPLIANCE_SIGNED`) or `8` (`RISK_SCORE_SIGNED`),
+as a number or a decimal / `0x` string. It selects the digest's domain tag, so
+the signature verifies only in that proof type's circuit; a bundle signed for
+0x07 cannot be proven as 0x08, or the reverse.
 
 ### `POST /sign-multi`
 
@@ -110,10 +116,10 @@ never takes the deployment from the request:
 | `WINDOW_EXPIRED`          | `/sign-credential-root`: `notAfter` is not in the future                                                                                         |
 | `VALIDITY_TOO_LONG`       | `/sign-credential-root`: `notAfter` is more than `SIGNER_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS` away                                              |
 
-The timestamp window matters most for `RISK_SCORE_SIGNED` (0x08): the Oracle
-uses `block.timestamp` as that proof's time and does not bound the signed
-timestamp, so until ERC-8262 binds it, this window is the only limit on how
-long a signed 0x08 bundle stays usable.
+On-chain, both signed types expose the signed `timestamp` as a public input,
+and the Oracle rejects it once it is older than `MAX_PROOF_AGE` (1 hour) or in
+the future. A bundle is therefore usable for at most an hour after its
+timestamp; this window bounds what the daemon will sign in the first place.
 
 ### Retries
 
