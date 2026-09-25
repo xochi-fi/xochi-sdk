@@ -4,10 +4,9 @@
  * Jurisdiction Configuration / Jurisdiction Policy tables.
  *
  * UAE (id 4) was ratified in the ERC and implemented on-chain but never added
- * here, so the SDK could not build UAE inputs at all. The SDK tables now carry
- * it, but the BUNDLED compliance circuit still predates ERC-8262's UAE change
- * and rejects id 4 at witness generation; the known-gap test at the bottom pins
- * that so nothing here reads as a claim that UAE proofs work end to end.
+ * here, so the SDK could not build UAE inputs at all. The block at the bottom
+ * executes every jurisdiction through the bundled compliance circuit, so the
+ * tables here and the circuit the SDK ships cannot disagree again.
  */
 
 import { describe, it, expect } from "vitest";
@@ -90,41 +89,21 @@ describe("jurisdiction parity with ERC-8262", () => {
   );
 });
 
-/**
- * KNOWN GAP (review #1): the bundled `compliance` circuit predates ERC-8262's
- * UAE change and fails witness generation for jurisdiction 4. The fix is
- * upstream: ERC-8262 regenerates the 0x07/0x09 verifiers, then this SDK
- * re-syncs its circuits. This test is EXPECTED TO FLIP at that re-sync; when it
- * does, invert it to assert UAE executes like the other jurisdictions.
- */
-describe("bundled compliance circuit vs ERC-8262 jurisdictions (known gap)", () => {
+describe("bundled compliance circuit accepts every ERC-8262 jurisdiction", () => {
   const loader = new BundledCircuitLoader();
 
-  async function execute(jurisdictionId: number): Promise<{ witness: Uint8Array }> {
+  it.each(ERC_8262_JURISDICTIONS)("$name ($id): executes the builder's inputs", async ({ id }) => {
     const circuit = await loader.load("compliance");
     const noir = new Noir(circuit as ConstructorParameters<typeof Noir>[0]);
-    return noir.execute(
+    const { witness } = await noir.execute(
       buildComplianceInputs({
         score: 20,
-        jurisdictionId,
+        jurisdictionId: id,
         providerSetHash: PROVIDER_SET_HASH,
         timestamp: TIMESTAMP,
         submitter: SUBMITTER,
       }),
     );
-  }
-
-  // Control: identical builder inputs with only the jurisdiction changed are
-  // accepted, so the UAE rejection below is about the jurisdiction and not a
-  // bad provider set, timestamp, or submitter.
-  it("EU (0): bundled circuit executes the builder's inputs", async () => {
-    const { witness } = await execute(JURISDICTIONS.EU);
     expect(witness).toBeInstanceOf(Uint8Array);
-  });
-
-  it("UAE (4): bundled circuit currently REJECTS it (flip on circuit re-sync)", async () => {
-    await expect(execute(JURISDICTIONS.UAE)).rejects.toThrow(
-      "Circuit execution failed: Invalid jurisdiction",
-    );
   });
 });

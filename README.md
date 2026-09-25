@@ -299,8 +299,6 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 | SG           | 2          |
 | UAE          | 2          |
 
-> **UAE (`4`) is not provable yet.** The constants and input builders know UAE, but the bundled compliance circuits predate ERC-8262's UAE change and reject jurisdiction 4 at witness generation (`Invalid jurisdiction`). It becomes provable when the circuits are re-synced after ERC-8262 regenerates its `0x07`/`0x09` verifiers. `test/jurisdiction-parity.test.ts` pins this gap and flips when it closes.
-
 ### Slot semantics
 
 - Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
@@ -708,7 +706,6 @@ For lower-level use, `decodeContractError(err, abi)` returns the typed error or 
 
 These need changes in [ERC-8262](https://github.com/xochi-fi/ERC-8262) first; the SDK documents or mitigates them until then.
 
-- **UAE cannot be proven yet.** The bundled compliance circuits predate ERC-8262's UAE change (see "M-of-N multi-provider proofs" above).
 - **The Oracle's `checkCompliance` is proof-type blind.** It reports `meetsThreshold: true` for every proof type. `ERC8262Oracle.checkCompliance` and `OracleLite.checkCompliance` apply the compliance-type policy client-side; any other caller of the contract still sees `valid: true` for, e.g., a RISK_SCORE_SIGNED attestation.
 - **`RISK_SCORE_SIGNED` (0x08) signatures do not expire, and 0x07/0x08 share one signed digest.** The circuit takes the signed timestamp as a private witness and the Oracle uses `block.timestamp`, so any bundle a provider ever signed (including one issued for 0x07) can mint fresh 0x08 attestations. Providers should sign only fresh timestamps -- the reference daemon enforces a freshness window -- until ERC-8262 makes the timestamp public and gives 0x08 its own domain tag.
 - **Tier proofs are self-attested** (see "Tier proofs").

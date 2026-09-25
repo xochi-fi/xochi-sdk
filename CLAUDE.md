@@ -99,8 +99,6 @@ The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_addres
 
 The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2, UAE=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
 
-**Known gap -- UAE (jurisdiction 4) is not provable with the bundled circuits.** The constants and input builders include UAE, but `circuits/compliance*.json` predate ERC-8262's UAE change and fail witness generation with `Invalid jurisdiction`. Fixing it needs ERC-8262 to regenerate its `compliance_signed` / `compliance_multi_signed` verifiers first, then a re-sync of all nine circuits. `test/jurisdiction-parity.test.ts` asserts the current rejection and must be inverted when that lands.
-
 ## Trust Tiers
 
 Source of truth is `docs/planning/economics.md` Part 1 in the xochi repo. Its
