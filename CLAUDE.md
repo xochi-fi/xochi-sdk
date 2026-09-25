@@ -63,7 +63,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
 npm test               # vitest run (unit tests; integration + fee-schedule-drift excluded via vitest.config.ts)
 npm run test:integration  # proof generation + anvil contract tests (uses vitest.integration.config.ts)
-npm run drift-check    # circuit-drift + jurisdiction-parity + fee-schedule-drift (vitest.drift.config.ts; needs ../riddler-sdk)
+npm run drift-check    # circuit-drift + jurisdiction-parity + abi-drift + verifier-vk-drift + fee-schedule-drift (vitest.drift.config.ts; needs ../riddler-sdk)
 npm run typecheck      # tsc --noEmit (SDK + tests) and tsc -p daemon/tsconfig.json
 npm run format         # prettier --write src/ test/ daemon/src/ and root json/md
 npm run format:check   # prettier --check (runs in prepublishOnly + CI)
@@ -177,7 +177,7 @@ cd ../ERC-8262/circuits && nargo compile --workspace
 cd - && ./scripts/sync-circuits.sh ../ERC-8262
 ```
 
-Use the script rather than copying by hand: it strips `file_map` / `debug_symbols` (full Noir sources with absolute build paths; noir_js needs only `abi` + `bytecode`, and assert messages come from the `abi`), checks every `noir_version` against `EXPECTED_NOIR_VERSION`, and only writes `circuits/` when all nine artifacts pass. Then run `npm run drift-check`.
+Use the script rather than copying by hand: it strips `file_map` / `debug_symbols` (full Noir sources with absolute build paths; noir_js needs only `abi` + `bytecode`, and assert messages come from the `abi`), checks every `noir_version` against `EXPECTED_NOIR_VERSION`, and only writes `circuits/` when all nine artifacts pass. Then run `npm run drift-check`: `test/verifier-vk-drift.test.ts` requires each bundled circuit's EVM VK hash to equal the `VK_HASH` in ERC-8262's `src/generated/<circuit>_verifier.sol`, so syncing from a checkout whose verifiers are stale fails.
 
 The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
