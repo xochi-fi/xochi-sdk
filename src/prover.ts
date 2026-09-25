@@ -106,7 +106,7 @@ export class ERC8262Prover {
    * each signer signs the digest that embeds its own `slotIndex`. Inactive
    * slots are passed as `null` in `opts.slots`; the builder fills the
    * inactive-slot witness convention (weight_sum=1, weights=[1,0..0],
-   * signals=[0;8], zero pubkey/sig) automatically.
+   * signals=[0;8], ECDSA-solvable padding pubkey/sig) automatically.
    *
    * Jurisdiction floors on M (mirrors `JurisdictionConfig.minMultiProviderThreshold`):
    *   - EU=1, UK=1
