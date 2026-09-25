@@ -336,10 +336,10 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
     await publicClient.waitForTransactionReceipt({ hash: regHash });
 
     // 3. Daemon: a stale timestamp is refused at the source. The Oracle would
-    //    reject it anyway (MAX_PROOF_AGE = 1h), and for 0x08 nothing on-chain
-    //    would -- so the daemon's freshness window is the bound.
+    //    reject it anyway (MAX_PROOF_AGE = 1h, for 0x07 and 0x08 alike).
     const signBody = (timestamp: bigint): string =>
       JSON.stringify({
+        proofType: PROOF_TYPES.COMPLIANCE_SIGNED,
         chainId: foundry.id,
         oracleAddress,
         providerSetHash: PROVIDER_SET_HASH,

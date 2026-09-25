@@ -175,6 +175,7 @@ export async function signSignalsWithReplayProtection(
   req: SignSignalsRequest,
 ): Promise<LedgeredSignResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
+    proofType: req.proofType,
     chainId: req.chainId,
     oracleAddress: req.oracleAddress,
     providerSetHash: req.providerSetHash,

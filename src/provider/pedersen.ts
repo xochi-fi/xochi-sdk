@@ -16,8 +16,24 @@
 
 import { Barretenberg } from "@aztec/bb.js";
 
-/** Domain tag for the provider-signed signals digest. ASCII "SIG_SIGS". */
+/** Domain tag for the COMPLIANCE_SIGNED (0x07) signed-signals digest. ASCII "SIG_SIGS". */
 export const DOMAIN_SIGNED_SIGNALS = 0x5349475f53494753n;
+
+/** Domain tag for the RISK_SCORE_SIGNED (0x08) signed-signals digest. ASCII "RSK_SIGS". */
+export const DOMAIN_RISK_SIGNED_SIGNALS = 0x52534b5f53494753n;
+
+/** Proof types whose provider bundle is signed via `computeSignedPayloadHash`. */
+export type SignedSignalsProofType = 0x07 | 0x08;
+
+/**
+ * Domain tag per signed proof type. The tag is what binds a signature to one
+ * proof type: a bundle signed for COMPLIANCE_SIGNED does not verify in the
+ * RISK_SCORE_SIGNED circuit, and the reverse.
+ */
+export const SIGNED_SIGNALS_DOMAINS: Readonly<Record<SignedSignalsProofType, bigint>> = {
+  0x07: DOMAIN_SIGNED_SIGNALS,
+  0x08: DOMAIN_RISK_SIGNED_SIGNALS,
+};
 
 /** Domain tag for the secp256k1 signer pubkey commitment. ASCII "SIG_PK". */
 export const DOMAIN_SIGNER_PUBKEY = 0x5349475f504bn;
@@ -79,12 +95,13 @@ export async function pedersenHash(api: Barretenberg, inputs: bigint[]): Promise
 /**
  * Compute the signed-signals payload digest the provider signs over.
  *
- * Mirrors `xochi_shared::sig::compute_signed_payload_hash` exactly. Audit F-6:
- * the digest now binds chain_id and oracle_address so a single signature
- * cannot be replayed across chains or alternate Oracle deployments.
+ * Mirrors `xochi_shared::sig::compute_signed_payload_hash` exactly, with the
+ * domain tag of `proofType` (`SIGNED_SIGNALS_DOMAINS`). Audit F-6: the digest
+ * binds chain_id and oracle_address so a single signature cannot be replayed
+ * across chains or alternate Oracle deployments.
  *
  *   pedersen_hash([
- *     DOMAIN_SIGNED_SIGNALS,
+ *     SIGNED_SIGNALS_DOMAINS[proofType],
  *     chain_id,
  *     oracle_address,
  *     provider_set_hash,
@@ -99,6 +116,7 @@ export async function pedersenHash(api: Barretenberg, inputs: bigint[]): Promise
 export async function computeSignedPayloadHash(
   api: Barretenberg,
   args: {
+    proofType: SignedSignalsProofType;
     chainId: bigint;
     oracleAddress: bigint;
     providerSetHash: bigint;
@@ -108,6 +126,12 @@ export async function computeSignedPayloadHash(
     submitter: bigint;
   },
 ): Promise<Uint8Array> {
+  const domain = SIGNED_SIGNALS_DOMAINS[args.proofType] as bigint | undefined;
+  if (domain === undefined) {
+    throw new Error(
+      `proofType must be 0x07 (COMPLIANCE_SIGNED) or 0x08 (RISK_SCORE_SIGNED); got ${String(args.proofType)}`,
+    );
+  }
   if (args.signals.length !== 8) {
     throw new Error(`signals must have length 8; got ${String(args.signals.length)}`);
   }
@@ -115,7 +139,7 @@ export async function computeSignedPayloadHash(
     throw new Error(`weights must have length 8; got ${String(args.weights.length)}`);
   }
   const inputs: bigint[] = [
-    DOMAIN_SIGNED_SIGNALS,
+    domain,
     args.chainId,
     args.oracleAddress,
     args.providerSetHash,

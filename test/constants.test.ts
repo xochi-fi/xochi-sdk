@@ -82,7 +82,7 @@ describe("PUBLIC_INPUT_COUNTS", () => {
     expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(5); // membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(5); // non_membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x07]).toBe(9); // compliance_signed (+ signer_pubkey_hash, chain_id, oracle_address)
-    expect(PUBLIC_INPUT_COUNTS[0x08]).toBe(11); // risk_score_signed (+ signer_pubkey_hash, chain_id, oracle_address)
+    expect(PUBLIC_INPUT_COUNTS[0x08]).toBe(12); // risk_score_signed (+ timestamp, signer_pubkey_hash, chain_id, oracle_address)
     expect(PUBLIC_INPUT_COUNTS[0x09]).toBe(14); // compliance_multi_signed (+ threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address)
   });
 });

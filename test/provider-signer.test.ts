@@ -35,6 +35,7 @@ const TEST_PRIVATE_KEY = new Uint8Array(32);
 for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 
 const SAMPLE_REQUEST: SignSignalsRequest = {
+  proofType: 0x07,
   // Audit F-6: chain_id + oracle_address bind the signed digest to a
   // specific deployment.
   chainId: 1n,
@@ -93,6 +94,22 @@ describe("signSignals", () => {
     });
     expect(bytesToHex(altered.signature)).not.toBe(bytesToHex(baseline.signature));
     expect(bytesToHex(altered.payloadHash)).not.toBe(bytesToHex(baseline.payloadHash));
+  });
+
+  it("binds the signature to the proof type (review #5)", async () => {
+    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
+    const forCompliance = await signSignals(api, key, SAMPLE_REQUEST);
+    const forRiskScore = await signSignals(api, key, { ...SAMPLE_REQUEST, proofType: 0x08 });
+    expect(bytesToHex(forRiskScore.payloadHash)).not.toBe(bytesToHex(forCompliance.payloadHash));
+
+    // A 0x07 signature does not verify over the 0x08 digest the circuit checks.
+    const uncompressed = new Uint8Array(65);
+    uncompressed[0] = 0x04;
+    uncompressed.set(forCompliance.pubkeyX, 1);
+    uncompressed.set(forCompliance.pubkeyY, 33);
+    expect(secp256k1.verify(forCompliance.signature, forRiskScore.payloadHash, uncompressed)).toBe(
+      false,
+    );
   });
 
   it("formats result as hex without losing data", async () => {
