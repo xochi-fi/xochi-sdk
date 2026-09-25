@@ -84,7 +84,13 @@ describe("scheduleDiffusion", () => {
 
   it("throws on negative diffusionWindow", () => {
     expect(() => scheduleDiffusion(makeTrades(2), makeVenues(2), -1)).toThrow(
-      "diffusionWindow must be >= 0",
+      "diffusionWindow must be a finite number >= 0",
+    );
+  });
+
+  it.each([NaN, Infinity])("throws on non-finite diffusionWindow %s", (window) => {
+    expect(() => scheduleDiffusion(makeTrades(2), makeVenues(2), window)).toThrow(
+      "diffusionWindow must be a finite number >= 0",
     );
   });
 
@@ -106,15 +112,36 @@ describe("scheduleDiffusion", () => {
       gaps.push(result[i].targetTimestamp - result[i - 1].targetTimestamp);
     }
 
-    // With 50% jitter, gaps should vary. Check that not all gaps are identical.
+    // Stratified jitter over the slack: gaps should vary. Check that not all gaps are identical.
     const allSame = gaps.every((g) => g === gaps[0]);
     expect(allSame).toBe(false);
   });
 
-  // -- Exact boundary: window just barely fits --
-  it("accepts minimum viable window for N sub-trades", () => {
-    // 5 sub-trades need 4 * 12 = 48s minimum. Give 120s (plenty of room).
-    const result = scheduleDiffusion(makeTrades(5), makeVenues(5), 120);
-    expect(result).toHaveLength(5);
+  // -- Exact boundary: every window the validation accepts must schedule --
+  // The sampler is random, so each case is drawn many times. The previous
+  // sampler threw for about half of the draws at n=2 / 12s.
+  it.each([
+    [2, 12],
+    [4, 36],
+    [4, 40],
+    [5, 48],
+    [10, 108.9],
+  ])("never throws and keeps spacing for n=%i at window %ss", (n, window) => {
+    for (let draw = 0; draw < 2000; draw++) {
+      const result = scheduleDiffusion(makeTrades(n), makeVenues(n), window);
+      expect(result).toHaveLength(n);
+      expect(result[0].targetTimestamp).toBeGreaterThanOrEqual(0);
+      expect(result[n - 1].targetTimestamp).toBeLessThanOrEqual(window);
+      for (let i = 1; i < n; i++) {
+        expect(result[i].targetTimestamp - result[i - 1].targetTimestamp).toBeGreaterThanOrEqual(
+          12,
+        );
+      }
+    }
+  });
+
+  it("schedules exactly at the gaps when the window has no slack", () => {
+    const result = scheduleDiffusion(makeTrades(4), makeVenues(4), 36);
+    expect(result.map((st) => st.targetTimestamp)).toEqual([0, 12, 24, 36]);
   });
 });

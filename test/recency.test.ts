@@ -56,6 +56,16 @@ describe("assertProofRecent", () => {
     expect(() => assertProofRecent(now - 50, 60)).not.toThrow();
     expect(() => assertProofRecent(now - 120, 60)).toThrow("max 60s");
   });
+
+  it("rejects future, millisecond and non-integer timestamps like the Oracle", () => {
+    const now = Math.floor(Date.now() / 1000);
+    expect(isProofRecent(now + 86_400)).toBe(false);
+    expect(() => assertProofRecent(now + 86_400)).toThrow("is in the future");
+    // Date.now() is milliseconds: 1000x "now", so it reads as far future.
+    expect(isProofRecent(Date.now())).toBe(false);
+    expect(() => assertProofRecent(Number.NaN)).toThrow("must be a non-negative integer");
+    expect(() => assertProofRecent(now - 0.5)).toThrow("must be a non-negative integer");
+  });
 });
 
 describe("DEFAULT_MAX_PROOF_AGE", () => {

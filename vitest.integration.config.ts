@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { sdkSourceAlias } from "./vitest.config.ts";
 
 export default defineConfig({
+  resolve: { alias: sdkSourceAlias },
   test: {
     globals: true,
     environment: "node",

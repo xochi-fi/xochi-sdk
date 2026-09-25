@@ -3,6 +3,10 @@
  *
  * Spreads sub-trade submissions across a time window with jittered spacing,
  * enforcing a minimum 12-second gap between consecutive submissions.
+ *
+ * Sampling reserves the mandatory gaps first and jitters only the remaining
+ * slack, so every window the validation accepts can always be scheduled: the
+ * validation and the sampler agree by construction instead of by luck.
  */
 
 import type { SubTrade } from "./split.js";
@@ -30,8 +34,8 @@ export function scheduleDiffusion(
     );
   }
 
-  if (diffusionWindow < 0) {
-    throw new Error(`diffusionWindow must be >= 0, got ${String(diffusionWindow)}`);
+  if (!Number.isFinite(diffusionWindow) || diffusionWindow < 0) {
+    throw new Error(`diffusionWindow must be a finite number >= 0, got ${String(diffusionWindow)}`);
   }
 
   const n = subTrades.length;
@@ -54,52 +58,22 @@ export function scheduleDiffusion(
     );
   }
 
-  const meanSpacing = diffusionWindow / n;
+  // Work in whole seconds so rounding can never shave a gap below the minimum.
+  // minWindow is an integer, so floor(window) >= minWindow iff window >= minWindow.
+  const slack = Math.floor(diffusionWindow) - minWindow;
 
-  // Generate jittered timestamps
-  const randomBytes = crypto.getRandomValues(new Uint8Array(n * 4));
-  const timestamps: number[] = [];
-
-  for (let i = 0; i < n; i++) {
-    const baseTime = i * meanSpacing;
-
-    // Convert 4 random bytes to a uniform float in [0, 1)
-    const u32 =
-      (randomBytes[i * 4] << 24) |
-      (randomBytes[i * 4 + 1] << 16) |
-      (randomBytes[i * 4 + 2] << 8) |
-      randomBytes[i * 4 + 3];
-    const uniform = (u32 >>> 0) / 0x100000000;
-
-    // Jitter in [-0.5 * meanSpacing, 0.5 * meanSpacing]
-    const jitter = (uniform - 0.5) * meanSpacing;
-
-    // Clamp to [0, diffusionWindow]
-    const clamped = Math.max(0, Math.min(diffusionWindow, baseTime + jitter));
-    timestamps.push(clamped);
-  }
-
-  // Sort ascending
-  timestamps.sort((a, b) => a - b);
-
-  // Enforce minimum 12s spacing (push forward if needed)
-  for (let i = 1; i < timestamps.length; i++) {
-    const minTime = timestamps[i - 1] + MIN_SPACING_SECONDS;
-    if (timestamps[i] < minTime) {
-      timestamps[i] = minTime;
-    }
-  }
-
-  // Verify enforcement didn't push beyond the diffusion window
-  if (timestamps[timestamps.length - 1] > diffusionWindow) {
-    throw new Error(
-      "diffusion window too short after jitter; increase window or reduce sub-trade count",
-    );
-  }
-
-  return subTrades.map((st, i) => ({
-    ...st,
-    venue: venues[i],
-    targetTimestamp: Math.round(timestamps[i]),
-  }));
+  // Stratified jitter over the slack: offset i lands uniformly in stratum
+  // [i * slack / n, (i + 1) * slack / n). The offsets are non-decreasing and
+  // below `slack`, so adding the reserved gap `i * MIN_SPACING_SECONDS` yields
+  // timestamps that are >= MIN_SPACING_SECONDS apart and never exceed the window.
+  const random = crypto.getRandomValues(new Uint32Array(n));
+  return subTrades.map((st, i) => {
+    const uniform = random[i] / 0x100000000; // [0, 1)
+    const offset = Math.floor(((i + uniform) * slack) / n);
+    return {
+      ...st,
+      venue: venues[i],
+      targetTimestamp: offset + i * MIN_SPACING_SECONDS,
+    };
+  });
 }

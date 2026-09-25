@@ -62,8 +62,9 @@ export {
 
 export {
   type ReplayDb,
+  type MemoryReplayDbOptions,
+  type LedgeredSignResult,
   MemoryReplayDb,
-  ReplayDetected,
   signSignalsWithReplayProtection,
   signSlotPayloadWithReplayProtection,
 } from "./replay-db.js";

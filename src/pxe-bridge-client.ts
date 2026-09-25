@@ -46,13 +46,52 @@ interface JsonRpcResponse<T> {
   };
 }
 
+export interface PxeBridgeClientOptions {
+  /** Per-request timeout in milliseconds. Default 15000. */
+  timeoutMs?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
+  );
+}
+
+/**
+ * The bearer token and the note parameters (recipient, amount) must not cross
+ * the network in cleartext, so the URL must be https. Plain http is accepted
+ * only for a loopback bridge (local development, same-host sidecar).
+ */
+function parseBridgeUrl(url: string): URL {
+  const parsed = new URL(url);
+  if (parsed.protocol === "https:") return parsed;
+  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) return parsed;
+  throw new Error(
+    `pxe-bridge URL must be https (plain http is allowed only for loopback hosts); got ${url}`,
+  );
+}
+
 export class PxeBridgeClient {
   private nextId = 1;
+  private readonly url: URL;
+  private readonly timeoutMs: number;
 
   constructor(
-    private url: string,
+    url: string,
     private apiKey?: string,
-  ) {}
+    options: PxeBridgeClientOptions = {},
+  ) {
+    this.url = parseBridgeUrl(url);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error(`timeoutMs must be a positive integer; got ${String(timeoutMs)}`);
+    }
+    this.timeoutMs = timeoutMs;
+  }
 
   private async call<T>(method: string, params: unknown): Promise<T> {
     const request: JsonRpcRequest = {
@@ -74,6 +113,7 @@ export class PxeBridgeClient {
       method: "POST",
       headers,
       body: JSON.stringify(request),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
 
     if (!response.ok) {

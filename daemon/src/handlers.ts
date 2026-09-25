@@ -1,32 +1,34 @@
 /**
  * Request handlers for the signing daemon.
  *
- * Two endpoints:
- *   POST /sign          -- compute a signed-signals bundle for a request body
- *   GET  /pubkey-hash   -- return the daemon's signer_pubkey_hash for registration
- *   GET  /healthz       -- liveness check
+ *   POST /sign                  -- sign a screening bundle (COMPLIANCE_SIGNED / RISK_SCORE_SIGNED)
+ *   POST /sign-multi            -- sign one slot of a COMPLIANCE_MULTI_SIGNED bundle
+ *   POST /sign-credential-root  -- sign an EIP-712 CredentialRootPublication
+ *   GET  /pubkey-hash           -- return the daemon's signer_pubkey_hash for registration
+ *   GET  /healthz               -- liveness check
+ *
+ * Every signing request is checked against the pinned `SigningPolicy` (Oracle
+ * chain ID + address, timestamp freshness, optional provider ID) and audited
+ * before a signature is released.
  */
 
 import type { Barretenberg } from "@aztec/bb.js";
-import type {
-  ReplayDb,
-  SignerKey,
-  SignSignalsRequest,
-  SignSlotRequest,
-} from "../../src/provider/index.js";
 import {
   bytesToHex,
-  ReplayDetected,
+  computeSignerPubkeyHash,
+  signCredentialRoot,
   signSignalsWithReplayProtection,
   signSlotPayloadWithReplayProtection,
-  computeSignerPubkeyHash,
   MAX_PROVIDERS_MULTI,
-} from "../../src/provider/index.js";
-import {
-  signCredentialRoot,
+  type LedgeredSignResult,
+  type ReplayDb,
   type SignCredentialRootRequest,
-} from "../../src/provider/credential-root-signer.js";
-import type { AuditSink } from "./audit.js";
+  type SignerKey,
+  type SignSignalsRequest,
+  type SignSlotRequest,
+} from "@xochi/sdk/provider";
+import type { AuditEvent, AuditRoute, AuditSink } from "./audit.ts";
+import type { DaemonConfig } from "./config.ts";
 
 export interface HandlerContext {
   api: Barretenberg;
@@ -35,26 +37,53 @@ export interface HandlerContext {
   audit: AuditSink;
 }
 
+/** What the daemon will sign, independent of what a request asks for. */
+export interface SigningPolicy {
+  chainId: bigint;
+  oracleAddress: bigint;
+  providerId: bigint | undefined;
+  maxTimestampAgeSeconds: number;
+  maxTimestampSkewSeconds: number;
+  credentialRootMaxValiditySeconds: number;
+  /** Current time in unix seconds. */
+  now: () => number;
+}
+
+export function signingPolicy(
+  config: DaemonConfig,
+  now: () => number = () => Math.floor(Date.now() / 1000),
+): SigningPolicy {
+  return {
+    chainId: config.chainId,
+    oracleAddress: BigInt(config.oracleAddress),
+    providerId: config.providerId,
+    maxTimestampAgeSeconds: config.maxTimestampAgeSeconds,
+    maxTimestampSkewSeconds: config.maxTimestampSkewSeconds,
+    credentialRootMaxValiditySeconds: config.credentialRootMaxValiditySeconds,
+    now,
+  };
+}
+
 export interface SignRequestBody {
   /**
    * EVM chain ID of the consuming Oracle deployment (audit F-6 binding).
-   * Decimal string or number.
+   * Decimal string or number. Must equal the daemon's SIGNER_CHAIN_ID.
    */
   chainId: string | number;
   /**
-   * Address of the consuming Oracle as a hex string (audit F-6 binding).
-   * Bound into the in-circuit signed digest.
+   * Address of the consuming Oracle (0x-prefixed 20-byte hex, audit F-6
+   * binding). Must equal the daemon's SIGNER_ORACLE_ADDRESS.
    */
   oracleAddress: string;
   /** Hex Field for the (provider_ids, weights) Pedersen commitment. */
   providerSetHash: string;
-  /** 8 numeric strings or numbers (zero-padded). */
+  /** 8 integers in [0, 100]; inactive slots 0. */
   signals: Array<string | number>;
-  /** 8 numeric strings or numbers. */
+  /** 8 u32 weights; active slots first and positive, inactive slots 0. */
   weights: Array<string | number>;
-  /** Numeric string or number; seconds since epoch. */
+  /** Seconds since epoch; must be within the daemon's freshness window. */
   timestamp: string | number;
-  /** Hex address (uint160 Field) of the proof submitter. */
+  /** 0x-prefixed 20-byte address of the proof submitter. */
   submitter: string;
 }
 
@@ -75,30 +104,80 @@ export type HandlerResult<T> =
   | { ok: true; status: number; body: T }
   | { ok: false; error: HandlerError };
 
-function asBigint(value: string | number, label: string): bigint {
+/**
+ * A request refused on purpose; `status`/`code` are what the client sees.
+ * Explicit fields, not parameter properties: Node's type stripping (how the
+ * daemon runs) does not support parameter properties.
+ */
+class RequestRejected extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = "RequestRejected";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const U32_MAX = 0xffffffff;
+const U64_MAX = 0xffffffffffffffffn;
+
+function asBigint(value: unknown, label: string): bigint {
   if (typeof value === "number") {
-    if (!Number.isInteger(value) || value < 0) {
-      throw new Error(`${label} must be non-negative integer; got ${String(value)}`);
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`${label} must be a non-negative integer; got ${String(value)}`);
     }
     return BigInt(value);
   }
   if (typeof value !== "string") {
     throw new Error(`${label} must be string or number`);
   }
-  if (value.startsWith("0x") || value.startsWith("0X")) {
-    return BigInt(value);
-  }
-  if (!/^\d+$/.test(value)) {
+  if (!/^(0[xX][0-9a-fA-F]+|\d+)$/.test(value)) {
     throw new Error(`${label} must be decimal or 0x-hex; got ${value}`);
   }
   return BigInt(value);
 }
 
-function parseSignBody(raw: unknown): SignSignalsRequest {
+function asNumber(value: unknown, label: string, max: number): number {
+  const n = asBigint(value, label);
+  if (n > BigInt(max)) {
+    throw new Error(`${label} must be an integer in [0, ${String(max)}]; got ${String(value)}`);
+  }
+  return Number(n);
+}
+
+function asAddress(value: unknown, label: string): `0x${string}` {
+  if (typeof value !== "string" || !ADDRESS_RE.test(value)) {
+    throw new Error(`${label} required (0x-prefixed 20-byte hex)`);
+  }
+  return value as `0x${string}`;
+}
+
+/** Fields shared by the single- and multi-signed request bodies. */
+interface SignalFields {
+  chainId: bigint;
+  oracleAddress: bigint;
+  providerSetHash: bigint;
+  signals: bigint[];
+  weights: bigint[];
+  timestamp: bigint;
+  submitter: bigint;
+}
+
+/**
+ * Parse and range-check the screening data. Mirrors the circuits'
+ * `validate_provider_slots`: signals in [0, 100], weights u32, at least one
+ * active slot, and an inactive (zero-weight) slot carries no signal. With
+ * `contiguous`, active slots must also form a prefix (the single-signed
+ * circuits count them with `num_providers`).
+ */
+function parseSignalFields(raw: unknown, contiguous: boolean): SignalFields {
   if (raw === null || typeof raw !== "object") {
     throw new Error("body must be a JSON object");
   }
-  const body = raw as Partial<SignRequestBody>;
+  const body = raw as Record<string, unknown>;
 
   if (typeof body.providerSetHash !== "string") throw new Error("providerSetHash required (hex)");
   if (!Array.isArray(body.signals) || body.signals.length !== 8) {
@@ -107,92 +186,168 @@ function parseSignBody(raw: unknown): SignSignalsRequest {
   if (!Array.isArray(body.weights) || body.weights.length !== 8) {
     throw new Error("weights must be an array of length 8");
   }
-  if (typeof body.timestamp !== "string" && typeof body.timestamp !== "number") {
-    throw new Error("timestamp required (string or number)");
+  if (body.timestamp === undefined) throw new Error("timestamp required (string or number)");
+  if (body.chainId === undefined) throw new Error("chainId required (string or number)");
+
+  const signals = body.signals.map((s, i) => BigInt(asNumber(s, `signals[${String(i)}]`, 100)));
+  const weights = body.weights.map((w, i) => BigInt(asNumber(w, `weights[${String(i)}]`, U32_MAX)));
+  const active = weights.map((w) => w > 0n);
+  if (!active.some(Boolean)) throw new Error("at least one weight must be positive");
+  signals.forEach((s, i) => {
+    if (!active[i] && s !== 0n) {
+      throw new Error(`signals[${String(i)}] must be 0 when weights[${String(i)}] is 0`);
+    }
+  });
+  if (contiguous && active.some((isActive, i) => isActive && i > 0 && !active[i - 1])) {
+    throw new Error("active provider slots must be contiguous from index 0");
   }
-  if (typeof body.submitter !== "string") throw new Error("submitter required (hex)");
-  if (typeof body.chainId !== "string" && typeof body.chainId !== "number") {
-    throw new Error("chainId required (string or number)");
-  }
-  if (typeof body.oracleAddress !== "string") {
-    throw new Error("oracleAddress required (hex)");
-  }
+
+  const submitter = BigInt(asAddress(body.submitter, "submitter"));
+  if (submitter === 0n) throw new Error("submitter must be non-zero");
 
   return {
     chainId: asBigint(body.chainId, "chainId"),
-    oracleAddress: asBigint(body.oracleAddress, "oracleAddress"),
+    oracleAddress: BigInt(asAddress(body.oracleAddress, "oracleAddress")),
     providerSetHash: asBigint(body.providerSetHash, "providerSetHash"),
-    signals: body.signals.map((s, i) => asBigint(s, `signals[${String(i)}]`)),
-    weights: body.weights.map((w, i) => asBigint(w, `weights[${String(i)}]`)),
+    signals,
+    weights,
     timestamp: asBigint(body.timestamp, "timestamp"),
-    submitter: asBigint(body.submitter, "submitter"),
+    submitter,
   };
 }
 
-export async function handleSign(
+function enforceDeployment(policy: SigningPolicy, chainId: bigint, oracleAddress: bigint): void {
+  if (chainId !== policy.chainId) {
+    throw new RequestRejected(
+      403,
+      "CHAIN_MISMATCH",
+      `chainId ${chainId.toString()} is not the pinned chain ${policy.chainId.toString()}`,
+    );
+  }
+  if (oracleAddress !== policy.oracleAddress) {
+    throw new RequestRejected(403, "ORACLE_MISMATCH", "oracleAddress is not the pinned Oracle");
+  }
+}
+
+function enforceSignalPolicy(policy: SigningPolicy, req: SignalFields): void {
+  enforceDeployment(policy, req.chainId, req.oracleAddress);
+  const now = BigInt(policy.now());
+  const oldest = now - BigInt(policy.maxTimestampAgeSeconds);
+  const newest = now + BigInt(policy.maxTimestampSkewSeconds);
+  if (req.timestamp < oldest || req.timestamp > newest) {
+    throw new RequestRejected(
+      403,
+      "TIMESTAMP_OUT_OF_WINDOW",
+      `timestamp ${req.timestamp.toString()} outside [${oldest.toString()}, ${newest.toString()}]`,
+    );
+  }
+}
+
+function failure(status: number, code: string, error: string): HandlerResult<never> {
+  return { ok: false, error: { status, body: { error, code } } };
+}
+
+function rejection(err: unknown): HandlerResult<never> {
+  if (err instanceof RequestRejected) return failure(err.status, err.code, err.message);
+  return failure(400, "BAD_REQUEST", (err as Error).message);
+}
+
+/**
+ * Write the audit record, then release `result`. If the record cannot be
+ * written the caller gets 500 AUDIT_FAILED instead: no signature leaves the
+ * daemon without a log line.
+ */
+async function audited<T>(
   ctx: HandlerContext,
+  event: Omit<AuditEvent, "ts">,
+  result: HandlerResult<T>,
+): Promise<HandlerResult<T>> {
+  try {
+    await ctx.audit.record({ ts: Date.now(), ...event });
+  } catch (err) {
+    return failure(500, "AUDIT_FAILED", `audit log write failed: ${(err as Error).message}`);
+  }
+  return result;
+}
+
+async function handleSignalRoute<R extends SignalFields>(
+  ctx: HandlerContext,
+  policy: SigningPolicy,
+  route: AuditRoute,
+  body: unknown,
+  source: string,
+  parse: (raw: unknown) => R,
+  sign: (req: R) => Promise<LedgeredSignResult>,
+): Promise<HandlerResult<SignResponseBody>> {
+  let req: R;
+  try {
+    req = parse(body);
+    enforceSignalPolicy(policy, req);
+  } catch (err) {
+    const raw = (body as Record<string, unknown> | null)?.submitter;
+    return audited(
+      ctx,
+      {
+        route,
+        outcome: "rejected",
+        source,
+        submitter:
+          typeof raw === "string" && ADDRESS_RE.test(raw)
+            ? (raw.toLowerCase() as `0x${string}`)
+            : undefined,
+        reason: (err as Error).message,
+      },
+      rejection(err),
+    );
+  }
+
+  const submitter: `0x${string}` = `0x${req.submitter.toString(16).padStart(40, "0")}`;
+  let result: LedgeredSignResult;
+  try {
+    result = await sign(req);
+  } catch (err) {
+    return audited(
+      ctx,
+      { route, outcome: "rejected", source, submitter, reason: (err as Error).message },
+      failure(500, "SIGN_FAILED", (err as Error).message),
+    );
+  }
+
+  const response: SignResponseBody = {
+    signature: bytesToHex(result.signature),
+    pubkeyX: bytesToHex(result.pubkeyX),
+    pubkeyY: bytesToHex(result.pubkeyY),
+    signerPubkeyHash: bytesToHex(result.signerPubkeyHash),
+    payloadHash: bytesToHex(result.payloadHash),
+  };
+  return audited(
+    ctx,
+    {
+      route,
+      outcome: result.replayed ? "replayed" : "signed",
+      source,
+      payloadHash: response.payloadHash,
+      submitter,
+      signerPubkeyHash: response.signerPubkeyHash,
+    },
+    { ok: true, status: 200, body: response },
+  );
+}
+
+/**
+ * POST /sign. An identical retry returns the identical signature (the signing
+ * ledger serves it; signing is deterministic), audited as `replayed`.
+ */
+export function handleSign(
+  ctx: HandlerContext,
+  policy: SigningPolicy,
   body: unknown,
   source: string,
 ): Promise<HandlerResult<SignResponseBody>> {
-  let req: SignSignalsRequest;
-  try {
-    req = parseSignBody(body);
-  } catch (err) {
-    return {
-      ok: false,
-      error: { status: 400, body: { error: (err as Error).message, code: "BAD_REQUEST" } },
-    };
-  }
-
-  try {
-    const result = await signSignalsWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req);
-    const response: SignResponseBody = {
-      signature: bytesToHex(result.signature),
-      pubkeyX: bytesToHex(result.pubkeyX),
-      pubkeyY: bytesToHex(result.pubkeyY),
-      signerPubkeyHash: bytesToHex(result.signerPubkeyHash),
-      payloadHash: bytesToHex(result.payloadHash),
-    };
-
-    ctx.audit.record({
-      ts: Date.now(),
-      payloadHash: response.payloadHash,
-      submitter: ("0x" + req.submitter.toString(16).padStart(64, "0")) as `0x${string}`,
-      signerPubkeyHash: response.signerPubkeyHash,
-      outcome: "signed",
-      source,
-    });
-    return { ok: true, status: 200, body: response };
-  } catch (err) {
-    const submitterHex = ("0x" + req.submitter.toString(16).padStart(64, "0")) as `0x${string}`;
-    if (err instanceof ReplayDetected) {
-      ctx.audit.record({
-        ts: Date.now(),
-        payloadHash: err.payloadHashHex as `0x${string}`,
-        submitter: submitterHex,
-        signerPubkeyHash: "0x" + "0".repeat(64),
-        outcome: "replayed",
-        source,
-      } as never);
-      return {
-        ok: false,
-        error: { status: 409, body: { error: "duplicate signing request", code: "REPLAY" } },
-      };
-    }
-    ctx.audit.record({
-      ts: Date.now(),
-      payloadHash: "0x" + "0".repeat(64),
-      submitter: submitterHex,
-      signerPubkeyHash: "0x" + "0".repeat(64),
-      outcome: "rejected",
-      source,
-      reason: (err as Error).message,
-    } as never);
-    return {
-      ok: false,
-      error: { status: 500, body: { error: (err as Error).message, code: "SIGN_FAILED" } },
-    };
-  }
+  const parse = (raw: unknown): SignSignalsRequest => parseSignalFields(raw, true);
+  return handleSignalRoute(ctx, policy, "/sign", body, source, parse, (req) =>
+    signSignalsWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req),
+  );
 }
 
 export async function handlePubkeyHash(
@@ -224,87 +379,28 @@ export function handleHealthz(): HandlerResult<{ status: "ok" }> {
 // Multi-signed slot signing (COMPLIANCE_MULTI_SIGNED / proof type 0x09)
 // ---------------------------------------------------------------------------
 
-export interface SignMultiRequestBody {
+export interface SignMultiRequestBody extends SignRequestBody {
   /** Slot position in the proof's signer array. MUST be in [0, MAX_PROVIDERS_MULTI). */
   slotIndex: string | number;
-  /** EVM chain ID of the consuming Oracle deployment (audit F-6 binding). */
-  chainId: string | number;
-  /** Address of the consuming Oracle as a hex string (audit F-6 binding). */
-  oracleAddress: string;
   /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG, 4=UAE). */
   jurisdictionId: string | number;
-  /** Hex Field for the (provider_ids, weights) Pedersen commitment. */
-  providerSetHash: string;
   /** Hex Field for the config Pedersen commitment. */
   configHash: string;
-  /** 8 numeric strings or numbers (zero-padded). */
-  signals: Array<string | number>;
-  /** 8 numeric strings or numbers. */
-  weights: Array<string | number>;
-  /** Numeric string or number; seconds since epoch. */
-  timestamp: string | number;
-  /** Hex address (uint160 Field) of the proof submitter. */
-  submitter: string;
 }
 
 export type SignMultiResponseBody = SignResponseBody;
 
-function asNumber(value: string | number, label: string, max: number): number {
-  let n: number;
-  if (typeof value === "number") {
-    n = value;
-  } else if (typeof value === "string") {
-    if (!/^\d+$/.test(value)) {
-      throw new Error(`${label} must be a non-negative integer; got ${value}`);
-    }
-    n = Number(value);
-  } else {
-    throw new Error(`${label} must be string or number`);
-  }
-  if (!Number.isInteger(n) || n < 0 || n > max) {
-    throw new Error(`${label} must be an integer in [0, ${String(max)}]; got ${String(value)}`);
-  }
-  return n;
-}
-
 function parseSignMultiBody(raw: unknown): SignSlotRequest {
-  if (raw === null || typeof raw !== "object") {
-    throw new Error("body must be a JSON object");
-  }
-  const body = raw as Partial<SignMultiRequestBody>;
-
+  const fields = parseSignalFields(raw, false);
+  const body = raw as Record<string, unknown>;
   if (body.slotIndex === undefined) throw new Error("slotIndex required");
   if (body.jurisdictionId === undefined) throw new Error("jurisdictionId required");
-  if (typeof body.providerSetHash !== "string") throw new Error("providerSetHash required (hex)");
   if (typeof body.configHash !== "string") throw new Error("configHash required (hex)");
-  if (!Array.isArray(body.signals) || body.signals.length !== 8) {
-    throw new Error("signals must be an array of length 8");
-  }
-  if (!Array.isArray(body.weights) || body.weights.length !== 8) {
-    throw new Error("weights must be an array of length 8");
-  }
-  if (typeof body.timestamp !== "string" && typeof body.timestamp !== "number") {
-    throw new Error("timestamp required (string or number)");
-  }
-  if (typeof body.submitter !== "string") throw new Error("submitter required (hex)");
-  if (typeof body.chainId !== "string" && typeof body.chainId !== "number") {
-    throw new Error("chainId required (string or number)");
-  }
-  if (typeof body.oracleAddress !== "string") {
-    throw new Error("oracleAddress required (hex)");
-  }
-
   return {
+    ...fields,
     slotIndex: asNumber(body.slotIndex, "slotIndex", MAX_PROVIDERS_MULTI - 1),
-    chainId: asBigint(body.chainId, "chainId"),
-    oracleAddress: asBigint(body.oracleAddress, "oracleAddress"),
     jurisdictionId: asNumber(body.jurisdictionId, "jurisdictionId", 255),
-    providerSetHash: asBigint(body.providerSetHash, "providerSetHash"),
     configHash: asBigint(body.configHash, "configHash"),
-    signals: body.signals.map((s, i) => asBigint(s, `signals[${String(i)}]`)),
-    weights: body.weights.map((w, i) => asBigint(w, `weights[${String(i)}]`)),
-    timestamp: asBigint(body.timestamp, "timestamp"),
-    submitter: asBigint(body.submitter, "submitter"),
   };
 }
 
@@ -317,80 +413,19 @@ function parseSignMultiBody(raw: unknown): SignSlotRequest {
  * the prover side. Slot indices are bound into the signed digest -- a
  * signature minted for slot i will NOT verify if placed in slot j.
  *
- * Replay protection inherits from `signSlotPayloadWithReplayProtection`:
- * `(submitter, slot_payload_hash)` is the replay key, and two daemons signing
- * different slots for the same subject produce distinct digests (different
- * `slot_index`), so there's no false-positive collision.
+ * The signing ledger keys on `(submitter, slot_payload_hash)`; two daemons
+ * signing different slots for the same subject produce distinct digests
+ * (different `slot_index`), so their records never collide.
  */
-export async function handleSignMulti(
+export function handleSignMulti(
   ctx: HandlerContext,
+  policy: SigningPolicy,
   body: unknown,
   source: string,
 ): Promise<HandlerResult<SignMultiResponseBody>> {
-  let req: SignSlotRequest;
-  try {
-    req = parseSignMultiBody(body);
-  } catch (err) {
-    return {
-      ok: false,
-      error: { status: 400, body: { error: (err as Error).message, code: "BAD_REQUEST" } },
-    };
-  }
-
-  try {
-    const result = await signSlotPayloadWithReplayProtection(
-      ctx.api,
-      ctx.signerKey,
-      ctx.replayDb,
-      req,
-    );
-    const response: SignMultiResponseBody = {
-      signature: bytesToHex(result.signature),
-      pubkeyX: bytesToHex(result.pubkeyX),
-      pubkeyY: bytesToHex(result.pubkeyY),
-      signerPubkeyHash: bytesToHex(result.signerPubkeyHash),
-      payloadHash: bytesToHex(result.payloadHash),
-    };
-
-    ctx.audit.record({
-      ts: Date.now(),
-      payloadHash: response.payloadHash,
-      submitter: ("0x" + req.submitter.toString(16).padStart(64, "0")) as `0x${string}`,
-      signerPubkeyHash: response.signerPubkeyHash,
-      outcome: "signed",
-      source,
-    });
-    return { ok: true, status: 200, body: response };
-  } catch (err) {
-    const submitterHex = ("0x" + req.submitter.toString(16).padStart(64, "0")) as `0x${string}`;
-    if (err instanceof ReplayDetected) {
-      ctx.audit.record({
-        ts: Date.now(),
-        payloadHash: err.payloadHashHex as `0x${string}`,
-        submitter: submitterHex,
-        signerPubkeyHash: "0x" + "0".repeat(64),
-        outcome: "replayed",
-        source,
-      } as never);
-      return {
-        ok: false,
-        error: { status: 409, body: { error: "duplicate signing request", code: "REPLAY" } },
-      };
-    }
-    ctx.audit.record({
-      ts: Date.now(),
-      payloadHash: "0x" + "0".repeat(64),
-      submitter: submitterHex,
-      signerPubkeyHash: "0x" + "0".repeat(64),
-      outcome: "rejected",
-      source,
-      reason: (err as Error).message,
-    } as never);
-    return {
-      ok: false,
-      error: { status: 500, body: { error: (err as Error).message, code: "SIGN_FAILED" } },
-    };
-  }
+  return handleSignalRoute(ctx, policy, "/sign-multi", body, source, parseSignMultiBody, (req) =>
+    signSlotPayloadWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -398,19 +433,19 @@ export async function handleSignMulti(
 // ---------------------------------------------------------------------------
 
 export interface SignCredentialRootBody {
-  /** EVM chain ID where the Oracle lives. */
+  /** EVM chain ID where the Oracle lives. Must equal SIGNER_CHAIN_ID. */
   chainId: string | number;
-  /** ERC8262Oracle deployment address (0x-prefixed hex). */
+  /** ERC8262Oracle deployment address (0x-prefixed hex). Must equal SIGNER_ORACLE_ADDRESS. */
   oracleAddress: string;
-  /** Provider this credential tree belongs to. */
+  /** Provider this credential tree belongs to. Must equal SIGNER_PROVIDER_ID when set. */
   providerId: string | number;
   /** New credential merkle root (0x-prefixed hex, 32 bytes). */
   root: string;
   /** IPFS / Arweave CID for the tree contents. */
   cid: string;
-  /** Unix timestamp (seconds); signature invalid before this. */
+  /** Unix timestamp (seconds, uint64); signature invalid before this. */
   notBefore: string | number;
-  /** Unix timestamp (seconds); signature invalid after this. */
+  /** Unix timestamp (seconds, uint64); signature invalid after this. */
   notAfter: string | number;
 }
 
@@ -422,57 +457,91 @@ export interface SignCredentialRootResponseBody {
 
 function parseSignCredentialRootBody(raw: unknown): SignCredentialRootRequest {
   if (raw === null || typeof raw !== "object") throw new Error("body must be a JSON object");
-  const body = raw as Partial<SignCredentialRootBody>;
-  if (typeof body.chainId !== "string" && typeof body.chainId !== "number") {
-    throw new Error("chainId required (string or number)");
-  }
-  if (typeof body.oracleAddress !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(body.oracleAddress)) {
-    throw new Error("oracleAddress required (0x-prefixed 20-byte hex)");
-  }
-  if (typeof body.providerId !== "string" && typeof body.providerId !== "number") {
-    throw new Error("providerId required (string or number)");
-  }
+  const body = raw as Record<string, unknown>;
+  if (body.chainId === undefined) throw new Error("chainId required (string or number)");
+  if (body.providerId === undefined) throw new Error("providerId required (string or number)");
   if (typeof body.root !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(body.root)) {
     throw new Error("root required (0x-prefixed 32-byte hex)");
   }
-  if (typeof body.cid !== "string") throw new Error("cid required (string)");
-  if (typeof body.notBefore !== "string" && typeof body.notBefore !== "number") {
-    throw new Error("notBefore required (string or number)");
-  }
-  if (typeof body.notAfter !== "string" && typeof body.notAfter !== "number") {
-    throw new Error("notAfter required (string or number)");
+  if (typeof body.cid !== "string" || body.cid === "") throw new Error("cid required (string)");
+  if (body.notBefore === undefined) throw new Error("notBefore required (string or number)");
+  if (body.notAfter === undefined) throw new Error("notAfter required (string or number)");
+  const notBefore = asBigint(body.notBefore, "notBefore");
+  const notAfter = asBigint(body.notAfter, "notAfter");
+  if (notBefore > U64_MAX || notAfter > U64_MAX) {
+    throw new Error("notBefore and notAfter must fit in uint64");
   }
   return {
-    chainId: BigInt(body.chainId),
-    oracleAddress: body.oracleAddress as `0x${string}`,
-    providerId: BigInt(body.providerId),
+    chainId: asBigint(body.chainId, "chainId"),
+    oracleAddress: asAddress(body.oracleAddress, "oracleAddress"),
+    providerId: asBigint(body.providerId, "providerId"),
     root: body.root as `0x${string}`,
     cid: body.cid,
-    notBefore: BigInt(body.notBefore),
-    notAfter: BigInt(body.notAfter),
+    notBefore,
+    notAfter,
   };
 }
 
-export function handleSignCredentialRoot(
+function enforceCredentialRootPolicy(policy: SigningPolicy, req: SignCredentialRootRequest): void {
+  enforceDeployment(policy, req.chainId, BigInt(req.oracleAddress));
+  if (policy.providerId !== undefined && req.providerId !== policy.providerId) {
+    throw new RequestRejected(
+      403,
+      "PROVIDER_MISMATCH",
+      `providerId ${req.providerId.toString()} is not the pinned provider ${policy.providerId.toString()}`,
+    );
+  }
+  if (req.notAfter < req.notBefore) {
+    throw new RequestRejected(400, "BAD_RANGE", "notAfter must be >= notBefore");
+  }
+  const now = BigInt(policy.now());
+  if (req.notAfter <= now) {
+    throw new RequestRejected(403, "WINDOW_EXPIRED", "notAfter is not in the future");
+  }
+  const latest = now + BigInt(policy.credentialRootMaxValiditySeconds);
+  if (req.notAfter > latest) {
+    throw new RequestRejected(
+      403,
+      "VALIDITY_TOO_LONG",
+      `notAfter may be at most ${String(policy.credentialRootMaxValiditySeconds)}s from now`,
+    );
+  }
+}
+
+export async function handleSignCredentialRoot(
   ctx: HandlerContext,
+  policy: SigningPolicy,
   body: unknown,
   source: string,
-): HandlerResult<SignCredentialRootResponseBody> {
+): Promise<HandlerResult<SignCredentialRootResponseBody>> {
+  const route = "/sign-credential-root";
   let req: SignCredentialRootRequest;
   try {
     req = parseSignCredentialRootBody(body);
   } catch (err) {
-    return {
-      ok: false,
-      error: { status: 400, body: { error: (err as Error).message, code: "BAD_REQUEST" } },
-    };
+    return audited(
+      ctx,
+      { route, outcome: "rejected", source, reason: (err as Error).message },
+      rejection(err),
+    );
   }
-
-  if (req.notAfter < req.notBefore) {
-    return {
-      ok: false,
-      error: { status: 400, body: { error: "notAfter must be >= notBefore", code: "BAD_RANGE" } },
-    };
+  const credentialRoot = {
+    chainId: req.chainId.toString(),
+    oracleAddress: req.oracleAddress,
+    providerId: req.providerId.toString(),
+    root: req.root,
+    cid: req.cid,
+    notBefore: req.notBefore.toString(),
+    notAfter: req.notAfter.toString(),
+  };
+  try {
+    enforceCredentialRootPolicy(policy, req);
+  } catch (err) {
+    return audited(
+      ctx,
+      { route, outcome: "rejected", source, credentialRoot, reason: (err as Error).message },
+      rejection(err),
+    );
   }
 
   const result = signCredentialRoot(ctx.signerKey, req);
@@ -481,14 +550,16 @@ export function handleSignCredentialRoot(
     digest: bytesToHex(result.digest),
     signer: result.signer,
   };
-
-  ctx.audit.record({
-    ts: Date.now(),
-    payloadHash: response.digest,
-    submitter: ("0x" + req.providerId.toString(16).padStart(64, "0")) as `0x${string}`,
-    signerPubkeyHash: ("0x" + result.signer.slice(2).padStart(64, "0")) as `0x${string}`,
-    outcome: "signed",
-    source,
-  });
-  return { ok: true, status: 200, body: response };
+  return audited(
+    ctx,
+    {
+      route,
+      outcome: "signed",
+      source,
+      payloadHash: response.digest,
+      signer: result.signer,
+      credentialRoot,
+    },
+    { ok: true, status: 200, body: response },
+  );
 }

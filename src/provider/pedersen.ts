@@ -8,9 +8,10 @@
  * the proof will fail.
  *
  * This module wraps `@aztec/bb.js`'s `pedersenHash` API. The match between
- * bb.js and Noir's stdlib is enforced by the parity test in
- * `test/provider-pedersen-parity.test.ts`. Do not change this module without
- * re-running that test.
+ * bb.js and Noir's stdlib is enforced by the "Noir parity vectors" in
+ * `test/provider-pedersen.test.ts`, which pin the digests the circuit-side
+ * `test_parity_with_sdk_*` tests in ERC-8262 `circuits/shared` assert. Do not
+ * change this module without re-running both.
  */
 
 import { Barretenberg } from "@aztec/bb.js";

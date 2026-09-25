@@ -42,6 +42,49 @@ const LIGHT_SUBPATHS: Record<string, string> = {
   "./oracle-lite": "oracle-lite.ts",
 };
 
+/**
+ * Every other key in the `exports` map, with why it is not walked. Together with
+ * LIGHT_SUBPATHS this must cover the map exactly: a subpath added to package.json
+ * without being classified here fails, so it cannot ship unguarded by default.
+ */
+const NOT_LIGHT_SUBPATHS: Record<string, string> = {
+  ".": "root barrel re-exports ERC8262Prover",
+  "./browser": "browser circuit loader for the prover",
+  "./node": "node circuit loader for the prover",
+  "./provider": "provider signing daemon helpers (bb.js Pedersen)",
+  "./circuits/*": "compiled circuit artifacts, not JavaScript",
+};
+
+/**
+ * The file an exports entry resolves to under `condition`, read by condition
+ * name rather than key position so a reordered or extended condition object
+ * (`{types, import, default}`) is read the same way.
+ */
+function conditionTarget(entry: unknown, condition: string): string | undefined {
+  if (typeof entry === "string") return entry;
+  if (typeof entry !== "object" || entry === null) return undefined;
+  const target = (entry as Record<string, unknown>)[condition];
+  return typeof target === "string" ? target : undefined;
+}
+
+/**
+ * The JavaScript target of an exports entry. `import` and `default` must agree
+ * when both are present: a disagreement means ESM and fallback consumers load
+ * different modules, and only one of them would be the file walked here.
+ */
+function jsTarget(subpath: string, entry: unknown): string {
+  const targets = ["import", "default"]
+    .map((c) => conditionTarget(entry, c))
+    .filter((t): t is string => t !== undefined);
+  if (targets.length === 0) {
+    throw new Error(`exports["${subpath}"] has no "import" or "default" target`);
+  }
+  if (new Set(targets).size !== 1) {
+    throw new Error(`exports["${subpath}"] import/default disagree: ${targets.join(" vs ")}`);
+  }
+  return targets[0];
+}
+
 /** Every `from "..."` specifier in a source file, import and re-export alike. */
 function specifiersOf(file: string): string[] {
   const src = readFileSync(file, "utf8");
@@ -104,11 +147,25 @@ describe("light subpaths", () => {
     expect(heavy.length).toBeGreaterThan(0);
   });
 
-  it("every light subpath in the exports map is covered here", () => {
-    // Whatever the exports map calls light, this suite must be walking. A new
-    // subpath added without a case here would ship unguarded.
-    const declared = Object.keys(readPkg().exports).filter((k) => k in LIGHT_SUBPATHS);
-    expect(declared.sort()).toEqual(Object.keys(LIGHT_SUBPATHS).sort());
+  it("every key in the exports map is classified, and nothing classified is stale", () => {
+    // A new subpath must be either walked as light or explicitly listed as not
+    // light. Comparing against the real exports keys (not a filter by
+    // LIGHT_SUBPATHS) is what makes an unclassified addition fail.
+    const exported = Object.keys(readPkg().exports).sort();
+    const light = Object.keys(LIGHT_SUBPATHS);
+    const notLight = Object.keys(NOT_LIGHT_SUBPATHS);
+    expect(light.filter((k) => k in NOT_LIGHT_SUBPATHS)).toEqual([]);
+    expect([...light, ...notLight].sort()).toEqual(exported);
+  });
+
+  it("each light subpath's JS target is the source file walked here", () => {
+    // Otherwise the walk could pass over tiers.ts while the export ships some
+    // other, heavy module.
+    const { exports } = readPkg();
+    for (const [subpath, entry] of Object.entries(LIGHT_SUBPATHS)) {
+      const target = jsTarget(subpath, exports[subpath]);
+      expect(target, subpath).toBe(`./dist/${entry.replace(/\.ts$/, ".js")}`);
+    }
   });
 
   /**
@@ -130,9 +187,11 @@ describe("light subpaths", () => {
   it("every light subpath maps to a built artifact", () => {
     const dist = resolve(SRC, "../dist");
     if (!existsSync(dist)) return; // pre-build (CI builds before publish); nothing to check yet
+    const { exports } = readPkg();
     for (const subpath of Object.keys(LIGHT_SUBPATHS)) {
-      const entry = readPkg().exports[subpath] as { import: string; types: string };
-      for (const target of [entry.import, entry.types]) {
+      const types = conditionTarget(exports[subpath], "types");
+      if (types === undefined) throw new Error(`exports["${subpath}"] has no "types" target`);
+      for (const target of [jsTarget(subpath, exports[subpath]), types]) {
         expect(existsSync(resolve(SRC, "..", target)), `${subpath} -> ${target}`).toBe(true);
       }
     }

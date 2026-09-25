@@ -6,7 +6,7 @@
  *   2. Compute a signed-signals bundle for a known payload
  *   3. Verify the signature *off-circuit* via @noble/curves to catch any
  *      r/s/lowS-normalization bugs before they reach the in-circuit verifier
- *   4. Confirm the replay DB refuses a duplicate request
+ *   4. Confirm the signing ledger returns the same signature for an identical retry
  *
  * In-circuit verification (the canonical correctness check) is exercised by
  * the V1.4 integration test once compliance_signed fixtures are available.
@@ -22,7 +22,6 @@ import {
   signSignals,
   signSignalsWithReplayProtection,
   MemoryReplayDb,
-  ReplayDetected,
   formatSignSignalsResult,
   bytesToHex,
   type SignSignalsRequest,
@@ -106,45 +105,94 @@ describe("signSignals", () => {
 });
 
 describe("signSignalsWithReplayProtection", () => {
-  it("signs once, refuses replay of identical request", async () => {
+  // The ledger evicts by the signed timestamp, so pin its clock to the fixture's.
+  const atSampleTime = (): number => Number(SAMPLE_REQUEST.timestamp);
+
+  it("returns the identical signature for an identical retry", async () => {
     const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
-    const db = new MemoryReplayDb();
+    const db = new MemoryReplayDb({ now: atSampleTime });
 
     const first = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
-    expect(first.signature.length).toBe(64);
+    expect(first.replayed).toBe(false);
 
-    await expect(signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST)).rejects.toThrow(
-      ReplayDetected,
-    );
-
+    const retry = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    expect(retry.replayed).toBe(true);
+    expect(bytesToHex(retry.signature)).toBe(bytesToHex(first.signature));
+    expect(bytesToHex(retry.payloadHash)).toBe(bytesToHex(first.payloadHash));
     expect(await db.size()).toBe(1);
   });
 
-  it("permits a different submitter with otherwise-identical inputs", async () => {
+  it("records a different submitter with otherwise-identical inputs separately", async () => {
     const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
-    const db = new MemoryReplayDb();
+    const db = new MemoryReplayDb({ now: atSampleTime });
 
-    await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    const base = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
     const altSubmitter = await signSignalsWithReplayProtection(api, key, db, {
       ...SAMPLE_REQUEST,
       submitter: 0xa0ee7a142d267c1f36714e4a8f75612f20a79720n,
     });
-    expect(altSubmitter.signature.length).toBe(64);
+    expect(altSubmitter.replayed).toBe(false);
+    expect(bytesToHex(altSubmitter.signature)).not.toBe(bytesToHex(base.signature));
     expect(await db.size()).toBe(2);
   });
 
-  it("permits the same submitter with a different timestamp", async () => {
-    // Different timestamp -> different payload hash -> different replay key.
+  it("records the same submitter with a different timestamp separately", async () => {
     const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
-    const db = new MemoryReplayDb();
+    const db = new MemoryReplayDb({ now: atSampleTime });
 
     await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
     const later = await signSignalsWithReplayProtection(api, key, db, {
       ...SAMPLE_REQUEST,
       timestamp: SAMPLE_REQUEST.timestamp + 60n,
     });
-    expect(later.signature.length).toBe(64);
+    expect(later.replayed).toBe(false);
     expect(await db.size()).toBe(2);
+  });
+
+  it("evicts records past retention, and a retry after eviction re-signs identically", async () => {
+    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    let now = Number(SAMPLE_REQUEST.timestamp);
+    const db = new MemoryReplayDb({ retentionSeconds: 600, now: () => now });
+
+    const first = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    now += 600;
+    expect(await db.size()).toBe(1); // exactly at the retention edge: kept
+    now += 1;
+    expect(await db.size()).toBe(0);
+
+    const again = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    expect(again.replayed).toBe(false);
+    expect(bytesToHex(again.signature)).toBe(bytesToHex(first.signature));
+  });
+
+  it("caps retained records, dropping the oldest first", async () => {
+    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const db = new MemoryReplayDb({ maxEntries: 1, now: atSampleTime });
+    const later = { ...SAMPLE_REQUEST, timestamp: SAMPLE_REQUEST.timestamp + 1n };
+
+    const first = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    await signSignalsWithReplayProtection(api, key, db, later);
+    expect(await db.size()).toBe(1);
+    expect(await db.lookup(SAMPLE_REQUEST.submitter, first.payloadHash)).toBeUndefined();
+    expect((await signSignalsWithReplayProtection(api, key, db, later)).replayed).toBe(true);
+  });
+
+  it("does not serve a record signed by a different key", async () => {
+    const oldKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const rotatedBytes = new Uint8Array(32).fill(7);
+    const newKey = await loadSignerKey(new RawKeyLoader(rotatedBytes));
+    const db = new MemoryReplayDb({ now: atSampleTime });
+
+    await signSignalsWithReplayProtection(api, oldKey, db, SAMPLE_REQUEST);
+    const rotated = await signSignalsWithReplayProtection(api, newKey, db, SAMPLE_REQUEST);
+    expect(rotated.replayed).toBe(false);
+    expect(bytesToHex(rotated.pubkeyX)).toBe(bytesToHex(newKey.publicKeyX));
+
+    const uncompressed = new Uint8Array(65);
+    uncompressed[0] = 0x04;
+    uncompressed.set(newKey.publicKeyX, 1);
+    uncompressed.set(newKey.publicKeyY, 33);
+    expect(secp256k1.verify(rotated.signature, rotated.payloadHash, uncompressed)).toBe(true);
   });
 });
 

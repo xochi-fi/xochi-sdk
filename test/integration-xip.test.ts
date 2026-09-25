@@ -181,9 +181,10 @@ describe("XIP-2: provePlan", () => {
       venuePreference: ["shielded", "stealth", "public"],
     });
 
-    // Trust score 10 only qualifies for "public" (min 0)
+    // Trust score 10 is below shielded's 50; L1 stealth is open to all
+    // (min 0), so it is the best venue this wallet qualifies for.
     for (const st of plan.subTrades) {
-      expect(st.venue).toBe("public");
+      expect(st.venue).toBe("stealth");
     }
 
     const batch = await provePlan(prover, plan, complianceInput);

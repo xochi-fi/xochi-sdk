@@ -6,7 +6,7 @@
  */
 
 import type { ProofType, JurisdictionId } from "./constants.js";
-import { JURISDICTIONS } from "./constants.js";
+import { COMPLIANCE_PROOF_TYPES, JURISDICTIONS } from "./constants.js";
 
 // ============================================================
 // Types
@@ -17,6 +17,16 @@ export interface OracleLiteConfig {
   address: string;
   /** JSON-RPC endpoint URL */
   rpcUrl: string;
+  /** Timeout applied to every eth_call, in milliseconds (default 15000). */
+  timeoutMs?: number;
+}
+
+export interface CheckComplianceOptions {
+  /**
+   * Proof types whose attestation counts as compliance. Defaults to
+   * {@link COMPLIANCE_PROOF_TYPES} (0x01, 0x07, 0x09). Must be non-empty.
+   */
+  acceptedProofTypes?: readonly number[];
 }
 
 export interface ComplianceAttestationLite {
@@ -33,14 +43,35 @@ export interface ComplianceAttestationLite {
 }
 
 export interface ComplianceCheckResult {
+  /**
+   * The Oracle reports a live (existing, unexpired) attestation AND its proof
+   * type is one of the accepted compliance types. See COMPLIANCE_PROOF_TYPES for
+   * why the on-chain flag alone is not a compliance verdict.
+   */
   valid: boolean;
+  /** Latest attestation for (subject, jurisdiction), or null when none exists. */
   attestation: ComplianceAttestationLite | null;
   source: "on-chain";
 }
 
 export interface ProofVerificationResult {
+  /**
+   * The simulated `submitCompliance` succeeded (the on-chain verifier accepted
+   * the proof and the Oracle's public-input validation passed) and the returned
+   * attestation is bound to the requested subject, jurisdiction and proof type.
+   *
+   * This is NOT a compliance verdict and says nothing about WHAT was proven: the
+   * Oracle attests any positive proof of any type. Read the claim from
+   * `publicInputs` (e.g. `decodeTierProofClaim` for tier proofs).
+   */
   valid: boolean;
   attestation: ComplianceAttestationLite | null;
+  /**
+   * The verified public inputs, one 0x-prefixed 32-byte word per field in
+   * circuit order (see PUBLIC_INPUT_COUNTS). Null when the supplied
+   * `publicInputs` hex was malformed.
+   */
+  publicInputs: string[] | null;
   error?: string;
 }
 
@@ -48,36 +79,86 @@ export interface ProofVerificationResult {
 // OracleLite Client
 // ============================================================
 
+const DEFAULT_TIMEOUT_MS = 15_000;
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const WORD_HEX = 64;
+const ATTESTATION_WORDS = 10;
+
+// keccak256 selectors (the tests compare full calldata against viem's encodeFunctionData)
+const SELECTOR_CHECK_COMPLIANCE = "0xd1e8eba9"; // checkCompliance(address,uint8)
+const SELECTOR_CHECK_COMPLIANCE_BY_TYPE = "0x0916d812"; // checkComplianceByType(address,uint8,uint8)
+const SELECTOR_SUBMIT_COMPLIANCE = "0xf33bc62b"; // submitCompliance(uint8,uint8,bytes,bytes,bytes32)
+
 export class OracleLite {
-  constructor(private config: OracleLiteConfig) {}
+  private readonly timeoutMs: number;
+
+  constructor(private config: OracleLiteConfig) {
+    assertAddress(config.address, "config.address");
+    const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error(
+        `OracleLite: config.timeoutMs must be a positive integer, got ${String(timeoutMs)}`,
+      );
+    }
+    this.timeoutMs = timeoutMs;
+  }
 
   /**
-   * Check on-chain compliance status for a wallet.
-   * Encodes checkCompliance(address,uint8) as eth_call.
+   * Check on-chain compliance status for a wallet via checkCompliance(address,uint8).
+   *
+   * `valid` is true only when the Oracle reports a live attestation whose proof
+   * type is in `options.acceptedProofTypes` (default COMPLIANCE_PROOF_TYPES).
+   * Returns null when the eth_call returns no data (no contract at the address).
    */
   async checkCompliance(
     wallet: string,
     jurisdictionId: JurisdictionId = JURISDICTIONS.EU,
+    options: CheckComplianceOptions = {},
   ): Promise<ComplianceCheckResult | null> {
-    // selector: keccak256("checkCompliance(address,uint8)") = 0xd1e8eba9
-    const selector = "0xd1e8eba9";
-    const paddedAddress = wallet.slice(2).toLowerCase().padStart(64, "0");
-    const paddedJurisdiction = jurisdictionId.toString(16).padStart(64, "0");
-    const data = `${selector}${paddedAddress}${paddedJurisdiction}`;
-
-    const result = await this.ethCall({ to: this.config.address, data });
-    if (!result) return null;
-
-    const hex = result.slice(2);
-    if (hex.length < 64) {
-      return { valid: false, attestation: null, source: "on-chain" };
+    const accepted: readonly number[] = options.acceptedProofTypes ?? COMPLIANCE_PROOF_TYPES;
+    if (accepted.length === 0) {
+      throw new Error("OracleLite.checkCompliance: acceptedProofTypes must not be empty");
     }
+    const result = await this.queryAttestation(
+      "checkCompliance",
+      SELECTOR_CHECK_COMPLIANCE,
+      wallet,
+      jurisdictionId,
+    );
+    if (!result) return null;
+    const valid =
+      result.onChainValid &&
+      result.attestation !== null &&
+      accepted.includes(result.attestation.proofType);
+    return { valid, attestation: result.attestation, source: "on-chain" };
+  }
 
-    const valid = BigInt(`0x${hex.slice(0, 64)}`) !== 0n;
-    // Struct with all static fields is encoded inline (no offset pointer)
-    const attestation = decodeAttestation(hex.slice(64));
-
-    return { valid, attestation, source: "on-chain" };
+  /**
+   * Check on-chain status for one proof type via
+   * checkComplianceByType(address,uint8,uint8). `valid` is the Oracle's answer:
+   * a live attestation of exactly `proofType` (whatever that type proves). The
+   * returned attestation is the latest for (subject, jurisdiction) and may be
+   * of another type. Returns null when the eth_call returns no data.
+   */
+  async checkComplianceByType(
+    wallet: string,
+    jurisdictionId: JurisdictionId,
+    proofType: ProofType,
+  ): Promise<ComplianceCheckResult | null> {
+    assertUint8(proofType, "proofType");
+    const result = await this.queryAttestation(
+      "checkComplianceByType",
+      SELECTOR_CHECK_COMPLIANCE_BY_TYPE,
+      wallet,
+      jurisdictionId,
+      proofType,
+    );
+    if (!result) return null;
+    const valid =
+      result.onChainValid &&
+      result.attestation !== null &&
+      result.attestation.proofType === proofType;
+    return { valid, attestation: result.attestation, source: "on-chain" };
   }
 
   /**
@@ -85,6 +166,11 @@ export class OracleLite {
    *
    * Runs the on-chain UltraHonk verifier without gas. The `from` field
    * is set to `wallet` because the oracle uses msg.sender as subject.
+   *
+   * Throws on an invalid `wallet`, `proofType` or `jurisdictionId` (caller
+   * error). Every failure of the evidence itself (malformed hex, revert, RPC
+   * failure, attestation not bound to the request) returns `valid: false` with
+   * `error` set.
    */
   async verifyProof(
     wallet: string,
@@ -94,52 +180,127 @@ export class OracleLite {
     providerSetHash: string = "0x" + "0".repeat(64),
     jurisdictionId: JurisdictionId = JURISDICTIONS.EU,
   ): Promise<ProofVerificationResult> {
-    const data = encodeSubmitCompliance(
-      jurisdictionId,
-      proofType,
-      proof,
-      publicInputs,
-      providerSetHash,
-    );
+    assertAddress(wallet, "wallet");
+    assertUint8(proofType, "proofType");
+    assertUint8(jurisdictionId, "jurisdictionId");
 
-    let result: string | null;
+    const decodedInputs = splitWords(publicInputs);
+    let data: string;
     try {
-      result = await this.ethCall({ from: wallet, to: this.config.address, data }, 15_000);
+      data = encodeSubmitCompliance(
+        jurisdictionId,
+        proofType,
+        proof,
+        publicInputs,
+        providerSetHash,
+      );
     } catch (err) {
       return {
         valid: false,
         attestation: null,
+        publicInputs: decodedInputs,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    let result: string | null;
+    try {
+      result = await this.ethCall({ from: wallet, to: this.config.address, data });
+    } catch (err) {
+      return {
+        valid: false,
+        attestation: null,
+        publicInputs: decodedInputs,
         error: err instanceof Error ? err.message : "RPC request failed",
       };
     }
 
     if (!result) {
-      return { valid: false, attestation: null, error: "Empty result from oracle" };
-    }
-
-    const hex = result.slice(2);
-    if (hex.length < 64) {
-      return { valid: false, attestation: null, error: "Response too short" };
+      return {
+        valid: false,
+        attestation: null,
+        publicInputs: decodedInputs,
+        error: "Empty result from oracle",
+      };
     }
 
     // submitCompliance returns ComplianceAttestation (static tuple, encoded inline)
+    const hex = result.slice(2);
+    if (hex.length !== WORD_HEX * ATTESTATION_WORDS) {
+      return {
+        valid: false,
+        attestation: null,
+        publicInputs: decodedInputs,
+        error: `Malformed submitCompliance result: expected ${String(ATTESTATION_WORDS)} words, got ${String(hex.length / WORD_HEX)}`,
+      };
+    }
     const attestation = decodeAttestation(hex);
 
-    if (!attestation) {
-      return { valid: false, attestation: null, error: "Failed to decode attestation" };
+    const mismatch = bindingMismatch(attestation, wallet, jurisdictionId, proofType);
+    if (mismatch) {
+      return { valid: false, attestation, publicInputs: decodedInputs, error: mismatch };
     }
-
-    return { valid: attestation.meetsThreshold, attestation };
+    return { valid: true, attestation, publicInputs: decodedInputs };
   }
 
   // ============================================================
   // Private
   // ============================================================
 
-  private async ethCall(
-    params: { from?: string; to: string; data: string },
-    timeoutMs?: number,
-  ): Promise<string | null> {
+  /**
+   * Shared eth_call + decode for checkCompliance / checkComplianceByType.
+   * Validates the query, requires the exact `(bool, ComplianceAttestation)`
+   * response width, and asserts a present attestation is bound to the queried
+   * subject and jurisdiction.
+   */
+  private async queryAttestation(
+    method: string,
+    selector: string,
+    wallet: string,
+    jurisdictionId: number,
+    proofType?: number,
+  ): Promise<{ onChainValid: boolean; attestation: ComplianceAttestationLite | null } | null> {
+    assertAddress(wallet, "wallet");
+    assertUint8(jurisdictionId, "jurisdictionId");
+
+    const words = [wallet.slice(2).toLowerCase().padStart(WORD_HEX, "0"), uintWord(jurisdictionId)];
+    if (proofType !== undefined) words.push(uintWord(proofType));
+
+    const result = await this.ethCall({ to: this.config.address, data: selector + words.join("") });
+    if (!result) return null;
+
+    const hex = result.slice(2);
+    if (hex.length !== WORD_HEX * (1 + ATTESTATION_WORDS)) {
+      throw new Error(
+        `OracleLite.${method}: malformed response, expected ${String(1 + ATTESTATION_WORDS)} words, got ${String(hex.length / WORD_HEX)}`,
+      );
+    }
+
+    const onChainValid = BigInt(`0x${hex.slice(0, WORD_HEX)}`) !== 0n;
+    // Struct with all static fields is encoded inline (no offset pointer)
+    const attestation = decodeAttestation(hex.slice(WORD_HEX));
+
+    // The Oracle returns a zeroed struct when no attestation exists.
+    if (attestation.timestamp === 0n) {
+      if (onChainValid) {
+        throw new Error(`OracleLite.${method}: Oracle reported valid with no attestation`);
+      }
+      return { onChainValid: false, attestation: null };
+    }
+
+    // Both queries return the LATEST attestation for (subject, jurisdiction),
+    // whatever its type, so only subject and jurisdiction must match.
+    const mismatch = bindingMismatch(attestation, wallet, jurisdictionId, undefined);
+    if (mismatch) throw new Error(`OracleLite.${method}: ${mismatch}`);
+
+    return { onChainValid, attestation };
+  }
+
+  private async ethCall(params: {
+    from?: string;
+    to: string;
+    data: string;
+  }): Promise<string | null> {
     const body = JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -147,33 +308,32 @@ export class OracleLite {
       params: [params, "latest"],
     });
 
-    const fetchOpts: RequestInit = {
+    const response = await fetch(this.config.rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-    };
-
-    if (timeoutMs) {
-      fetchOpts.signal = AbortSignal.timeout(timeoutMs);
-    }
-
-    const response = await fetch(this.config.rpcUrl, fetchOpts);
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
 
     if (!response.ok) {
       throw new Error(`RPC HTTP ${String(response.status)}`);
     }
 
     const json = (await response.json()) as {
-      result?: string;
-      error?: { message: string };
+      result?: unknown;
+      error?: { message?: string; data?: unknown };
     };
 
     if (json.error) {
-      throw new Error(json.error.message);
+      const data = typeof json.error.data === "string" ? ` (data: ${json.error.data})` : "";
+      throw new Error(`${json.error.message ?? "RPC error"}${data}`);
     }
 
-    if (!json.result || json.result === "0x") {
+    if (json.result === undefined || json.result === "0x") {
       return null;
+    }
+    if (typeof json.result !== "string" || !/^0x([0-9a-fA-F]{2})*$/.test(json.result)) {
+      throw new Error(`RPC returned a non-hex eth_call result: ${String(json.result)}`);
     }
 
     return json.result;
@@ -181,8 +341,68 @@ export class OracleLite {
 }
 
 // ============================================================
+// Validation
+// ============================================================
+
+function assertAddress(value: unknown, name: string): asserts value is string {
+  if (typeof value !== "string" || !ADDRESS_RE.test(value)) {
+    throw new Error(
+      `OracleLite: ${name} must be a 0x-prefixed 20-byte hex address, got ${String(value)}`,
+    );
+  }
+}
+
+function assertUint8(value: unknown, name: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 255) {
+    throw new Error(`OracleLite: ${name} must be an integer in [0, 255], got ${String(value)}`);
+  }
+}
+
+/** Describe how an attestation fails to bind to the request, or null when it binds. */
+function bindingMismatch(
+  attestation: ComplianceAttestationLite,
+  wallet: string,
+  jurisdictionId: number,
+  proofType: number | undefined,
+): string | null {
+  if (attestation.subject.toLowerCase() !== wallet.toLowerCase()) {
+    return `attestation subject ${attestation.subject} does not match wallet ${wallet}`;
+  }
+  if (attestation.jurisdictionId !== jurisdictionId) {
+    return `attestation jurisdiction ${String(attestation.jurisdictionId)} does not match requested ${String(jurisdictionId)}`;
+  }
+  if (proofType !== undefined && attestation.proofType !== proofType) {
+    return `attestation proofType ${String(attestation.proofType)} does not match requested ${String(proofType)}`;
+  }
+  return null;
+}
+
+// ============================================================
 // ABI Encoding
 // ============================================================
+
+function uintWord(value: number): string {
+  return value.toString(16).padStart(WORD_HEX, "0");
+}
+
+function stripHex(value: string, name: string): string {
+  const hex = value.startsWith("0x") ? value.slice(2) : value;
+  if (!/^([0-9a-fA-F]{2})*$/.test(hex)) {
+    throw new Error(`${name} must be even-length hex, got ${value.slice(0, 20)}...`);
+  }
+  return hex;
+}
+
+/** Split public-inputs hex into 32-byte words, or null when it is not word-aligned hex. */
+function splitWords(publicInputs: string): string[] | null {
+  const hex = publicInputs.startsWith("0x") ? publicInputs.slice(2) : publicInputs;
+  if (!/^([0-9a-fA-F]{64})*$/.test(hex)) return null;
+  const words: string[] = [];
+  for (let i = 0; i < hex.length; i += WORD_HEX) {
+    words.push(`0x${hex.slice(i, i + WORD_HEX).toLowerCase()}`);
+  }
+  return words;
+}
 
 /**
  * ABI-encode submitCompliance(uint8,uint8,bytes,bytes,bytes32).
@@ -194,63 +414,62 @@ function encodeSubmitCompliance(
   publicInputs: string,
   providerSetHash: string,
 ): string {
-  // selector: keccak256("submitCompliance(uint8,uint8,bytes,bytes,bytes32)")
-  const selector = "0xf33bc62b";
-
-  const proofHex = proof.startsWith("0x") ? proof.slice(2) : proof;
-  const piHex = publicInputs.startsWith("0x") ? publicInputs.slice(2) : publicInputs;
-  const hashHex = (
-    providerSetHash.startsWith("0x") ? providerSetHash.slice(2) : providerSetHash
-  ).padStart(64, "0");
+  const proofHex = stripHex(proof, "proof");
+  const piHex = stripHex(publicInputs, "publicInputs");
+  if (piHex.length % WORD_HEX !== 0) {
+    throw new Error(
+      `publicInputs must be a whole number of 32-byte words, got ${String(piHex.length / 2)} bytes`,
+    );
+  }
+  const hashHex = stripHex(providerSetHash, "providerSetHash");
+  if (hashHex.length !== WORD_HEX) {
+    throw new Error(`providerSetHash must be 32 bytes, got ${String(hashHex.length / 2)}`);
+  }
 
   // Head: 5 slots (jurisdictionId, proofType, offset_proof, offset_pi, providerSetHash)
   const headSize = 5 * 32; // 160 bytes
 
   // Proof bytes
-  const proofBytes = Math.ceil(proofHex.length / 2);
-  const proofLenHex = proofBytes.toString(16).padStart(64, "0");
-  const proofPadded = proofHex.padEnd(Math.ceil(proofHex.length / 64) * 64, "0");
+  const proofBytes = proofHex.length / 2;
+  const proofPadded = proofHex.padEnd(Math.ceil(proofHex.length / WORD_HEX) * WORD_HEX, "0");
 
-  // Public inputs bytes
-  const piBytes = Math.ceil(piHex.length / 2);
-  const piLenHex = piBytes.toString(16).padStart(64, "0");
-  const piPadded = piHex.padEnd(Math.ceil(piHex.length / 64) * 64, "0");
+  // Public inputs bytes (already word-aligned)
+  const piBytes = piHex.length / 2;
 
   // Offsets (bytes from start of params)
   const proofOffset = headSize;
-  const piOffset = proofOffset + 32 + Math.ceil(proofHex.length / 64) * 32;
+  const piOffset = proofOffset + 32 + proofPadded.length / 2;
 
   const head = [
-    jurisdictionId.toString(16).padStart(64, "0"),
-    proofType.toString(16).padStart(64, "0"),
-    proofOffset.toString(16).padStart(64, "0"),
-    piOffset.toString(16).padStart(64, "0"),
+    uintWord(jurisdictionId),
+    uintWord(proofType),
+    uintWord(proofOffset),
+    uintWord(piOffset),
     hashHex,
   ].join("");
 
-  const tail = proofLenHex + proofPadded + piLenHex + piPadded;
+  const tail = uintWord(proofBytes) + proofPadded + uintWord(piBytes) + piHex;
 
-  return selector + head + tail;
+  return SELECTOR_SUBMIT_COMPLIANCE + head + tail;
 }
 
 // ============================================================
 // ABI Decoding
 // ============================================================
 
-function decodeAttestation(hex: string): ComplianceAttestationLite | null {
-  // 10 fields x 32 bytes = 640 hex chars minimum
-  if (hex.length < 64 * 10) return null;
-
+/** Decode the 10-word static ComplianceAttestation tuple. Caller checks the width. */
+function decodeAttestation(hex: string): ComplianceAttestationLite {
+  const word = (i: number): string => hex.slice(i * WORD_HEX, (i + 1) * WORD_HEX);
   return {
-    subject: `0x${hex.slice(24, 64)}`,
-    jurisdictionId: Number(BigInt(`0x${hex.slice(64, 128)}`)),
-    proofType: Number(BigInt(`0x${hex.slice(128, 192)}`)),
-    meetsThreshold: BigInt(`0x${hex.slice(192, 256)}`) !== 0n,
-    timestamp: BigInt(`0x${hex.slice(256, 320)}`),
-    expiresAt: BigInt(`0x${hex.slice(320, 384)}`),
-    proofHash: `0x${hex.slice(384, 448)}`,
-    providerSetHash: `0x${hex.slice(448, 512)}`,
-    publicInputsHash: `0x${hex.slice(512, 576)}`,
-    verifierUsed: `0x${hex.slice(600, 640)}`,
+    subject: `0x${word(0).slice(24)}`,
+    jurisdictionId: Number(BigInt(`0x${word(1)}`)),
+    proofType: Number(BigInt(`0x${word(2)}`)),
+    meetsThreshold: BigInt(`0x${word(3)}`) !== 0n,
+    timestamp: BigInt(`0x${word(4)}`),
+    expiresAt: BigInt(`0x${word(5)}`),
+    proofHash: `0x${word(6)}`,
+    providerSetHash: `0x${word(7)}`,
+    publicInputsHash: `0x${word(8)}`,
+    verifierUsed: `0x${word(9).slice(24)}`,
   };
 }

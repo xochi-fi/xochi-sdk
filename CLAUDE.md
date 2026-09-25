@@ -18,13 +18,13 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/circuits-browser.ts**: Browser circuit loader (BrowserCircuitLoader) -- no node:fs dependency
 - **src/inputs/**: Input builders per circuit type -- validate constraints, construct witness inputs
 - **src/inputs/validate.ts**: Shared validation helpers (signal range, weights, timestamps, credential types, submitter non-zero)
-- **src/abis.ts**: Full Solidity ABIs for Oracle and Verifier contracts (functions, events, custom errors)
-- **src/errors.ts**: Typed contract error classes (`ERC8262ContractError` base + 18 named subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/abis.ts**: Full Solidity ABIs for Oracle, Verifier and SettlementRegistry contracts (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when `../ERC-8262/out` or `ERC_8262_PATH` exists)
+- **src/errors.ts**: Typed contract error classes (`ERC8262ContractError` base + 21 named subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: Pinned `EXPECTED_NOIR_VERSION` + shared `assertCompatibleNoirVersion` (used by both circuit loaders)
 
 ### Trust & Compliance
 
-- **src/tiers.ts**: Trust tiers (5), privacy levels (6), fee rates, MEV rebates, category caps
+- **src/tiers.ts**: Trust tiers (5), privacy levels (6), fee rates (two-rate, three-layer `FEE_SCHEDULE`), category caps
 - **src/scoring.ts**: Attestation score calculation with diminishing returns (whitepaper I.8)
 - **src/tier-proofs.ts**: Tier proof generation/verification -- proves "score >= threshold" via risk_score circuit
 
@@ -34,7 +34,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **src/batch-prover.ts**: `proveBatch` / `provePlan` -- generate compliance proofs for all sub-trades
 - **src/settlement-registry.ts**: `SettlementRegistryClient` -- on-chain SettlementRegistry interaction (viem)
 
-`ERC8262Oracle.submitBatch()` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs per `MAX_BATCH_SIZE`), parses one `ComplianceVerified` event per sub-trade from the receipt, and returns proofHashes for settlement recording.
+`ERC8262Oracle.submitBatch()` calls the on-chain `submitComplianceBatch` (single atomic tx, max 10 proofs per `MAX_BATCH_SIZE`, audit F-3), parses one `ComplianceVerified` event per sub-trade from the receipt, and returns proofHashes for settlement recording.
 
 ### Execution Planning (XIP-2)
 
@@ -44,7 +44,7 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ### Bridge Integration
 
-- **src/pxe-bridge-client.ts**: `PxeBridgeClient` -- JSON-RPC client for pxe-bridge
+- **src/pxe-bridge-client.ts**: `PxeBridgeClient` -- JSON-RPC client for pxe-bridge. Requires an `https:` URL (plain `http:` only for loopback hosts) and aborts each call after `timeoutMs` (default 15 s).
 
 ### Encoding & Constants
 
@@ -54,18 +54,20 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 
 ### Artifacts
 
-- **circuits/**: Pre-compiled Noir circuit JSON artifacts (synced from ERC-8262)
-- **scripts/sync-circuits.sh**: Copies compiled artifacts from ERC-8262, validates noir_version
+- **circuits/**: Pre-compiled Noir circuit JSON artifacts (synced from ERC-8262, debug data stripped)
+- **scripts/sync-circuits.sh**: Copies compiled artifacts from ERC-8262, strips debug data (`file_map` / `debug_symbols`), and fails (exit 1, `circuits/` untouched) if any artifact is missing or its `noir_version` != `EXPECTED_NOIR_VERSION`
 
 ## Key Commands
 
 ```bash
 npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (unit tests only, 243 tests; integration excluded via vitest.config.ts)
-npm run test:integration  # proof generation + anvil contract tests (50 tests, uses vitest.integration.config.ts)
-npm run typecheck      # tsc --noEmit
-npm run format         # prettier --write src/ test/
+npm test               # vitest run (unit tests; integration + fee-schedule-drift excluded via vitest.config.ts)
+npm run test:integration  # proof generation + anvil contract tests (uses vitest.integration.config.ts)
+npm run drift-check    # circuit-drift + jurisdiction-parity + abi-drift + verifier-vk-drift + fee-schedule-drift (vitest.drift.config.ts; needs ../riddler-sdk)
+npm run typecheck      # tsc --noEmit (SDK + tests) and tsc -p daemon/tsconfig.json
+npm run format         # prettier --write src/ test/ daemon/src/ and root json/md
 npm run format:check   # prettier --check (runs in prepublishOnly + CI)
+npm run daemon         # build, then run the reference signing daemon under Node type stripping
 ./scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
 ```
 
@@ -95,7 +97,7 @@ PATTERN's 7th public input is `settlement_root` (audit H-1) -- the Oracle does n
 
 The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs over (audit F-6). The Oracle asserts these match `block.chainid` and `address(this)` so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
 
-The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
+The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2, UAE=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
 
 ## Trust Tiers
 
@@ -104,7 +106,7 @@ in-code mirrors are xochi's `packages/shared/src/tiers.ts` and Riddler's
 `fee_policy.ex`; the normalized wire form is
 `riddler-sdk/packages/spec/fee/schedule.json`, which Riddler asserts itself
 against. `src/tiers.ts` here conforms to that same vector via
-`test/fee-schedule-drift.test.ts` (`npm run drift-check`). Do not hand-edit the
+`test/fee-schedule-drift.test.ts` (`npm run drift-check`; it needs a sibling `../riddler-sdk` checkout, so it is excluded from `npm test`). Do not hand-edit the
 numbers below without moving the vector, or the check will catch you.
 
 | Tier          | Score | Fee (stable / volatile) |
@@ -150,10 +152,11 @@ score required to reach shielded settlement.
 Each `buildXInputs()` function validates constraints before passing to the prover (fail-fast):
 
 - Signal range 0-100
-- Weight > 0 for active provider slots, 0 for inactive
+- Weights are integers in [0, 10000] (circuit `MAX_WEIGHT`): > 0 for active provider slots, 0 for inactive
 - Provider ID != 0 for active slots
-- Timestamp bounds (2021 to 2^40)
-- Reporting threshold overflow protection
+- Timestamps are safe integers within bounds (2021 to 2^40); NaN / non-numeric strings are rejected
+- Reporting threshold: non-negative integer, overflow-protected
+- Submitter: 20-byte address (or its 32-byte left-padded form), non-zero
 - Credential type 1-4
 - Merkle path length exactly 20
 
@@ -170,25 +173,27 @@ The signed-variant builders (`buildComplianceSignedInputs`, `buildRiskScoreSigne
 Pre-compiled Noir 1.0.0-beta.20 circuit artifacts in `circuits/`. Synced from ERC-8262 compiled output. The `@noir-lang/noir_js` runtime stays pinned at the latest stable (beta.19), which is forward-compatible with beta.20 circuits. To update:
 
 ```bash
-# Automated (preferred):
-./scripts/sync-circuits.sh ../ERC-8262
-
-# Manual:
 cd ../ERC-8262/circuits && nargo compile --workspace
-cp circuits/{name}/target/{name}.json ../xochi-sdk/circuits/
+cd - && ./scripts/sync-circuits.sh ../ERC-8262
 ```
+
+Use the script rather than copying by hand: it strips `file_map` / `debug_symbols` (full Noir sources with absolute build paths; noir_js needs only `abi` + `bytecode`, and assert messages come from the `abi`), checks every `noir_version` against `EXPECTED_NOIR_VERSION`, and only writes `circuits/` when all nine artifacts pass. Then run `npm run drift-check`: `test/verifier-vk-drift.test.ts` requires each bundled circuit's EVM VK hash to equal the `VK_HASH` in ERC-8262's `src/generated/<circuit>_verifier.sol`, so syncing from a checkout whose verifiers are stale fails.
 
 The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
+## Reference Signing Daemon
+
+`daemon/` is a reference HTTP daemon around `@xochi/sdk/provider` (`POST /sign`, `/sign-multi`, `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`). It ships as TS source (not in the npm tarball) and runs under Node type stripping via `npm run daemon`, so relative imports carry `.ts` extensions and the SDK is imported as `@xochi/sdk/provider` (self-reference to `dist/` at runtime; mapped to source by the root tsconfig `paths` and the vitest alias). It pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window and circuit range checks, scopes credentials per route group (signals vs credential-root), refuses non-loopback plain-HTTP binds, and writes each audit record before releasing a signature. See `daemon/README.md`.
+
 ## On-Chain Clients
 
-**ERC8262Oracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation. Requires viem PublicClient + optional WalletClient. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis. `ERC8262Oracle.submitBatch` calls the on-chain `submitComplianceBatch` (single atomic tx, max 100 proofs) and parses one `ComplianceVerified` event per sub-trade from the receipt.
+**ERC8262Oracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation, signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`), credential roots (`setCredentialSigner`, `getCredentialSigner`, 6-arg `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`). Requires viem PublicClient + optional WalletClient. `checkCompliance` returns `valid: true` only when the attestation's proof type is in `acceptedProofTypes` (default `COMPLIANCE_PROOF_TYPES` = 0x01/0x07/0x09): the contract reports `meetsThreshold: true` for every type, so the policy lives client-side until ERC-8262 fixes it. The on-chain contract enforces `MAX_PROOF_AGE = 1 hour` for proof timestamps and `MIN_TIME_WINDOW = 3600` for pattern analysis. `ERC8262Oracle.submitBatch` calls the on-chain `submitComplianceBatch` (single atomic tx, max 10 proofs) and parses one `ComplianceVerified` event per sub-trade from the receipt.
 
 **ComplianceAttestation** struct includes a `proofType` field (uint8) between `jurisdictionId` and `meetsThreshold`. Both `ComplianceAttestation` (viem) and `ComplianceAttestationLite` (OracleLite) reflect this layout.
 
 **ERC8262Verifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion, isVersionRevoked, revokeVerifierVersion. Requires viem PublicClient + optional WalletClient (write methods need a wallet). The on-chain contract uses a timelock pattern: `setVerifierInitial` for first-time setup, `proposeVerifier` + `executeVerifierUpdate` for subsequent changes. Owner can emergency-revoke any historical (non-current) verifier version via `revokeVerifierVersion`; revoked versions reject all `verifyProofAtVersion` calls.
 
-**OracleLite** (fetch): checkCompliance and verifyProof via raw JSON-RPC eth_call. No viem dependency. For Cloudflare Workers and other restricted environments.
+**OracleLite** (fetch): checkCompliance (same proof-type policy), checkComplianceByType and verifyProof via raw JSON-RPC eth_call, with a `timeoutMs` (default 15 s) on every call. Validates wallet / jurisdiction / proof type before any request and asserts the returned attestation matches the query. `verifyProof` returns the verified `publicInputs`; its `valid` is not a compliance verdict. No viem dependency. For Cloudflare Workers and other restricted environments.
 
 **SettlementRegistryClient** (viem): registerTrade, recordSubSettlement, finalizeTrade, expireTrade, getSettlement, getSubSettlements. Requires viem PublicClient + optional WalletClient.
 
@@ -204,7 +209,7 @@ The BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## Conventions
 
-- ESM only (type: module)
+- ESM only (type: module); exports also carry a `default` condition so `require()` works on Node with `require(esm)`
 - Strict TypeScript
 - All public inputs are bytes32-encoded field elements (32-byte aligned)
 - Basis points (0-10000) for risk scores in circuits, percentages (0-100) in signals

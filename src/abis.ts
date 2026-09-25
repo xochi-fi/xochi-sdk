@@ -16,6 +16,39 @@ export const COMPLIANCE_ATTESTATION_COMPONENTS = [
   { name: "verifierUsed", type: "address" },
 ] as const;
 
+/** Errors from ERC-8262's AccessControl + Ownable2Step bases (Oracle and Verifier). */
+const ACCESS_CONTROL_ERRORS = [
+  { type: "error", name: "Unauthorized", inputs: [] },
+  {
+    type: "error",
+    name: "NotRole",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+  },
+  {
+    type: "error",
+    name: "AlreadyHasRole",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+  },
+  {
+    type: "error",
+    name: "DoesNotHaveRole",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+  },
+  { type: "error", name: "InvalidRole", inputs: [{ name: "role", type: "bytes32" }] },
+  { type: "error", name: "ZeroAddress", inputs: [] },
+  { type: "error", name: "NotPendingOwner", inputs: [] },
+  { type: "error", name: "OwnershipTransferExpired", inputs: [] },
+] as const;
+
 export const ORACLE_ABI = [
   // --- Core ---
   {
@@ -257,11 +290,31 @@ export const ORACLE_ABI = [
   },
   {
     type: "function",
+    name: "setCredentialSigner",
+    inputs: [
+      { name: "providerId", type: "uint256" },
+      { name: "signer", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getCredentialSigner",
+    inputs: [{ name: "providerId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "publishCredentialRoot",
     inputs: [
       { name: "providerId", type: "uint256" },
       { name: "root", type: "bytes32" },
       { name: "cid", type: "string" },
+      { name: "notBefore", type: "uint64" },
+      { name: "notAfter", type: "uint64" },
+      { name: "signature", type: "bytes" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -302,6 +355,28 @@ export const ORACLE_ABI = [
     name: "getProviderPublisher",
     inputs: [{ name: "providerId", type: "uint256" }],
     outputs: [{ name: "publisher", type: "address" }],
+    stateMutability: "view",
+  },
+  // --- Signer pubkey hashes (signed-signals proofs) ---
+  {
+    type: "function",
+    name: "registerSignerPubkeyHash",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "revokeSignerPubkeyHash",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "isValidSignerPubkeyHash",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+    outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
   },
   {
@@ -441,6 +516,25 @@ export const ORACLE_ABI = [
     type: "event",
     name: "CredentialRootRevoked",
     inputs: [{ name: "root", type: "bytes32", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "CredentialSignerSet",
+    inputs: [
+      { name: "providerId", type: "uint256", indexed: true },
+      { name: "previous", type: "address", indexed: true },
+      { name: "signer", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "SignerPubkeyHashRegistered",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "SignerPubkeyHashRevoked",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32", indexed: true }],
   },
   // --- Errors ---
   { type: "error", name: "ProofVerificationFailed", inputs: [] },
@@ -670,6 +764,16 @@ export const ORACLE_ABI = [
     name: "UnalignedPublicInputs",
     inputs: [{ name: "length", type: "uint256" }],
   },
+
+  // Pausable, AccessControl and Ownable2Step (ERC8262Oracle bases).
+  { type: "error", name: "ContractPaused", inputs: [] },
+  { type: "error", name: "ContractNotPaused", inputs: [] },
+  {
+    type: "error",
+    name: "InvalidJurisdiction",
+    inputs: [{ name: "jurisdictionId", type: "uint8" }],
+  },
+  ...ACCESS_CONTROL_ERRORS,
 ] as const;
 
 export const VERIFIER_ABI = [
@@ -872,4 +976,41 @@ export const VERIFIER_ABI = [
   { type: "error", name: "BatchLengthMismatch", inputs: [] },
   { type: "error", name: "EmptyBatch", inputs: [] },
   { type: "error", name: "BatchTooLarge", inputs: [] },
+
+  // Verifier registration and per-proof-type pause.
+  {
+    type: "error",
+    name: "CodehashMismatch",
+    inputs: [
+      { name: "verifier", type: "address" },
+      { name: "expected", type: "bytes32" },
+      { name: "actual", type: "bytes32" },
+    ],
+  },
+  { type: "error", name: "NotAContract", inputs: [{ name: "addr", type: "address" }] },
+  { type: "error", name: "NotCancelAuthorized", inputs: [{ name: "account", type: "address" }] },
+  { type: "error", name: "ProofTypePaused", inputs: [{ name: "proofType", type: "uint8" }] },
+  { type: "error", name: "ProofTypeNotPaused", inputs: [{ name: "proofType", type: "uint8" }] },
+
+  // Raised by the ProofTypes library on verifyProof.
+  { type: "error", name: "InvalidProofType", inputs: [{ name: "proofType", type: "uint8" }] },
+  {
+    type: "error",
+    name: "InvalidPublicInputLength",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "expected", type: "uint256" },
+      { name: "actual", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "UnalignedPublicInputs",
+    inputs: [{ name: "length", type: "uint256" }],
+  },
+
+  // Pausable, AccessControl and Ownable2Step (ERC8262Verifier bases).
+  { type: "error", name: "ContractPaused", inputs: [] },
+  { type: "error", name: "ContractNotPaused", inputs: [] },
+  ...ACCESS_CONTROL_ERRORS,
 ] as const;
