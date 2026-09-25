@@ -13,7 +13,7 @@
  *   - signer_pubkey_hash_i = 0
  *   - weight_sum_i = 1, weights_i = [1, 0..0], signals_i = [0; 8]
  *     (compute_risk_score divides by weight_sum, so 0 is forbidden)
- *   - pubkey/sig: arbitrary 32/32/64 zero-bytes
+ *   - pubkey = 2G, signature = (r = 1, s = 1): see `PADDING_PUBKEY_X`
  *
  * The caller passes one `MultiSignedSlot | null` per index; this builder
  * produces the witness padding for `null` slots so callers never have to
@@ -27,11 +27,33 @@ import {
   MIN_MULTI_PROVIDER_THRESHOLDS,
 } from "../constants.js";
 import type { JurisdictionId } from "../constants.js";
-import { bytesToHexField } from "../provider/pedersen.js";
+import { bytesToHexField, fieldToBytes } from "../provider/pedersen.js";
 import { validateSubmitter, validateTimestamp } from "./validate.js";
 
 const SIGNALS_PER_SLOT = 8;
 const ZERO_FIELD_HEX = "0x" + "0".repeat(64);
+
+/**
+ * Padding pubkey and signature for inactive slots.
+ *
+ * `verify_slot_or_skip` gates only the asserts: the secp256k1 blackbox runs on
+ * every slot, and both provers reject malformed inputs outright rather than
+ * returning `false`. acvm_js requires r, s != 0 and an on-curve key; bb
+ * additionally constrains 0 < r < n, 0 < s < (n+1)/2, the key not at infinity,
+ * and u1*G + u2*P not at infinity. All-zero padding aborts witness generation.
+ *
+ * P = 2G (barretenberg's own default for a predicate-false ECDSA call) with
+ * r = s = 1 satisfies all of these: u1*G + u2*P = (z + 2)G, and the digest z
+ * is a BN254 field element, so z + 2 < n and the sum is never infinity. The
+ * verify result is discarded: a slot is active only when its public
+ * `signer_pubkey_hash` is non-zero, which padding never sets, so padding
+ * cannot count toward M.
+ */
+const PADDING_PUBKEY_X =
+  fieldToBytes(0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5n);
+const PADDING_PUBKEY_Y =
+  fieldToBytes(0x1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52an);
+const PADDING_SIGNATURE = new Uint8Array([...fieldToBytes(1n), ...fieldToBytes(1n)]); // r || s
 
 /**
  * Per-slot signing artifacts. Produced by `signSlotPayload()` in src/provider.
@@ -104,16 +126,17 @@ interface SlotWitness {
 /**
  * Inactive-slot witness padding required by the circuit:
  * `weight_sum = 1, weights = [1, 0..0], signals = [0; 8]` so
- * `compute_risk_score` is well-defined; pubkey/sig are zero bytes.
+ * `compute_risk_score` is well-defined; pubkey/sig are the ECDSA-solvable
+ * padding above.
  */
 function paddingSlotWitness(): SlotWitness {
   return {
     signals: Array<string>(SIGNALS_PER_SLOT).fill("0"),
     weights: ["1", ...Array<string>(SIGNALS_PER_SLOT - 1).fill("0")],
     weightSum: "1",
-    pubkeyX: Array<string>(32).fill("0"),
-    pubkeyY: Array<string>(32).fill("0"),
-    signature: Array<string>(64).fill("0"),
+    pubkeyX: bytesToNumStrings(PADDING_PUBKEY_X),
+    pubkeyY: bytesToNumStrings(PADDING_PUBKEY_Y),
+    signature: bytesToNumStrings(PADDING_SIGNATURE),
     signerPubkeyHash: ZERO_FIELD_HEX,
   };
 }

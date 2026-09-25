@@ -302,7 +302,7 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 ### Slot semantics
 
 - Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
-- A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically -- callers never have to know it.
+- A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, padding pubkey/sig below) automatically -- callers never have to know it. Any layout works: `[A, B, null, null, null]`, `[A, null, B, null, null]`, ...
 - Active count must be `>= thresholdM`. Distinct signers required across active slots.
 - All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(...)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
 
@@ -380,7 +380,11 @@ const res = await fetch(`${daemonAUrl}/sign-multi`, {
 // 400: validation error   401: unauthorized   403: policy refusal / route not permitted
 ```
 
-> **Inactive-slot padding.** If you build the witness yourself instead of using `buildComplianceMultiSignedInputs`, inactive slots MUST use `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`. All-zero weights cause `compute_risk_score` to divide by zero. The input builder handles this for `null` slots automatically.
+> **Inactive-slot padding.** If you build the witness yourself instead of using `buildComplianceMultiSignedInputs`, inactive slots MUST use `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]` (all-zero weights make `compute_risk_score` divide by zero) and an ECDSA-solvable pubkey/signature. The circuit discards an inactive slot's verify result but still evaluates the secp256k1 blackbox: acvm_js aborts witness generation on a zero `r`/`s` or an off-curve key, and bb additionally constrains `0 < r < n`, `0 < s < (n+1)/2`, and a non-infinity key and `u1*G + u2*P`. The builder pads with pubkey `2G` and `r = s = 1` (so `u1*G + u2*P = (z + 2)*G`, never infinity for a BN254 digest `z`):
+>
+> - `pubkey_x = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5`
+> - `pubkey_y = 0x1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a`
+> - `signature = 0x00..01 || 0x00..01` (32-byte big-endian `r`, then `s`)
 
 > **New typed errors.** Reverts from the Oracle decode to `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError` via `decodeContractError` / `withDecodedErrors`.
 
