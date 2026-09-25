@@ -88,14 +88,14 @@ Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use 
 | 0x05 | MEMBERSHIP              | membership              | 5             | Merkle inclusion (whitelist)                |
 | 0x06 | NON_MEMBERSHIP          | non_membership          | 5             | Sorted Merkle adjacency (sanctions)         |
 | 0x07 | COMPLIANCE_SIGNED       | compliance_signed       | 9             | Compliance + provider-signed signals        |
-| 0x08 | RISK_SCORE_SIGNED       | risk_score_signed       | 11            | Risk score + provider-signed signals        |
+| 0x08 | RISK_SCORE_SIGNED       | risk_score_signed       | 12            | Risk score + provider-signed signals        |
 | 0x09 | COMPLIANCE_MULTI_SIGNED | compliance_multi_signed | 14            | M-of-N (up to 5) provider-signed compliance |
 
 All 9 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type to prevent front-running. Circuit-level and on-chain public input counts now match exactly -- `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
 
 PATTERN's 7th public input is `settlement_root` (audit H-1) -- the Oracle does not validate it on submission, but `SettlementRegistry.finalizeTrade` enforces equality with `computeSettlementRoot(tradeId)`. Provers that intend to finalize a trade MUST call `SettlementRegistryClient.computeSettlementRoot(tradeId)` before generating the PATTERN proof; provers that do not (general Oracle submission) pass `bytes32(0)`.
 
-The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs over (audit F-6). The Oracle asserts these match `block.chainid` and `address(this)` so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
+The signed variants (0x07, 0x08) additionally bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs over (audit F-6). The Oracle asserts these match `block.chainid` and `address(this)` so a single provider signature cannot mint attestations on multiple Oracle instances or chains. Each signs under its own domain tag (`DOMAIN_SIGNED_SIGNALS` for 0x07, `DOMAIN_RISK_SIGNED_SIGNALS` for 0x08; `signSignals` / `POST /sign` take a required `proofType`), so a bundle signed for one type fails in-circuit verification in the other. Both expose the signed timestamp as a public input (0x08's is input 7), which the Oracle holds to `MAX_PROOF_AGE` (1 hour) and uses as the proof time (review #5, ERC-8262#20).
 
 The multi-signed variant (0x09) bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a signature minted for slot `i` cannot be placed in slot `j`) AND each must individually attest the subject is below the jurisdiction's high-risk floor. Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2, UAE=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` variant when N > 5 is needed.
 
