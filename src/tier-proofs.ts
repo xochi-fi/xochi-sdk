@@ -4,10 +4,10 @@
  * Proves "trust score >= threshold" without revealing exact score,
  * using the risk_score Noir circuit via UltraHonk.
  *
- * Trust model: the risk_score signals are private and unsigned, so a tier
- * proof shows only that the prover knows a score meeting the threshold under
- * the committed config. It is not provider-attested; a verifier granting fees
- * or privacy access must still bind the score to an authoritative source.
+ * Self-attested: the risk_score signals are private and unsigned, so a tier
+ * proof shows only that the prover chose a score meeting the threshold. It is
+ * not evidence of trust. Fees and privacy access MUST come from an
+ * authoritative score, never from a tier proof.
  *
  * Ported from xochi frontend src/lib/tier-proofs.ts.
  */
@@ -17,14 +17,7 @@ import type { CircuitLoader } from "./types.js";
 import { encodeProof, encodePublicInputs } from "./encoding.js";
 import { DEFAULT_CONFIG_HASH, PROOF_TYPES, PUBLIC_INPUT_COUNTS } from "./constants.js";
 import { validateSubmitter } from "./inputs/validate.js";
-import {
-  type TierThreshold,
-  type TierName,
-  getTierName,
-  getFeeRate,
-  TIER_PROOF_EXPIRY_MS,
-  SHIELDED_MIN_SCORE,
-} from "./tiers.js";
+import { type TierThreshold, type TierName, getTierName, TIER_PROOF_EXPIRY_MS } from "./tiers.js";
 
 export type { TierThreshold };
 
@@ -63,7 +56,6 @@ export interface TierProofVerification {
   /** Threshold the public inputs prove (0 when invalid); never the caller's label. */
   threshold: TierThreshold;
   tierName: TierName;
-  feeRate: number;
   error?: string;
 }
 
@@ -345,8 +337,8 @@ export async function generateHighestTierProof(
  * Valid only when the public inputs encode a tier claim bound to
  * `expected.submitter` and `expected.configHash` (see decodeTierProofClaim),
  * the proof's `threshold` label equals the proven threshold, and bb.js accepts
- * the proof. The returned threshold, tier and fee rate come from the public
- * inputs. `createdAt` / `expiresAt` are ignored (not bound to the proof).
+ * the proof. The returned threshold and tier are the prover's self-attested
+ * claim, read from the public inputs. `createdAt` / `expiresAt` are ignored (not bound to the proof).
  */
 export async function verifyTierProof(
   loader: CircuitLoader,
@@ -357,7 +349,6 @@ export async function verifyTierProof(
     valid: false,
     threshold: 0,
     tierName: getTierName(0),
-    feeRate: getFeeRate(0),
     error,
   });
 
@@ -389,7 +380,6 @@ export async function verifyTierProof(
         valid: true,
         threshold,
         tierName: getTierName(threshold),
-        feeRate: getFeeRate(threshold),
       };
     } finally {
       await api.destroy();
@@ -397,52 +387,4 @@ export async function verifyTierProof(
   } catch (err) {
     return invalid(err instanceof Error ? err.message : "Verification failed");
   }
-}
-
-// ============================================================
-// Utility
-// ============================================================
-
-/**
- * Highest threshold among unexpired proofs whose public inputs encode their
- * labelled tier (0 when none). Local bookkeeping over the caller's own proofs:
- * it does not verify them, so run verifyTierProof on anything received from
- * another party first.
- */
-function highestProvenThreshold(proofs: readonly TierProof[]): TierThreshold {
-  const now = Date.now();
-  return proofs
-    .filter((p) => p.expiresAt > now)
-    .map((p): TierThreshold => {
-      const claim = readTierClaim(p.publicInputs);
-      return "error" in claim || claim.threshold !== p.threshold ? 0 : claim.threshold;
-    })
-    .reduce<TierThreshold>((best, t) => (t > best ? t : best), 0);
-}
-
-/**
- * Check if a set of proofs includes shielded (Aztec L2) settlement eligibility.
- *
- * Reads SHIELDED_MIN_SCORE rather than a literal. The literal here was 25, the
- * pre-ungating L1-stealth threshold, so this admitted proofs at half the score
- * shielded settlement actually requires.
- */
-export function hasShieldedEligibility(proofs: readonly TierProof[]): boolean {
-  return highestProvenThreshold(proofs) >= SHIELDED_MIN_SCORE;
-}
-
-/**
- * Get the fee rate from the highest valid proof.
- *
- * No valid proof means no proven trust, which is Standard: getFeeRate(0).
- */
-export function getProvenFeeRate(proofs: readonly TierProof[]): number {
-  return getFeeRate(highestProvenThreshold(proofs));
-}
-
-/**
- * Get the highest proven tier name from valid proofs.
- */
-export function getProvenTierName(proofs: readonly TierProof[]): TierName {
-  return getTierName(highestProvenThreshold(proofs));
 }

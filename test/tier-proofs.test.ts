@@ -13,13 +13,9 @@ import {
   decodeTierProofClaim,
   generateHighestTierProof,
   generateTierProof,
-  getProvenFeeRate,
-  getProvenTierName,
-  hasShieldedEligibility,
   verifyTierProof,
   type TierProof,
 } from "../src/tier-proofs.js";
-import { getFeeRate } from "../src/tiers.js";
 
 const loader = new BundledCircuitLoader();
 const SUBMITTER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
@@ -42,7 +38,6 @@ describe("tier proof generation", () => {
       valid: true,
       threshold: 25,
       tierName: "Trusted",
-      feeRate: getFeeRate(25),
     });
   });
 
@@ -86,12 +81,8 @@ describe("verifyTierProof reads the claim from the public inputs", () => {
     };
 
     const result = await verifyTierProof(loader, relabelled, { submitter: SUBMITTER });
-    expect(result).toMatchObject({ valid: false, threshold: 0, feeRate: getFeeRate(0) });
+    expect(result).toMatchObject({ valid: false, threshold: 0, tierName: "Standard" });
     expect(result.error).toMatch(/labelled threshold 100 but proves 25/);
-
-    expect(getProvenFeeRate([relabelled])).toBe(getFeeRate(0));
-    expect(getProvenTierName([relabelled])).toBe("Standard");
-    expect(hasShieldedEligibility([relabelled])).toBe(false);
   });
 
   it("rejects a proof bound to another submitter", async () => {
@@ -145,16 +136,6 @@ describe("decodeTierProofClaim", () => {
     expect(() =>
       decodeTierProofClaim(trusted.publicInputs.slice(0, 7), { submitter: SUBMITTER }),
     ).toThrow(/Expected 8 risk_score public inputs, got 7/);
-  });
-});
-
-describe("hasShieldedEligibility / getProvenFeeRate", () => {
-  it("use the proven threshold of unexpired proofs", () => {
-    expect(getProvenFeeRate([trusted, institutional])).toBe(getFeeRate(100));
-    expect(getProvenTierName([trusted])).toBe("Trusted");
-    expect(hasShieldedEligibility([trusted])).toBe(false);
-    expect(hasShieldedEligibility([institutional])).toBe(true);
-    expect(getProvenFeeRate([{ ...institutional, expiresAt: Date.now() - 1 }])).toBe(getFeeRate(0));
   });
 });
 

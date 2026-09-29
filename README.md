@@ -197,11 +197,9 @@ import { BundledCircuitLoader } from "@xochi/sdk/node";
 const loader = new BundledCircuitLoader();
 const proof = await generateTierProof(loader, 60, 25, account.address);
 
-// The verifier states who the proof must be bound to. Threshold, tier name
-// and fee rate are read from the proof's public inputs, not from `proof`'s
-// own labels, so a relabelled proof cannot claim a better tier.
+// Threshold and tier name come from the public inputs, not `proof`'s labels.
 const result = await verifyTierProof(loader, proof, { submitter: account.address });
-// { valid: true, threshold: 25, tierName: "Trusted", feeRate: 0.19 }
+// { valid: true, threshold: 25, tierName: "Trusted" }
 ```
 
 `generateHighestTierProof` picks the best tier automatically (and returns `null` below 25):
@@ -213,7 +211,7 @@ const highest = await generateHighestTierProof(loader, 60, account.address);
 // Proves score >= 50 (Verified tier)
 ```
 
-Tier proofs are **self-attested**: the risk-score signals are private and unsigned, so a tier proof shows that the prover knows a score at or above the threshold under the config, not that a provider assigned it. A verifier granting fees or privacy on the strength of a tier proof must bind the score to an authoritative source. `hasShieldedEligibility`, `getProvenFeeRate` and `getProvenTierName` read each proof's tier from its public inputs but do not verify the proof; run `verifyTierProof` on proofs received from another party.
+Tier proofs are **self-attested**: the risk-score signals are private and unsigned, so anyone can prove any tier. Do not grant fees or privacy access from a tier proof; use an authoritative score.
 
 ## Provider-signed proofs
 

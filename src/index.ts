@@ -99,9 +99,6 @@ export {
   decodeTierProofClaim,
   verifyTierProof,
   createScoreCommitment,
-  hasShieldedEligibility,
-  getProvenFeeRate,
-  getProvenTierName,
 } from "./tier-proofs.js";
 
 // XIP-1: Settlement splitting
