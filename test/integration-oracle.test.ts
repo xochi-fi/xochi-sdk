@@ -43,7 +43,8 @@ import { withDecodedErrors } from "../src/errors.js";
 // Contract bytecodes
 // ============================================================
 
-const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+const ERC_8262 =
+  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 function loadBytecode(contractPath: string, contractName: string): Hex {
   const artifact = JSON.parse(
@@ -62,7 +63,6 @@ const VERIFIER_SETUP_ABI = parseAbi([
 
 const ORACLE_SETUP_ABI = parseAbi([
   "function registerReportingThreshold(bytes32 threshold) external",
-  "function registerMerkleRoot(bytes32 merkleRoot) external",
 ]);
 
 // ============================================================
@@ -465,7 +465,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
   it("registerSignerPubkeyHash authorizes a signer", async () => {
     expect(await ownerOracle.isValidSignerPubkeyHash(signerPubkeyHash)).toBe(false);
     await chainClient.waitForTransactionReceipt({
-      hash: await ownerOracle.registerSignerPubkeyHash(signerPubkeyHash),
+      hash: await ownerOracle.registerSignerPubkeyHash(signerPubkeyHash, 1n),
     });
     expect(await ownerOracle.isValidSignerPubkeyHash(signerPubkeyHash)).toBe(true);
   });
@@ -478,7 +478,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
           address: oracleAddress,
           abi: ORACLE_ABI,
           functionName: "registerSignerPubkeyHash",
-          args: [signerPubkeyHash],
+          args: [signerPubkeyHash, 1n],
           account: BOB,
         }),
       ),
@@ -515,14 +515,14 @@ describe("signer registry and compliance-type policy (anvil)", () => {
       }),
     });
 
-    // ERC-8262 itself still says valid (meetsThreshold is hard-coded true).
+    // Risk-score proofs are recorded by type only, never in the checkCompliance slot.
     const [onChainValid] = (await chainClient.readContract({
       address: oracleAddress,
       abi: ORACLE_ABI,
       functionName: "checkCompliance",
       args: [BOB, US],
     })) as [boolean, unknown];
-    expect(onChainValid).toBe(true);
+    expect(onChainValid).toBe(false);
 
     expect((await bobOracle.checkCompliance(BOB, US)).valid).toBe(false);
     expect((await oracleLite.checkCompliance(BOB, US))?.valid).toBe(false);

@@ -37,7 +37,8 @@ import type { BatchProveResult } from "../src/batch-prover.js";
 // Contract bytecodes from ERC-8262 compiled artifacts
 // ============================================================
 
-const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+const ERC_8262 =
+  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 function loadBytecode(contractPath: string, contractName: string): Hex {
   const artifact = JSON.parse(

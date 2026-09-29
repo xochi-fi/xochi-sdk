@@ -8,6 +8,16 @@ Aligns the SDK with ERC-8262 main (`a338616`) plus its regenerated `0x07` / `0x0
 
 ### Breaking
 
+#### ERC-8262 audit fixes (xochi-fi/ERC-8262#22)
+
+- **`registerSignerPubkeyHash(hash, providerId)`**: binds a signer key to its provider; `SignerPubkeyHashRegistered` gains indexed `providerId`. COMPLIANCE_MULTI_SIGNED rejects two slots from one provider (`DuplicateSignerProvider`); a denied provider's keys stop verifying. Migrate: pass the provider ID. New `signerProvider(hash)`.
+- **Per-type merkle roots**: `isValidMerkleRoot(proofType, root)` (was `(root)`); `registerMerkleRoot`, `revokeMerkleRoot` and their events take `MEMBERSHIP` or `NON_MEMBERSHIP`. A root for one type does not satisfy the other.
+- **`Settlement.expired`**: new trailing field; `finalized` only after `finalizeTrade`. Legs reject expired, pre-trade, revoked or reused attestations (`AttestationExpired`, `AttestationPredatesTrade`, `AttestationRevoked`, `DuplicateSubSettlementProof`).
+- **`checkCompliance` holds only policy-complete proofs** (0x09; 0x01/0x07 where the multi-provider floor is 1); all proofs are recorded per type for `checkComplianceByType`. Attestations from a revoked verifier version or guardian-invalidated read as invalid. `acceptedProofTypes` outside the compliance set (e.g. RISK_SCORE_SIGNED) are read from their per-type slot (Oracle, OracleLite).
+- **Circuits re-synced**: timestamp range check changed the VKs of `compliance`, `compliance_signed`, `compliance_multi_signed`, `membership`, `non_membership`, `risk_score_signed`; redeploy matching verifiers.
+
+New: `isAttestationValid`, `isAttestationRevoked`, `invalidateAttestation` (Oracle), `isVerifierRevoked` (Verifier); ABI entries for `VerifierAddressRevoked`, `InvalidMerkleRootProofType`, `AttestationAlreadyInvalidated`. Removed `ConfigHistoryFull`: a full config history evicts its oldest entry.
+
 #### Fees, tiers and privacy
 
 - **Fee schedule corrected to the canonical one; `getFeeRate` gains an asset class.** This package shipped a schedule that had been retired protocol-wide: a single flat rate per tier of 0.30% / 0.25% / 0.20% / 0.15% / 0.10%, with no notion of asset class. The live schedule is two-rate and three-layer. Every tier except Institutional now returns a different number, and `getFeeRate(score)` answers `0.22` at score 0 where it used to answer `0.3`.

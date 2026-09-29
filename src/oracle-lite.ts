@@ -106,8 +106,9 @@ export class OracleLite {
   /**
    * Check on-chain compliance status for a wallet via checkCompliance(address,uint8).
    *
-   * `valid` is true only when the Oracle reports a live attestation whose proof
-   * type is in `options.acceptedProofTypes` (default COMPLIANCE_PROOF_TYPES).
+   * `valid` if the compliance slot is live and its type is in `acceptedProofTypes`
+   * (default COMPLIANCE_PROOF_TYPES). Other accepted types are read from their
+   * per-type slot; the first live one is returned.
    * Returns null when the eth_call returns no data (no contract at the address).
    */
   async checkCompliance(
@@ -130,15 +131,25 @@ export class OracleLite {
       result.onChainValid &&
       result.attestation !== null &&
       accepted.includes(result.attestation.proofType);
-    return { valid, attestation: result.attestation, source: "on-chain" };
+    if (valid) return { valid, attestation: result.attestation, source: "on-chain" };
+
+    for (const proofType of accepted) {
+      if ((COMPLIANCE_PROOF_TYPES as readonly number[]).includes(proofType)) continue;
+      const byType = await this.checkComplianceByType(
+        wallet,
+        jurisdictionId,
+        proofType as ProofType,
+      );
+      if (byType?.valid) return byType;
+    }
+    return { valid: false, attestation: result.attestation, source: "on-chain" };
   }
 
   /**
    * Check on-chain status for one proof type via
    * checkComplianceByType(address,uint8,uint8). `valid` is the Oracle's answer:
-   * a live attestation of exactly `proofType` (whatever that type proves). The
-   * returned attestation is the latest for (subject, jurisdiction) and may be
-   * of another type. Returns null when the eth_call returns no data.
+   * a live attestation of exactly `proofType` (whatever that type proves), read
+   * from that type's own slot. Returns null when the eth_call returns no data.
    */
   async checkComplianceByType(
     wallet: string,

@@ -60,7 +60,8 @@ import type { DaemonConfig } from "../daemon/src/config.js";
 // Locations
 // ============================================================
 
-const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+const ERC_8262 =
+  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 interface LinkRefEntry {
   start: number; // byte offset
@@ -120,7 +121,7 @@ const VERIFIER_SETUP_ABI = parseAbi([
 ]);
 
 const ORACLE_SETUP_ABI = parseAbi([
-  "function registerSignerPubkeyHash(bytes32 signerPubkeyHash) external",
+  "function registerSignerPubkeyHash(bytes32 signerPubkeyHash, uint256 providerId) external",
 ]);
 
 const ORACLE_QUERY_ABI = parseAbi([
@@ -330,7 +331,7 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
       address: oracleAddress,
       abi: ORACLE_SETUP_ABI,
       functionName: "registerSignerPubkeyHash",
-      args: [signerPubkeyHash],
+      args: [signerPubkeyHash, 1n],
       chain: foundry,
     });
     await publicClient.waitForTransactionReceipt({ hash: regHash });
