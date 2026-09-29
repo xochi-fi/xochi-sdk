@@ -411,10 +411,8 @@ const txHash = await oracle.submitCompliance({
   providerSetHash: "0x...",
 });
 
-// Check compliance status. `valid` is true only for a live attestation whose
-// proof type is a compliance type: COMPLIANCE_PROOF_TYPES = [0x01, 0x07, 0x09].
-// The Oracle itself reports meetsThreshold: true for EVERY proof type, so a
-// RISK_SCORE_SIGNED proof of "risk > 10%" would otherwise read as compliant.
+// Compliance status: the Oracle's compliance slot, limited to
+// COMPLIANCE_PROOF_TYPES = [0x01, 0x07, 0x09].
 const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
 // attestation: { subject, jurisdictionId, proofType, meetsThreshold, timestamp,
 //   expiresAt, proofHash, providerSetHash, publicInputsHash, verifierUsed }
@@ -708,9 +706,6 @@ For lower-level use, `decodeContractError(err, abi)` returns the typed error or 
 
 ## Known limitations
 
-These need changes in [ERC-8262](https://github.com/xochi-fi/ERC-8262) first; the SDK documents or mitigates them until then.
-
-- **The Oracle's `checkCompliance` is proof-type blind.** It reports `meetsThreshold: true` for every proof type. `ERC8262Oracle.checkCompliance` and `OracleLite.checkCompliance` apply the compliance-type policy client-side; any other caller of the contract still sees `valid: true` for, e.g., a RISK_SCORE_SIGNED attestation.
 - **Tier proofs are self-attested** (see "Tier proofs").
 
 ## Development
