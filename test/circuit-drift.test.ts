@@ -297,7 +297,7 @@ describe("circuit artifacts", () => {
   });
 });
 
-describe.skipIf(!existsSync(resolve(ERC_8262, "circuits")))(
+describe.skipIf(!process.env.CI && !existsSync(resolve(ERC_8262, "circuits")))(
   "circuit artifacts vs ERC-8262 sources",
   () => {
     it.each(CIRCUITS)("$name: artifact matches circuits/$name/src/main.nr", ({ name }) => {

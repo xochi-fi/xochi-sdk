@@ -37,7 +37,7 @@ function vkHash(source: string, origin: string): string {
   return match[1].toLowerCase();
 }
 
-describe.skipIf(!existsSync(GENERATED))(
+describe.skipIf(!process.env.CI && !existsSync(GENERATED))(
   "bundled circuits vs ERC-8262 generated verifiers (VK_HASH)",
   () => {
     const loader = new BundledCircuitLoader();

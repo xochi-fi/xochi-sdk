@@ -10,7 +10,7 @@
  *      decode it and `withDecodedErrors` degrades to `UnknownRevert`.
  *
  * Needs `forge build` output in a sibling ERC-8262 checkout (or
- * ERC_8262_PATH); skipped otherwise, like the circuit source drift block.
+ * ERC_8262_PATH); skipped otherwise locally, fails under CI.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -73,7 +73,7 @@ const CONTRACTS: Array<[string, string, readonly AbiItem[]]> = [
   ["SettlementRegistry", "SettlementRegistry.sol/SettlementRegistry.json", SETTLEMENT_REGISTRY_ABI],
 ];
 
-describe.skipIf(!existsSync(OUT))("SDK ABIs vs ERC-8262 forge artifacts", () => {
+describe.skipIf(!process.env.CI && !existsSync(OUT))("SDK ABIs vs ERC-8262 forge artifacts", () => {
   describe.each(CONTRACTS)("%s", (_name, artifactPath, sdkAbi) => {
     const artifact = resolve(OUT, artifactPath);
     const onChain = () => (JSON.parse(readFileSync(artifact, "utf-8")) as { abi: AbiItem[] }).abi;
