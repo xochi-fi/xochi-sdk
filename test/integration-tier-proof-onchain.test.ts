@@ -38,7 +38,8 @@ import {
   type TierProof,
 } from "../src/tier-proofs.js";
 
-const ERC_8262 = resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+const ERC_8262 =
+  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
 
 const ANVIL_PORT = 8551;
 const ANVIL_URL = `http://127.0.0.1:${String(ANVIL_PORT)}`;
@@ -196,7 +197,7 @@ describe("tier proofs on the real Oracle (anvil)", () => {
       functionName: "checkCompliance",
       args: [BOB, EU],
     })) as [boolean, unknown];
-    expect(onChainValid).toBe(true); // ERC-8262: meetsThreshold is hard-coded true
+    expect(onChainValid).toBe(false); // RISK_SCORE is recorded by type only
 
     expect((await bob.checkCompliance(BOB, EU)).valid).toBe(false);
     expect((await lite.checkCompliance(BOB, EU))?.valid).toBe(false);

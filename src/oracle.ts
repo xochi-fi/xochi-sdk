@@ -104,13 +104,12 @@ export class ERC8262Oracle {
   }
 
   /**
-   * Read the latest attestation for (subject, jurisdiction).
+   * Read compliance for (subject, jurisdiction).
    *
-   * `valid` is true only when the Oracle reports a live attestation AND its
-   * proof type is in `options.acceptedProofTypes` (default
-   * COMPLIANCE_PROOF_TYPES: 0x01, 0x07, 0x09). The raw on-chain flag is true
-   * after any accepted proof type (ERC-8262 hard-codes `meetsThreshold: true`),
-   * so a RISK_SCORE or PATTERN attestation must not read as compliance.
+   * The compliance slot holds only policy-complete proofs (0x09; 0x01/0x07 where
+   * the multi-provider floor is 1). `valid` if it is live and its type is in
+   * `acceptedProofTypes` (default COMPLIANCE_PROOF_TYPES). Other accepted types
+   * (e.g. RISK_SCORE_SIGNED) are read from their per-type slot; first live wins.
    */
   async checkCompliance(
     subject: Address,
@@ -128,7 +127,19 @@ export class ERC8262Oracle {
       args: [subject, jurisdictionId],
     })) as [boolean, ComplianceAttestation];
 
-    return { valid: onChainValid && accepted.includes(attestation.proofType), attestation };
+    if (onChainValid && accepted.includes(attestation.proofType))
+      return { valid: true, attestation };
+
+    for (const proofType of accepted) {
+      if ((COMPLIANCE_PROOF_TYPES as readonly number[]).includes(proofType)) continue;
+      const byType = await this.checkComplianceByType(
+        subject,
+        jurisdictionId,
+        proofType as ProofType,
+      );
+      if (byType.valid) return byType;
+    }
+    return { valid: false, attestation };
   }
 
   async checkComplianceByType(
@@ -153,6 +164,43 @@ export class ERC8262Oracle {
       functionName: "getHistoricalProof",
       args: [proofHash],
     })) as ComplianceAttestation;
+  }
+
+  /**
+   * Whether `proofHash` is valid now: exists, met threshold, unexpired, unrevoked
+   * (guardian or revoked verifier version). Prefer over `getHistoricalProof`.
+   */
+  async isAttestationValid(proofHash: Hex): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "isAttestationValid",
+      args: [proofHash],
+    })) as boolean;
+  }
+
+  /** Whether the attestation for `proofHash` was revoked after issue, regardless of expiry. */
+  async isAttestationRevoked(proofHash: Hex): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "isAttestationRevoked",
+      args: [proofHash],
+    })) as boolean;
+  }
+
+  /** GUARDIAN_ROLE: invalidate an issued attestation (e.g. after a signer-key compromise). */
+  async invalidateAttestation(proofHash: Hex): Promise<Hex> {
+    const wallet = this.requireWallet();
+    return withDecodedErrors(ORACLE_ABI, () =>
+      writeContract(wallet, {
+        address: this.address,
+        abi: ORACLE_ABI,
+        chain: this.chain,
+        functionName: "invalidateAttestation",
+        args: [proofHash],
+      }),
+    );
   }
 
   async getProofType(proofHash: Hex): Promise<number> {
@@ -214,12 +262,16 @@ export class ERC8262Oracle {
     })) as boolean;
   }
 
-  async isValidMerkleRoot(merkleRoot: Hex): Promise<boolean> {
+  /**
+   * Whether `merkleRoot` is registered for `proofType` (MEMBERSHIP or NON_MEMBERSHIP).
+   * A root registered for one type does not satisfy the other.
+   */
+  async isValidMerkleRoot(proofType: ProofType, merkleRoot: Hex): Promise<boolean> {
     return (await this.publicClient.readContract({
       address: this.address,
       abi: ORACLE_ABI,
       functionName: "isValidMerkleRoot",
-      args: [merkleRoot],
+      args: [proofType, merkleRoot],
     })) as boolean;
   }
 
@@ -377,9 +429,10 @@ export class ERC8262Oracle {
    * REGISTRAR_ROLE: authorize a provider signer's pubkey hash so the Oracle
    * accepts COMPLIANCE_SIGNED / RISK_SCORE_SIGNED / COMPLIANCE_MULTI_SIGNED
    * proofs signed by it. The hash is `signerPubkeyHash` from the provider
-   * signer output (`@xochi/sdk/provider`).
+   * signer output (`@xochi/sdk/provider`). `providerId` operates the key:
+   * COMPLIANCE_MULTI_SIGNED counts providers, not keys; `denyProvider` rejects its keys.
    */
-  async registerSignerPubkeyHash(signerPubkeyHash: Hex): Promise<Hex> {
+  async registerSignerPubkeyHash(signerPubkeyHash: Hex, providerId: bigint): Promise<Hex> {
     const wallet = this.requireWallet();
     return withDecodedErrors(ORACLE_ABI, () =>
       writeContract(wallet, {
@@ -387,7 +440,7 @@ export class ERC8262Oracle {
         abi: ORACLE_ABI,
         chain: this.chain,
         functionName: "registerSignerPubkeyHash",
-        args: [signerPubkeyHash],
+        args: [signerPubkeyHash, providerId],
       }),
     );
   }
@@ -414,6 +467,16 @@ export class ERC8262Oracle {
       functionName: "isValidSignerPubkeyHash",
       args: [signerPubkeyHash],
     })) as boolean;
+  }
+
+  /** Provider that operates an authorized signer key (0n if not authorized). */
+  async signerProvider(signerPubkeyHash: Hex): Promise<bigint> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: ORACLE_ABI,
+      functionName: "signerProvider",
+      args: [signerPubkeyHash],
+    })) as bigint;
   }
 
   /**

@@ -237,21 +237,30 @@ export const ORACLE_ABI = [
   {
     type: "function",
     name: "registerMerkleRoot",
-    inputs: [{ name: "merkleRoot", type: "bytes32" }],
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "merkleRoot", type: "bytes32" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "revokeMerkleRoot",
-    inputs: [{ name: "merkleRoot", type: "bytes32" }],
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "merkleRoot", type: "bytes32" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "isValidMerkleRoot",
-    inputs: [{ name: "merkleRoot", type: "bytes32" }],
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "merkleRoot", type: "bytes32" },
+    ],
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
   },
@@ -361,7 +370,10 @@ export const ORACLE_ABI = [
   {
     type: "function",
     name: "registerSignerPubkeyHash",
-    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+    inputs: [
+      { name: "signerPubkeyHash", type: "bytes32" },
+      { name: "providerId", type: "uint256" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -378,6 +390,35 @@ export const ORACLE_ABI = [
     inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "signerProvider",
+    inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+    outputs: [{ name: "providerId", type: "uint256" }],
+    stateMutability: "view",
+  },
+  // --- Attestation revocation ---
+  {
+    type: "function",
+    name: "isAttestationValid",
+    inputs: [{ name: "proofHash", type: "bytes32" }],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isAttestationRevoked",
+    inputs: [{ name: "proofHash", type: "bytes32" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "invalidateAttestation",
+    inputs: [{ name: "proofHash", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
@@ -475,12 +516,18 @@ export const ORACLE_ABI = [
   {
     type: "event",
     name: "MerkleRootRegistered",
-    inputs: [{ name: "merkleRoot", type: "bytes32", indexed: true }],
+    inputs: [
+      { name: "proofType", type: "uint8", indexed: true },
+      { name: "merkleRoot", type: "bytes32", indexed: true },
+    ],
   },
   {
     type: "event",
     name: "MerkleRootRevoked",
-    inputs: [{ name: "merkleRoot", type: "bytes32", indexed: true }],
+    inputs: [
+      { name: "proofType", type: "uint8", indexed: true },
+      { name: "merkleRoot", type: "bytes32", indexed: true },
+    ],
   },
   {
     type: "event",
@@ -529,7 +576,10 @@ export const ORACLE_ABI = [
   {
     type: "event",
     name: "SignerPubkeyHashRegistered",
-    inputs: [{ name: "signerPubkeyHash", type: "bytes32", indexed: true }],
+    inputs: [
+      { name: "signerPubkeyHash", type: "bytes32", indexed: true },
+      { name: "providerId", type: "uint256", indexed: true },
+    ],
   },
   {
     type: "event",
@@ -552,7 +602,6 @@ export const ORACLE_ABI = [
   { type: "error", name: "CannotRevokeCurrentConfig", inputs: [] },
   { type: "error", name: "ProofResultNegative", inputs: [] },
   { type: "error", name: "SubmitterMismatch", inputs: [] },
-  { type: "error", name: "ConfigHistoryFull", inputs: [] },
   { type: "error", name: "ConfigAlreadyCurrent", inputs: [] },
   { type: "error", name: "AlreadyRegistered", inputs: [] },
   { type: "error", name: "NotRegistered", inputs: [] },
@@ -668,6 +717,21 @@ export const ORACLE_ABI = [
     type: "error",
     name: "DuplicateSigner",
     inputs: [{ name: "signerPubkeyHash", type: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "DuplicateSignerProvider",
+    inputs: [{ name: "providerId", type: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "AttestationAlreadyInvalidated",
+    inputs: [{ name: "proofHash", type: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "InvalidMerkleRootProofType",
+    inputs: [{ name: "proofType", type: "uint8" }],
   },
   {
     type: "error",
@@ -904,6 +968,16 @@ export const VERIFIER_ABI = [
     outputs: [{ name: "revoked", type: "bool" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "isVerifierRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "verifier", type: "address" },
+    ],
+    outputs: [{ name: "revoked", type: "bool" }],
+    stateMutability: "view",
+  },
   // --- Events ---
   {
     type: "event",
@@ -952,6 +1026,14 @@ export const VERIFIER_ABI = [
   },
   { type: "error", name: "NoPendingProposal", inputs: [{ name: "proofType", type: "uint8" }] },
   { type: "error", name: "ProposalAlreadyPending", inputs: [{ name: "proofType", type: "uint8" }] },
+  {
+    type: "error",
+    name: "VerifierAddressRevoked",
+    inputs: [
+      { name: "proofType", type: "uint8" },
+      { name: "verifier", type: "address" },
+    ],
+  },
   {
     type: "error",
     name: "VersionRevoked",

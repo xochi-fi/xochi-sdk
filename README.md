@@ -285,7 +285,7 @@ const res = await fetch(`${daemonUrl}/sign`, {
 //      Oracle, timestamp window) or credential not scoped for this route
 ```
 
-`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(...)`. The daemon records every bundle it signs; because signing is deterministic (RFC 6979), a retried request gets the same signature back rather than an error, and on-chain replay is stopped by the Oracle's `_usedProofs`.
+`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(hash, providerId)`, binding the key to its provider. The daemon records every bundle it signs; signing is deterministic (RFC 6979), so a retry returns the same signature, and the Oracle's `_usedProofs` stops on-chain replay.
 
 > **Binding (audit F-6)**: the `chainId` + `oracleAddress` you pass to the signer and the prover MUST be the values you submit against. The on-chain Oracle asserts they match `block.chainid` and `address(this)`; mismatches revert with `PublicInputMismatch`. A mismatch between signer-side and prover-side fails witness generation with `invalid provider signature on signals`.
 
@@ -307,8 +307,8 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 
 - Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
 - A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically -- callers never have to know it.
-- Active count must be `>= thresholdM`. Distinct signers required across active slots.
-- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(...)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
+- Active count must be `>= thresholdM`. Active slots need distinct signers **and providers** (else `DuplicateSignerProvider`).
+- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(hash, providerId)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
 
 ### Direct (server-side) via `signSlotPayload`
 
