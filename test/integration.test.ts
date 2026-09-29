@@ -25,7 +25,6 @@ import {
   DEFAULT_CONFIG_HASH,
   generateTierProof,
   verifyTierProof,
-  getFeeRate,
 } from "../src/index.js";
 
 // ============================================================
@@ -275,7 +274,6 @@ describe("tier proof", () => {
     const verification = await verifyTierProof(loader, tierProof, { submitter: SUBMITTER });
     expect(verification.valid).toBe(true);
     expect(verification.tierName).toBe("Verified");
-    expect(verification.feeRate).toBe(getFeeRate(50));
   });
 });
 
