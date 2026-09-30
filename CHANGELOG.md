@@ -2,7 +2,9 @@
 
 All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
-## [0.3.0] - Unreleased
+## [0.4.0] - 2026-09-30
+
+Supersedes 0.3.0. 0.3.0 was published on 2026-09-25 from `c17b94b`, before the review fixes and the ERC-8262 `0147684` sync, and is deprecated on npm: its `checkCompliance` counts any proof type as compliance, `verifyTierProof` trusts the claimed tier, and six bundled circuits do not match the ERC-8262 `0147684` verifiers. This entry is written against 0.2.0 and so restates what 0.3.0 changed; the 0.3.0-only subset is under [0.3.0] below. Upgrading from 0.3.0 or 0.2.0 takes the same steps.
 
 Aligns the SDK with ERC-8262 main `0147684` (#19, #20 and #22), replaces the retired fee schedule, and fixes the 0.3.0 adversarial review findings. Every Breaking entry says how to migrate; a consolidated snippet follows at the end.
 
@@ -195,6 +197,59 @@ new PxeBridgeClient("https://pxe.example.com/rpc", apiKey, { timeoutMs: 15_000 }
 ```
 
 Reference daemon: add `SIGNER_CHAIN_ID` and `SIGNER_ORACLE_ADDRESS`; add `SIGNER_CREDENTIAL_ROOT_API_KEY` (bearer) or `SIGNER_CREDENTIAL_ROOT_CLIENT_CNS` (mTLS) if you use `/sign-credential-root`; send `proofType` (7 or 8) and fresh timestamps on `/sign`; bind to loopback, enable TLS, or set `SIGNER_ALLOW_INSECURE_BIND=1` for a non-loopback address; treat `409` as gone (retries return `200`). Custom `AuditSink`s return promises from `record` / `close`; custom `ReplayDb`s implement `lookup` / `record` / `size`.
+
+## [0.3.0] - 2026-09-25
+
+**Deprecated; use 0.4.0.** Published from `c17b94b`. Missing the 0.3.0 review fixes and the ERC-8262 `0147684` sync (see [0.4.0]).
+
+### Breaking
+
+- **Fee schedule corrected to the canonical one; `getFeeRate` gains an asset class.** This package shipped a schedule that had been retired protocol-wide: a single flat rate per tier of 0.30% / 0.25% / 0.20% / 0.15% / 0.10%, with no notion of asset class. The live schedule is two-rate and three-layer. Every tier except Institutional now returns a different number, and `getFeeRate(score)` answers `0.22` at score 0 where it used to answer `0.3`.
+
+  `getFeeRate(score, assetClass?)` defaults to `"stable"`, so the one-argument call still compiles — but it now prices volatile routes as stable, which under-charges by roughly half. Pass the asset class for non-stablecoin pairs. New: `FEE_SCHEDULE`, `getFeeSchedule`, `getFeeBps`, `headlineBps`, `SURPLUS_SHARE_PCT`, types `AssetClass` and `FeeLayers`. `TIERS[].rate` is now derived from `FEE_SCHEDULE` rather than a literal beside a hardcoded ladder holding the same five numbers a second time.
+
+  | Tier          | was   | now (stable / volatile) |
+  | ------------- | ----- | ----------------------- |
+  | Standard      | 0.30% | 0.22% / 0.40%           |
+  | Trusted       | 0.25% | 0.19% / 0.35%           |
+  | Verified      | 0.20% | 0.15% / 0.29%           |
+  | Premium       | 0.15% | 0.12% / 0.25%           |
+  | Institutional | 0.10% | 0.10% / 0.22%           |
+
+- **`SHIELDED_MIN_SCORE` is 50, was 25.** Shielded is the Aztec L2 tier and requires Verified. The old value was the pre-ungating L1-stealth threshold, so any consumer trusting this constant admitted shielded settlement at half the required score. `hasShieldedEligibility` had the same 25 hardcoded separately and now reads the constant.
+
+- **L1 stealth is ungated: `PRIVACY_LEVELS` stealth `minTrustScore` is 0, was 25.** Base-level privacy is not a paid or earned upgrade. `getMaxPrivacyLevel` therefore returns `"stealth"` rather than `"standard"` for any score below 50, and `isPrivacyLevelAllowed("stealth", 0)` is now `true`. `VENUE_MIN_SCORES` in the venue router had the same 25 restated and had already drifted from this table; it now derives from it, so a low-trust wallet is routed to `stealth` rather than falling back to `public`.
+
+- **MEV rebates removed.** `MEV_REBATES` and `getMevRebate` are gone from `./tiers` and the root barrel. The mechanism was retired from the protocol; this package went on exporting and documenting it.
+
+- **EIP-712 domain rename: `XochiZKPOracle` → `ERC8262Oracle`** -- the EIP-712 domain separator that providers sign over for credential-root publications now uses `name = "ERC8262Oracle"` (was `"XochiZKPOracle"`). Any signed payloads minted under the old domain will fail to recover to the registered signer on-chain. Providers must re-sign all in-flight credential-root publications. Mirrors the contract-side rename in [`ERC-8262`](https://github.com/xochi-fi/ERC-8262) (project renamed to drop the project name from the ERC reviewer's surface).
+- **TS class renames** -- `XochiOracle` → `ERC8262Oracle`, `XochiVerifier` → `ERC8262Verifier`, `XochiProver` → `ERC8262Prover`, `XochiContractError` → `ERC8262ContractError`. Callers must update imports and `instanceof` checks. The 18 typed-error subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, etc.) keep their names; only the base class renames. Package name `@xochi/sdk` is unchanged.
+- **Forge artifact paths** -- integration tests now load bytecode from `../../ERC-8262/out/ERC8262Oracle.sol/...` (was `../../erc-xochi-zkp/out/XochiZKPOracle.sol/...`). The CI workflow clones `xochi-fi/ERC-8262` instead of `xochi-fi/erc-xochi-zkp`.
+
+- **`buildPatternInputs` / `PatternInput`** -- now requires `settlementRoot: string` (audit H-1). Pre-this-change PATTERN proofs are unsubmittable: the on-chain `ProofTypes.expectedPublicInputCount(PATTERN)` was bumped to 7 with `settlement_root` as input[6], but the SDK was still producing 6-input witnesses. 0.2.0 absorbed the H-2 piece (`patternPublicInputs` arg on `finalizeTrade`) but missed H-1. Callers that intend to finalize a trade MUST first call `SettlementRegistryClient.computeSettlementRoot(tradeId)` and pass the result as `settlementRoot`; callers that don't intend to finalize pass `"0x" + "0".repeat(64)`. The on-chain Oracle is transparent to this value, but `SettlementRegistry.finalizeTrade` enforces equality and reverts with `SettlementRootMismatch` on mismatch.
+- **`PUBLIC_INPUT_COUNTS[0x03]`** -- bumped 6 → 7. The bundled `circuits/pattern.json` was re-synced from `ERC-8262/circuits/target/` to pick up the post-H-1 ABI.
+
+### Added
+
+- **`SettlementRegistryClient.computeSettlementRoot(tradeId)`** -- view that returns the `bytes32` value a PATTERN proof must commit to in order to bind to `tradeId`. Mirrors `_computeSettlementRoot` on-chain: `bytes32(uint256(keccak256(abi.encode(subTradeCount, proofHashes))) % BN254_FR_MODULUS)`. Provers MUST call this before generating the proof.
+- **Typed contract errors** -- `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `SettlementRootMismatchError`. The first two surface ABI-shape mismatches that were previously opaque selectors (the H-1 absorption gap was originally diagnosed via raw `0xf0b9e463`); the third decodes the H-1 binding-check revert. Total typed wrappers now 21.
+- **`COMPLIANCE_MULTI_SIGNED` (proof type `0x09`)** -- M-of-N multi-provider signed compliance. Bundles up to `MAX_PROVIDERS_MULTI = 5` parallel signer slots; M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest AND each must individually attest the subject is below the jurisdiction's high-risk floor. Trust upgrade over `0x07` (one signer "compliant" vs. M independent signers "compliant", AND-aggregated). Mirrors the on-chain validator and verifier shipped in `erc-xochi-zkp` 2026-05-14.
+  - `XochiProver.proveComplianceMultiSigned(opts)` -- new entry point.
+  - `buildComplianceMultiSignedInputs` -- input builder. Takes `slots: (MultiSignedSlot | null)[]` with length exactly 5; `null` slots get the inactive-slot witness padding (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically.
+  - `signSlotPayload(api, key, req)` -- mints one slot's secp256k1 signature over the slot-specific Pedersen digest. Orchestration across M daemons is the caller's responsibility; the signer only signs its own slot.
+  - `signSlotPayloadWithReplayProtection` -- same with the existing `ReplayDb` integration. Replay key is `(submitter, slot_payload_hash)`; `slot_index` is embedded in the digest so a single daemon signing different slots for the same subject produces distinct keys.
+  - `computeSlotPayloadHash` -- bb.js mirror of `xochi_shared::multi_sig::compute_slot_payload_hash`. New domain tag `DOMAIN_MULTI_SIGNED_SIGNALS = 0x4d554c54495f5349` (ASCII "MULTI_SI"); 25-field layout: `[tag, slot_index, chain_id, oracle_address, jurisdiction_id, provider_set_hash, config_hash, signals[0..8], weights[0..8], timestamp, submitter]`. Parity vector locked end-to-end (`test_parity_with_sdk_slot_payload_hash` on the circuit side).
+  - `MAX_PROVIDERS_MULTI` and `MIN_MULTI_PROVIDER_THRESHOLDS` constants (`EU=1, US=2, UK=1, SG=2`, mirrors `JurisdictionConfig.minMultiProviderThreshold` on the Oracle).
+  - Daemon `POST /sign-multi` route -- bearer-/mTLS-authed, replay-protected, audit-logged. Signs ONE slot per call.
+  - Typed contract errors: `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`. Decoded via existing `decodeContractError` / `withDecodedErrors`. Total typed wrappers now 18.
+  - `PUBLIC_INPUT_COUNTS[0x09] = 14` (jurisdiction_id, provider_set_hash, config_hash, timestamp, meets_threshold, threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address, submitter). The Oracle requires all non-zero signer hashes to be in `_validSignerPubkeyHashes` (the same registry `0x07` uses).
+  - `circuits/compliance_multi_signed.json` synced from `erc-xochi-zkp/circuits/target/`. `scripts/sync-circuits.sh` now includes the new circuit.
+
+### Notes
+
+- Proof type `0x0a` is **reserved** for a future `compliance_multi_signed_large` variant (N > 5). Bumping `MAX_PROVIDERS_MULTI` past 5 doubles per-proof gas for everyone using 2-of-3; a parallel large-N circuit is the right shape when demand emerges.
+- M-of-N for `risk_score_signed` (would-be `0x08` analogue) is intentionally out of scope; same shape, different circuit, follow-up if integrators ask for it.
+- Aggregate-score semantics (mean / weighted) are out of scope. The current circuit AND-aggregates: each active slot must individually be below the floor (regulators want "M independent yeses", not "average is OK").
 
 ## [0.2.0] - 2026-05-10
 
