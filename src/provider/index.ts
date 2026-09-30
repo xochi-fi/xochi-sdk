@@ -12,6 +12,9 @@
 
 export {
   DOMAIN_SIGNED_SIGNALS,
+  DOMAIN_RISK_SIGNED_SIGNALS,
+  SIGNED_SIGNALS_DOMAINS,
+  type SignedSignalsProofType,
   DOMAIN_SIGNER_PUBKEY,
   DOMAIN_MULTI_SIGNED_SIGNALS,
   MAX_PROVIDERS_MULTI,
@@ -62,8 +65,9 @@ export {
 
 export {
   type ReplayDb,
+  type MemoryReplayDbOptions,
+  type LedgeredSignResult,
   MemoryReplayDb,
-  ReplayDetected,
   signSignalsWithReplayProtection,
   signSlotPayloadWithReplayProtection,
 } from "./replay-db.js";

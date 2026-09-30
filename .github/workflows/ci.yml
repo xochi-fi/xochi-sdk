@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
+  # with scripts/sync-circuits.sh output.
+  ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
+  FOUNDRY_VERSION: v1.5.1
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -18,6 +24,26 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Install foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+
+      - name: Checkout ERC-8262 at the pinned commit
+        run: |
+          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
+          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          git -C ../ERC-8262 submodule update --init --recursive --depth=1
+
+      - name: Build contracts
+        working-directory: ../ERC-8262
+        run: forge build
+
+      # Same gates as prepublishOnly, so a green CI means `npm publish` passes.
+      # Drift tests run against the pinned ERC-8262 and fail (not skip) when it is missing.
+      - name: Format
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
@@ -46,9 +72,14 @@ jobs:
 
       - name: Install foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
 
-      - name: Clone ERC-8262 (for contract artifacts)
-        run: git clone --depth=1 https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
+      - name: Checkout ERC-8262 at the pinned commit
+        run: |
+          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
+          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          git -C ../ERC-8262 submodule update --init --recursive --depth=1
 
       - name: Build contracts
         working-directory: ../ERC-8262

@@ -123,7 +123,9 @@ describe("buildRiskScoreSignedInputs", () => {
     expect(out.proof_type).toBe("1");
     expect(out.direction).toBe("1");
     expect(out.bound_lower).toBe("5000");
-    expect(out.signed_timestamp).toBe("1700000000");
+    // The signed timestamp is the public `timestamp` input the Oracle freshness-checks.
+    expect(out.timestamp).toBe("1700000000");
+    expect(out).not.toHaveProperty("signed_timestamp");
     expect((out.signature as string[]).length).toBe(64);
     expect(out.signer_pubkey_hash).toMatch(/^0x[0-9a-f]{64}$/);
   });
@@ -145,6 +147,23 @@ describe("buildRiskScoreSignedInputs", () => {
     expect(out.direction).toBe("0");
     expect(out.bound_lower).toBe("4000");
     expect(out.bound_upper).toBe("6000");
+  });
+
+  it("rejects a signed timestamp the circuit would reject", () => {
+    expect(() =>
+      buildRiskScoreSignedInputs({
+        type: "threshold",
+        direction: "gt",
+        threshold: 5000,
+        score: 60,
+        providerSetHash: PROVIDER_SET_HASH,
+        submitter: SUBMITTER,
+        signedTimestamp: "1000000000", // 2001, before the circuit's 2021 floor
+        chainId: CHAIN_ID,
+        oracleAddress: ORACLE_ADDRESS,
+        signedBundle: dummyBundle(),
+      }),
+    ).toThrow(/Timestamp must be/);
   });
 
   it("rejects trivial threshold/GT bound", () => {

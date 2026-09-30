@@ -2,43 +2,82 @@
   "name": "@xochi/sdk",
   "version": "0.3.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "browser": [
+        "./dist/circuits-browser.d.ts"
+      ],
+      "node": [
+        "./dist/circuits.d.ts"
+      ],
+      "provider": [
+        "./dist/provider/index.d.ts"
+      ],
+      "tiers": [
+        "./dist/tiers.d.ts"
+      ],
+      "scoring": [
+        "./dist/scoring.d.ts"
+      ],
+      "constants": [
+        "./dist/constants.d.ts"
+      ],
+      "abis": [
+        "./dist/abis.d.ts"
+      ],
+      "oracle-lite": [
+        "./dist/oracle-lite.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./browser": {
+      "types": "./dist/circuits-browser.d.ts",
       "import": "./dist/circuits-browser.js",
-      "types": "./dist/circuits-browser.d.ts"
+      "default": "./dist/circuits-browser.js"
     },
     "./node": {
+      "types": "./dist/circuits.d.ts",
       "import": "./dist/circuits.js",
-      "types": "./dist/circuits.d.ts"
+      "default": "./dist/circuits.js"
     },
     "./provider": {
+      "types": "./dist/provider/index.d.ts",
       "import": "./dist/provider/index.js",
-      "types": "./dist/provider/index.d.ts"
+      "default": "./dist/provider/index.js"
     },
     "./circuits/*": "./circuits/*",
     "./tiers": {
+      "types": "./dist/tiers.d.ts",
       "import": "./dist/tiers.js",
-      "types": "./dist/tiers.d.ts"
+      "default": "./dist/tiers.js"
     },
     "./scoring": {
+      "types": "./dist/scoring.d.ts",
       "import": "./dist/scoring.js",
-      "types": "./dist/scoring.d.ts"
+      "default": "./dist/scoring.js"
     },
     "./constants": {
+      "types": "./dist/constants.d.ts",
       "import": "./dist/constants.js",
-      "types": "./dist/constants.d.ts"
+      "default": "./dist/constants.js"
     },
     "./abis": {
+      "types": "./dist/abis.d.ts",
       "import": "./dist/abis.js",
-      "types": "./dist/abis.d.ts"
+      "default": "./dist/abis.js"
     },
     "./oracle-lite": {
+      "types": "./dist/oracle-lite.d.ts",
       "import": "./dist/oracle-lite.js",
-      "types": "./dist/oracle-lite.d.ts"
+      "default": "./dist/oracle-lite.js"
     }
   },
   "sideEffects": false,
@@ -51,11 +90,11 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "drift-check": "vitest run test/circuit-drift.test.ts test/jurisdiction-parity.test.ts test/fee-schedule-drift.test.ts",
+    "drift-check": "vitest run --config vitest.drift.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
-    "daemon": "node --experimental-strip-types daemon/src/index.ts",
+    "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
     "prepare": "npm run build",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
   },

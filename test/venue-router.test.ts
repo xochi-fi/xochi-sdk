@@ -138,6 +138,28 @@ describe("assignVenues", () => {
     );
   });
 
+  it.each([NaN, Infinity, -1])("throws on invalid trustScore %s", (trustScore) => {
+    expect(() =>
+      assignVenues(
+        makeTrades(1),
+        ["shielded", "public"],
+        { trustScore, gasEstimates: DEFAULT_GAS_ESTIMATES },
+        0n,
+      ),
+    ).toThrow("trustScore must be a finite number >= 0");
+  });
+
+  // Institutional is 100+; attestation scoring reaches ~120.
+  it("accepts Institutional scores above 100", () => {
+    const result = assignVenues(
+      makeTrades(2),
+      ["shielded", "public"],
+      { trustScore: 110, gasEstimates: DEFAULT_GAS_ESTIMATES },
+      0n,
+    );
+    expect(result.map((a) => a.venue)).toEqual(["shielded", "shielded"]);
+  });
+
   it("uses custom gas estimates", () => {
     const cheap: VenueConstraints = {
       trustScore: 60,

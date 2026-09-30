@@ -18,7 +18,10 @@ export interface Settlement {
   settledCount: number;
   createdAt: bigint;
   expiresAt: bigint;
+  /** True only after `finalizeTrade` succeeds. */
   finalized: boolean;
+  /** True after `expireTrade`; an expired trade is never `finalized`. */
+  expired: boolean;
 }
 
 export interface SubSettlement {
@@ -36,6 +39,7 @@ const SETTLEMENT_COMPONENTS = [
   { name: "createdAt", type: "uint256" },
   { name: "expiresAt", type: "uint256" },
   { name: "finalized", type: "bool" },
+  { name: "expired", type: "bool" },
 ] as const;
 
 const SUB_SETTLEMENT_COMPONENTS = [
@@ -126,6 +130,13 @@ export const SETTLEMENT_REGISTRY_ABI = [
     outputs: [{ name: "root", type: "bytes32" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "isPatternProofUsed",
+    inputs: [{ name: "patternProofHash", type: "bytes32" }],
+    outputs: [{ name: "used", type: "bool" }],
+    stateMutability: "view",
+  },
   // Events
   {
     type: "event",
@@ -202,6 +213,32 @@ export const SETTLEMENT_REGISTRY_ABI = [
   { type: "error", name: "AttestationNotFound", inputs: [{ name: "proofHash", type: "bytes32" }] },
   {
     type: "error",
+    name: "AttestationExpired",
+    inputs: [
+      { name: "proofHash", type: "bytes32" },
+      { name: "expiresAt", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "AttestationPredatesTrade",
+    inputs: [
+      { name: "proofHash", type: "bytes32" },
+      { name: "attestedAt", type: "uint256" },
+      { name: "tradeCreatedAt", type: "uint256" },
+    ],
+  },
+  { type: "error", name: "AttestationRevoked", inputs: [{ name: "proofHash", type: "bytes32" }] },
+  {
+    type: "error",
+    name: "DuplicateSubSettlementProof",
+    inputs: [
+      { name: "tradeId", type: "bytes32" },
+      { name: "proofHash", type: "bytes32" },
+    ],
+  },
+  {
+    type: "error",
     name: "SubjectMismatch",
     inputs: [
       { name: "expected", type: "address" },
@@ -247,6 +284,23 @@ export const SETTLEMENT_REGISTRY_ABI = [
       { name: "actual", type: "bytes32" },
     ],
   },
+  // recordSubSettlement: the referenced attestation must be a compliance-type
+  // proof (0x01, 0x07, 0x09).
+  {
+    type: "error",
+    name: "NonComplianceProofType",
+    inputs: [
+      { name: "proofHash", type: "bytes32" },
+      { name: "proofType", type: "uint8" },
+    ],
+  },
+  // finalizeTrade: a PATTERN proof finalizes at most one trade.
+  {
+    type: "error",
+    name: "PatternProofAlreadyUsed",
+    inputs: [{ name: "patternProofHash", type: "bytes32" }],
+  },
+  { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;
 
 export class SettlementRegistryClient {

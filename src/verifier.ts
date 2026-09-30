@@ -113,6 +113,18 @@ export class ERC8262Verifier {
       args: [proofType, version],
     })) as boolean;
   }
+  /**
+   * Whether `verifier` was registered under a since-revoked version of `proofType`.
+   * The Oracle treats attestations whose `verifierUsed` is revoked as invalid.
+   */
+  async isVerifierRevoked(proofType: ProofType, verifier: Address): Promise<boolean> {
+    return (await this.publicClient.readContract({
+      address: this.address,
+      abi: VERIFIER_ABI,
+      functionName: "isVerifierRevoked",
+      args: [proofType, verifier],
+    })) as boolean;
+  }
 
   /**
    * IMMEDIATE emergency-revoke a historical verifier version (owner-only, no delay).

@@ -8,6 +8,7 @@
 const MIN_TIMESTAMP = 1609459200; // 2021-01-01
 const MAX_TIMESTAMP = 1099511627776; // 2^40 (~year 36812)
 const MAX_REPORTING_THRESHOLD = 204962515653461695n; // 2^64 / 90
+const MAX_WEIGHT = 10000; // circuits/shared risk.nr MAX_WEIGHT
 
 export function validateSignal(signal: number, index: number): void {
   if (!Number.isInteger(signal) || signal < 0 || signal > 100) {
@@ -16,7 +17,12 @@ export function validateSignal(signal: number, index: number): void {
 }
 
 export function validateWeight(weight: number, index: number, active: boolean): void {
-  if (active && weight <= 0) {
+  if (!Number.isInteger(weight) || weight < 0 || weight > MAX_WEIGHT) {
+    throw new Error(
+      `Weight[${String(index)}] must be an integer in [0, ${String(MAX_WEIGHT)}], got ${String(weight)}`,
+    );
+  }
+  if (active && weight === 0) {
     throw new Error(
       `Weight[${String(index)}] must be > 0 for active provider, got ${String(weight)}`,
     );
@@ -38,14 +44,17 @@ export function validateProviderId(id: string, index: number, active: boolean): 
 }
 
 export function validateTimestamp(ts: number): void {
-  if (ts < MIN_TIMESTAMP || ts >= MAX_TIMESTAMP) {
+  if (!Number.isSafeInteger(ts) || ts < MIN_TIMESTAMP || ts >= MAX_TIMESTAMP) {
     throw new Error(
-      `Timestamp must be in [${String(MIN_TIMESTAMP)}, ${String(MAX_TIMESTAMP)}), got ${String(ts)}`,
+      `Timestamp must be an integer in [${String(MIN_TIMESTAMP)}, ${String(MAX_TIMESTAMP)}), got ${String(ts)}`,
     );
   }
 }
 
 export function validateReportingThreshold(threshold: number): void {
+  if (!Number.isInteger(threshold) || threshold < 0) {
+    throw new Error(`Reporting threshold must be a non-negative integer, got ${String(threshold)}`);
+  }
   if (BigInt(threshold) > MAX_REPORTING_THRESHOLD) {
     throw new Error(
       `Reporting threshold must be <= ${String(MAX_REPORTING_THRESHOLD)}, got ${String(threshold)}`,
@@ -60,15 +69,21 @@ export function validateCredentialType(ct: number): void {
 }
 
 /**
- * Reject a zero or malformed submitter. Mirrors `assert(submitter != 0)` in
+ * Reject a malformed or zero submitter. Mirrors `assert(submitter != 0)` in
  * every circuit -- the contract also rejects `submitter == address(0)`.
+ * Accepts a 20-byte address or its 32-byte left-padded Field form; short or
+ * non-hex values are rejected since the Oracle compares against msg.sender.
  */
 export function validateSubmitter(submitter: string): void {
-  if (typeof submitter !== "string" || !submitter.startsWith("0x")) {
-    throw new Error(`submitter must be a 0x-prefixed hex string, got ${String(submitter)}`);
+  if (
+    typeof submitter !== "string" ||
+    !/^0x([0-9a-fA-F]{40}|0{24}[0-9a-fA-F]{40})$/.test(submitter)
+  ) {
+    throw new Error(
+      `submitter must be a 0x-prefixed 20-byte address (or its 32-byte left-padded form), got ${String(submitter)}`,
+    );
   }
-  const body = submitter.slice(2);
-  if (body.length === 0 || /^0+$/.test(body)) {
+  if (BigInt(submitter) === 0n) {
     throw new Error("submitter cannot be the zero address");
   }
 }

@@ -18,6 +18,18 @@ export const PROOF_TYPES = {
 
 export type ProofType = (typeof PROOF_TYPES)[keyof typeof PROOF_TYPES];
 
+/**
+ * Proof types whose attestation means "the subject scored below the
+ * jurisdiction's high-risk threshold" -- the same set ERC-8262's
+ * `SettlementRegistry.recordSubSettlement` accepts.
+ * Default `acceptedProofTypes` for the SDK's `checkCompliance`.
+ */
+export const COMPLIANCE_PROOF_TYPES: readonly ProofType[] = [
+  PROOF_TYPES.COMPLIANCE,
+  PROOF_TYPES.COMPLIANCE_SIGNED,
+  PROOF_TYPES.COMPLIANCE_MULTI_SIGNED,
+];
+
 export const JURISDICTIONS = {
   EU: 0,
   US: 1,
@@ -95,7 +107,7 @@ export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x05: 5, // membership (+ submitter)
   0x06: 5, // non_membership (+ submitter)
   0x07: 9, // compliance_signed (+ signer_pubkey_hash, chain_id, oracle_address)
-  0x08: 11, // risk_score_signed (+ signer_pubkey_hash, chain_id, oracle_address)
+  0x08: 12, // risk_score_signed (+ timestamp, signer_pubkey_hash, chain_id, oracle_address)
   0x09: 14, // compliance_multi_signed (+ threshold_m, 5x signer_pubkey_hash, chain_id, oracle_address)
 };
 

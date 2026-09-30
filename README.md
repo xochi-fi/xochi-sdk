@@ -10,7 +10,9 @@ Also provides trust tier system, privacy level modeling, attestation scoring, se
 npm install @xochi/sdk
 ```
 
-Latest published on npm: `0.1.1`. Current source: `0.2.0` (unpublished -- adds the F-1..F-9 audit fixes, signed-variant proofs, the `@xochi/sdk/provider` signing module, and additional typed contract errors). Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
+Latest published on npm: `0.2.0`. Current source: `0.3.0` (unpublished -- see [CHANGELOG](CHANGELOG.md) for the breaking changes and migration notes). Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
+
+The package is ESM-only (`"type": "module"`); there is no separate CommonJS build. Every export carries `types`, `import` and `default` conditions, so `require("@xochi/sdk/tiers")` works on Node versions with `require(esm)` (20.19+, 22.12+, 24). TypeScript resolves all entry points under `bundler`, `node16`/`nodenext` (ESM files) and legacy `node10` resolution (via `main`/`types`/`typesVersions`). A TypeScript _CommonJS_ file needs `--module nodenext` on TypeScript 5.8+ to import an ES module; older compilers and `--module node16` report TS1479.
 
 ### Import from the narrow subpaths when you only need data
 
@@ -186,7 +188,7 @@ Within each category, the 1st provider contributes at 100%, 2nd at 25%, 3rd+ at 
 
 ## Tier proofs
 
-Prove "score >= threshold" without revealing exact score:
+Prove "score >= threshold" without revealing exact score. Provable thresholds are 25 (Trusted), 50 (Verified), 75 (Premium) and 100 (Institutional); Standard needs no proof. A score exactly at a boundary proves that tier, and scores of 100 and above prove Institutional.
 
 ```typescript
 import { generateTierProof, verifyTierProof } from "@xochi/sdk";
@@ -195,11 +197,12 @@ import { BundledCircuitLoader } from "@xochi/sdk/node";
 const loader = new BundledCircuitLoader();
 const proof = await generateTierProof(loader, 60, 25, account.address);
 
-const result = await verifyTierProof(loader, proof);
-// { valid: true, threshold: 25, tierName: "Trusted", feeRate: 0.19 }
+// Threshold and tier name come from the public inputs, not `proof`'s labels.
+const result = await verifyTierProof(loader, proof, { submitter: account.address });
+// { valid: true, threshold: 25, tierName: "Trusted" }
 ```
 
-`generateHighestTierProof` picks the best tier automatically:
+`generateHighestTierProof` picks the best tier automatically (and returns `null` below 25):
 
 ```typescript
 import { generateHighestTierProof } from "@xochi/sdk";
@@ -207,6 +210,8 @@ import { generateHighestTierProof } from "@xochi/sdk";
 const highest = await generateHighestTierProof(loader, 60, account.address);
 // Proves score >= 50 (Verified tier)
 ```
+
+Tier proofs are **self-attested**: the risk-score signals are private and unsigned, so anyone can prove any tier. Do not grant fees or privacy access from a tier proof; use an authoritative score.
 
 ## Provider-signed proofs
 
@@ -216,22 +221,25 @@ The signed-variant proofs (`COMPLIANCE_SIGNED`, `RISK_SCORE_SIGNED`) cryptograph
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
-import { ERC8262Prover } from "@xochi/sdk";
+import { ERC8262Prover, PROOF_TYPES } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 import { RawKeyLoader, loadSignerKey, signSignals } from "@xochi/sdk/provider";
 
 const api = await Barretenberg.new();
 const signerKey = await loadSignerKey(new RawKeyLoader(privateKeyBytes, "provider-1"));
 
-// 1. Provider signs the screening bundle. chainId + oracleAddress (audit F-6)
-//    are committed in the in-circuit Pedersen digest the signature is over.
+// 1. Provider signs the screening bundle for ONE proof type: the digest carries
+//    that type's domain tag, so a COMPLIANCE_SIGNED signature cannot be used for
+//    RISK_SCORE_SIGNED (or the reverse). chainId + oracleAddress (audit F-6) are
+//    committed in the same digest.
 const signed = await signSignals(api, signerKey, {
+  proofType: PROOF_TYPES.COMPLIANCE_SIGNED,
   chainId: 1n, // EVM chain ID of the consuming Oracle
   oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
   providerSetHash: BigInt("0x..."),
   signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n], // length 8, zero-pad inactive
   weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
-  timestamp: BigInt(Math.floor(Date.now() / 1000)),
+  timestamp: BigInt(Math.floor(Date.now() / 1000)), // the proof must reach the Oracle within 1 h
   submitter: BigInt(account.address),
 });
 
@@ -252,28 +260,30 @@ const result = await prover.proveComplianceSigned({
 
 ### Via the signing daemon
 
-The repo also ships a daemon (`daemon/src/server.ts`) that holds the signing key and exposes `POST /sign`. Useful when the signing key shouldn't live in the proof-generating process:
+The repo also ships a reference daemon (`daemon/`, run with `npm run daemon`) that holds the signing key and exposes `POST /sign`, `POST /sign-multi` and `POST /sign-credential-root`. Useful when the signing key shouldn't live in the proof-generating process. Configuration, auth scoping and the full endpoint table are in [`daemon/README.md`](daemon/README.md).
 
 ```typescript
 const res = await fetch(`${daemonUrl}/sign`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
   body: JSON.stringify({
-    chainId: 1,
-    oracleAddress: "0x...",
+    proofType: 7, // 7 = COMPLIANCE_SIGNED, 8 = RISK_SCORE_SIGNED
+    chainId: 8453, // must equal the daemon's SIGNER_CHAIN_ID
+    oracleAddress: "0x...", // must equal the daemon's SIGNER_ORACLE_ADDRESS
     providerSetHash: "0x...",
     signals: [25, 0, 0, 0, 0, 0, 0, 0],
     weights: [100, 0, 0, 0, 0, 0, 0, 0],
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: Math.floor(Date.now() / 1000), // must be within the freshness window
     submitter: account.address,
   }),
 });
 // 200: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as 0x-hex
-// 409: replay detected (MemoryReplayDb / persistent backing store)
-// 400: validation error
+//      (an identical retry returns the identical signature)
+// 400: validation error   401: unauthorized   403: policy refusal (pinned chain /
+//      Oracle, timestamp window) or credential not scoped for this route
 ```
 
-`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(...)`. The daemon enforces replay protection per request.
+`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(hash, providerId)`, binding the key to its provider. The daemon records every bundle it signs; signing is deterministic (RFC 6979), so a retry returns the same signature, and the Oracle's `_usedProofs` stops on-chain replay.
 
 > **Binding (audit F-6)**: the `chainId` + `oracleAddress` you pass to the signer and the prover MUST be the values you submit against. The on-chain Oracle asserts they match `block.chainid` and `address(this)`; mismatches revert with `PublicInputMismatch`. A mismatch between signer-side and prover-side fails witness generation with `invalid provider signature on signals`.
 
@@ -289,13 +299,14 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 | US           | 2          |
 | UK           | 1          |
 | SG           | 2          |
+| UAE          | 2          |
 
 ### Slot semantics
 
 - Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
 - A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, zero pubkey/sig) automatically -- callers never have to know it.
-- Active count must be `>= thresholdM`. Distinct signers required across active slots.
-- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(...)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
+- Active count must be `>= thresholdM`. Active slots need distinct signers **and providers** (else `DuplicateSignerProvider`).
+- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(hash, providerId)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
 
 ### Direct (server-side) via `signSlotPayload`
 
@@ -367,7 +378,8 @@ const res = await fetch(`${daemonAUrl}/sign-multi`, {
   }),
 });
 // 200: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as 0x-hex
-// 409: replay detected   400: validation error   401: unauthorized
+//      (an identical retry returns the identical signature)
+// 400: validation error   401: unauthorized   403: policy refusal / route not permitted
 ```
 
 > **Inactive-slot padding.** If you build the witness yourself instead of using `buildComplianceMultiSignedInputs`, inactive slots MUST use `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`. All-zero weights cause `compute_risk_score` to divide by zero. The input builder handles this for `null` slots automatically.
@@ -399,10 +411,14 @@ const txHash = await oracle.submitCompliance({
   providerSetHash: "0x...",
 });
 
-// Check compliance status
+// Compliance status: the Oracle's compliance slot, limited to
+// COMPLIANCE_PROOF_TYPES = [0x01, 0x07, 0x09].
 const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
 // attestation: { subject, jurisdictionId, proofType, meetsThreshold, timestamp,
 //   expiresAt, proofHash, providerSetHash, publicInputsHash, verifierUsed }
+
+// Accept a different set deliberately (an empty list throws):
+await oracle.checkCompliance("0x...", 0, { acceptedProofTypes: [PROOF_TYPES.COMPLIANCE_SIGNED] });
 
 // Filter by proof type (e.g., require an attestation backed by a PATTERN proof)
 const patternStatus = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.PATTERN);
@@ -414,7 +430,7 @@ const proof = await oracle.getHistoricalProof(history[0]);
 
 ### Batch submission
 
-Submit all proofs from a `proveBatch` or `provePlan` result atomically in a single transaction via the on-chain `submitComplianceBatch`. Reverts atomically if any sub-trade fails. Max 100 proofs per batch (`MAX_BATCH_SIZE`).
+Submit all proofs from a `proveBatch` or `provePlan` result atomically in a single transaction via the on-chain `submitComplianceBatch`. Reverts atomically if any sub-trade fails. Max 10 proofs per batch (`MAX_BATCH_SIZE`, audit F-3); larger batches are rejected client-side and on-chain (`BatchTooLarge`).
 
 ```typescript
 const batchResult = await oracle.submitBatch({
@@ -465,22 +481,33 @@ await adminVerifier.revokeVerifierVersion(PROOF_TYPES.COMPLIANCE, 1n);
 For environments without viem (Cloudflare Workers, edge functions):
 
 ```typescript
-import { OracleLite, PROOF_TYPES } from "@xochi/sdk";
+import { OracleLite, PROOF_TYPES, decodeTierProofClaim } from "@xochi/sdk";
 
 const oracle = new OracleLite({
   address: "0x...",
   rpcUrl: "https://rpc.example.com",
+  timeoutMs: 15_000, // default; applies to every eth_call
 });
 
+// Same proof-type policy as ERC8262Oracle.checkCompliance.
 const status = await oracle.checkCompliance("0x...", 0);
+const byType = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.COMPLIANCE_SIGNED);
 
+// Simulates submitCompliance. `valid` means the verifier accepted the proof for
+// this subject / jurisdiction / proof type -- it is NOT a compliance verdict.
+// Read the claim from the verified public inputs.
 const result = await oracle.verifyProof(
   "0x...", // wallet (used as msg.sender in simulation)
   PROOF_TYPES.RISK_SCORE,
   proofHex,
   publicInputsHex,
 );
+if (result.valid && result.publicInputs) {
+  const tier = decodeTierProofClaim(result.publicInputs, { submitter: "0x..." }); // 25 | 50 | 75 | 100
+}
 ```
+
+`wallet` must be a `0x`-prefixed 20-byte address and `jurisdictionId` / `proofType` integers in 0-255; anything else throws before a request is made.
 
 ## Settlement splitting (XIP-1)
 
@@ -488,6 +515,7 @@ Split large trades into sub-trades, generate compliance proofs for each, submit 
 
 ```typescript
 import {
+  ERC8262Prover,
   planSplit,
   proveBatch,
   planExecution,
@@ -532,9 +560,28 @@ for (const sub of batchResult.submissions) {
   await registry.recordSubSettlement(splitPlan.tradeId, sub.index, sub.proofHash);
 }
 
-// 5. Finalize with a pattern proof (anti-structuring)
-await registry.finalizeTrade(splitPlan.tradeId, patternProofHash);
+// 5. Finalize with a PATTERN proof (anti-structuring). The proof must commit to
+//    the trade's settlement root (audit H-1), so read it AFTER recording every
+//    sub-settlement and BEFORE proving. finalizeTrade takes the proof's public
+//    inputs too (audit H-2) and checks them against the attestation.
+const settlementRoot = await registry.computeSettlementRoot(splitPlan.tradeId);
+const pattern = await prover.provePattern({
+  ...patternInputs, // amounts, timestamps, numTransactions, reportingThreshold, timeWindow, txSetHash
+  analysisType: 1, // STRUCTURING: the registry accepts only anti-structuring (audit H-2)
+  submitter: account.address,
+  settlementRoot,
+});
+await oracle.submitCompliance({
+  jurisdictionId: 0,
+  proofType: PROOF_TYPES.PATTERN,
+  proof: pattern.proofHex,
+  publicInputs: pattern.publicInputsHex,
+  providerSetHash: "0x...",
+});
+await registry.finalizeTrade(splitPlan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
+
+`patternProofHash` is the `proofHash` of the PATTERN attestation (from the `ComplianceVerified` event or `getAttestationHistory`). A PATTERN proof generated with any other settlement root, including `bytes32(0)`, is valid for general Oracle submission but reverts `finalizeTrade` with `SettlementRootMismatch`.
 
 ## Execution planning (XIP-2)
 
@@ -559,7 +606,7 @@ const plan = planExecution(
 const batch = await provePlan(prover, plan, complianceInput);
 ```
 
-Venue assignment respects trust score thresholds: public (0+), stealth (25+), shielded (50+). The diffusion scheduler enforces a minimum 12-second gap between consecutive submissions.
+Venue assignment respects trust score thresholds: public (0+), stealth (0+; L1 stealth is ungated), shielded (50+). Scores above 100 (Institutional) are valid; a non-finite or negative score throws. The diffusion scheduler enforces a minimum 12-second gap between consecutive submissions and always succeeds for any window of at least `(n - 1) * 12` seconds.
 
 ## Circuit loaders
 
@@ -597,9 +644,11 @@ import {
 
 Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
 
-> **Submitter binding**: All 8 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
+> **Submitter binding**: All 9 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
 >
 > **Signed-variant binding (audit F-6)**: `buildComplianceSignedInputs` and `buildRiskScoreSignedInputs` additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest the ECDSA signature is checked against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)`, so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
+>
+> **Signed-variant proof type and freshness (review #5)**: the `signedBundle` must come from `signSignals` with the matching `proofType` (`0x07` for `buildComplianceSignedInputs`, `0x08` for `buildRiskScoreSignedInputs`); the other type's signature fails in-circuit verification. Both circuits expose the signed timestamp as a public input (`timestamp`, or `signedTimestamp` for the 0x08 builder), and the Oracle rejects it once it is more than `MAX_PROOF_AGE` (1 hour) old.
 
 ## Proof type mappings
 
@@ -613,12 +662,13 @@ import {
 
 proofTypeToCircuit(0x01); // "compliance"
 circuitToProofType("risk_score"); // 0x02
-PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 6, attestation: 6,
+PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 7, attestation: 6,
 //      membership: 5, non_membership: 5,
-//      compliance_signed: 9, risk_score_signed: 11,
+//      compliance_signed: 9, risk_score_signed: 12,
 //      compliance_multi_signed: 14
-// (signed variants include signer_pubkey_hash + chain_id + oracle_address;
-//  multi-signed adds threshold_m + 5x signer_pubkey_hash)
+// (pattern's 7th input is settlement_root, audit H-1; signed variants include
+//  signer_pubkey_hash + chain_id + oracle_address, and risk_score_signed also the
+//  signed timestamp; multi-signed adds threshold_m + 5x signer_pubkey_hash)
 ```
 
 ## Typed contract errors
@@ -650,22 +700,31 @@ try {
 }
 ```
 
-Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`. Any other Solidity custom error decodes to a base `ERC8262ContractError` with `errorName` + `args` populated.
+Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`, `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`, `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SettlementRootMismatchError`. Any other Solidity custom error in the SDK ABIs (which `test/abi-drift.test.ts` keeps in step with ERC-8262) decodes to a base `ERC8262ContractError` with `errorName` + `args` populated.
 
 For lower-level use, `decodeContractError(err, abi)` returns the typed error or `null`, and `withDecodedErrors(abi, fn)` wraps any async call.
+
+## Known limitations
+
+- **Tier proofs are self-attested** (see "Tier proofs").
 
 ## Development
 
 ```bash
 npm install
-npm test                 # unit tests only (219 tests; integration excluded via vitest.config.ts)
-npm run test:integration # proof generation + anvil tests (50 tests, ~30s; uses vitest.integration.config.ts)
-npm run typecheck        # tsc --noEmit
+npm test                 # unit tests (integration + fee-schedule drift excluded via vitest.config.ts)
+npm run test:integration # proof generation + anvil tests (uses vitest.integration.config.ts)
+npm run drift-check      # cross-repo drift: circuits vs ERC-8262, jurisdictions, and the fee
+                         # schedule vs ../riddler-sdk (private; fails without it by design)
+npm run typecheck        # tsc --noEmit (SDK + daemon)
 npm run format           # prettier --write
 npm run format:check     # prettier --check (run in CI / prepublishOnly)
 npm run build            # compile to dist/
+npm run daemon           # build, then run the reference signing daemon (see daemon/README.md)
 
-# Sync circuit artifacts from ERC-8262
+# Sync circuit artifacts from ERC-8262. Strips debug data (file_map /
+# debug_symbols) and exits non-zero, leaving circuits/ untouched, if any
+# artifact is missing or its noir_version differs from EXPECTED_NOIR_VERSION.
 ./scripts/sync-circuits.sh ../ERC-8262
 ```
 

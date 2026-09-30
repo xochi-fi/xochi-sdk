@@ -21,6 +21,7 @@ export { isProofRecent, assertProofRecent, DEFAULT_MAX_PROOF_AGE } from "./recen
 // Constants & proof type mappings
 export {
   PROOF_TYPES,
+  COMPLIANCE_PROOF_TYPES,
   JURISDICTIONS,
   DEFAULT_CONFIG_HASH,
   BPS_DENOMINATOR,
@@ -95,11 +96,9 @@ export { ATTESTATION_MULTIPLIERS, calculateScoreFromAttestations } from "./scori
 export {
   generateTierProof,
   generateHighestTierProof,
+  decodeTierProofClaim,
   verifyTierProof,
   createScoreCommitment,
-  hasShieldedEligibility,
-  getProvenFeeRate,
-  getProvenTierName,
 } from "./tier-proofs.js";
 
 // XIP-1: Settlement splitting
@@ -140,7 +139,7 @@ export type {
   AssetClass,
   FeeLayers,
 } from "./tiers.js";
-export type { TierProof, TierProofVerification } from "./tier-proofs.js";
+export type { TierProof, TierProofVerification, TierProofExpectations } from "./tier-proofs.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,
@@ -149,6 +148,7 @@ export type {
 } from "./oracle.js";
 export type {
   OracleLiteConfig,
+  CheckComplianceOptions,
   ComplianceAttestationLite,
   ComplianceCheckResult,
   ProofVerificationResult as LiteProofVerificationResult,

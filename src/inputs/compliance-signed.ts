@@ -6,8 +6,10 @@
  *   - private: signature [u8; 64], pubkey_x [u8; 32], pubkey_y [u8; 32]
  *   - public:  signer_pubkey_hash Field
  *
- * Caller is expected to obtain `signSignals(...)` output from the provider's
- * signing daemon and pass the relevant pieces in via `signedBundle`.
+ * Caller is expected to obtain `signSignals({ proofType: 0x07, ... })` output
+ * from the provider's signing daemon and pass the relevant pieces in via
+ * `signedBundle`. A bundle signed for RISK_SCORE_SIGNED (0x08) fails in-circuit
+ * signature verification.
  */
 
 import type { Address } from "viem";

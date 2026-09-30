@@ -271,10 +271,9 @@ describe("tier proof", () => {
     expect(tierProof.proofHex).toMatch(/^0x[0-9a-f]+$/);
     expect(tierProof.expiresAt).toBeGreaterThan(Date.now());
 
-    const verification = await verifyTierProof(loader, tierProof);
+    const verification = await verifyTierProof(loader, tierProof, { submitter: SUBMITTER });
     expect(verification.valid).toBe(true);
     expect(verification.tierName).toBe("Verified");
-    expect(verification.feeRate).toBe(0.2);
   });
 });
 

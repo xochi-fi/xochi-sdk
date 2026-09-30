@@ -193,7 +193,7 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
   },
   {
     name: "risk_score_signed",
-    publicInputs: 11,
+    publicInputs: 12,
     build: () =>
       buildRiskScoreSignedInputs({
         type: "threshold",
@@ -297,7 +297,7 @@ describe("circuit artifacts", () => {
   });
 });
 
-describe.skipIf(!existsSync(resolve(ERC_8262, "circuits")))(
+describe.skipIf(!process.env.CI && !existsSync(resolve(ERC_8262, "circuits")))(
   "circuit artifacts vs ERC-8262 sources",
   () => {
     it.each(CIRCUITS)("$name: artifact matches circuits/$name/src/main.nr", ({ name }) => {
