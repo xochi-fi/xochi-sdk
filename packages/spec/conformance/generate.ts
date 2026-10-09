@@ -13,9 +13,9 @@
 // workspace is not part of the published `@xochi/spec` npm contract for
 // external consumers. See packages/spec/README.md.
 
-import fs from "fs";
+import fs, { realpathSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { ethers } from "ethers";
 import { CONFIG, getTokenAddress } from "@xochi/reference/config";
 import { signOnly } from "@xochi/reference/sign-only";
@@ -327,7 +327,9 @@ async function main(): Promise<void> {
   }
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Compared as URLs of the real path: a hand-built `file://` + path never
+// matches one that needs percent-encoding (a space) or runs through a symlink.
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isMainModule) {
   main().catch((err) => {
     console.error("generate-conformance failed:", err);

@@ -12,9 +12,9 @@
 // It resolves to the client's built `dist`, so build the workspaces first
 // (`npm run build:workspaces`) or this reads a stale schedule.
 
-import fs from "fs";
+import fs, { realpathSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import {
   FEE_SCHEDULE,
   computeFeeBreakdown,
@@ -132,7 +132,9 @@ function main(): void {
   console.log(`Wrote fee schedule to ${path.relative(process.cwd(), schedulePath)}`);
 }
 
-const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Compared as URLs of the real path: a hand-built `file://` + path never
+// matches one that needs percent-encoding (a space) or runs through a symlink.
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isMainModule) {
   main();
 }
