@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // NOTE: `fee/vectors.json` and `fee/schedule.json` are the frozen normative
 // artifacts for SPEC.md Section 4 (the layered fee model). They are generated
-// from the reference implementation in the private `@xochi/reference`
-// workspace (`packages/reference/src/fee.ts`, whose `FEE_SCHEDULE` is
-// byte-parity with the server's `Riddler.Integrations.Xochi.FeePolicy`).
+// from the fee reference published in `@xochi/client` (`packages/client/src/fee.ts`,
+// whose `FEE_SCHEDULE` is byte-parity with the server's
+// `Riddler.Integrations.Xochi.FeePolicy`).
 // Regenerate only after a deliberate schedule change;
 // `packages/reference/test/fee.test.ts` re-checks every vector.
 //
-// Like `conformance/generate.ts`, this imports `@xochi/reference` source
-// directly; that never-published workspace is not part of the published
-// `@xochi/spec` npm contract.
+// `@xochi/client` is a devDependency only: generators are not part of the
+// published `@xochi/spec` npm contract, which stays runtime-dependency-free.
+// It resolves to the client's built `dist`, so build the workspaces first
+// (`npm run build:workspaces`) or this reads a stale schedule.
 
 import fs from "fs";
 import path from "path";
@@ -18,7 +19,7 @@ import {
   FEE_SCHEDULE,
   computeFeeBreakdown,
   type FeeComputeParams,
-} from "@xochi/reference/fee";
+} from "@xochi/client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

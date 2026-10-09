@@ -142,6 +142,9 @@ jobs:
       - name: Build @xochi/solver-sdk (the bid-vector generator imports it)
         run: npm run build -w @xochi/solver-sdk
 
+      - name: Build @xochi/client (the fee generator and fee vector suite import it)
+        run: npm run build -w @xochi/client
+
       - name: Typecheck
         run: |
           npm run typecheck -w @xochi/signer

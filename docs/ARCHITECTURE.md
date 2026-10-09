@@ -10,14 +10,14 @@ The README says what each workspace is. What matters here is the direction of
 the arrows:
 
 ```
-@xochi/spec ──(dev only)──> @xochi/signer, @xochi/solver-sdk, @xochi/reference, @xochi/sdk (fee drift test)
+@xochi/spec ──(dev only)──> @xochi/signer, @xochi/solver-sdk, @xochi/client (fee reference), @xochi/reference, @xochi/sdk (fee drift test)
       │
       │ vectors + SPEC.md
       v
-@xochi/signer  <── @xochi/client  <── (xochi-widget, via the Worker API)
+@xochi/signer  <── @xochi/client (incl. the fee reference)  <── (xochi-widget, via the Worker API; Riddler e2e-signer, for fees)
       ^      ^
       │      └──── @xochi/solver-sdk
-      └─────────── @xochi/reference (private: registry, fee reference, sign-only)
+      └─────────── @xochi/reference (private: registry, sign-only)
 
 @xochi/sdk (ERC-8262 prover, repo root) and @xochi/widget-lib depend on none of the above at runtime.
 ```
@@ -43,11 +43,17 @@ and zod, and on nothing else here, so a third-party solver installs the solver
 SDK and the signer instead of inheriting a chain registry.
 
 `@xochi/reference` is private and never published. It is what the generators
-and vector suites need without a CLI: the chain/token registry, the layered fee
-reference and the ERC-3009/Permit2 sign-only composition. It stays out of
-`@xochi/signer` because the fee reference needs zod and the registry is fixture
-data (third-party RPC defaults, env-overridable Tron addresses) a signing
-library must not ship.
+and vector suites need without a CLI: the chain/token registry and the
+ERC-3009/Permit2 sign-only composition. It stays out of `@xochi/signer` because
+the registry is fixture data (third-party RPC defaults, env-overridable Tron
+addresses) a signing library must not ship.
+
+The layered fee reference (`FEE_SCHEDULE`, `computeFeeBreakdown`,
+`parseFeeBreakdown`, `assertFeeBreakdownInvariants`) is published in
+`@xochi/client` (`packages/client/src/fee.ts`), which already ships zod: it is
+what a taker uses to reconcile a served `fee_breakdown`, so it belongs in a
+package a taker can install. `fee/generate.ts` projects it into `@xochi/spec`
+and Riddler's `packages/e2e-signer` imports it rather than carrying a copy.
 
 `@xochi/spec` depends on the others as *dev* dependencies only, because its
 generators import the reference implementations to produce vectors; nothing
@@ -135,12 +141,14 @@ them: [ADR-0001](adr/0001-consolidate-into-xochi-sdk.md).
 | `@xochi/spec` conformance, escrow and solver-bid vectors, fee vectors + schedule | Riddler (`test/support/vectors/`) | pinned artifact | exact version in `XOCHI_SPEC_VERSION`, byte-compared by `scripts/verify_xochi_spec_vectors.sh` (CI job `spec-vectors`) |
 | `@xochi/spec` `conformance/conformance.json`, `fee/schedule.json` | raxol_payments (Hex) | pinned artifact | exact version, fetched with `npm pack` in CI |
 | `@xochi/signer` signing + pure value checks | Riddler `packages/e2e-signer` (private harness) | package dep | `^0.5.0` |
+| `@xochi/client` fee reference (`FEE_SCHEDULE`, `parseFeeBreakdown`, `assertFeeBreakdownInvariants`) | Riddler `packages/e2e-signer` (private harness) | package dep | `^0.1.0` |
 | `@xochi/client`, `@xochi/widget-lib` | xochi, xochi-widget | package dep | published versions |
 | `@xochi/solver-sdk` | third-party solvers | package dep | published when the panel opens |
 
 **Inside this repo** (workspace links, no publish needed): `@xochi/client` ->
-`@xochi/signer`; the root `@xochi/sdk` fee drift test -> `@xochi/spec`
-`fee/schedule.json`.
+`@xochi/signer`; `@xochi/spec`'s `fee/generate.ts` and the reference fee
+vector suite -> `@xochi/client`; the root `@xochi/sdk` fee drift test ->
+`@xochi/spec` `fee/schedule.json`.
 
 **Inbound** (others produce, this repo consumes):
 

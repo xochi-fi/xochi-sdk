@@ -79,6 +79,7 @@
     "provenance": true
   },
   "devDependencies": {
+    "@xochi/client": "0.1.0",
     "@xochi/signer": "0.5.0",
     "ethers": "^6.17.0",
     "tsx": "^4.23.13",

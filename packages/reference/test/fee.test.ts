@@ -1,6 +1,6 @@
 // Fee-model conformance: makes SPEC.md Section 4 conformance-tested. Re-computes
-// every vector in the FROZEN @xochi/spec fee vector set via the reference
-// `computeFeeBreakdown` and asserts equality, checks the reconciliation
+// every vector in the FROZEN @xochi/spec fee vector set via the published
+// `@xochi/client` reference `computeFeeBreakdown` and asserts equality, checks the reconciliation
 // invariants a taker relies on, and property-tests the per-layer floor rule +
 // solver-floor clamp. Deterministic: fixed seed + bounded runs.
 
@@ -19,7 +19,7 @@ import {
   type FeeComputeParams,
   type FeeBreakdownCore,
   type AssetClass,
-} from "../src/fee";
+} from "@xochi/client";
 
 const require = createRequire(import.meta.url);
 

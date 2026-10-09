@@ -165,8 +165,9 @@ package's `conformance/conformance.json` directly
 
 For fees, a conformant implementation exposes
 `computeFeeBreakdown(input) -> core` and reproduces every `expected` in
-`fee/vectors.json` (SPEC.md §4.4/§4.5). The reference runner is
-`packages/reference/test/fee.test.ts`.
+`fee/vectors.json` (SPEC.md §4.4/§4.5). The reference implementation is
+published in `@xochi/client` (`computeFeeBreakdown`, `FEE_SCHEDULE`); its
+runner is `packages/reference/test/fee.test.ts`.
 
 ## Regenerating (do this rarely, and carefully)
 
@@ -207,9 +208,10 @@ packages are `devDependencies` here.
 
 ### Fee vectors
 
-`fee/generate.ts` follows the same pattern for `fee/vectors.json` +
-`fee/schedule.json`, importing `computeFeeBreakdown` / `FEE_SCHEDULE` from
-`@xochi/reference/fee`. Regenerate after a deliberate schedule change:
+`fee/generate.ts` produces `fee/vectors.json` + `fee/schedule.json` from
+`computeFeeBreakdown` / `FEE_SCHEDULE` in `@xochi/client` (a devDependency
+here, resolved to the client's built `dist/`, so build the workspaces first:
+`npm run build:workspaces`). Regenerate after a deliberate schedule change:
 
 ```bash
 npm run generate:fee   # from the repo root; runs `generate:fee -w @xochi/spec`

@@ -8,6 +8,7 @@ What's in the package:
 - **The trade lifecycle as a pure state machine**: `update(model, msg) -> [model, effects]` and `view(model) -> Receipt`. It does no I/O. A host performs each effect (HTTP call, wallet prompt, timer, log line) and feeds the outcome back as a message.
 - **A transport for the Worker API**: `createXochiClient`. Fetch, auth and logging are injected.
 - **Pre-sign fund-safety checks**: the machine runs them on every quote it ingests, and they are also exported for hosts that drive their own flow.
+- **The layered fee reference** (SPEC.md §4): the published `FEE_SCHEDULE`, `computeFeeBreakdown`, and the reconciliation check a served `fee_breakdown` must pass.
 
 ## The API this talks to
 
@@ -88,6 +89,28 @@ Rules these checks keep:
 - **No injectable clock.** The intent deadline and the deposit window are checked against the wall clock. An optional `now` on a security assertion would be a bypass. In tests, move the system clock instead.
 - **Refusals keep the machine's shape.** Signer errors become the same refusals the machine already had: a quote refusal (`status: "failed"`, with the detail in the error log effect), a deposit `DepositAttestationResult` (`unavailable` or `addressReuse`), or a claim `claim_op_unverified`.
 - **Statuses are Xochi's.** The lifecycle uses Xochi's own `IntentStatus` vocabulary and transition table. `isTerminalIntentStatus` is `completed | failed | expired | refunded`.
+
+## Fee reference
+
+`FEE_SCHEDULE` mirrors the solver's fee policy; `@xochi/spec`'s `fee/schedule.json` and `fee/vectors.json` are generated from this module, so a schedule change lands here and on the server together.
+
+```ts
+import {
+  computeFeeBreakdown,
+  parseFeeBreakdown,
+  assertFeeBreakdownInvariants,
+} from "@xochi/client";
+
+const predicted = computeFeeBreakdown({
+  input_amount: "1000000",
+  asset_class: "stable",
+  trust_score: 0,
+});
+const served = parseFeeBreakdown(quote.fee_breakdown); // throws on a malformed object
+assertFeeBreakdownInvariants(served, { input_amount: "1000000" }); // throws if the layers do not reconcile
+```
+
+`parseFeeBreakdown` validates the solver's `fee_breakdown` (`LayeredFeeBreakdownSchema`: `gas_floor` and `total_usd` optional, unknown keys kept). It is a different contract from the Worker's `FeeBreakdownSchema`, which requires both, adds `discount` and strips unknown keys. The invariant check reconciles the split; it does not bound the rate, so capping it is your policy.
 
 ## License
 

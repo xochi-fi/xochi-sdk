@@ -2,8 +2,9 @@
 // (SPEC.md Section 4). Byte/amount-parity with the server's authoritative
 // `Riddler.Integrations.Xochi.FeePolicy.calculate_layered_fee/1`; the fee
 // vectors in `@xochi/spec/fee/vectors.json` are generated from this module
-// and re-checked by `test/fee.test.ts`, making Section 4 conformance-tested the
-// same way the signing layer is.
+// (`packages/spec/fee/generate.ts`) and re-checked by
+// `packages/reference/test/fee.test.ts`, making Section 4 conformance-tested
+// the same way the signing layer is.
 //
 // Two roles:
 //   - `computeFeeBreakdown(params)` -- predict the deterministic core of a
@@ -16,7 +17,8 @@
 //
 // The `gas_floor` / `*_usd` fields are price-oracle-derived and added by the
 // server's quote adapter -- they are outside this deterministic core and are
-// validated only for shape (see `FeeBreakdownSchema`), never recomputed here.
+// validated only for shape (see `LayeredFeeBreakdownSchema`), never recomputed
+// here.
 
 import { z } from "zod";
 
@@ -138,7 +140,9 @@ function parseBaseAmount(input: string | bigint): bigint {
     return input;
   }
   if (!/^\d+$/.test(input)) {
-    throw new Error(`fee: input_amount must be a non-negative integer string, got ${JSON.stringify(input)}`);
+    throw new Error(
+      `fee: input_amount must be a non-negative integer string, got ${JSON.stringify(input)}`,
+    );
   }
   return BigInt(input);
 }
@@ -224,13 +228,27 @@ export function computeFeeBreakdown(params: FeeComputeParams): FeeBreakdownCore 
 // -- Wire validation (HTTP boundary) --
 
 const bpsField = z.number().int().nonnegative();
-const amountField = z.string().regex(/^\d+$/, "must be a non-negative integer string (token base units)");
+const amountField = z
+  .string()
+  .regex(/^\d+$/, "must be a non-negative integer string (token base units)");
 
-// The wire `fee_breakdown` object (SPEC.md Section 4 / Riddler's
-// `layered_breakdown`). `gas_floor`/`total_usd` are price-oracle-derived and
-// optional here so a pre-adapter core still parses; `.passthrough()` tolerates
-// additive fields a newer server may send.
-export const FeeBreakdownSchema = z
+// The solver's `fee_breakdown` object as `/xochi/quote` serves it (SPEC.md
+// Section 4; `LayeredFeeBreakdown` in `@xochi/spec/wire/openapi.json`).
+// `gas_floor`/`total_usd` are price-oracle-derived and optional here so a
+// pre-adapter core still parses; `.passthrough()` tolerates additive fields a
+// newer server may send.
+//
+// Deliberately NOT the Worker's `FeeBreakdownSchema` (`shared/schemas.ts`),
+// though both carry the same fifteen layer fields. They are two contracts on
+// two surfaces and neither accepts a superset of the other: the Worker's
+// `/api/*` re-emission REQUIRES `gas_floor`/`total_usd`, closes `tier` to the
+// five-tier enum, adds the Xochi-owned `discount` and strips unknown keys,
+// while this one validates the solver's own object (and the network-free
+// core, which has no oracle envelope), pins every bps to a non-negative
+// integer and `gas_floor.amount` to base units, and passes unknown keys
+// through. Merging them would either make every pre-adapter core unparseable
+// or relax the Worker contract the frontend renders against.
+export const LayeredFeeBreakdownSchema = z
   .object({
     tier: z.string(),
     asset_class: z.enum(["stable", "volatile"]),
@@ -250,12 +268,12 @@ export const FeeBreakdownSchema = z
   })
   .passthrough();
 
-export type FeeBreakdownWire = z.infer<typeof FeeBreakdownSchema>;
+export type LayeredFeeBreakdownWire = z.infer<typeof LayeredFeeBreakdownSchema>;
 
-// Parses + shape-validates a wire `fee_breakdown`. Throws (zod) on a malformed
-// object -- callers at the HTTP boundary should not swallow this.
-export function parseFeeBreakdown(raw: unknown): FeeBreakdownWire {
-  return FeeBreakdownSchema.parse(raw);
+// Parses + shape-validates a solver `fee_breakdown`. Throws (zod) on a
+// malformed object -- callers at the HTTP boundary should not swallow this.
+export function parseFeeBreakdown(raw: unknown): LayeredFeeBreakdownWire {
+  return LayeredFeeBreakdownSchema.parse(raw);
 }
 
 export interface FeeInvariantOptions {
@@ -299,7 +317,9 @@ export function assertFeeBreakdownInvariants(
     );
   }
   if (fb.total_bps < fb.solver_fee_bps) {
-    throw new Error(`fee_breakdown: total_bps ${fb.total_bps} below solver floor ${fb.solver_fee_bps}`);
+    throw new Error(
+      `fee_breakdown: total_bps ${fb.total_bps} below solver floor ${fb.solver_fee_bps}`,
+    );
   }
 
   const layers = {

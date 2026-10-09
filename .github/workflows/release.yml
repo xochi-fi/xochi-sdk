@@ -117,12 +117,14 @@ jobs:
 
       - run: npm ci
 
-      # Every workspace consumes @xochi/signer's .d.ts, and the bid-vector
-      # generator imports the built @xochi/solver-sdk.
-      - name: Build @xochi/signer and @xochi/solver-sdk
+      # Every workspace consumes @xochi/signer's .d.ts, the bid-vector
+      # generator imports the built @xochi/solver-sdk, and the fee generator
+      # and fee vector suite import the built @xochi/client.
+      - name: Build @xochi/signer, @xochi/solver-sdk and @xochi/client
         run: |
           npm run build -w @xochi/signer
           npm run build -w @xochi/solver-sdk
+          npm run build -w @xochi/client
 
       # --- @xochi/sdk: the ci.yml `check` gate (drift tests need ERC-8262) ----
 

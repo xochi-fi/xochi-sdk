@@ -10,7 +10,7 @@
 //
 //
 // Scope here: the digest check and the parts of the served contract this repo's own
-// code reads -- the fee reference (`@xochi/reference/fee`). The taker-side assertions
+// code reads -- the fee reference (published in `@xochi/client`). The taker-side assertions
 // (the IntentLifecycleStatus terminal partition, the quote fields, `aztec_proof`, the
 // endpoints and error codes `xochi.ts` branches on) moved with that code to Riddler's
 // private e2e harness, which reads the same vendored document from `@xochi/spec`.
@@ -26,7 +26,7 @@ import { createRequire } from "module";
 import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
-import { FeeBreakdownSchema } from "../src/fee";
+import { LayeredFeeBreakdownSchema } from "@xochi/client";
 import { parseCapabilities, chainVmType, chainAddressFormat } from "@xochi/signer";
 
 const require = createRequire(import.meta.url);
@@ -94,8 +94,8 @@ function enumOf(name: string, ...at: string[]): string[] {
 
 describe("fee_breakdown wire object", () => {
   // Read from the zod schema rather than transcribed: a transcription drifts from
-  // `fee.ts` independently of the server and turns this into a third opinion.
-  const shape = FeeBreakdownSchema.shape;
+  // `@xochi/client`'s `fee.ts` independently of the server and turns this into a third opinion.
+  const shape = LayeredFeeBreakdownSchema.shape;
   const sdkKeys = Object.keys(shape).sort();
   const sdkRequired = Object.entries(shape)
     .filter(([, field]) => !field.isOptional())
@@ -112,21 +112,21 @@ describe("fee_breakdown wire object", () => {
   // `fee/vectors.json` all agree with each other -- the #92 shape, three files in one
   // commit graph. `assertFeeBreakdownInvariants` sums the layers it knows, so a renamed
   // layer reconciles to a total that no longer includes it.
-  it("every served property is declared by FeeBreakdownSchema", () => {
+  it("every served property is declared by LayeredFeeBreakdownSchema", () => {
     expect(servedKeys.filter((k) => !sdkKeys.includes(k))).toEqual([]);
   });
 
   // The reverse direction is not symmetric in consequence but is symmetric in evidence:
-  // `FeeBreakdownSchema` is `.passthrough()`, so an undeclared key parses fine and is then
+  // `LayeredFeeBreakdownSchema` is `.passthrough()`, so an undeclared key parses fine and is then
   // invisible to every reconciliation the SDK runs on it.
-  it("every FeeBreakdownSchema key is served", () => {
+  it("every LayeredFeeBreakdownSchema key is served", () => {
     expect(sdkKeys.filter((k) => !servedKeys.includes(k))).toEqual([]);
   });
 
   // The dangerous direction of the required axis. `parseFeeBreakdown` runs inside
   // `xochiQuote` and THROWS, so a field the SDK requires and the server may omit makes
   // every fee-bearing quote unsignable.
-  it("FeeBreakdownSchema requires nothing the server treats as optional", () => {
+  it("LayeredFeeBreakdownSchema requires nothing the server treats as optional", () => {
     const overStrict = sdkRequired.filter((k) => !servedRequired.includes(k));
     expect(overStrict, `required by fee.ts, optional on the wire: ${overStrict.join(", ")}`).toEqual([]);
   });
@@ -140,14 +140,14 @@ describe("fee_breakdown wire object", () => {
     const relaxed = servedRequired.filter((k) => !sdkRequired.includes(k));
     expect(
       relaxed,
-      "known, deliberate divergence: see the FeeBreakdownSchema comment in fee.ts",
+      "known, deliberate divergence: see the LayeredFeeBreakdownSchema comment in @xochi/client fee.ts",
     ).toEqual(["gas_floor", "total_usd"]);
   });
 
   // `asset_class` is a zod ENUM, not `.passthrough()`-tolerated: a third served class
   // fails `parseFeeBreakdown` and makes every quote in that class unsignable. Both sides
   // read, neither transcribed.
-  it("FeeBreakdownSchema asset_class options match the served enum", () => {
+  it("LayeredFeeBreakdownSchema asset_class options match the served enum", () => {
     const sdkClasses = [...shape.asset_class.options].sort();
     const servedClasses = [...enumOf("LayeredFeeBreakdown", "asset_class")].sort();
     expect(sdkClasses).toEqual(servedClasses);
