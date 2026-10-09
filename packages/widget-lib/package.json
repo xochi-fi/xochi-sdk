@@ -1,0 +1,46 @@
+{
+  "name": "@xochi/widget-lib",
+  "version": "0.1.0",
+  "description": "Embed the Xochi swap widget in any page: an iframe with its trade defaults, the host wallet bridged in over EIP-1193 postMessage, auto-resize and trade lifecycle events.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/widget-lib"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.esm.json && tsc -p tsconfig.build.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.esm.json --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"*.{json,md,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,ts}\"",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

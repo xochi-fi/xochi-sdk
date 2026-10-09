@@ -70,6 +70,17 @@ npm run format:check -w @xochi/client
 
 `@riddler/signer@^0.5.0` must be on the registry for `npm ci` to resolve the workspace; until it is published, install the local tarball with `--no-save` and never commit a lockfile pointing at it.
 
+### Workspace: `packages/widget-lib` (`@xochi/widget-lib`)
+
+Host-side embed library, modeled on `@cowprotocol/widget-lib`, with zero runtime deps. `createXochiWidget(container, { params, provider?, origin?, listeners? })` mounts `<origin>/embed?<params>` (default `https://widget.xochi.fi`) and bridges the host's EIP-1193 provider over postMessage (`xochi:rpc` -> `xochi:rpc:result`; provider events as `xochi:provider:event`), plus `xochi:resize` and `xochi:event` trade lifecycle events. `src/params.ts` is the single definition of the frame URL params, moved from xochi-widget `src/pages/trade/embedParams.ts`. `src/protocol.ts` holds the message types and the RPC allowlist. Security invariants, each pinned by a test: a message is handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`; methods off `ALLOWED_RPC_METHODS` get `4200` without reaching the wallet; inbound JSON is capped at `MAX_MESSAGE_LENGTH`. Tests run in jsdom with a real iframe and real MessageEvents. The deployed widget does not speak this protocol yet, and its `frame-ancestors 'self'` blocks third-party embedding until xochi-fi/xochi#573. See `packages/widget-lib/README.md`.
+
+```bash
+npm run build -w @xochi/widget-lib       # dist/esm + dist/cjs
+npm run typecheck -w @xochi/widget-lib   # sources + tests, then src alone without Node types
+npm test -w @xochi/widget-lib
+npm run format:check -w @xochi/widget-lib
+```
+
 ## Key Commands
 
 ```bash
