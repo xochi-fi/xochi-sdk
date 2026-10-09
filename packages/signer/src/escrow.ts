@@ -334,6 +334,7 @@ export const FILL_SALT_TAG = "riddler/fill-salt/v1";
 export function deriveFillSalt(key: string | Uint8Array, orderId: string): Hex {
   const id = normalizeBytes32("orderId", orderId);
   const keyBytes = typeof key === "string" ? ethers.getBytes(key) : key;
+  if (keyBytes.length === 0) throw new Error("fill salt key must be non-empty");
   const msg = ethers.concat([ethers.toUtf8Bytes(FILL_SALT_TAG), id]);
   return ethers.computeHmac("sha256", keyBytes, msg).toLowerCase() as Hex;
 }
