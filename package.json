@@ -86,6 +86,9 @@
     "dist",
     "circuits"
   ],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
