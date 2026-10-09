@@ -593,13 +593,36 @@ function assertPullNotToPinnedEscrow(
       `expectedEscrows must map origin chain ids to escrow addresses, got ${JSON.stringify(pins)}. Refusing to sign.`,
     );
   }
-  const chainKey = String(intent.fromChainId);
-  if (!Object.prototype.hasOwnProperty.call(pins, chainKey)) return;
-  const pinned = (pins as Record<string, unknown>)[chainKey];
-  if (typeof pinned !== "string" || pinned.trim() === "") {
+  // Keyed on the canonical chain id, not the server's spelling: `"0x2105"`, `"08453"` and
+  // `" 8453"` all pass the chain checks and sign as uint256 8453, so a raw-string lookup
+  // would miss a `{8453: ESCROW}` pin and let the escrow pull through unguarded. Pin keys
+  // are canonicalized the same way (as `pinnedEscrowFor` does), so a non-canonical key
+  // still pins its chain.
+  const chainKey = String(requireIntentChainId(intent, "expectedEscrows"));
+  const matches: unknown[] = [];
+  for (const [key, value] of Object.entries(pins as Record<string, unknown>)) {
+    let canonical: string;
+    try {
+      canonical = BigInt(key.trim()).toString();
+    } catch {
+      throw new XochiIntentMismatchError(
+        `expectedEscrows key ${JSON.stringify(key)} is not a chain id. Refusing to sign.`,
+      );
+    }
+    if (canonical === chainKey) matches.push(value);
+  }
+  if (matches.length === 0) return;
+  const trimmed = matches.map((v) => (typeof v === "string" ? v.trim() : v));
+  const pinned = trimmed[0];
+  if (
+    typeof pinned !== "string" ||
+    !/^0x[0-9a-fA-F]{40}$/.test(pinned) ||
+    /^0x0{40}$/i.test(pinned) ||
+    trimmed.some((v) => typeof v !== "string" || v.toLowerCase() !== pinned.toLowerCase())
+  ) {
     throw new XochiIntentMismatchError(
-      `expectedEscrows[${chainKey}] is ${JSON.stringify(pinned)}, not an address -- a blank escrow pin ` +
-        "cannot be compared against. Refusing to sign.",
+      `expectedEscrows[${chainKey}] is ${JSON.stringify(matches.length === 1 ? matches[0] : matches)}, ` +
+        "not one non-zero EVM address -- the escrow pin cannot be compared against. Refusing to sign.",
     );
   }
   const served = kind === "erc3009" ? m.to : m.spender;
