@@ -57,6 +57,118 @@ export interface StoredDepositAttestation {
 }
 
 /**
+ * `verifyStoredDeposit`'s answer. On success it carries the binding it PROVED,
+ * in the signer's field set, and that object is the one to render and persist:
+ * a record written by an older build arrives in a different shape (see
+ * `STORED_FIELDS`), so the caller's own copy is not what was verified.
+ */
+export type StoredDepositResult =
+  | { ok: true; stored: StoredDepositAttestation }
+  | Extract<DepositAttestationResult, { ok: false }>;
+
+/**
+ * Every signed field: its spelling in records persisted by builds before the
+ * cutover to `@xochi/signer` (xochi `src/lib/depositAttestation.ts`, the
+ * widget's `packages/machine`), and the JSON type it must have.
+ *
+ * Those builds stored camelCase `DepositAttestationFields` and named the
+ * settlement field `resolvedSettlementType`; the signer names it
+ * `settlement_preference`. Same eighteen-line v3 message, same values, so a
+ * renamed record signs the same bytes. Keyed by the signer's type so a field
+ * added there without a row here fails to compile.
+ *
+ * `optional` fields were `undefined` in the old type, which `JSON.stringify`
+ * drops, so an absent key is how an old record says "empty line". Absent and
+ * `null` both become `null`, which signs the same empty line the signer writes
+ * for either.
+ */
+const STORED_FIELDS: Record<
+  keyof DepositAttestationFields,
+  { legacy: string; type: "string" | "integer" | "optionalString" | "optionalInteger" }
+> = {
+  intent_id: { legacy: "intentId", type: "string" },
+  quote_id: { legacy: "quoteId", type: "string" },
+  wallet: { legacy: "wallet", type: "string" },
+  from_chain_id: { legacy: "fromChainId", type: "integer" },
+  from_token: { legacy: "fromToken", type: "string" },
+  from_amount: { legacy: "fromAmount", type: "string" },
+  deposit_address: { legacy: "depositAddress", type: "string" },
+  deposit_deadline: { legacy: "depositDeadline", type: "optionalInteger" },
+  refund_address: { legacy: "refundAddress", type: "optionalString" },
+  to_chain_id: { legacy: "toChainId", type: "integer" },
+  to_token: { legacy: "toToken", type: "string" },
+  to_amount: { legacy: "toAmount", type: "string" },
+  min_to_amount: { legacy: "minToAmount", type: "string" },
+  recipient: { legacy: "recipient", type: "string" },
+  stealth_spending_pub_key: { legacy: "stealthSpendingPubKey", type: "optionalString" },
+  stealth_viewing_pub_key: { legacy: "stealthViewingPubKey", type: "optionalString" },
+  settlement_preference: { legacy: "resolvedSettlementType", type: "string" },
+};
+
+/**
+ * Read a persisted binding into the signer's field set, renaming a pre-cutover
+ * camelCase record on the way. Pure, and decides SHAPE only: whatever comes out
+ * still goes through every check `verifyStoredDeposit` runs, so a migrated
+ * record is trusted exactly as far as a current one, which is not at all until
+ * its signature recovers.
+ *
+ * A record in neither shape, one missing a required field, or one with a field
+ * of the wrong type is refused rather than repaired. Only the signed fields are
+ * copied, so nothing unsigned rides along into what the caller renders.
+ */
+function readStoredDeposit(
+  raw: unknown,
+): { ok: true; stored: StoredDepositAttestation } | { ok: false; reason: string } {
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !("attestation" in raw) ||
+    typeof raw.attestation !== "string" ||
+    !raw.attestation
+  ) {
+    return { ok: false, reason: "stored deposit carries no attestation" };
+  }
+  const { attestation } = raw;
+  if (!("attested" in raw) || typeof raw.attested !== "object" || raw.attested === null) {
+    return { ok: false, reason: "stored deposit carries no attested fields" };
+  }
+  const source: object = raw.attested;
+  const legacy = !("intent_id" in source) && "intentId" in source;
+  if (!legacy && !("intent_id" in source)) {
+    return { ok: false, reason: "stored deposit is in no recognised shape" };
+  }
+
+  const fields: Partial<Record<keyof DepositAttestationFields, string | number | null>> = {};
+  for (const name of Object.keys(STORED_FIELDS) as (keyof DepositAttestationFields)[]) {
+    const { legacy: legacyName, type } = STORED_FIELDS[name];
+    const key = legacy ? legacyName : name;
+    const value: unknown = key in source ? Reflect.get(source, key) : undefined;
+    const optional = type === "optionalString" || type === "optionalInteger";
+    if (optional && (value === undefined || value === null)) {
+      fields[name] = null;
+    } else if ((type === "string" || type === "optionalString") && typeof value === "string") {
+      fields[name] = value;
+    } else if (
+      (type === "integer" || type === "optionalInteger") &&
+      typeof value === "number" &&
+      Number.isSafeInteger(value)
+    ) {
+      fields[name] = value;
+    } else {
+      return {
+        ok: false,
+        reason: `stored deposit field ${key} is ${value === undefined ? "missing" : "malformed"}`,
+      };
+    }
+  }
+  // Every key of STORED_FIELDS (which is keyed by the signer's type) was
+  // assigned above with the JSON type its row names; the loop cannot tell
+  // the compiler which row is which, so the per-field types are asserted here.
+  const attested = fields as DepositAttestationFields;
+  return { ok: true, stored: { attested, attestation } };
+}
+
+/**
  * 0x + 65-byte secp256k1 signature. Stricter than the signer, which also
  * recovers a 64-byte EIP-2098 compact signature; the solver only ever serves
  * the 65-byte form, so anything else is refused before recovery.
@@ -164,18 +276,25 @@ function depositRefusal(err: unknown): Extract<DepositAttestationResult, { ok: f
  * 2. The SIGNATURE, by `verifyDepositAttestation` against the pinned signer,
  *    plus the destination-token guard the live path runs.
  *
+ * Takes the record as `unknown` because that is what storage hands back. A
+ * record persisted before the cutover to `@xochi/signer` (camelCase fields,
+ * `resolvedSettlementType`) is renamed first and then checked exactly like a
+ * current one; any other shape refuses. On success the result carries the
+ * proven binding in the current shape: render THAT, never the record passed
+ * in, and write it back if the record is re-persisted.
+ *
  * NOT checked here: the deposit window. A resumed swap legitimately comes back
  * after it closed, and the honest view then names no address to send to; the
  * caller reads `attested.deposit_deadline` and renders accordingly.
  */
 export function verifyStoredDeposit(
-  stored: StoredDepositAttestation | null | undefined,
+  raw: unknown,
   signer: string | null,
   expected: { intentId: string; owner: string },
-): DepositAttestationResult {
-  if (!stored?.attestation || !stored.attested) {
-    return { ok: false, kind: "unavailable", reason: "stored deposit carries no attestation" };
-  }
+): StoredDepositResult {
+  const read = readStoredDeposit(raw);
+  if (!read.ok) return { ok: false, kind: "unavailable", reason: read.reason };
+  const { stored } = read;
   const { attested } = stored;
   if (attested.intent_id !== expected.intentId) {
     return {
@@ -205,7 +324,7 @@ export function verifyStoredDeposit(
   }
   try {
     verifyDepositAttestation(attested, stored.attestation, signer);
-    return { ok: true };
+    return { ok: true, stored };
   } catch (err) {
     return depositRefusal(err);
   }

@@ -351,7 +351,7 @@ describe("verifyStoredDeposit (resume)", () => {
         intentId: "xi_dep1",
         owner: WALLET.toUpperCase().replace("0X", "0x"),
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({ ok: true, stored });
   });
 
   it("refuses a binding transplanted into another owner's record", async () => {
@@ -373,7 +373,7 @@ describe("verifyStoredDeposit (resume)", () => {
         intentId: "xi_dep1",
         owner: WALLET,
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({ ok: true, stored: { attested: fields, attestation } });
     const tampered = {
       attested: { ...fields, deposit_address: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" },
       attestation,

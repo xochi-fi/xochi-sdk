@@ -88,6 +88,7 @@ Rules these checks keep:
 - **Pins come from you.** `pullRecipients` and `depositAttestationSigner` are your configuration. Don't build them from `/api/capabilities`: an advertisement arrives over the same channel as the quote it would vouch for, and a fallback matrix is not an advertisement at all.
 - **No injectable clock.** The intent deadline and the deposit window are checked against the wall clock. An optional `now` on a security assertion would be a bypass. In tests, move the system clock instead.
 - **Refusals keep the machine's shape.** Signer errors become the same refusals the machine already had: a quote refusal (`status: "failed"`, with the detail in the error log effect), a deposit `DepositAttestationResult` (`unavailable` or `addressReuse`), or a claim `claim_op_unverified`.
+- **Stored records are re-verified, never trusted.** `verifyStoredDeposit` takes whatever storage hands back. A binding written by a build from before `@xochi/signer` (camelCase fields, `resolvedSettlementType`) is renamed to the signer's field set and then checked exactly like a current one; a record in any other shape, missing a field or carrying a mistyped one refuses. On success the result carries the proven binding (`result.stored`): render that object, never the record you passed in, and write that one back if you re-persist the record.
 - **Statuses are Xochi's.** The lifecycle uses Xochi's own `IntentStatus` vocabulary and transition table. `isTerminalIntentStatus` is `completed | failed | expired | refunded`.
 
 ## Fee reference
