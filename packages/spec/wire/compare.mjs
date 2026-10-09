@@ -758,6 +758,27 @@ export const compareContract = (served, vendored) => {
   const effectiveSecurity = (op, root) =>
     (Array.isArray(op?.security) ? op.security : Array.isArray(root) ? root : []).map((r) => canon(r)).sort();
 
+  /**
+   * A served-only parameter or requestBody given as a local `$ref` carries its
+   * `required` on the target, so it is graded on that: read off the bare ref
+   * object, a newly served required `$ref` parameter graded STALE. Chains are
+   * followed; an unresolvable or cyclic ref yields the ref object itself.
+   */
+  const resolveServed = (node) => {
+    const seen = new Set();
+    let cur = node;
+    while (isObj(cur) && typeof cur.$ref === "string" && cur.$ref.startsWith("#/") && !seen.has(cur.$ref)) {
+      seen.add(cur.$ref);
+      let target = served;
+      for (const raw of cur.$ref.slice(2).split("/")) {
+        target = isObj(target) ? target[raw.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined;
+      }
+      if (!isObj(target)) return cur;
+      cur = target;
+    }
+    return cur;
+  };
+
   const compareOperation = (label, sItem, vItem, sOp, vOp) => {
     operations += 1;
 
@@ -767,8 +788,9 @@ export const compareContract = (served, vendored) => {
       checks += 1;
       const vp = vParams.get(k);
       if (vp === undefined) {
-        (isRequired(sp) ? breaking : stale).push(
-          `${label} parameter ${sanitize(k)} is served but not vendored (${isRequired(sp) ? "required" : "optional"})`,
+        const required = isRequired(resolveServed(sp));
+        (required ? breaking : stale).push(
+          `${label} parameter ${sanitize(k)} is served but not vendored (${required ? "required" : "optional"})`,
         );
         continue;
       }
@@ -816,8 +838,9 @@ export const compareContract = (served, vendored) => {
     if (isObj(sBody) || isObj(vBody)) {
       checks += 1;
       if (!isObj(vBody)) {
-        (isRequired(sBody) ? breaking : stale).push(
-          `${label} requestBody is served but not vendored (${isRequired(sBody) ? "required" : "optional"})`,
+        const required = isRequired(resolveServed(sBody));
+        (required ? breaking : stale).push(
+          `${label} requestBody is served but not vendored (${required ? "required" : "optional"})`,
         );
       } else if (!isObj(sBody)) {
         breaking.push(`${label} requestBody is vendored but no longer served`);

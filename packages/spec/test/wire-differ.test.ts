@@ -529,6 +529,25 @@ describe("required in its boolean form", () => {
     expect(breaking).toEqual([]);
     expect(stale).toEqual([]);
   });
+
+  // A `$ref`'d Parameter or Request Body carries `required` on its target, so a
+  // newly served one is graded on the target, not on the bare ref object.
+  it("a newly served required $ref parameter or requestBody is BREAKING", () => {
+    const { breaking } = served((d) => {
+      d.components.parameters = {
+        Tenant: { in: "header", name: "X-Tenant", required: true, schema: { type: "string" } },
+      };
+      d.components.requestBodies = {
+        Filter: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+      };
+      const op = d.paths["/xochi/chains"].get;
+      op.parameters = [...(op.parameters ?? []), { $ref: "#/components/parameters/Tenant" }];
+      op.requestBody = { $ref: "#/components/requestBodies/Filter" };
+    });
+    const all = breaking.join("\n");
+    expect(all).toMatch(/parameter #\/components\/parameters\/Tenant is served but not vendored \(required\)/);
+    expect(all).toMatch(/requestBody is served but not vendored \(required\)/);
+  });
 });
 
 // ---------------------------------------------------------------------------
