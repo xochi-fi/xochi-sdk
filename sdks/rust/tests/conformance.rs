@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use riddler_signer::{Vector, recover, sign};
+use xochi_signer::{Vector, recover, sign};
 
 fn load_vectors() -> Vec<Vector> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

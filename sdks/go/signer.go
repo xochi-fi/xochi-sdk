@@ -306,7 +306,7 @@ func mustHexBytes(s string) []byte {
 	return b
 }
 
-// toBytes32 fails loud on a non-32-byte value. The reference signer (@riddler/
+// toBytes32 fails loud on a non-32-byte value. The reference signer (@xochi/
 // signer signing.ts) LEFT-pads a short nonce; a naive right-pad here would
 // silently diverge (produce a different signed_object) on non-canonical input --
 // invisible to the fixture, which always uses full 32-byte nonces. Reject rather

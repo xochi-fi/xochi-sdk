@@ -1,4 +1,4 @@
-# riddler-signer (Python)
+# xochi-signer (Python)
 
 Conformance signer for the Riddler protocol. Reproduces every vector in
 `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8).
