@@ -434,6 +434,30 @@ describe("wallet bridge", () => {
     expect(wallet.calls).toHaveLength(MAX_PENDING_RPC);
   });
 
+  it("keeps counting requests a reload left unanswered against the cap", async () => {
+    const hung = gate();
+    const wallet = new TestWallet(() => hung.answer);
+    const { frame } = mount({ provider: wallet });
+    const inbox = new Inbox(frame());
+    for (let i = 0; i < MAX_PENDING_RPC; i++) fromFrame(frame(), rpc(i, "eth_requestAccounts"));
+    fromFrame(frame(), { type: "xochi:ready" });
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider" });
+    fromFrame(frame(), rpc("after-reload", "eth_requestAccounts"));
+    expect(await inbox.next()).toMatchObject({ id: "after-reload", error: { code: -32005 } });
+    expect(wallet.calls).toHaveLength(MAX_PENDING_RPC);
+
+    // Once the wallet settles them, the slots free up again.
+    hung.release([ACCOUNT]);
+    await flushHostMessages();
+    fromFrame(frame(), rpc("freed", "eth_requestAccounts"));
+    expect(await inbox.next()).toEqual({
+      type: "xochi:rpc:result",
+      id: "freed",
+      result: [ACCOUNT],
+    });
+    expect(wallet.calls).toHaveLength(MAX_PENDING_RPC + 1);
+  });
+
   it("ignores a request reusing an id still in flight", async () => {
     const pending = gate();
     const wallet = new TestWallet((method) =>
@@ -520,12 +544,14 @@ describe("trust boundary", () => {
 });
 
 describe("provider events", () => {
-  it("forwards accountsChanged, chainChanged and disconnect to a ready frame", async () => {
+  it("forwards accountsChanged, chainChanged and disconnect once the frame connected", async () => {
     const wallet = new TestWallet();
     const { frame } = mount({ provider: wallet });
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     await inbox.next();
+    fromFrame(frame(), rpc(1, "eth_requestAccounts"));
+    expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 1, result: [ACCOUNT] });
 
     wallet.emit("accountsChanged", [ACCOUNT]);
     wallet.emit("chainChanged", "0x2105");
@@ -536,6 +562,48 @@ describe("provider events", () => {
       { type: "xochi:provider:event", event: "accountsChanged", data: [ACCOUNT] },
       { type: "xochi:provider:event", event: "chainChanged", data: "0x2105" },
       { type: "xochi:provider:event", event: "disconnect", data: { code: 4900, message: "gone" } },
+    ]);
+  });
+
+  it("tells a frame that never connected nothing about the host wallet", async () => {
+    const wallet = new TestWallet((method) => (method === "eth_accounts" ? [] : "0x2105"));
+    const { frame } = mount({ provider: wallet });
+    const inbox = new Inbox(frame());
+    fromFrame(frame(), { type: "xochi:ready" });
+    await inbox.next();
+    // Reading the chain, or an eth_accounts that returns none, is not a connection.
+    fromFrame(frame(), rpc(1, "eth_chainId"));
+    await inbox.next();
+    fromFrame(frame(), rpc(2, "eth_accounts"));
+    expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 2, result: [] });
+
+    wallet.emit("accountsChanged", [ACCOUNT]);
+    wallet.emit("chainChanged", "0x1");
+    wallet.emit("disconnect", Object.assign(new Error("gone"), { code: 4900 }));
+    expect(await inbox.drain()).toEqual([]);
+  });
+
+  it("starts every frame load unconnected unless the host opted into autoConnect", async () => {
+    const wallet = new TestWallet();
+    const { frame } = mount({ provider: wallet });
+    const inbox = new Inbox(frame());
+    fromFrame(frame(), { type: "xochi:ready" });
+    await inbox.next();
+    fromFrame(frame(), rpc(1, "eth_requestAccounts"));
+    await inbox.next();
+    fromFrame(frame(), { type: "xochi:ready" });
+    await inbox.next();
+    wallet.emit("accountsChanged", [ACCOUNT]);
+    expect(await inbox.drain()).toEqual([]);
+
+    const auto = new TestWallet();
+    const followed = mount({ provider: auto, autoConnect: true });
+    const autoInbox = new Inbox(followed.frame());
+    fromFrame(followed.frame(), { type: "xochi:ready" });
+    await autoInbox.next();
+    auto.emit("accountsChanged", [ACCOUNT]);
+    expect(await autoInbox.drain()).toEqual([
+      { type: "xochi:provider:event", event: "accountsChanged", data: [ACCOUNT] },
     ]);
   });
 

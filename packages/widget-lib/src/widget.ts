@@ -205,8 +205,21 @@ export function createXochiWidget(
   let ready = false;
   /** Bumped on every frame (re)load, so an answer never reaches a later document. */
   let session = 0;
-  /** Request ids in flight for the current session. */
+  /** Request ids in flight for the current session (duplicate-id detection). */
   const pending = new Set<RpcId>();
+  /**
+   * Wallet requests still unsettled at the provider, across sessions. The cap
+   * counts these, not `pending`: a reload or a re-announced `xochi:ready` clears
+   * `pending` while the provider is still working on the earlier requests.
+   */
+  let inFlight = 0;
+  /**
+   * The frame has connected the host wallet this session: it asked for accounts
+   * itself (`eth_requestAccounts` / `eth_accounts`) and got some, or the host
+   * opted into `autoConnect`. Until then provider events are not forwarded, so a
+   * frame the user never connected learns no accounts or chain from the host.
+   */
+  let connected = autoConnect;
 
   /** Post to the frame, naming the widget origin as the only acceptable recipient. */
   function post(message: HostMessage): void {
@@ -228,16 +241,16 @@ export function createXochiWidget(
 
   const providerHandlers: Record<(typeof PROVIDER_EVENTS)[number], (arg: unknown) => void> = {
     accountsChanged: (accounts) => {
-      if (!ready || destroyed) return;
+      if (!ready || destroyed || !connected) return;
       if (!Array.isArray(accounts) || !accounts.every((a) => typeof a === "string")) return;
       post({ type: MESSAGE.providerEvent, event: "accountsChanged", data: [...accounts] });
     },
     chainChanged: (chainId) => {
-      if (!ready || destroyed || typeof chainId !== "string") return;
+      if (!ready || destroyed || !connected || typeof chainId !== "string") return;
       post({ type: MESSAGE.providerEvent, event: "chainChanged", data: chainId });
     },
     disconnect: (error) => {
-      if (!ready || destroyed) return;
+      if (!ready || destroyed || !connected) return;
       post({ type: MESSAGE.providerEvent, event: "disconnect", data: toRpcError(error) });
     },
   };
@@ -287,7 +300,7 @@ export function createXochiWidget(
       });
       return;
     }
-    if (pending.size >= MAX_PENDING_RPC) {
+    if (inFlight >= MAX_PENDING_RPC) {
       reply(id, {
         error: {
           code: RPC_ERROR.limitExceeded,
@@ -303,6 +316,7 @@ export function createXochiWidget(
     const wallet = provider;
     const requestSession = session;
     pending.add(id);
+    inFlight += 1;
     const args = params === undefined ? { method } : { method, params };
     Promise.resolve()
       .then(() => wallet.request(args))
@@ -311,8 +325,17 @@ export function createXochiWidget(
         (err: unknown) => ({ error: toRpcError(err) }),
       )
       .then((outcome) => {
+        inFlight -= 1;
         if (destroyed || requestSession !== session) return;
         pending.delete(id);
+        if (
+          (method === "eth_requestAccounts" || method === "eth_accounts") &&
+          "result" in outcome &&
+          Array.isArray(outcome.result) &&
+          outcome.result.length > 0
+        ) {
+          connected = true;
+        }
         reply(id, outcome);
       });
   }
@@ -343,6 +366,7 @@ export function createXochiWidget(
       case MESSAGE.ready:
         session += 1;
         pending.clear();
+        connected = autoConnect;
         ready = true;
         post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
         return;
@@ -379,6 +403,7 @@ export function createXochiWidget(
       ready = false;
       session += 1;
       pending.clear();
+      connected = autoConnect;
       iframe.src = next;
     },
     updateProvider(next) {
