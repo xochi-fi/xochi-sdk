@@ -287,6 +287,21 @@ describe("OnchainEscrowGateway.fill", () => {
     expect(w.warnings.some((m) => m.includes("origin time"))).toBe(true);
   });
 
+  // Inventory one accepted fill still owes is not there for another: the
+  // second fill would revert behind the first and be slashed as a no-show.
+  it("accept holds back the inventory an earlier accepted, unlanded fill owes", async () => {
+    const w = world();
+    w.dest.onSend = () => ({ pend: true });
+    expect((await acceptThenFill(w)).status).toBe("in_doubt");
+    const other: PreparedFill = {
+      ...w.prepared,
+      orderId: ("0x" + "e1".repeat(32)) as Hex,
+      fillId: ("0x" + "e2".repeat(32)) as Hex,
+      fillAuth: { ...w.prepared.fillAuth, fillId: ("0x" + "e2".repeat(32)) as Hex },
+    };
+    expect(await refusalOf(w.gateway.accept(other))).toBe("insufficient_inventory");
+  });
+
   it("refuses a second fill while the first is in doubt, then re-plans once its nonce is taken by another tx", async () => {
     const w = world();
     w.dest.onSend = () => AMBIGUOUS;

@@ -532,6 +532,11 @@ export class OnchainEscrowGateway {
   // RPC backend answers false, to stay one transaction.
   private readonly filling = new Set<string>();
   private readonly landed = new Map<string, { txHash: Hex; blockNumber: number }>();
+  // What each accepted fillId will pay out of inventory, by fillId. `accept`
+  // holds back the ones not yet landed from the balance a new fill may count
+  // on: a second acceptance against inventory the first still owes reverts
+  // its fill, and an accepted no-show is slashed.
+  private readonly owedFills = new Map<string, { chainId: bigint; token: string; amount: bigint; deadline: bigint }>();
   // The running claim loop per orderId: a second caller joins it.
   private readonly claimLoops = new Map<string, Promise<ClaimLoopResult>>();
   private readonly warn: (message: string, orderId: string) => void;
@@ -731,6 +736,17 @@ export class OnchainEscrowGateway {
     const acceptance = fillAcceptanceFor(prepared);
     this.accepted.set(prepared.fillId, { acceptance, digest: fillAcceptanceDigest(prepared.bondDomain, acceptance), signature: null });
     this.acceptedOrders.set(order, { fillId: prepared.fillId, fillAuthDigest: digest });
+    this.recordOwedFill(prepared);
+  }
+
+  private recordOwedFill(prepared: PreparedFill): void {
+    const a = prepared.fillAuth;
+    this.owedFills.set(prepared.fillId, {
+      chainId: BigInt(prepared.destinationChainId),
+      token: a.token.toLowerCase(),
+      amount: BigInt(a.amount),
+      deadline: BigInt(a.deadline),
+    });
   }
 
   // The FillAuth names this signer as filler and asks no more than this solver bid.
@@ -784,7 +800,7 @@ export class OnchainEscrowGateway {
         fillAuthDeadline: prepared.fillAuth.deadline,
         fillInclusionSec: fillInclusionSec + acceptBudgetSec,
       });
-      await this.fillPreflight(prepared, dest);
+      await this.fillPreflight(prepared, dest, true);
       const unclaimable = await this.claimReadiness(prepared);
       if (unclaimable) throw new EscrowRefusalError(unclaimable.code, `${unclaimable.message}; not accepting`, prepared.orderId);
     }
@@ -795,6 +811,7 @@ export class OnchainEscrowGateway {
     const signed = { acceptance, digest, signature };
     // Recorded BEFORE the POST: the obligation starts when the bytes leave.
     this.accepted.set(prepared.fillId, signed);
+    this.recordOwedFill(prepared);
     this.acceptedOrders.set(prepared.orderId.toLowerCase(), {
       fillId: prepared.fillId,
       fillAuthDigest: fillAuthDigest(prepared.fillAuthDomain, prepared.fillAuth),
@@ -960,7 +977,10 @@ export class OnchainEscrowGateway {
     this.filling.add(prepared.fillId);
     try {
       const outcome = await this.sendFill(prepared);
-      if (outcome.status === "confirmed") this.landed.set(prepared.fillId, { txHash: outcome.txHash, blockNumber: outcome.blockNumber });
+      if (outcome.status === "confirmed") {
+        this.landed.set(prepared.fillId, { txHash: outcome.txHash, blockNumber: outcome.blockNumber });
+        this.owedFills.delete(prepared.fillId);
+      }
       return outcome;
     } finally {
       this.filling.delete(prepared.fillId);
@@ -1043,7 +1063,10 @@ export class OnchainEscrowGateway {
   // the inventory and allowance, and a `staticCall` of the exact fill. Shared by
   // `accept` (before signing) and `fill` (before sending). Returns the filler
   // contract.
-  private async fillPreflight(prepared: PreparedFill, dest: DestinationChainConfig): Promise<ethers.Contract> {
+  // `reserveOwed` (from `accept` only) also holds back the inventory this
+  // gateway's other accepted fills of the token still owe. Never from `fill`:
+  // once accepted, refusing the fill is the no-show itself.
+  private async fillPreflight(prepared: PreparedFill, dest: DestinationChainConfig, reserveOwed = false): Promise<ethers.Contract> {
     const provider = providerOf(dest.signer);
     const filler = new ethers.Contract(dest.fillerContract, RIDDLER_FILLER_ABI, provider);
     const a = prepared.fillAuth;
@@ -1054,8 +1077,13 @@ export class OnchainEscrowGateway {
     const erc20 = new ethers.Contract(a.token, ERC20_ABI, provider);
     const amount = BigInt(a.amount);
     const balance: bigint = await erc20.getFunction("balanceOf")(self);
-    if (balance < amount) {
-      throw new EscrowRefusalError("insufficient_inventory", `holds ${balance} of ${a.token}, fill needs ${amount}`, prepared.orderId);
+    const owed = reserveOwed ? await this.owedInventory(prepared, filler, provider) : 0n;
+    if (balance < amount + owed) {
+      throw new EscrowRefusalError(
+        "insufficient_inventory",
+        `holds ${balance} of ${a.token}, fill needs ${amount}${owed > 0n ? ` on top of ${owed} owed to fills already accepted` : ""}`,
+        prepared.orderId,
+      );
     }
     const allowance: bigint = await erc20.getFunction("allowance")(self, dest.fillerContract);
     if (allowance < amount) {
@@ -1074,6 +1102,32 @@ export class OnchainEscrowGateway {
       throw new EscrowRefusalError("simulation_failed", `fill would revert: ${describeRevert(err)}`, prepared.orderId);
     }
     return filler;
+  }
+
+  // The inventory of `prepared`'s token on its destination that this gateway's
+  // other accepted fills still owe: not seen landing here, not past their
+  // FillAuth deadline by destination time, and not `filled` on chain.
+  private async owedInventory(prepared: PreparedFill, filler: ethers.Contract, provider: ethers.Provider): Promise<bigint> {
+    const chainId = BigInt(prepared.destinationChainId);
+    const token = prepared.fillAuth.token.toLowerCase();
+    const candidates = [...this.owedFills].filter(
+      ([fillId, f]) => fillId !== prepared.fillId && f.chainId === chainId && f.token === token && !this.landed.has(fillId),
+    );
+    if (candidates.length === 0) return 0n;
+    const now = await this.nowSec([provider], false);
+    let owed = 0n;
+    for (const [fillId, f] of candidates) {
+      if (now > f.deadline) {
+        this.owedFills.delete(fillId);
+        continue;
+      }
+      if (await filler.getFunction("filled")(fillId)) {
+        this.owedFills.delete(fillId);
+        continue;
+      }
+      owed += f.amount;
+    }
+    return owed;
   }
 
   // What must hold on the ORIGIN for the fill to be repaid: claims not paused
