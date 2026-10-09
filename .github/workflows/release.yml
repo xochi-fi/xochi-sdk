@@ -58,19 +58,35 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      # Actions are pinned to full commit SHAs: this job holds id-token: write,
+      # so a moved tag would run someone else's code with publish rights.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Full history, so the tagged commit can be checked against main.
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      # Publish only what main has reviewed: a tag pushed on an unmerged branch
+      # would otherwise publish bytes no one approved.
+      - name: Tagged commit is on main
+        run: |
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "tagged commit $GITHUB_SHA is not on main; refusing to publish" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
           cache: npm
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing needs npm >= 11.5.1; refuse rather than fall back to
-      # a token-less publish that fails late with an opaque 404.
+      # a token-less publish that fails late with an opaque 404. Pinned exactly,
+      # so the tool that publishes is the one reviewed here.
       - name: npm >= 11.5.1 (trusted publishing)
         run: |
-          npm install -g npm@^11.5.1
+          npm install -g npm@11.21.0
           v="$(npm --version)"
           node -e '
             const [a, b, c] = process.argv[1].split(".").map(Number);
@@ -130,7 +146,7 @@ jobs:
 
       - name: Install foundry
         if: steps.pkg.outputs.name == '@xochi/sdk'
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
 
