@@ -6,17 +6,14 @@
   "type": "module",
   "exports": {
     "./config": "./src/config.ts",
-    "./sign-only": "./src/sign-only.ts",
-    "./types": "./src/types.ts"
+    "./sign-only": "./src/sign-only.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:conformance": "vitest run test/conformance.test.ts",
     "test:fee": "vitest run test/fee.test.ts",
-    "test:stealth": "vitest run test/stealth.test.ts",
-    "test:wire": "vitest run test/wire-contract.test.ts",
-    "test:differ": "vitest run test/wire-differ.test.ts"
+    "test:wire": "vitest run test/wire-contract.test.ts"
   },
   "license": "MIT",
   "dependencies": {
