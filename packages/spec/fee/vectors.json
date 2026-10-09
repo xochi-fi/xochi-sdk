@@ -1,0 +1,397 @@
+[
+  {
+    "name": "standard-stable",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "stable",
+      "input_amount": "1000000"
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 6,
+      "venue_fee": "600",
+      "routing_fee_bps": 8,
+      "routing_fee": "800",
+      "total_bps": 22,
+      "total_fee": "2200",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "standard-volatile",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "volatile",
+      "input_amount": "1000000"
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 10,
+      "venue_fee": "1000",
+      "routing_fee_bps": 12,
+      "routing_fee": "1200",
+      "total_bps": 40,
+      "total_fee": "4000",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "trusted-stable",
+    "input": {
+      "trust_score": 25,
+      "asset_class": "stable",
+      "input_amount": "1000000"
+    },
+    "expected": {
+      "tier": "trusted",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 5,
+      "venue_fee": "500",
+      "routing_fee_bps": 6,
+      "routing_fee": "600",
+      "total_bps": 19,
+      "total_fee": "1900",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "trusted-volatile",
+    "input": {
+      "trust_score": 25,
+      "asset_class": "volatile",
+      "input_amount": "1000000"
+    },
+    "expected": {
+      "tier": "trusted",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 8,
+      "venue_fee": "800",
+      "routing_fee_bps": 9,
+      "routing_fee": "900",
+      "total_bps": 35,
+      "total_fee": "3500",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "verified-stable",
+    "input": {
+      "trust_score": 50,
+      "asset_class": "stable",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance"
+      ]
+    },
+    "expected": {
+      "tier": "verified",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 3,
+      "venue_fee": "300",
+      "routing_fee_bps": 4,
+      "routing_fee": "400",
+      "total_bps": 15,
+      "total_fee": "1500",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "verified-volatile",
+    "input": {
+      "trust_score": 50,
+      "asset_class": "volatile",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance"
+      ]
+    },
+    "expected": {
+      "tier": "verified",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 5,
+      "venue_fee": "500",
+      "routing_fee_bps": 6,
+      "routing_fee": "600",
+      "total_bps": 29,
+      "total_fee": "2900",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "premium-stable",
+    "input": {
+      "trust_score": 75,
+      "asset_class": "stable",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance",
+        "non_membership"
+      ]
+    },
+    "expected": {
+      "tier": "premium",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 2,
+      "venue_fee": "200",
+      "routing_fee_bps": 2,
+      "routing_fee": "200",
+      "total_bps": 12,
+      "total_fee": "1200",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "premium-volatile",
+    "input": {
+      "trust_score": 75,
+      "asset_class": "volatile",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance",
+        "non_membership"
+      ]
+    },
+    "expected": {
+      "tier": "premium",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 3,
+      "venue_fee": "300",
+      "routing_fee_bps": 4,
+      "routing_fee": "400",
+      "total_bps": 25,
+      "total_fee": "2500",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "institutional-stable",
+    "input": {
+      "trust_score": 100,
+      "asset_class": "stable",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance",
+        "non_membership"
+      ]
+    },
+    "expected": {
+      "tier": "institutional",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 1,
+      "venue_fee": "100",
+      "routing_fee_bps": 1,
+      "routing_fee": "100",
+      "total_bps": 10,
+      "total_fee": "1000",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "institutional-volatile",
+    "input": {
+      "trust_score": 100,
+      "asset_class": "volatile",
+      "input_amount": "1000000",
+      "attestations": [
+        "compliance",
+        "non_membership"
+      ]
+    },
+    "expected": {
+      "tier": "institutional",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 2,
+      "venue_fee": "200",
+      "routing_fee_bps": 2,
+      "routing_fee": "200",
+      "total_bps": 22,
+      "total_fee": "2200",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "gated-verified-to-trusted",
+    "input": {
+      "trust_score": 50,
+      "asset_class": "stable",
+      "input_amount": "1000000"
+    },
+    "expected": {
+      "tier": "trusted",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 5,
+      "venue_fee": "500",
+      "routing_fee_bps": 6,
+      "routing_fee": "600",
+      "total_bps": 19,
+      "total_fee": "1900",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "acp-origin-standard-stable",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "stable",
+      "input_amount": "1000000",
+      "acp_origin": true
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 6,
+      "venue_fee": "600",
+      "routing_fee_bps": 0,
+      "routing_fee": "0",
+      "total_bps": 14,
+      "total_fee": "1400",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "impact-standard-stable",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "stable",
+      "input_amount": "1000000",
+      "fill_usd": 2000,
+      "available_liquidity_usd": 10000
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "800",
+      "price_impact_bps": 10,
+      "price_impact": "1000",
+      "venue_fee_bps": 6,
+      "venue_fee": "600",
+      "routing_fee_bps": 8,
+      "routing_fee": "800",
+      "total_bps": 32,
+      "total_fee": "3200",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "impact-capped-volatile",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "volatile",
+      "input_amount": "1000000",
+      "fill_usd": 100000,
+      "available_liquidity_usd": 1000
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "1800",
+      "price_impact_bps": 150,
+      "price_impact": "15000",
+      "venue_fee_bps": 10,
+      "venue_fee": "1000",
+      "routing_fee_bps": 12,
+      "routing_fee": "1200",
+      "total_bps": 190,
+      "total_fee": "19000",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "floor-truncation-stable",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "stable",
+      "input_amount": "333333"
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "stable",
+      "solver_fee_bps": 8,
+      "solver_fee": "266",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 6,
+      "venue_fee": "199",
+      "routing_fee_bps": 8,
+      "routing_fee": "266",
+      "total_bps": 22,
+      "total_fee": "731",
+      "surplus_share_pct": 15
+    }
+  },
+  {
+    "name": "floor-truncation-volatile",
+    "input": {
+      "trust_score": 0,
+      "asset_class": "volatile",
+      "input_amount": "333333"
+    },
+    "expected": {
+      "tier": "standard",
+      "asset_class": "volatile",
+      "solver_fee_bps": 18,
+      "solver_fee": "599",
+      "price_impact_bps": 0,
+      "price_impact": "0",
+      "venue_fee_bps": 10,
+      "venue_fee": "333",
+      "routing_fee_bps": 12,
+      "routing_fee": "399",
+      "total_bps": 40,
+      "total_fee": "1331",
+      "surplus_share_pct": 15
+    }
+  }
+]

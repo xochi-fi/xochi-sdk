@@ -2,6 +2,19 @@
 
 All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **The protocol packages moved in from the archived `axol-io/riddler-sdk`** (snapshot, no history; [ADR 0001](docs/adr/0001-consolidate-into-xochi-sdk.md)): `packages/spec` (`@xochi/spec` 0.8.0, was `@riddler/spec`), `packages/signer` (`@xochi/signer` 0.5.0, was `@riddler/signer`), `packages/solver-sdk` (`@xochi/solver-sdk` 0.4.0, was `@riddler/solver-sdk`, not yet published), the private `packages/reference` (chain/token registry, fee reference, sign-only composition for the generators), the `sdks/{python,go,rust}` conformance ports, the four producer-drift probes (`scripts/verify-*.mjs`, `.github/workflows/producer-drift.yml`) and their CI gates. Every digest, signature, typehash and domain separator in every vector is byte-identical; only `description` strings naming a package changed. EIP-712 domain and contract names (`Xochi`, `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are unchanged. The `riddler` taker CLI moved to Riddler's private `packages/e2e-signer`.
+- **`.github/workflows/release.yml`**: tag-triggered npm publishing with provenance for `sdk-v*`, `spec-v*`, `signer-v*`, `client-v*` and `widget-lib-v*`.
+
+### Changed
+
+- **`test/fee-schedule-drift.test.ts` runs in `npm test` again**, against the workspace `@xochi/spec` (`packages/spec/fee/schedule.json`) instead of a sibling `../riddler-sdk` checkout or `RIDDLER_SPEC_FEE_SCHEDULE`; both fallbacks are removed. A missing package fails the test file rather than skipping it. `npm run drift-check` and `vitest.drift.config.ts` are removed: every other drift test already ran in `npm test`. `src/tiers.ts` keeps its own `FEE_SCHEDULE` rather than reading the JSON at runtime, so `@xochi/sdk` gains no runtime dependency.
+- **`@xochi/client` depends on the workspace `@xochi/signer`** (was the unpublished `@riddler/signer`).
+- **TypeScript 6** across the repo (was `~5.6` at the root): the moved packages need it. `types: ["node"]` is now explicit in the root tsconfigs, and `@xochi/client` / `@xochi/widget-lib` take `Promise.withResolvers` from `ES2024.Promise`.
+
 ## [0.4.0] - 2026-09-30
 
 Supersedes 0.3.0. 0.3.0 was published on 2026-09-25 from `c17b94b`, before the review fixes and the ERC-8262 `0147684` sync, and is deprecated on npm: its `checkCompliance` counts any proof type as compliance, `verifyTierProof` trusts the claimed tier, and six bundled circuits do not match the ERC-8262 `0147684` verifiers. This entry is written against 0.2.0 and so restates what 0.3.0 changed; the 0.3.0-only subset is under [0.3.0] below. Upgrading from 0.3.0 or 0.2.0 takes the same steps.

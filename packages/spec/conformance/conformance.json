@@ -1,0 +1,2587 @@
+[
+  {
+    "name": "erc3009-ethereum-usdc",
+    "protocol": "erc3009",
+    "chain": "ethereum",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0xcdb2e7fb23a414b5ec344a7af2da3c43e21b5b14895cb03ec8adb56d528fbf44",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 1,
+      "verifyingContract": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0xcdb2e7fb23a414b5ec344a7af2da3c43e21b5b14895cb03ec8adb56d528fbf44"
+    },
+    "expected_digest": "0x94876456c6819320b4c97cfd332472180a43bf8e8b6fac0338967b7bce93c06c",
+    "expected_signature": "0x3e9434a82a3c9c1b056dd03063ac4eaa8e649390fa40f520866798cf06fc2dbe7df6c6006fde1e0bb639f87563bf838de793b0667d4281f06a53bec7b3eb5e8a1b",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb300cdb2e7fb23a414b5ec344a7af2da3c43e21b5b14895cb03ec8adb56d528fbf44"
+  },
+  {
+    "name": "erc3009-base-usdc",
+    "protocol": "erc3009",
+    "chain": "base",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0xca1484421115028a5efb4b65ac823e48c8785aa552c8201a1fd45d06b3e1c086",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 8453,
+      "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0xca1484421115028a5efb4b65ac823e48c8785aa552c8201a1fd45d06b3e1c086"
+    },
+    "expected_digest": "0x7a5be11bec68c28cbfc34a845990af70a033c1f595d2ee9629db11e8d9d96dff",
+    "expected_signature": "0xba82a59e720bb7c7685cf795e59689faa42bcb28b4711f930a15b9e46c79f5c8645159b32a315bd4a9330256d4ad2df65baeabd144bf32d6ac0795a284a1d9581c",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb300ca1484421115028a5efb4b65ac823e48c8785aa552c8201a1fd45d06b3e1c086"
+  },
+  {
+    "name": "erc3009-optimism-usdc",
+    "protocol": "erc3009",
+    "chain": "optimism",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0xb04c55e50d78fada6de14852aa2c28300b55faa9be62cbf47301b069fad03c53",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 10,
+      "verifyingContract": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0xb04c55e50d78fada6de14852aa2c28300b55faa9be62cbf47301b069fad03c53"
+    },
+    "expected_digest": "0x93e645e1cfad73c7ecde898ed9fbeec0c36deeb2aa677858b3f1c0682ac3b00c",
+    "expected_signature": "0x91df9a4e2bedebe530d1a4a915a744964936c0ccd1b254fc66993d3a212409587bcaf9df4337b94e97b423d39fd105530bdaeec57ec5e576ea9739150671d9f31b",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb300b04c55e50d78fada6de14852aa2c28300b55faa9be62cbf47301b069fad03c53"
+  },
+  {
+    "name": "erc3009-arbitrum-usdc",
+    "protocol": "erc3009",
+    "chain": "arbitrum",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0x91e5cf3d978166ca9bfdabf841e0d59c06fc867837f9e44ecf4115f9aa8c0539",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 42161,
+      "verifyingContract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0x91e5cf3d978166ca9bfdabf841e0d59c06fc867837f9e44ecf4115f9aa8c0539"
+    },
+    "expected_digest": "0x2f0902f35b44bbba4afe1667bf709d4db70b7893a9b110291cf392597a539ed5",
+    "expected_signature": "0x189a52ea4214a67202fc724e34080cca809d119ce24fac3f03144abc7e34bcda06c293368d71cfdf7fdb0b2af7f0cc12450abdf94633a8debee9963a7d618bb11c",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb30091e5cf3d978166ca9bfdabf841e0d59c06fc867837f9e44ecf4115f9aa8c0539"
+  },
+  {
+    "name": "erc3009-polygon-usdc",
+    "protocol": "erc3009",
+    "chain": "polygon",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0x71ea953cd260b6ead7f821140b0a8749bf66e97d7047ccb55e574a2206601156",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 137,
+      "verifyingContract": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0x71ea953cd260b6ead7f821140b0a8749bf66e97d7047ccb55e574a2206601156"
+    },
+    "expected_digest": "0x8c4a0fd46c08d8f1da4f9b42a82ab609587e5f00526426e1c5200f7661961019",
+    "expected_signature": "0x8d96cb10d7cb55babc02433ceec10615e041c2c3e05c3ada431cfea55246387a2eb3a42d231047d6bface10b41aa28235f692289d4fe893557829f2a0e7042fd1c",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb30071ea953cd260b6ead7f821140b0a8749bf66e97d7047ccb55e574a2206601156"
+  },
+  {
+    "name": "erc3009-eth-sepolia-usdc",
+    "protocol": "erc3009",
+    "chain": "eth-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0x8a3cdd13b6e3343b30bd715f99f085b09d0c3cd998f36bfcee69e9d993a715e8",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USDC",
+      "version": "2",
+      "chainId": 11155111,
+      "verifyingContract": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0x8a3cdd13b6e3343b30bd715f99f085b09d0c3cd998f36bfcee69e9d993a715e8"
+    },
+    "expected_digest": "0xb5758a2502113adb5185efb66104c425e3a95a409f8b945eed7c237a47451749",
+    "expected_signature": "0xb263a7d31033b8bbbdefc8b8328a3ffad97d6354e637f1c5c13c9181fef576bb008f358979fe2e7838f288b2a6b49dfc9a3e2ae31e244b47a56009347d49a60e1b",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb3008a3cdd13b6e3343b30bd715f99f085b09d0c3cd998f36bfcee69e9d993a715e8"
+  },
+  {
+    "name": "erc3009-op-sepolia-usdc",
+    "protocol": "erc3009",
+    "chain": "op-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0xb6f02ad0379948efce363ceb8fbb5e94811b8486bd9ee7041c52fc062c526585",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USDC",
+      "version": "2",
+      "chainId": 11155420,
+      "verifyingContract": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0xb6f02ad0379948efce363ceb8fbb5e94811b8486bd9ee7041c52fc062c526585"
+    },
+    "expected_digest": "0x244a40b30904a261d7fbd8ca49fa59469994973c3e93fc0ee03864ccd56df8a2",
+    "expected_signature": "0x828a3c0a16cc5106452c1357cee6a6b750316035501b760027463750eb532c8e4ee261279fc13a86534113727a1115b12b85074d1fbf941c9a58205b87f344691b",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb300b6f02ad0379948efce363ceb8fbb5e94811b8486bd9ee7041c52fc062c526585"
+  },
+  {
+    "name": "erc3009-base-sepolia-usdc",
+    "protocol": "erc3009",
+    "chain": "base-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0x8675606543b6eb09956bd1eca51069e89befb7a538bfc0301348889f7f9e3eb2",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USDC",
+      "version": "2",
+      "chainId": 84532,
+      "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0x8675606543b6eb09956bd1eca51069e89befb7a538bfc0301348889f7f9e3eb2"
+    },
+    "expected_digest": "0x1643cffce6a70e845bab2edb3e0bc585338dc6b8136feeb9165f99b59185c875",
+    "expected_signature": "0xac3df2a37f90570a775ae2c7d2ca9cee4c0c9f485222f87c5fa050beea2b765e44ae8beebecaa6c5ef8cafb1d66000aafc67c1508bf53a4a88c003c80b0930051c",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb3008675606543b6eb09956bd1eca51069e89befb7a538bfc0301348889f7f9e3eb2"
+  },
+  {
+    "name": "erc3009-arb-sepolia-usdc",
+    "protocol": "erc3009",
+    "chain": "arb-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "0x6489ea977d40f617761e1850c28ad869bf110a739c1ade52fb5ea5f0d13c81fa",
+        "type": "erc3009"
+      }
+    },
+    "domain": {
+      "name": "USD Coin",
+      "version": "2",
+      "chainId": 421614,
+      "verifyingContract": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+    },
+    "message": {
+      "from": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "value": "1000000",
+      "validAfter": 0,
+      "validBefore": 1900000000,
+      "nonce": "0x6489ea977d40f617761e1850c28ad869bf110a739c1ade52fb5ea5f0d13c81fa"
+    },
+    "expected_digest": "0x0b8772fcf683f39f9f7e1de3457758f471476458888def0fd9f67972235580df",
+    "expected_signature": "0xbb8a1b5dc94b545db7faa3963bea284f1f4ad8badf8daf2c26be4eb8d333dce4532c278ecb8ab068ac2b13c9e12f8f422f9fd779e591b2d8b46f0992282345c11b",
+    "expected_signed_object": "0x0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000713fb3006489ea977d40f617761e1850c28ad869bf110a739c1ade52fb5ea5f0d13c81fa"
+  },
+  {
+    "name": "permit2-ethereum-usdc",
+    "protocol": "permit2",
+    "chain": "ethereum",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0xbe2b48018c1dd39f8844ac4f5ad245fb7aa295f2c62895682e8c2026707fde21",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 1,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0xbe2b48018c1dd39f8844ac4f5ad245fb7aa295f2c62895682e8c2026707fde21"
+      }
+    },
+    "expected_digest": "0x2652e65e0cb1fdbf56e2c969c10457357ccea887fc97b510e3f93acaa77af9cd",
+    "expected_signature": "0xddd37e52753e3cd8681b4b0ca490a5a1c6fca0b278993a3231398059516b5438443fc88d293404d20e92aad692fbfc4ef6ed9f453c052f4dccb8d6a4a31ef8751c",
+    "expected_signed_object": "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-base-usdc",
+    "protocol": "permit2",
+    "chain": "base",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x8ee44bc2b41eb3bf109c81512859fb049bb2fdb4d1497371dbd6e991e75e630b",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 8453,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x8ee44bc2b41eb3bf109c81512859fb049bb2fdb4d1497371dbd6e991e75e630b"
+      }
+    },
+    "expected_digest": "0x5688658e3e04a4e4fc39d37dbc3849f47b8e9c54449ac88ac786c5775c571aaa",
+    "expected_signature": "0x6a1325bece7d6f9b28c952e010e0ff859d57b8181134cb871d69710aac44ef970526d59213bff08be0fd1bc8ee3cbb35ad447da8b2692210e0c3703905358f581b",
+    "expected_signed_object": "0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-optimism-usdc",
+    "protocol": "permit2",
+    "chain": "optimism",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x27f8b248d4f5d9bfd76624cd2e3c34c1eb6732d193aae3a65ce5bfe192214be4",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 10,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x27f8b248d4f5d9bfd76624cd2e3c34c1eb6732d193aae3a65ce5bfe192214be4"
+      }
+    },
+    "expected_digest": "0x55c841bedd1c0a7e8ba460fe24b9844a1bd5144514a2e7bd5317f0c67eb6273c",
+    "expected_signature": "0x86d6c2bdc0654e8f63badfd089b3ad317798f205e38c4d3b35cc6ed5dec87d810ffd41325e576953307a5f1c1a3a0859b3145a2b51bd7bd9b683bf836c88bd391c",
+    "expected_signed_object": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff8500000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-arbitrum-usdc",
+    "protocol": "permit2",
+    "chain": "arbitrum",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x32a95bb488a09b396ceb18dada1bb7296477ba374f44559c86343b644bc3c550",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 42161,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x32a95bb488a09b396ceb18dada1bb7296477ba374f44559c86343b644bc3c550"
+      }
+    },
+    "expected_digest": "0x8da1c4f5eb32790283513d82ea5c8eda4a6dca7cf1494627ec33366e535a2705",
+    "expected_signature": "0xd10c73efeab3001bc8c03617c3c10a532232317deba0b30ccdabf3de04d4bc2a002afa19122d7565265b9fcecd51831c9d360864d95d1ca2680dfe5aeb1bba101c",
+    "expected_signed_object": "0x000000000000000000000000af88d065e77c8cc2239327c5edb3a432268e583100000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-polygon-usdc",
+    "protocol": "permit2",
+    "chain": "polygon",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x8364cea4643d4deab4f856964e466059d062672e3d16452782537c8901fc908e",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 137,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x8364cea4643d4deab4f856964e466059d062672e3d16452782537c8901fc908e"
+      }
+    },
+    "expected_digest": "0x87af2fdc451c5457a4c3427666d42725220e7938367684728a1cc8bde2154238",
+    "expected_signature": "0x7e80dc5fd2ce50959c46f7ce14494a020f6af644683f67b87addf17d4c4cdd673404200f1b29340b16dd09127deaceef392d667aa52f955b273f29dc12af95341c",
+    "expected_signed_object": "0x0000000000000000000000003c499c542cef5e3811e1192ce70d8cc03d5c335900000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-eth-sepolia-usdc",
+    "protocol": "permit2",
+    "chain": "eth-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0xbbd1237e6f6b0284f311299016b075d8a254ed9e9edd8ce93a49fd5bd8f5b4b3",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 11155111,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0xbbd1237e6f6b0284f311299016b075d8a254ed9e9edd8ce93a49fd5bd8f5b4b3"
+      }
+    },
+    "expected_digest": "0xf18f2d13f79de766872f23f6caedb5a8a02dedfecdce3d9631d5907961570a79",
+    "expected_signature": "0xb8d3c24cce4d835cc77084e5b3aed3e8f9794ed6d89a83854240e3c56f7233c216b6bd14f8e04b72e71b5cffab2c9b6e3052eeb1cc58fa92b1bc116977e20c971b",
+    "expected_signed_object": "0x0000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c723800000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-op-sepolia-usdc",
+    "protocol": "permit2",
+    "chain": "op-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x0d33203479df1c786ee20c330bd9ebe70b8009fa3144c76894259695427d81a2",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 11155420,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x0d33203479df1c786ee20c330bd9ebe70b8009fa3144c76894259695427d81a2"
+      }
+    },
+    "expected_digest": "0x49359e3fa42901857aed0e64f04b84cc3555272a54671a0cec81891780edb800",
+    "expected_signature": "0xdbfa0b660ce8e16363ebb756be24018271febc69df274583bfb92afe47a3574e3ca5487c395756c60198aac7d307f92e1bc6bba079db047c869af61b957022591b",
+    "expected_signed_object": "0x0000000000000000000000005fd84259d66cd46123540766be93dfe6d43130d700000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-base-sepolia-usdc",
+    "protocol": "permit2",
+    "chain": "base-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x0ce0ccbbdb408cd5ce0abe986951bed1d81792f8adf13837de45fe32915b4502",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 84532,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x0ce0ccbbdb408cd5ce0abe986951bed1d81792f8adf13837de45fe32915b4502"
+      }
+    },
+    "expected_digest": "0x29d3386f8e20ecc4a1d6e9470e47a4ba9039c8071d9ee279f3959673636eca3e",
+    "expected_signature": "0xc2e76ca2e97e5025e004411a42d9b9d802eefb749c6ab0ef97108c4020d419d813edd3fbaf5c7907a8a125b6215b3072fda90dd3867d98f1abb3a9f241a2bce71c",
+    "expected_signed_object": "0x000000000000000000000000036cbd53842c5426634e7929541ec2318f3dcf7e00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-arb-sepolia-usdc",
+    "protocol": "permit2",
+    "chain": "arb-sepolia",
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x3ef4a914a9d0016eba44c4ed3e11b8599b6a5bdcaa00532cbc7e55eb5bf538a9",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 421614,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x3ef4a914a9d0016eba44c4ed3e11b8599b6a5bdcaa00532cbc7e55eb5bf538a9"
+      }
+    },
+    "expected_digest": "0x7e0c996aa84a9bd0931c0b52f67856aca9444901fba7e61597987e597d0ce7d7",
+    "expected_signature": "0x7df6e043bf7bafbb78a8cfcc81c7a4339cfa2f267cab250b8c80299b2bd422802e6e799a78e28077c8c772d8637cea23cdaab4d82941e5a8a826fc53726a9b971c",
+    "expected_signed_object": "0x00000000000000000000000075faf114eafb1bdbe2f0316df893fd58ce46aa4d00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-ethereum-usdt",
+    "protocol": "permit2",
+    "chain": "ethereum",
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0xa6200c291a3fd8f0f523d7912ec189aa45414e140db9d9f8fd3de6587f90807d",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 1,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0xa6200c291a3fd8f0f523d7912ec189aa45414e140db9d9f8fd3de6587f90807d"
+      }
+    },
+    "expected_digest": "0x3a7a1671951a2e4cf4645bcfe59588af375eee2deafa968ee91d081ec5af91ac",
+    "expected_signature": "0x3414cfa1defe3a09a195bd1367c2000ec51abc3b4db34ca68dffeb3dd9f507925dfe3fc49282f341b996e7ee5d9d4719e9734f04f2f65312f48791bf87ff29a41b",
+    "expected_signed_object": "0x000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec700000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-base-usdt",
+    "protocol": "permit2",
+    "chain": "base",
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x3657dab2bda22dcdd2da5d592964c686d2b0ba758c4436fef913a18ffe2ea69d",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 8453,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x3657dab2bda22dcdd2da5d592964c686d2b0ba758c4436fef913a18ffe2ea69d"
+      }
+    },
+    "expected_digest": "0x16504e01fd12c7b789e6aec826fc9275f9f058ae4c6ce391337cde043ad15f0b",
+    "expected_signature": "0xa9605155dc9df85f894b70c0784c5f2fd5525e21e90cc9e1ec56105f5ec3e3a674bf40d10f3533bc539abc6cd057ab4fc794e59b9fec2c74b772016d5af3707b1b",
+    "expected_signed_object": "0x000000000000000000000000fde4c96c8593536e31f229ea8f37b2ada2699bb200000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-optimism-usdt",
+    "protocol": "permit2",
+    "chain": "optimism",
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0xd5c9bdaf8eef544b889315b5a996d54670010394064ff1a26134b74389657263",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 10,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0xd5c9bdaf8eef544b889315b5a996d54670010394064ff1a26134b74389657263"
+      }
+    },
+    "expected_digest": "0xacb2320f88449a157bddc1b29915ceec1e03cb3fbcd753402d6d61ba9bd84087",
+    "expected_signature": "0xd88373a02c0813619b8da53bfe9825c39b95f0f60f41260a256dbba4fac06e104b581c34c6f35ecafc2f10a419e84f394430fed85ddea622abf88b5ce508de2b1b",
+    "expected_signed_object": "0x00000000000000000000000094b008aa00579c1307b0ef2c499ad98a8ce58e5800000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-arbitrum-usdt",
+    "protocol": "permit2",
+    "chain": "arbitrum",
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0xbea50c31a7d6c57bc2cace6a3c56b79c0f75ab2403b31f5afaa2c765228cb433",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 42161,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0xbea50c31a7d6c57bc2cace6a3c56b79c0f75ab2403b31f5afaa2c765228cb433"
+      }
+    },
+    "expected_digest": "0x246b4e0858a8bf6104525458684b1e2f628314e12b714eae40bd4d0168528f16",
+    "expected_signature": "0x871535b4ed7af5b3b1c67a1187c1db24b60150ed5bfa2f4ba0f4daf27d8ce3fa797b20247dc074956ce5e4b2afc5167cde1f61ca0c266983f5fe7629ddb375b61b",
+    "expected_signed_object": "0x000000000000000000000000fd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb900000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-polygon-usdt",
+    "protocol": "permit2",
+    "chain": "polygon",
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x4f0209fc1c1c300360036f5a572c146c85428f1483fcc1ef5986a204683ed291",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 137,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x4f0209fc1c1c300360036f5a572c146c85428f1483fcc1ef5986a204683ed291"
+      }
+    },
+    "expected_digest": "0xf5927282d81f35cb51e4d53cdcee17690e33bd34a0ef0bb5dc3ebe0737a6424b",
+    "expected_signature": "0x7253948d2bd36090199ba6105b392d662f30767a148ad5f5e608d819434bcf746bd2f8261b79b60648d809c54a0c4a1608645681182e1ae83f77c166215931211c",
+    "expected_signed_object": "0x000000000000000000000000c2132d05d31c914a87c6611c10748aeb04b58e8f00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-ethereum-weth",
+    "protocol": "permit2",
+    "chain": "ethereum",
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x0a7cd03800cc48c620a7269efbf9c2fdaf6b548542955df916c82f993bcafe0c",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 1,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x0a7cd03800cc48c620a7269efbf9c2fdaf6b548542955df916c82f993bcafe0c"
+      }
+    },
+    "expected_digest": "0xa41208b3e89308bb1c1443b5d6acd0476ce8fbb3691477650905ba597b59fdfb",
+    "expected_signature": "0xf4950360c29d347bceec02dd3750a52159eaa736a6a9e7b362d05f5e756c59ae3eb3f84450f5969d9f572ca70c21d730483e76f10d1f34b91baf8ba9e08f693b1c",
+    "expected_signed_object": "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc200000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-base-weth",
+    "protocol": "permit2",
+    "chain": "base",
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x4200000000000000000000000000000000000006"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x1f9551d63de72edb8609d8cd46191dcfcd1c1960b95c566200a34bb02e1bc7d1",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 8453,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x4200000000000000000000000000000000000006",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x1f9551d63de72edb8609d8cd46191dcfcd1c1960b95c566200a34bb02e1bc7d1"
+      }
+    },
+    "expected_digest": "0x42d5ea016d86ffaf6715972629984e162e225e4fca84d334fe24eb5d3b443c4f",
+    "expected_signature": "0x6e35af58c87ec3bb0020c8fbb29a144cf5a4f7e70aa50e6dec1703b2c3d0476218858cf55abfbcbe92b4c3c7e532ad79aa0a12efd90d4db0b7a4cd9c335d08a71b",
+    "expected_signed_object": "0x000000000000000000000000420000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-optimism-weth",
+    "protocol": "permit2",
+    "chain": "optimism",
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x4200000000000000000000000000000000000006"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x9c3d0398e0852e9e2067a26ebcc1fa4d452c52cedaba0d490f9c766b2d0d1716",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 10,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x4200000000000000000000000000000000000006",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x9c3d0398e0852e9e2067a26ebcc1fa4d452c52cedaba0d490f9c766b2d0d1716"
+      }
+    },
+    "expected_digest": "0x141f921dc1f4e1c5332fade14a4656a9fb4cbff4a9ae521621e473c40a25a5f8",
+    "expected_signature": "0x398f2f5338c001a6cffc8707f6b35afbc54356e33504bbeafa9883f3a7b38dbc40a6d8a4a071c46659f05bdadd8d0d1e031d896c9bf36555deb44c6e1bcdbdaa1c",
+    "expected_signed_object": "0x000000000000000000000000420000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-arbitrum-weth",
+    "protocol": "permit2",
+    "chain": "arbitrum",
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x884c12671d8ad27fd5e903ecec0c96818add134678309d2a1a248767aa7ecc25",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 42161,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x884c12671d8ad27fd5e903ecec0c96818add134678309d2a1a248767aa7ecc25"
+      }
+    },
+    "expected_digest": "0x9a5bc900c45181e74688b19a899020da39c7ce6b324323c529b6b1248e7b1930",
+    "expected_signature": "0xcbcdb273880891e6e1d4d3ab0ddcafc24b8bb5acae1638bd4ec32cb079881c3f0dc6f18c45e179880885819d64cb360206c0815a2dde26e3f0472800d89877fc1b",
+    "expected_signed_object": "0x00000000000000000000000082af49447d8a07e3bd95bd0d56f35241523fbab100000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "permit2-polygon-weth",
+    "protocol": "permit2",
+    "chain": "polygon",
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "quote": {
+      "request": {
+        "inputAmount": "1000000",
+        "refundAddress": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "inputToken": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619"
+      },
+      "quoteExpires": 1900000000,
+      "gasless": {
+        "to": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+        "nonce": "1",
+        "orderId": "0x6495d6c7ceaa5f4148a4fc0ab682a77435c3868e5cf6fb730c49c687bc823716",
+        "type": "permit2"
+      }
+    },
+    "domain": {
+      "name": "Permit2",
+      "chainId": 137,
+      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "message": {
+      "permitted": {
+        "token": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+        "amount": "1000000"
+      },
+      "spender": "0xc6E555dfcC47e4A3bfecd6879570044ADc0270ff",
+      "nonce": "1",
+      "deadline": 1900000000,
+      "witness": {
+        "orderId": "0x6495d6c7ceaa5f4148a4fc0ab682a77435c3868e5cf6fb730c49c687bc823716"
+      }
+    },
+    "expected_digest": "0xdc9e5fe35881d98f120bd3f173db64ebf4c9169f40c29c8a57a07f691e1858c7",
+    "expected_signature": "0x229b35f8ad48d3ac7198d307d2203ee3478bfb7130e8424a1ac2c807883dbf212d49463893bd21bd575b212246d1ca124bdbc38770474d2951a9ab5cc6ea9b7a1b",
+    "expected_signed_object": "0x0000000000000000000000007ceb23fd6bc0add59e62ac25578270cff1b9f61900000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000c6e555dfcc47e4a3bfecd6879570044adc0270ff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000713fb300"
+  },
+  {
+    "name": "xochi-base-optimism-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-usdc",
+        "quoteId": "conformance-xochi-base-optimism-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "toToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0xc8a7930af8bfbd2d3d2674ae179304112d5f814dafb98f0f61c52d42e422fce4",
+    "expected_signature": "0xf3e981e8a62094858dad977a4fd40dcd79941e1149f1905dc4d821655430dc1167560e41ef5d7a23e113d79bc899bc2f93df0d25a02e2a4843160878cccd93091b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-optimism-usdt",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-usdt",
+        "quoteId": "conformance-xochi-base-optimism-usdt",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "toToken": "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x20b2ff002f797e9c1eb670a152ac10653776859408840ed82e3e5711028a5905",
+    "expected_signature": "0x4254246e4bf63d93f8b9d695581bd92fc357ff0dab7b58d313462bba47a2f4311725b25ceae2e7667b3c93b227a028d2cceaff1566686399a99b1ce17b7c02771c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-optimism-base-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 10,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-optimism-base-usdc",
+        "quoteId": "conformance-xochi-optimism-base-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 10,
+        "toChainId": 8453,
+        "fromToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "toToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x27509f61bedb751dd1c6a9ce1fae4eb3b843a91a6bc21a4693351d6c8433fefa",
+    "expected_signature": "0xb8e0c67bb30383b6354903f8ca149114c73f9be63b37602218730e26afd1512e67237a195fde78d1896b1db9b71f4eba5ca434d4d887f05c69adf07c985818991c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-optimism-base-usdt",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 10,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-optimism-base-usdt",
+        "quoteId": "conformance-xochi-optimism-base-usdt",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 10,
+        "toChainId": 8453,
+        "fromToken": "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+        "toToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x8bc157a92a6b9bdd00d6ba91f1555d7b489d6ed5fd251600f4d03055d2fba366",
+    "expected_signature": "0x63fbba04c090233801c2b2577301934ee7ac49ad811051a82097cdb3da7bd0146ec9ff16f66d3017e4ad6c52f2be285fd59b45a1b14a36f2c650619662bd0f411c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-arbitrum-base-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 42161,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-arbitrum-base-usdc",
+        "quoteId": "conformance-xochi-arbitrum-base-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 42161,
+        "toChainId": 8453,
+        "fromToken": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "toToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x6431ce8dda06118bccd49bfb44bea49fccd1fef0fdc3ac8b235f30ea96272353",
+    "expected_signature": "0x6e81939a19d86e5387cba653cfd212f4d0595476bac985321bfe12dac9b0e44a51bc7597f5c24f4d2b1c0eed128db2be71d3fd2acb54b04ca6c3d44cb8efc4f51c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-arbitrum-base-usdt",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 42161,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-arbitrum-base-usdt",
+        "quoteId": "conformance-xochi-arbitrum-base-usdt",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 42161,
+        "toChainId": 8453,
+        "fromToken": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+        "toToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0xfddf1661f48d8d70774261581312b5fad08fd6d2954415b18e90c42a3cb0905d",
+    "expected_signature": "0xfa41c1fbb542f898033507df9e68369d859aa864197a0fbee94de8c03afbc04e3d6cac7184a9a3e90b77e321681fab5055cd31ae5dd5a91cf2289c749d15066d1c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-polygon-base-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 137,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-polygon-base-usdc",
+        "quoteId": "conformance-xochi-polygon-base-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 137,
+        "toChainId": 8453,
+        "fromToken": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "toToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x2901ba2f2fa1fd100428233305ed27704a09f0c51e5d5f6fb0c29d043560cc5e",
+    "expected_signature": "0x8ea14769ec43d22758fef508d7b7c5a084963e18235b8427ee648797bb4e79c24b1c2a1cb6ba279b4bcf4c79edb511bf69fa8d344195c6ac15285afef96ac6ff1c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-polygon-base-usdt",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 137,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-polygon-base-usdt",
+        "quoteId": "conformance-xochi-polygon-base-usdt",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 137,
+        "toChainId": 8453,
+        "fromToken": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+        "toToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x83531e6aab2f2b4f5a7e60fbed458bea8eba469e0b7f660af6ca2dbd5b1dd783",
+    "expected_signature": "0xfee1847afd1dfd7a58de612b66c0643c09c525d48eb8cc083af8c3ae961308064c2ffdd85a59904c19dbe9bc3f95960e763afc44af900e101779c5d0b75ef9671c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-ethereum-base-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 1,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-ethereum-base-usdc",
+        "quoteId": "conformance-xochi-ethereum-base-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 1,
+        "toChainId": 8453,
+        "fromToken": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "toToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0xd9b7da0aff8ec2d5980c3023091cff7bee86022a5c1237033097919920a210d7",
+    "expected_signature": "0x21db398e8bfdb7e7c146791699206a931d35528f569e7ad62588832313dd5a2509d02787a46c9bc9e0bcc03ca863f76dc01eddc12e1a160142e3012ace34f9ee1c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-ethereum-base-usdt",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 1,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-ethereum-base-usdt",
+        "quoteId": "conformance-xochi-ethereum-base-usdt",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 1,
+        "toChainId": 8453,
+        "fromToken": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "toToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x10cfecbcc82bbc7242f3f3036fabfc145a9bbcef7b8cfb0efa2b414589c089a0",
+    "expected_signature": "0x56e1013d1edeadd99c57440fc0e08e938f779054072695a5ca42f6fa894555f6380e328462c440a0f0dcaa9a0f0c8417638f133b15d6ef370a58a119d6920d9d1c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-optimism-usdc-stealth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-usdc-stealth",
+        "quoteId": "conformance-xochi-base-optimism-usdc-stealth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "toToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "stealth",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0xef0bee79f103a2df092406141bdea47ead84aee5a7068bdfaadcb604ed807dc9",
+    "expected_signature": "0x56b337bd53f3a2b62dea55fbc79aa862be1fdeb8d863c18d5841e2cd7a043c766d2a50950d318b6a49b123db3fba9647d04274181ed63f1aaff39c1c10e1f5ec1b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-optimism-usdt-stealth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdt",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-usdt-stealth",
+        "quoteId": "conformance-xochi-base-optimism-usdt-stealth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "toToken": "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "stealth",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x6e67b538994bb4e87e2504574f73624761959e991c6b4836f61e3aa443d6bcf7",
+    "expected_signature": "0x0bd912d9ae81d9f7c08392449354df7bc96298d8387d133805b9217a0023fe9473f9c2e963095bfa247d98f2ddf3f2db52a8036555427aa01942db855e9e56171b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-optimism-weth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-weth",
+        "quoteId": "conformance-xochi-base-optimism-weth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0x4200000000000000000000000000000000000006",
+        "toToken": "0x4200000000000000000000000000000000000006",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x320aacb7f2defbcb281ef8a2bb0c3c8ffaa14c54b7e131fc4f77a33c0c709d46",
+    "expected_signature": "0x8d65d8f82c2311fdaf92c5a31b2b9b174802a78ad4278db89078748e45a2aa6328f7183ad7873e257323d36190d198e0df14cb9e98c2118b6a2d3173d51e3bae1c",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-arbitrum-base-weth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 42161,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-arbitrum-base-weth",
+        "quoteId": "conformance-xochi-arbitrum-base-weth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 42161,
+        "toChainId": 8453,
+        "fromToken": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        "toToken": "0x4200000000000000000000000000000000000006",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x3f94b1e2afb84c6080f918fd8300249eae5227f9781938772beea1c4a4dfa372",
+    "expected_signature": "0xee3410ca549972e9313f07ef9c8f39aec73172b556b402fca5aa91702d6885a5320d65c3fe325e3355c52dcd8526c164c39d3bf582a025368cbb6e44878197131b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-polygon-base-weth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 137,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-polygon-base-weth",
+        "quoteId": "conformance-xochi-polygon-base-weth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 137,
+        "toChainId": 8453,
+        "fromToken": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+        "toToken": "0x4200000000000000000000000000000000000006",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x27400cb6b53f923e871d2ee44dc9fbf6bc1d6351b6d049dbc239ae8754c89063",
+    "expected_signature": "0xd17deaa101818a136e14a3c7a7ad74ff04be13d9caefdb20439588512f9aab041d9d32fbd83ee1f916cd33d18adb8682871b2088eb01a9068ca858f78ff3ef331b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-optimism-weth-stealth",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "weth",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 8453,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-optimism-weth-stealth",
+        "quoteId": "conformance-xochi-base-optimism-weth-stealth",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 8453,
+        "toChainId": 10,
+        "fromToken": "0x4200000000000000000000000000000000000006",
+        "toToken": "0x4200000000000000000000000000000000000006",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "stealth",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x4a0c13feeafe0e7c82ba3b1ab541ed37528370a7a68b86a60dd9fc3cae269aa1",
+    "expected_signature": "0x018b205a4658aec5759a9cc0b98d17787ca02c6ee60d65db5c584c29682d9c69097305961dd2f8a973039172b7dd82984905f31f200833c1c589acf570573b2b1b",
+    "expected_signed_object": null
+  },
+  {
+    "name": "xochi-base-sepolia-op-sepolia-usdc",
+    "protocol": "xochi",
+    "chain": null,
+    "token": "usdc",
+    "private_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "expected_signer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "eip712": {
+      "domain": {
+        "name": "Xochi",
+        "version": "3",
+        "chainId": 84532,
+        "salt": "0x2a80e1ef1d7842f27f2e6be0972bb708b9a135c38860dbe73c27c3486c34f4de"
+      },
+      "types": {
+        "XochiIntent": [
+          {
+            "name": "intentId",
+            "type": "string"
+          },
+          {
+            "name": "quoteId",
+            "type": "string"
+          },
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "recipient",
+            "type": "string"
+          },
+          {
+            "name": "fromChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "toChainId",
+            "type": "uint256"
+          },
+          {
+            "name": "fromToken",
+            "type": "string"
+          },
+          {
+            "name": "toToken",
+            "type": "string"
+          },
+          {
+            "name": "fromAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "toAmount",
+            "type": "uint256"
+          },
+          {
+            "name": "settlementPreference",
+            "type": "string"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "intentId": "conformance-xochi-base-sepolia-op-sepolia-usdc",
+        "quoteId": "conformance-xochi-base-sepolia-op-sepolia-usdc",
+        "wallet": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "recipient": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+        "fromChainId": 84532,
+        "toChainId": 11155420,
+        "fromToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "toToken": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+        "fromAmount": "1000000",
+        "toAmount": "1000000",
+        "settlementPreference": "public",
+        "deadline": 1900000000
+      }
+    },
+    "expected_digest": "0x1b0a2e7aa21bf7944fdaa5630b338198bebe410e4a1a870445546554e8abe053",
+    "expected_signature": "0x11dd7aa6b729d082632c8c546da71c414cf53886f322fc8ca3fc877f0207e31e37d176874708354cacb3126a5142c568ef58041570d403e2592176f04f2214611c",
+    "expected_signed_object": null
+  }
+]

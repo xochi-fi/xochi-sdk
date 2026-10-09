@@ -1,5 +1,5 @@
 /**
- * The `@riddler/signer` checks the machine runs at quote ingest, driven through
+ * The `@xochi/signer` checks the machine runs at quote ingest, driven through
  * `update` exactly as a host drives it. No mocks: deposit attestations are real
  * EIP-191 signatures by published Anvil test keys, and every refusal is read off
  * the model and the effects.
@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { buildDepositAttestationMessage, type DepositAttestationFields } from "@riddler/signer";
+import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
 import { TRON_CHAIN_ID } from "../shared/index.js";
 import type { MachineConfig } from "./machine.js";
 import { verifyStoredDeposit } from "./deposit.js";

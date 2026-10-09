@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/schema.json",
+  "title": "Riddler conformance vector set",
+  "description": "Byte-equality contract for Riddler signers: a language-agnostic runner re-signs each vector's inputs and asserts digest/signature/signed_object equality against the expected_* fields. See ../SPEC.md for the normative signing rules and ../README.md for the runner contract.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/vector" },
+  "$defs": {
+    "vector": {
+      "type": "object",
+      "required": [
+        "name",
+        "protocol",
+        "chain",
+        "token",
+        "private_key",
+        "expected_signer",
+        "expected_digest",
+        "expected_signature",
+        "expected_signed_object"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique, human-readable vector id, e.g. \"erc3009-ethereum-usdc\"."
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["erc3009", "permit2", "xochi"],
+          "description": "Which signing scheme this vector exercises."
+        },
+        "chain": {
+          "type": ["string", "null"],
+          "description": "Source chain slug (e.g. \"ethereum\", \"base\"). null for xochi vectors, which carry chain ids inside eip712.message instead of a top-level chain key."
+        },
+        "token": {
+          "type": "string",
+          "description": "Token symbol being moved, e.g. \"usdc\", \"usdt\", \"weth\"."
+        },
+        "private_key": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "Canonical fixed test private key used to produce expected_signer/expected_signature. Never a real key."
+        },
+        "expected_signer": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$",
+          "description": "Address recovered from expected_digest + expected_signature; must equal the address derived from private_key."
+        },
+        "quote": {
+          "type": "object",
+          "description": "erc3009/permit2 only: the quote-shaped payload (request/gasless) the signer consumes to build the EIP-712 message. See SPEC.md for the Quote shape."
+        },
+        "domain": {
+          "type": "object",
+          "description": "erc3009/permit2 only: the EIP-712 domain separator fields (name, version, chainId, verifyingContract)."
+        },
+        "message": {
+          "type": "object",
+          "description": "erc3009/permit2 only: the EIP-712 message fields."
+        },
+        "eip712": {
+          "type": "object",
+          "description": "xochi only: the full { domain, types, message } EIP-712 payload. XochiIntent's domain intentionally omits verifyingContract (server-verified via ecrecover, not a contract).",
+          "properties": {
+            "domain": { "type": "object" },
+            "types": { "type": "object" },
+            "message": { "type": "object" }
+          },
+          "required": ["domain", "types", "message"]
+        },
+        "expected_digest": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256 EIP-712 hash (TypedDataEncoder.hash) of domain+types+message."
+        },
+        "expected_signature": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{130}$",
+          "description": "65-byte r||s||v ECDSA signature over expected_digest."
+        },
+        "expected_signed_object": {
+          "type": ["string", "null"],
+          "pattern": "^0x[0-9a-fA-F]*$",
+          "description": "erc3009/permit2 only: ABI-encoded calldata payload submitted alongside the signature. null for xochi (off-chain intent has no on-chain signed_object)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "protocol": { "const": "erc3009" } } },
+          "then": { "required": ["quote", "domain", "message", "chain"] }
+        },
+        {
+          "if": { "properties": { "protocol": { "const": "permit2" } } },
+          "then": { "required": ["quote", "domain", "message", "chain"] }
+        },
+        {
+          "if": { "properties": { "protocol": { "const": "xochi" } } },
+          "then": {
+            "required": ["eip712"],
+            "properties": { "expected_signed_object": { "const": null } }
+          }
+        }
+      ]
+    }
+  }
+}

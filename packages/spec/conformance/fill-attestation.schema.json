@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/fill-attestation.schema.json",
+  "title": "Riddler AttestedFillVerifier FillAttestation vector set",
+  "description": "EIP-712 FillAttestation(bytes32 orderId,address payee) vectors (ESCROW-RFC \u00a79.4) with proof = abi.encode(address payee, bytes signature). signer_private_key values are PUBLIC TEST keys.",
+  "type": "object",
+  "required": [
+    "domain",
+    "typehash",
+    "vectors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "RiddlerFillAttestation"
+        },
+        "version": {
+          "const": "1"
+        }
+      }
+    },
+    "typehash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "chainId",
+          "verifyingContract",
+          "orderId",
+          "payee",
+          "expected_struct_hash",
+          "expected_domain_separator",
+          "expected_digest",
+          "signer_private_key",
+          "signer_address",
+          "expected_signature",
+          "expected_proof"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "chainId": {
+            "description": "Base-10 digit string, so values above 2^53 survive JSON.",
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "verifyingContract": {
+            "description": "20-byte hex; case is not significant.",
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$"
+          },
+          "orderId": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "payee": {
+            "description": "20-byte hex; case is not significant.",
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$"
+          },
+          "expected_struct_hash": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_domain_separator": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_digest": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "signer_private_key": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$",
+            "description": "PUBLIC TEST key (Hardhat/Anvil). Never fund or register it."
+          },
+          "signer_address": {
+            "description": "20-byte hex; case is not significant.",
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$"
+          },
+          "expected_signature": {
+            "description": "65-byte r||s||v, low-s, lowercase hex.",
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{130}$"
+          },
+          "expected_proof": {
+            "description": "abi.encode(address payee, bytes signature), lowercase hex.",
+            "type": "string",
+            "pattern": "^0x[0-9a-f]+$"
+          }
+        }
+      }
+    }
+  }
+}

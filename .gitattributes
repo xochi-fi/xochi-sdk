@@ -1,0 +1,28 @@
+# Force a textual diff for every source and data format in this repo.
+#
+# Git decides "binary" by sniffing content, and a single control byte anywhere in
+# EITHER side of a diff is enough: `encoding-properties.test.ts` carried one
+# literal NUL inside an `fc.constantFrom` delimiter corpus, so `git diff` and
+# GitHub both rendered the whole file as `Binary files ... differ` and `Bin 11309
+# -> 12322 bytes`. A 200 -> 60 run-count cut to the `computeOrderId` escrow
+# preimage properties landed inside that suppression, reviewable only under
+# `git diff --text`.
+#
+# These files are the reviewer's only evidence. A test corpus that has to hold a
+# control byte MUST spell it as an escape (`"\u0000"`, not the raw byte), and
+# this file is the backstop for the case where one arrives anyway: the diff stays
+# readable instead of the change going dark.
+*.ts    diff
+*.mts   diff
+*.cts   diff
+*.tsx   diff
+*.js    diff
+*.mjs   diff
+*.cjs   diff
+*.json  diff
+*.md    diff
+*.yml   diff
+*.yaml  diff
+*.nr    diff
+*.toml  diff
+*.sha256 diff

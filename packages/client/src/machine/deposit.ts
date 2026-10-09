@@ -4,7 +4,7 @@
  *
  * The attestation itself -- the v3 message, its EIP-191 recovery against the
  * pinned signer, the request binding, the deposit window and the
- * destination-token guard -- is `@riddler/signer`'s. This module adapts it to
+ * destination-token guard -- is `@xochi/signer`'s. This module adapts it to
  * the machine: it assembles the request side, carries the caller's pinned
  * signer, keeps the per-session address-reuse tripwire as plain data on the
  * model, and maps the signer's error classes to `DepositAttestationResult`.
@@ -23,7 +23,7 @@ import {
   recordDepositAddress,
   verifyDepositAttestation,
   type DepositAttestationFields,
-} from "@riddler/signer";
+} from "@xochi/signer";
 import type { QuoteRequest, QuoteResponse } from "./wire.js";
 import { quoteRequestParams } from "./quoteChecks.js";
 

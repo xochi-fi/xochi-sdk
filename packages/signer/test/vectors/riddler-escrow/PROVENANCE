@@ -1,0 +1,11 @@
+axol-io/Riddler c944089af27171a3702e7fe3b6d91114146d90a8
+test/support/vectors/escrow_*.json and xochi_xsp.json, copied verbatim.
+Riddler vendors these FROM this repo (SDK -> Riddler), so this snapshot is a
+drift check, not an independent oracle.
+Refresh only alongside a deliberate escrow wire change on both sides.
+
+2026-10: escrow_order_id.json and escrow_solver_bid_v2.json re-copied from this
+repo after the @riddler/* -> @xochi/* rename moved their top-level
+`description` string ("Reference: @xochi/..."). Every digest, signature,
+typehash and domain separator is byte-identical to c944089; Riddler re-vendors
+the same two files in lockstep.

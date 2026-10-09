@@ -2,13 +2,13 @@
  * `checkPreparedClaim` over a sponsored v0.8 UserOperation built here the way
  * Riddler builds one: `execute(token, 0, transfer(recipient, amount))` from the
  * counterfactual account, hashed under the pinned EntryPoint. The hash function
- * itself is pinned to Riddler-generated vectors in `@riddler/signer`; these test
+ * itself is pinned to Riddler-generated vectors in `@xochi/signer`; these test
  * the refusal mapping and that every gap refuses.
  */
 
 import { describe, it, expect } from "vitest";
 import { encodeFunctionData, parseAbi } from "viem";
-import { ENTRYPOINT_V08_ADDRESS, computeUserOpHash, type PreparedClaim } from "@riddler/signer";
+import { ENTRYPOINT_V08_ADDRESS, computeUserOpHash, type PreparedClaim } from "@xochi/signer";
 import { checkPreparedClaim, type PreparedClaimExpectation } from "./claim.js";
 
 const COUNTERFACTUAL = "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";

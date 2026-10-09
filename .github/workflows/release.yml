@@ -1,0 +1,164 @@
+# Publish one package to npm from a tag.
+#
+#   sdk-v<version>         -> npm publish            (@xochi/sdk, the repo root)
+#   spec-v<version>        -> npm publish -w @xochi/spec
+#   signer-v<version>      -> npm publish -w @xochi/signer
+#   client-v<version>      -> npm publish -w @xochi/client
+#   widget-lib-v<version>  -> npm publish -w @xochi/widget-lib
+#
+# Not published from here: @xochi/reference (private) and @xochi/solver-sdk,
+# which ships once the solver panel opens. Its mapping is deliberately absent
+# rather than commented out: adding `solver-sdk-v*` to `on.push.tags` and a case
+# arm below is the whole change, made when that decision is.
+#
+# npm trusted publishing (OIDC), so there is no NPM_TOKEN anywhere: npm
+# exchanges this job's id-token for a short-lived publish credential, and only
+# for the package/repo/workflow pair configured on npmjs.com. SETUP, once per
+# package on npmjs.com: Settings -> Trusted publisher -> GitHub Actions,
+# repository xochi-fi/xochi-sdk, workflow `release.yml`. `--provenance` needs
+# the repository to be public.
+#
+# @xochi/sdk used to be published by hand (`npm publish` at the root, gated by
+# its prepublishOnly). That still works and still runs the same gates; this
+# workflow runs them too, in CI, with provenance.
+#
+# The publish runs only after the gates ci.yml runs for that package, and only
+# when the tag's version is the version in that package's package.json: a tag
+# that disagrees would publish bytes under a name nobody reviewed. Every
+# package's own prepublishOnly (where it has one) runs again inside `npm
+# publish`.
+name: release
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+      - "spec-v*"
+      - "signer-v*"
+      - "client-v*"
+      - "widget-lib-v*"
+
+permissions:
+  contents: read
+
+# One publish per tag at a time; a re-pushed tag must not race itself.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Same pins as ci.yml; the @xochi/sdk gate needs the ERC-8262 artifacts.
+  ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
+  FOUNDRY_VERSION: v1.5.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm >= 11.5.1; refuse rather than fall back to
+      # a token-less publish that fails late with an opaque 404.
+      - name: npm >= 11.5.1 (trusted publishing)
+        run: |
+          npm install -g npm@^11.5.1
+          v="$(npm --version)"
+          node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number);
+            if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) {
+              console.error(`npm ${process.argv[1]} is older than 11.5.1`);
+              process.exit(1);
+            }' "$v"
+          echo "npm $v"
+
+      - name: Resolve package from tag and check its version
+        id: pkg
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in
+            sdk-v*)        name='@xochi/sdk';        dir='.';                   version="${TAG#sdk-v}" ;;
+            spec-v*)       name='@xochi/spec';       dir='packages/spec';       version="${TAG#spec-v}" ;;
+            signer-v*)     name='@xochi/signer';     dir='packages/signer';     version="${TAG#signer-v}" ;;
+            client-v*)     name='@xochi/client';     dir='packages/client';     version="${TAG#client-v}" ;;
+            widget-lib-v*) name='@xochi/widget-lib'; dir='packages/widget-lib'; version="${TAG#widget-lib-v}" ;;
+            *) echo "tag $TAG names no publishable package" >&2; exit 1 ;;
+          esac
+          manifest_name="$(node -p "require('./$dir/package.json').name")"
+          manifest="$(node -p "require('./$dir/package.json').version")"
+          if [ "$manifest_name" != "$name" ]; then
+            echo "$dir/package.json is $manifest_name, not $name; refusing to publish" >&2
+            exit 1
+          fi
+          if [ "$manifest" != "$version" ]; then
+            echo "tag $TAG says $version but $dir/package.json is $manifest; refusing to publish" >&2
+            exit 1
+          fi
+          # A prerelease must not become `latest`.
+          case "$version" in
+            *-*) dist_tag='next' ;;
+            *)   dist_tag='latest' ;;
+          esac
+          # The root package is published without -w; a workspace with it.
+          if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "ws=$ws" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "publishing $name@$version (dist-tag $dist_tag)"
+
+      - run: npm ci
+
+      # Every workspace consumes @xochi/signer's .d.ts, and the bid-vector
+      # generator imports the built @xochi/solver-sdk.
+      - name: Build @xochi/signer and @xochi/solver-sdk
+        run: |
+          npm run build -w @xochi/signer
+          npm run build -w @xochi/solver-sdk
+
+      # --- @xochi/sdk: the ci.yml `check` gate (drift tests need ERC-8262) ----
+
+      - name: Install foundry
+        if: steps.pkg.outputs.name == '@xochi/sdk'
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+
+      - name: Checkout and build ERC-8262 at the pinned commit
+        if: steps.pkg.outputs.name == '@xochi/sdk'
+        run: |
+          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
+          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          git -C ../ERC-8262 submodule update --init --recursive --depth=1
+          (cd ../ERC-8262 && forge build)
+
+      # --- @xochi/spec / @xochi/signer: the ci.yml `protocol` gate -----------
+
+      - name: Protocol gate
+        if: steps.pkg.outputs.name == '@xochi/spec' || steps.pkg.outputs.name == '@xochi/signer'
+        run: |
+          for w in @xochi/signer @xochi/solver-sdk @xochi/reference @xochi/spec; do
+            npm run typecheck -w "$w"
+            npm test -w "$w"
+          done
+          npm run generate:conformance
+          npm run generate:fee
+          npm run generate:solver-bid-v2
+          npm run generate:escrow
+          git diff --exit-code packages/spec/
+          cd packages/spec/wire
+          printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
+
+      # @xochi/sdk, @xochi/client and @xochi/widget-lib carry their full gate
+      # (format, typecheck, test, build) in prepublishOnly, which npm publish
+      # runs; @xochi/signer's build runs in its prepublishOnly too.
+      - name: Publish
+        run: npm publish ${{ steps.pkg.outputs.ws }} --tag "${{ steps.pkg.outputs.dist_tag }}" --provenance --access public

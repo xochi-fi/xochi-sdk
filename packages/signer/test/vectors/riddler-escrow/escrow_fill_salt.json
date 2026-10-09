@@ -1,0 +1,42 @@
+{
+  "$schema": "./fill-salt.schema.json",
+  "description": "Venue-side fillSalt/fillId vectors (ESCROW-RFC §9.4). `key` values are PUBLIC TEST keys; production uses a KMS-held key never shared with the solver panel.",
+  "domain_tag": "riddler/fill-salt/v1",
+  "vectors": [
+    {
+      "name": "baseline",
+      "key": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+      "expected_fill_salt": "0x0950d82aca869b134844a2b22e6db4f0406713407952136aa3ab98020609b195",
+      "expected_fill_id": "0x9b60bd754be9ae37355883c28726578ab823340a2e56e4ea9a23dfa6277de66b"
+    },
+    {
+      "name": "other-key",
+      "key": "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+      "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+      "expected_fill_salt": "0xf66ac79a880165eaf7f2b1da6b2552cf2006946361a650fbbca5b7ef0d928325",
+      "expected_fill_id": "0x5f4b7c06f2e8833ae02e65d5d4fa552f5a803b2b98ba95e2d4201b2e821e93af"
+    },
+    {
+      "name": "zero-order-id",
+      "key": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "orderId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "expected_fill_salt": "0xbce208a01cf71df303af9fb4d7fb97496ebacbaa5d14869269db891dcd279828",
+      "expected_fill_id": "0x32034a5e53e3deb83985f968dd0f0d6d0a658d202dabc7631d0d7c20f77023a8"
+    },
+    {
+      "name": "one-order-id",
+      "key": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "orderId": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "expected_fill_salt": "0x7bb57e07b45275b16ba496412ac3a1bd587094c1180556f2268ea2abfad3c615",
+      "expected_fill_id": "0xe6a01eab389e5dd92f61d84c8a89ea6b8caad53c7f26404095128a350439d404"
+    },
+    {
+      "name": "max-uint256-order-id",
+      "key": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "orderId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "expected_fill_salt": "0x6f050ae41aa060c442d4a0ef68c7ee8e011fa1aacd88275c0fbd2743d9713a3c",
+      "expected_fill_id": "0xd6086285904dd6ca04afe58f259e98dcfb29863f32f5c97abfc57d944f6d5727"
+    }
+  ]
+}

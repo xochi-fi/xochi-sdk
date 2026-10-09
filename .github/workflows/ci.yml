@@ -71,6 +71,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Build @xochi/signer (the client reads its .d.ts)
+        run: npm run build -w @xochi/signer
+
       - name: Format
         run: npm run format:check -w @xochi/client
 
@@ -114,6 +117,113 @@ jobs:
 
       - name: Verify package contents
         run: npm pack --dry-run -w @xochi/widget-lib
+
+  # The protocol packages (packages/{signer,spec,solver-sdk,reference}). The
+  # build order is not optional: @xochi/signer first, since every other
+  # workspace consumes its .d.ts. The generate steps are the gate that matters:
+  # those bytes are a contract Riddler and raxol_payments are held to, so a
+  # regeneration is a wire change landing with the server, never a refresh to
+  # make CI pass.
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build @xochi/signer first (dependents need its .d.ts)
+        run: npm run build -w @xochi/signer
+
+      - name: Build @xochi/solver-sdk (the bid-vector generator imports it)
+        run: npm run build -w @xochi/solver-sdk
+
+      - name: Typecheck
+        run: |
+          npm run typecheck -w @xochi/signer
+          npm run typecheck -w @xochi/solver-sdk
+          npm run typecheck -w @xochi/reference
+          npm run typecheck -w @xochi/spec
+
+      - name: Tests (signer vectors + reference conformance/fee + solver + wire differ)
+        run: |
+          npm test -w @xochi/signer
+          npm test -w @xochi/reference
+          npm test -w @xochi/solver-sdk
+          npm test -w @xochi/spec
+
+      - name: Fixture staleness check (conformance + fee)
+        run: |
+          npm run generate:conformance
+          npm run generate:fee
+          git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/
+
+      - name: Solver vector staleness check (bid v2 + escrow)
+        run: |
+          npm run generate:solver-bid-v2
+          npm run generate:escrow
+          git diff --exit-code packages/spec/conformance/
+
+      # The wire artifact's gate is NOT `generate:wire` + `git diff --exit-code`
+      # like the two above: the producer owns those bytes, so a refetch reddens
+      # any PR that runs while the server is ahead, and that is the nightly
+      # probe's finding (`verify:openapi`, producer-drift.yml), not this PR's.
+      # What is checkable per-PR is that the pair is internally consistent -- a
+      # hand-edit or an interrupted refresh leaves a document whose digest is
+      # somebody's assertion rather than its content.
+      - name: Wire contract digest check
+        run: |
+          cd packages/spec/wire
+          printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
+
+      - name: Verify package contents
+        run: |
+          npm pack --dry-run -w @xochi/spec
+          npm pack --dry-run -w @xochi/signer
+
+  python-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Python signer conformance (byte-equality over the shared fixture)
+        working-directory: sdks/python
+        run: |
+          uv sync
+          uv run pytest -q
+
+  go-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: sdks/go/go.mod
+
+      - name: Go signer conformance (byte-equality over the shared fixture)
+        working-directory: sdks/go
+        run: go test ./...
+
+  rust-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rust signer conformance (byte-equality over the shared fixture)
+        working-directory: sdks/rust
+        run: cargo test --locked
 
   integration:
     runs-on: ubuntu-latest

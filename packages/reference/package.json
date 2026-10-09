@@ -1,0 +1,37 @@
+{
+  "name": "@xochi/reference",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Unpublished reference fixtures for the spec generators and vector suites: the chain/token registry, the layered fee reference (SPEC.md §4) and the ERC-3009/Permit2 sign-only composition. Never published.",
+  "type": "module",
+  "exports": {
+    "./config": "./src/config.ts",
+    "./fee": "./src/fee.ts",
+    "./sign-only": "./src/sign-only.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:conformance": "vitest run test/conformance.test.ts",
+    "test:fee": "vitest run test/fee.test.ts",
+    "test:stealth": "vitest run test/stealth.test.ts",
+    "test:wire": "vitest run test/wire-contract.test.ts",
+    "test:differ": "vitest run test/wire-differ.test.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@xochi/signer": "0.5.0",
+    "ethers": "^6.17.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@noble/curves": "^1.2.0",
+    "@types/node": "^26.4.1",
+    "@xochi/client": "0.1.0",
+    "@xochi/spec": "0.8.0",
+    "fast-check": "^4.9.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

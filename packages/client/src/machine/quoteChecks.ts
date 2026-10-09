@@ -1,5 +1,5 @@
 /**
- * The `@riddler/signer` value checks the machine runs on a signable (pull-route)
+ * The `@xochi/signer` value checks the machine runs on a signable (pull-route)
  * quote at ingest, adapted to the machine's request and refusal shapes.
  *
  * `assertIntentMatchesRequest` holds the served XochiIntent to the request that
@@ -19,7 +19,7 @@ import {
   assertPullMatchesIntent,
   type PinnedPullRecipients,
   type QuoteRequestParams,
-} from "@riddler/signer";
+} from "@xochi/signer";
 import type { QuoteRequest, QuoteResponse } from "./wire.js";
 
 /**

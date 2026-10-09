@@ -109,4 +109,4 @@ done
 
 printf "\nSynced %d/%d circuits (Noir %s)\n\n" "${#CIRCUITS[@]}" "${#CIRCUITS[@]}" "${expected_version}"
 printf "Verify the synced artifacts with:\n"
-printf "  npm run drift-check\n"
+printf "  npm test\n"

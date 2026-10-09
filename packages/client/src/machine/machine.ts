@@ -12,7 +12,7 @@
  * receipts with no mocks.
  *
  * The one exception to that clock is the fund-safety checks from
- * `@riddler/signer` that run at quote ingest: they bound the intent deadline and
+ * `@xochi/signer` that run at quote ingest: they bound the intent deadline and
  * the deposit window against the WALL clock, and take no `now` argument by
  * design, since an injectable clock on a security assertion is a bypass.
  *
@@ -50,7 +50,7 @@ import {
   type SignPreflight,
 } from "./decisions.js";
 import { claimInfoError } from "./claimInfo.js";
-import type { PinnedPullRecipients } from "@riddler/signer";
+import type { PinnedPullRecipients } from "@xochi/signer";
 import {
   checkDepositQuote,
   recipientIsDestinationToken,
@@ -151,7 +151,7 @@ export interface MachineConfig {
   solverPin: SolverPinConfig;
   /**
    * The caller's per-chain, per-method pull-recipient pin, handed to
-   * `@riddler/signer`'s `assertPullMatchesIntent` at quote ingest. A chain absent
+   * `@xochi/signer`'s `assertPullMatchesIntent` at quote ingest. A chain absent
    * from it is left to `solverPin`; a chain present without the method in use
    * refuses. Never built from `/api/capabilities`: an advertisement arrives over
    * the same channel as the quote it would vouch for.
@@ -339,7 +339,7 @@ export interface Model {
   refresh: { amount: string; hasAllocatedDeposit: boolean } | null;
   /**
    * Deposit address -> the intent it was attested for, for every deposit route
-   * verified this session (keyed as `@riddler/signer`'s `recordDepositAddress`
+   * verified this session (keyed as `@xochi/signer`'s `recordDepositAddress`
    * keys it). A per-session tripwire, not a ledger: a fresh `init` clears it.
    */
   seenDepositAddresses: Readonly<Record<string, string>>;
@@ -816,7 +816,7 @@ function onQuote(
   const request = flight.request;
   if (!quote.depositAddress) {
     // A signable quote: hold the served intent to the request and the origin
-    // pull to the intent (`@riddler/signer`) before it can reach the wallet. A
+    // pull to the intent (`@xochi/signer`) before it can reach the wallet. A
     // preview carries no signing material, and a quote with no intent to sign
     // is refused at Confirm ("No quote to sign").
     if (!quote.preview && quote.eip712Data && request) {

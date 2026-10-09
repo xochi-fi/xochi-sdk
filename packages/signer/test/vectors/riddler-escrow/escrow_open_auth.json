@@ -1,0 +1,76 @@
+{
+  "$schema": "./open-auth.schema.json",
+  "description": "EIP-712 OpenAuth(bytes32 orderId,uint256 expiry) vectors (ESCROW-RFC §12). signer_private_key values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
+  "domain": {
+    "name": "RiddlerEscrow",
+    "version": "1"
+  },
+  "typehash": "0x78225cdfe793edd5a80a408568688ff08b1141feda0ab4a35304e8cd129e7e8f",
+  "vectors": [
+    {
+      "name": "baseline-base",
+      "chainId": "8453",
+      "verifyingContract": "0x3333333333333333333333333333333333333333",
+      "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+      "expiry": "1900000000",
+      "expected_struct_hash": "0x6cdf3b04fdaced0832585ab1769fc5ba883d0da3a31717999b544813db94f94f",
+      "expected_domain_separator": "0x5dbf8305d61f4dbfba28be4935fa076f17bdae11fc2d67a526f19921418c8e66",
+      "expected_digest": "0xf7e4b5fa7fb35c7fbdfbf629a163e0337fd1a46b273f70541096a7835bfec7e8",
+      "signer_private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      "signer_address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "expected_signature": "0xe71fb415f4d7cbebc4a7651e0a3235dc764e6d9e034b3272bc83c622a8f2a3d743a4fe8009019c5c286a8c177467597c3123436ccc350159ac45f0ca1357663e1c"
+    },
+    {
+      "name": "second-signer",
+      "chainId": "8453",
+      "verifyingContract": "0x3333333333333333333333333333333333333333",
+      "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+      "expiry": "1900000000",
+      "expected_struct_hash": "0x6cdf3b04fdaced0832585ab1769fc5ba883d0da3a31717999b544813db94f94f",
+      "expected_domain_separator": "0x5dbf8305d61f4dbfba28be4935fa076f17bdae11fc2d67a526f19921418c8e66",
+      "expected_digest": "0xf7e4b5fa7fb35c7fbdfbf629a163e0337fd1a46b273f70541096a7835bfec7e8",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xdc8596c57eeda0f38ff6386a03e875c4b791dfb4aac9fe579eed888de36348d8044611f0625ef92c4e5f58505c7ab9ade4f55a3de430eda0bb5ac166cf00fced1c"
+    },
+    {
+      "name": "other-chain-and-escrow",
+      "chainId": "1",
+      "verifyingContract": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+      "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+      "expiry": "1900000000",
+      "expected_struct_hash": "0x6cdf3b04fdaced0832585ab1769fc5ba883d0da3a31717999b544813db94f94f",
+      "expected_domain_separator": "0xce76bb38c4b3ea6856f6822c884a99f9b399ea76fd4f4682e4686bb15f800d32",
+      "expected_digest": "0xdc8e0a730ad6507d7466c6888f947d0939303e73e53e8e792a41f506924be9c6",
+      "signer_private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      "signer_address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "expected_signature": "0xd23f4d6b87e24f43190178b53f3c70eed467b781342d173e098081c847de52dd67225e3646d033b628809d1093967c99bdd21f43ea222b3e8412c912501927ff1c"
+    },
+    {
+      "name": "zero-expiry",
+      "chainId": "8453",
+      "verifyingContract": "0x3333333333333333333333333333333333333333",
+      "orderId": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "expiry": "0",
+      "expected_struct_hash": "0xb3461f4408e18eb4a9bd8c099f165bc0f889812af18868eea28391e768e152c6",
+      "expected_domain_separator": "0x5dbf8305d61f4dbfba28be4935fa076f17bdae11fc2d67a526f19921418c8e66",
+      "expected_digest": "0x6769920b29ed714cc89497b354a2833bce78655d61be469a1192c247fce6d730",
+      "signer_private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      "signer_address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "expected_signature": "0x687e5ba08e5fdab00613bb61ab3217cfb4369bc35a862a07d9900edc1f4c5a720b8f363528f013bd7da60a746aa0537986bc057c9107209cc766014a101ae4691c"
+    },
+    {
+      "name": "max-uint256-expiry-high-bit-order",
+      "chainId": "42161",
+      "verifyingContract": "0x3333333333333333333333333333333333333333",
+      "orderId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "expiry": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "expected_struct_hash": "0x1bbda29476706c580b28798053ec09aca3ae59403263758986e712b478e31be5",
+      "expected_domain_separator": "0xf77b30489c46f4fabd421740c17adf42f7865b9dbfaadd2c97af00aa813ee61d",
+      "expected_digest": "0xd33e324ed1a812ccc2cdd87647ab97f79d0eb5c254bf1f2c3d10a604c4295e34",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xf4b01707e2bf97eb011f18bf1430ff6007d3492305ef14ae32719487762475fc16cc24ebe27384f73144eb991ed521b3b806bcb5601820cb9714df81057e1af71b"
+    }
+  ]
+}

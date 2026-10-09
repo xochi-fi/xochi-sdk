@@ -1,0 +1,285 @@
+{
+  "$schema": "./order-id.schema.json",
+  "description": "Cross-implementation vectors for the v2 order encoding (ESCROW-RFC §2): canonicalKey, destCommitment = keccak256(abi.encode(DEST_TYPEHASH, recipientKey, toTokenKey, toAmount, blinding, intentIdHash)) and orderId = keccak256(abi.encode(ORDER_TYPEHASH, depositor, fromChainId, fromToken, fromAmount, toChainId, fillDeadline, escrow, destCommitment)). Each vector's orderId uses its own expected_dest_commitment. Reference: @xochi/signer.",
+  "typehashes": {
+    "DEST_TYPEHASH": "0x077531eb0d51b1b21afd4bec087a67dc6121df81b2d1e062ad8c1f1f6c2e1ba3",
+    "ORDER_TYPEHASH": "0x4e7dfaf672253d735439fa7012ef33450da1e9b297a6d211df82e0f64b7d0c75"
+  },
+  "vectors": [
+    {
+      "name": "baseline-evm-usdc",
+      "why": "The pinned ESCROW-RFC §2.4 reference vector.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xc3d5a8c1b3187b132531d6f774039fee29b712e58dbbd6d14e2a7fe14e85fe05",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16"
+    },
+    {
+      "name": "evm-recipient-checksummed",
+      "why": "A checksummed EVM recipient/toToken/depositor MUST give the same keys and orderId as baseline's lowercase forms: an EVM address is keyed by its 20 bytes, never its string.",
+      "opening": {
+        "recipient": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "toToken": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xc3d5a8c1b3187b132531d6f774039fee29b712e58dbbd6d14e2a7fe14e85fe05",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589FCD6EB6af1a2AB0fc6d6d0DD6aAB3a7AC5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16"
+    },
+    {
+      "name": "tron-base58-recipient",
+      "why": "A base58 Tron recipient and token are not EVM addresses: keccak of their UTF-8, case-sensitive.",
+      "opening": {
+        "recipient": "TXYZopqrstuvwxABCDEFGHijklmnopqrst",
+        "toToken": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x525267ce0dab22edf84918c08dbecb81c93b3109eb47878b4aba0c39adfedb42",
+      "expected_to_token_key": "0x2608c19c39269caea688e75ff73b7f8d120e88c6404c5d115b59bf67ca0857a2",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0x4790997f6d1f8116ebe8140fed04eba4de4409af3de463d1d0137378f163afb9",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "728126428",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0xb15493a1e8eac5b2f29ea2e20d9880b1b1c68e9028c3d40c5b05a86a48792936"
+    },
+    {
+      "name": "canton-party-recipient",
+      "why": "A Canton party id (hint::fingerprint) is hashed verbatim, colons included.",
+      "opening": {
+        "recipient": "alice::1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72",
+        "toToken": "Amulet",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x1e7ff0239163aad4c6a908422e48bd04e5c5e7fd0063b0925a524f51d2f1d0dc",
+      "expected_to_token_key": "0x579aa6d62ccdee1b964a39e26019231a299e3edab8ead88287c91196053e1215",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xb8c29aa21c101e5bc6cc95f629960bd9dbe2fff108b86ef51d35b824e36078da",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0xa7d7fafc8e01d9e055ee62db3c572ee28a45b72825d4116362aa140426862ca3"
+    },
+    {
+      "name": "bytes32-hex-recipient",
+      "why": "A 0x-prefixed 32-byte string (Solana/Sui style) is NOT an EVM address: it is hashed as a string, never decoded as bytes32 or truncated to 20 bytes.",
+      "opening": {
+        "recipient": "0xabababababababababababababababababababababababababababababababab",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x558f2ebac318c8ff6b2c77a8f9d4e90ef4241c8b772d8e53cf065e8a2ac4307b",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xe0140b0c0f35e83215f0833fc49efde9d055fd6ba2d06c490486961f8074b5a8",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x3a1e84e3a8238605f2578dcbf658890f8d927f193d8f5394d79ab59adcaf7c36"
+    },
+    {
+      "name": "symbol-to-token",
+      "why": "A symbol toToken (\"Amulet\") takes the hashed path, case-sensitive.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "Amulet",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x579aa6d62ccdee1b964a39e26019231a299e3edab8ead88287c91196053e1215",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xc3aec11e42c19587b5b9b032575649b3f8a594c493d431e005833b23fb918782",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x097d84e3a1f4359c048f687b284e2fa7e762c698db141b42b113b6d329eff4f5"
+    },
+    {
+      "name": "zero-amounts",
+      "why": "Zero toAmount and fromAmount encode as distinct values, never elided.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "0",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0x61fc660be32235de85f00e8da4b4813c5bcdd9868941c49ec8acdde5e90fdc4e",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "0",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x79ba512bce38eac76f6b66c9df670e3a693e2f38820f7f0fbe4408948c304f31"
+    },
+    {
+      "name": "max-uint256-amounts-and-deadline",
+      "why": "toAmount, fromAmount and fillDeadline at 2^256-1: catches 64-bit truncation.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0x89010999e6c81cc3c77550d456020501d0fad91d42451092be5e401f171c9d42",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "toChainId": "10",
+        "fillDeadline": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x5b0ae9b025a2796355ee1f1b8b4fb845c2b0b3ddd6df4e2ae410fb54c92eea28"
+    },
+    {
+      "name": "unicode-intent-id",
+      "why": "intentIdHash is keccak of UTF-8 BYTES; multibyte chars catch codepoint-based encoders.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-é中文-🔐"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x7f1bf27de009cd96fd6de821caf9b6b70f4b577c8966cbe9e11a262e84d62a31",
+      "expected_dest_commitment": "0x6bffe41a74abafbc4d2b48adedd32659ee323b49767c42af2d7e8462d9e73a0b",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x6c0262d75d30f1146f111fd014b3daac5135f098b2bc32df7b102b5ace4c39f2"
+    },
+    {
+      "name": "long-multiword-strings",
+      "why": "Strings longer than 32 bytes, with spaces: hashing is over the whole verbatim UTF-8.",
+      "opening": {
+        "recipient": "a long recipient string that spans 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent 0123456789abcdef 0123456789abcdef 0123456789abcdef 0123456789abcdef 0123456789abcdef "
+      },
+      "expected_recipient_key": "0x5e6d1ea7fbf31e0ede630065dae3b35243a5c882d119c1f92376d5eedfa2c79a",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x0ddf80cc8a094830fa2a0dc5637cc7aa2b67931a9a0522f807282f9be02ca623",
+      "expected_dest_commitment": "0x0d8dd451ab9268f1cf99a699ab74af89bdc682a07fd2be07758e3a4b63f649a3",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x690d30161a75924329c5f3ad73e80b2cb13289d1481952ce15d03cc8a6bac186"
+    },
+    {
+      "name": "high-bit-blinding",
+      "why": "A blinding with the top bit set: catches signed-integer or truncating bytes32 handling.",
+      "opening": {
+        "recipient": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "toToken": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "toAmount": "99700000",
+        "blinding": "0xff00000000000000000000000000000000000000000000000000000000000001",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "expected_to_token_key": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0x4d529ea051e5204e5bb7b6c8bdfdab4f0f27930c48841723b2a606226f513f08",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "10",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0xcedc0fc5586c7c339f0678d49f3d4b3c3682057dead70025cdba031c56c546e6"
+    }
+  ]
+}

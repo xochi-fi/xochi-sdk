@@ -15,7 +15,7 @@
  */
 
 import type { QuoteResponseWire, ExecuteResponseWire } from "../shared/index.js";
-import type { PreparedClaim } from "@riddler/signer";
+import type { PreparedClaim } from "@xochi/signer";
 import {
   decodeWireStatus,
   isExecuteResponseWire,

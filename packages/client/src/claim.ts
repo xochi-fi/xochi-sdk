@@ -6,7 +6,7 @@
  * any preimage that hashes to it, so signing it unverified authorises whatever
  * the server chose to build -- including a sweep to somebody else's address.
  *
- * `@riddler/signer`'s `assertPreparedClaimMatchesRequest` recomputes the hash
+ * `@xochi/signer`'s `assertPreparedClaimMatchesRequest` recomputes the hash
  * from the served op under the pinned v0.8 EntryPoint, then checks `sender`,
  * the settlement chain, `callData` (`execute(token, 0, transfer(recipient,
  * amount))`), a zero native value and a paymaster. It runs here with
@@ -20,7 +20,7 @@ import {
   assertPreparedClaimMatchesRequest,
   type ClaimExpectation,
   type PreparedClaim,
-} from "@riddler/signer";
+} from "@xochi/signer";
 
 /** What the client independently knows the claim should do. */
 export type PreparedClaimExpectation = Omit<ClaimExpectation, "requireVerified">;

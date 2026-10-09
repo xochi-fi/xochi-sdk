@@ -1,0 +1,639 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/xsp.schema.json",
+  "title": "Xochi Settlement Protocol (XSP) vector set",
+  "description": "Cross-implementation vectors for the XochiObligation EIP-712 obligationId, refundCommitment, the XochiDepository CallRequest/MarkConsumed digests and the deposit-address derivation (ESCROW-RFC \"XSP obligation\"). Reference: @xochi/signer. uint values are decimal strings; bytes/addresses lowercase hex.",
+  "type": "object",
+  "required": [
+    "version",
+    "generator",
+    "obligation",
+    "depository",
+    "depositAddress"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "generator": {
+      "type": "string"
+    },
+    "obligation": {
+      "type": "object",
+      "required": [
+        "typeString",
+        "typehash",
+        "vectors",
+        "refundCommitments"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "typeString": {
+          "type": "string"
+        },
+        "typehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "domain",
+              "terms",
+              "domainSeparator",
+              "structHash",
+              "obligationId"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "verifyingContract"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "verifyingContract": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  }
+                }
+              },
+              "terms": {
+                "type": "object",
+                "required": [
+                  "originChainId",
+                  "originToken",
+                  "originAmount",
+                  "destChainId",
+                  "destToken",
+                  "destAmount",
+                  "recipientCommitment",
+                  "refundCommitment",
+                  "recoverable",
+                  "solver",
+                  "settlementType",
+                  "deadline",
+                  "quoteId",
+                  "nonce"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "originChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "originToken": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "originAmount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "destChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "destToken": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "destAmount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "recipientCommitment": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "refundCommitment": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "recoverable": {
+                    "type": "boolean"
+                  },
+                  "solver": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "settlementType": {
+                    "type": "integer",
+                    "enum": [
+                      1,
+                      2,
+                      3
+                    ]
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "quoteId": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "nonce": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "structHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "obligationId": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "refundCommitments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "refundAddress",
+              "refundSalt",
+              "refundCommitment"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "refundAddress": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "refundSalt": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "refundCommitment": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "depository": {
+      "type": "object",
+      "required": [
+        "transferTypehash",
+        "recordTypehash",
+        "callRequestTypehash",
+        "markConsumedTypehash",
+        "vectors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "transferTypehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "recordTypehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "callRequestTypehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "markConsumedTypehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "kind",
+                  "domain",
+                  "message",
+                  "domainSeparator",
+                  "structHash",
+                  "digest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "callRequest"
+                  },
+                  "domain": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "version",
+                      "chainId",
+                      "verifyingContract"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "chainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "verifyingContract": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      }
+                    }
+                  },
+                  "message": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "expiry",
+                      "transfers",
+                      "consume"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "expiry": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "transfers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "token",
+                            "to",
+                            "amount"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "token": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "to": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "amount": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            }
+                          }
+                        }
+                      },
+                      "consume": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "obligationId",
+                            "refundCommitment",
+                            "depositor",
+                            "token",
+                            "amount",
+                            "depositedAt"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "obligationId": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{64}$"
+                            },
+                            "refundCommitment": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{64}$"
+                            },
+                            "depositor": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "token": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "amount": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            },
+                            "depositedAt": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "domainSeparator": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "structHash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "kind",
+                  "domain",
+                  "message",
+                  "domainSeparator",
+                  "structHash",
+                  "digest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "markConsumed"
+                  },
+                  "domain": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "version",
+                      "chainId",
+                      "verifyingContract"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "chainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "verifyingContract": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      }
+                    }
+                  },
+                  "message": {
+                    "type": "object",
+                    "required": [
+                      "consume",
+                      "expiry",
+                      "salt"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "consume": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "obligationId",
+                            "refundCommitment",
+                            "depositor",
+                            "token",
+                            "amount",
+                            "depositedAt"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "obligationId": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{64}$"
+                            },
+                            "refundCommitment": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{64}$"
+                            },
+                            "depositor": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "token": {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "amount": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            },
+                            "depositedAt": {
+                              "type": "string",
+                              "pattern": "^(0|[1-9][0-9]*)$"
+                            }
+                          }
+                        }
+                      },
+                      "expiry": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "salt": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  "domainSeparator": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "structHash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "depositAddress": {
+      "type": "object",
+      "required": [
+        "vectors",
+        "rejections"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "factory",
+              "implementation",
+              "obligationId",
+              "refundCommitment",
+              "recoverable",
+              "originToken",
+              "originAmount",
+              "salt",
+              "address"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "factory": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "implementation": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "obligationId": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "refundCommitment": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "recoverable": {
+                "type": "boolean"
+              },
+              "originToken": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "originAmount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "salt": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "address": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              }
+            }
+          }
+        },
+        "rejections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "factory",
+              "implementation",
+              "obligationId",
+              "refundCommitment",
+              "recoverable",
+              "originToken",
+              "originAmount",
+              "error"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "factory": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "implementation": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "obligationId": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "refundCommitment": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "recoverable": {
+                "type": "boolean"
+              },
+              "originToken": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "originAmount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "error": {
+                "const": "ZeroOriginAmount"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

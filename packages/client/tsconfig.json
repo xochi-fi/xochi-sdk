@@ -3,7 +3,7 @@
   // config is the purity check (see tsconfig.machine.json).
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "ESNext.Promise", "DOM"],
+    "lib": ["ES2022", "ES2024.Promise", "DOM"],
     "types": ["node"],
     "module": "ESNext",
     "moduleResolution": "bundler",

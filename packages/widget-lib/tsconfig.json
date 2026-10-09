@@ -3,7 +3,7 @@
   // types: the library runs in a browser page.
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "ESNext.Promise", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "ES2024.Promise", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "module": "ESNext",
     "moduleResolution": "bundler",
