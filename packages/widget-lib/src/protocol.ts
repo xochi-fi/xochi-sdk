@@ -9,7 +9,8 @@
  *                   xochi:rpc              an EIP-1193 request for the host wallet
  *                   xochi:resize           the frame's content height, in CSS px
  *                   xochi:event            a trade lifecycle event
- *   host -> frame   xochi:provider         whether a host wallet is attached
+ *   host -> frame   xochi:provider         whether a host wallet is attached, and
+ *                                          whether the frame may connect it unasked
  *                   xochi:rpc:result       the answer to one xochi:rpc, by id
  *                   xochi:provider:event   accountsChanged / chainChanged / disconnect
  */
@@ -125,7 +126,16 @@ export type FrameMessage =
 
 /** Messages the host sends to the frame. */
 export type HostMessage =
-  | { type: typeof MESSAGE.provider; available: boolean }
+  | {
+      type: typeof MESSAGE.provider;
+      available: boolean;
+      /**
+       * The host's `autoConnect` option. False (the default): the frame offers
+       * the host wallet as an option and connects only on the user's click.
+       * True: the frame connects it on load.
+       */
+      autoConnect: boolean;
+    }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; result: unknown }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; error: RpcErrorObject }
   | { type: typeof MESSAGE.providerEvent; event: "accountsChanged"; data: string[] }

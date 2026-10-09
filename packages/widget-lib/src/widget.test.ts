@@ -228,12 +228,58 @@ describe("handshake and provider state", () => {
     const { widget, frame } = mount();
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
-    expect(await inbox.next()).toEqual({ type: "xochi:provider", available: false });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+    });
 
     widget.updateProvider(new TestWallet());
-    expect(await inbox.next()).toEqual({ type: "xochi:provider", available: true });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+    });
     widget.updateProvider(null);
-    expect(await inbox.next()).toEqual({ type: "xochi:provider", available: false });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: false,
+      autoConnect: false,
+    });
+  });
+
+  // The default never connects for the user: the frame lists the host wallet and
+  // waits for a click. Opting in is the host's call, and it rides on every
+  // provider message so a reload or a provider swap cannot drop it.
+  it("carries autoConnect only when the host opts in, on every provider message", async () => {
+    const { widget, frame } = mount({ provider: new TestWallet(), autoConnect: true });
+    const inbox = new Inbox(frame());
+    fromFrame(frame(), { type: "xochi:ready" });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: true,
+    });
+    widget.updateProvider(new TestWallet());
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: true,
+    });
+  });
+
+  it("treats anything but a literal true as the default", async () => {
+    const { frame } = mount({
+      provider: new TestWallet(),
+      autoConnect: "yes" as unknown as boolean,
+    });
+    const inbox = new Inbox(frame());
+    fromFrame(frame(), { type: "xochi:ready" });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+    });
   });
 
   it("posts nothing to a frame that has not said ready", async () => {
@@ -411,7 +457,11 @@ describe("wallet bridge", () => {
     await inbox.next();
     fromFrame(frame(), rpc("tx", "eth_sendTransaction", [{ to: ACCOUNT }]));
     widget.updateProvider(new TestWallet());
-    expect(await inbox.next()).toEqual({ type: "xochi:provider", available: true });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+    });
     pending.release("0xhash");
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: "tx", result: "0xhash" });
   });
@@ -451,7 +501,11 @@ describe("trust boundary", () => {
     const { iframe, frame } = mount({ provider: wallet });
     const own = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
-    expect(await own.next()).toEqual({ type: "xochi:provider", available: true });
+    expect(await own.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+    });
 
     // The frame navigates itself away: the host still holds the element.
     iframe.src = "https://evil.example/";
@@ -520,7 +574,11 @@ describe("updateParams", () => {
     fromFrame(oldFrame, rpc("stale-window", "eth_chainId"));
     fromFrame(newFrame, { type: "xochi:ready" });
     fromFrame(newFrame, rpc(2, "eth_chainId"));
-    expect(await inbox.next()).toEqual({ type: "xochi:provider", available: true });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      available: true,
+      autoConnect: false,
+    });
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 2, result: "0x1" });
     // The old document's request (id 1) settled meanwhile; its answer must not arrive.
     expect(await inbox.drain()).toEqual([]);

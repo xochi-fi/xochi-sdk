@@ -49,6 +49,14 @@ export interface XochiWidgetOptions {
   params: EmbedParams;
   /** The host wallet the frame signs with. Omitted or null: the frame has none. */
   provider?: Eip1193Provider | null;
+  /**
+   * Connect the host wallet in the frame as soon as it loads. Default false:
+   * the frame lists the host wallet as an option and connects only when the
+   * user picks it, so mounting the widget never opens a wallet prompt or reads
+   * accounts on its own. Set true when the host page has already connected the
+   * user and the frame should simply follow it.
+   */
+  autoConnect?: boolean;
   /** Where the widget is served, an origin only. Default `https://widget.xochi.fi`. */
   origin?: string;
   listeners?: XochiWidgetListeners;
@@ -191,6 +199,7 @@ export function createXochiWidget(
   iframe.style.maxWidth = "100%";
 
   let provider: Eip1193Provider | null = null;
+  const autoConnect = options.autoConnect === true;
   let destroyed = false;
   /** The frame has said `xochi:ready` since it last loaded. */
   let ready = false;
@@ -335,7 +344,7 @@ export function createXochiWidget(
         session += 1;
         pending.clear();
         ready = true;
-        post({ type: MESSAGE.provider, available: provider !== null });
+        post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
         return;
       case MESSAGE.rpc:
         handleRpc(raw, message);
@@ -376,7 +385,7 @@ export function createXochiWidget(
       if (destroyed) throw new Error("the Xochi widget was destroyed");
       if (next === provider) return;
       attach(next);
-      if (ready) post({ type: MESSAGE.provider, available: provider !== null });
+      if (ready) post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
     },
     destroy() {
       if (destroyed) return;

@@ -20,6 +20,7 @@ import { createXochiWidget } from "@xochi/widget-lib";
 const widget = createXochiWidget(document.getElementById("xochi")!, {
   params: { fromChainId: 1, toChainId: 8453, sellSymbol: "USDT", buySymbol: "USDC", amount: "250" },
   provider: window.ethereum, // any EIP-1193 provider; omit for none
+  autoConnect: false, // the default: the frame offers your wallet and waits for a click
   listeners: {
     "trade:submitted": ({ intentId }) => console.log("submitted", intentId),
     "trade:completed": ({ intentId }) => console.log("settled", intentId),
@@ -34,12 +35,13 @@ widget.destroy(); // removes the frame and every listener
 
 `createXochiWidget(container, options)` appends an iframe to `container` pointing at `<origin>/embed?<params>`. It is 460 by 760 px with `max-width: 100%`, the same frame the configurator at `widget.xochi.fi` generates.
 
-| Option      | Meaning                                                                                                     |
-| ----------- | ----------------------------------------------------------------------------------------------------------- |
-| `params`    | What the frame opens on (below). `{}` opens on the widget's own defaults.                                   |
-| `provider`  | The host wallet, any EIP-1193 provider (`window.ethereum`, a wagmi connector's provider, viem's type fits). |
-| `origin`    | Where the widget is served, as an origin only. Default `https://widget.xochi.fi`.                           |
-| `listeners` | Handlers for the trade lifecycle events, by name.                                                           |
+| Option        | Meaning                                                                                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `params`      | What the frame opens on (below). `{}` opens on the widget's own defaults.                                                                                                                                                                                                 |
+| `provider`    | The host wallet, any EIP-1193 provider (`window.ethereum`, a wagmi connector's provider, viem's type fits).                                                                                                                                                               |
+| `autoConnect` | Connect `provider` in the frame on load. Default `false`: the frame lists your wallet as an option and connects only when the user clicks it, so mounting the widget never prompts or reads accounts by itself. Set `true` when your page has already connected the user. |
+| `origin`      | Where the widget is served, as an origin only. Default `https://widget.xochi.fi`.                                                                                                                                                                                         |
+| `listeners`   | Handlers for the trade lifecycle events, by name.                                                                                                                                                                                                                         |
 
 `createXochiWidget` and `updateParams` throw a `TypeError` for a malformed parameter, an unknown parameter key, or an origin that is not a secure origin (https, or http on `localhost`/`127.0.0.1`/`[::1]`). Nothing is mounted when they throw. `updateParams` reloads the frame, because the frame reads its parameters once at load. Params that encode identically do not trigger a reload.
 
@@ -75,15 +77,15 @@ The widget runs its fund-safety checks inside the frame, before anything is sign
 
 All messages are plain JSON objects. The types are exported as `FrameMessage` and `HostMessage`, and the `type` strings as `MESSAGE`.
 
-| Direction    | `type`                 | Body                                                                         |
-| ------------ | ---------------------- | ---------------------------------------------------------------------------- |
-| frame → host | `xochi:ready`          | none; sent on every load. The host answers with `xochi:provider`.            |
-| frame → host | `xochi:rpc`            | `{ id, method, params? }`, an EIP-1193 request                               |
-| frame → host | `xochi:resize`         | `{ height }`, the content height in CSS px                                   |
-| frame → host | `xochi:event`          | `{ event }`, a `XochiWidgetEvent`                                            |
-| host → frame | `xochi:provider`       | `{ available }`, whether a wallet is attached; also sent on `updateProvider` |
-| host → frame | `xochi:rpc:result`     | `{ id, result }` or `{ id, error: { code, message, data? } }`                |
-| host → frame | `xochi:provider:event` | `{ event, data }` for `accountsChanged`, `chainChanged` and `disconnect`     |
+| Direction    | `type`                 | Body                                                                                                                           |
+| ------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| frame → host | `xochi:ready`          | none; sent on every load. The host answers with `xochi:provider`.                                                              |
+| frame → host | `xochi:rpc`            | `{ id, method, params? }`, an EIP-1193 request                                                                                 |
+| frame → host | `xochi:resize`         | `{ height }`, the content height in CSS px                                                                                     |
+| frame → host | `xochi:event`          | `{ event }`, a `XochiWidgetEvent`                                                                                              |
+| host → frame | `xochi:provider`       | `{ available, autoConnect }`: whether a wallet is attached, and the host's `autoConnect` option; also sent on `updateProvider` |
+| host → frame | `xochi:rpc:result`     | `{ id, result }` or `{ id, error: { code, message, data? } }`                                                                  |
+| host → frame | `xochi:provider:event` | `{ event, data }` for `accountsChanged`, `chainChanged` and `disconnect`                                                       |
 
 The library produces these error codes itself: `4200` for a method off the allowlist, `4900` when no wallet is attached, `-32600` for a malformed or oversized request, `-32602` when `params` is neither an array nor an object, `-32005` when too many requests are in flight, and `-32603` for a wallet failure that carries no usable error. A wallet's own error, for example `4001` for a user rejection, is passed through with its code, message and JSON `data`.
 
