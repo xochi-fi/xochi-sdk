@@ -276,6 +276,17 @@ describe("OnchainEscrowGateway.fill", () => {
     expect(w.warnings.some((m) => m.includes("the claim budgets"))).toBe(true);
   });
 
+  // An origin block-time read that fails after acceptance must not leave the
+  // owed fill unsent: the fill window check is advisory there.
+  it("an origin RPC outage after acceptance is a warning, and the fill is still sent", async () => {
+    const w = world();
+    await w.gateway.accept(w.prepared, { resume: true });
+    vi.spyOn(w.origin, "getBlock").mockRejectedValue(new Error("origin RPC unreachable"));
+    expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
+    expect(w.dest.sent.map((t) => t.method)).toEqual(["fill"]);
+    expect(w.warnings.some((m) => m.includes("origin time"))).toBe(true);
+  });
+
   it("refuses a second fill while the first is in doubt, then re-plans once its nonce is taken by another tx", async () => {
     const w = world();
     w.dest.onSend = () => AMBIGUOUS;

@@ -984,9 +984,20 @@ export class OnchainEscrowGateway {
     if (destNow > BigInt(a.deadline)) {
       throw new EscrowRefusalError("auth_expired", `destination time ${destNow} is past the FillAuth deadline ${a.deadline}`, prepared.orderId);
     }
+    // Advisory only: the acceptance is out, so neither a short budget nor an
+    // unreadable origin may stop the fill. Without the origin's time the
+    // window is judged on the destination's and the local clock.
+    let windowNow: bigint;
+    try {
+      windowNow = await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer)]);
+    } catch (err) {
+      this.warn(`could not read the origin time (${describeRevert(err)}); the acceptance is out, so the fill is sent anyway`, prepared.orderId);
+      windowNow = BigInt(Math.floor(this.now() / 1000));
+    }
+    if (destNow > windowNow) windowNow = destNow;
     try {
       checkFillWindow({
-        nowSec: await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer), provider]),
+        nowSec: windowNow,
         refundableAt: prepared.lock.refundableAt,
         fillAuthDeadline: a.deadline,
         fillInclusionSec: this.opts.fillInclusionSec ?? 60,
