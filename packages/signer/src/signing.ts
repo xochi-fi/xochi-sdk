@@ -1,7 +1,8 @@
 import { ethers } from "ethers";
+import { debugEnabled } from "./debug";
 import type { Eip712TypeField, SignerConfig, SignResult } from "./types";
 
-const DEBUG = !!process.env.DEBUG;
+const DEBUG = debugEnabled();
 function debug(...args: unknown[]): void {
   if (DEBUG) console.log(...args);
 }
