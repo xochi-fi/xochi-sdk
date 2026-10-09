@@ -4,6 +4,12 @@ TypeScript SDK for generating and verifying [ERC-8262](https://github.com/xochi-
 
 Also provides trust tier system, privacy level modeling, attestation scoring, settlement splitting (XIP-1), and execution planning (XIP-2).
 
+## Position in the stack
+
+This package (the repo root, `@xochi/sdk`) is the **ERC-8262 prover**: proofs, verification, tiers and scoring. It is not a trading client and never talks to the Xochi API. Circuits and ABIs come from [`xochi-fi/ERC-8262`](https://github.com/xochi-fi/ERC-8262) via `scripts/sync-circuits.sh`; the fee schedule is checked against the exact-pinned `@riddler/spec`.
+
+To trade (quote, sign, execute against `api.xochi.fi/api/*`), use **`@xochi/client`**, the trading client in `packages/client` of this repo (in progress). It carries no prover dependency, so integrators who only trade do not install `@aztec/bb.js` or `noir_js`. An iframe bridge, `@xochi/widget-lib`, will join it.
+
 ## Install
 
 ```bash

@@ -1,5 +1,7 @@
 # TODO
 
+> **Note (2026-10-09):** names below predate the ERC-8262 rename (0.4.0). `XochiProver` is now `ERC8262Prover` (likewise `XochiOracle`/`XochiVerifier` -> `ERC8262Oracle`/`ERC8262Verifier`), the `XochiZKPOracle` contract and EIP-712 domain are `ERC8262Oracle`, and the `erc-xochi-zkp` repo is [`xochi-fi/ERC-8262`](https://github.com/xochi-fi/ERC-8262). See CHANGELOG 0.4.0.
+
 ## Completed (2026-04-15)
 
 All planned phases (P0-P5) implemented. 103 unit + 11 integration + 28 anvil tests passing.
