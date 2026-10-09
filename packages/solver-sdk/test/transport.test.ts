@@ -175,7 +175,7 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
   // A venue redeployed under a running solver: first poll empty, then the venue
   // comes back on another rfcVersion and the feed reports `reset`. The poll
   // after that fails, so a client that does not refuse still terminates.
-  async function venue(reset: boolean) {
+  async function venue(reset: boolean, injected = false) {
     let polls = 0;
     let capabilityReads = 0;
     const bids: string[] = [];
@@ -195,12 +195,18 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
       if (polls === 2) return json(res, { events: [ANNOUNCEMENT], cursor: "2", dropped: 0, reset });
       return json(res, { error: "gone" }, 500);
     });
-    const client = new SolverClient({
-      solverKey: SOLVER_KEY,
-      baseUrl,
-      now: () => 1_500,
-      onFeedGap: (g) => gaps.push(g),
-    });
+    const client = injected
+      ? new SolverClient({
+          solverKey: SOLVER_KEY,
+          transport: new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, onFeedGap: (g) => gaps.push(g) }),
+          now: () => 1_500,
+        })
+      : new SolverClient({
+          solverKey: SOLVER_KEY,
+          baseUrl,
+          now: () => 1_500,
+          onFeedGap: (g) => gaps.push(g),
+        });
     const solver: Solver = {
       capabilities: () => ({ solverId: SOLVER_ID, chains: [8453, 10], tokens: ["USDC"], settlementTypes: ["public"], rfcVersion: SOLVER_RFC_VERSION }),
       quote: async () => ({ output: "99800000", validUntilMs: 10_000, minExclusiveMs: 1_000 }),
@@ -219,6 +225,14 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
     expect(bids).toHaveLength(0);
     expect(capabilityReads()).toBe(2);
     // The caller's own gap handler still sees the reset.
+    expect(gaps).toMatchObject([{ reset: true }]);
+  });
+
+  it("re-gates an injected HttpSolverTransport on a reset, keeping the caller's gap hook", async () => {
+    const { err, bids, gaps, capabilityReads } = await venue(true, true);
+    expect(err).toBeInstanceOf(VenueVersionSkewError);
+    expect(bids).toHaveLength(0);
+    expect(capabilityReads()).toBe(2);
     expect(gaps).toMatchObject([{ reset: true }]);
   });
 
@@ -241,6 +255,15 @@ describe("HttpSolverTransport getCapabilities", () => {
     expect(caps.phase).toBe("P0");
     expect(caps.admission?.panelSize).toBe(0);
     expect(caps.chains).toEqual([8453, 10]);
+  });
+
+  it("aborts a capabilities read the venue never answers after readTimeoutMs", async () => {
+    const baseUrl = await serve(() => {
+      // never respond
+    });
+    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, readTimeoutMs: 50 });
+    await expect(transport.getCapabilities()).rejects.toThrow(/timeout|abort/i);
+    await expect(transport.getAttestation("0x01")).rejects.toThrow(/timeout|abort/i);
   });
 
   it("sends no credentials -- the endpoint is public and pre-admission", async () => {

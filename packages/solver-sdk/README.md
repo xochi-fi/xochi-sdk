@@ -61,7 +61,8 @@ signed `FillAcceptance` (below), which SolverBond v2 verifies on-chain.
 unless the venue's `rfcVersion` equals the exported `SOLVER_RFC_VERSION`
 (`0.5.0-draft`), so nothing is signed under a skew. It re-runs the same check,
 never per announcement, after a feed `reset` (the shape of a venue restart;
-default HTTP transport only) before the next event is acted on, and before
+any transport implementing `addFeedGapListener`, as `HttpSolverTransport` does,
+injected or default) before the next event is acted on, and before
 each award addressed to you reaches `solver.fill`, where the acceptance is
 signed. A skew there throws `VenueVersionSkewError` out of `run` with nothing
 signed, even with `onError` installed. A venue on an older RFC
@@ -565,7 +566,13 @@ serves another `rfcVersion` or does not answer. Previously the gate ran once,
 at start, so a venue redeployed onto another RFC under a long-running solver
 was never noticed. Neither re-check is routed to `onError`; a supervisor that
 restarts on a skew must handle it. Announcements still cost no capabilities
-read.
+read. The reset re-check applies to an injected transport too, through the new
+optional `SolverTransport.addFeedGapListener` (implemented by
+`HttpSolverTransport`; the transport's own `onFeedGap` still sees every gap). A
+custom transport without it is re-checked only before its own awards.
+`HttpSolverTransport` bounds `getCapabilities` and `getAttestation` by the new
+`readTimeoutMs` option (default 10s), so a hung capabilities read no longer
+freezes `run`.
 
 ### `0.4.0` — RFC `0.4.0-draft` → `0.5.0-draft`: decline instead of skip, and claim until repaid
 

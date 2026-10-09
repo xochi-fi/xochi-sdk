@@ -265,6 +265,11 @@ export interface SolverTransport {
     body: { orderId: string; signature: string },
     signal?: AbortSignal,
   ): Promise<FillAcceptanceReceipt>;
+  // Subscribe to the feed's gaps (`dropped`/`reset`). `SolverClient` uses it to
+  // re-check the venue's RFC version after a `reset` (RFC §12); a transport
+  // without it is re-checked only on this solver's own awards. Returns the
+  // unsubscribe.
+  addFeedGapListener?(listener: (gap: FeedGap) => void): () => void;
 }
 
 // The escrow LIFECYCLE as the venue sees it (RFC section 7): lock on open,

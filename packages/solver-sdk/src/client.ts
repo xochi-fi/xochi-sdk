@@ -147,15 +147,17 @@ export class SolverClient {
         baseUrl: opts.baseUrl,
         apiKey: opts.apiKey,
         solverId: this.solverId,
-        // Wrapped so a `reset` also re-arms the version gate (see `run`). The
-        // caller's handler still sees every gap, unchanged.
-        onFeedGap: (gap) => {
-          if (gap.reset) this.versionRecheckPending = true;
-          opts.onFeedGap?.(gap);
-        },
+        onFeedGap: opts.onFeedGap,
         onInvalidEvent: opts.onInvalidEvent,
       });
     }
+    // A `reset` re-arms the version gate (see `run`), whoever built the
+    // transport: an injected one keeps its own `onFeedGap`, and this listener
+    // rides alongside it. A custom transport without `addFeedGapListener`
+    // cannot report resets, so its feed is re-gated only on own awards.
+    this.transport.addFeedGapListener?.((gap) => {
+      if (gap.reset) this.versionRecheckPending = true;
+    });
   }
 
   // The venue's advertised RFC version and permissioning phase (RFC §12). A
@@ -297,6 +299,11 @@ export interface HttpSolverTransportOptions {
   // signal. An acceptance is owed from the moment it is sent, so a venue that
   // never answers must not hold the solver past the point it has to fill.
   acceptTimeoutMs?: number;
+  // Upper bound on `getCapabilities` and `getAttestation` (default 10_000 ms),
+  // on top of any caller signal. `SolverClient.run` re-reads capabilities
+  // before acting on its own award, so a venue that never answers must not
+  // freeze the loop.
+  readTimeoutMs?: number;
 }
 
 // Transport over the `/solver/*` HTTP surface: a resumable long-poll feed
@@ -313,6 +320,8 @@ export class HttpSolverTransport implements SolverTransport {
   private readonly onFeedGap?: (gap: FeedGap) => void;
   private readonly onInvalidEvent?: (err: unknown, raw: unknown) => void;
   private readonly acceptTimeoutMs: number;
+  private readonly readTimeoutMs: number;
+  private readonly feedGapListeners = new Set<(gap: FeedGap) => void>();
   private cursor: string;
 
   constructor(opts: HttpSolverTransportOptions) {
@@ -321,6 +330,7 @@ export class HttpSolverTransport implements SolverTransport {
     this.onFeedGap = opts.onFeedGap;
     this.onInvalidEvent = opts.onInvalidEvent;
     this.acceptTimeoutMs = opts.acceptTimeoutMs ?? 10_000;
+    this.readTimeoutMs = opts.readTimeoutMs ?? 10_000;
     this.headers = {
       "Content-Type": "application/json",
       "X-Solver-Id": opts.solverId,
@@ -346,8 +356,10 @@ export class HttpSolverTransport implements SolverTransport {
       const reset = batch.reset ?? false;
       // Report the gap BEFORE yielding this batch, so a handler learns it is
       // missing intents ahead of acting on the ones that did arrive.
-      if (this.onFeedGap && (dropped > 0 || reset)) {
-        this.onFeedGap({ dropped, reset, requestedCursor, cursor: batch.cursor });
+      if (dropped > 0 || reset) {
+        const gap: FeedGap = { dropped, reset, requestedCursor, cursor: batch.cursor };
+        this.onFeedGap?.(gap);
+        for (const listener of this.feedGapListeners) listener(gap);
       }
       for (const raw of batch.events) {
         let event: SolverEvent;
@@ -371,7 +383,7 @@ export class HttpSolverTransport implements SolverTransport {
   // `GET /solver/capabilities` is public and unauthenticated (RFC §12), so this
   // deliberately sends no credentials -- it must work before admission.
   async getCapabilities(signal?: AbortSignal): Promise<VenueCapabilities> {
-    const res = await fetch(`${this.baseUrl}/solver/capabilities`, { signal });
+    const res = await fetch(`${this.baseUrl}/solver/capabilities`, { signal: this.bounded(this.readTimeoutMs, signal) });
     if (!res.ok) throw new Error(`solver capabilities ${res.status}: ${await res.text()}`);
     return VenueCapabilitiesSchema.parse(await res.json());
   }
@@ -387,7 +399,7 @@ export class HttpSolverTransport implements SolverTransport {
   async getAttestation(orderId: string, signal?: AbortSignal): Promise<FillAttestationWire | null> {
     const res = await fetch(`${this.baseUrl}/solver/attestations/${encodeURIComponent(orderId)}`, {
       headers: this.headers,
-      signal,
+      signal: this.bounded(this.readTimeoutMs, signal),
     });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`solver attestation ${res.status}: ${await res.text()}`);
@@ -406,7 +418,7 @@ export class HttpSolverTransport implements SolverTransport {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.any([AbortSignal.timeout(this.acceptTimeoutMs), ...(signal ? [signal] : [])]),
+      signal: this.bounded(this.acceptTimeoutMs, signal),
     });
     if (!res.ok) throw new Error(`solver accept ${res.status}: ${await res.text()}`);
     return FillAcceptanceReceiptSchema.parse(await res.json());
@@ -414,6 +426,17 @@ export class HttpSolverTransport implements SolverTransport {
 
   async submitFill(receipt: FillReceipt): Promise<void> {
     await this.post("/solver/fills", receipt);
+  }
+
+  // Every gap this transport reports to `onFeedGap` is also passed to each
+  // listener. Returns the unsubscribe.
+  addFeedGapListener(listener: (gap: FeedGap) => void): () => void {
+    this.feedGapListeners.add(listener);
+    return () => this.feedGapListeners.delete(listener);
+  }
+
+  private bounded(timeoutMs: number, signal?: AbortSignal): AbortSignal {
+    return AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
   }
 
   private async post(path: string, body: unknown): Promise<void> {
