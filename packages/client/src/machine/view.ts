@@ -1,0 +1,61 @@
+/**
+ * view(model) -> Receipt. Pure; the renderer draws this and nothing it derives
+ * on its own from the raw quote.
+ */
+
+import { canSignQuote } from "./decisions.js";
+import type { Model } from "./machine.js";
+import { phaseFromStatus } from "./phase.js";
+import {
+  costOf,
+  payoutOf,
+  settlementDisclosure,
+  type QuoteSlot,
+  type Receipt,
+  type SigningSlot,
+} from "./receipt.js";
+
+function quoteSlot(model: Model): QuoteSlot {
+  const { status, quote } = model.intent;
+  // The receipt STAYS MOUNTED while a replacement is fetched, but only over a
+  // solvable quote: after a decline the held quote's figures are empty.
+  if (quote && (status === "quoted" || (status === "quoting" && quote.canSolve))) {
+    return {
+      kind: "ready",
+      executable: !quote.preview,
+      refreshing: status === "quoting",
+      expiresInSec: model.quoteExpiresIn,
+    };
+  }
+  if (status === "quoting") return { kind: "loading" };
+  if (quote && !quote.canSolve) return { kind: "declined", reason: quote.error ?? null };
+  return { kind: "none" };
+}
+
+function signingSlot(model: Model): SigningSlot {
+  const quote = model.intent.quote;
+  const signatures = quote?.pullAuthorization ? 2 : 1;
+  const flow = model.sign;
+  if (flow) {
+    if (flow.stage === "execute") return { kind: "submitted" };
+    return flow.stage === "intent"
+      ? { kind: "in_wallet", step: 1, of: signatures }
+      : { kind: "in_wallet", step: 2, of: 2 };
+  }
+  if (model.awaitingPull) return { kind: "awaiting_second" };
+  if (!canSignQuote(model.intent.status, quote)) return { kind: "unavailable" };
+  if (model.intent.refusal) return { kind: "refused", refusal: model.intent.refusal };
+  return quote?.depositAddress ? { kind: "deposit" } : { kind: "ready", signatures };
+}
+
+export function view(model: Model): Receipt {
+  const { status, reconciling, quote } = model.intent;
+  return {
+    phase: phaseFromStatus(status, { reconciling }),
+    quote: quoteSlot(model),
+    payout: payoutOf(quote),
+    cost: costOf(quote),
+    settlement: settlementDisclosure(model.ctx.settlementPreference),
+    signing: signingSlot(model),
+  };
+}

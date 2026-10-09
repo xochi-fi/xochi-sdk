@@ -1,0 +1,726 @@
+/**
+ * Transport for the Xochi Worker API (`<baseUrl>/api/*`).
+ *
+ * - Quote caching (TTL) and request deduplication
+ * - Retry with exponential backoff, closed to transient gateway statuses
+ * - A per-attempt timeout
+ * - Status polling for in-flight intents (no WebSocket)
+ *
+ * Everything host-specific is injected: the `fetch` implementation, the bearer
+ * token, what to do when the server says a credential is no longer good, and
+ * where log lines go. Nothing here reads a global config, storage or the DOM.
+ *
+ * The Worker speaks the snake_case wire contract; responses are decoded to the
+ * camelCase app types by the same decoders the state machine reads.
+ */
+
+import type { QuoteResponseWire, ExecuteResponseWire } from "../shared/index.js";
+import type { PreparedClaim } from "@riddler/signer";
+import {
+  decodeWireStatus,
+  isExecuteResponseWire,
+  isQuoteResponseWire,
+  isTerminalIntentStatus,
+  mapExecuteResponse,
+  mapIntentRecord,
+  mapQuoteResponse,
+  type ExecuteRequest,
+  type ExecuteResponse,
+  type IntentRecord,
+  type IntentRecordWire,
+  type IntentStatusResult,
+  type QuoteRequest,
+  type QuoteResponse,
+} from "../machine/wire.js";
+
+// ============================================================
+// Configuration
+// ============================================================
+
+export interface TransportTimeouts {
+  /**
+   * Quote cache time-to-live. Must stay below the worker's 30s quote window: at
+   * 30s a cache hit near expiry handed back an about-to-expire quote, and the
+   * ~25s scheduled refresh re-hit the cache and returned the same expiring quote
+   * (every quote dead-ended at "expired"). 15s guarantees the refresh misses.
+   */
+  quoteCacheTtlMs: number;
+  /** Per-attempt timeout for quotes, status and reads. */
+  requestTimeoutMs: number;
+  /**
+   * Execute timeout. Execute runs synchronously through the origin pull + a
+   * ~25s server-side receipt confirmation + settlement, so the request timeout
+   * aborted it while the intent was still settling. 120s guards the slow
+   * cross-chain path.
+   */
+  executeTimeoutMs: number;
+}
+
+export interface RetryPolicy {
+  /** Total attempts for an idempotent request. */
+  maxAttempts: number;
+  /** First exponential backoff step. */
+  baseDelayMs: number;
+  /** Clamp on a server-supplied `Retry-After` used for internal pacing. */
+  maxDelayMs: number;
+}
+
+export const DEFAULT_TIMEOUTS: TransportTimeouts = {
+  quoteCacheTtlMs: 15_000,
+  requestTimeoutMs: 15_000,
+  executeTimeoutMs: 120_000,
+};
+
+export const DEFAULT_RETRY: RetryPolicy = {
+  maxAttempts: 3,
+  baseDelayMs: 1_000,
+  maxDelayMs: 10_000,
+};
+
+/**
+ * A credential failure the server named. `expired`: a 401 whose body says the
+ * token expired (prompt a fresh login). `invalid`: a 401/403 carrying
+ * `error_category` `auth_invalid` or `wallet_auth_required` on a request that
+ * sent a token (drop the session so the next attempt re-authenticates). A 401
+ * or 403 that names neither is a business rule, not a credential failure.
+ */
+export interface AuthExpiredEvent {
+  reason: "expired" | "invalid";
+  status: number;
+  errorCategory?: string;
+}
+
+export type TransportLogLevel = "debug" | "warn" | "error";
+export type TransportLogger = (
+  level: TransportLogLevel,
+  message: string,
+  ...data: unknown[]
+) => void;
+
+export interface XochiClientOptions {
+  /** API origin, e.g. `https://api.xochi.fi`. Paths are `/api/...` under it. */
+  baseUrl: string;
+  /** Defaults to `globalThis.fetch`. */
+  fetch?: (input: string, init: RequestInit) => Promise<Response>;
+  /** Bearer token for authenticated calls; absent or null sends none. */
+  getAuthToken?: () => string | null | undefined;
+  /** Called when the server names a credential failure (see AuthExpiredEvent). */
+  onAuthExpired?: (event: AuthExpiredEvent) => void;
+  /** Defaults to warn/error on the console, debug dropped. */
+  log?: TransportLogger;
+  timeouts?: Partial<TransportTimeouts>;
+  retry?: Partial<RetryPolicy>;
+}
+
+// ============================================================
+// Errors and Retry-After
+// ============================================================
+
+/**
+ * A structured API failure. Carries the numeric HTTP status and, for
+ * backpressure responses (429/503), an ABSOLUTE unix-seconds retry target so the
+ * UI can render a countdown and disable Retry until it elapses. The message stays
+ * the raw `HTTP {status}: {body}` string so a code-less consumer can still fall
+ * back to matching on it.
+ */
+export class ApiError extends Error {
+  readonly code: number;
+  readonly retryAfter?: number;
+
+  constructor(message: string, code: number, retryAfter?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.retryAfter = retryAfter;
+  }
+}
+
+/**
+ * Parse a Retry-After header (our API sends integer seconds) into milliseconds,
+ * clamped to [0, maxDelayMs] so a malformed or hostile value can't stall the
+ * client. Returns null when absent/unparseable so the caller falls back to its
+ * own exponential backoff.
+ */
+export function parseRetryAfterMs(
+  headerValue: string | null,
+  maxDelayMs: number = DEFAULT_RETRY.maxDelayMs,
+): number | null {
+  if (!headerValue) return null;
+  const seconds = Number(headerValue);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.min(seconds * 1000, maxDelayMs);
+}
+
+/**
+ * HTTP statuses worth another attempt. Deliberately a closed set of TRANSIENT
+ * GATEWAY failures: 502/504 are a hiccup between the worker and the solver, and
+ * 503 is documented backpressure that carries its own Retry-After. Everything
+ * else fails fast, 500 included: a 500 is an unhandled exception in the worker,
+ * so every further attempt returns the same 500 while multiplying the error rate
+ * and delaying the failure the user sees (xochi#420). A network failure is not
+ * an ApiError and stays retryable, which is the case retries exist for.
+ */
+const RETRYABLE_STATUS: Readonly<Record<number, true>> = { 502: true, 503: true, 504: true };
+
+/**
+ * Ceiling on the DERIVED display wait (seconds). Distinct from the internal
+ * backoff clamp: this bounds only the user-facing countdown so a
+ * buggy-but-trusted upstream value (e.g. an absolute epoch mistakenly sent in a
+ * delta-only Retry-After header) cannot produce a multi-decade countdown that
+ * disables Retry until a reload. 10 minutes is far past any legitimate
+ * backpressure window.
+ */
+export const MAX_RETRY_WAIT_SEC = 600;
+
+/**
+ * Resolve the display countdown target (ABSOLUTE unix SECONDS) for a
+ * backpressure response. Distinct from parseRetryAfterMs, which returns clamped
+ * milliseconds for internal retry pacing: a display countdown reflects the full
+ * server-requested wait, bounded only by MAX_RETRY_WAIT_SEC.
+ *
+ * Sources, in priority order:
+ *  - `Retry-After` header: DELTA seconds, converted to absolute (now + delta).
+ *  - `X-RateLimit-Reset` header: already ABSOLUTE unix seconds.
+ *  - `retryAfter` in a JSON body (429 response): already ABSOLUTE unix seconds.
+ *
+ * Returns undefined when no source is present or parseable (so no countdown is
+ * shown and Retry stays enabled).
+ */
+export function resolveRetryAfterSeconds(headers: Headers, body: string): number | undefined {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const target = deriveRetryTarget(headers, body, nowSec);
+  if (target === undefined) return undefined;
+  // Clamp the derived wait to a sane ceiling so no upstream value can lock the
+  // UI. A past/absolute value stays under the cap and simply yields no live
+  // countdown; the lower bound stays at 0.
+  return Math.min(target, nowSec + MAX_RETRY_WAIT_SEC);
+}
+
+function deriveRetryTarget(headers: Headers, body: string, nowSec: number): number | undefined {
+  const retryAfterHeader = headers.get("Retry-After");
+  if (retryAfterHeader !== null) {
+    const delta = Number(retryAfterHeader);
+    if (Number.isFinite(delta) && delta >= 0) return nowSec + delta;
+  }
+
+  const reset = headers.get("X-RateLimit-Reset");
+  if (reset !== null) {
+    const abs = Number(reset);
+    if (Number.isFinite(abs) && abs > 0) return abs;
+  }
+
+  // A body that is not a JSON object carries no absolute retry hint.
+  const value = parseJsonObject(body)?.retryAfter;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  return undefined;
+}
+
+// ============================================================
+// Stealth claim (prepare/submit), single attempt
+// ============================================================
+
+/**
+ * `POST /api/stealth/claim/prepare` body: the sponsored UserOperation, its hash
+ * and the EntryPoint/chain it was hashed under. Verify it with
+ * `checkPreparedClaim` before signing `userOpHash`.
+ */
+export interface PreparedStealthClaim extends PreparedClaim {
+  success: boolean;
+}
+
+/** `POST /api/stealth/claim/submit` 200 body. */
+export interface SubmittedStealthClaim {
+  success: boolean;
+  txHash?: string;
+  opHash?: string;
+  blockNumber?: number;
+}
+
+/**
+ * A single-attempt call's outcome. `errorCategory` is the server's stable key
+ * when it named one (`claim_pending` on a 503 means the op was accepted and not
+ * mined yet: resubmit the SAME body to poll it, never prepare or sign again).
+ */
+export type CallResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status?: number; errorCategory?: string; body?: unknown };
+
+// ============================================================
+// Client
+// ============================================================
+
+export interface XochiClient {
+  /** Request a quote. Cached for the TTL (pull-bearing quotes never) and deduplicated. */
+  getQuote(request: QuoteRequest, opts?: { forceRefresh?: boolean }): Promise<QuoteResponse>;
+  invalidateQuote(request: QuoteRequest): void;
+  clearQuoteCache(): void;
+  /** Execute a signed intent. Single attempt: a failure is in doubt, resolve it by polling status. */
+  execute(request: ExecuteRequest): Promise<ExecuteResponse>;
+  getIntent(intentId: string): Promise<IntentRecord | null>;
+  getIntentStatus(intentId: string): Promise<IntentStatusResult>;
+  getIntentHistory(wallet: string, limit?: number): Promise<IntentRecord[]>;
+  prepareStealthClaim(body: {
+    counterfactualAddress: string;
+    recipientAddress: string;
+  }): Promise<CallResult<PreparedStealthClaim>>;
+  submitStealthClaim(body: {
+    userOpHash: string;
+    signature: string;
+  }): Promise<CallResult<SubmittedStealthClaim>>;
+}
+
+interface CachedQuote {
+  quote: QuoteResponse;
+  timestamp: number;
+}
+
+interface PendingRequest<T> {
+  promise: Promise<T>;
+  timestamp: number;
+}
+
+const WALLET_SESSION_REAUTH_CATEGORIES: Readonly<Record<string, true>> = {
+  auth_invalid: true,
+  wallet_auth_required: true,
+};
+
+const consoleLogger: TransportLogger = (level, message, ...data) => {
+  if (level === "warn") console.warn(message, ...data);
+  else if (level === "error") console.error(message, ...data);
+};
+
+export function createXochiClient(options: XochiClientOptions): XochiClient {
+  const baseUrl = options.baseUrl.replace(/\/+$/, "");
+  const doFetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const log = options.log ?? consoleLogger;
+  const timeouts: TransportTimeouts = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
+  const retry: RetryPolicy = { ...DEFAULT_RETRY, ...options.retry };
+
+  const quoteCache = new Map<string, CachedQuote>();
+  const pendingQuotes = new Map<string, PendingRequest<QuoteResponse>>();
+  // Ids already warned about a non-ok status poll. getIntentStatus runs in the
+  // poll loop, so a persistently failing id would flood the log; warn once per
+  // id instead. Cleared when it grows past a bound so a long session can't leak.
+  const warnedStatusIds = new Set<string>();
+
+  /**
+   * One HTTP attempt with the bearer token attached and a timeout. Reports a
+   * credential failure the server names to `onAuthExpired`; the response is
+   * returned either way, for the caller to classify.
+   */
+  async function send(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+    const token = options.getAuthToken?.() ?? null;
+    const headers = new Headers(init.headers);
+    if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
+      const body = await response
+        .clone()
+        .text()
+        .catch(() => "");
+      if (response.status === 401 && /expired/i.test(body)) {
+        options.onAuthExpired({ reason: "expired", status: response.status });
+      } else if (token) {
+        const category = parseJsonObject(body)?.error_category;
+        if (typeof category === "string" && WALLET_SESSION_REAUTH_CATEGORIES[category]) {
+          options.onAuthExpired({
+            reason: "invalid",
+            status: response.status,
+            errorCategory: category,
+          });
+        }
+      }
+    }
+    return response;
+  }
+
+  async function sendWithRetry<T>(
+    path: string,
+    init: RequestInit,
+    validator: (data: unknown) => data is T,
+    timeoutMs: number,
+    // Total attempts. Non-idempotent writes (execute) MUST pass 1: a 5xx/502/
+    // network failure on execute is IN-DOUBT (the origin pull may already be
+    // consumed), so a blind retry re-sends the one-time pull authorization and
+    // fails with "pull authorization has already been used". Those callers let
+    // the failure surface and resolve it by polling status.
+    maxAttempts: number,
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Server-supplied backoff hint for this attempt (503 backpressure). Falls
+      // back to exponential when absent.
+      let retryAfterMs: number | null = null;
+      try {
+        const response = await send(path, init, timeoutMs);
+
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => "");
+          // A 503 is a transient solver blip (saturation / gas-oracle
+          // unavailable); pace the retry off the server's Retry-After.
+          if (response.status === 503) {
+            retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"), retry.maxDelayMs);
+          }
+          // Structured failure: the numeric status plus, for backpressure
+          // (429/503), an absolute retry target for a countdown.
+          const retryAfter =
+            response.status === 429 || response.status === 503
+              ? resolveRetryAfterSeconds(response.headers, errorBody)
+              : undefined;
+          throw new ApiError(
+            `HTTP ${response.status}: ${errorBody || response.statusText}`,
+            response.status,
+            retryAfter,
+          );
+        }
+
+        const data: unknown = await response.json();
+        if (!validator(data)) throw new Error("Invalid response format");
+        return data;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        // Retry only a transient gateway status. A 4xx is the caller's to fix; a
+        // 429 carries its own retryAfter, and retrying in-call would stale a
+        // quote and stack against the limit. A 500 is deterministic (xochi#420).
+        if (lastError instanceof ApiError && !RETRYABLE_STATUS[lastError.code]) break;
+        // Don't retry an abort (the timeout fired).
+        if (lastError.name === "AbortError") break;
+
+        if (attempt < maxAttempts - 1) {
+          const delay = retryAfterMs ?? retry.baseDelayMs * Math.pow(2, attempt);
+          // A retry means the request already failed once: that is the context
+          // for the error below if the retries run out.
+          log("warn", `[xochi-client] Retry ${attempt + 1}/${maxAttempts} in ${delay}ms`);
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, delay);
+          await promise;
+        }
+      }
+    }
+
+    log("error", "[xochi-client] Request failed after retries:", lastError);
+    throw lastError ?? new Error("Request failed");
+  }
+
+  async function sendOnce<T>(path: string, body: unknown): Promise<CallResult<T>> {
+    try {
+      const response = await send(
+        path,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        timeouts.requestTimeoutMs,
+      );
+      const text = await response.text();
+      if (!response.ok) {
+        const record = parseJsonObject(text);
+        return {
+          ok: false,
+          error:
+            typeof record?.error === "string"
+              ? record.error
+              : `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+          errorCategory:
+            typeof record?.error_category === "string" ? record.error_category : undefined,
+          body: record,
+        };
+      }
+      // A 200 whose body is not a JSON object is not the documented response.
+      const data = parseJsonObject(text);
+      if (!data) return { ok: false, error: "Invalid response format", status: response.status };
+      return { ok: true, data: data as T };
+    } catch (err) {
+      if (err instanceof Error) {
+        return { ok: false, error: err.name === "AbortError" ? "Request timeout" : err.message };
+      }
+      return { ok: false, error: "Unknown error" };
+    }
+  }
+
+  async function fetchQuote(request: QuoteRequest): Promise<QuoteResponse> {
+    const wire = await sendWithRetry<QuoteResponseWire>(
+      "/api/intent/quote",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: request.wallet,
+          preview: request.preview,
+          allocation_key: request.allocationKey,
+          from_chain_id: request.fromChainId,
+          to_chain_id: request.toChainId,
+          from_token: request.fromToken,
+          to_token: request.toToken,
+          from_amount: request.fromAmount,
+          deadline: request.deadline,
+          slippage_bps: request.slippageBps,
+          trust_score: request.trustScore,
+          settlement_preference: request.settlementPreference,
+          // Recipient on a non-EVM destination (Tron); omitted for EVM routes.
+          recipient_address: request.recipientAddress,
+          // Refund destination on the origin chain for a deposit-route origin.
+          // Omitted for EVM origins, which refund to the connected wallet.
+          refund_address: request.refundAddress,
+          stealth_meta_address: request.stealthMetaAddress
+            ? {
+                spending_pub_key: request.stealthMetaAddress.spendingPubKey,
+                viewing_pub_key: request.stealthMetaAddress.viewingPubKey,
+                chain_id: request.stealthMetaAddress.chainId,
+              }
+            : undefined,
+        }),
+      },
+      isQuoteResponseWire,
+      timeouts.requestTimeoutMs,
+      retry.maxAttempts,
+    );
+    return mapQuoteResponse(wire);
+  }
+
+  return {
+    async getQuote(request, opts) {
+      const requestHash = hashQuoteRequest(request);
+
+      // A scheduled refresh must always fetch fresh: drop any cached/pending
+      // entry so the near-expiry quote is replaced, not re-served. The hash
+      // omits `deadline`, so without this a refresh would collide with the
+      // stale entry.
+      if (opts?.forceRefresh) {
+        quoteCache.delete(requestHash);
+        pendingQuotes.delete(requestHash);
+      }
+
+      const cached = quoteCache.get(requestHash);
+      if (
+        !opts?.forceRefresh &&
+        cached &&
+        Date.now() - cached.timestamp < timeouts.quoteCacheTtlMs
+      ) {
+        log("debug", "[xochi-client] Returning cached quote:", cached.quote.quoteId);
+        return cached.quote;
+      }
+
+      const pending = pendingQuotes.get(requestHash);
+      if (pending && Date.now() - pending.timestamp < timeouts.requestTimeoutMs) {
+        log("debug", "[xochi-client] Deduplicating quote request");
+        return pending.promise;
+      }
+
+      const promise = fetchQuote(request);
+      pendingQuotes.set(requestHash, { promise, timestamp: Date.now() });
+
+      try {
+        const quote = await promise;
+        // Cache successful quotes -- EXCEPT pull-bearing ones. A quote carrying a
+        // pull_authorization embeds a single-use ERC-3009 nonce; re-serving it
+        // from the cache would re-sign a spent nonce and fail with "pull
+        // authorization has already been used". Pull routes always refetch.
+        if (quote.success && !quote.pullAuthorization) {
+          quoteCache.set(requestHash, { quote, timestamp: Date.now() });
+        }
+        return quote;
+      } finally {
+        pendingQuotes.delete(requestHash);
+      }
+    },
+
+    invalidateQuote(request) {
+      quoteCache.delete(hashQuoteRequest(request));
+    },
+
+    clearQuoteCache() {
+      quoteCache.clear();
+    },
+
+    async execute(request) {
+      const wire = await sendWithRetry<ExecuteResponseWire>(
+        "/api/intent/execute",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            intent_id: request.intentId,
+            quote_id: request.quoteId,
+            signature: request.signature,
+            nonce: request.nonce,
+            pull_signature: request.pullSignature,
+            aztec_proof: request.aztecProof,
+          }),
+        },
+        isExecuteResponseWire,
+        timeouts.executeTimeoutMs,
+        // Single attempt: execute is non-idempotent (one-time pull authorization).
+        1,
+      );
+      return mapExecuteResponse(wire);
+    },
+
+    async getIntent(intentId) {
+      const response = await send(
+        `/api/intent/${encodeURIComponent(intentId)}`,
+        { method: "GET" },
+        timeouts.requestTimeoutMs,
+      );
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error(`Failed to get intent ${intentId}: HTTP ${response.status}`);
+      }
+      return mapIntentRecord((await response.json()) as IntentRecordWire);
+    },
+
+    /**
+     * Poll the latest status for an in-flight intent. Discriminated so callers
+     * can tell a definitive absence from a blip:
+     *  - the status object on 200,
+     *  - `{ notFound: true }` on a 404 (no row for this id; a pre-dispatch row
+     *    can be terminalized on it, a dispatched one is held and reported),
+     *  - `null` only on a transient failure (non-404 non-ok, or a network
+     *    error); the caller retries on its interval. See #271.
+     */
+    async getIntentStatus(intentId) {
+      try {
+        const response = await send(
+          `/api/intent/${encodeURIComponent(intentId)}/status`,
+          { method: "GET" },
+          timeouts.requestTimeoutMs,
+        );
+        if (!response.ok) {
+          // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
+          // order reading "settling forever" and is the signal that was missing
+          // when diagnosing a stuck order (#269).
+          if (!warnedStatusIds.has(intentId)) {
+            if (warnedStatusIds.size > 500) warnedStatusIds.clear();
+            warnedStatusIds.add(intentId);
+            log(
+              "warn",
+              response.status === 404
+                ? `[xochi-client] status 404: no order found for ${intentId}`
+                : `[xochi-client] status poll non-ok (${response.status}) for ${intentId}`,
+            );
+          }
+          return response.status === 404 ? { notFound: true } : null;
+        }
+        const d = (await response.json()) as {
+          intent_id?: string | null;
+          status: string;
+          tx_hash?: string | null;
+          receiving_tx_hash?: string | null;
+          settlement_tx_hash?: string | null;
+          settlement_chain_id?: number | null;
+          error?: string | null;
+          refund_reason?: string | null;
+          substatus?: string | null;
+          terminal?: boolean;
+        };
+        // Decode at the boundary: a granular/unknown solver status is bucketed
+        // to a known state so the poll runs on to a real terminal, and an
+        // unmapped one is flagged so the trade says "Still confirming", never done.
+        const decoded = decodeWireStatus(d.status);
+        const status = decoded.status;
+        return {
+          intentId: d.intent_id ?? null,
+          status,
+          ...(decoded.kind === "unmapped" ? { unmapped: true } : {}),
+          txHash: d.tx_hash ?? null,
+          receivingTxHash: d.receiving_tx_hash ?? null,
+          settlementTxHash: d.settlement_tx_hash ?? null,
+          settlementChainId: d.settlement_chain_id ?? null,
+          error: d.error ?? null,
+          refundReason: d.refund_reason ?? null,
+          substatus: d.substatus ?? null,
+          // Trust the server flag; else derive from the normalized status.
+          terminal: d.terminal ?? isTerminalIntentStatus(status),
+        };
+      } catch (err) {
+        log("warn", "[xochi-client] status poll failed (will retry):", err);
+        return null;
+      }
+    },
+
+    async getIntentHistory(wallet, limit = 10) {
+      const response = await send(
+        `/api/intent/history?wallet=${encodeURIComponent(wallet)}&limit=${limit}`,
+        { method: "GET" },
+        timeouts.requestTimeoutMs,
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to get intent history for ${wallet}: HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as { intents?: IntentRecordWire[] };
+      return (data.intents ?? []).map(mapIntentRecord);
+    },
+
+    prepareStealthClaim(body) {
+      return sendOnce<PreparedStealthClaim>("/api/stealth/claim/prepare", body);
+    },
+
+    submitStealthClaim(body) {
+      return sendOnce<SubmittedStealthClaim>("/api/stealth/claim/submit", body);
+    },
+  };
+}
+
+/**
+ * A response body read as a JSON object, or undefined when it is not one. The
+ * one place a body becomes a field bag: every read off it is then narrowed by
+ * `typeof` at the use site.
+ */
+function parseJsonObject(text: string): Record<string, unknown> | undefined {
+  if (!text) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+  // Validated just above as a non-array object; its fields stay `unknown`.
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Deterministic quote cache key. The composed string is already unique per
+ * distinct request. `deadline` is intentionally excluded (the solver overrides
+ * it), but `trustScore` MUST be included -- it drives the fee tier -- and so
+ * must the refund address: the intent is created at QUOTE time with whatever
+ * refund address the request carried (xochi#358), and a cached quote bound to
+ * none cannot be flagged by the deposit attestation, because it is genuinely
+ * signed for the deal it describes. The refund address is not lowercased: on a
+ * Tron origin it is base58, which is case-sensitive.
+ */
+function hashQuoteRequest(request: QuoteRequest): string {
+  return [
+    request.wallet?.toLowerCase() ?? "preview",
+    request.preview ? "preview" : "execute",
+    request.allocationKey ?? "",
+    request.fromChainId,
+    request.toChainId,
+    request.fromToken.toLowerCase(),
+    request.toToken.toLowerCase(),
+    request.fromAmount,
+    request.slippageBps,
+    request.trustScore,
+    request.settlementPreference,
+    // Distinct recipients (non-EVM dest) are distinct quotes.
+    (request.recipientAddress ?? "").toLowerCase(),
+    request.refundAddress ?? "",
+  ].join(":");
+}

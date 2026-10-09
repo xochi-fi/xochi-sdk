@@ -57,6 +57,35 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run
 
+  # @xochi/client (packages/client): the same prepublishOnly gates, run from the
+  # workspace root so the root lockfile resolves it. Needs no foundry.
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check -w @xochi/client
+
+      - name: Typecheck
+        run: npm run typecheck -w @xochi/client
+
+      - name: Unit tests
+        run: npm test -w @xochi/client
+
+      - name: Build
+        run: npm run build -w @xochi/client
+
+      - name: Verify package contents
+        run: npm pack --dry-run -w @xochi/client
+
   integration:
     runs-on: ubuntu-latest
     needs: check

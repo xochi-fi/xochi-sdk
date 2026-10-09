@@ -57,6 +57,19 @@ Also provides trust tier system, privacy level modeling, attestation scoring, an
 - **circuits/**: Pre-compiled Noir circuit JSON artifacts (synced from ERC-8262, debug data stripped)
 - **scripts/sync-circuits.sh**: Copies compiled artifacts from ERC-8262, strips debug data (`file_map` / `debug_symbols`), and fails (exit 1, `circuits/` untouched) if any artifact is missing or its `noir_version` != `EXPECTED_NOIR_VERSION`
 
+### Workspace: `packages/client` (`@xochi/client`)
+
+The root is an npm workspace root (`workspaces: ["packages/*"]`); `@xochi/sdk`'s own tarball is unaffected (`files` is `dist` + `circuits`). `packages/client` publishes `@xochi/client`, the client for the Xochi Worker API (`api.xochi.fi/api/*`, the only taker API): the public subset of xochi's `@xochi/shared` (`src/shared/`), the widget's pure trade state machine (`src/machine/`), a transport with injected fetch/auth (`src/transport/`), and the `@riddler/signer` fund-safety checks the machine runs at quote ingest. ESM + CJS + d.ts via two `tsc` passes. See `packages/client/README.md`.
+
+```bash
+npm run build -w @xochi/client       # dist/esm + dist/cjs
+npm run typecheck -w @xochi/client   # sources + tests, then the machine purity check (lib ES2020 only)
+npm test -w @xochi/client
+npm run format:check -w @xochi/client
+```
+
+`@riddler/signer@^0.5.0` must be on the registry for `npm ci` to resolve the workspace; until it is published, install the local tarball with `--no-save` and never commit a lockfile pointing at it.
+
 ## Key Commands
 
 ```bash
