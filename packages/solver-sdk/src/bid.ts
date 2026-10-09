@@ -138,7 +138,17 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 
 // The solver id is the address of the solver key. Distinct from any hot wallet.
 export function solverIdFromKey(solverKey: string): string {
-  return new ethers.Wallet(solverKey).address;
+  return walletFromKey(solverKey).address;
+}
+
+// `new ethers.Wallet` on a malformed key throws an error quoting the key, which
+// a top-level handler then prints. Name the problem, never the value.
+export function walletFromKey(solverKey: string): ethers.Wallet {
+  try {
+    return new ethers.Wallet(solverKey);
+  } catch {
+    throw new Error("solver key must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown");
+  }
 }
 
 function checkMs(label: string, v: unknown): number {

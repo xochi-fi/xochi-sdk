@@ -20,7 +20,7 @@ import type {
   FeedGap,
   VenueCapabilities,
 } from "./types";
-import { signBid, solverIdFromKey } from "./bid";
+import { signBid, solverIdFromKey, walletFromKey } from "./bid";
 import {
   parseSolverEvent,
   FeedBatchSchema,
@@ -122,7 +122,7 @@ export class SolverClient {
   private versionRecheckPending = false;
 
   constructor(opts: SolverClientOptions) {
-    this.wallet = new ethers.Wallet(opts.solverKey);
+    this.wallet = walletFromKey(opts.solverKey);
     this.solverId = this.wallet.address;
     this.now = opts.now ?? (() => Date.now());
     this.onError = opts.onError;

@@ -133,6 +133,27 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// A malformed key must never reach `new ethers.Wallet`: ethers' error quotes
+// the value. Name the VARIABLE and the reason, never the value.
+const KEY_SHAPE = /^0x[0-9a-fA-F]{64}$/;
+function assertKeyShape(name: string, key: string): void {
+  if (!KEY_SHAPE.test(key)) {
+    throw new Error(`${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`);
+  }
+}
+
+// A numeric knob: unset takes the default; set, it must be a non-negative
+// integer. An empty value is unset, as `requireEnv` treats it; `Number("")`
+// would read it as 0 and `Number("x")` as NaN.
+function envInt(name: string, fallback: bigint): bigint {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${name} must be a non-negative integer; got ${JSON.stringify(raw)}`);
+  }
+  return BigInt(raw.trim());
+}
+
 function assertVenueUrl(raw: string): void {
   const url = new URL(raw);
   const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
@@ -155,15 +176,18 @@ export interface Config {
   fillerAllowance: bigint;
 }
 
-function resolveConfig(): Config {
+export function resolveConfig(): Config {
   const baseUrl = requireEnv("RIDDLER_SOLVER_URL");
   assertVenueUrl(baseUrl);
   const solverKey = requireEnv("SOLVER_KEY");
+  assertKeyShape("SOLVER_KEY", solverKey);
+  const claimKey = process.env.CLAIM_KEY || solverKey;
+  assertKeyShape("CLAIM_KEY", claimKey);
   return {
     baseUrl,
     solverKey,
     apiKey: requireEnv("SOLVER_API_KEY"),
-    claimKey: process.env.CLAIM_KEY || solverKey,
+    claimKey,
     origin: {
       chainId: Number(requireEnv("ORIGIN_CHAIN_ID")),
       rpc: requireEnv("ORIGIN_RPC_URL"),
@@ -175,12 +199,12 @@ function resolveConfig(): Config {
       filler: ethers.getAddress(requireEnv("DEST_FILLER")),
       token: ethers.getAddress(requireEnv("DEST_TOKEN")),
     },
-    bidBps: BigInt(process.env.BID_BPS_OVER_MIN ?? "10"),
-    fillInclusionSec: Number(process.env.FILL_INCLUSION_SEC ?? "60"),
-    quoteTtlSec: Number(process.env.QUOTE_TTL_SEC ?? "300"),
-    originFinalitySec: Number(process.env.ORIGIN_FINALITY_SEC ?? "1200"),
-    awardToAcceptSec: Number(process.env.AWARD_TO_ACCEPT_SEC ?? "10"),
-    fillerAllowance: BigInt(process.env.FILLER_ALLOWANCE ?? ethers.MaxUint256.toString()),
+    bidBps: envInt("BID_BPS_OVER_MIN", 10n),
+    fillInclusionSec: Number(envInt("FILL_INCLUSION_SEC", 60n)),
+    quoteTtlSec: Number(envInt("QUOTE_TTL_SEC", 300n)),
+    originFinalitySec: Number(envInt("ORIGIN_FINALITY_SEC", 1200n)),
+    awardToAcceptSec: Number(envInt("AWARD_TO_ACCEPT_SEC", 10n)),
+    fillerAllowance: envInt("FILLER_ALLOWANCE", ethers.MaxUint256),
   };
 }
 
@@ -188,7 +212,8 @@ export class EscrowSolver implements Solver {
   readonly solverId: string;
   // What this solver priced and signed, by auctionId: the fill is checked
   // against it, never against the award.
-  private readonly bids = new Map<string, { announcement: IntentAnnouncement; output: string }>();
+  // Pruned once the bid's `validUntilMs` passes: no award can follow it then.
+  private readonly bids = new Map<string, { announcement: IntentAnnouncement; output: string; validUntilMs: number }>();
   // Bids that were awarded, kept past their first award: Riddler re-publishes
   // an award until it has recorded the delivery (Riddler#1250), so the same
   // award -- same fillId, same FillAuth -- can arrive again inside its
@@ -200,7 +225,12 @@ export class EscrowSolver implements Solver {
   // naming any other fillId is refused before the gateway sees it (a fresh
   // fillId would otherwise pass every per-fillId guard and pay the recipient
   // a second time while the lock repays once).
-  private readonly awarded = new Map<string, { announcement: IntentAnnouncement; output: string; fillId?: string }>();
+  // An entry leaves once its order's settle task ends, or, never accepted
+  // (no `fillId`), once its bid's `validUntilMs` passes.
+  private readonly awarded = new Map<
+    string,
+    { announcement: IntentAnnouncement; output: string; validUntilMs?: number; fillId?: string }
+  >();
   // Orders with a fill or claim task running (lowercased orderId): ONE per
   // order, so a re-delivered award whose fill is refused `in_doubt` joins the
   // task already following that fill rather than starting a second one.
@@ -242,6 +272,7 @@ export class EscrowSolver implements Solver {
     // RiddlerFiller pays a public EVM recipient only; a won stealth or shielded
     // award would be refused after the win, which is a slashable no-show.
     if (a.settlementPreference !== "public") return null;
+    this.pruneExpired();
     const output = (BigInt(a.minOutput) * (10_000n + this.cfg.bidBps)) / 10_000n;
     const erc20 = new ethers.Contract(this.cfg.dest.token, ["function balanceOf(address) view returns (uint256)"], this.destSigner);
     const held: bigint = await erc20.getFunction("balanceOf")(this.solverId);
@@ -249,18 +280,29 @@ export class EscrowSolver implements Solver {
       say(`pass  ${a.auctionId}: holds ${held}, would owe ${output}`);
       return null;
     }
-    this.bids.set(a.auctionId, { announcement: a, output: output.toString() });
-    say(`bid   ${a.auctionId}: ${output} (floor ${a.minOutput})`);
     // SolverBid v2 sizing (SOLVER-RFC §5.1). The winner FillAuth is issued only
     // once the taker has executed AND the open is final on the origin, so the bid
     // must stand that long. And the exclusive window must cover everything from
     // the award to the fill landing, or `accept` refuses for lack of headroom.
     const c = this.cfg;
+    const validUntilMs = a.closesAt + (c.quoteTtlSec + c.originFinalitySec) * 1000;
+    this.bids.set(a.auctionId, { announcement: a, output: output.toString(), validUntilMs });
+    say(`bid   ${a.auctionId}: ${output} (floor ${a.minOutput})`);
     return {
       output: output.toString(),
-      validUntilMs: a.closesAt + (c.quoteTtlSec + c.originFinalitySec) * 1000,
+      validUntilMs,
       minExclusiveMs: (c.fillInclusionSec + c.awardToAcceptSec + ACCEPT_BUDGET_SEC) * 1000,
     };
+  }
+
+  // Lost auctions are never told apart from won ones, so their bids leave on
+  // time alone, as do awards that were never accepted.
+  private pruneExpired(): void {
+    const now = Date.now();
+    for (const [auctionId, bid] of this.bids) if (bid.validUntilMs < now) this.bids.delete(auctionId);
+    for (const [auctionId, entry] of this.awarded) {
+      if (!entry.fillId && entry.validUntilMs !== undefined && entry.validUntilMs < now) this.awarded.delete(auctionId);
+    }
   }
 
   async fill(award: Award): Promise<FillReceipt> {
@@ -568,6 +610,7 @@ export class EscrowSolver implements Solver {
       task.finally(() => {
         this.settling.delete(order);
         this.fillSettled(order);
+        this.awarded.delete(prepared.auctionId);
       }),
     );
   }
