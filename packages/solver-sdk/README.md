@@ -59,7 +59,12 @@ signed `FillAcceptance` (below), which SolverBond v2 verifies on-chain.
 **Gate on `capabilities.rfcVersion`.** `SolverClient` does it: it reads
 `GET /solver/capabilities` once before the first feed event and refuses to run
 unless the venue's `rfcVersion` equals the exported `SOLVER_RFC_VERSION`
-(`0.5.0-draft`), so nothing is signed under a skew. A venue on an older RFC
+(`0.5.0-draft`), so nothing is signed under a skew. It re-runs the same check,
+never per announcement, after a feed `reset` (the shape of a venue restart;
+default HTTP transport only) before the next event is acted on, and before
+each award addressed to you reaches `solver.fill`, where the acceptance is
+signed. A skew there throws `VenueVersionSkewError` out of `run` with nothing
+signed, even with `onError` installed. A venue on an older RFC
 rejects every v2 bid as a bad signature, which reads as a key problem rather
 than a version problem. The domain `version` is the sealing scheme's, not this
 RFC's.
@@ -545,10 +550,22 @@ recovery, window/pass guards, award routing, error isolation).
 ## Breaking changes
 
 The package version and the RFC version are separate axes. This package is
-**`0.4.0`**, bumped for the breaks below; the protocol's own versioned
+**`0.4.1`**, bumped for the changes below; the protocol's own versioned
 signal is `SOLVER-RFC.md`'s `- **RFC version:**` line, exported here as
 `SOLVER_RFC_VERSION`. Breaks land in this section so a maker meets them in the
 package it installs rather than by diffing a spec document.
+
+### `0.4.1` — the version gate re-runs under a running solver
+
+No digest, schema or API moves. `SolverClient.run` re-reads
+`/solver/capabilities` after a feed `reset` and before each award addressed to
+this solver reaches `solver.fill`, and throws `VenueVersionSkewError` (or the
+plain "did not tell me" `Error`) with nothing accepted if the venue now
+serves another `rfcVersion` or does not answer. Previously the gate ran once,
+at start, so a venue redeployed onto another RFC under a long-running solver
+was never noticed. Neither re-check is routed to `onError`; a supervisor that
+restarts on a skew must handle it. Announcements still cost no capabilities
+read.
 
 ### `0.4.0` — RFC `0.4.0-draft` → `0.5.0-draft`: decline instead of skip, and claim until repaid
 
@@ -689,7 +706,8 @@ and keeps its `0.1.0` signer has every bid rejected as a bad signature.
   their `scheme` moved off `eip191_personal_sign` — in lockstep with the server.
 - **`IntentAnnouncement.reserveOutput` → `minOutput`.** Not a rename on the
   producer's side: `minOutput` is a **newly computed** value (quote time: the
-  quote less the taker's slippage tolerance; execute time: the signed
+  quote less a fixed, venue-wide announce margin, never a per-taker value;
+  execute time: the signed
   `XochiIntent.toAmount`), and re-read **Winning** — it is the admissibility
   floor, not the venue's reserve. Pricing that keyed on `reserveOutput + ε`
   still compiles after the rename and now bids into an undisclosed reserve, so

@@ -81,6 +81,16 @@ surfaces as slashed bonds, not as a refusal (§12).
   `0.4.0-draft` broadcast a fill at most once.
 - **Claims are retried until `refundableAt`** (§7.1 step 7), and a `Claimed`
   lock counts as repayment only if its `Claimed` event names this payee.
+- **Producer clarification: the quote-time floor carries no taker-chosen
+  value** (§4.2, "Migrating from `0.2.0-draft`" step 1). The quote-time
+  `minOutput` is the venue's quoted output less a fixed, venue-wide announce
+  margin (`SOLVER_ANNOUNCE_FLOOR_BPS`, default 50), capped on cross-token
+  routes at the pair's advertised `max_slippage_bps`, and no longer the quote
+  less the taker's own `slippage_bps`. That provenance recovered each taker's
+  slippage tolerance to 1 bp from `(fromAmount − minOutput) / fromAmount`, a
+  stable per-integrator quasi-identifier. Nothing signed or parsed changes,
+  so this is a clarification inside `0.5.0-draft` and `rfcVersion` does not
+  move.
 
 ### Changes in `0.4.0-draft`
 
@@ -145,7 +155,8 @@ this revision real; steps 3 and 4 are the consumer's:
    `reserveOutput`.** A venue MUST derive it by one of the two provenances
    §4.2 defines — under an **execute-time** announcement the taker's signed
    `XochiIntent.toAmount`; under a **quote-time** announcement the quote the
-   taker is being shown **less that taker's slippage tolerance** — and MUST
+   taker is being shown **less the venue-wide announce margin** (never a
+   per-taker parameter; §4.2) — and MUST
    NOT emit the venue's reserve under the new key. In particular a producer
    MUST NOT satisfy this step by renaming the field it already emits: §4.2
    states `minOutput` MUST NOT be the quoted output, which *is* the reserve,
@@ -395,17 +406,29 @@ rebuilds the digest server-side (`SPEC.md` §2).
   `XochiIntent.toAmount`, which is a *minimum* and therefore leaks nothing the
   taker did not already sign. Under a quote-time announcement no intent exists
   yet, so the venue MUST derive it from the quote the taker is being shown less
-  that taker's slippage tolerance — it MUST NOT be the quoted output itself,
-  which is the reserve. The two sit at materially different distances from the
-  reserve: at execute time the reserve is the venue's *live* best output,
-  generally above the signed floor; at quote time the reserve is
-  `minOutput` grossed back up by the taker's slippage tolerance, so the floor
+  a **fixed, venue-wide announce margin** — `SOLVER_ANNOUNCE_FLOOR_BPS`
+  (deployment config, default 50, valid 1..500), capped on a cross-token route
+  at the pair's advertised `max_slippage_bps` — and it MUST be strictly below
+  the quoted output, which is the reserve. It MUST NOT be derived from any
+  taker-chosen value: the taker's `slippage_bps` in particular, which the
+  floor and `fromAmount` would otherwise disclose to 1 bp and which links a
+  taker's intents across announcements. The two sit at materially different
+  distances from the reserve: at execute time the reserve is the venue's
+  *live* best output, generally above the signed floor; at quote time the
+  reserve is `minOutput` grossed back up by the announce margin, so the floor
   is close to the reserve by construction
   (Riddler `docs/economics/AUCTION-DISCLOSURE-MEMO.md` §3.4, internal). A
   deployment MAY run both modes
   gated per corridor (below), so the mode cannot be inferred from which venue a
   solver is pointed at, and a solver that assumes the wrong one misprices every
   round on that corridor in the same direction.
+- **Disclosure note (quote time).** The announce margin is public (a venue
+  constant, or the advertised pair cap), so the quote-time floor remains
+  **invertible to the reserve**: one division recovers it, and `reserve + ε`
+  stays available to any solver that does it. Strict-below only stops a
+  renamed reserve from making `minOutput + ε` dominant; it keeps nothing
+  private. What the fixed margin buys is that the floor carries no
+  taker-chosen value, and a venue MUST NOT reintroduce one.
 - **Announcement mode discriminant** `[PROPOSED]`. A venue SHOULD publish the
   provenance on the announcement as `announcedAt: "quote" | "execute"`, so
   `minOutput`'s meaning is on the wire rather than inferred. It is additive and
@@ -428,8 +451,8 @@ rebuilds the digest server-side (`SPEC.md` §2).
   `fromAmount` to the wei once it knows the taker's fee tier (`σ_r = 0`,
   measured on standard-tier quotes); the tier is the one input `0.3.0-draft`
   took away with `trustScore`, worth the stable spread `22/19/15/12/10` (memo
-  §2.3). Under a quote-time announcement `minOutput` can also be inverted if
-  the slippage tolerance is known. This RFC therefore claims only that the
+  §2.3). Under a quote-time announcement `minOutput` inverts to the reserve
+  through the public announce margin. This RFC therefore claims only that the
   reserve is **not disclosed** (§2.1) — not that it is unpredictable. The
   genuinely private component (an inventory / live-executable skew, memo D1d)
   is outstanding Riddler pricing-engine work and changes no schema, so nothing

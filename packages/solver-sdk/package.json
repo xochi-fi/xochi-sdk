@@ -1,6 +1,6 @@
 {
   "name": "@xochi/solver-sdk",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Maker-side SDK for the Riddler sealed-bid RFQ (Solver RFC): discovery -> bid -> award -> fill. Scaffold -- the /solver/* surface is PROPOSED, not yet served.",
   "type": "module",
   "main": "./dist/index.cjs",

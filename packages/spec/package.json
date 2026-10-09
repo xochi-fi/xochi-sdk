@@ -83,7 +83,7 @@
     "ethers": "^6.17.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "@xochi/solver-sdk": "0.4.0",
+    "@xochi/solver-sdk": "0.4.1",
     "@xochi/reference": "0.0.0",
     "vitest": "^4.1.11"
   }

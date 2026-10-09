@@ -118,6 +118,8 @@ export class SolverClient {
   private readonly transport: SolverTransport;
   private readonly now: () => number;
   private readonly onError?: (err: unknown, event: SolverEvent) => void;
+  // Set by a feed `reset`; consumed by `run` before the next event.
+  private versionRecheckPending = false;
 
   constructor(opts: SolverClientOptions) {
     this.wallet = new ethers.Wallet(opts.solverKey);
@@ -145,7 +147,12 @@ export class SolverClient {
         baseUrl: opts.baseUrl,
         apiKey: opts.apiKey,
         solverId: this.solverId,
-        onFeedGap: opts.onFeedGap,
+        // Wrapped so a `reset` also re-arms the version gate (see `run`). The
+        // caller's handler still sees every gap, unchanged.
+        onFeedGap: (gap) => {
+          if (gap.reset) this.versionRecheckPending = true;
+          opts.onFeedGap?.(gap);
+        },
         onInvalidEvent: opts.onInvalidEvent,
       });
     }
@@ -171,13 +178,28 @@ export class SolverClient {
   // MUST it enforces is "refuse to BID": once an announcement has been quoted
   // and sealed, a signature over a struct the two sides read differently is
   // already published.
+  //
+  // The venue can be redeployed under a running solver, so the gate is re-run
+  // at two points, never per announcement: after a feed `reset` (the cursor
+  // named a sequence the log never issued -- what a venue restart looks like;
+  // only observable on the default HTTP transport), before the next event is
+  // acted on; and before each award addressed to this solver reaches
+  // `solver.fill`, where the acceptance is signed. A skew or an unanswered
+  // re-check ends `run` with nothing signed, whatever `onError` is: the error
+  // is about the venue, not the event.
   async run(solver: Solver, signal?: AbortSignal): Promise<void> {
     await this.assertVenueRfcVersion(signal);
+    this.versionRecheckPending = false;
     for await (const event of this.transport.events(signal)) {
+      const ownAward = event.type === "award" && this.isForThisSolver(event.award.solverId);
+      if (this.versionRecheckPending || ownAward) {
+        await this.assertVenueRfcVersion(signal);
+        this.versionRecheckPending = false;
+      }
       try {
         if (event.type === "announcement") {
           await this.handleAnnouncement(solver, event);
-        } else if (this.isForThisSolver(event.award.solverId)) {
+        } else if (ownAward) {
           const receipt = await solver.fill(event.award);
           await this.transport.submitFill(receipt);
         }

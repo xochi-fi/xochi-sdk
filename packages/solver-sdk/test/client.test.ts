@@ -359,6 +359,47 @@ describe("SolverClient RFC version gate", () => {
       new SolverClient({ solverKey: SOLVER_KEY, transport: noVersion, now: clockInWindow }).run(eagerSolver),
     ).rejects.toThrow(/answered a body this SDK cannot read/);
   });
+
+  it("re-checks before an award reaches solver.fill and refuses a venue that moved", async () => {
+    // The venue is redeployed between the announcement and the award. A skew
+    // ends the run even with an `onError` installed: nothing is accepted.
+    const transport = new StubTransport([
+      { type: "announcement", announcement: announcement() },
+      { type: "announcement", announcement: announcement({ auctionId: "auction-2" }) },
+      { type: "award", award: award() },
+    ]);
+    const served = [SOLVER_RFC_VERSION, "9.9.9-draft"];
+    transport.getCapabilities = async () => {
+      transport.capabilityReads += 1;
+      return { phase: "P0", rfcVersion: served[transport.capabilityReads - 1]! } as VenueCapabilities;
+    };
+    const handed: Award[] = [];
+    const errors: unknown[] = [];
+    const client = new SolverClient({
+      solverKey: SOLVER_KEY,
+      transport,
+      now: clockInWindow,
+      onError: (e) => errors.push(e),
+    });
+
+    const err = await client
+      .run({ ...eagerSolver, fill: async (a) => (handed.push(a), eagerSolver.fill(a)) })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(VenueVersionSkewError);
+    expect(handed).toHaveLength(0);
+    expect(transport.fills).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+    // One read at start, one for the award; none per announcement.
+    expect(transport.bids).toHaveLength(2);
+    expect(transport.capabilityReads).toBe(2);
+  });
+
+  it("does not re-check for an award addressed to another solver", async () => {
+    const transport = new StubTransport([{ type: "award", award: award({ solverId: OTHER_SOLVER }) }]);
+    await new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow }).run(eagerSolver);
+    expect(transport.capabilityReads).toBe(1);
+  });
 });
 
 describe("wire validation", () => {

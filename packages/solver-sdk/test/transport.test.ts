@@ -17,6 +17,8 @@ import {
   solverIdFromKey,
   SOLVER_RFC_VERSION,
   type FeedGap,
+  type Solver,
+  VenueVersionSkewError,
   type SolverTransport,
   type SolverEvent,
   type Bid,
@@ -166,6 +168,65 @@ describe("HttpSolverTransport feed gaps", () => {
     const ev = await firstEvent(transport);
 
     expect(ev?.type).toBe("announcement");
+  });
+});
+
+describe("SolverClient re-checks rfcVersion on a feed reset", () => {
+  // A venue redeployed under a running solver: first poll empty, then the venue
+  // comes back on another rfcVersion and the feed reports `reset`. The poll
+  // after that fails, so a client that does not refuse still terminates.
+  async function venue(reset: boolean) {
+    let polls = 0;
+    let capabilityReads = 0;
+    const bids: string[] = [];
+    const gaps: FeedGap[] = [];
+    const baseUrl = await serve((req, res) => {
+      const url = req.url ?? "";
+      if (url.startsWith("/solver/capabilities")) {
+        capabilityReads += 1;
+        return json(res, { ...CAPABILITIES, rfcVersion: polls === 0 ? SOLVER_RFC_VERSION : "9.9.9-draft" });
+      }
+      if (url.startsWith("/solver/bids")) {
+        bids.push(url);
+        return json(res, { ok: true });
+      }
+      polls += 1;
+      if (polls === 1) return json(res, { events: [], cursor: "1", dropped: 0, reset: false });
+      if (polls === 2) return json(res, { events: [ANNOUNCEMENT], cursor: "2", dropped: 0, reset });
+      return json(res, { error: "gone" }, 500);
+    });
+    const client = new SolverClient({
+      solverKey: SOLVER_KEY,
+      baseUrl,
+      now: () => 1_500,
+      onFeedGap: (g) => gaps.push(g),
+    });
+    const solver: Solver = {
+      capabilities: () => ({ solverId: SOLVER_ID, chains: [8453, 10], tokens: ["USDC"], settlementTypes: ["public"], rfcVersion: SOLVER_RFC_VERSION }),
+      quote: async () => ({ output: "99800000", validUntilMs: 10_000, minExclusiveMs: 1_000 }),
+      fill: async () => {
+        throw new Error("no award in this script");
+      },
+    };
+    const err = await client.run(solver).catch((e: unknown) => e);
+    return { err, bids, gaps, capabilityReads: () => capabilityReads };
+  }
+
+  it("refuses the batch after a reset when the venue now serves another rfcVersion, nothing signed", async () => {
+    const { err, bids, gaps, capabilityReads } = await venue(true);
+    expect(err).toBeInstanceOf(VenueVersionSkewError);
+    expect(err).toMatchObject({ advertised: "9.9.9-draft" });
+    expect(bids).toHaveLength(0);
+    expect(capabilityReads()).toBe(2);
+    // The caller's own gap handler still sees the reset.
+    expect(gaps).toMatchObject([{ reset: true }]);
+  });
+
+  it("does not read capabilities per announcement when no reset is reported", async () => {
+    const { err, bids, capabilityReads } = await venue(false);
+    expect((err as Error).message).toMatch(/solver feed 500/);
+    expect(bids).toHaveLength(1);
+    expect(capabilityReads()).toBe(1);
   });
 });
 

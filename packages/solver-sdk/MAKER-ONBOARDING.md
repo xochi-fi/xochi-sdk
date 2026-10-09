@@ -51,7 +51,10 @@ and size bounds; we return an API secret bound to that id.
 `phase` **before** admission, and gate on both. `SolverClient` gates for you —
 it reads capabilities once before it consumes the first feed event and refuses
 to run unless `caps.rfcVersion === SOLVER_RFC_VERSION` (exact string equality;
-absent, empty or non-string refuses), so nothing is signed under a skew. Import
+absent, empty or non-string refuses), so nothing is signed under a skew, and
+re-checks after a feed `reset` and before each of your awards reaches
+`solver.fill` (never per announcement), so a venue redeployed onto another RFC
+under a running solver is refused too. Import
 that constant from `@xochi/solver-sdk`; do not retype the string. Why the
 gate has to be explicit is in **Version gate** below.
 
@@ -84,8 +87,10 @@ the field, not the arithmetic.
 
 Concretely: compute `fromAmount × (1 − total_bps/10000)` from the published
 schedule as your estimate of our reserve, tier-uncertain as above, and under a
-**quote-time** announcement you can also invert `minOutput` if you know the
-taker's slippage tolerance. Under an **execute-time** announcement you cannot —
+**quote-time** announcement you can also invert `minOutput`: it is the quote
+less a fixed, venue-wide announce margin (default 50 bps, capped cross-token at
+the pair's advertised `max_slippage_bps`), never a per-taker value, so `reserve +
+ε` stays available there. Under an **execute-time** announcement you cannot —
 there our reserve is our live executable output and `minOutput` is the taker's
 signed floor, which sits below it (memo §3.4). Two things follow. Price your
 own cost honestly and bid your own edge: the reconstruction stops being right
@@ -112,7 +117,7 @@ Not bugs. Each one has cost someone a day.
   both, gated per corridor (`SOLVER_ANNOUNCE_ON_QUOTE`), and no field on the
   announcement says which (RFC §4.2 proposes `announcedAt`; it is not served).
   It matters because `minOutput`'s distance from the reserve differs between
-  the two — quote time: the shown quote less the taker's slippage tolerance;
+  the two — quote time: the shown quote less the venue-wide announce margin;
   execute time: the taker's signed `XochiIntent.toAmount`, with our live
   reserve above it. Ask us which mode your corridors run in, and re-ask when a
   corridor is added. Under quote time you also see price probes that never
@@ -281,6 +286,14 @@ version:
   while the two sides disagreed about what the field you price off means.
 - `0.1.0-draft` → `0.2.0-draft` replaced EIP-191 `personal_sign` over a JSON
   string with EIP-712 (v1) — same wire shape, different digest.
+
+`SolverClient.run` checks at start and again after a feed `reset` and before
+each of your awards reaches `solver.fill` (package `0.4.1`), so a venue
+redeployed onto another RFC under a running solver ends `run` with
+`VenueVersionSkewError` and nothing accepted. It does not re-read per
+announcement, and a custom transport never reports `reset`, so there only the
+award re-check runs. Bids sealed between a silent redeploy and the next
+re-check are not covered.
 
 **If you are migrating from `0.4.0-draft`** (package `0.3.0`):
 
