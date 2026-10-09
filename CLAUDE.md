@@ -141,13 +141,17 @@ Under `packages/signer/src/` unless noted.
   - **No `now` injection point**: an optional clock on a security assertion is a bypass. Tests use fake timers.
   - `recipientIsDestinationToken` refuses a payout to the destination token contract (raxol#869: real funds settled there unspendably, reported `completed`). Runs **before** the quote request.
   - `recordDepositAddress` refuses an address re-issued under a different intent (Riddler#853/#872 cursor rewind), keyed through `normalizeAddress`. Needs an injected `seenAddresses` store; same-client only.
+  - `assertDepositQuoteMatchesRequest` **refuses** any `recipient`, `wallet` or `refund_address` that starts `0x` but is not `0x` + hex (a `0x`-hint Canton party). The attested digest lowercases it, so a genuine attestation for `0xalice::...` verifies a request for `0xAlice::...`, and the displayed-recipient check cannot stop it: `recipient_address` is unsigned and on the same channel. Lift only when axol-io/Riddler#1254 stops the fold **and** bumps `deposit_attestation_version`.
+  - A deposit quote carrying an `escrow` envelope is refused there too (see the escrow bullet under [Pull verification](#pull-verification)).
   - `attestationSignerConsistency` is advisory, behind `checkAdvertisedSigner`. **Never** promote it to a refusal.
 
 - **`capabilities.ts`**: client model for `GET /xochi/capabilities`, parsed from Riddler's `Xochi.Config.capability_matrix/0`. Tolerant parser plus the accessors `originPullMethod` (per-chain; the top-level `pull_method` is EVM-representative and wrong for a Tron origin), `depositAttestationVersionSkew` (a #92-shaped skew, not a wrong signer), `orderBoundsViolation`, `stealthNotionalFloor`. Rules:
   - **Not a trust anchor**: capabilities arrive over the same channel as the quote.
   - **Nothing here is named `assert*`/`verify*`/`check*`, and nothing may be.** The removed `assertMatchesPinnedRecipients` compared a pin against the _advertisement_ and skipped when that side was absent. `pull_recipients` is still parsed as data.
   - `advertisedTokenAddress` is named apart from the pinned `getTokenAddress` in the same barrel.
-  - Unadvertised chains return `null` rather than `evm`/`hex20`; a duplicate chain id or token symbol returns `null` rather than first-wins.
+  - Unadvertised chains return `null` rather than `evm`/`hex20`; a duplicate chain id or token symbol returns `null` rather than first-wins. `servedChainKeys`, `originPullMethod` and `advertisedTokenAddress` all go through `chainCapability(...)?.vmType`, so a duplicated, unadvertised or unknown-VM chain is unserved and has no pull method or address.
+  - An **absent** `vm_type` means `evm`; a **present but unrecognised** one keeps the row with `vmType`/`addressFormat` `null` (spelling in `unrecognisedVmType`), so `chainVmType`/`chainAddressFormat` return `null`, `servedChainKeys` omits it and `chainUnservedReason` says to upgrade the SDK. Kept, not dropped, so the duplicate-id refusal still sees it: dropping it let `[{id, evm}, {id, tvm2}]` read as a lone `evm`/`hex20` chain. It used to read as `evm`, so served `cvm` (Canton, 0.8.0) parsed as an EVM chain with format `hex20`. `wire-contract.test.ts` holds `VmType`/`AddressFormat` to the served enums.
+  - Canton party ids (`hint::1220<64 hex>`) are case-sensitive and the hint may start `0x`, so address comparisons fold case only on `0x` + hex (`sameAddressish` in `compare.ts`, the displayed-recipient check in `deposit-verify.ts`). `deposit-verify.ts`'s `normalizeAddress` still folds any `0x` prefix because it is the server's digest rule, so the deposit attestation cannot bind such a value's case; see the `deposit-verify.ts` bullet above.
   - Chain-id keys must be canonical decimal: `"08453"` collapses onto `8453` and, because JS orders integer-like keys first, shadowed the real entry.
   - Parsing is tolerant (unknown keys dropped, absent optionals `null`, non-object `null`), so nothing here may **relax** a check, only inform one.
   - Excludes xochi's UI helpers `renderableChainIds` and `FALLBACK_CAPABILITIES`. Verified by `packages/reference/test/capabilities.test.ts`.
@@ -213,9 +217,15 @@ One rule per bullet, each here because undoing it has cost money or nearly did.
 
 - Bound to the intent, not to a `getChainKeyByChainId` lookup, so a chain the server adds does not fail closed.
 
+- **Any quote carrying a non-null `escrow` envelope is refused before signing** (`assertNoEscrowEnvelope` in `intent-verify.ts`: `assertPullMatchesIntent`, and `assertDepositQuoteMatchesRequest` on the deposit path; in Riddler's `packages/e2e-signer`, `xochiQuote`, `xochiExecute` even under `skipVerification`, and `xochiFlow`). Who an escrow pays is the `orderId` the pull binds (ERC-3009 `nonce`, Permit2 witness), which only the SPEC §2.3 binding (`assertEscrowBinding` against a caller-pinned escrow per origin chain) checks, and this SDK does not wire it. **A recipient pin naming the escrow is not sufficient**, and `fetchPullRecipients` never folds `pull_recipients[chain].escrow` into the pin; the advertised escrow addresses are discovery only (SPEC §6). Lift the refusal only by wiring the binding.
+
 - **The `domain.chainId` vs `intent.fromChainId` comparison is unconditional.** Do not gate it on presence, and do not loosen it to `!= null`; an intent missing `fromChainId` refuses with **no pin at all**.
 
-- **`assertPullMatchesIntent` is offline and pure.** It takes the recipient pin **only**, never the settlement pin or the chain reader.
+- **`assertPullMatchesIntent` is offline and pure.** It takes the recipient pin and the escrow pin, never the settlement pin or the chain reader.
+
+- **A pull to a caller-pinned escrow is escrow-bearing with or without the `escrow` envelope** (SPEC.md §6). `expectedEscrows` (`{ [originChainId]: address }`, both spellings via `pick`) on `xochiFlow`/`xochiExecute`/`assertPullMatchesIntent` refuses a `to`/`spender` naming the escrow pinned for `intent.fromChainId`; a blank pin refuses. Never merge it into `expectedPullRecipients`.
+
+- **`xochiFlow` (Riddler `packages/e2e-signer`) runs `xochiQuote`'s checks (fees, escrow) inside its pre-sign try**, so those refusals emit `verification_error` too; the `xochi-quote` command uses `xochiQuoteReported`, which does the same.
 
 - `signPullAuthorization` from `@xochi/signer` gets the shape check only; the value checks need an intent, so they live in `intent-verify.ts`.
 

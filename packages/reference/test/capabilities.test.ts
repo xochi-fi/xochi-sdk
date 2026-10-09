@@ -214,6 +214,44 @@ describe("accessors", () => {
     expect(addressFormatForVm("evm")).toBe("hex20");
     expect(addressFormatForVm("tvm")).toBe("base58check");
     expect(addressFormatForVm("svm")).toBe("base58");
+    expect(addressFormatForVm("cvm")).toBe("canton_party");
+  });
+
+  // Spec 0.8.0 serves Canton as `vm_type: "cvm"`. Before this parser knew it, an
+  // unrecognised vm_type read as "evm", so Canton parsed as an EVM chain with
+  // format hex20 -- a party id one caller away from an EVM address helper.
+  it("parses Canton as cvm / canton_party, never evm / hex20", () => {
+    const c = parseCapabilities(
+      matrix({ chains: [{ chain_id: 253340876, vm_type: "cvm", address_format: "canton_party" }] }),
+    )!;
+    expect(chainVmType(c, 253340876)).toBe("cvm");
+    expect(chainAddressFormat(c, 253340876)).toBe("canton_party");
+  });
+
+  it("reads a chain whose served vm_type it does not recognise as unaddressable, not evm", () => {
+    // Absent still means evm (above); PRESENT and unknown is a chain we cannot address.
+    const c = parseCapabilities(
+      matrix({ chains: [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 999999, vm_type: "zvm" }] }),
+    )!;
+    expect(chainVmType(c, 999999)).toBeNull();
+    expect(chainAddressFormat(c, 999999)).toBeNull();
+    expect(chainVmType(c, 8453)).toBe("evm");
+  });
+
+  // A duplicated id is malformed, and an unknown-VM copy is still a copy: dropping it
+  // before the duplicate check let a stray evm row stand alone and read hex20 for
+  // what the venue also advertises as something else.
+  it("refuses a duplicated chain id even when one copy has an unknown vm_type", () => {
+    const c = parseCapabilities(
+      matrix({
+        chains: [
+          { chain_id: 728126428, vm_type: "evm" },
+          { chain_id: 728126428, vm_type: "tvm2", address_format: "base58check" },
+        ],
+      }),
+    )!;
+    expect(chainVmType(c, 728126428)).toBeNull();
+    expect(chainAddressFormat(c, 728126428)).toBeNull();
   });
 
   it("reads a chain, defaulting an unlisted one to evm", () => {
@@ -236,10 +274,29 @@ describe("accessors", () => {
     expect(originPullMethod(c, "USDC", 728126428)).toBe("deposit_address");
   });
 
-  it("falls back to the token-level method for a chain with no per-chain entry", () => {
-    const c = caps();
+  it("falls back to the token-level method for an advertised chain with no per-chain entry", () => {
+    const c = parseCapabilities(
+      matrix({
+        chains: [...matrix().chains, { chain_id: 10, chain_name: "OP", vm_type: "evm", address_format: "hex20" }],
+      }),
+    )!;
     expect(originPullMethod(c, "USDC", 10)).toBe("erc3009");
     expect(originPullMethod(c, "NOPE", 8453)).toBeNull();
+  });
+
+  it("names no pull method or address for a chain it cannot address", () => {
+    // The token-level method is an EVM representative: falling back to it named
+    // `erc3009` for an unadvertised chain, a duplicated one and an unknown VM alike.
+    expect(originPullMethod(caps(), "USDC", 10)).toBeNull();
+    for (const chains of [
+      [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 8453, vm_type: "tvm2" }],
+      [{ chain_id: 8453, vm_type: "tvm" }, { chain_id: 8453, vm_type: "evm" }],
+      [{ chain_id: 8453, vm_type: "evm2" }],
+    ]) {
+      const c = parseCapabilities(matrix({ chains }))!;
+      expect(originPullMethod(c, "USDC", 8453)).toBeNull();
+      expect(advertisedTokenAddress(c, "USDC", 8453)).toBeNull();
+    }
   });
 
   it("matches token symbols case-insensitively", () => {
@@ -444,5 +501,27 @@ describe("servedChainKeys / chainUnservedReason", () => {
     const unknown = chainUnservedReason(caps(), { chainId: 999999, name: "Nowhere" });
     expect(unknown).toContain("not advertised");
     expect(unknown).not.toContain("enable_");
+  });
+
+  it("tells an unrecognised vm_type apart from an unadvertised chain", () => {
+    // The remedy is upgrading this client, not checking the chain id.
+    const c = parseCapabilities(
+      matrix({ chains: [{ chain_id: 8453, chain_name: "Base", vm_type: "evm2" }] }),
+    )!;
+    const reason = chainUnservedReason(c, CONFIG.CHAINS.base!);
+    expect(reason).toContain("vm_type evm2");
+    expect(reason).toContain("upgrade the SDK");
+    expect(servedChainKeys(c, CONFIG.CHAINS)).toEqual([]);
+  });
+
+  it("does not serve a chain id advertised twice, whatever VMs its rows name", () => {
+    // A per-row filter kept the recognised row of a duplicated pair as served.
+    for (const chains of [
+      [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 8453, vm_type: "tvm2" }],
+      [{ chain_id: 8453, vm_type: "tvm" }, { chain_id: 8453, vm_type: "evm" }],
+    ]) {
+      const c = parseCapabilities(matrix({ chains: [...chains, { chain_id: 1, vm_type: "evm" }] }))!;
+      expect(servedChainKeys(c, CONFIG.CHAINS)).toEqual(["ethereum"]);
+    }
   });
 });

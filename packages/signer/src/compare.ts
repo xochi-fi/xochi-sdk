@@ -8,14 +8,19 @@ export function pick(obj: Record<string, unknown> | null | undefined, snakeKey: 
 
 /**
  * Compares a quote field against a requested address-like value. Not `deposit.ts`'s
- * `normalizeAddress`, despite the identical rule: that one reproduces
+ * `normalizeAddress`, and no longer the same rule: that one reproduces
  * `normalize_address/1` byte-for-byte because an attestation digest depends on it. Keep
  * them apart so an edit to either cannot retune the other.
  */
 export function sameAddressish(a: string, b: string): boolean {
-  // `0X` counts as an EVM prefix here, unlike deposit.ts's case-sensitive `"0x" <> _`:
-  // treating `0XABC` as base58 would reject a caller's own address for its capitalisation.
-  const norm = (v: string) => (/^0x/i.test(v) ? v.toLowerCase() : v);
+  // Case is folded only for a value that is `0x` + hex and nothing else (an EVM address,
+  // or a 32-byte hex id): hex is case-insensitive, every other encoding here is not.
+  // `0X` counts as the prefix, since treating `0XABC` as base58 would reject a caller's
+  // own address for its capitalisation. The old rule folded anything STARTING `0x`, and
+  // a Canton party id (`hint::1220<64 hex>`, spec 0.8.0) has a free-text, case-sensitive
+  // hint that may itself start `0x`: `0xAlice::1220...` and `0xalice::1220...` are two
+  // parties, and the fold read a swapped one as the requested recipient.
+  const norm = (v: string) => (/^0x[0-9a-f]+$/i.test(v) ? v.toLowerCase() : v);
   return norm(a) === norm(b);
 }
 

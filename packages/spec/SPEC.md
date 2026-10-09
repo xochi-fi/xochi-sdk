@@ -106,6 +106,30 @@
   Riddler `intent_status.ex` `@terminal_statuses`. 3.4 carries the current set.
   The entry is kept rather than rewritten so the history of what the server
   served when stays readable.
+- **Wire refresh against served `0.8.0` (2026-10-06), and the SPEC version does
+  not move.** The served document gained the Canton destination (chain
+  `253340876`, `vm_type: cvm`, `address_format: canton_party`, a third
+  `ChainAddress` branch for party ids), the escrow capability and envelope
+  schemas, `chains[].roles`/`escrow_address`, the `escrow_refused` /
+  `escrow_unavailable` codes, and `202`/`503` on `/xochi/execute`; the `/xochi/quote`
+  `429` is now declared inline instead of by `$ref`, with the same schema and
+  headers. §3.2, §3.3, §3.5 and §6 now read those shapes. The server already
+  serves `0.8.0` and the `spec_version` probe requires this document to equal the
+  served label, so a bump would claim a contract the server does not advertise.
+  §6's escrow rule (the advertised escrow addresses are discovery, never a pin,
+  and an escrow-bearing quote is refused without the §2.3 binding) applies §2.3
+  to the newly served fields; it constrains clients and moves no wire byte.
+  The refresh is not purely additive: the differ graded two changes BREAKING and
+  it was installed with `--allow-breaking`. Each is acceptable for a stated
+  reason. (1) `POST /xochi/quote` `429` lost its `$ref`: the inlined response
+  carries the same schema and headers, so no byte a client sends or reads moves.
+  (2) `ChainAddress.oneOf` widened from two branches to three (the Canton party
+  id): no request a client built against the old copy becomes invalid, and only a
+  strict decoder of a response field typed `ChainAddress` (`recipient_address` on
+  `QuoteResponse`/`IntentStatus`) can newly fail, and only on a Canton route,
+  which such a client never requested. The one client-visible hazard is §3.3's: a
+  party id is case-sensitive and may begin `0x`, so folding case on every
+  `0x`-prefixed value names a different party.
 - `0.8.0`: XSP obligation (riddler #1223; `ESCROW-RFC 0.4.0-draft` §13).
   New vector artifact `conformance/xsp.json` (+ schema) pinning the
   user-signed `XochiObligation` EIP-712 digest (`obligationId`, domain
@@ -313,7 +337,7 @@ server-parity list in §2.1.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ reserved `escrow` envelope when advertised, §5.2) |
-| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2) |
+| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `503` transient (§3.5) |
 | GET | `/xochi/status/:intent_id` | Poll settlement status |
 | POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` → returns `userOpHash` |
 | POST | `/xochi/claim/submit` | Submit `{signature, user_op_hash}` |
@@ -340,6 +364,20 @@ treat it as normative here and send it for `shielded` regardless.
 `attestations`; `slippage_bps` (default 50); `settlement_preference`
 (default `public`); `stealth_spending_pub_key` / `stealth_viewing_pub_key`
 (required when `settlement=stealth`). Both snake_case and camelCase are accepted.
+
+**Address encodings** (the served `ChainAddress`, three `oneOf` branches):
+EVM `0x` + 40 hex; base58 (Tron/Solana) of 32–44 characters; and, since the
+Canton destination (chain `253340876`, `vm_type: cvm`, `address_format:
+canton_party`), a party id `hint::1220<64 lowercase hex>` where the hint is
+`[A-Za-z0-9:_-]+`. A party id is **case-sensitive and never case-folded**, and its
+hint is free text that may itself begin `0x`: a client MUST NOT fold case on a
+value merely because it starts `0x`, only on one that is `0x` + hex and nothing
+else. Canton is **destination-only**: no route originates there, `recipient_address`
+is the party (the server trims and otherwise refuses any spelling Canton would not
+render rather than normalizing it), `to_token` is Canton Coin's instrument id
+`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`, and
+settlement is `public` only. It is served only behind `ENABLE_CANTON_DESTINATION`;
+a deploy with it off answers `unsupported_chain`.
 
 ### 3.4 Status
 
@@ -371,6 +409,17 @@ client-actionable (fix the request or re-quote), 503 is transient, 500
 and MUST NOT be retried sooner; `already_executed` (409, the replay guard) MUST
 NOT be retried with the same intent — re-quote. An unrecognized code SHOULD
 degrade to a retryable service error with the raw code preserved.
+
+`POST /xochi/quote` `429` is the per-IP / per-caller rate limit with
+`x-ratelimit-*` headers and, on an escrow corridor, also the escrow-authorization
+issuance limit (`details.reason: escrow_issuance_rate`, `details.scope`
+`depositor` | `caller`, `details.retry_after`), which carries `Retry-After` but no
+`x-ratelimit-*` headers; both MUST NOT be retried before `retry_after`. Escrow
+adds two codes, each with its cause in `details.reason`: `escrow_refused`
+(`422` on execute, a relayed open refused permanently — self-submit the open or
+re-quote, never retry the relay) and `escrow_unavailable` (`503`, transient).
+`quote_store_unavailable` (`503`) carries `Retry-After` and is retried with the
+**same** `quote_id`.
 
 **A stale quote has no stable code.** This document previously named
 `quote_expired` and hung a single-retry SHOULD on it; that code is not in the
@@ -658,33 +707,37 @@ source of truth for release. A client MUST NOT release-gate on it.
 
 `GET /xochi/capabilities` returns the capability matrix: `cross_chain_only`,
 `order_bounds_usd {min,max}`, `deposit_attestation_signer`,
-`stealth_factory_address`, `chains[]` (`chain_id`, `chain_name`, `vm_type`,
-`address_format`, `min_stealth_notional_usd`), `tokens[]`, `corridors[]`,
-`conversion_pairs[]`. `GET /xochi/routes` returns
+`stealth_factory_address`, `chains[]` (`chain_id`, `chain_name`, `vm_type`
+`evm|tvm|svm|cvm`, `address_format` `hex20|base58check|base58|canton_party`,
+`min_stealth_notional_usd`, optional `roles` and `escrow_address`), `tokens[]`,
+`corridors[]`, `conversion_pairs[]`, `pull_recipients`. `GET /xochi/routes` returns
 `[{from_chain_id, to_chain_id, settlement_type, expected_fill_seconds}]`.
+
+`chains[].roles` is present only on a chain that is not both an origin and a
+destination; absent means both, and `["destination"]` marks a destination-only
+chain (Canton, §3.3). Both encoding enums are append-only: a client MUST NOT read
+a `vm_type` it does not recognise as `evm`, since that hands an address in an
+unknown encoding to EVM address handling; treating the chain as unusable is the
+safe reading. An **absent** `vm_type` still means `evm` (the field postdates the
+endpoint).
 
 Discovery is the source of truth for supported chains/tokens/corridors; clients
 SHOULD prefer it over any static table. It SHOULD advertise `spec_version`.
 
-**Reserved (§5.2):** the escrow envelope is gated on a capability advertised
-here: a top-level `escrow { enabled, proof_tiers[] }` and a per-chain
-`escrow_address` on each `chains[]` entry. Both are absent or `enabled: false`
-until M6; a client MUST NOT expect any §5.2 envelope field unless `escrow.enabled`
-is `true`. Every escrow address this document advertises --
-`chains[].escrow_address` and `pull_recipients[chain].escrow` -- is
-**discovery only, never a pin**: it arrives over the same channel as the quote
-(§2.3), and a venue that names its own address everywhere is self-consistent.
-A client MUST refuse an escrow-bearing quote unless it runs the §2.3 escrow
-binding against a **caller-pinned** escrow per origin chain, obtained outside
-the venue channel (`@xochi/signer` `assertEscrowBinding` with
-`EscrowBinding.expectedEscrows`). A recipient pin naming the escrow (the SDK's
-`expectedPullRecipients`) is NOT sufficient: it binds only the pull's
-`to`/`spender`, never the `orderId` (the ERC-3009 nonce or Permit2 witness)
-whose terms decide where the lock pays. A pull whose `to`/`spender` equals a
-caller-pinned escrow for its origin chain MUST be treated as escrow-bearing --
-run the §2.3 binding or refuse -- whether or not the quote carries `escrow`:
-the envelope is venue-supplied, and dropping it is how an escrow pull would
-reach a client that skips the binding.
+**Escrow (§5.2):** the escrow envelope is gated on a capability advertised
+here: a top-level `escrow { enabled, proof_tiers[], confidentiality_tiers[],
+corridors[] }`, a per-chain `chains[].escrow_address`, and
+`pull_recipients[chain].escrow`. The served schema makes `escrow` **absent, never
+`enabled: false`**, while escrow is off on a deploy; a client MUST NOT expect any
+§5.2 envelope field unless `escrow` is present with `enabled: true`. On a listed
+corridor a `public` quote carries `escrow` and its pull `to`/`spender` is the
+escrow address rather than `pull_recipients[chain].erc3009`/`permit2`.
+
+Every escrow address this document advertises -- `chains[].escrow_address` and `pull_recipients[chain].escrow` -- is **discovery only, never a pin**: it arrives over the same channel as the quote (§2.3), and a venue that names its own address everywhere is self-consistent. A client MUST refuse an escrow-bearing quote unless it runs the §2.3 escrow binding against a **caller-pinned** escrow per origin chain, obtained outside the venue channel (`@xochi/signer` `assertEscrowBinding` with `EscrowBinding.expectedEscrows`). A recipient pin naming the escrow (the SDK's `expectedPullRecipients`) is NOT sufficient: it binds only the pull's `to`/`spender`, never the `orderId` (the ERC-3009 nonce or Permit2 witness) whose terms decide where the lock pays.
+
+A pull whose `to`/`spender` equals a caller-pinned escrow for its origin chain MUST be treated as escrow-bearing -- run the §2.3 binding or refuse -- whether or not the quote carries `escrow`: the envelope is venue-supplied, and dropping it is how an escrow pull would reach a client that skips the binding.
+The TypeScript SDK does not run the escrow binding yet and refuses every
+escrow-bearing quote before signing.
 
 ---
 

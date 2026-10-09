@@ -29,11 +29,18 @@
  * also why nothing here may *relax* a check. It can only inform one.
  */
 
-/** Virtual machine family a chain runs. Decides address encoding and pull method. */
-export type VmType = "evm" | "tvm" | "svm";
+/**
+ * Virtual machine family a chain runs. Decides address encoding and pull method.
+ * `cvm` is Canton: a destination-only chain whose addresses are party ids.
+ */
+export type VmType = "evm" | "tvm" | "svm" | "cvm";
 
-/** Address encoding for a VM family. `hex20` is EVM; the base58 pair is not interchangeable. */
-export type AddressFormat = "hex20" | "base58check" | "base58";
+/**
+ * Address encoding for a VM family. `hex20` is EVM; the base58 pair is not
+ * interchangeable; `canton_party` is `hint::1220<64 lowercase hex>`, case-sensitive
+ * with a free-text hint, so it is never case-folded even when the hint starts `0x`.
+ */
+export type AddressFormat = "hex20" | "base58check" | "base58" | "canton_party";
 
 /** How the solver takes origin funds. `deposit_address` is the non-EVM path (no gasless pull). */
 export type PullMethod = "erc3009" | "permit2" | "deposit_address";
@@ -41,8 +48,16 @@ export type PullMethod = "erc3009" | "permit2" | "deposit_address";
 export interface ChainCapability {
   chainId: number;
   chainName: string;
-  vmType: VmType;
-  addressFormat: AddressFormat;
+  /**
+   * `null` when the server named a VM this client does not recognise. The row is kept
+   * rather than dropped so a duplicate chain id is still seen as one, but nothing may
+   * address the chain: an unknown VM is not EVM. See {@link unrecognisedVmType}.
+   */
+  vmType: VmType | null;
+  /** `null` exactly when {@link vmType} is: a format read off an unknown VM is a guess. */
+  addressFormat: AddressFormat | null;
+  /** The served `vm_type` spelling when it was not recognised, else `null`. */
+  unrecognisedVmType: string | null;
   /**
    * Per-chain floor a *stealth* order must clear so its fee covers the sponsored
    * ERC-4337 claim leg; L1 is materially higher than L2s. `null` when the server
@@ -141,15 +156,16 @@ export class CapabilitiesError extends Error {
   }
 }
 
-/** The address encoding a VM family uses. Unknown families fall back to EVM. */
+/** The address encoding a VM family uses. */
 export function addressFormatForVm(vmType: VmType): AddressFormat {
   if (vmType === "tvm") return "base58check";
   if (vmType === "svm") return "base58";
+  if (vmType === "cvm") return "canton_party";
   return "hex20";
 }
 
-const VM_TYPES: readonly string[] = ["evm", "tvm", "svm"];
-const ADDRESS_FORMATS: readonly string[] = ["hex20", "base58check", "base58"];
+const VM_TYPES: readonly string[] = ["evm", "tvm", "svm", "cvm"];
+const ADDRESS_FORMATS: readonly string[] = ["hex20", "base58check", "base58", "canton_party"];
 const PULL_METHODS: readonly string[] = ["erc3009", "permit2", "deposit_address"];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -212,11 +228,16 @@ function setChainKey<T>(out: Record<number, T>, chainId: number, value: T): void
   out[chainId] = value;
 }
 
-function asVmType(value: unknown): VmType {
-  const s = asString(value);
+function asVmType(value: unknown): VmType | null {
   // Absent means EVM: `vm_type` postdates the endpoint and every chain that
   // existed before it was EVM, so treating absent as unknown would strand them.
-  return s !== null && VM_TYPES.includes(s) ? (s as VmType) : "evm";
+  if (value === undefined || value === null) return "evm";
+  // PRESENT but unrecognised is not absent. It used to read as "evm" too, so the
+  // first served `cvm` (Canton, spec 0.8.0) parsed as an EVM chain with format
+  // `hex20`, and a Canton party id was one caller away from an EVM address helper.
+  // A VM this parser does not know is a chain it cannot address.
+  const s = asString(value);
+  return s !== null && VM_TYPES.includes(s) ? (s as VmType) : null;
 }
 
 function asAddressFormat(value: unknown): AddressFormat | null {
@@ -241,10 +262,26 @@ function parseChain(raw: unknown): ChainCapability | null {
   const chainId = asChainIdValue(r.chain_id);
   if (chainId === null) return null; // a chain we cannot address is not a capability
 
+  const chainName = asString(r.chain_name) ?? String(chainId);
+  const minStealthNotionalUsd = asNumber(r.min_stealth_notional_usd);
   const vmType = asVmType(r.vm_type);
+  if (vmType === null) {
+    // Kept, not dropped: dropping it before `chainCapability`'s duplicate check let
+    // `[{id, evm}, {id, tvm2}]` read as a lone EVM chain, the shadowing that check
+    // exists to refuse. Unaddressable all the same; see asVmType.
+    const served = r.vm_type;
+    return {
+      chainId,
+      chainName,
+      vmType: null,
+      addressFormat: null,
+      unrecognisedVmType: typeof served === "string" ? served : JSON.stringify(served),
+      minStealthNotionalUsd,
+    };
+  }
   return {
     chainId,
-    chainName: asString(r.chain_name) ?? String(chainId),
+    chainName,
     vmType,
     // Prefer the served format, falling back to the VM's own rather than hex20.
     // Whitelisted, not cast: an unchecked `as` let a server label a TVM chain
@@ -252,7 +289,8 @@ function parseChain(raw: unknown): ChainCapability | null {
     // no branch of an exhaustive switch. Either ends with a base58 address in an
     // EVM address helper.
     addressFormat: asAddressFormat(r.address_format) ?? addressFormatForVm(vmType),
-    minStealthNotionalUsd: asNumber(r.min_stealth_notional_usd),
+    unrecognisedVmType: null,
+    minStealthNotionalUsd,
   };
 }
 
@@ -383,7 +421,11 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
   };
 }
 
-/** The chain entry for `chainId`, or `null` when unadvertised or duplicated. */
+/**
+ * The chain entry for `chainId`, or `null` when unadvertised or duplicated. An entry
+ * whose VM this client does not recognise is returned with `vmType: null`; every
+ * accessor below reads that as unaddressable.
+ */
 export function chainCapability(
   caps: SolverCapabilities,
   chainId: number,
@@ -391,20 +433,21 @@ export function chainCapability(
   const matches = caps.chains.filter((c) => c.chainId === chainId);
   // A repeated chain id is malformed; `.find()` would take the first, letting a
   // prepended `{chain_id: 728126428, vm_type: "evm"}` shadow the real TVM entry.
+  // Unknown-VM rows count: they are parsed, not dropped, for exactly this.
   return matches.length === 1 ? matches[0]! : null;
 }
 
 /**
- * VM family for a chain, or `null` when unadvertised. Not defaulted to `evm`:
- * "did not mention this chain" and "this chain is EVM" are different facts, and
- * collapsing them is one of the ways a base58 address ends up in an EVM address
- * helper.
+ * VM family for a chain, or `null` when unadvertised, duplicated, or advertised under a
+ * VM this client does not recognise. Not defaulted to `evm`: "did not mention this
+ * chain" and "this chain is EVM" are different facts, and collapsing them is one of the
+ * ways a base58 address ends up in an EVM address helper.
  */
 export function chainVmType(caps: SolverCapabilities, chainId: number): VmType | null {
   return chainCapability(caps, chainId)?.vmType ?? null;
 }
 
-/** Address encoding for a chain, or `null` when unadvertised. See {@link chainVmType}. */
+/** Address encoding for a chain, or `null` on the same terms as {@link chainVmType}. */
 export function chainAddressFormat(caps: SolverCapabilities, chainId: number): AddressFormat | null {
   return chainCapability(caps, chainId)?.addressFormat ?? null;
 }
@@ -430,6 +473,9 @@ export function originPullMethod(
   const token = tokenCapability(caps, symbol);
   if (!token) return null;
   if (!Number.isInteger(chainId)) return null;
+  // A duplicated, unadvertised or unknown-VM chain has no pull method here: the
+  // token-level fallback is an EVM representative and would name one for any chain.
+  if (chainCapability(caps, chainId)?.vmType == null) return null;
   return token.pullMethods[chainId]?.method ?? token.pullMethod;
 }
 
@@ -446,6 +492,8 @@ export function advertisedTokenAddress(
 ): string | null {
   const token = tokenCapability(caps, symbol);
   if (!token || !Number.isInteger(chainId)) return null;
+  // Same rule as `originPullMethod`: no address for a chain this client cannot address.
+  if (chainCapability(caps, chainId)?.vmType == null) return null;
   // hasOwnProperty, not `?.[]`: a JS caller passing "constructor" would otherwise
   // get a Function back from a signature typed `string | null`.
   return Object.prototype.hasOwnProperty.call(token.addresses, chainId)
@@ -535,9 +583,11 @@ export function servedChainKeys(
   caps: SolverCapabilities,
   chains: Record<string, { chainId: number }>,
 ): string[] {
-  const advertised = new Set(caps.chains.map((c) => c.chainId));
+  // Through `chainCapability`, so a duplicated id is unserved whatever VM its rows name:
+  // a per-row filter kept `[{id, evm}, {id, <unknown VM>}]` as served. An unrecognised-VM
+  // row is advertised but not addressable by this client.
   return Object.entries(chains)
-    .filter(([, chain]) => advertised.has(chain.chainId))
+    .filter(([, chain]) => chainCapability(caps, chain.chainId)?.vmType != null)
     .map(([key]) => key);
 }
 
@@ -550,7 +600,21 @@ export function chainUnservedReason(
   caps: SolverCapabilities,
   chain: { chainId: number; name: string; flagGated?: string },
 ): string | null {
-  if (chainCapability(caps, chain.chainId) !== null) return null;
+  const matches = caps.chains.filter((c) => c.chainId === chain.chainId);
+  if (matches.length > 1) {
+    return (
+      `${chain.name} (${chain.chainId}) is advertised ${matches.length} times by this venue's ` +
+      "/xochi/capabilities, so this client reads the entry as malformed and uses none of them"
+    );
+  }
+  const only = matches[0];
+  if (only?.vmType === null) {
+    return (
+      `${chain.name} (${chain.chainId}) is advertised with vm_type ${only.unrecognisedVmType}, which this ` +
+      "client does not recognise; upgrade the SDK"
+    );
+  }
+  if (only) return null;
   return chain.flagGated
     ? `${chain.name} (${chain.chainId}) is not advertised: the venue gates it behind ${chain.flagGated}, ` +
         "so it is addressable but not quotable until that flag is on"

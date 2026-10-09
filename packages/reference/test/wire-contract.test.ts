@@ -27,6 +27,7 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { FeeBreakdownSchema } from "../src/fee";
+import { parseCapabilities, chainVmType, chainAddressFormat } from "@xochi/signer";
 
 const require = createRequire(import.meta.url);
 
@@ -152,3 +153,42 @@ describe("fee_breakdown wire object", () => {
     expect(sdkClasses).toEqual(servedClasses);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe("capability chain encodings the parser recognises", () => {
+  // `chains` is an array, so `enumOf` (which walks `properties`) cannot reach its items.
+  function chainItemEnum(key: string): string[] {
+    const items = (schema("CapabilityMatrix").properties?.chains as { items?: OpenApiSchema } | undefined)
+      ?.items;
+    const values = items?.properties?.[key]?.enum ?? [];
+    if (values.length === 0) throw new Error(`served CapabilityMatrix.chains[].${key} declares no enum`);
+    return values;
+  }
+
+  // Catches: the server adds a VM family. capabilities.ts drops a chain whose vm_type it
+  // does not recognise (an unknown VM is not EVM), so an unlearned served member is a
+  // chain silently missing from every accessor. Spec 0.8.0's `cvm` (Canton) was the first:
+  // before the parser knew it, it read as an EVM chain with format hex20.
+  it("every served vm_type parses as itself", () => {
+    const unrecognised = chainItemEnum("vm_type").filter((vm) => {
+      const c = parseCapabilities({ chains: [{ chain_id: 1, vm_type: vm }] });
+      return c === null || chainVmType(c, 1) !== vm;
+    });
+    expect(unrecognised, "served vm_type(s) capabilities.ts does not recognise; add them to VmType").toEqual([]);
+  });
+
+  // A served format the whitelist lacks falls back to the VM's own, which hides it.
+  it("every served address_format parses as itself", () => {
+    const unrecognised = chainItemEnum("address_format").filter((format) => {
+      const c = parseCapabilities({ chains: [{ chain_id: 1, address_format: format }] });
+      return c === null || chainAddressFormat(c, 1) !== format;
+    });
+    expect(
+      unrecognised,
+      "served address_format(s) capabilities.ts does not recognise; add them to AddressFormat",
+    ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------

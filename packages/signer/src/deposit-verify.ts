@@ -458,6 +458,28 @@ function sameAmount(a: string, b: string): boolean {
 }
 
 /**
+ * Refuses a recipient, wallet or refund address that starts `0x` without being `0x` +
+ * hex: the deposit attestation lowercases it (axol-io/Riddler#1254), so it cannot tell
+ * it from a differently-cased party id. Run on the request by `xochiDepositQuote` before
+ * the quote call and on the attested fields by `assertDepositQuoteMatchesRequest`.
+ */
+export function assertDepositPartiesCaseBindable(parties: {
+  recipient?: unknown;
+  wallet?: unknown;
+  refund_address?: unknown;
+}): void {
+  for (const [name, value] of Object.entries(parties)) {
+    if (typeof value === "string" && value.startsWith("0x") && !/^0x[0-9a-fA-F]+$/.test(value)) {
+      throw new DepositQuoteMismatchError(
+        `${name} ${JSON.stringify(value)} starts with 0x but is not hex, so the deposit attestation ` +
+          "lowercases it and cannot tell it from a differently-cased party id (axol-io/Riddler#1254). " +
+          "This client refuses such a value until the attestation binds its case. Do NOT send funds.",
+      );
+    }
+  }
+}
+
+/**
  * Asserts the server-chosen fields describe the deal the caller asked for: the
  * `from_amount` and the recipient the quote *displays*. Chain and token are not
  * compared, because `depositAttestationFields` builds that half of the message
@@ -474,6 +496,16 @@ export function assertDepositQuoteMatchesRequest(
   fields: DepositAttestationFields,
   quote: Record<string, any> = {},
 ): void {
+  // Same refusal as the pull path's `assertNoEscrowEnvelope`, in this module's error
+  // class: this SDK does not run the escrow binding (SPEC.md §2.3), so a deposit quote
+  // carrying an `escrow` envelope has an unchecked orderId deciding who is paid.
+  if (quote.escrow !== undefined && quote.escrow !== null) {
+    throw new DepositQuoteMismatchError(
+      "deposit quote carries an escrow envelope, and this SDK does not run the escrow binding " +
+        "(SPEC.md §2.3: recompute orderId and destCommitment against a caller-pinned escrow) -- who " +
+        "the escrow pays is unchecked. Do NOT send funds.",
+    );
+  }
   const swapKind = requestedParam(params, "swap_kind", "swapKind") ?? "exact_input";
   const wantAmount = requestedParam(params, "from_amount", "fromAmount");
   if (swapKind === "exact_output") {
@@ -493,12 +525,37 @@ export function assertDepositQuoteMatchesRequest(
     }
   }
 
+  // The attestation cannot bind the CASE of a value that starts `0x` without being
+  // `0x` + hex: `normalizeAddress` is the DIGEST rule (Riddler's `normalize_address/1`)
+  // and folds every `0x`-prefixed value, which includes a Canton party id whose
+  // free-text hint starts `0x` (`0xAlice::1220...`, spec 0.8.0). So a genuine
+  // attestation for `0xalice::1220...` -- another party, obtainable by anyone, since
+  // quoting is not authenticated by wallet -- verifies against a request for
+  // `0xAlice::1220...`, and the displayed `recipient_address` below cannot catch it:
+  // it is unsigned and arrives on the same channel as the quote. Refused outright for
+  // the recipient, the wallet and the refund address until axol-io/Riddler#1254 stops
+  // the server folding them and bumps `deposit_attestation_version`.
+  assertDepositPartiesCaseBindable({
+    recipient: fields.recipient,
+    wallet: fields.wallet,
+    refund_address: fields.refund_address,
+  });
+
   // v2 signs `recipient`, so a divergence between the displayed and the attested
   // one means the address shown to the user is not the one the deal was signed
-  // for. Worth refusing even though the signature bound the real one.
+  // for. Worth refusing even though the signature bound the real one. Case is
+  // folded here for `0x` + hex alone, every other encoding being case-sensitive;
+  // this is a display-consistency check, not a binding, since the displayed value
+  // is unsigned.
   const gotRecipient = quote.recipient_address ?? quote.recipientAddress;
   if (gotRecipient !== undefined && gotRecipient !== null) {
-    if (normalizeAddress(String(gotRecipient)) !== normalizeAddress(fields.recipient)) {
+    const shown = String(gotRecipient);
+    const hex = /^0x[0-9a-f]+$/i;
+    const same =
+      hex.test(shown) && hex.test(fields.recipient)
+        ? shown.toLowerCase() === fields.recipient.toLowerCase()
+        : shown === fields.recipient;
+    if (!same) {
       throw new DepositQuoteMismatchError(
         `quote recipient ${gotRecipient} != attested ${fields.recipient} -- the address shown is ` +
           "not the one this quote was signed for. Do NOT send funds.",

@@ -8,6 +8,7 @@
 import type { Eip712Signable } from "./types";
 import { PERMIT2_ADDRESS } from "./permit2";
 import { pick, sameAddressish, sameNumeric } from "./compare";
+import type { PinnedEscrows } from "./escrow";
 
 /**
  * The request fields the checks compare against, in either spelling. Only what the caller
@@ -50,6 +51,33 @@ export class XochiIntentMismatchError extends Error {
     super(message, options);
     this.name = "XochiIntentMismatchError";
   }
+}
+
+/**
+ * Refuses any quote carrying an `escrow` envelope (SPEC.md §5.2/§6), before anything is
+ * signed. On an escrow corridor the pull's `to`/`spender` is the escrow contract and WHO
+ * the lock pays is decided by the `orderId` the pull binds (the ERC-3009 `nonce`, the
+ * Permit2 `witness.orderId`), whose `OrderTerms.destCommitment` names the destination.
+ * Nothing in this SDK recomputes that `orderId`, so every other check here passes a quote
+ * whose intent names your recipient while its pull locks your funds under an attacker's
+ * destination -- pinned or unpinned, and a recipient pin naming the escrow address admits
+ * it outright. The binding that closes it is `assertEscrowBinding` in `@xochi/signer`
+ * (SPEC.md §2.3: recompute `orderId`/`destCommitment` against an escrow the CALLER pinned
+ * per origin chain, never the advertised `escrow_address`), which this SDK does not wire
+ * yet; until it does, an escrow-bearing quote is unsignable here. `escrow: null` is read as
+ * absent, which is what the served schema means by escrow being off.
+ */
+export function assertNoEscrowEnvelope(quote: Record<string, any> | null | undefined): void {
+  const escrow = quote?.escrow;
+  if (escrow === undefined || escrow === null) return;
+  const orderId = typeof escrow === "object" ? (escrow.order_id ?? escrow.orderId) : undefined;
+  throw new XochiIntentMismatchError(
+    `quote carries an escrow envelope${orderId ? ` (order_id ${JSON.stringify(orderId)})` : ""}, and this ` +
+      "SDK does not run the escrow binding (SPEC.md §2.3: recompute orderId and destCommitment, held to a " +
+      "caller-pinned escrow for the origin chain). Without it the pull's orderId -- which decides who the " +
+      "escrow pays -- is unchecked, and a recipient pin naming the escrow address does not bind it. " +
+      "Refusing to sign.",
+  );
 }
 
 /**
@@ -536,6 +564,52 @@ export interface AssertPullOptions {
    */
   advertisedPullDeadlineBufferSeconds?: number | null;
   advertised_pull_deadline_buffer_seconds?: number | null;
+  /**
+   * Caller-pinned escrow per origin chain ({@link PinnedEscrows}). A pull to it is refused.
+   */
+  expectedEscrows?: PinnedEscrows;
+  expected_escrows?: PinnedEscrows;
+}
+
+/**
+ * A pull whose `to`/`spender` names the escrow pinned for its origin chain (the same
+ * caller-held {@link PinnedEscrows} `assertEscrowBinding` takes, obtained outside the
+ * venue channel, SPEC.md §6) is refused: it is escrow-bearing whatever the quote says,
+ * and this SDK does not run the §2.3 escrow binding here. Not a recipient pin and never
+ * merged into one.
+ */
+function assertPullNotToPinnedEscrow(
+  intent: Record<string, any>,
+  kind: "erc3009" | "permit2",
+  m: Record<string, any>,
+  opts: AssertPullOptions,
+): void {
+  const pins = pick(opts as Record<string, unknown>, "expected_escrows", "expectedEscrows") as
+    | PinnedEscrows
+    | undefined;
+  if (pins === undefined || pins === null) return;
+  if (typeof pins !== "object" || Array.isArray(pins)) {
+    throw new XochiIntentMismatchError(
+      `expectedEscrows must map origin chain ids to escrow addresses, got ${JSON.stringify(pins)}. Refusing to sign.`,
+    );
+  }
+  const chainKey = String(intent.fromChainId);
+  if (!Object.prototype.hasOwnProperty.call(pins, chainKey)) return;
+  const pinned = (pins as Record<string, unknown>)[chainKey];
+  if (typeof pinned !== "string" || pinned.trim() === "") {
+    throw new XochiIntentMismatchError(
+      `expectedEscrows[${chainKey}] is ${JSON.stringify(pinned)}, not an address -- a blank escrow pin ` +
+        "cannot be compared against. Refusing to sign.",
+    );
+  }
+  const served = kind === "erc3009" ? m.to : m.spender;
+  if (served !== undefined && served !== null && sameAddressish(String(served), pinned)) {
+    throw new XochiIntentMismatchError(
+      `pull_authorization ${kind === "erc3009" ? "to" : "spender"} is the escrow you pinned for chain ` +
+        `${chainKey} (${pinned}), so this pull is escrow-bearing even though the quote carries no usable ` +
+        "escrow envelope, and this SDK does not run the escrow binding (SPEC.md §2.3, §6). Refusing to sign.",
+    );
+  }
 }
 
 /**
@@ -569,6 +643,8 @@ export function assertPullMatchesIntent(
   quote: Record<string, any>,
   opts: AssertPullOptions = {},
 ): void {
+  // Before the no-pull return: an escrow quote is refused whatever its pull looks like.
+  assertNoEscrowEnvelope(quote);
   const pull = pick(quote, "pull_authorization", "pullAuthorization") as Eip712Signable | undefined;
   if (!pull?.message) return;
 
@@ -625,6 +701,12 @@ export function assertPullMatchesIntent(
         "authorization aimed at some other contract.",
     );
   }
+
+  // A pull TO a caller-pinned escrow is escrow-bearing whether or not the quote carries
+  // the `escrow` envelope (SPEC.md §6): the envelope is venue-supplied, so dropping it is
+  // how an escrow pull reaches a client that never runs the binding. This SDK does not
+  // run it, so such a pull is refused.
+  assertPullNotToPinnedEscrow(intent, kind, m, opts);
 
   // WHO RECEIVES THE FUNDS (Riddler#848). Checked only against a CALLER-SUPPLIED pin.
   // Absence is safe to skip here, unlike an advertised value: the pin is the caller's own

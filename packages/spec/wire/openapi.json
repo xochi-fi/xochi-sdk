@@ -149,11 +149,12 @@
             "items": {
               "properties": {
                 "address_format": {
-                  "description": "Address format used by this chain. \"hex20\" for EVM (0x-prefixed 40-char hex), \"base58check\" for Tron, \"base58\" for Solana.\n",
+                  "description": "Address format used by this chain. \"hex20\" for EVM (0x-prefixed 40-char hex), \"base58check\" for Tron, \"base58\" for Solana, \"canton_party\" for Canton (a party id `hint::1220<64 lowercase hex>`, case-sensitive: send it exactly as Canton renders it).\n",
                   "enum": [
                     "hex20",
                     "base58check",
-                    "base58"
+                    "base58",
+                    "canton_party"
                   ],
                   "type": "string"
                 },
@@ -164,18 +165,34 @@
                   "example": "Base",
                   "type": "string"
                 },
+                "escrow_address": {
+                  "description": "`RiddlerEscrow` deployment on this chain. Present only when `escrow.enabled` is true and the chain has a deployment; absent otherwise.\n",
+                  "type": "string"
+                },
                 "min_stealth_notional_usd": {
                   "description": "Minimum order notional (USD) for a solvable stealth/shielded quote settling on this chain: destination fill + sponsored ERC-4337 claim cost, times the gas-floor margin. A consumer may pre-decline a stealth order below this before quoting. Null when the gas oracle cannot price the chain, or for non-EVM chains (no 4337 claim leg). L1 destinations are materially higher than L2s.\n",
                   "example": 47.5,
                   "nullable": true,
                   "type": "number"
                 },
+                "roles": {
+                  "description": "Present only on a chain that is not both a route origin and a destination; absent means both. `[\"destination\"]` marks a destination-only chain (Canton): no route originates there and no origin token is advertised for it. Its only destination token is Canton Coin, named by `to_token` = the instrument id `DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`.\n",
+                  "items": {
+                    "enum": [
+                      "origin",
+                      "destination"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "vm_type": {
-                  "description": "VM type for address format selection.",
+                  "description": "VM type for address format selection. \"cvm\" is Canton.",
                   "enum": [
                     "evm",
                     "tvm",
-                    "svm"
+                    "svm",
+                    "cvm"
                   ],
                   "type": "string"
                 }
@@ -221,6 +238,9 @@
             "example": "xochi-deposit-attestation:v3",
             "type": "string"
           },
+          "escrow": {
+            "$ref": "#/components/schemas/EscrowCapability"
+          },
           "order_bounds_usd": {
             "properties": {
               "max": {
@@ -251,6 +271,10 @@
                   "description": "The ERC-3009 `to` a pull on this chain will name.",
                   "type": "string"
                 },
+                "escrow": {
+                  "description": "The `RiddlerEscrow` address on this chain. Present only on a\nchain that is the origin of an advertised escrow corridor\n(`escrow.corridors`); on those corridors the ERC-3009 `to`\nand Permit2 `spender` are this address, not `erc3009` /\n`permit2` above. Absent when escrow is off.\n",
+                  "type": "string"
+                },
                 "permit2": {
                   "description": "The Permit2 `spender` a pull on this chain will name.",
                   "type": "string"
@@ -273,7 +297,7 @@
           },
           "spec_version": {
             "description": "SemVer of the `@riddler/spec` document this server conforms to.\nLets a taker gate on the normative layered fee model (SPEC section\n4) rather than inferring support from a quote's shape. MAJOR\nsignals a breaking wire or signature-construction change.\n",
-            "example": "0.5.0",
+            "example": "0.6.0",
             "type": "string"
           },
           "stealth_factory_address": {
@@ -297,7 +321,7 @@
         "type": "object"
       },
       "ChainAddress": {
-        "description": "Address in any supported chain format. EVM chains use a 0x-prefixed\n40-char hex string; TVM (Tron) and SVM (Solana) chains use a base58\nstring of 32–44 characters.\n",
+        "description": "Address in any supported chain format. EVM chains use a 0x-prefixed\n40-char hex string; TVM (Tron) and SVM (Solana) chains use a base58\nstring of 32–44 characters; Canton uses a party id\n`hint::1220<64 lowercase hex>`, case-sensitive and never case-folded.\nOn Canton both the recipient and the token are party ids: the only\nCanton token is Canton Coin, named by its instrument admin party.\n",
         "example": "0x742d35Cc6634C0532925a3b844Bc9e7595f7E4Cf",
         "oneOf": [
           {
@@ -309,11 +333,16 @@
             "description": "Base58 address (Tron/Solana)",
             "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$",
             "type": "string"
+          },
+          {
+            "description": "Canton party id (destination only)",
+            "pattern": "^[A-Za-z0-9:_-]+::1220[0-9a-f]{64}$",
+            "type": "string"
           }
         ]
       },
       "ChainId": {
-        "description": "1=Ethereum, 10=Optimism, 100=Gnosis, 137=Polygon, 4663=Robinhood Chain,\n5042=Arc, 8453=Base, 42161=Arbitrum, 84532=Base Sepolia,\n421614=Arbitrum Sepolia, 11155111=Sepolia,\n11155420=Optimism Sepolia, 728126428=Tron.\n\nThis enum is every chain the server can advertise, NOT every chain a\ngiven deploy serves. Flag-gated chains (Arc behind `ENABLE_ARC`, Gnosis\nbehind `ENABLE_GNOSIS`, Tron behind `ENABLE_TRON`) are absent from\n`GET /xochi/chains` until their flag is on, and a quote naming one is\nrejected `unsupported_chain`.\nRead `/xochi/chains` for what this deploy actually serves.\n\nTestnet IDs (84532, 11155111, 421614, 11155420) are enabled by\n`TESTNET_ONLY=true`.\n",
+        "description": "1=Ethereum, 10=Optimism, 100=Gnosis, 137=Polygon, 4663=Robinhood Chain,\n5042=Arc, 8453=Base, 42161=Arbitrum, 84532=Base Sepolia,\n421614=Arbitrum Sepolia, 11155111=Sepolia,\n11155420=Optimism Sepolia, 253340876=Canton, 728126428=Tron.\n\n253340876 is synthetic: the last 4 bytes of the Canton MainNet global\nsynchronizer fingerprint (`...0f19accc`), the rule that gives Tron\n728126428. Canton is a destination only.\n\nThis enum is every chain the server can advertise, NOT every chain a\ngiven deploy serves. Flag-gated chains (Arc behind `ENABLE_ARC`, Gnosis\nbehind `ENABLE_GNOSIS`, Tron behind `ENABLE_TRON`, Canton behind\n`ENABLE_CANTON_DESTINATION`) are absent from `GET /xochi/chains` until\ntheir flag is on, and a quote naming one is rejected `unsupported_chain`.\nRead `/xochi/chains` for what this deploy actually serves.\n\nTestnet IDs (84532, 11155111, 421614, 11155420) are enabled by\n`TESTNET_ONLY=true`.\n",
         "enum": [
           1,
           10,
@@ -327,6 +356,7 @@
           421614,
           11155111,
           11155420,
+          253340876,
           728126428
         ],
         "type": "integer"
@@ -1447,6 +1477,7 @@
           "announcer_mismatch",
           "announcer_not_configured",
           "tron_fee_misconfigured",
+          "escrow_refused",
           "insufficient_balance",
           "insufficient_liquidity",
           "pre_positioning",
@@ -1457,6 +1488,7 @@
           "gas_price_unavailable",
           "pull_failed",
           "announcement_unreadable",
+          "escrow_unavailable",
           "service_unavailable",
           "rate_limit_exceeded",
           "not_implemented",
@@ -1468,7 +1500,7 @@
         "properties": {
           "details": {
             "additionalProperties": true,
-            "description": "Structured, machine-readable context for the rejection. Notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (rate_limit_exceeded, pre_positioning), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
+            "description": "Structured, machine-readable context for the rejection. Notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (rate_limit_exceeded, pre_positioning, and escrow_unavailable with `reason: depositor_open_auths_exhausted`), `reason` (escrow_refused and escrow_unavailable: the escrow check; conversion_unavailable: `conversion_rate_moved` with `drift_bps`, `conversion_rate_unverifiable` or `conversion_price_contested`; rate_limit_exceeded on an escrow /quote: `escrow_issuance_rate` with `scope` `depositor` or `caller`), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
             "type": "object"
           },
           "error": {
@@ -1481,6 +1513,248 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "EscrowCapability": {
+        "description": "M6 non-custodial escrow (SPEC section 6). Present only while escrow is\nlive on this deploy; ABSENT (never `enabled: false`) otherwise, and the\nrest of the matrix is then byte-identical to a pre-M6 deploy. A client\nMUST NOT expect any section 5.2 envelope field (`escrow` on a quote,\nexecute or status body) unless this object is present with\n`enabled: true`.\n",
+        "properties": {
+          "confidentiality_tiers": {
+            "description": "ESCROW-RFC section 9.5 tier 0 -- the only tier claimed before a corridor's `k` is measured.",
+            "items": {
+              "enum": [
+                "linked"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "corridors": {
+            "description": "Routes whose origin pull targets the escrow. A `public`-settlement\nquote on one of these carries `escrow`, and its pull `to` /\n`spender` is `chains[].escrow_address` (also\n`pull_recipients[chain].escrow`). A stealth or shielded quote on a\nlisted corridor is served without escrow; one whose pull resolves\nto anything but ERC-3009 or Permit2 is refused `escrow_refused`\n(`reason: origin_not_escrowable`).\n",
+            "items": {
+              "properties": {
+                "from_chain_id": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "from_token": {
+                  "description": "Origin token address, lowercased.",
+                  "type": "string"
+                },
+                "to_chain_id": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "from_chain_id",
+                "from_token",
+                "to_chain_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "proof_tiers": {
+            "description": "Proof-of-fill tier of the corridors' verifier (tier-0 attested fills).",
+            "items": {
+              "enum": [
+                "attested"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "proof_tiers",
+          "confidentiality_tiers",
+          "corridors"
+        ],
+        "type": "object"
+      },
+      "EscrowDestOpening": {
+        "description": "The blinded destination the `dest_commitment` opens to. Lets the\ndepositor verify the commitment before opening. uints are decimal strings.\n",
+        "properties": {
+          "blinding": {
+            "description": "0x-hex blinding factor.",
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "to_amount": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "to_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient",
+          "to_token",
+          "to_amount",
+          "blinding",
+          "intent_id"
+        ],
+        "type": "object"
+      },
+      "EscrowOrderTerms": {
+        "description": "The v2 `OrderTerms` the escrow locks under. uints are decimal strings.",
+        "properties": {
+          "depositor": {
+            "type": "string"
+          },
+          "dest_commitment": {
+            "description": "0x-hex commitment to `dest_opening`.",
+            "type": "string"
+          },
+          "escrow": {
+            "type": "string"
+          },
+          "fill_deadline": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "from_amount": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "from_chain_id": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "from_token": {
+            "type": "string"
+          },
+          "to_chain_id": {
+            "$ref": "#/components/schemas/BigIntString"
+          }
+        },
+        "required": [
+          "depositor",
+          "from_chain_id",
+          "from_token",
+          "from_amount",
+          "to_chain_id",
+          "fill_deadline",
+          "escrow",
+          "dest_commitment"
+        ],
+        "type": "object"
+      },
+      "EscrowQuoteEnvelope": {
+        "description": "SPEC section 5.2.1 escrow envelope (snake_case; uints as decimal\nstrings). Present only when `GET /xochi/capabilities` advertises `escrow.enabled: true` (SPEC section 5.2/6); absent (never null or empty) otherwise. Only issued on a route listed in\n`capabilities.escrow.corridors`, for a `public` settlement.\n\nUnder escrow the `pull_authorization` pays the escrow, not a\nsolver-side recipient: ERC-3009 `to` = `address` and `nonce` =\n`order_id`; Permit2 `spender` = `address` and the witness `orderId`\n= `order_id`. Self-submission is the default: the depositor calls\n`openWithAuthorization` / `openWithPermit2` with `open_auth` and their\npull signature before `open_auth.expiry`.\n",
+        "properties": {
+          "address": {
+            "description": "The `RiddlerEscrow` contract on the origin chain.",
+            "type": "string"
+          },
+          "dest_opening": {
+            "$ref": "#/components/schemas/EscrowDestOpening"
+          },
+          "fill_deadline": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "open_auth": {
+            "description": "Venue signature authorising the open; the lock can be opened only before `expiry`.",
+            "properties": {
+              "expiry": {
+                "$ref": "#/components/schemas/BigIntString"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "expiry",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "order_id": {
+            "description": "0x-hex v2 `orderId` of `order_terms`.",
+            "type": "string"
+          },
+          "order_terms": {
+            "$ref": "#/components/schemas/EscrowOrderTerms"
+          }
+        },
+        "required": [
+          "address",
+          "order_id",
+          "fill_deadline",
+          "order_terms",
+          "dest_opening",
+          "open_auth"
+        ],
+        "type": "object"
+      },
+      "EscrowSlashStatus": {
+        "description": "The slash of a panel solver that won this (refunded) order and never\nfilled it, paid to the depositor from the solver's SolverBond. Present\nonce the slash is proposed on the bond. The payout is CREDITED, never\npushed: once `slash_claimable` (executed), the depositor pulls it with\n`SolverBond.claimSlashPayout(to)` on `chain_id`. `slash_pending` while\nproposed and the dispute window runs; `slash_disputed` while\ndisputed; `slash_cancelled` once the bond records it cancelled. The\nintent's top-level `status` stays `refunded`.\n",
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BigIntString"
+              }
+            ],
+            "description": "Slash amount in the bond token's base units, as the bond records it."
+          },
+          "bond": {
+            "description": "SolverBond address",
+            "type": "string"
+          },
+          "chain_id": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "status": {
+            "enum": [
+              "slash_pending",
+              "slash_disputed",
+              "slash_claimable",
+              "slash_cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "bond",
+          "chain_id"
+        ],
+        "type": "object"
+      },
+      "EscrowStatusEnvelope": {
+        "description": "Escrow envelope nested (snake_case) inside the camelCase /execute and\n/status bodies of an escrow intent. Present only when `GET /xochi/capabilities` advertises `escrow.enabled: true` (SPEC section 5.2/6); absent (never null or empty) otherwise. /execute carries\n`address`, `order_id`, `fill_deadline`; /status adds `dest_opening`,\nre-derived and checked against the committed `dest_commitment` -- it\nis omitted when it does not re-derive, never served wrong. /status\nalso adds `slash` once the panel solver that won a refunded order and\nnever filled it has had a slash proposed on its `SolverBond`. The\nintent is recorded when the quote is served, so /status serves it\nwhether or not /execute is ever called.\n",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "dest_opening": {
+            "$ref": "#/components/schemas/EscrowDestOpening"
+          },
+          "fill_deadline": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "slash": {
+            "$ref": "#/components/schemas/EscrowSlashStatus"
+          }
+        },
+        "required": [
+          "address",
+          "order_id",
+          "fill_deadline"
         ],
         "type": "object"
       },
@@ -1507,7 +1781,7 @@
             "type": "integer"
           },
           "pull_signature": {
-            "description": "Signature over the quote's `pull_authorization` typed data\n(ERC-3009 / Permit2, per `payment_method`). Required in practice:\nRiddler pulls `from_amount` on the origin chain before settling the\ndestination, so /execute fails closed with 400 (`pull_signature is\nrequired ...`) when it is missing or invalid.\n",
+            "description": "Signature over the quote's `pull_authorization` typed data\n(ERC-3009 / Permit2, per `payment_method`). Required in practice:\nRiddler pulls `from_amount` on the origin chain before settling the\ndestination, so /execute fails closed with 400 (`pull_signature is\nrequired ...`) when it is missing or invalid. The exception is an\nescrow quote (one carrying `escrow`), where it is optional: absent,\nthe depositor opens the lock themselves; present, Riddler relays the\nopen with it (a bad one is 422 `escrow_refused`,\n`reason: invalid_pull_signature`).\n",
             "type": "string"
           },
           "quote_id": {
@@ -1563,7 +1837,7 @@
         "type": "object"
       },
       "IntentLifecycleStatus": {
-        "description": "Intent lifecycle. Terminal states are `completed`, `refunded`, `failed`,\n`expired`. `refund_pending` means a refund is durably queued but not yet\nconfirmed on-chain; clients must keep polling until `refunded` carries a\nreal `refundTxHash`. `pull_pending` is a non-terminal state emitted only\nwhen the server runs `/execute` asynchronously (returns 202): the origin\npull is broadcast and the destination fill follows once its receipt\nconfirms.\nMirrored from `Riddler.Integrations.Xochi.Schemas.IntentStatus`.\n",
+        "description": "Intent lifecycle. Terminal states are `completed`, `refunded`, `failed`,\n`expired`. `refund_pending` means a refund is durably queued but not yet\nconfirmed on-chain; clients must keep polling until `refunded` carries a\nreal `refundTxHash`. `pull_pending` is a non-terminal state emitted only\nwhen the server runs `/execute` asynchronously (returns 202): the origin\npull is broadcast and the destination fill follows once its receipt\nconfirms.\n\nAn escrow intent (one carrying `escrow`) reads its order: `pending`\n(OpenAuth issued, no open seen), `expired` (the OpenAuth expired and,\nonce the origin's finality budget has passed, the escrow holds no lock\nfor the order), `executing` (a relayed open in flight, then\nopened through attested; the destination payout lands here),\n`refund_pending` (a fill can no longer land in time, or the lock\nreached `refundableAt` unclaimed; a fill that lands anyway can still\nbe claimed),\n`refunded` (a final `Refunded`; no `refundTxHash`) and `completed` (a\nfinal `Claimed`).\nMirrored from `Riddler.Integrations.Xochi.Schemas.IntentStatus`.\n",
         "enum": [
           "pending",
           "pull_pending",
@@ -1601,6 +1875,9 @@
           "error": {
             "nullable": true,
             "type": "string"
+          },
+          "escrow": {
+            "$ref": "#/components/schemas/EscrowStatusEnvelope"
           },
           "intentId": {
             "type": "string"
@@ -2074,7 +2351,7 @@
           },
           "recipient_address": {
             "$ref": "#/components/schemas/ChainAddress",
-            "description": "Optional. Destination payout address, validated against\n`to_chain_id`. Defaults to `wallet`, which is correct whenever\n`wallet` is already a destination-VM address (EVM -> EVM, or a\nTron-origin route quoted from an EVM wallet).\n\nSend it explicitly when it is not: an EVM -> Tron route needs the\nbase58 payout address, and a Tron-origin route quoted from a base58\nwallet needs the EVM one. Omitting it there is rejected rather than\ndefaulted, so a fill can never pay a wrong-VM address. Echoed on the\nresponse and bound into the signed `eip712` intent.\n"
+            "description": "Optional. Destination payout address, validated against\n`to_chain_id`. Defaults to `wallet`, which is correct whenever\n`wallet` is already a destination-VM address (EVM -> EVM, or a\nTron-origin route quoted from an EVM wallet).\n\nSend it explicitly when it is not: an EVM -> Tron route needs the\nbase58 payout address, an EVM -> Canton route the Canton party id\n(`hint::1220<64 lowercase hex>`, sent exactly as Canton renders it;\na 0x address is never a Canton recipient), and a Tron-origin route\nquoted from a base58 wallet needs the EVM one. Omitting it there is\nrejected rather than defaulted, so a fill can never pay a wrong-VM\naddress. Echoed on the response and bound into the signed `eip712`\nintent.\n"
           },
           "refund_address": {
             "$ref": "#/components/schemas/ChainAddress",
@@ -2169,6 +2446,9 @@
             "additionalProperties": true,
             "description": "Full EIP-712 typed data: `domain`, `types`, `primaryType`,\n`message`. Pass directly to `eth_signTypedData_v4`. The\n`domain.version` reflects `XOCHI_EIP712_VERSION` (e.g. `1-prod`)\nand `domain.salt` = keccak256(version) binds the signature to the\ndeployment. The signed `message` has no `nonce` field -- replay is\nguarded by `intent_id`.\n",
             "type": "object"
+          },
+          "escrow": {
+            "$ref": "#/components/schemas/EscrowQuoteEnvelope"
           },
           "estimated_gas_cost": {
             "description": "Destination gas estimate in the destination chain's **native** gas-token\nwei (string) -- POL wei on Polygon, BNB wei on BNB Chain, ETH wei on\nEthereum and its rollups. The native symbol is that of `to_chain_id`;\ndo NOT assume ETH (a Polygon quote returns POL wei, ~13000x cheaper than\nETH). This value is execution-only; the rollup L1 data-posting cost is\nreflected only in `estimated_gas_cost_usd`, so render fiat from that USD\nfield rather than converting this wei value. A successful quote always\ncarries a live estimate; if the gas/price oracle is down the quote is\nrejected (503), not zeroed.\n",
@@ -2847,7 +3127,7 @@
     },
     "/xochi/execute": {
       "post": {
-        "description": "Verifies the user's EIP-712 signature against the quote, atomically\nclaims the intent (`IntentStore.create_if_absent`, XL-1 replay\nguard), and initiates settlement. Returns immediately with the\nintent's initial executing state; poll `/xochi/status/{intent_id}`\nfor terminal states.\n\nRequired scope: `execute`.\n",
+        "description": "Verifies the user's EIP-712 signature against the quote, atomically\nclaims the intent (`IntentStore.create_if_absent`, XL-1 replay\nguard), and initiates settlement. Returns immediately with the\nintent's initial executing state; poll `/xochi/status/{intent_id}`\nfor terminal states.\n\n**Escrow quotes** (a quote carrying `escrow`, M6) are never pulled to a\nsolver-side address. Without `pull_signature` the depositor opens the\nlock themselves, and this call answers the order's status --\nidempotently, never `already_executed`. The intent is recorded when\nthe quote is served, so `/xochi/status` follows the order whether or\nnot this is ever called. With `pull_signature` Riddler relays the open\nfrom its relayer, broadcasting it at most once.\n\nRequired scope: `execute`.\n",
         "operationId": "xochi_execute",
         "requestBody": {
           "content": {
@@ -2869,6 +3149,16 @@
               }
             },
             "description": "Intent execution initiated"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentStatus"
+                }
+              }
+            },
+            "description": "Accepted, not finished: an async execute (the intent rests at\n`pull_pending`), or a relayed escrow open broadcast with no receipt\ninside the 10s wait, or ambiguously submitted. Poll\n`/xochi/status/{intent_id}`; a retried /execute answers status and\nnever resends the open.\n"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2905,7 +3195,7 @@
                 }
               }
             },
-            "description": "Validation failed or stealth keys missing (XL-6)"
+            "description": "Validation failed or stealth keys missing (XL-6). On an escrow\nquote, a relayed open refused permanently: `escrow_refused` with\n`details.reason` (`relay_refused`, `invalid_pull_signature`,\n`open_window_closed`, `order_unrelayable`,\n`open_simulation_reverted`, `open_reverted`, or a permanent contract\nrevert). The remedy is to self-submit the open or request a new\nquote, not to retry the relay.\n"
           },
           "426": {
             "$ref": "#/components/responses/TlsRequired"
@@ -2915,6 +3205,16 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Transient -- retry shortly. On an escrow quote, `escrow_unavailable`\n(`details.reason`: `order_store_unavailable`, `escrow_unreadable`,\n`relayer_unavailable`, `pull_signature_unverifiable` (a\ncontract-wallet depositor's ERC-1271 check could not be reached), or\na transient contract revert from the relay's simulation). Also `quote_store_unavailable` (carries\n`Retry-After`; retry with the SAME `quote_id`) and the settlement\navailability codes (`service_unavailable`, `insufficient_liquidity`,\n`conversion_unavailable`).\n"
           }
         },
         "summary": "Execute a signed intent",
@@ -3372,13 +3672,42 @@
                 }
               }
             },
-            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n"
+            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n\nOn an escrow corridor (`EscrowCapability`), `escrow_refused` is the\npermanent escrow decline, `details.reason` naming the check; and\n`token_mismatch` with `details.reason: cross_token_fills_disabled`\nis the issuance price band finding the pair switched off.\n\nCanton (253340876, behind `ENABLE_CANTON_DESTINATION`) is a\ndestination-only escrow corridor that is not live yet (#1183): a\nvalid Canton-destination request is declined `escrow_refused` with\n`details.reason: canton_destination_not_live`, and a Canton origin\nis `origin_not_enabled`. Both are permanent. A Canton\n`recipient_address` that is not a party id (`hint::1220<64\nlowercase hex>`, never case-folded), a `to_token` other than the\nCanton Coin instrument id\n`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`,\nor a non-public `settlement_preference` is `validation_failed`.\n"
           },
           "426": {
             "$ref": "#/components/responses/TlsRequired"
           },
           "429": {
-            "$ref": "#/components/responses/RateLimited"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Per-IP or per-caller rate limit (L-2), with the `x-ratelimit-*`\nheaders below. On an escrow corridor also the OpenAuth issuance\nlimit (30 per depositor and 600 per caller kid, per fixed 10-minute\nwindow): `details.reason: escrow_issuance_rate`, `details.scope`\n`depositor` or `caller`, and `details.retry_after`. That one carries\n`Retry-After` but no `x-ratelimit-*` headers.\n",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-limit": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-remaining": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-reset": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -3391,10 +3720,10 @@
                 }
               }
             },
-            "description": "Transient: the gas/ETH-price/L1-blob oracle is down, so the gas floor\ncan't be priced (`gas_price_unavailable`), the origin token price feed\nis cold (`price_unavailable`), no solver is available on the origin\nchain (`origin_unavailable`), or a deposit-address origin cannot\nallocate right now (`origin_unavailable`). Retry after a short backoff.\n\nAn origin that is **switched off** on this deployment is not a 503 --\nit answers `422 origin_not_enabled`, because no amount of retrying\nwill clear it. Retry `origin_unavailable`; do not retry\n`origin_not_enabled`.\n\nDestination inventory shortfalls come in two shapes.\n`insufficient_liquidity` means the float is short and nothing is\nbeing done about it right now -- retry on your own backoff, or try a\nsmaller amount. `pre_positioning` means the same shortfall with a\ntop-up already dispatched, so `Retry-After` and `details.retry_after`\ncarry the move's estimated seconds. Nothing is reserved for the\nquote either way: the top-up restores the shared float, and whoever\nquotes next gets it.\n\nA keyed deposit-route quote whose replay record, lock backend or\nstored quote cannot be read answers `idempotency_unavailable` with\n`Retry-After`, and so does one that arrives while the instance -- or\nthe caller's share of it -- is already running its full complement of\nkeyed allocations, or one whose previous attempt was interrupted\nbetween its two writes. Nothing was allocated; the same key retried\nreplays or allocates exactly once. An unreadable store is never\nreported as an expired route: that answer is permanent, and its\nremedy would allocate a second route.\n",
+            "description": "Transient: the gas/ETH-price/L1-blob oracle is down, so the gas floor\ncan't be priced (`gas_price_unavailable`), the origin token price feed\nis cold (`price_unavailable`), no solver is available on the origin\nchain (`origin_unavailable`), or a deposit-address origin cannot\nallocate right now (`origin_unavailable`). Retry after a short backoff.\n\nAn origin that is **switched off** on this deployment is not a 503 --\nit answers `422 origin_not_enabled`, because no amount of retrying\nwill clear it. Retry `origin_unavailable`; do not retry\n`origin_not_enabled`.\n\nDestination inventory shortfalls come in two shapes.\n`insufficient_liquidity` means the float is short and nothing is\nbeing done about it right now -- retry on your own backoff, or try a\nsmaller amount. `pre_positioning` means the same shortfall with a\ntop-up already dispatched, so `Retry-After` and `details.retry_after`\ncarry the move's estimated seconds. Nothing is reserved for the\nquote either way: the top-up restores the shared float, and whoever\nquotes next gets it.\n\nA keyed deposit-route quote whose replay record, lock backend or\nstored quote cannot be read answers `idempotency_unavailable` with\n`Retry-After`, and so does one that arrives while the instance -- or\nthe caller's share of it -- is already running its full complement of\nkeyed allocations, or one whose previous attempt was interrupted\nbetween its two writes. Nothing was allocated; the same key retried\nreplays or allocates exactly once. An unreadable store is never\nreported as an expired route: that answer is permanent, and its\nremedy would allocate a second route.\n\nOn an escrow corridor, `escrow_unavailable` is the transient escrow\ndecline (`details.reason` names the check; only\n`depositor_open_auths_exhausted` carries `details.retry_after` and\n`Retry-After`), and `conversion_unavailable` with `details.reason`\n`conversion_rate_moved` (plus `drift_bps`),\n`conversion_rate_unverifiable` or `conversion_price_contested` is the\nissuance price band. A fresh quote reprices either.\n",
             "headers": {
               "Retry-After": {
-                "description": "Seconds to wait before retrying. Present on `pre_positioning` (the dispatched top-up's estimated landing) and on `idempotency_unavailable`.\n",
+                "description": "Seconds to wait before retrying. Present on `pre_positioning` (the dispatched top-up's estimated landing), on `idempotency_unavailable`, and on `escrow_unavailable` with `reason: depositor_open_auths_exhausted`.\n",
                 "required": false,
                 "schema": {
                   "minimum": 1,
@@ -3504,7 +3833,7 @@
     },
     "/xochi/status/{intent_id}": {
       "get": {
-        "description": "Returns the current state of an intent. Lifecycle is\n`pending -> executing -> bridging -> settling -> completed`, with\nterminal states `completed | refunded | failed | expired`. Deposit\nrefunds report non-terminal `refund_pending` after the owed-refund\nledger is written, and advance to terminal `refunded` only once a real\nrefund transaction hash is recorded. When `/execute` runs asynchronously\n(202), the origin-pull intent rests at the non-terminal `pull_pending`\nstate until its receipt confirms.\n\nOnly the caller whose token (`kid`) requested the quote can read the\nintent: a foreign intent answers the same 404 as a nonexistent id, by\ndesign. Intents predating ownership stamping and intents created under\nthe legacy shared token stay readable by any `status`-scoped caller.\n\nRequired scope: `status`.\n",
+        "description": "Returns the current state of an intent. Lifecycle is\n`pending -> executing -> bridging -> settling -> completed`, with\nterminal states `completed | refunded | failed | expired`. Deposit\nrefunds report non-terminal `refund_pending` after the owed-refund\nledger is written, and advance to terminal `refunded` only once a real\nrefund transaction hash is recorded. When `/execute` runs asynchronously\n(202), the origin-pull intent rests at the non-terminal `pull_pending`\nstate until its receipt confirms. An escrow intent's `status` is read\noff its escrow order, and the body carries `escrow`\n(`EscrowStatusEnvelope`).\n\nOnly the caller whose token (`kid`) requested the quote can read the\nintent: a foreign intent answers the same 404 as a nonexistent id, by\ndesign. Intents predating ownership stamping and intents created under\nthe legacy shared token stay readable by any `status`-scoped caller.\n\nRequired scope: `status`.\n",
         "operationId": "xochi_status",
         "parameters": [
           {
