@@ -211,6 +211,8 @@ export function createXochiWidget(
    * Wallet requests still unsettled at the provider, across sessions. The cap
    * counts these, not `pending`: a reload or a re-announced `xochi:ready` clears
    * `pending` while the provider is still working on the earlier requests.
+   * No per-request deadline: a prompt waits on a person, so a request the
+   * wallet never settles holds its slot (documented in the README).
    */
   let inFlight = 0;
   /**
