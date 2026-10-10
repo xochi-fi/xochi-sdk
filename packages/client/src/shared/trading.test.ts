@@ -9,7 +9,6 @@ import {
   SLIPPAGE_PRESETS,
   QUOTE_EXPIRY_SEC,
   MAX_QUOTE_RETRIES,
-  QUOTE_CACHE_TTL_MS,
   MAX_TOKEN_DECIMALS,
   MIN_TRADE_USD,
   MAX_SLIPPAGE_PERCENT,
@@ -46,14 +45,6 @@ describe("Quote Configuration", () => {
 
   it("allows 3 quote retries", () => {
     expect(MAX_QUOTE_RETRIES).toBe(3);
-  });
-
-  it("has 30 second cache TTL", () => {
-    expect(QUOTE_CACHE_TTL_MS).toBe(30_000);
-  });
-
-  it("cache TTL matches quote expiry", () => {
-    expect(QUOTE_CACHE_TTL_MS).toBe(QUOTE_EXPIRY_SEC * 1000);
   });
 });
 
@@ -97,7 +88,6 @@ describe("TRADING bundle", () => {
     expect(TRADING.slippageOptions).toBe(SLIPPAGE_OPTIONS);
     expect(TRADING.quoteExpirySec).toBe(QUOTE_EXPIRY_SEC);
     expect(TRADING.maxQuoteRetries).toBe(MAX_QUOTE_RETRIES);
-    expect(TRADING.quoteCacheTtlMs).toBe(QUOTE_CACHE_TTL_MS);
     expect(TRADING.maxTokenDecimals).toBe(MAX_TOKEN_DECIMALS);
     expect(TRADING.minTradeUsd).toBe(MIN_TRADE_USD);
     expect(TRADING.maxSlippagePercent).toBe(MAX_SLIPPAGE_PERCENT);

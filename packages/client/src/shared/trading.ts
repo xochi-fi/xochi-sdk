@@ -33,9 +33,6 @@ export const QUOTE_EXPIRY_SEC = 30;
 /** Maximum retries for failed quotes */
 export const MAX_QUOTE_RETRIES = 3;
 
-/** Quote cache TTL in milliseconds */
-export const QUOTE_CACHE_TTL_MS = 30_000;
-
 // ============================================================
 // Trading Limits
 // ============================================================
@@ -225,7 +222,6 @@ export const TRADING = {
   slippageOptions: SLIPPAGE_OPTIONS,
   quoteExpirySec: QUOTE_EXPIRY_SEC,
   maxQuoteRetries: MAX_QUOTE_RETRIES,
-  quoteCacheTtlMs: QUOTE_CACHE_TTL_MS,
   maxTokenDecimals: MAX_TOKEN_DECIMALS,
   minTradeUsd: MIN_TRADE_USD,
   maxSlippagePercent: MAX_SLIPPAGE_PERCENT,
