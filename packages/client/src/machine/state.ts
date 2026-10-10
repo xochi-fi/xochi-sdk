@@ -2,7 +2,7 @@
  * The intent lifecycle's state, and the error value it carries.
  */
 
-import type { ChainId, IntentStatus, SelectableChainId } from "../shared/index.js";
+import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
 import type { QuoteResponse } from "./wire.js";
 import type { StoredDepositAttestation } from "./deposit.js";
 
@@ -77,6 +77,13 @@ export interface IntentState {
    */
   quotedFromAmount: string | null;
   /**
+   * Settlement preference this quote was requested under. The receipt states
+   * the HELD quote's settlement, never the live form's: the two come apart when
+   * the user flips settlement while a quote is on screen, and the wallet signs
+   * the held one. Null until a quote lands.
+   */
+  quotedSettlement: SettlementType | null;
+  /**
    * Deposit-acceptance deadline (unix seconds) for a deposit route, or null.
    *
    * Held on the INTENT, not read off `state.quote`, because it is a fact about
@@ -134,6 +141,7 @@ export const INITIAL_INTENT_STATE: IntentState = {
   quotedAddress: null,
   quotedChainId: null,
   quotedFromAmount: null,
+  quotedSettlement: null,
   depositDeadline: null,
   attestedDeposit: null,
   pollExhausted: false,

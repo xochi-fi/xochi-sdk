@@ -31,6 +31,7 @@ import { canTransitionTo, isChainId } from "../shared/index.js";
 import {
   buildQuoteRequest,
   buildResumedState,
+  canSignQuote,
   computeRefreshDelayMs,
   decideExecuteResult,
   decideSignPreflight,
@@ -50,7 +51,7 @@ import {
   type SignPreflight,
 } from "./decisions.js";
 import { claimInfoError } from "./claimInfo.js";
-import type { PinnedPullRecipients } from "@xochi/signer";
+import { DEPOSIT_MIN_WINDOW_SECONDS, type PinnedPullRecipients } from "@xochi/signer";
 import {
   checkDepositQuote,
   recipientIsDestinationToken,
@@ -385,14 +386,30 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
 
 function step(m: Model, msg: Msg, fx: Effect[]): Model {
   switch (msg.type) {
-    case "ContextChanged":
-      return { ...m, ctx: msg.ctx };
+    case "ContextChanged": {
+      const next = { ...m, ctx: msg.ctx };
+      if (m.flights.length === 0 || quoteContextKey(next) === quoteContextKey(m)) return next;
+      // The quotes in the air were built from the old trade; their answers
+      // describe a deal no longer on the form, so none of them may land.
+      if (m.intent.status === "quoting" && m.amount) {
+        // A visible quote was loading: ask again for the trade now on the form.
+        setTimer(fx, "debounce", QUOTE_DEBOUNCE_MS, false);
+      }
+      return supersedeFlights(next, fx);
+    }
 
     case "QuoteRequested": {
       clearTimer(fx, "debounce");
       clearTimer(fx, "refresh");
-      const next = { ...m, allocationKey: null, amount: msg.amount, refresh: null };
-      if (!msg.amount || msg.amount === "0") return { ...next, intent: INITIAL_INTENT_STATE };
+      // A quote still in the air for another amount answers a question nobody
+      // is asking any more; left in place it could land over the newer one.
+      const kept = msg.amount === m.amount ? m : supersedeFlights(m, fx);
+      const next = { ...kept, allocationKey: null, amount: msg.amount, refresh: null };
+      if (!msg.amount || msg.amount === "0") {
+        // Including any half-finished two-step signing: the next quote must not
+        // inherit "Sign 2 of 2" or a held intent signature.
+        return abandonSign({ ...next, intent: INITIAL_INTENT_STATE }, fx);
+      }
       setTimer(fx, "debounce", QUOTE_DEBOUNCE_MS, false);
       return next;
     }
@@ -426,7 +443,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       clearTimer(fx, "signPrompt");
       fx.push({ type: "Wallet", call: { op: "resetApproval" } });
       return {
-        ...m,
+        ...supersedeFlights(m, fx),
         intent: INITIAL_INTENT_STATE,
         amount: "",
         submittedAt: null,
@@ -481,6 +498,15 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     }
 
     case "StreamStatus":
+      // The stream may still be relaying an intent this model has moved past
+      // (a reset, a fresh quote): its frames must not drive the current one.
+      if (msg.message.intentId !== m.intent.intentId) {
+        log(fx, "warn", `${LOG} Ignoring a status frame for another intent:`, {
+          frame: msg.message.intentId,
+          current: m.intent.intentId,
+        });
+        return m;
+      }
       return applyStatusUpdate(m, fx, msg.message, false);
 
     case "TimerFired":
@@ -593,6 +619,13 @@ function putFlight(m: Model, flight: QuoteFlight): Model {
   return { ...m, flights: [...m.flights.filter((f) => f.id !== flight.id), flight] };
 }
 
+/** Drop every quote still in flight: a newer ask has made their answers moot. */
+function supersedeFlights(m: Model, fx: Effect[]): Model {
+  if (m.flights.length === 0) return m;
+  for (const flight of m.flights) endAllocation(fx, flight, false);
+  return { ...m, flights: [] };
+}
+
 function startQuote(m: Model, fx: Effect[], now: number, opts: QuoteOpts): Model {
   const ctx = m.ctx;
   const address = ctx.wallet.address;
@@ -659,10 +692,13 @@ function sendQuote(m: Model, fx: Effect[], flight: QuoteFlight, now: number): Mo
   const ctx = flight.ctx;
   // Fail-closed on the stealth key precondition: the keys derive from a wallet
   // signature and land a moment after `settlement` flips to stealth. Hold the
-  // request; the host re-quotes once they arrive.
+  // request; the host re-quotes once they arrive. A visible hold also lets go of
+  // the quote on screen: it was served for another settlement, and leaving it
+  // `quoted` would keep it signable after the user asked for stealth.
   if (ctx.settlementPreference === "stealth" && !ctx.stealthMetaAddress) {
     endAllocation(fx, flight, false);
-    return withoutFlight(m, flight.id);
+    const next = withoutFlight(m, flight.id);
+    return flight.silent ? next : transition(next, fx, "quoting", { quote: null, error: null });
   }
 
   const request = buildQuoteRequest({
@@ -758,6 +794,21 @@ function onQuote(
     });
   }
 
+  // Whether this is a preview is OUR question, not the server's answer: a
+  // wallet-bound request answered `preview: true` would otherwise skip the
+  // signer checks and still reach Confirm, and an executable answer to a
+  // preview request was never bound to a wallet.
+  if ((quote.preview === true) !== flight.preview) {
+    log(fx, "error", `${LOG} Refusing a quote that answers the wrong kind of request`, {
+      requestedPreview: flight.preview,
+      servedPreview: quote.preview === true,
+    });
+    return refuseQuote(m, fx, flight, {
+      error: "This quote did not match the requested trade, so it cannot be signed.",
+      quote: null,
+    });
+  }
+
   // Non-EVM destination: the solvable quote must echo exactly the recipient we
   // asked for, or the funds would route to an unconfirmed destination (#113).
   const echoError = recipientEchoError(flight.request?.recipientAddress, quote.recipientAddress);
@@ -816,11 +867,13 @@ function onQuote(
   const request = flight.request;
   if (!quote.depositAddress) {
     // A signable quote: hold the served intent to the request and the origin
-    // pull to the intent (`@xochi/signer`) before it can reach the wallet. A
-    // preview carries no signing material, and a quote with no intent to sign
-    // is refused at Confirm ("No quote to sign").
-    if (!quote.preview && quote.eip712Data && request) {
-      const check = checkSignableQuote(request, quote, m.config.pullRecipients);
+    // pull to the intent (`@xochi/signer`) before it can reach the wallet.
+    // Whatever else the quote claims: any intent it carries is checked, and a
+    // quote with no intent to sign is refused at Confirm ("No quote to sign").
+    if (quote.eip712Data) {
+      const check = request
+        ? checkSignableQuote(request, quote, m.config.pullRecipients)
+        : ({ ok: false, kind: "intent_mismatch", reason: "no request on record" } as const);
       if (!check.ok) {
         log(
           fx,
@@ -918,6 +971,7 @@ function acceptQuote(
     quotedAddress: quote.preview ? null : address,
     quotedChainId: flight.ctx.wallet.chainId,
     quotedFromAmount: flight.amount,
+    quotedSettlement: flight.request?.settlementPreference ?? flight.ctx.settlementPreference,
     depositDeadline: quote.depositAddress ? (quote.depositDeadline ?? null) : null,
     attestedDeposit,
   };
@@ -1038,10 +1092,28 @@ function beginSign(m: Model, fx: Effect[], now: number): Model {
   // signature would otherwise still execute behind a refusal.
   if (m.intent.status !== "quoted") return m;
   const quote = m.intent.quote;
+  // The same gate the receipt renders from: a preview or a declined quote is
+  // never signable, whatever it carries.
+  if (!quote || !canSignQuote(m.intent.status, quote))
+    return patch(m, { error: "No quote to sign" });
   // Deposit route: no signature, no /execute. Revealing the address drives
   // the poll to a terminal state once the solver detects the deposit.
-  if (quote?.depositAddress) return transition(m, fx, "awaiting_deposit");
-  if (!quote?.eip712Data) return patch(m, { error: "No quote to sign" });
+  if (quote.depositAddress) {
+    // The deposit window was checked at ingest, but an allocated route is
+    // never refreshed or expired by the price countdown, so it can sit on the
+    // screen past its attested deadline. Revealing it then hands the user an
+    // address whose deposit is refunded rather than filled.
+    const deadline = m.intent.depositDeadline;
+    if (deadline === null || deadline - Math.floor(now / 1000) < DEPOSIT_MIN_WINDOW_SECONDS) {
+      log(fx, "warn", `${LOG} Not revealing a deposit address past its window`, {
+        depositDeadline: deadline,
+        now: Math.floor(now / 1000),
+      });
+      return transition(m, fx, "expired", { error: "Quote expired" });
+    }
+    return transition(m, fx, "awaiting_deposit");
+  }
+  if (!quote.eip712Data) return patch(m, { error: "No quote to sign" });
   const preflight = signPreflight(m, now);
   if (preflight.kind === "reject") {
     return preflight.to === "quoted"
@@ -1081,7 +1153,10 @@ function beginPullSign(m: Model, fx: Effect[], now: number): Model {
   if (!signature || !m.intent.quote?.pullAuthorization || m.isSigningPull || m.sign) return m;
   const preflight = signPreflight(m, now);
   if (preflight.kind === "reject") {
-    return transition({ ...m, awaitingPull: false }, fx, preflight.to, { error: preflight.error });
+    // Back to the quote, whatever the reason: `signing` has no edge to
+    // `expired`, and an expired quote landing on `quoted` is expired by the
+    // countdown in this same update.
+    return transition({ ...m, awaitingPull: false }, fx, "quoted", { error: preflight.error });
   }
   const [id, next] = nextId({ ...m, isSigningPull: true }, "s");
   return completePull(next, fx, {

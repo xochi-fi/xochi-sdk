@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
 import { TRON_CHAIN_ID } from "../shared/index.js";
-import type { MachineConfig } from "./machine.js";
+import type { Effect, MachineConfig } from "./machine.js";
 import { verifyStoredDeposit } from "./deposit.js";
 import type { QuoteResponse } from "./wire.js";
 import {
@@ -413,5 +413,29 @@ describe("verifyStoredDeposit (resume)", () => {
         owner: WALLET,
       }).ok,
     ).toBe(false);
+  });
+});
+
+describe("refusals the server cannot switch off", () => {
+  const allocations = (fx: Effect[]) =>
+    fx.flatMap((e) => (e.type === "Emit" && e.event.kind === "allocation" ? [e.event] : []));
+
+  it("does not report an allocation answered with a preview as allocated", () => {
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    const fx = allocate(s, quote({ preview: true, eip712Data: undefined }));
+    expect(allocations(fx)).toEqual([{ kind: "allocation", ref: "r1", ok: false }]);
+    expect(s.intent.quote).toBeNull();
+  });
+
+  it("expires an allocated route instead of revealing it inside its last minute", async () => {
+    const start = Date.now();
+    const fields = signedFields({ deposit_deadline: Math.floor(start / 1000) + 600 });
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG, start);
+    allocate(s, depositQuote(fields, await attest(fields)));
+    expect(s.intent.status).toBe("quoted");
+
+    s.send({ type: "SignRequested" }, 570_000);
+    expect(s.intent.status).toBe("expired");
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
 });

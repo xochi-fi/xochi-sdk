@@ -19,6 +19,7 @@ import { POLL_INFLIGHT_STATES } from "./decisions.js";
 import {
   init,
   update,
+  type Context,
   type Effect,
   type ErrorReport,
   type Model,
@@ -56,6 +57,7 @@ const STATUSES: IntentStatus[] = [
   "expired",
 ];
 const TIMERS: TimerName[] = ["debounce", "refresh", "expiry", "poll", "signPrompt"];
+const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 
 /** One scripted action. `pick` selects an outstanding effect; `variant` its outcome. */
 type Action =
@@ -82,7 +84,7 @@ const actionArb: fc.Arbitrary<Action> = fc.oneof(
     arbitrary: fc.record({
       kind: fc.constant("answer" as const),
       pick: fc.nat(),
-      variant: fc.nat(9),
+      variant: fc.nat(10),
     }),
   },
   {
@@ -157,7 +159,8 @@ function answer(effect: Effect, variant: number, now: number): MsgBody | null {
     const call = effect.call;
     if (call.op === "quote") {
       const served = [
-        quote({}, now),
+        // The honest answer to whatever amount was asked.
+        quote({ eip712Data: intentTypedData({ fromAmount: call.request.fromAmount }) }, now),
         quote({ pullAuthorization: erc3009Pull() }, now),
         quote({ pullAuthorization: erc3009Pull(ATTACKER) }, now),
         quote({ preview: true, eip712Data: undefined }, now),
@@ -166,8 +169,16 @@ function answer(effect: Effect, variant: number, now: number): MsgBody | null {
         quote({ eip712Data: intentTypedData({ recipient: ATTACKER }) }, now),
         quote({ depositAddress: "TCwnBmvhtqLpBiKrFEfMzXWCq1YB2sPX8N" }, now),
         quote({ costBps: undefined, toAmount: "123" }, now),
+        // A "preview" that still carries an intent naming other terms.
+        quote(
+          {
+            preview: true,
+            eip712Data: intentTypedData({ fromToken: WBTC, toChainId: 10, deadline: 32503680000 }),
+          },
+          now,
+        ),
       ];
-      return variant === 9
+      return variant === 10
         ? { type: "QuoteReplied", flight: call.flight, result: { ok: false, error: thrown(false) } }
         : {
             type: "QuoteReplied",
@@ -305,13 +316,14 @@ const scripts = fc.array(actionArb, { minLength: 1, maxLength: 60 });
 
 /**
  * Scripts that open a sign ceremony first: quote (each signable variant,
- * including an unpinned pull), Confirm, then arbitrary churn. Free-running
- * `scripts` rarely get a quote answered at all, so properties about what
- * happens AFTER the wallet is prompted need the ceremony handed to them.
+ * including an unpinned pull, and a "preview" that still carries an intent),
+ * Confirm, then arbitrary churn. Free-running `scripts` rarely get a quote
+ * answered at all, so properties about what happens AFTER the wallet is
+ * prompted need the ceremony handed to them.
  */
 const ceremonies = fc
   .tuple(
-    fc.constantFrom(0, 1, 2),
+    fc.constantFrom(0, 1, 2, 9),
     fc.array(actionArb, { minLength: 1, maxLength: 60, size: "max" }),
   )
   .map(([served, rest]): Action[] => [
@@ -319,6 +331,28 @@ const ceremonies = fc
     { kind: "timer", timer: "debounce" },
     { kind: "answer", pick: 0, variant: served },
     { kind: "user", which: 1, arg: 0 },
+    ...rest,
+  ]);
+
+/**
+ * Scripts that correct the trade while its quote is still in the air (another
+ * amount, or a context change), then let that first quote answer honestly
+ * before arbitrary churn.
+ */
+const corrections = fc
+  .tuple(
+    fc.oneof(
+      fc.constant<Action>({ kind: "user", which: 0, arg: 3 }),
+      fc.integer({ min: 1, max: 7 }).map((arg): Action => ({ kind: "user", which: 8, arg })),
+    ),
+    fc.constantFrom(0, 1),
+    fc.array(actionArb, { maxLength: 40 }),
+  )
+  .map(([correction, served, rest]): Action[] => [
+    { kind: "user", which: 0, arg: 0 },
+    { kind: "timer", timer: "debounce" },
+    correction,
+    { kind: "answer", pick: 0, variant: served },
     ...rest,
   ]);
 
@@ -393,7 +427,7 @@ describe("update properties", () => {
 
   it("prompts the wallet and executes only on the paths that earned it", () => {
     fc.assert(
-      fc.property(scripts, (actions) => {
+      fc.property(fc.oneof(scripts, ceremonies), (actions) => {
         for (const t of run(actions)) {
           for (const e of t.effects) {
             if (
@@ -456,6 +490,37 @@ describe("update properties", () => {
           if (after && after !== before) {
             expect(t.msg.type).toBe("QuoteReplied");
           }
+        }
+      }),
+      FC_SETTINGS,
+    );
+  });
+
+  it("a quote lands only for the amount and trade still on the form", () => {
+    // A reply to a request the user has since corrected (another amount, token,
+    // chain, settlement or wallet) answers a question nobody is asking any more.
+    fc.assert(
+      fc.property(fc.oneof(scripts, corrections), (actions) => {
+        for (const t of run(actions)) {
+          const { msg } = t;
+          const after = t.next.intent.quote;
+          // A decline is held to show its reason, not as a quote for any amount.
+          if (msg.type !== "QuoteReplied" || !after?.canSolve || after === t.prev.intent.quote) {
+            continue;
+          }
+          const flight = t.prev.flights.find((f) => f.id === msg.flight);
+          expect(t.next.intent.quotedFromAmount).toBe(t.next.amount);
+          const trade = (c: Context) => [
+            c.fromChainId,
+            c.toChainId,
+            c.fromToken,
+            c.toToken,
+            c.settlementPreference,
+            c.recipientAddress,
+            c.wallet.address,
+            c.wallet.chainId,
+          ];
+          expect(flight && trade(flight.ctx)).toEqual(trade(t.next.ctx));
         }
       }),
       FC_SETTINGS,

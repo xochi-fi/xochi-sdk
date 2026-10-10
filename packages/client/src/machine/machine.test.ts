@@ -8,12 +8,14 @@
 import { describe, it, expect } from "vitest";
 import { STATUS_POLL_MS } from "./decisions.js";
 import { RECONCILE_AFTER_ATTEMPTS, SIGN_PROMPT_TIMEOUT_MS, type Effect } from "./machine.js";
+import { settlementDisclosure } from "./receipt.js";
 import { decodeWireStatus } from "./wire.js";
 import {
   AMOUNT,
   ATTACKER,
   Session,
   TO_AMOUNT,
+  USDC_BASE,
   WALLET,
   apiCalls,
   ctx,
@@ -568,6 +570,44 @@ describe("two signatures (origin pull)", () => {
     });
     expect(apiCalls(late, "execute")).toHaveLength(0);
   });
+
+  it("expires the quote, never strands the ceremony, when step 2 is tapped too late", () => {
+    const s = new Session(ctx({}, { stepwise: true }));
+    s.quoteWith(pulled());
+    const prompt = signIntent(s);
+    s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    const fx = s.send({ type: "PullSignRequested" }, 61_000);
+    expect(walletCalls(fx, "ensureApproval")).toHaveLength(0);
+    expect(s.intent.status).toBe("expired");
+    expect(s.model.awaitingPull).toBe(false);
+    expect(s.model.pendingIntentSig).toBeNull();
+    expect(s.model.sign).toBeNull();
+  });
+
+  it("forgets a half-finished two-step signing when the amount is cleared", () => {
+    const s = new Session(ctx({}, { stepwise: true }));
+    s.quoteWith(pulled());
+    const prompt = signIntent(s);
+    s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    s.send({ type: "QuoteRequested", amount: "" });
+    expect(s.model.awaitingPull).toBe(false);
+    expect(s.model.pendingIntentSig).toBeNull();
+
+    // The next quote starts its own ceremony: nothing from the old one carries.
+    s.quoteWith(pulled());
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 2 });
+    expect(s.send({ type: "PullSignRequested" })).toEqual([]);
+  });
 });
 
 describe("status", () => {
@@ -720,12 +760,13 @@ describe("resume", () => {
 describe("transitions", () => {
   it("logs a move the transition table refuses instead of applying it", () => {
     const s = new Session();
+    s.quoteWith(quote());
     const fx = s.send({
       type: "StreamStatus",
       message: { type: "intent_status", intentId: "xi_1", status: "settling", timestamp: "t" },
     });
-    expect(logs(fx, "warn")).toContain("[useIntent] Invalid transition: idle -> settling");
-    expect(s.intent.status).toBe("idle");
+    expect(logs(fx, "warn")).toContain("[useIntent] Invalid transition: quoted -> settling");
+    expect(s.intent.status).toBe("quoted");
   });
 
   it("resets a pre-execution quote when the wallet switches accounts", () => {
@@ -734,5 +775,83 @@ describe("transitions", () => {
     s.send({ type: "ContextChanged", ctx: ctx({}, { address: ATTACKER }) });
     expect(s.intent.status).toBe("idle");
     expect(s.intent.quote).toBeNull();
+  });
+});
+
+describe("superseded and mismatched answers", () => {
+  const FIVE = "5000000";
+  const at = (amount: string, quoteId: string) =>
+    quote({ quoteId, eip712Data: intentTypedData({ fromAmount: amount }) });
+
+  it("never lands a quote for an amount the user has since corrected", () => {
+    const s = new Session();
+    const stale = s.requestQuote(FIVE);
+    const fresh = s.requestQuote(AMOUNT);
+    s.send({
+      type: "QuoteReplied",
+      flight: fresh.flight,
+      result: { ok: true, quote: at(AMOUNT, "xq_Y") },
+    });
+    s.send({
+      type: "QuoteReplied",
+      flight: stale.flight,
+      result: { ok: true, quote: at(FIVE, "xq_X") },
+    });
+    expect(s.intent.quoteId).toBe("xq_Y");
+    expect(s.intent.quotedFromAmount).toBe(AMOUNT);
+    expect(s.model.refresh?.amount).toBe(AMOUNT);
+    expect(signIntent(s).typedData.message.fromAmount).toBe(AMOUNT);
+  });
+
+  it("drops a quote for a token switched away from, and asks again for the new one", () => {
+    const s = new Session();
+    const stale = s.requestQuote();
+    const switched = ctx({ toToken: USDC_BASE });
+    expect(timers(s.send({ type: "ContextChanged", ctx: switched }))).toContain("set:debounce");
+    s.send({ type: "QuoteReplied", flight: stale.flight, result: { ok: true, quote: quote() } });
+    expect(s.intent.quote).toBeNull();
+    expect(s.intent.status).toBe("quoting");
+    const again = only(apiCalls(s.send({ type: "TimerFired", timer: "debounce" }, 500), "quote"));
+    expect(again.request.toToken).toBe(USDC_BASE);
+  });
+
+  it("refuses a wallet-bound request answered as a preview, and signs nothing", () => {
+    const s = new Session();
+    const fx = s.quoteWith(
+      quote({
+        preview: true,
+        eip712Data: intentTypedData({ toChainId: 10, deadline: 32503680000 }),
+      }),
+    );
+    expect(logs(fx, "error").join(" ")).toMatch(/wrong kind of request/);
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.quote).toBeNull();
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toHaveLength(0);
+  });
+
+  it("lets go of the public quote when stealth is held for its keys", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    s.send({ type: "ContextChanged", ctx: ctx({ settlementPreference: "stealth" }) });
+    // Until the re-quote, the receipt names the settlement the held quote signs.
+    expect(s.receipt.settlement).toEqual(settlementDisclosure("public"));
+
+    const fx = s.send({ type: "RefreshRequested" });
+    expect(apiCalls(fx, "quote")).toHaveLength(0);
+    expect(s.intent.status).toBe("quoting");
+    expect(s.intent.quote).toBeNull();
+    expect(s.receipt.settlement).toEqual(settlementDisclosure("stealth"));
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toHaveLength(0);
+  });
+
+  it("ignores a status frame for an intent other than the held one", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    const fx = s.send({
+      type: "StreamStatus",
+      message: { type: "intent_status", intentId: "xi_old", status: "executing", timestamp: "t" },
+    });
+    expect(logs(fx, "warn").join(" ")).toMatch(/another intent/);
+    expect(s.intent.status).toBe("quoted");
   });
 });
