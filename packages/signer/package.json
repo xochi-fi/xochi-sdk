@@ -21,6 +21,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "license": "MIT",

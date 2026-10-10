@@ -21,6 +21,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
     "example:solver": "tsx examples/reference-solver.ts",
     "example:escrow": "tsx examples/escrow-solver.ts"
   },

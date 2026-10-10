@@ -136,6 +136,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Format (sources and tests; generated vectors, openapi.json and Markdown excluded)
+        run: |
+          npm run format:check -w @xochi/signer
+          npm run format:check -w @xochi/solver-sdk
+          npm run format:check -w @xochi/reference
+          npm run format:check -w @xochi/spec
+
       - name: Build @xochi/signer first (dependents need its .d.ts)
         run: npm run build -w @xochi/signer
 

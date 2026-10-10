@@ -11,6 +11,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "test:conformance": "vitest run test/conformance.test.ts",
     "test:fee": "vitest run test/fee.test.ts",
     "test:wire": "vitest run test/wire-contract.test.ts"

@@ -65,7 +65,9 @@
     "generate:solver-bid-v2": "tsx conformance/generate-solver-bid-v2.ts",
     "generate:fill-acceptance": "tsx conformance/generate-fill-acceptance.ts",
     "generate:xsp": "tsx conformance/generate-xsp.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
+    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\""
   },
   "license": "MIT",
   "repository": {
