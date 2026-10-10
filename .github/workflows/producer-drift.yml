@@ -75,7 +75,9 @@ jobs:
           node-version: 22
 
       # No `npm ci`, and no build. The probes use only Node builtins and read the
-      # pinned version out of `src/deposit.ts` directly, so there is nothing to
+      # pinned version out of `packages/signer/src/deposit-verify.ts` directly
+      # (the attestation probe; the spec probe reads `packages/spec/package.json`
+      # and `SPEC.md`), so there is nothing to
       # install and nothing to compile. That is a deliberate reduction: every
       # precondition a probe has is a way for it to fail for reasons that have
       # nothing to do with the producer, and it used to import the constant from

@@ -70,7 +70,7 @@ const readPinnedVersion = () => {
   const matches = [...text.matchAll(/export const DEPOSIT_ATTESTATION_VERSION\s*=\s*"([^"]+)"/g)];
   if (matches.length !== 1) {
     misconfigured(
-      `expected exactly one DEPOSIT_ATTESTATION_VERSION declaration in deposit.ts, found ` +
+      `expected exactly one DEPOSIT_ATTESTATION_VERSION declaration in packages/signer/src/deposit-verify.ts, found ` +
         `${matches.length}.\n  The probe reads it from source rather than from a build output; if the\n` +
         "  declaration was reformatted, update this pattern in the same change.",
     );

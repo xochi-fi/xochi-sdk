@@ -92,8 +92,9 @@ const SPEC_VERSION_LINE = /^-[ \t]*\*\*Spec version:\*\*[ \t]*`([^`]+)`[ \t\r]*$
 
 /**
  * The authoritative version, read from BOTH local copies and returned only when
- * they agree: `packages/spec/package.json` (`@xochi/spec` is unpublished and
- * this repo carries no tags, so the manifest is the declaration) and SPEC.md's
+ * they agree: `packages/spec/package.json` (the declaration: release.yml publishes
+ * `@xochi/spec` from a `spec-v*` tag only when the tag equals this manifest's
+ * version, so the manifest still names what is or will be published) and SPEC.md's
  * header line. Returns `{ version, problem }` and never exits; the caller
  * reports the problem, samples the producer anyway, and exits 3 with both facts.
  */
