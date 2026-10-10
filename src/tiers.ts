@@ -4,7 +4,7 @@
  * SOURCE OF TRUTH: `docs/planning/economics.md` Part 1 in the xochi repo, whose
  * in-code mirrors are `packages/shared/src/tiers.ts` (TypeScript) and Riddler's
  * `fee_policy.ex` (Elixir). The normalized wire form of the same schedule is
- * `riddler-sdk/packages/spec/fee/schedule.json`, which Riddler asserts itself
+ * `@xochi/spec`'s `fee/schedule.json` (`packages/spec` here), which Riddler asserts itself
  * against cell-for-cell. `test/fee-schedule-drift.test.ts` here checks this
  * module against that vector, so the implementations cannot drift apart
  * silently the way the tables below previously did.

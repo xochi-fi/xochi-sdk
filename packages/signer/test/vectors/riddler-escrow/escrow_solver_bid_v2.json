@@ -1,0 +1,250 @@
+{
+  "$schema": "./solver-bid-v2.schema.json",
+  "description": "EIP-712 SolverBid(bytes32 orderId,string auctionId,string intentId,uint256 output,uint64 validUntilMs,uint64 minExclusiveMs) vectors (SOLVER-RFC §5.1). Reference: @xochi/solver-sdk bidTypedData/signBid. signer_private_key values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
+  "domain": {
+    "name": "RiddlerSolver",
+    "version": "2"
+  },
+  "primary_type": "SolverBid",
+  "types": {
+    "SolverBid": [
+      {
+        "name": "orderId",
+        "type": "bytes32"
+      },
+      {
+        "name": "auctionId",
+        "type": "string"
+      },
+      {
+        "name": "intentId",
+        "type": "string"
+      },
+      {
+        "name": "output",
+        "type": "uint256"
+      },
+      {
+        "name": "validUntilMs",
+        "type": "uint64"
+      },
+      {
+        "name": "minExclusiveMs",
+        "type": "uint64"
+      }
+    ]
+  },
+  "encode_type": "SolverBid(bytes32 orderId,string auctionId,string intentId,uint256 output,uint64 validUntilMs,uint64 minExclusiveMs)",
+  "typehash": "0x59967c7f45768718a73ec35fc3508d628c0e43fab45a375573ca244697e05b86",
+  "domain_separator": "0xf29c21aa6d04016f8c76a28b25be9243acaca904d549c2af5fb4c49e0070e11b",
+  "vectors": [
+    {
+      "name": "baseline-escrow",
+      "why": "An escrow auction's bid: orderId is the order-id.json baseline.",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0x0e78a34bc2c14be296ccc17506f37d80718413e92649bcfc6b5f8a64b07e2a68",
+      "expected_digest": "0xc2904b618e3ef7c3af08233dd5770fd12128e26e57cf09e8d537d0d479aab214",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x9747d7929f9ca437a3fc90814a99846f9927ce23dbfd9791a550511b9f63cb7f41a9b8bd59129985be48e72ba83e75018ca60aa249ddb646d8975021ffe4f6251c"
+    },
+    {
+      "name": "second-solver",
+      "why": "Same bid, another key: the recovered signer is the solverId.",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0x0e78a34bc2c14be296ccc17506f37d80718413e92649bcfc6b5f8a64b07e2a68",
+      "expected_digest": "0xc2904b618e3ef7c3af08233dd5770fd12128e26e57cf09e8d537d0d479aab214",
+      "signer_private_key": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+      "signer_address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "expected_signature": "0x9776abfe2bcb7a3785639c41f691c4bf9a6fd0b7885d1af4eac449a6aceb8e207979513471ef10b7c7eaad58ce4400d3eca14b979eb2f4d27acdebec3af23c001c"
+    },
+    {
+      "name": "non-escrow-zero-order-id",
+      "why": "A non-escrow auction announces orderId 0x00..00. Well-formed and signable, never awardable.",
+      "bid": {
+        "orderId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "auctionId": "auction-0002",
+        "intentId": "intent-0002",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "auctionId": "auction-0002",
+        "intentId": "intent-0002",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0x5ec9d4ed4485642ed62d0580c29aa6d72a6b915dc48bf5a22155bff2d5369f35",
+      "expected_digest": "0x63b6f0279a376fb445247cc43d1108231869750f53641b8d36bbc32a14333a0d",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xafc7c6a57b8c6525ab0d3ed8dfa3464efe6f66fdb170bfe6722e5e797b96949c5bb07fe26c5d53d95fef7597a29ef0ce751a2acccb66684054e312ed3fe8f51e1c"
+    },
+    {
+      "name": "distinct-order-id",
+      "why": "Only orderId differs from baseline-escrow: the digest MUST differ (the bid is bound to one order).",
+      "bid": {
+        "orderId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0xd3f2a23aa3e38aecb768662cfcfd0b6b8b8bfc994364f1a0fc19b9a874c98285",
+      "expected_digest": "0x31d796f4d0974630d47d5200a86c2c5a9244b3f13349bdeb2f3e1266079d6ece",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x47a7be1ed21a3ec5aa9a761e5b14f28324a4d546cb8ff6966f36476b07bff2be02afba8d2be71cfa327400dfacb1851724cce0edbfdb2e31eb76c184725ac91b1c"
+    },
+    {
+      "name": "max-values",
+      "why": "output = uint256 max (stays a JSON string); validUntilMs/minExclusiveMs = 2^53-1, the widest a JSON number carries exactly (struct members are uint64; 2^53 is refused).",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "validUntilMs": 9007199254740991,
+        "minExclusiveMs": 9007199254740991,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-0001",
+        "intentId": "intent-0001",
+        "output": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "validUntilMs": 9007199254740991,
+        "minExclusiveMs": 9007199254740991
+      },
+      "expected_struct_hash": "0x5e80562e3d47b93af37f7f1b011858b1704cbbc448f0229dc6f0291665d14f20",
+      "expected_digest": "0xc24e1c7d459d972691cf29310bd92f513df1e13b99220bd38aec1164d2cb306f",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x2655528a1a3927ffd78d5034c5b277c9da99d214b482c9229b79773eb3993d1a0ff9afedace7295d5af8b4f3d488801ca05c6d7ff4b7175565e504bef5e0309a1c"
+    },
+    {
+      "name": "zero-values-utf8-ids",
+      "why": "Lower bounds (output 0, validUntilMs 0, minExclusiveMs 0) and multi-byte ids hashed as UTF-8 bytes.",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-ünïcode-🦄",
+        "intentId": "intent-\"q\"\\\n",
+        "output": "0",
+        "validUntilMs": 0,
+        "minExclusiveMs": 0,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction-ünïcode-🦄",
+        "intentId": "intent-\"q\"\\\n",
+        "output": "0",
+        "validUntilMs": 0,
+        "minExclusiveMs": 0
+      },
+      "expected_struct_hash": "0x2475ef2b4772c6c9922551e72835acfe338340d9c779ee294cbdf6cb5cfecc7c",
+      "expected_digest": "0x25fb05a64f4a784d49c90573dd0da068d7e92ba8ae2ccd005dabe9c2e990d92f",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x5672cce62a6fa1b3ab9b3146486cb88ab0872edd9605adbd452fc9278aeb9d9b58bf1a62623cf634cd23a388113d0574bb5551e0f0243157f530a76f37091d2a1b"
+    },
+    {
+      "name": "empty-ids",
+      "why": "keccak256(\"\") = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470 is a well-defined member, not an error: an encoder that drops empty members or substitutes a placeholder diverges here.",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "",
+        "intentId": "",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "",
+        "intentId": "",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0x9dcce37a6562b9febdb6c39ed68385e7ee211960071b8fbb303990413ba37520",
+      "expected_digest": "0x0c04564d7d4ad29c215ecec9c0e514585e9f99bd709c437e0186109d0521db77",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x3323b35eec96ddb50a3e00fe8d2c07b0a82d8342af1ae8831f49c69b9dab81c83bc3b1296b8f08fae05de1e0c73e755ff9de1ee870c3afe59c5019d66f8bcd4e1c"
+    },
+    {
+      "name": "utf8-control-chars-and-slash",
+      "why": "Tab, CR and '/' must reach keccak as the raw bytes 0x09, 0x0D and 0x2F, never as the escapes a JSON writer emits (\\t, \\r, \\/).",
+      "bid": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction/with/slashes",
+        "intentId": "intent-\t\r-0003",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000,
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "message": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "auctionId": "auction/with/slashes",
+        "intentId": "intent-\t\r-0003",
+        "output": "99700000",
+        "validUntilMs": 1900000000000,
+        "minExclusiveMs": 30000
+      },
+      "expected_struct_hash": "0xb6215573d1cc5bb410a4f0b7859e63a7528f855862305f614db22e717a7a9308",
+      "expected_digest": "0x5b4b2a88cab811f5c409df7e2fa2cb87a64bf6e87352870d8c7f51cc4dee1c19",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x30903523ff040d958778696ba9317ea36ff9bdf8d21bc83d3091a6076d7ba4a02e1063d1bbcd54f6a2c122c97d7196075b07945ad12a749aa955f5f26b3071f91b"
+    }
+  ]
+}

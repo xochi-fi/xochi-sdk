@@ -82,21 +82,54 @@
   },
   "sideEffects": false,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git"
+  },
   "files": [
     "dist",
     "circuits"
+  ],
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "drift-check": "vitest run --config vitest.drift.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
     "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build",
+    "build:workspaces": "npm run build -w @xochi/signer && npm run build --workspaces --if-present",
+    "typecheck:workspaces": "npm run typecheck --workspaces --if-present",
+    "test:workspaces": "npm run test --workspaces --if-present",
+    "test:signer": "npm test -w @xochi/signer",
+    "test:solver": "npm test -w @xochi/solver-sdk",
+    "test:reference": "npm test -w @xochi/reference",
+    "test:spec": "npm test -w @xochi/spec",
+    "test:conformance": "npm run test:conformance -w @xochi/reference",
+    "test:fee": "npm run test:fee -w @xochi/reference",
+    "generate:conformance": "npm run generate -w @xochi/spec",
+    "generate:fee": "npm run generate:fee -w @xochi/spec",
+    "generate:solver-bid-v2": "npm run generate:solver-bid-v2 -w @xochi/spec",
+    "generate:order-id": "npm run generate:order-id -w @xochi/spec",
+    "generate:open-auth": "npm run generate:open-auth -w @xochi/spec",
+    "generate:dest-blinding": "npm run generate:dest-blinding -w @xochi/spec",
+    "generate:fill-salt": "npm run generate:fill-salt -w @xochi/spec",
+    "generate:fill-auth": "npm run generate:fill-auth -w @xochi/spec",
+    "generate:fill-attestation": "npm run generate:fill-attestation -w @xochi/spec",
+    "generate:slash-attestation": "npm run generate:slash-attestation -w @xochi/spec",
+    "generate:fill-acceptance": "npm run generate:fill-acceptance -w @xochi/spec",
+    "generate:xsp": "npm run generate:xsp -w @xochi/spec",
+    "generate:escrow": "npm run generate:escrow -w @xochi/spec",
+    "generate:wire": "npm run generate:wire -w @xochi/spec --",
+    "verify:version": "node scripts/verify-attestation-version.mjs",
+    "verify:vectors": "node scripts/verify-attestation-vectors.mjs",
+    "verify:spec-version": "node scripts/verify-spec-version.mjs",
+    "verify:openapi": "node scripts/verify-openapi.mjs"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
@@ -109,8 +142,9 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "prettier": "^3.3.3",
-    "typescript": "~5.6.2",
+    "typescript": "^6.0.3",
     "viem": "^2.21.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "@xochi/spec": "0.8.0"
   }
 }

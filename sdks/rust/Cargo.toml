@@ -1,0 +1,12 @@
+[package]
+name = "xochi-signer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloy-dyn-abi = { version = "1", features = ["eip712"] }
+alloy-primitives = { version = "1", features = ["k256"] }
+hex = "0.4"
+k256 = { version = "0.13", features = ["ecdsa"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

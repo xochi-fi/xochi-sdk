@@ -1,0 +1,43 @@
+{
+  "$schema": "./dest-blinding.schema.json",
+  "description": "Venue-side destination blinding vectors (ESCROW-RFC §2.2). `key` is a PUBLIC TEST key; production uses a KMS-held key.",
+  "domain_tag": "riddler/dest-blinding/v1",
+  "key": "0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+  "vectors": [
+    {
+      "name": "baseline-base",
+      "fromChainId": "8453",
+      "escrow": "0x3333333333333333333333333333333333333333",
+      "intentId": "intent-0001",
+      "expected_blinding": "0x7c4f825f6cf2d00c9b2e84e01d1cf3d97548f7a36c901a1b837b625406efecf3"
+    },
+    {
+      "name": "checksummed-escrow",
+      "fromChainId": "8453",
+      "escrow": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+      "intentId": "intent-0001",
+      "expected_blinding": "0xad39a82fc260a484725888a4ceb510bc20fe987f75f57b7d5e135dca55c6cf94"
+    },
+    {
+      "name": "other-chain",
+      "fromChainId": "1",
+      "escrow": "0x3333333333333333333333333333333333333333",
+      "intentId": "intent-0001",
+      "expected_blinding": "0x9cc438a5746d36d2ae4b7f891861096fc1a70b3295f2dfdc93e3fb232f083a20"
+    },
+    {
+      "name": "unicode-intent-id",
+      "fromChainId": "8453",
+      "escrow": "0x3333333333333333333333333333333333333333",
+      "intentId": "intent-é中文-🔐",
+      "expected_blinding": "0xe723c5765cce3aba8acfe56764f49137d80385d46dfcdd94b36ca8bd85c5106e"
+    },
+    {
+      "name": "max-uint256-chain",
+      "fromChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "escrow": "0x3333333333333333333333333333333333333333",
+      "intentId": "intent 0123456789abcdef 0123456789abcdef 0123456789abcdef 0123456789abcdef 0123456789abcdef ",
+      "expected_blinding": "0xd5620992f4faab87558003f0e32afeb43d08dfcb73d8ebed996a180809dccc1e"
+    }
+  ]
+}

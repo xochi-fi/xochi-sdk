@@ -4,6 +4,47 @@ TypeScript SDK for generating and verifying [ERC-8262](https://github.com/xochi-
 
 Also provides trust tier system, privacy level modeling, attestation scoring, settlement splitting (XIP-1), and execution planning (XIP-2).
 
+## Position in the stack
+
+This package (the repo root, `@xochi/sdk`) is the **ERC-8262 prover**: proofs, verification, tiers and scoring. It is not a trading client and never talks to the Xochi API. Circuits and ABIs come from [`xochi-fi/ERC-8262`](https://github.com/xochi-fi/ERC-8262) via `scripts/sync-circuits.sh`; the fee schedule is checked against `@xochi/spec` in `packages/spec`.
+
+To trade (quote, sign, execute against `api.xochi.fi/api/*`), use **`@xochi/client`**, the trading client in `packages/client` of this repo (in progress). It carries no prover dependency, so integrators who only trade do not install `@aztec/bb.js` or `noir_js`. `@xochi/widget-lib` (`packages/widget-lib`) is the host-side iframe embed.
+
+The protocol contract and its signers live here too:
+
+| Package             | Path                    | What                                                                                                                                                                                                                     |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@xochi/spec`       | `packages/spec`         | `SPEC.md`, `SOLVER-RFC.md`, `ESCROW-RFC.md`, the byte-equality conformance vectors (Xochi intent, ERC-3009, Permit2, escrow, solver bids, XSP), the fee schedule and vectors, and the vendored served `/xochi/*` OpenAPI |
+| `@xochi/signer`     | `packages/signer`       | network-free EIP-712 / ERC-5564 stealth / ERC-4337 signing and the pre-sign value checks (intent, pull, deposit attestation, claim UserOp)                                                                               |
+| `@xochi/solver-sdk` | `packages/solver-sdk`   | maker-side sealed-bid RFQ SDK (SOLVER-RFC); not published yet                                                                                                                                                            |
+| `@xochi/reference`  | `packages/reference`    | private: chain/token registry and sign-only composition the generators and vector suites use (the fee reference is published in `@xochi/client`)                                                                         |
+| conformance ports   | `sdks/{python,go,rust}` | reproduce every `conformance.json` vector byte-for-byte; not production signers                                                                                                                                          |
+
+These came from the archived `axol-io/riddler-sdk` ([ADR 0001](docs/adr/0001-consolidate-into-xochi-sdk.md), [architecture](docs/ARCHITECTURE.md)).
+
+## Consuming the spec
+
+Anything outside this repo that checks itself against these artifacts (the conformance vectors, the fee schedule and vectors, the escrow and solver-bid sets, the wire contract) takes them from a **published, exactly pinned** `@xochi/spec`, never from a sibling checkout of this repo. A checkout moves under you; a pinned version only moves when you bump it, so a byte change arrives as a reviewed diff rather than as a red build. If the artifact is missing, fail: a skipped conformance check is the stale-copy bug.
+
+JS/TS: pin it exactly, no range.
+
+```bash
+npm install --save-dev --save-exact @xochi/spec@0.8.0
+```
+
+```ts
+import conformance from "@xochi/spec/conformance/conformance.json" with { type: "json" };
+```
+
+Any other CI (Elixir, Python, Go, Rust): fetch the tarball through npm and read the files from it.
+
+```bash
+npm pack @xochi/spec@0.8.0            # -> xochi-spec-0.8.0.tgz
+tar -xzf xochi-spec-0.8.0.tgz         # -> package/conformance/conformance.json, package/fee/{schedule,vectors}.json, ...
+```
+
+The tarball carries the data, `SPEC.md`, `SOLVER-RFC.md`, `ESCROW-RFC.md` and `wire/compare.mjs`; the generators stay in this repo. Releases are tag-triggered with npm provenance (`.github/workflows/release.yml`): `sdk-v*` (`@xochi/sdk`), `spec-v*`, `signer-v*`, `client-v*`, `widget-lib-v*`.
+
 ## Install
 
 ```bash
@@ -716,10 +757,9 @@ For lower-level use, `decodeContractError(err, abi)` returns the typed error or 
 
 ```bash
 npm install
-npm test                 # unit tests (integration + fee-schedule drift excluded via vitest.config.ts)
+npm test                 # unit tests + drift checks (integration excluded via vitest.config.ts); the fee
+                         # schedule is checked against the workspace @xochi/spec (packages/spec)
 npm run test:integration # proof generation + anvil tests (uses vitest.integration.config.ts)
-npm run drift-check      # cross-repo drift: circuits vs ERC-8262, jurisdictions, and the fee
-                         # schedule vs ../riddler-sdk (private; fails without it by design)
 npm run typecheck        # tsc --noEmit (SDK + daemon)
 npm run format           # prettier --write
 npm run format:check     # prettier --check (run in CI / prepublishOnly)
@@ -733,6 +773,15 @@ npm run daemon           # build, then run the reference signing daemon (see dae
 ```
 
 Integration tests deploy the full contract stack (ERC8262Verifier, ERC8262Oracle, SettlementRegistry) on a local anvil node. Requires [foundry](https://book.getfoundry.sh/getting-started/installation) and a local clone of [ERC-8262](https://github.com/xochi-fi/ERC-8262) with compiled artifacts.
+
+The protocol workspaces build in order (`@xochi/signer` first) and their generated artifacts are CI gates:
+
+```bash
+npm run build:workspaces && npm run typecheck:workspaces && npm run test:workspaces
+npm run generate:conformance && npm run generate:fee && npm run generate:solver-bid-v2 && npm run generate:escrow
+git diff --exit-code packages/spec/   # regenerating is a wire change that lands with Riddler, never a refresh
+npm run verify:openapi                # producer-drift probes (also verify:version / verify:vectors / verify:spec-version); need RIDDLER_URL_PROD
+```
 
 ## Related
 

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/fill-salt.schema.json",
+  "title": "Riddler escrow fillSalt / fillId vector set",
+  "description": "fillSalt = HMAC-SHA256(key, domain_tag || orderId[32 raw bytes]); fillId = keccak256(abi.encode(bytes32 orderId, bytes32 fillSalt)) (ESCROW-RFC \u00a79.4). `key` values are PUBLIC TEST keys.",
+  "type": "object",
+  "required": [
+    "domain_tag",
+    "vectors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain_tag": {
+      "const": "riddler/fill-salt/v1"
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "key",
+          "orderId",
+          "expected_fill_salt",
+          "expected_fill_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]+$",
+            "description": "PUBLIC TEST key. Never use in production."
+          },
+          "orderId": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_fill_salt": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_fill_id": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

@@ -19,13 +19,8 @@ export default defineConfig({
     // (anvil + ERC-8262 artifacts). They are gated to the dedicated
     // `test:integration` npm script with its own vitest invocation. Excluding
     // them here so `npm test` skips them in environments without foundry.
-    //
-    // fee-schedule-drift needs a sibling checkout of the private riddler-sdk
-    // repo and fails (by design) without it, so it runs only under
-    // `npm run drift-check` (vitest.drift.config.ts). Keeping it here would
-    // make `npm test` -- and so CI and `prepublishOnly` -- depend on that repo.
     include: ["test/**/*.test.ts"],
-    exclude: ["node_modules/**", "test/integration*.test.ts", "test/fee-schedule-drift.test.ts"],
+    exclude: ["node_modules/**", "test/integration*.test.ts"],
     testTimeout: 180_000,
     hookTimeout: 120_000,
     sequence: { concurrent: false },

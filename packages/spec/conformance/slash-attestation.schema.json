@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/slash-attestation.schema.json",
+  "title": "Riddler SolverBond SlashAttestation vector set",
+  "description": "EIP-712 SlashAttestation(bytes32 orderId,address solver,address beneficiary,uint256 notional,uint256 originChainId,address escrow,uint256 deadline) vectors. signer_private_key values are PUBLIC TEST keys.",
+  "type": "object",
+  "required": [
+    "domain",
+    "typehash",
+    "vectors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "RiddlerSolverBond"
+        },
+        "version": {
+          "const": "2"
+        }
+      }
+    },
+    "typehash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "chainId",
+          "verifyingContract",
+          "claim",
+          "expected_struct_hash",
+          "expected_domain_separator",
+          "expected_digest",
+          "signer_private_key",
+          "signer_address",
+          "expected_signature"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "chainId": {
+            "description": "Base-10 digit string, so values above 2^53 survive JSON.",
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "verifyingContract": {
+            "description": "20-byte hex; case is not significant.",
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$"
+          },
+          "claim": {
+            "description": "SolverBond.SlashClaim, fields in declaration order.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "orderId",
+              "solver",
+              "beneficiary",
+              "notional",
+              "originChainId",
+              "escrow",
+              "deadline"
+            ],
+            "properties": {
+              "orderId": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "solver": {
+                "description": "20-byte hex; case is not significant.",
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "beneficiary": {
+                "description": "20-byte hex; case is not significant.",
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "notional": {
+                "description": "Base-10 digit string, so values above 2^53 survive JSON.",
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "originChainId": {
+                "description": "Base-10 digit string, so values above 2^53 survive JSON.",
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "escrow": {
+                "description": "20-byte hex; case is not significant.",
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "deadline": {
+                "description": "Base-10 digit string, so values above 2^53 survive JSON.",
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              }
+            }
+          },
+          "expected_struct_hash": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_domain_separator": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "expected_digest": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "signer_private_key": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$",
+            "description": "PUBLIC TEST key (Hardhat/Anvil). Never fund or register it."
+          },
+          "signer_address": {
+            "description": "20-byte hex; case is not significant.",
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$"
+          },
+          "expected_signature": {
+            "description": "65-byte r||s||v, low-s, lowercase hex.",
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{130}$"
+          }
+        }
+      }
+    }
+  }
+}

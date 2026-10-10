@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/fee/schema.json",
+  "title": "Riddler Xochi layered fee_breakdown",
+  "description": "Wire shape of the layered `fee_breakdown` object returned by POST /xochi/quote (SPEC.md Section 4). Rates are basis points (integers); amounts are token base-unit integer strings. The deterministic core (tier/asset_class/*_bps/*_fee/total_bps/total_fee/surplus_share_pct) is reproduced by the reference implementation and pinned in fee/vectors.json; gas_floor and *_usd are price-oracle-derived and validated for shape only.",
+  "type": "object",
+  "unevaluatedProperties": true,
+  "required": [
+    "tier",
+    "asset_class",
+    "solver_fee_bps",
+    "solver_fee",
+    "price_impact_bps",
+    "price_impact",
+    "venue_fee_bps",
+    "venue_fee",
+    "routing_fee_bps",
+    "routing_fee",
+    "total_bps",
+    "total_fee",
+    "surplus_share_pct"
+  ],
+  "properties": {
+    "tier": {
+      "type": "string",
+      "enum": ["standard", "trusted", "verified", "premium", "institutional"],
+      "description": "Trust tier the fee was priced at (after any attestation gating)."
+    },
+    "asset_class": {
+      "type": "string",
+      "enum": ["stable", "volatile"],
+      "description": "Settlement asset tier; drives the solver/venue/routing schedule."
+    },
+    "gas_floor": {
+      "type": "object",
+      "description": "Never-discounted network cost floor (cost-to-fill x margin). Price-oracle-derived; added by the quote adapter.",
+      "required": ["amount", "usd"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/amount" },
+        "usd": { "$ref": "#/$defs/usd" }
+      }
+    },
+    "solver_fee_bps": { "$ref": "#/$defs/bps", "description": "Solver spread. Never discounted; the cost floor." },
+    "solver_fee": { "$ref": "#/$defs/amount" },
+    "price_impact_bps": { "$ref": "#/$defs/bps", "description": "Size-vs-depth slippage. A solver cost, never discounted; 0 on deep/unknown books." },
+    "price_impact": { "$ref": "#/$defs/amount" },
+    "venue_fee_bps": { "$ref": "#/$defs/bps", "description": "Venue (Xochi) cut. Tier-discounted." },
+    "venue_fee": { "$ref": "#/$defs/amount" },
+    "routing_fee_bps": { "$ref": "#/$defs/bps", "description": "Routing (Raxol) cut. Tier-discounted; 0 when origin = acp." },
+    "routing_fee": { "$ref": "#/$defs/amount" },
+    "total_bps": { "$ref": "#/$defs/bps", "description": "solver + price_impact + venue + routing, clamped >= solver_fee_bps." },
+    "total_fee": { "$ref": "#/$defs/amount", "description": "Sum of the four per-layer amounts (each floored independently)." },
+    "total_usd": { "$ref": "#/$defs/usd", "description": "USD value of total_fee. Price-oracle-derived." },
+    "surplus_share_pct": { "$ref": "#/$defs/bps", "description": "Percent of positive fill slippage captured; the remainder returns to the taker." }
+  },
+  "$defs": {
+    "bps": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Basis points (1 bps = 0.01%)."
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Non-negative integer in the origin token's base units."
+    },
+    "usd": {
+      "type": "string",
+      "description": "USD value, formatted decimal string."
+    }
+  }
+}

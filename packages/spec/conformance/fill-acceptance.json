@@ -1,0 +1,242 @@
+{
+  "$schema": "./fill-acceptance.schema.json",
+  "description": "EIP-712 FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth) vectors for SolverBond v2, where fillAuth is the RiddlerFiller EIP-712 digest of the issued FillAuth (fill_auth + fill_auth_domain -> expected_fill_auth_digest). Signed by the filler (the solver's one key). signer_private_key values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
+  "domain": {
+    "name": "RiddlerSolverBond",
+    "version": "2"
+  },
+  "type": "FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth)",
+  "typehash": "0x037c47e9192917a99702ce8086d611cf50d6107ff8d3fdc77e1d2733bdb4ee60",
+  "fill_auth_domain": {
+    "name": "RiddlerFiller",
+    "version": "1"
+  },
+  "fill_auth_type": "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)",
+  "fill_auth_typehash": "0xa5a56c32ac0c4e7a32f827a6e2d80d369d1beb5bf1e8cd51c3addf571dd2727e",
+  "vectors": [
+    {
+      "name": "baseline-base-to-optimism",
+      "chainId": "8453",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "10",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0xabababababababababababababababababababababababababababababababab",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "99700000",
+        "deadline": "1900000000"
+      },
+      "expected_fill_auth_digest": "0xcee67b1d14aa5e68326ed81936aa33b10d1fb79000930fd168f00bd155392292",
+      "acceptance": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "1900000000",
+        "fillAuth": "0xcee67b1d14aa5e68326ed81936aa33b10d1fb79000930fd168f00bd155392292"
+      },
+      "expected_struct_hash": "0x363ca4c02fd77e29cbd192709f3340029f5ac1ba3539c0051d73012666765439",
+      "expected_domain_separator": "0x01cda2894e25cfe2056c510ea81932819885c72fc3f070745ec26b85f0bd2930",
+      "expected_digest": "0xe30b3e24a8a3fea69d43db5578ac5bca4386fb3c9e8f570656987204b05bda62",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xee7268151e0b2afbbb3fde7fd43c246393853d9809ecf311f34cbee3f25920860e6a0209ac66815c3a5e38475362b6e6590b6e403a9a7d08880594a39d4051a01b"
+    },
+    {
+      "name": "second-solver",
+      "chainId": "8453",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "10",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0xabababababababababababababababababababababababababababababababab",
+        "filler": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "99700000",
+        "deadline": "1900000000"
+      },
+      "expected_fill_auth_digest": "0x1730725c4d33052fa94672299e69336ab2fc1ee9c6af1fb28be192b1f849f934",
+      "acceptance": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+        "deadline": "1900000000",
+        "fillAuth": "0x1730725c4d33052fa94672299e69336ab2fc1ee9c6af1fb28be192b1f849f934"
+      },
+      "expected_struct_hash": "0x8b0ca40b713177cdcef50f1d0968637d8c0cd72eaef217af942beae5fc81a28e",
+      "expected_domain_separator": "0x01cda2894e25cfe2056c510ea81932819885c72fc3f070745ec26b85f0bd2930",
+      "expected_digest": "0x9c921ae84fa2290f5912ec67932e901415e5d34810de9df627b3988a0043555e",
+      "signer_private_key": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+      "signer_address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "expected_signature": "0x2a2e4d086ad21a2340874478c5e2244496c8df6b877a235749540cc241cc4eee26a32b540f6b3bfd92a476050a91681417dea19ddafa579e13255dc58dd436d01c"
+    },
+    {
+      "name": "other-bond-domain",
+      "chainId": "1",
+      "verifyingContract": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+      "fill_auth_domain": {
+        "chainId": "10",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0xabababababababababababababababababababababababababababababababab",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "99700000",
+        "deadline": "1900000000"
+      },
+      "expected_fill_auth_digest": "0xcee67b1d14aa5e68326ed81936aa33b10d1fb79000930fd168f00bd155392292",
+      "acceptance": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "1900000000",
+        "fillAuth": "0xcee67b1d14aa5e68326ed81936aa33b10d1fb79000930fd168f00bd155392292"
+      },
+      "expected_struct_hash": "0x363ca4c02fd77e29cbd192709f3340029f5ac1ba3539c0051d73012666765439",
+      "expected_domain_separator": "0x1595aca3ff413f26a5dbfaf732d57a6487ffa047aa653e062c23861aadc34a67",
+      "expected_digest": "0x1af74f1d794b25e4d109b5e565b006e05fb604bed03bc3725b30a296de0f2778",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xf4d96610814603ecb0fe67cfa8f945008a1a023580cc310fdc80af2a3bc34c4800cd0c499e3dc33e809187f8065cc53212f34e9a73e80d33dada286e663790da1b"
+    },
+    {
+      "name": "other-filler-domain",
+      "chainId": "8453",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "42161",
+        "verifyingContract": "0x5555555555555555555555555555555555555555"
+      },
+      "fill_auth": {
+        "fillId": "0xabababababababababababababababababababababababababababababababab",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "99700000",
+        "deadline": "1900000000"
+      },
+      "expected_fill_auth_digest": "0x86c401e7e90f7bf7683ff1693af0d5f179f9e39c4caf4a8d5d4559eb030ad797",
+      "acceptance": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "1900000000",
+        "fillAuth": "0x86c401e7e90f7bf7683ff1693af0d5f179f9e39c4caf4a8d5d4559eb030ad797"
+      },
+      "expected_struct_hash": "0x06726e400674077a5844419bcc69e511c6db3b5db739c680dab1064852fd8bf0",
+      "expected_domain_separator": "0x01cda2894e25cfe2056c510ea81932819885c72fc3f070745ec26b85f0bd2930",
+      "expected_digest": "0x21e65bff9362fd0a87d32f2930544e1e08f80339834bdb95be34c7c196ba8a9f",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x02aa531a1b1348f650f489931f481f5f066b6cf94ede97f8ac24001a39d580744eb1a74b3b22bc45cf7ad7af65064488a1338942b5556c05430372316b3b616e1c"
+    },
+    {
+      "name": "same-chain-fill",
+      "chainId": "8453",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "8453",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0xabababababababababababababababababababababababababababababababab",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "99700000",
+        "deadline": "1"
+      },
+      "expected_fill_auth_digest": "0x56f748fe5a8c2c0ab6c97812c0620a200f736289c712bf56004be3e5e6abaa69",
+      "acceptance": {
+        "orderId": "0xe9f0165c274aefaeb888d41292fe8311c318c8b7ef7eaef285df9996e0f35f16",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "1",
+        "fillAuth": "0x56f748fe5a8c2c0ab6c97812c0620a200f736289c712bf56004be3e5e6abaa69"
+      },
+      "expected_struct_hash": "0xebff6a9628882ff83ea60d3e865e050967a1d1beed05331880529a0ddbed1c47",
+      "expected_domain_separator": "0x01cda2894e25cfe2056c510ea81932819885c72fc3f070745ec26b85f0bd2930",
+      "expected_digest": "0x22df21f47f43ba136c0c0f2c9d832b33f51d73977ecf658d10f0278fe3bc96fd",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x55b4fbeabadcc9f60bb20276d0c7173244fe1ef0b89d52404f6d3c97aa19776b1ed0face1a85db938e5385a024276cc0c7652ed973720af3fb54862db4a247541b"
+    },
+    {
+      "name": "zero-amount-zero-ids",
+      "chainId": "8453",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "10",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+        "token": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+        "amount": "0",
+        "deadline": "0"
+      },
+      "expected_fill_auth_digest": "0xcd5ee934ed4ebe2803a7ce80b9856a4a7b868f71f3e509128b654a93f3d834e8",
+      "acceptance": {
+        "orderId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "originChainId": "8453",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "0",
+        "fillAuth": "0xcd5ee934ed4ebe2803a7ce80b9856a4a7b868f71f3e509128b654a93f3d834e8"
+      },
+      "expected_struct_hash": "0x01a08daa7475be91bea3220ef8cca7b2986c6bd756397118811b4c9d7e307d9a",
+      "expected_domain_separator": "0x01cda2894e25cfe2056c510ea81932819885c72fc3f070745ec26b85f0bd2930",
+      "expected_digest": "0x680ea260e453b0ae0934bab286f284ec9057344f58762e21525bb6bfd1eebd00",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x342b19a81e78bbc5f369221db371efbab5d0aaed1d473efa53aaed2d007c92442351df477151f8e4a0845c1a0ae05c9419ebed71c1bbe2ddbf745ac3cd74cb401b"
+    },
+    {
+      "name": "max-uint256-values",
+      "chainId": "42161",
+      "verifyingContract": "0x6666666666666666666666666666666666666666",
+      "fill_auth_domain": {
+        "chainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "verifyingContract": "0x4444444444444444444444444444444444444444"
+      },
+      "fill_auth": {
+        "fillId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "to": "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+        "token": "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+        "amount": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "deadline": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      "expected_fill_auth_digest": "0x02b5a9478e73bc83848f29f2c818116c8ecab15b3276ce72277f8f95c1ef663d",
+      "acceptance": {
+        "orderId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "originChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "escrow": "0x3333333333333333333333333333333333333333",
+        "filler": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "deadline": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "fillAuth": "0x02b5a9478e73bc83848f29f2c818116c8ecab15b3276ce72277f8f95c1ef663d"
+      },
+      "expected_struct_hash": "0x588a00b0f8741a358e1b7fa49bfd7a42d148c53cdcc7889a6ed0ff975840df70",
+      "expected_domain_separator": "0x59f8269654f7f78be865980beb407f0c80234b39712a1178e37c66cb1b04a43e",
+      "expected_digest": "0xe9fbe437fb486eca946264cf6cb5acf51beb208e47311692999a3e6b34536d67",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x21f28e178934a323d2cd44a548b7a3538306b797d9bb85a19ed95fb8bfd1586a6f70c73bddf5aca7cbf118e1d98e11feded2338817f7f093cc2e6dbfaf437cdf1b"
+    }
+  ]
+}

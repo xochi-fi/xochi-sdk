@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "generator": "packages/spec/conformance/generate-xsp.ts",
+  "obligation": {
+    "typeString": "XochiObligation(uint256 originChainId,address originToken,uint256 originAmount,uint256 destChainId,bytes32 destToken,uint256 destAmount,bytes32 recipientCommitment,bytes32 refundCommitment,bool recoverable,address solver,uint8 settlementType,uint64 deadline,bytes32 quoteId,uint256 nonce)",
+    "typehash": "0x2ae06d6d097a1645fcb540b9075adfd85d62ce11a364e5b995913d3c0714141f",
+    "vectors": [
+      {
+        "name": "public-base-usdc",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 1,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0xa89618c67957f82f38098e746491512643b005559fdb51bc6a8e364b70977664",
+        "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e"
+      },
+      {
+        "name": "public-base-usdc-dest-amount-plus-one",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700001",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 1,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0xd464f367698a98883280b9f212106f6443b7d67a1220e22680b6c2c66e457c54",
+        "obligationId": "0x0a4c7ceb4770163eaee970a3a4ad3ef766e0b9d8fdaf13498a6c9c41dd05af63"
+      },
+      {
+        "name": "public-base-usdc-not-recoverable",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": false,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 1,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0x93582d2c937f2d3fbf78a72af5566e29fa0ee68daa6e90841b23f1ce802f0075",
+        "obligationId": "0xac25d918d4a7377628d60a60ac09948287a1f4451d0781f8e7fc52a0445bb6a8"
+      },
+      {
+        "name": "stealth-base-usdc",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 2,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0xc2ad97b4c1026f4fcf4adf441303a336273bf97bb9f2a9d72098bdcf68756399",
+        "obligationId": "0xf39b67bc205ab8844d5745444850815f3e3d30d0ab015cb594ff4dd15b213666"
+      },
+      {
+        "name": "shielded-eth-native-any-solver",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "1",
+          "verifyingContract": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
+        },
+        "terms": {
+          "originChainId": "1",
+          "originToken": "0x0000000000000000000000000000000000000000",
+          "originAmount": "1000000000000000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x0000000000000000000000000000000000000000",
+          "settlementType": 3,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "7"
+        },
+        "domainSeparator": "0xe15cdc6a2aa32ba4d04325ac1ab8baf73352d6f0c32ba5efdd8d784f491d1df6",
+        "structHash": "0xcd25127fbe8668dbf7bb1be5bc4801e26cc0a873cd4b7a68571932cffeebaccd",
+        "obligationId": "0x3b543df35eabc0446ac8d595db6ecac56b3f76bdf8277ef797b6ea3a5b22b5d5"
+      },
+      {
+        "name": "public-max-uint64-deadline",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "10",
+          "destToken": "0x0000000000000000000000000b2c639c533813f4aa9d7837caf62653d097ff85",
+          "destAmount": "99700000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 1,
+          "deadline": "18446744073709551615",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0x237da58663210b5fa20e794fcf64af1e741f1a45e6a066e332d8d1b3f769637b",
+        "obligationId": "0x0e276d949494c1a815de3929d715993cdfc1d6df84c80d9a2eb79a5dd85a46de"
+      },
+      {
+        "name": "public-tron-dest-usdt",
+        "domain": {
+          "name": "Xochi Settlement",
+          "version": "4",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "terms": {
+          "originChainId": "8453",
+          "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+          "originAmount": "100000000",
+          "destChainId": "728126428",
+          "destToken": "0x000000000000000000000041a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+          "destAmount": "99650000",
+          "recipientCommitment": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+          "recoverable": true,
+          "solver": "0x3333333333333333333333333333333333333333",
+          "settlementType": 1,
+          "deadline": "1900000000",
+          "quoteId": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+          "nonce": "1"
+        },
+        "domainSeparator": "0x8b5a951f5767f502025233dc8e05033c23bbfa6ac78cd2dc1c6f7f985bf82114",
+        "structHash": "0xdbf9794ea40e8f80fc532ac799a8e5e818eef79344d83cc1dedde1ddd1d97434",
+        "obligationId": "0xe502b8cd600685d132d6d8c642346e454de91832af4a74b2de2dc6dd2085a334"
+      }
+    ],
+    "refundCommitments": [
+      {
+        "name": "baseline",
+        "refundAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "refundSalt": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4"
+      },
+      {
+        "name": "zero-salt",
+        "refundAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "refundSalt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "refundCommitment": "0x14e04a66bf74771820a7400ff6cf065175b3d7eb25805a5bd1633b161af5d101"
+      },
+      {
+        "name": "high-bit-salt",
+        "refundAddress": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+        "refundSalt": "0xff00000000000000000000000000000000000000000000000000000000000001",
+        "refundCommitment": "0xb5e8f7baecece645be1fa76450f38f064b7a07e2bd41a0fa728a1ef0f5ad0abf"
+      }
+    ]
+  },
+  "depository": {
+    "transferTypehash": "0x998112c75a1eb739af2f7f067a8ef0c72d2c20cb06189774ad78015750bf99fd",
+    "recordTypehash": "0x0057a426efb9a77bcc832f1418a87333dea5e755464f753b94eec16b63415eea",
+    "callRequestTypehash": "0xe0d13dc67e6e21fa7d83f00e41f95cf31000a4913df05676af68f884ebc88625",
+    "markConsumedTypehash": "0xe7ae32806180b793c4077d92f77b2a56f22c749173cde767441219304ad09f84",
+    "vectors": [
+      {
+        "name": "call-request-empty",
+        "kind": "callRequest",
+        "domain": {
+          "name": "Xochi Depository",
+          "version": "1",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "message": {
+          "id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "expiry": "1900000100",
+          "transfers": [],
+          "consume": []
+        },
+        "domainSeparator": "0xbc2cee60d613d29d499f6cb08eb85bf33ad708be3b44198c154d777b76e191d3",
+        "structHash": "0x7e44d893055c8e64c3b87821d71cb8333130f7690690569d09ca395813c4f60b",
+        "digest": "0x2f41fd8731bda45852235d6c2e4f8d6432e07031fdc5ccbed93bd6f3c6da6472"
+      },
+      {
+        "name": "call-request-two-transfers-two-records",
+        "kind": "callRequest",
+        "domain": {
+          "name": "Xochi Depository",
+          "version": "1",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "message": {
+          "id": "0x0202020202020202020202020202020202020202020202020202020202020202",
+          "expiry": "18446744073709551615",
+          "transfers": [
+            {
+              "token": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+              "to": "0x4444444444444444444444444444444444444444",
+              "amount": "60000000"
+            },
+            {
+              "token": "0x0000000000000000000000000000000000000000",
+              "to": "0x5555555555555555555555555555555555555555",
+              "amount": "40000000"
+            }
+          ],
+          "consume": [
+            {
+              "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+              "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+              "depositor": "0x1111111111111111111111111111111111111111",
+              "token": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+              "amount": "100000000",
+              "depositedAt": "1899990000"
+            },
+            {
+              "obligationId": "0x3b543df35eabc0446ac8d595db6ecac56b3f76bdf8277ef797b6ea3a5b22b5d5",
+              "refundCommitment": "0xb5e8f7baecece645be1fa76450f38f064b7a07e2bd41a0fa728a1ef0f5ad0abf",
+              "depositor": "0x2222222222222222222222222222222222222222",
+              "token": "0x0000000000000000000000000000000000000000",
+              "amount": "1000000000000000000",
+              "depositedAt": "18446744073709551615"
+            }
+          ]
+        },
+        "domainSeparator": "0xbc2cee60d613d29d499f6cb08eb85bf33ad708be3b44198c154d777b76e191d3",
+        "structHash": "0xb35a8731b56418f5831a858ca9b8cfc98ed4f771975439461dea3764cab6dcb6",
+        "digest": "0x4266b39b0398f2ceae46dfb7e61a9fbb622a96f9e70303bd16451d844e6550ac"
+      },
+      {
+        "name": "mark-consumed-one-record",
+        "kind": "markConsumed",
+        "domain": {
+          "name": "Xochi Depository",
+          "version": "1",
+          "chainId": "8453",
+          "verifyingContract": "0xd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+        },
+        "message": {
+          "consume": [
+            {
+              "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+              "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+              "depositor": "0x1111111111111111111111111111111111111111",
+              "token": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+              "amount": "100000000",
+              "depositedAt": "1899990000"
+            }
+          ],
+          "expiry": "1900000200",
+          "salt": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+        },
+        "domainSeparator": "0xbc2cee60d613d29d499f6cb08eb85bf33ad708be3b44198c154d777b76e191d3",
+        "structHash": "0x7491e8127d2fa483d783f5fadf48e8840ae721ffec372063032de83ad44a4f5c",
+        "digest": "0x216677ed89ec09790fd2af434658c20998631c296c31f8e5212ade736aad579f"
+      },
+      {
+        "name": "mark-consumed-two-records-mainnet",
+        "kind": "markConsumed",
+        "domain": {
+          "name": "Xochi Depository",
+          "version": "1",
+          "chainId": "1",
+          "verifyingContract": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
+        },
+        "message": {
+          "consume": [
+            {
+              "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+              "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+              "depositor": "0x1111111111111111111111111111111111111111",
+              "token": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+              "amount": "100000000",
+              "depositedAt": "1899990000"
+            },
+            {
+              "obligationId": "0x3b543df35eabc0446ac8d595db6ecac56b3f76bdf8277ef797b6ea3a5b22b5d5",
+              "refundCommitment": "0xb5e8f7baecece645be1fa76450f38f064b7a07e2bd41a0fa728a1ef0f5ad0abf",
+              "depositor": "0x2222222222222222222222222222222222222222",
+              "token": "0x0000000000000000000000000000000000000000",
+              "amount": "1000000000000000000",
+              "depositedAt": "18446744073709551615"
+            }
+          ],
+          "expiry": "1900000300",
+          "salt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "domainSeparator": "0x0aab36ad293caff440d5e7441c02222ed9eabef66d4a9523119ac5f22645db3b",
+        "structHash": "0x10d63e92a4882e156c9d1ad4ad4b599dcb9a10f0753b217260d9385f414fd010",
+        "digest": "0x8629058aabb66c5aff9b9349330c928677242a6e96cf4fa1afc3930531cbd148"
+      }
+    ]
+  },
+  "depositAddress": {
+    "vectors": [
+      {
+        "name": "erc20-recoverable",
+        "factory": "0xfac7000000000000000000000000000000000001",
+        "implementation": "0x1111000000000000000000000000000000000002",
+        "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+        "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+        "recoverable": true,
+        "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "originAmount": "100000000",
+        "salt": "0x8c3ec450976bf5be3e267429e3caa24ba8344af0e86b32f6b2b3d6d4cb1b8807",
+        "address": "0xa06ae8e356d08de0c3aa4458e599eae9caa87f1b"
+      },
+      {
+        "name": "erc20-not-recoverable",
+        "factory": "0xfac7000000000000000000000000000000000001",
+        "implementation": "0x1111000000000000000000000000000000000002",
+        "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+        "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+        "recoverable": false,
+        "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "originAmount": "100000000",
+        "salt": "0xf81608d0ddc81e7d7e8c2fdc33a7216e2358a649776ecd82f917e47935932e73",
+        "address": "0xd75045b6bd59ee91f218ae9dac7e541bed23fcd8"
+      },
+      {
+        "name": "native-recoverable",
+        "factory": "0xfac7000000000000000000000000000000000001",
+        "implementation": "0x1111000000000000000000000000000000000002",
+        "obligationId": "0x3b543df35eabc0446ac8d595db6ecac56b3f76bdf8277ef797b6ea3a5b22b5d5",
+        "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+        "recoverable": true,
+        "originToken": "0x0000000000000000000000000000000000000000",
+        "originAmount": "1000000000000000000",
+        "salt": "0x50eb59e186affcf4187594ab40f2a9f6eb134c5f1be0afc550ed92618b78f7cb",
+        "address": "0x8efa74bd707bc40a9c9375212b21acdeed830437"
+      }
+    ],
+    "rejections": [
+      {
+        "name": "zero-origin-amount",
+        "factory": "0xfac7000000000000000000000000000000000001",
+        "implementation": "0x1111000000000000000000000000000000000002",
+        "obligationId": "0x2c9df1400c09ef579e65d6633cbd5ebe86b7e1d6b65342ada205e297dc313f5e",
+        "refundCommitment": "0xade972d4e0b777f595c59144d0e68cfdc3b5e14c79248a68b3fa779f970f91e4",
+        "recoverable": true,
+        "originToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "originAmount": "0",
+        "error": "ZeroOriginAmount"
+      }
+    ]
+  }
+}
