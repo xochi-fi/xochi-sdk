@@ -221,7 +221,12 @@ export function checkDepositQuote(
       params,
     );
     verifyDepositAttestation(fields, attestation, signer);
-    assertDepositQuoteMatchesRequest(params, fields, { recipient_address: quote.recipientAddress });
+    // `escrow` is the raw served envelope: the signer refuses any deposit quote
+    // that carries one, since this client runs no escrow binding.
+    assertDepositQuoteMatchesRequest(params, fields, {
+      recipient_address: quote.recipientAddress,
+      escrow: quote.escrow,
+    });
   } catch (err) {
     return depositRefusal(err);
   }

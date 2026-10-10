@@ -21,7 +21,12 @@ import type {
   ExecuteResponseWire,
   IntentStatus,
 } from "../shared/index.js";
-import { isSettlementType, isIntentStatus } from "../shared/index.js";
+import {
+  ExecuteResponseSchema,
+  QuoteResponseSchema,
+  isSettlementType,
+  isIntentStatus,
+} from "../shared/index.js";
 
 // ============================================================
 // Frontend-specific Types
@@ -161,6 +166,14 @@ export interface QuoteResponse {
    */
   settlementType?: SettlementType;
   /**
+   * The served `escrow` envelope, verbatim, when the quote carried the key.
+   * Not modelled: it is held only so the `@xochi/signer` checks the machine
+   * runs at ingest can see it. This client does not run the escrow binding, so
+   * a quote whose `escrow` is anything but absent or `null` is refused before
+   * it can reach the wallet.
+   */
+  escrow?: unknown;
+  /**
    * Echo of the requested destination recipient (non-EVM/Tron routes). The
    * client asserts a solvable quote echoes exactly the address it asked for
    * (fail-closed on mismatch); absent for EVM routes. See #113.
@@ -280,21 +293,26 @@ export type PaymentMethod =
 // standard camelCase and pass through unchanged.
 // ============================================================
 
-export function isQuoteResponseWire(value: unknown): value is QuoteResponseWire {
-  if (typeof value !== "object" || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.success === "boolean" &&
-    typeof obj.intent_id === "string" &&
-    typeof obj.quote_id === "string" &&
-    typeof obj.can_solve === "boolean"
-  );
+/**
+ * The response contracts as the client applies them: every declared field is
+ * held to its schema (a `fee_breakdown` without `gas_floor`, a non-string
+ * `eip712`, a numeric `claim_info.factory_address` all fail), but an
+ * undeclared top-level key is let through rather than failing the whole
+ * quote, so an additive server field does not take every client down. The
+ * decoders read the original object, never the parse output, so the EIP-712
+ * payloads reach the wallet byte-for-byte as served.
+ */
+const QUOTE_RESPONSE = QuoteResponseSchema.passthrough();
+const EXECUTE_RESPONSE = ExecuteResponseSchema.passthrough();
+
+export function isQuoteResponseWire(
+  value: unknown,
+): value is QuoteResponseWire & { readonly escrow?: unknown } {
+  return QUOTE_RESPONSE.safeParse(value).success;
 }
 
 export function isExecuteResponseWire(value: unknown): value is ExecuteResponseWire {
-  if (typeof value !== "object" || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.success === "boolean" && typeof obj.intent_id === "string";
+  return EXECUTE_RESPONSE.safeParse(value).success;
 }
 
 /**
@@ -317,7 +335,9 @@ export function readResolvedSettlementType(
   return typeof value === "string" && isSettlementType(value) ? value : undefined;
 }
 
-export function mapQuoteResponse(w: QuoteResponseWire): QuoteResponse {
+export function mapQuoteResponse(
+  w: QuoteResponseWire & { readonly escrow?: unknown },
+): QuoteResponse {
   return {
     success: w.success,
     intentId: w.intent_id,
@@ -377,6 +397,8 @@ export function mapQuoteResponse(w: QuoteResponseWire): QuoteResponse {
     errorCategory: w.error_category,
     minimumAmountUsd: w.minimum_amount_usd,
     minFillableUsd: w.min_fillable_usd,
+    // Passed through untouched, never interpreted: the signer refuses it.
+    ...("escrow" in w ? { escrow: w.escrow } : {}),
   };
 }
 

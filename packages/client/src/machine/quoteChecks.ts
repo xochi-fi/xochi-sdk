@@ -64,8 +64,13 @@ export function checkSignableQuote(
   quote: QuoteResponse,
   pullRecipients: PinnedPullRecipients | undefined,
 ): SignableQuoteCheck {
-  // The signer reads the wire spelling: `eip712` and `pull_authorization`.
-  const served = { eip712: quote.eip712Data, pull_authorization: quote.pullAuthorization };
+  // The signer reads the wire spelling: `eip712`, `pull_authorization`, and the
+  // raw `escrow` envelope, which it refuses (this client runs no escrow binding).
+  const served = {
+    eip712: quote.eip712Data,
+    pull_authorization: quote.pullAuthorization,
+    escrow: quote.escrow,
+  };
   try {
     assertIntentMatchesRequest(quoteRequestParams(request), served);
   } catch (err) {

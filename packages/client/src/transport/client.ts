@@ -305,46 +305,59 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
 
   /**
    * One HTTP attempt with the bearer token attached and a timeout. Reports a
-   * credential failure the server names to `onAuthExpired`; the response is
-   * returned either way, for the caller to classify.
+   * credential failure the server names to `onAuthExpired`, then hands the
+   * response to `read` for the caller to classify and consume.
+   *
+   * The timeout covers the whole attempt, body included: a server that sends
+   * its headers and then stalls the body would otherwise hang the caller with
+   * no deadline at all. On expiry the attempt rejects with an `AbortError`, the
+   * same as a stalled connect, whether or not the injected `fetch` honours the
+   * signal on its body.
    */
-  async function send(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  async function send<T>(
+    path: string,
+    init: RequestInit,
+    timeoutMs: number,
+    read: (response: Response) => Promise<T>,
+  ): Promise<T> {
     const token = options.getAuthToken?.() ?? null;
     const headers = new Headers(init.headers);
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    let response: Response;
-    try {
-      response = await doFetch(`${baseUrl}${path}`, {
+    const attempt = async (): Promise<T> => {
+      const response = await doFetch(`${baseUrl}${path}`, {
         ...init,
         headers,
         signal: controller.signal,
       });
+
+      if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
+        const body = await response
+          .clone()
+          .text()
+          .catch(() => "");
+        if (response.status === 401 && /expired/i.test(body)) {
+          options.onAuthExpired({ reason: "expired", status: response.status });
+        } else if (token) {
+          const category = parseJsonObject(body)?.error_category;
+          if (typeof category === "string" && WALLET_SESSION_REAUTH_CATEGORIES[category]) {
+            options.onAuthExpired({
+              reason: "invalid",
+              status: response.status,
+              errorCategory: category,
+            });
+          }
+        }
+      }
+      return read(response);
+    };
+    try {
+      return await untilAborted(attempt(), controller.signal);
     } finally {
       clearTimeout(timeoutId);
     }
-
-    if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
-      const body = await response
-        .clone()
-        .text()
-        .catch(() => "");
-      if (response.status === 401 && /expired/i.test(body)) {
-        options.onAuthExpired({ reason: "expired", status: response.status });
-      } else if (token) {
-        const category = parseJsonObject(body)?.error_category;
-        if (typeof category === "string" && WALLET_SESSION_REAUTH_CATEGORIES[category]) {
-          options.onAuthExpired({
-            reason: "invalid",
-            status: response.status,
-            errorCategory: category,
-          });
-        }
-      }
-    }
-    return response;
   }
 
   async function sendWithRetry<T>(
@@ -366,29 +379,31 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       // back to exponential when absent.
       let retryAfterMs: number | null = null;
       try {
-        const response = await send(path, init, timeoutMs);
-
-        if (!response.ok) {
-          const errorBody = await response.text().catch(() => "");
-          // A 503 is a transient solver blip (saturation / gas-oracle
-          // unavailable); pace the retry off the server's Retry-After.
-          if (response.status === 503) {
-            retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"), retry.maxDelayMs);
+        const data = await send(path, init, timeoutMs, async (response): Promise<unknown> => {
+          if (!response.ok) {
+            const errorBody = await response.text().catch(() => "");
+            // A 503 is a transient solver blip (saturation / gas-oracle
+            // unavailable); pace the retry off the server's Retry-After.
+            if (response.status === 503) {
+              retryAfterMs = parseRetryAfterMs(
+                response.headers.get("Retry-After"),
+                retry.maxDelayMs,
+              );
+            }
+            // Structured failure: the numeric status plus, for backpressure
+            // (429/503), an absolute retry target for a countdown.
+            const retryAfter =
+              response.status === 429 || response.status === 503
+                ? resolveRetryAfterSeconds(response.headers, errorBody)
+                : undefined;
+            throw new ApiError(
+              `HTTP ${response.status}: ${errorBody || response.statusText}`,
+              response.status,
+              retryAfter,
+            );
           }
-          // Structured failure: the numeric status plus, for backpressure
-          // (429/503), an absolute retry target for a countdown.
-          const retryAfter =
-            response.status === 429 || response.status === 503
-              ? resolveRetryAfterSeconds(response.headers, errorBody)
-              : undefined;
-          throw new ApiError(
-            `HTTP ${response.status}: ${errorBody || response.statusText}`,
-            response.status,
-            retryAfter,
-          );
-        }
-
-        const data: unknown = await response.json();
+          return response.json();
+        });
         if (!validator(data)) throw new Error("Invalid response format");
         return data;
       } catch (err) {
@@ -419,7 +434,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
 
   async function sendOnce<T>(path: string, body: unknown): Promise<CallResult<T>> {
     try {
-      const response = await send(
+      const { response, text } = await send(
         path,
         {
           method: "POST",
@@ -427,8 +442,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           body: JSON.stringify(body),
         },
         timeouts.requestTimeoutMs,
+        async (response) => ({ response, text: await response.text() }),
       );
-      const text = await response.text();
       if (!response.ok) {
         const record = parseJsonObject(text);
         return {
@@ -574,16 +589,17 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     },
 
     async getIntent(intentId) {
-      const response = await send(
+      const { response, body } = await send(
         `/api/intent/${encodeURIComponent(intentId)}`,
         { method: "GET" },
         timeouts.requestTimeoutMs,
+        readOkJson,
       );
       if (!response.ok) {
         if (response.status === 404) return null;
         throw new Error(`Failed to get intent ${intentId}: HTTP ${response.status}`);
       }
-      return mapIntentRecord((await response.json()) as IntentRecordWire);
+      return mapIntentRecord(body as IntentRecordWire);
     },
 
     /**
@@ -597,10 +613,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      */
     async getIntentStatus(intentId) {
       try {
-        const response = await send(
+        const { response, body } = await send(
           `/api/intent/${encodeURIComponent(intentId)}/status`,
           { method: "GET" },
           timeouts.requestTimeoutMs,
+          readOkJson,
         );
         if (!response.ok) {
           // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
@@ -618,7 +635,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           }
           return response.status === 404 ? { notFound: true } : null;
         }
-        const d = (await response.json()) as {
+        const d = body as {
           intent_id?: string | null;
           status: string;
           tx_hash?: string | null;
@@ -656,15 +673,16 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     },
 
     async getIntentHistory(wallet, limit = 10) {
-      const response = await send(
+      const { response, body } = await send(
         `/api/intent/history?wallet=${encodeURIComponent(wallet)}&limit=${limit}`,
         { method: "GET" },
         timeouts.requestTimeoutMs,
+        readOkJson,
       );
       if (!response.ok) {
         throw new Error(`Failed to get intent history for ${wallet}: HTTP ${response.status}`);
       }
-      const data = (await response.json()) as { intents?: IntentRecordWire[] };
+      const data = body as { intents?: IntentRecordWire[] };
       return (data.intents ?? []).map(mapIntentRecord);
     },
 
@@ -676,6 +694,29 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       return sendOnce<SubmittedStealthClaim>("/api/stealth/claim/submit", body);
     },
   };
+}
+
+/** The response, with its JSON body read when it is a success (the GET reads). */
+async function readOkJson(response: Response): Promise<{ response: Response; body: unknown }> {
+  return { response, body: response.ok ? ((await response.json()) as unknown) : undefined };
+}
+
+/**
+ * `promise`, or a rejection with the signal's `AbortError` once `signal`
+ * aborts, whichever comes first. A body stream that an injected `fetch` never
+ * ties to the signal is then still bounded by the attempt's timeout.
+ */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  const { promise: aborted, reject } = Promise.withResolvers<never>();
+  const onAbort = () => reject(signal.reason);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener("abort", onAbort, { once: true });
+  // Neither loser may surface as an unhandled rejection.
+  aborted.catch(() => {});
+  promise.catch(() => {});
+  return Promise.race([promise, aborted]).finally(() =>
+    signal.removeEventListener("abort", onAbort),
+  );
 }
 
 /**

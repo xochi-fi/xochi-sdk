@@ -16,6 +16,11 @@ import {
   type TransportLogLevel,
   type XochiClientOptions,
 } from "./client.js";
+import {
+  assertFeeBreakdownInvariants,
+  computeFeeBreakdown,
+  feeBreakdownReconcilable,
+} from "../fee.js";
 import type { QuoteRequest } from "../machine/wire.js";
 
 interface Recorded {
@@ -288,6 +293,65 @@ describe("quote retries only a transient gateway status (#420)", () => {
     expect((err as Error).message).toBe("Invalid response format");
   });
 
+  it("rejects a 200 whose declared fields break the contract, as an invalid response", async () => {
+    const breakdown = {
+      tier: "standard",
+      asset_class: "stable",
+      solver_fee_bps: 8,
+      solver_fee: "800",
+      price_impact_bps: 0,
+      price_impact: "0",
+      venue_fee_bps: 8,
+      venue_fee: "800",
+      routing_fee_bps: 6,
+      routing_fee: "600",
+      total_bps: 22,
+      total_fee: "2200",
+      total_usd: "0.0022",
+      surplus_share_pct: 15,
+    };
+    for (const bad of [
+      { fee_breakdown: breakdown }, // no gas_floor
+      { fee_breakdown: { ...breakdown, gas_floor: { amount: "1", usd: "0" }, solver_fee: "0.5" } },
+      { settlement_options: "public" },
+      { eip712: "sign-me" },
+      { claim_info: { factory_address: 7, salt: 0 } },
+    ]) {
+      const { c } = client(() => okQuote(bad));
+      const err = await rejection(c.getQuote(req));
+      expect((err as Error).message).toBe("Invalid response format");
+    }
+
+    const { c } = client(() => json({ success: true, intent_id: "xi", status: 5 }));
+    expect(((await rejection(c.execute(execRequest))) as Error).message).toBe(
+      "Invalid response format",
+    );
+  });
+
+  it("tolerates an undeclared top-level field, and carries escrow through for the signer", async () => {
+    const escrow = { order_id: "0xabc" };
+    const { c } = client(() => okQuote({ escrow, some_future_field: 1 }));
+    const quote = await c.getQuote(req);
+    expect(quote.escrow).toEqual(escrow);
+  });
+
+  it("hands back a fee breakdown that passes the fee reconciliation as-is", async () => {
+    const core = computeFeeBreakdown({ input_amount: req.fromAmount, asset_class: "stable" });
+    const { c } = client(() =>
+      okQuote({
+        fee_breakdown: { ...core, gas_floor: { amount: "0", usd: "0" }, total_usd: "0.0022" },
+        fee_denomination: "origin",
+      }),
+    );
+    const quote = await c.getQuote(req);
+    if (!quote.feeBreakdown) throw new Error("no fee breakdown");
+    const served = feeBreakdownReconcilable(quote.feeBreakdown);
+    expect(() =>
+      assertFeeBreakdownInvariants(served, { input_amount: req.fromAmount }),
+    ).not.toThrow();
+    expect(() => assertFeeBreakdownInvariants({ ...served, total_fee: "1" })).toThrow(/total_fee/);
+  });
+
   it("sends the snake_case request to /api/intent/quote", async () => {
     const { c, calls } = client(() => okQuote());
     await c.getQuote({ ...req, refundAddress: "TWd4WrZ9wn84f5x1hZhL4DHvk738ns5jwb" });
@@ -304,13 +368,55 @@ describe("quote retries only a transient gateway status (#420)", () => {
   });
 });
 
+describe("timeouts cover the response body", () => {
+  // A 200 whose headers arrive and whose body never finishes.
+  const stalled = () =>
+    new Response(new ReadableStream({ start() {} }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  const fast = { timeouts: { requestTimeoutMs: 50, executeTimeoutMs: 50 } };
+
+  it("reports a stalled status body as a transient failure", async () => {
+    const { c } = client(stalled, fast);
+    expect(await c.getIntentStatus("xi_stall")).toBeNull();
+  });
+
+  it("fails a stalled execute body as a timeout, once", async () => {
+    const { c, calls } = client(stalled, fast);
+    const err = await rejection(c.execute(execRequest));
+    expect((err as Error).name).toBe("AbortError");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("times out a stalled quote body without retrying it", async () => {
+    const { c, calls } = client(stalled, fast);
+    expect(((await rejection(c.getQuote(req))) as Error).name).toBe("AbortError");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("times out a stalled stealth-claim body", async () => {
+    const { c } = client(stalled, fast);
+    expect(
+      await c.prepareStealthClaim({ counterfactualAddress: "0x1", recipientAddress: "0x2" }),
+    ).toEqual({ ok: false, error: "Request timeout" });
+  });
+});
+
 // A pull-bearing quote embeds a single-use ERC-3009 nonce. It must never be
 // served from the TTL cache: a re-quote after a failed execute has to mint a
 // fresh nonce. A non-pull quote is safely cacheable.
 describe("getQuote cache", () => {
   it("refetches a pull-bearing quote on every call (never cached)", async () => {
     const { c, calls } = client(() =>
-      okQuote({ pull_authorization: { message: { nonce: "0xdeadbeef" } } }),
+      okQuote({
+        pull_authorization: {
+          domain: { name: "USD Coin", version: "2", chainId: 8453 },
+          types: { ReceiveWithAuthorization: [{ name: "nonce", type: "bytes32" }] },
+          primaryType: "ReceiveWithAuthorization",
+          message: { nonce: "0xdeadbeef" },
+        },
+      }),
     );
     await c.getQuote(req);
     await c.getQuote(req);

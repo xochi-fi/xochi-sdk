@@ -114,6 +114,20 @@ describe("intent checked against the request at ingest", () => {
     expect(s.intent.status).toBe("quoted");
     expect(s.intent.quoteId).toBe("xq_1");
   });
+
+  it("refuses a signable quote carrying an escrow envelope, before any prompt", () => {
+    const s = new Session();
+    const fx = s.quoteWith({ ...quote(), escrow: { order_id: "0xabc" } });
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toBe(REFUSED_QUOTE);
+    expect(JSON.stringify(fx)).toContain("escrow envelope");
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toHaveLength(0);
+
+    // `escrow: null` is the served schema's "escrow off".
+    const off = new Session();
+    off.quoteWith({ ...quote(), escrow: null });
+    expect(off.intent.status).toBe("quoted");
+  });
 });
 
 describe("origin pull checked against the intent at ingest", () => {
@@ -339,6 +353,18 @@ describe("deposit attestation verified by the signer at ingest", () => {
     expect(s.intent.error).toBe(
       "We were given a deposit address that was already in use. Reload the page and try again.",
     );
+  });
+
+  it("refuses a deposit route carrying an escrow envelope, never showing the address", async () => {
+    const fields = signedFields();
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    const fx = allocate(s, {
+      ...depositQuote(fields, await attest(fields)),
+      escrow: { order_id: "0x1" },
+    });
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toBe(REFUSED_DEPOSIT);
+    expect(JSON.stringify(fx)).toContain("escrow envelope");
   });
 });
 

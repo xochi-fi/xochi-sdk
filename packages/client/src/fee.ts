@@ -21,6 +21,7 @@
 // here.
 
 import { z } from "zod";
+import type { FeeBreakdown } from "./shared/types.js";
 
 export type FeeTier = "standard" | "trusted" | "verified" | "premium" | "institutional";
 export type AssetClass = "stable" | "volatile";
@@ -295,6 +296,24 @@ export interface FeeReconcilable {
   venue_fee: string;
   routing_fee: string;
   total_fee: string;
+}
+
+// The reconciliation fields of a decoded quote's `feeBreakdown` (the camelCase
+// `FeeBreakdown` that `getQuote` and the machine hand back), so the client's own
+// quote can go through `assertFeeBreakdownInvariants` without the wire object.
+export function feeBreakdownReconcilable(fb: FeeBreakdown): FeeReconcilable {
+  return {
+    solver_fee_bps: fb.solverFeeBps,
+    price_impact_bps: fb.priceImpactBps,
+    venue_fee_bps: fb.venueFeeBps,
+    routing_fee_bps: fb.routingFeeBps,
+    total_bps: fb.totalBps,
+    solver_fee: fb.solverFee,
+    price_impact: fb.priceImpact,
+    venue_fee: fb.venueFee,
+    routing_fee: fb.routingFee,
+    total_fee: fb.totalFee,
+  };
 }
 
 // Structurally verifies a wire `fee_breakdown` reconciles. Throws with context
