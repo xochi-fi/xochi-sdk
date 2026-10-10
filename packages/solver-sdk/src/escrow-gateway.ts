@@ -217,6 +217,21 @@ function providerOf(runner: ethers.Signer): ethers.Provider {
   return runner.provider;
 }
 
+// Run `run` after every earlier `run` queued under `key` has settled. `queues`
+// holds each key's tail, which only orders the NEXT run (a run's own failure
+// still reaches its caller); a key is deleted once its queue drains.
+async function queued<T>(queues: Map<string, Promise<unknown>>, key: string, run: () => Promise<T>): Promise<T> {
+  const prior = queues.get(key) ?? Promise.resolve();
+  const mine = prior.then(run, run);
+  const tail = mine.catch(() => undefined);
+  queues.set(key, tail);
+  try {
+    return await mine;
+  } finally {
+    if (queues.get(key) === tail) queues.delete(key);
+  }
+}
+
 function receiptOutcome(txHash: Hex, receipt: ethers.TransactionReceipt): TxOutcome {
   return receipt.status === 1
     ? { status: "confirmed", txHash, blockNumber: receipt.blockNumber }
@@ -537,6 +552,13 @@ export class OnchainEscrowGateway {
   // on: a second acceptance against inventory the first still owes reverts
   // its fill, and an accepted no-show is slashed.
   private readonly owedFills = new Map<string, { chainId: bigint; token: string; amount: bigint; deadline: bigint }>();
+  // One inventory reservation at a time per `${destinationChainId}:${token}`
+  // (lowercased): two `accept`s for different orders of one token that both
+  // read the balance and `owedFills` before either records itself would both
+  // pass on inventory that covers one fill. Held from the accept-time checks
+  // through recording the signed acceptance in `owedFills`, never through
+  // `onSigned` or the POST. A key is dropped once its queue drains.
+  private readonly acceptQueues = new Map<string, Promise<unknown>>();
   // The running claim loop per orderId: a second caller joins it.
   private readonly claimLoops = new Map<string, Promise<ClaimLoopResult>>();
   private readonly warn: (message: string, orderId: string) => void;
@@ -776,46 +798,60 @@ export class OnchainEscrowGateway {
   }
 
   // `accept` for a fillId with no acceptance yet: refuse or sign, then post.
+  // A fresh acceptance holds its token's `acceptQueues` slot from the checks
+  // through recording `owedFills`, so the next one's preflight counts it. A
+  // `resume` re-signing reads nothing the slot protects and must not refuse,
+  // so it takes no slot: it is already owed, and a fresh accept that misses it
+  // is the same as one that ran just before it.
   private async signAcceptance(prepared: PreparedFill, o: AcceptOptions): Promise<AcceptedFill> {
     const dest = this.destination(prepared.destinationChainId, prepared.orderId);
     const self = await dest.signer.getAddress();
     this.requireOwnFillAuth(prepared, self);
-    if (!o.resume) {
-      const fillInclusionSec = this.opts.fillInclusionSec ?? 60;
-      const acceptBudgetSec = this.opts.acceptBudgetSec ?? 15;
-      const nowSec = await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer), providerOf(dest.signer)]);
-      // Past `acceptBy` the venue refuses the acceptance and gives the order to
-      // the reserve (no slash, the award is lost). Refuse while nothing is out
-      // rather than sign an acceptance that may land after the window.
-      if (nowSec + BigInt(acceptBudgetSec) > prepared.acceptBy) {
-        throw new EscrowRefusalError(
-          "accept_window_closed",
-          `now ${nowSec} + accept budget ${acceptBudgetSec}s passes the venue's acceptBy ${prepared.acceptBy}`,
-          prepared.orderId,
-        );
-      }
-      checkFillWindow({
-        nowSec,
-        refundableAt: prepared.lock.refundableAt,
-        fillAuthDeadline: prepared.fillAuth.deadline,
-        fillInclusionSec: fillInclusionSec + acceptBudgetSec,
+    const sign = async () => {
+      const acceptance = fillAcceptanceFor(prepared);
+      const digest = fillAcceptanceDigest(prepared.bondDomain, acceptance);
+      const signature = (await signFillAcceptance(dest.signer, prepared.bondDomain, acceptance)).toLowerCase() as Hex;
+      const signed = { acceptance, digest, signature };
+      // Recorded BEFORE the POST: the obligation starts when the bytes leave.
+      this.accepted.set(prepared.fillId, signed);
+      this.recordOwedFill(prepared);
+      this.acceptedOrders.set(prepared.orderId.toLowerCase(), {
+        fillId: prepared.fillId,
+        fillAuthDigest: fillAuthDigest(prepared.fillAuthDomain, prepared.fillAuth),
       });
-      await this.fillPreflight(prepared, dest, true);
-      const unclaimable = await this.claimReadiness(prepared);
-      if (unclaimable) throw new EscrowRefusalError(unclaimable.code, `${unclaimable.message}; not accepting`, prepared.orderId);
-    }
-
-    const acceptance = fillAcceptanceFor(prepared);
-    const digest = fillAcceptanceDigest(prepared.bondDomain, acceptance);
-    const signature = (await signFillAcceptance(dest.signer, prepared.bondDomain, acceptance)).toLowerCase() as Hex;
-    const signed = { acceptance, digest, signature };
-    // Recorded BEFORE the POST: the obligation starts when the bytes leave.
-    this.accepted.set(prepared.fillId, signed);
-    this.recordOwedFill(prepared);
-    this.acceptedOrders.set(prepared.orderId.toLowerCase(), {
-      fillId: prepared.fillId,
-      fillAuthDigest: fillAuthDigest(prepared.fillAuthDomain, prepared.fillAuth),
-    });
+      return signed;
+    };
+    const key = `${BigInt(prepared.destinationChainId)}:${prepared.fillAuth.token.toLowerCase()}`;
+    // Checked inside the slot: the wait for it may have run past `acceptBy`.
+    const signed = o.resume
+      ? await sign()
+      : await queued(this.acceptQueues, key, async () => {
+          const fillInclusionSec = this.opts.fillInclusionSec ?? 60;
+          const acceptBudgetSec = this.opts.acceptBudgetSec ?? 15;
+          const nowSec = await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer), providerOf(dest.signer)]);
+          // Past `acceptBy` the venue refuses the acceptance and gives the order to
+          // the reserve (no slash, the award is lost). Refuse while nothing is out
+          // rather than sign an acceptance that may land after the window.
+          if (nowSec + BigInt(acceptBudgetSec) > prepared.acceptBy) {
+            throw new EscrowRefusalError(
+              "accept_window_closed",
+              `now ${nowSec} + accept budget ${acceptBudgetSec}s passes the venue's acceptBy ${prepared.acceptBy}`,
+              prepared.orderId,
+            );
+          }
+          checkFillWindow({
+            nowSec,
+            refundableAt: prepared.lock.refundableAt,
+            fillAuthDeadline: prepared.fillAuth.deadline,
+            fillInclusionSec: fillInclusionSec + acceptBudgetSec,
+          });
+          await this.fillPreflight(prepared, dest, true);
+          const unclaimable = await this.claimReadiness(prepared);
+          if (unclaimable) throw new EscrowRefusalError(unclaimable.code, `${unclaimable.message}; not accepting`, prepared.orderId);
+          return sign();
+        });
+    // Outside the slot: `owedFills` already holds this fill, and a caller's
+    // persistence or the venue must not stall every other accept of the token.
     await o.onSigned?.(signed);
     return { ...signed, receipt: await this.postAcceptance(prepared, signed, o.signal) };
   }
@@ -1967,18 +2003,7 @@ export class OnchainEscrowGateway {
   private async serialized<T>(signer: ethers.Signer, send: (key: string) => Promise<T>): Promise<T> {
     const { chainId } = await providerOf(signer).getNetwork();
     const key = `${chainId}:${(await signer.getAddress()).toLowerCase()}`;
-    const run = () => send(key);
-    const prior = this.sendQueues.get(key) ?? Promise.resolve();
-    const mine = prior.then(run, run);
-    // `tail` only orders the NEXT send; this send's own failure still reaches
-    // its caller through `await mine`.
-    const tail = mine.catch(() => undefined);
-    this.sendQueues.set(key, tail);
-    try {
-      return await mine;
-    } finally {
-      if (this.sendQueues.get(key) === tail) this.sendQueues.delete(key);
-    }
+    return queued(this.sendQueues, key, () => send(key));
   }
 
   // The SolverBond this solver is bonded on: its address and the chain its

@@ -775,6 +775,89 @@ describe("OnchainEscrowGateway.accept: onSigned", () => {
   });
 });
 
+// Two accepts of one token on one destination each read the balance and the
+// fills already owed before either records itself: both pass on inventory that
+// covers one fill, and the fill that loses is a slashed no-show.
+describe("OnchainEscrowGateway.accept: one inventory reservation at a time per token", () => {
+  const TOKEN2 = "0x5555555555555555555555555555555555555555";
+  // Another order (and fillId) of `token`, tagged by a byte.
+  const orderOf = (w: World, tag: string, token = TOKEN): PreparedFill => {
+    const fillId = ("0x" + tag.repeat(32)) as Hex;
+    return { ...w.prepared, orderId: ("0x" + tag.repeat(31) + "00") as Hex, fillId, fillAuth: { ...w.prepared.fillAuth, fillId, token } };
+  };
+  // Holds every `eth_call` to `to` on the destination until released.
+  const holdCalls = (w: World, to: string) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let held!: () => void;
+    const reached = new Promise<void>((resolve) => (held = resolve));
+    const send = w.dest.send.bind(w.dest);
+    w.dest.send = async (method, params) => {
+      if (method === "eth_call" && (params as [{ to: string }])[0].to.toLowerCase() === to.toLowerCase()) {
+        held();
+        await gate;
+      }
+      return send(method, params);
+    };
+    return { release, reached };
+  };
+
+  it("accepts one of two concurrent orders the balance covers once, refusing the other insufficient_inventory", async () => {
+    const w = world();
+    const results = await Promise.allSettled([w.gateway.accept(orderOf(w, "e1")), w.gateway.accept(orderOf(w, "e2"))]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(refused.map((r) => (r.reason as EscrowRefusalError).code)).toEqual(["insufficient_inventory"]);
+    expect(w.posts.count).toBe(1);
+  });
+
+  it("does not hold an accept of another token behind one in its preflight", async () => {
+    const w = world();
+    w.dest.stub(TOKEN2, ["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"], {
+      balanceOf: () => AMOUNT,
+      allowance: () => AMOUNT,
+    });
+    const hold = holdCalls(w, TOKEN);
+    const first = w.gateway.accept(orderOf(w, "e1"));
+    await hold.reached;
+    await w.gateway.accept(orderOf(w, "e2", TOKEN2));
+    expect(w.posts.count).toBe(1);
+    hold.release();
+    await first;
+    expect(w.posts.count).toBe(2);
+  });
+
+  it("releases the token to the next accept when one refuses, recording nothing for it", async () => {
+    const w = world();
+    const late = { ...orderOf(w, "e1"), acceptBy: BigInt(T0) };
+    const [refused, accepted] = await Promise.allSettled([w.gateway.accept(late), w.gateway.accept(orderOf(w, "e2"))]);
+    expect(refused.status === "rejected" && (refused.reason as EscrowRefusalError).code).toBe("accept_window_closed");
+    expect(accepted.status).toBe("fulfilled");
+    expect(await refusalOf(w.gateway.fill(late))).toBe("not_accepted");
+  });
+
+  // The fill is owed once recorded, so a caller persisting it (or a slow venue)
+  // must not stall the next accept of the token, which counts it.
+  it("lets the next accept of the token in while onSigned runs, counting the signed fill", async () => {
+    const w = world();
+    let release!: () => void;
+    const persisted = new Promise<void>((resolve) => (release = resolve));
+    let signed!: () => void;
+    const onSignedCalled = new Promise<void>((resolve) => (signed = resolve));
+    const first = w.gateway.accept(orderOf(w, "e1"), {
+      onSigned: async () => {
+        signed();
+        await persisted;
+      },
+    });
+    await onSignedCalled;
+    expect(await refusalOf(w.gateway.accept(orderOf(w, "e2")))).toBe("insufficient_inventory");
+    release();
+    await first;
+    expect(w.posts.count).toBe(1);
+  });
+});
+
 describe("OnchainEscrowGateway.resolveTx", () => {
   // The slot alone does not prove a hash dead: a load-balanced RPC can serve
   // the nonce from a fresh backend and the receipt from a lagging one.
