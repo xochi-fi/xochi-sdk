@@ -41,6 +41,8 @@ const quote = await xochi.getQuote(request);
 - Quotes are retried only on 502, 503 and 504. A 503 waits for its `Retry-After` before the retry. A 500 or any 4xx fails at once. A 429 or 503 surfaces as `ApiError` with `retryAfter`, an absolute unix-seconds time for a countdown.
 - `execute` makes exactly one attempt. Any failure there is in doubt (the origin pull may already have moved funds), so settle it by polling `getIntentStatus` and never by re-posting.
 - `getIntentStatus` returns the decoded status on a 200, `{ notFound: true }` on a 404, and `null` on a transient failure.
+- Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema`; a declared field that breaks its schema fails the call with `Invalid response format`. An undeclared top-level field is tolerated, and a served `escrow` envelope is carried through (`QuoteResponse.escrow`) so the fund-safety checks can refuse it.
+- Each attempt's timeout (`requestTimeoutMs`, or `executeTimeoutMs` for `execute`) covers the response body too: a body that stalls after its headers fails the attempt with an `AbortError`, so `getIntentStatus` returns `null` and `execute` fails into its in-doubt path instead of hanging.
 
 ## State machine
 
@@ -75,9 +77,12 @@ Every check fails closed: a quote that fails one is never offered for signing, a
 | Pull recipient (`to` / `spender`) against the caller's per-chain, per-method pin (`MachineConfig.pullRecipients`). A pinned chain that omits the method in use refuses.                             | Quote ingest                   | `@xochi/signer` `assertPullMatchesIntent`                                                                  |
 | Pull recipient against the solver allowlist and pull amount against the quoted input. An unpinned Permit2 spender always refuses.                                                                   | Before signature 2             | this package (`validateSolverPin`)                                                                         |
 | Intent `toAmount` and `recipient` match what was rendered                                                                                                                                           | At Confirm, before signature 1 | this package (`validatePayoutPin`)                                                                         |
+| The served `preview` flag equals the one requested, and any intent a quote carries is checked, preview or not. Confirm signs only what the receipt calls signable (`canSignQuote`).                 | Quote ingest, Confirm          | this package                                                                                               |
+| No `escrow` envelope (`null` reads as absent): this package does not run the escrow binding                                                                                                         | Quote ingest                   | `@xochi/signer` `assertNoEscrowEnvelope`, `assertDepositQuoteMatchesRequest`                               |
 | Non-EVM recipient echo, stealth factory allowlist, payout to the destination-token contract, deposit-route vs origin-chain agreement                                                                | Quote ingest                   | this package                                                                                               |
 | Deposit attestation (v3, 18 fields) recovers to the caller's pinned signer. The request half of the message is rebuilt from the request.                                                            | Quote ingest, deposit routes   | `@xochi/signer` `depositAttestationFields` + `verifyDepositAttestation`                                    |
 | Attested amount and displayed recipient match the request, the payout is not the destination-token contract, and at least 60s of deposit window remains                                             | Quote ingest, deposit routes   | `@xochi/signer` `assertDepositQuoteMatchesRequest`                                                         |
+| At least 60s of the attested deposit window remains when the address is revealed; otherwise the quote expires                                                                                       | At Confirm, deposit routes     | this package                                                                                               |
 | Deposit address not already issued under another intent this session                                                                                                                                | Quote ingest, deposit routes   | `@xochi/signer` `recordDepositAddress`                                                                     |
 | Resolved settlement type is stated and equals the requested one; deposit attestation is a 65-byte signature                                                                                         | Quote ingest, deposit routes   | this package                                                                                               |
 | A stored deposit binding belongs to the record it was stored under (intent and owner) and still verifies                                                                                            | On resume                      | `verifyStoredDeposit` (wraps the signer)                                                                   |
@@ -86,7 +91,7 @@ Every check fails closed: a quote that fails one is never offered for signing, a
 Rules these checks keep:
 
 - **Pins come from you.** `pullRecipients` and `depositAttestationSigner` are your configuration. Don't build them from `/api/capabilities`: an advertisement arrives over the same channel as the quote it would vouch for, and a fallback matrix is not an advertisement at all.
-- **No injectable clock.** The intent deadline and the deposit window are checked against the wall clock. An optional `now` on a security assertion would be a bypass. In tests, move the system clock instead.
+- **No injectable clock.** The intent deadline and the deposit window are checked against the wall clock at quote ingest. An optional `now` on a security assertion would be a bypass. In tests, move the system clock instead. The machine's own timing (the quote countdown, the sign preflight, and the deposit-window recheck before an address is revealed) runs on each message's `now`, which the host stamps from its clock, so a recorded session replays exactly.
 - **Refusals keep the machine's shape.** Signer errors become the same refusals the machine already had: a quote refusal (`status: "failed"`, with the detail in the error log effect), a deposit `DepositAttestationResult` (`unavailable` or `addressReuse`), or a claim `claim_op_unverified`.
 - **Stored records are re-verified, never trusted.** `verifyStoredDeposit` takes whatever storage hands back. A binding written by a build from before `@xochi/signer` (camelCase fields, `resolvedSettlementType`) is renamed to the signer's field set and then checked exactly like a current one; a record in any other shape, missing a field or carrying a mistyped one refuses. On success the result carries the proven binding (`result.stored`): render that object, never the record you passed in, and write that one back if you re-persist the record.
 - **Statuses are Xochi's.** The lifecycle uses Xochi's own `IntentStatus` vocabulary and transition table. `isTerminalIntentStatus` is `completed | failed | expired | refunded`.
@@ -97,21 +102,29 @@ Rules these checks keep:
 
 ```ts
 import {
-  computeFeeBreakdown,
-  parseFeeBreakdown,
   assertFeeBreakdownInvariants,
+  computeFeeBreakdown,
+  feeBreakdownReconcilable,
 } from "@xochi/client";
 
 const predicted = computeFeeBreakdown({
-  input_amount: "1000000",
+  input_amount: request.fromAmount,
   asset_class: "stable",
   trust_score: 0,
 });
-const served = parseFeeBreakdown(quote.fee_breakdown); // throws on a malformed object
-assertFeeBreakdownInvariants(served, { input_amount: "1000000" }); // throws if the layers do not reconcile
+
+const quote = await xochi.getQuote(request);
+if (quote.feeBreakdown) {
+  // Throws if the layers do not reconcile. The per-layer amount check needs the
+  // base the layers are measured in, so pass it only when that is the origin token.
+  assertFeeBreakdownInvariants(
+    feeBreakdownReconcilable(quote.feeBreakdown),
+    quote.feeDenomination === "origin" ? { input_amount: request.fromAmount } : {},
+  );
+}
 ```
 
-`parseFeeBreakdown` validates the solver's `fee_breakdown` (`LayeredFeeBreakdownSchema`: `gas_floor` and `total_usd` optional, unknown keys kept). It is a different contract from the Worker's `FeeBreakdownSchema`, which requires both, adds `discount` and strips unknown keys. The invariant check reconciles the split; it does not bound the rate, so capping it is your policy.
+`getQuote` has already validated the Worker's `fee_breakdown` against `FeeBreakdownSchema` and decoded it to camelCase; `feeBreakdownReconcilable` hands its layers to the check. For a solver `fee_breakdown` object you hold in wire form, `parseFeeBreakdown` validates it (`LayeredFeeBreakdownSchema`: `gas_floor` and `total_usd` optional, unknown keys kept) and its result goes to `assertFeeBreakdownInvariants` directly. That is a different contract from the Worker's `FeeBreakdownSchema`, which requires both, adds `discount` and strips unknown keys. The invariant check reconciles the split; it does not bound the rate, so capping it is your policy.
 
 ## License
 
