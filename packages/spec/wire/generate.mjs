@@ -107,12 +107,7 @@ import {
   readTimeoutMs,
   resolveServer,
 } from "../../../scripts/probe-lib.mjs";
-import {
-  IncomparableDocument,
-  compareContract,
-  numberTokens,
-  sanitize,
-} from "./compare.mjs";
+import { IncomparableDocument, compareContract, numberTokens, sanitize } from "./compare.mjs";
 import { MalformedDocument, formatDocument } from "./format.mjs";
 
 installCrashHandlers();
@@ -123,11 +118,7 @@ const OUT_SHA = fileURLToPath(new URL("./openapi.sha256", import.meta.url));
 
 // Every flag consents to something; a misspelling of any must not read as
 // having been passed, and must not read as having been accepted either.
-const FLAGS = new Set([
-  "--allow-breaking",
-  "--allow-non-prod",
-  "--first-vendoring",
-]);
+const FLAGS = new Set(["--allow-breaking", "--allow-non-prod", "--first-vendoring"]);
 const argv = process.argv.slice(2);
 const unknown = argv.filter((a) => !FLAGS.has(a));
 if (unknown.length > 0) {
@@ -354,7 +345,9 @@ const compared = () => {
     throw e;
   }
 };
-const { breaking, stale, stats } = prior.absent ? { breaking: [], stale: [], stats: null } : compared();
+const { breaking, stale, stats } = prior.absent
+  ? { breaking: [], stale: [], stats: null }
+  : compared();
 
 const servedSha = createHash("sha256").update(got.text).digest("hex");
 // One table, one column width. Three separate literals for the same column is
@@ -473,7 +466,9 @@ if (breaking.length > 0 && !ALLOW_BREAKING) {
   );
 }
 if (breaking.length > 0) {
-  console.log(`--allow-breaking: writing anyway, accepting ${breaking.length} BREAKING finding(s).`);
+  console.log(
+    `--allow-breaking: writing anyway, accepting ${breaking.length} BREAKING finding(s).`,
+  );
 }
 
 // Two writes are not one. Both temporaries land first, then the digest is moved

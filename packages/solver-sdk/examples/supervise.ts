@@ -4,7 +4,13 @@
 // startup order of resumed work, standing allowance and bidding
 // (`startSolver`).
 
-import { VenueVersionSkewError, type PreparedFill, type Solver, type SolverClient, type TxOutcome } from "../src/index";
+import {
+  VenueVersionSkewError,
+  type PreparedFill,
+  type Solver,
+  type SolverClient,
+  type TxOutcome,
+} from "../src/index";
 import type { EscrowSolver } from "./escrow-solver";
 import { errorText, FillStateFile, LeaseHeldError } from "./fill-state-file";
 
@@ -40,7 +46,9 @@ export function installStopSignals(
   for (const [signal, number] of Object.entries(STOP_SIGNALS) as [NodeJS.Signals, number][]) {
     target.on(signal, () => {
       if (!abort.signal.aborted) {
-        log(`${signal}: stopping bids; draining in-flight fills and claims (send it again to abandon them)`);
+        log(
+          `${signal}: stopping bids; draining in-flight fills and claims (send it again to abandon them)`,
+        );
         return abort.abort();
       }
       log(`${signal} again: abandoning ${background.pending.join(", ") || "nothing"}`);
@@ -72,7 +80,9 @@ export function solverStop(
   return {
     signal: AbortSignal.any([signals.signal, lease.signal]),
     leaseLost: (reason) => {
-      log(`state lease lost (${reason}): stopping bids; nothing more is written to SOLVER_STATE_FILE`);
+      log(
+        `state lease lost (${reason}): stopping bids; nothing more is written to SOLVER_STATE_FILE`,
+      );
       lease.abort();
     },
   };
@@ -117,7 +127,10 @@ export class BackgroundTasks {
     const settled: Promise<void> = task
       .then(
         () => undefined,
-        (err: unknown) => this.log(`${label}: background task failed: ${err instanceof Error ? err.message : String(err)}`),
+        (err: unknown) =>
+          this.log(
+            `${label}: background task failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
       )
       .then(() => {
         this.running.delete(settled);
@@ -186,7 +199,8 @@ export async function superviseFeed(
   }
   o.log(`stop  ${fatal ? fatal.message : "aborted"}: no further bids`);
   const pending = background.pending;
-  if (pending.length > 0) o.log(`drain waiting for ${pending.length} in-flight task(s): ${pending.join(", ")}`);
+  if (pending.length > 0)
+    o.log(`drain waiting for ${pending.length} in-flight task(s): ${pending.join(", ")}`);
   await background.drained();
   if (fatal) throw fatal;
 }
@@ -195,7 +209,10 @@ export async function superviseFeed(
 // feed: a definite skew (`VenueVersionSkewError`) is FATAL rather than
 // retried, while an unreachable or unreadable capabilities endpoint is a plain
 // error and is retried like any other venue outage.
-export function runAgainstVenue(client: SolverClient, solver: Solver): (signal: AbortSignal) => Promise<void> {
+export function runAgainstVenue(
+  client: SolverClient,
+  solver: Solver,
+): (signal: AbortSignal) => Promise<void> {
   return async (signal) => {
     try {
       await client.run(solver, signal);
@@ -293,10 +310,15 @@ export async function startSolver(o: {
     let timer: NodeJS.Timeout | undefined;
     const lapsed = new Promise<void>((resolve) => {
       const ms = (Number(prepared.fillAuth.deadline) + 60) * 1000 - Date.now();
-      timer = setTimeout(() => {
-        o.log(`allowance never stood before fill ${prepared.orderId}'s FillAuth deadline; following it without one`);
-        resolve();
-      }, Math.max(0, ms));
+      timer = setTimeout(
+        () => {
+          o.log(
+            `allowance never stood before fill ${prepared.orderId}'s FillAuth deadline; following it without one`,
+          );
+          resolve();
+        },
+        Math.max(0, ms),
+      );
     });
     return Promise.race([standing, lapsed]).finally(() => {
       clearTimeout(timer);
@@ -318,20 +340,30 @@ export async function startSolver(o: {
 
   // Retry the fills' approval until it stands, for as long as `needed()`
   // resumed fills depend on it.
-  const retryUntilStanding = (initial: Promise<TxOutcome | null>, needed: () => number, what: string) =>
+  const retryUntilStanding = (
+    initial: Promise<TxOutcome | null>,
+    needed: () => number,
+    what: string,
+  ) =>
     o.background.track(
       "allowance",
       (async () => {
         let pending = initial;
         let delayMs = o.retryMs ?? 5_000;
         for (;;) {
-          const result = await pending.then((outcome) => (outcome ? describe(outcome) : "none sent"), errorText);
+          const result = await pending.then(
+            (outcome) => (outcome ? describe(outcome) : "none sent"),
+            errorText,
+          );
           if (stands) {
-            if (pending !== first) o.log(`allowance standing (${result}) for ${needed()} resumed fill(s)`);
+            if (pending !== first)
+              o.log(`allowance standing (${result}) for ${needed()} resumed fill(s)`);
             return;
           }
           if (needed() === 0) return;
-          o.log(`allowance not standing (${result}); ${needed()} resumed fill(s) ${what}; retrying in ${delayMs}ms`);
+          o.log(
+            `allowance not standing (${result}); ${needed()} resumed fill(s) ${what}; retrying in ${delayMs}ms`,
+          );
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (needed() === 0) return;
           pending = attempt();
@@ -351,7 +383,9 @@ export async function startSolver(o: {
         throw new FatalSolverStop(`standing allowance: ${errorText(err)}; not bidding`);
       }
       if (approval && approval.status !== "confirmed") {
-        throw new FatalSolverStop(`standing allowance not confirmed: ${describe(approval)}; not bidding`);
+        throw new FatalSolverStop(
+          `standing allowance not confirmed: ${describe(approval)}; not bidding`,
+        );
       }
       await Promise.all(sent);
       let topUp: TxOutcome | null;
@@ -370,9 +404,13 @@ export async function startSolver(o: {
           last = topUp;
           retryUntilStanding(Promise.resolve(topUp), () => unsettled, "are still being driven");
         }
-        throw new FatalSolverStop(`allowance top-up for bidding not confirmed: ${describe(topUp)}; not bidding`);
+        throw new FatalSolverStop(
+          `allowance top-up for bidding not confirmed: ${describe(topUp)}; not bidding`,
+        );
       }
-      o.log(`allowance ${topUp ? describe(topUp) : approval ? describe(approval) : "already standing"}`);
+      o.log(
+        `allowance ${topUp ? describe(topUp) : approval ? describe(approval) : "already standing"}`,
+      );
       bidding = true;
     }
     await o.run(signal);

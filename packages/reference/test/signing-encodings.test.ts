@@ -96,11 +96,7 @@ describe("ERC-3009 nonce normalization", () => {
 
   it("is case-insensitive on the nonce", async () => {
     const lower = await signERC3009(erc3009Quote(FULL_NONCE), "base", TEST_CONFIG);
-    const upper = await signERC3009(
-      erc3009Quote("0x" + "AB".repeat(32)),
-      "base",
-      TEST_CONFIG,
-    );
+    const upper = await signERC3009(erc3009Quote("0x" + "AB".repeat(32)), "base", TEST_CONFIG);
 
     expect(lower.signature).toBe(upper.signature);
   });

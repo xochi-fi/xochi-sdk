@@ -178,7 +178,11 @@ export const SolverEventSchema = z.discriminatedUnion("type", [
 ]);
 
 const fillProof = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("tx_hash"), chainId: z.number().int().positive(), txHash: z.string() }),
+  z.object({
+    kind: z.literal("tx_hash"),
+    chainId: z.number().int().positive(),
+    txHash: z.string(),
+  }),
   z.object({ kind: z.literal("oracle_attestation"), attestation: z.string(), signer: z.string() }),
   z.object({ kind: z.literal("light_client"), header: z.string(), proof: z.string() }),
   z.object({ kind: z.literal("zk"), proof: z.string(), publicInputs: z.array(z.string()) }),
@@ -211,7 +215,9 @@ export const BidSchema = z
     // server's rule -- `z.string()` alone let the EIP-2098 compact form and
     // uppercase hex parse, and both then verified, so one seal had three
     // admissible spellings on the wire.
-    signature: z.string().regex(CANONICAL_BID_SIGNATURE, "must be 0x + 130 lowercase hex digits (65-byte r||s||v)"),
+    signature: z
+      .string()
+      .regex(CANONICAL_BID_SIGNATURE, "must be 0x + 130 lowercase hex digits (65-byte r||s||v)"),
   })
   .passthrough();
 
@@ -247,7 +253,10 @@ export const VenueCapabilitiesSchema = z
       .passthrough()
       .optional(),
     admission: z
-      .object({ model: z.string().optional(), panelSize: z.number().int().nonnegative().optional() })
+      .object({
+        model: z.string().optional(),
+        panelSize: z.number().int().nonnegative().optional(),
+      })
       .passthrough()
       .optional(),
     chains: z.array(z.number().int().positive()).optional(),

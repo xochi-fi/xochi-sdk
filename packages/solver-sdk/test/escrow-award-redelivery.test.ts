@@ -17,7 +17,20 @@ import { signFillAuth, type Hex } from "@xochi/signer";
 
 import { LockStatus, OnchainEscrowGateway, RIDDLER_FILLER_ABI, type Award } from "../src/index";
 import { Revert } from "./fake-chain";
-import { DEST, FILLER, FILL_ID, ORDER_ID, ORIGIN, OUTPUT, T0, VENUE_KEY, announcement, award, codeOf, world } from "./escrow-world";
+import {
+  DEST,
+  FILLER,
+  FILL_ID,
+  ORDER_ID,
+  ORIGIN,
+  OUTPUT,
+  T0,
+  VENUE_KEY,
+  announcement,
+  award,
+  codeOf,
+  world,
+} from "./escrow-world";
 
 describe("one panel award delivered twice (Riddler#1250 re-publication)", () => {
   // Lagging: after the fill lands, the destination RPC still reads
@@ -157,8 +170,19 @@ describe("one order awarded again under a fresh fillId", () => {
   async function awardUnder(fillId: Hex): Promise<Award> {
     const a = await award();
     const f = a.escrow!.fillAuth!;
-    const auth = { fillId, filler: f.filler!, to: f.to!, token: f.token!, amount: f.amount!, deadline: f.deadline! };
-    const signature = await signFillAuth(new ethers.Wallet(VENUE_KEY), { chainId: DEST, verifyingContract: FILLER }, auth);
+    const auth = {
+      fillId,
+      filler: f.filler!,
+      to: f.to!,
+      token: f.token!,
+      amount: f.amount!,
+      deadline: f.deadline!,
+    };
+    const signature = await signFillAuth(
+      new ethers.Wallet(VENUE_KEY),
+      { chainId: DEST, verifyingContract: FILLER },
+      auth,
+    );
     return { ...a, escrow: { ...a.escrow!, fillId, fillAuth: { ...f, ...auth, signature } } };
   }
 
@@ -173,7 +197,8 @@ describe("one order awarded again under a fresh fillId", () => {
     w.dest.stub(FILLER, RIDDLER_FILLER_ABI as unknown as string[], {
       filled: ([fillId]) => filled.has((fillId as string).toLowerCase()),
       fill: ([fillId]) => {
-        if (filled.has((fillId as string).toLowerCase())) throw new Revert("AlreadyFilled", [fillId]);
+        if (filled.has((fillId as string).toLowerCase()))
+          throw new Revert("AlreadyFilled", [fillId]);
       },
     });
     const mined = w.dest.onMined;
@@ -187,7 +212,9 @@ describe("one order awarded again under a fresh fillId", () => {
 
     expect(w.venue.bids).toHaveLength(1);
     expect(new Set(w.venue.accepts.map((a) => a.signature)).size).toBe(1);
-    expect(w.dest.attempts.filter((t) => t.method === "fill").map((t) => t.args![0])).toEqual([FILL_ID]);
+    expect(w.dest.attempts.filter((t) => t.method === "fill").map((t) => t.args![0])).toEqual([
+      FILL_ID,
+    ]);
     // One refusal, whichever layer gives it (the example binds the fillId to
     // the award; the gateway refuses a second fillId per order, pinned in
     // escrow-claim.test.ts "one acceptance per order"), and nothing sent for it.

@@ -76,8 +76,12 @@ describe("fee vectors (SPEC.md Section 4 conformance)", () => {
     const ladder = (asset: AssetClass) =>
       scores.map(
         (trust_score) =>
-          computeFeeBreakdown({ trust_score, asset_class: asset, input_amount: "1000000", attestations: proofs })
-            .total_bps,
+          computeFeeBreakdown({
+            trust_score,
+            asset_class: asset,
+            input_amount: "1000000",
+            attestations: proofs,
+          }).total_bps,
       );
     expect(ladder("stable")).toEqual([22, 19, 15, 12, 10]);
     expect(ladder("volatile")).toEqual([40, 35, 29, 25, 22]);
@@ -127,14 +131,20 @@ describe("price impact curve (k=50, cap=150)", () => {
 });
 
 describe("assertFeeBreakdownInvariants (client reconciliation guard)", () => {
-  const good = computeFeeBreakdown({ trust_score: 0, asset_class: "stable", input_amount: "1000000" });
+  const good = computeFeeBreakdown({
+    trust_score: 0,
+    asset_class: "stable",
+    input_amount: "1000000",
+  });
 
   it("accepts a well-formed breakdown", () => {
     expect(() => assertFeeBreakdownInvariants(good, { input_amount: "1000000" })).not.toThrow();
   });
 
   it("rejects a total_fee that does not equal the sum of layers", () => {
-    expect(() => assertFeeBreakdownInvariants({ ...good, total_fee: "9999" })).toThrow(/layer amounts sum/);
+    expect(() => assertFeeBreakdownInvariants({ ...good, total_fee: "9999" })).toThrow(
+      /layer amounts sum/,
+    );
   });
 
   it("rejects a total_bps that does not equal the layer-bps sum", () => {
@@ -148,13 +158,20 @@ describe("assertFeeBreakdownInvariants (client reconciliation guard)", () => {
 
   it("catches a layer amount that does not match floor(base*bps/10000) when the amount is known", () => {
     expect(() =>
-      assertFeeBreakdownInvariants({ ...good, venue_fee: "601", total_fee: "2201" }, { input_amount: "1000000" }),
+      assertFeeBreakdownInvariants(
+        { ...good, venue_fee: "601", total_fee: "2201" },
+        { input_amount: "1000000" },
+      ),
     ).toThrow(/venue_fee/);
   });
 });
 
 describe("parseFeeBreakdown (zod wire validation)", () => {
-  const good = computeFeeBreakdown({ trust_score: 0, asset_class: "stable", input_amount: "1000000" });
+  const good = computeFeeBreakdown({
+    trust_score: 0,
+    asset_class: "stable",
+    input_amount: "1000000",
+  });
 
   it("parses a valid core object", () => {
     expect(() => parseFeeBreakdown(good)).not.toThrow();
@@ -162,7 +179,12 @@ describe("parseFeeBreakdown (zod wire validation)", () => {
 
   it("tolerates the price-derived envelope and additive fields", () => {
     expect(() =>
-      parseFeeBreakdown({ ...good, gas_floor: { amount: "500", usd: "0.05" }, total_usd: "0.24", future_field: 1 }),
+      parseFeeBreakdown({
+        ...good,
+        gas_floor: { amount: "500", usd: "0.05" },
+        total_usd: "0.24",
+        future_field: 1,
+      }),
     ).not.toThrow();
   });
 
@@ -229,7 +251,12 @@ describe("properties (fixed seed, bounded runs)", () => {
   it("solver + venue bps are independent of ACP/price-impact (only routing/impact move)", () => {
     fc.assert(
       fc.property(arbScore, arbAsset, arbProofs, (trust_score, asset_class, attestations) => {
-        const a = computeFeeBreakdown({ trust_score, asset_class, attestations, input_amount: "1000000" });
+        const a = computeFeeBreakdown({
+          trust_score,
+          asset_class,
+          attestations,
+          input_amount: "1000000",
+        });
         const b = computeFeeBreakdown({
           trust_score,
           asset_class,

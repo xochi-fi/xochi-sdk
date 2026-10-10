@@ -1,7 +1,11 @@
 // Comparison helpers shared by the value checks. Internal: not exported from the barrel.
 
 // Read a value under its snake_case (canonical) or camelCase key, preferring snake_case.
-export function pick(obj: Record<string, unknown> | null | undefined, snakeKey: string, camelKey: string): unknown {
+export function pick(
+  obj: Record<string, unknown> | null | undefined,
+  snakeKey: string,
+  camelKey: string,
+): unknown {
   if (obj == null) return undefined;
   return obj[snakeKey] !== undefined ? obj[snakeKey] : obj[camelKey];
 }

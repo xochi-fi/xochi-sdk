@@ -57,7 +57,12 @@ async function verifyXochi(vec: FixtureVector) {
   return compare(vec, digest, signature, null);
 }
 
-function compare(vec: FixtureVector, digest: string, signature: string, signedObject: string | null): string[] {
+function compare(
+  vec: FixtureVector,
+  digest: string,
+  signature: string,
+  signedObject: string | null,
+): string[] {
   const failures: string[] = [];
 
   if (digest !== vec.expected_digest) {
@@ -69,7 +74,9 @@ function compare(vec: FixtureVector, digest: string, signature: string, signedOb
   }
 
   if (vec.expected_signed_object !== null && signedObject !== vec.expected_signed_object) {
-    failures.push(`signed_object mismatch: got ${signedObject}, expected ${vec.expected_signed_object}`);
+    failures.push(
+      `signed_object mismatch: got ${signedObject}, expected ${vec.expected_signed_object}`,
+    );
   }
 
   // Sanity: recover the signer from the digest+signature and assert it

@@ -114,7 +114,15 @@ import {
   type TxOutcome,
 } from "../src/index";
 import { errorText, type FillStateFile, type PersistedFill } from "./fill-state-file";
-import { BackgroundTasks, describe, openStateFile, runAgainstVenue, solverStop, startSolver, type FillerAllowance } from "./supervise";
+import {
+  BackgroundTasks,
+  describe,
+  openStateFile,
+  runAgainstVenue,
+  solverStop,
+  startSolver,
+  type FillerAllowance,
+} from "./supervise";
 
 // An owed fill whose send is not resolved: possibly landed, never re-sent at a
 // new nonce while it is. `cancelled` belongs here too: the slot was freed at
@@ -138,7 +146,9 @@ function requireEnv(name: string): string {
 const KEY_SHAPE = /^0x[0-9a-fA-F]{64}$/;
 function assertKeyShape(name: string, key: string): void {
   if (!KEY_SHAPE.test(key)) {
-    throw new Error(`${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`);
+    throw new Error(
+      `${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`,
+    );
   }
 }
 
@@ -156,9 +166,12 @@ function envInt(name: string, fallback: bigint): bigint {
 
 function assertVenueUrl(raw: string): void {
   const url = new URL(raw);
-  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  const loopback =
+    url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
   if (url.protocol === "https:" || (url.protocol === "http:" && loopback)) return;
-  throw new Error(`RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${url.origin}`);
+  throw new Error(
+    `RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${url.origin}`,
+  );
 }
 
 export interface Config {
@@ -213,7 +226,10 @@ export class EscrowSolver implements Solver {
   // What this solver priced and signed, by auctionId: the fill is checked
   // against it, never against the award.
   // Pruned once the bid's `validUntilMs` passes: no award can follow it then.
-  private readonly bids = new Map<string, { announcement: IntentAnnouncement; output: string; validUntilMs: number }>();
+  private readonly bids = new Map<
+    string,
+    { announcement: IntentAnnouncement; output: string; validUntilMs: number }
+  >();
   // Bids that were awarded, kept past their first award: Riddler re-publishes
   // an award until it has recorded the delivery (Riddler#1250), so the same
   // award -- same fillId, same FillAuth -- can arrive again inside its
@@ -267,14 +283,23 @@ export class EscrowSolver implements Solver {
   // funded for, a fixed margin over the venue's floor, and only while the
   // inventory to pay it is actually on the destination.
   async quote(a: IntentAnnouncement): Promise<BidDraft | null> {
-    if (a.fromChainId !== this.cfg.origin.chainId || a.toChainId !== this.cfg.dest.chainId) return null;
-    if (a.swapKind !== "exact_input" || a.toToken.toLowerCase() !== this.cfg.dest.token.toLowerCase()) return null;
+    if (a.fromChainId !== this.cfg.origin.chainId || a.toChainId !== this.cfg.dest.chainId)
+      return null;
+    if (
+      a.swapKind !== "exact_input" ||
+      a.toToken.toLowerCase() !== this.cfg.dest.token.toLowerCase()
+    )
+      return null;
     // RiddlerFiller pays a public EVM recipient only; a won stealth or shielded
     // award would be refused after the win, which is a slashable no-show.
     if (a.settlementPreference !== "public") return null;
     this.pruneExpired();
     const output = (BigInt(a.minOutput) * (10_000n + this.cfg.bidBps)) / 10_000n;
-    const erc20 = new ethers.Contract(this.cfg.dest.token, ["function balanceOf(address) view returns (uint256)"], this.destSigner);
+    const erc20 = new ethers.Contract(
+      this.cfg.dest.token,
+      ["function balanceOf(address) view returns (uint256)"],
+      this.destSigner,
+    );
     const held: bigint = await erc20.getFunction("balanceOf")(this.solverId);
     if (held < output) {
       say(`pass  ${a.auctionId}: holds ${held}, would owe ${output}`);
@@ -299,15 +324,20 @@ export class EscrowSolver implements Solver {
   // time alone, as do awards that were never accepted.
   private pruneExpired(): void {
     const now = Date.now();
-    for (const [auctionId, bid] of this.bids) if (bid.validUntilMs < now) this.bids.delete(auctionId);
+    for (const [auctionId, bid] of this.bids)
+      if (bid.validUntilMs < now) this.bids.delete(auctionId);
     for (const [auctionId, entry] of this.awarded) {
-      if (!entry.fillId && entry.validUntilMs !== undefined && entry.validUntilMs < now) this.awarded.delete(auctionId);
+      if (!entry.fillId && entry.validUntilMs !== undefined && entry.validUntilMs < now)
+        this.awarded.delete(auctionId);
     }
   }
 
   async fill(award: Award): Promise<FillReceipt> {
     const redelivered = this.awarded.get(award.auctionId);
-    if (redelivered?.fillId && award.escrow?.fillId?.toLowerCase() !== redelivered.fillId.toLowerCase()) {
+    if (
+      redelivered?.fillId &&
+      award.escrow?.fillId?.toLowerCase() !== redelivered.fillId.toLowerCase()
+    ) {
       throw new Error(
         `award ${award.auctionId} delivered again naming fillId ${award.escrow?.fillId ?? "(none)"}, but this solver ` +
           `accepted fillId ${redelivered.fillId} for it: one acceptance per order, nothing sent`,
@@ -319,7 +349,10 @@ export class EscrowSolver implements Solver {
     // claim still waits on its attestation reads Open in `prepare` and verifies
     // like the first; filling it pays the recipient twice, the lock repays once.
     const persisted = award.escrow?.intentRef ? this.state?.get(award.escrow.intentRef) : undefined;
-    if (persisted && award.escrow?.fillId?.toLowerCase() !== persisted.prepared.fillId.toLowerCase()) {
+    if (
+      persisted &&
+      award.escrow?.fillId?.toLowerCase() !== persisted.prepared.fillId.toLowerCase()
+    ) {
       throw new Error(
         `award ${award.auctionId} names fillId ${award.escrow?.fillId ?? "(none)"} for order ${persisted.prepared.orderId}, ` +
           `which this solver ${persisted.phase} under fillId ${persisted.prepared.fillId} (auction ${persisted.auctionId}): ` +
@@ -339,13 +372,20 @@ export class EscrowSolver implements Solver {
       this.bids.delete(award.auctionId);
       this.awarded.set(award.auctionId, priced);
     }
-    say(`award ${award.auctionId} orderId=${award.escrow?.intentRef ?? "(no escrow)"}${redelivered ? " (delivered again)" : ""}`);
+    say(
+      `award ${award.auctionId} orderId=${award.escrow?.intentRef ?? "(no escrow)"}${redelivered ? " (delivered again)" : ""}`,
+    );
     // Verification failures THROW before anything is sent: the SolverClient
     // reports them through onError, and no inventory moves.
-    if (!priced) throw new Error(`award ${award.auctionId} is for no bid this process signed; not filling`);
+    if (!priced)
+      throw new Error(`award ${award.auctionId} is for no bid this process signed; not filling`);
     const prepared = await this.gateway.prepare(award, {
       announcement: priced.announcement,
-      bid: { auctionId: award.auctionId, orderId: priced.announcement.orderId, output: priced.output },
+      bid: {
+        auctionId: award.auctionId,
+        orderId: priced.announcement.orderId,
+        output: priced.output,
+      },
       originChainId: this.cfg.origin.chainId,
     });
     if (this.state?.holdsUnreadable(prepared.orderId)) {
@@ -379,7 +419,8 @@ export class EscrowSolver implements Solver {
     // solver never decided to give.
     this.awarded.set(award.auctionId, { ...priced, fillId: prepared.fillId });
     const onDisk = this.state?.get(prepared.orderId)?.phase;
-    const persist = !this.noShow && this.state !== undefined && (onDisk === undefined || onDisk === "accepting");
+    const persist =
+      !this.noShow && this.state !== undefined && (onDisk === undefined || onDisk === "accepting");
     const wroteAccepting = persist && onDisk === undefined;
     if (wroteAccepting) this.record(prepared, "accepting");
     let signed = false;
@@ -429,7 +470,11 @@ export class EscrowSolver implements Solver {
       // gateway's own fill, whose claim is already running, or anyone's) and
       // `fill_auth_mismatch` (an order held under another fillId or FillAuth,
       // never to be paid twice).
-      if (err instanceof EscrowRefusalError && (err.code === "already_filled" || err.code === "fill_auth_mismatch")) throw err;
+      if (
+        err instanceof EscrowRefusalError &&
+        (err.code === "already_filled" || err.code === "fill_auth_mismatch")
+      )
+        throw err;
       say(`fill  ${prepared.orderId}: ${errorText(err)}`);
     }
     if (outcome?.status !== "confirmed") {
@@ -442,7 +487,10 @@ export class EscrowSolver implements Solver {
       // so a deterministic revert sends nothing -- following an unresolved
       // send's slot rather than sending at a new nonce, and then runs the
       // claim loop.
-      this.settleInBackground(prepared, outcome?.status === "in_doubt" || outcome?.status === "cancelled" ? outcome : "unsent");
+      this.settleInBackground(
+        prepared,
+        outcome?.status === "in_doubt" || outcome?.status === "cancelled" ? outcome : "unsent",
+      );
       throw new Error(
         `fill ${prepared.orderId} not confirmed (${outcome ? describe(outcome) : "the fill call threw"}); ` +
           `re-driving it until it lands or the FillAuth deadline passes, then claiming`,
@@ -455,7 +503,11 @@ export class EscrowSolver implements Solver {
       auctionId: award.auctionId,
       intentId: award.intentId,
       solverId: award.solverId,
-      proof: { kind: "tx_hash", chainId: Number(prepared.destinationChainId), txHash: outcome.txHash },
+      proof: {
+        kind: "tx_hash",
+        chainId: Number(prepared.destinationChainId),
+        txHash: outcome.txHash,
+      },
     };
   }
 
@@ -479,16 +531,28 @@ export class EscrowSolver implements Solver {
   // or nothing will be sent for it any more, so an approval sent after it
   // queues behind the fill, never ahead; `settled` once the fill is no longer
   // being driven (landed, refused for good, or past its deadline).
-  resume(entry: PersistedFill, allowanceStanding?: Promise<void>): { sent: Promise<void>; settled: Promise<void> } {
-    this.awarded.set(entry.auctionId, { announcement: entry.announcement, output: entry.output, fillId: entry.prepared.fillId });
+  resume(
+    entry: PersistedFill,
+    allowanceStanding?: Promise<void>,
+  ): { sent: Promise<void>; settled: Promise<void> } {
+    this.awarded.set(entry.auctionId, {
+      announcement: entry.announcement,
+      output: entry.output,
+      fillId: entry.prepared.fillId,
+    });
     say(`resume ${entry.prepared.orderId}: ${entry.phase} (auction ${entry.auctionId})`);
     const order = entry.prepared.orderId.toLowerCase();
     if (this.settling.has(order)) return { sent: Promise.resolve(), settled: Promise.resolve() };
     let sent!: () => void;
     let settled!: () => void;
-    const handles = { sent: new Promise<void>((resolve) => (sent = resolve)), settled: new Promise<void>((resolve) => (settled = resolve)) };
+    const handles = {
+      sent: new Promise<void>((resolve) => (sent = resolve)),
+      settled: new Promise<void>((resolve) => (settled = resolve)),
+    };
     this.resumed.set(order, { sent, settled });
-    this.settleInBackground(entry.prepared, entry.phase === "filled" ? undefined : "unsent", () => this.reregister(entry, allowanceStanding));
+    this.settleInBackground(entry.prepared, entry.phase === "filled" ? undefined : "unsent", () =>
+      this.reregister(entry, allowanceStanding),
+    );
     return handles;
   }
 
@@ -506,7 +570,10 @@ export class EscrowSolver implements Solver {
 
   // Before a resumed order's fill or claim: false when nothing is owed,
   // "claim" when only the claim loop is (the fill has landed).
-  private async reregister(entry: PersistedFill, allowanceStanding?: Promise<void>): Promise<boolean | "claim"> {
+  private async reregister(
+    entry: PersistedFill,
+    allowanceStanding?: Promise<void>,
+  ): Promise<boolean | "claim"> {
     const { prepared } = entry;
     if (entry.phase === "accepting") {
       await allowanceStanding; // `accept`'s preflight reads the allowance
@@ -540,7 +607,8 @@ export class EscrowSolver implements Solver {
       await this.gateway.accept(prepared, { onSigned: () => this.record(prepared, "accepted") });
       return true;
     } catch (err) {
-      let filled: boolean | null = err instanceof EscrowRefusalError && err.code === "already_filled" ? true : null;
+      let filled: boolean | null =
+        err instanceof EscrowRefusalError && err.code === "already_filled" ? true : null;
       if (filled === null) {
         try {
           filled = await this.gateway.isFilled(prepared);
@@ -549,7 +617,9 @@ export class EscrowSolver implements Solver {
         }
       }
       if (filled === false) {
-        say(`resume ${prepared.orderId}: not accepting (${errorText(err)}); nothing was sent, dropping it`);
+        say(
+          `resume ${prepared.orderId}: not accepting (${errorText(err)}); nothing was sent, dropping it`,
+        );
         this.forget(prepared.orderId);
         return false;
       }
@@ -571,7 +641,13 @@ export class EscrowSolver implements Solver {
   // reached the disk.
   private record(prepared: PreparedFill, phase: PersistedFill["phase"]): void {
     const priced = this.awarded.get(prepared.auctionId)!;
-    this.state?.put({ auctionId: prepared.auctionId, announcement: priced.announcement, output: priced.output, prepared, phase });
+    this.state?.put({
+      auctionId: prepared.auctionId,
+      announcement: priced.announcement,
+      output: priced.output,
+      prepared,
+      phase,
+    });
   }
 
   private recordBestEffort(prepared: PreparedFill, phase: PersistedFill["phase"]): void {
@@ -592,7 +668,11 @@ export class EscrowSolver implements Solver {
 
   // Start `settle` beside the feed loop, unless a task for this order is
   // already running (`settling`): that one is following the same fill.
-  private settleInBackground(prepared: PreparedFill, owed?: Unresolved | "unsent", before?: () => Promise<boolean | "claim">): void {
+  private settleInBackground(
+    prepared: PreparedFill,
+    owed?: Unresolved | "unsent",
+    before?: () => Promise<boolean | "claim">,
+  ): void {
     const order = prepared.orderId.toLowerCase();
     const label = `${owed ? "fill" : "claim"} ${prepared.orderId}`;
     if (this.settling.has(order)) {
@@ -631,13 +711,20 @@ export class EscrowSolver implements Solver {
   // SOLVER_STATE_FILE only on the claim loop's result.
   private async settle(prepared: PreparedFill, owed?: Unresolved | "unsent"): Promise<void> {
     if (owed) {
-      if (await this.followFill(prepared, owed === "unsent" ? undefined : owed)) this.recordBestEffort(prepared, "filled");
-      else say(`fill  ${prepared.orderId}: not seen landing; running the claim loop anyway, which claims only an attested fill`);
+      if (await this.followFill(prepared, owed === "unsent" ? undefined : owed))
+        this.recordBestEffort(prepared, "filled");
+      else
+        say(
+          `fill  ${prepared.orderId}: not seen landing; running the claim loop anyway, which claims only an attested fill`,
+        );
     }
     this.fillSettled(prepared.orderId);
     let result: ClaimLoopResult;
     try {
-      result = await this.gateway.claimUntilRefundable(prepared, { pollMs: ATTESTATION_POLL_MS, onEvent: say });
+      result = await this.gateway.claimUntilRefundable(prepared, {
+        pollMs: ATTESTATION_POLL_MS,
+        onEvent: say,
+      });
     } catch (err) {
       // Only configuration reaches here (no attestation source): every
       // per-pass failure is retried inside the loop. The order stays
@@ -680,13 +767,18 @@ export class EscrowSolver implements Solver {
       try {
         if (await this.gateway.isFilled(prepared)) return true;
         if (last) {
-          const resolved = await this.gateway.resolveTx(prepared.destinationChainId, last.hashes ?? [last.txHash], last, (blockTag) =>
-            this.gateway.isFilled(prepared, blockTag),
+          const resolved = await this.gateway.resolveTx(
+            prepared.destinationChainId,
+            last.hashes ?? [last.txHash],
+            last,
+            (blockTag) => this.gateway.isFilled(prepared, blockTag),
           );
           if (resolved.status === "confirmed") return true;
         }
         if (nowSec() > deadline + 60n) {
-          say(`fill  ${prepared.orderId}: ${last ? `${last.status} fill ${last.txHash}` : "owed fill"} unresolved past the FillAuth deadline`);
+          say(
+            `fill  ${prepared.orderId}: ${last ? `${last.status} fill ${last.txHash}` : "owed fill"} unresolved past the FillAuth deadline`,
+          );
           return false;
         }
         if (!expired) {
@@ -700,14 +792,20 @@ export class EscrowSolver implements Solver {
         }
       } catch (err) {
         if (err instanceof EscrowRefusalError && err.code === "already_filled") return true;
-        const never = err instanceof EscrowRefusalError && (err.code === "fill_auth_mismatch" || err.code === "not_accepted");
+        const never =
+          err instanceof EscrowRefusalError &&
+          (err.code === "fill_auth_mismatch" || err.code === "not_accepted");
         say(`fill  ${prepared.orderId}: ${errorText(err)}; ${never ? "not filling" : "retrying"}`);
         if (never) return false;
         // Past the deadline nothing more is sent; an `in_doubt` refusal is an
         // earlier send's slot the gateway is following. Either way no later
         // approval can queue ahead of this fill.
         if (err instanceof EscrowRefusalError && err.code === "auth_expired") expired = true;
-        if (err instanceof EscrowRefusalError && (err.code === "auth_expired" || err.code === "in_doubt")) this.fillSent(prepared.orderId);
+        if (
+          err instanceof EscrowRefusalError &&
+          (err.code === "auth_expired" || err.code === "in_doubt")
+        )
+          this.fillSent(prepared.orderId);
       }
       // Global `setTimeout`, so a test's fake timers drive the poll.
       await new Promise((resolve) => setTimeout(resolve, ATTESTATION_POLL_MS));
@@ -738,7 +836,11 @@ function describeClaim(result: ClaimLoopResult): string {
   }
 }
 
-function buildGateway(cfg: Config, transport: HttpSolverTransport, bond?: { rpc: string; address: string }) {
+function buildGateway(
+  cfg: Config,
+  transport: HttpSolverTransport,
+  bond?: { rpc: string; address: string },
+) {
   // `cacheTimeout: -1` keeps ethers from answering identical reads (block
   // times, lock status) from a 250ms cache. Not needed for nonces: the gateway
   // assigns those itself, around any request cache.
@@ -746,9 +848,19 @@ function buildGateway(cfg: Config, transport: HttpSolverTransport, bond?: { rpc:
   const destProvider = rpcProvider(cfg.dest.rpc);
   const destSigner = new ethers.Wallet(cfg.solverKey, destProvider);
   const gateway = new OnchainEscrowGateway({
-    origins: { [cfg.origin.chainId]: { signer: new ethers.Wallet(cfg.claimKey, originProvider), escrow: cfg.origin.escrow } },
+    origins: {
+      [cfg.origin.chainId]: {
+        signer: new ethers.Wallet(cfg.claimKey, originProvider),
+        escrow: cfg.origin.escrow,
+      },
+    },
     destinations: { [cfg.dest.chainId]: { signer: destSigner, fillerContract: cfg.dest.filler } },
-    bond: bond ? { signer: new ethers.Wallet(cfg.solverKey, rpcProvider(bond.rpc)), address: ethers.getAddress(bond.address) } : undefined,
+    bond: bond
+      ? {
+          signer: new ethers.Wallet(cfg.solverKey, rpcProvider(bond.rpc)),
+          address: ethers.getAddress(bond.address),
+        }
+      : undefined,
     attestations: transport,
     acceptances: transport,
     fillInclusionSec: cfg.fillInclusionSec,
@@ -767,8 +879,12 @@ function venueTransport(cfg: Config): HttpSolverTransport {
     apiKey: cfg.apiKey,
     solverId: new ethers.Wallet(cfg.solverKey).address,
     // A gap is intents this solver will never see; a malformed entry is skipped.
-    onFeedGap: (gap) => say(`GAP   dropped=${gap.dropped} reset=${gap.reset} (${gap.requestedCursor}, ${gap.cursor}]`),
-    onInvalidEvent: (err) => say(`skip  malformed feed entry: ${err instanceof Error ? err.message : String(err)}`),
+    onFeedGap: (gap) =>
+      say(
+        `GAP   dropped=${gap.dropped} reset=${gap.reset} (${gap.requestedCursor}, ${gap.cursor}]`,
+      ),
+    onInvalidEvent: (err) =>
+      say(`skip  malformed feed entry: ${err instanceof Error ? err.message : String(err)}`),
   });
 }
 
@@ -777,11 +893,24 @@ function venueTransport(cfg: Config): HttpSolverTransport {
 // as it is. An approval has no on-chain effect to read back, so a slot
 // consumed with no receipt served resolves `not_sent`: the allowance is then
 // re-read, and nothing is ever sent behind an approval still pending.
-export function fillerAllowance(gateway: OnchainEscrowGateway, destSigner: ethers.Wallet, cfg: Config): FillerAllowance {
+export function fillerAllowance(
+  gateway: OnchainEscrowGateway,
+  destSigner: ethers.Wallet,
+  cfg: Config,
+): FillerAllowance {
   return {
     cap: cfg.fillerAllowance,
-    ensure: (sufficient) => gateway.ensureAllowance(destSigner, cfg.dest.token, cfg.dest.filler, cfg.fillerAllowance, { sufficient }),
-    resolve: (outcome) => gateway.resolveTx(cfg.dest.chainId, outcome.hashes ?? [outcome.txHash], outcome, async () => false),
+    ensure: (sufficient) =>
+      gateway.ensureAllowance(destSigner, cfg.dest.token, cfg.dest.filler, cfg.fillerAllowance, {
+        sufficient,
+      }),
+    resolve: (outcome) =>
+      gateway.resolveTx(
+        cfg.dest.chainId,
+        outcome.hashes ?? [outcome.txHash],
+        outcome,
+        async () => false,
+      ),
   };
 }
 
@@ -817,8 +946,13 @@ async function runSolver(noShow: boolean): Promise<void> {
       // `order_id_mismatch: ...`): nothing was sent, and that is the log line.
       onError: (err, event) => say(`error ${event.type}: ${errorText(err)}`),
     });
-    say(`solver ${solverId}  corridor ${cfg.origin.chainId} -> ${cfg.dest.chainId}  escrow ${cfg.origin.escrow}  filler ${cfg.dest.filler}`);
-    if (noShow) say("NO-SHOW DRILL: awards will be won and ACCEPTED, then deliberately not filled (slashable)");
+    say(
+      `solver ${solverId}  corridor ${cfg.origin.chainId} -> ${cfg.dest.chainId}  escrow ${cfg.origin.escrow}  filler ${cfg.dest.filler}`,
+    );
+    if (noShow)
+      say(
+        "NO-SHOW DRILL: awards will be won and ACCEPTED, then deliberately not filled (slashable)",
+      );
 
     // Orders a previous process accepted or filled and did not see claimed
     // resume at once; their fills once an allowance covering them stands,
@@ -873,7 +1007,9 @@ async function runBond(args: string[]): Promise<void> {
       say(`completeWithdrawal: ${describe(await gateway.bondCompleteWithdrawal(arg))}`);
       return;
     default:
-      throw new Error(`unknown bond command ${command ?? "(none)"}; see the header of examples/escrow-solver.ts`);
+      throw new Error(
+        `unknown bond command ${command ?? "(none)"}; see the header of examples/escrow-solver.ts`,
+      );
   }
 }
 

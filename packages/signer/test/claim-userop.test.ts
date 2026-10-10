@@ -95,7 +95,10 @@ function claimCallData(token: string, to: string, amount: bigint, value = 0n): s
   ]);
   return ethers.concat([
     "0xb61d27f6",
-    ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256", "bytes"], [token, value, inner]),
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "uint256", "bytes"],
+      [token, value, inner],
+    ),
   ]);
 }
 
@@ -123,7 +126,9 @@ const EXPECTED = {
 
 describe("computeUserOpHash (parity with Riddler)", () => {
   it("reproduces the server's hash for a sponsored, factory-deploying op", () => {
-    expect(computeUserOpHash(SPONSORED_OP, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).toBe(SPONSORED_HASH);
+    expect(computeUserOpHash(SPONSORED_OP, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).toBe(
+      SPONSORED_HASH,
+    );
   });
 
   it("reproduces the server's hash with no factory and no paymaster", () => {
@@ -141,7 +146,9 @@ describe("computeUserOpHash (parity with Riddler)", () => {
 
   it("is case-insensitive in its addresses (casing is not part of the encoding)", () => {
     const lowered = { ...SPONSORED_OP, sender: COUNTERFACTUAL.toLowerCase() };
-    expect(computeUserOpHash(lowered, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).toBe(SPONSORED_HASH);
+    expect(computeUserOpHash(lowered, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).toBe(
+      SPONSORED_HASH,
+    );
   });
 
   // Every field below is in the preimage. If one is silently dropped, its
@@ -165,9 +172,13 @@ describe("computeUserOpHash (parity with Riddler)", () => {
   ];
 
   it.each(MUTATIONS)("mutating %s moves the hash", (_field, mutation) => {
-    expect(computeUserOpHash({ ...SPONSORED_OP, ...mutation }, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).not.toBe(
-      SPONSORED_HASH,
-    );
+    expect(
+      computeUserOpHash(
+        { ...SPONSORED_OP, ...mutation },
+        ENTRYPOINT_V08_ADDRESS,
+        SPONSORED_CHAIN_ID,
+      ),
+    ).not.toBe(SPONSORED_HASH);
   });
 
   // accountGasLimits packs verification ++ call and gasFees packs priority ++
@@ -184,13 +195,21 @@ describe("computeUserOpHash (parity with Riddler)", () => {
       maxFeePerGas: SPONSORED_OP.maxPriorityFeePerGas,
       maxPriorityFeePerGas: SPONSORED_OP.maxFeePerGas,
     };
-    expect(computeUserOpHash(swappedLimits, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).not.toBe(SPONSORED_HASH);
-    expect(computeUserOpHash(swappedFees, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).not.toBe(SPONSORED_HASH);
+    expect(computeUserOpHash(swappedLimits, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).not.toBe(
+      SPONSORED_HASH,
+    );
+    expect(computeUserOpHash(swappedFees, ENTRYPOINT_V08_ADDRESS, SPONSORED_CHAIN_ID)).not.toBe(
+      SPONSORED_HASH,
+    );
   });
 
   it("refuses a gas field that does not fit the 128 bits ERC-4337 packs it into", () => {
     expect(() =>
-      computeUserOpHash({ ...SPONSORED_OP, callGasLimit: "0x" + "ff".repeat(17) }, ENTRYPOINT_V08_ADDRESS, 10),
+      computeUserOpHash(
+        { ...SPONSORED_OP, callGasLimit: "0x" + "ff".repeat(17) },
+        ENTRYPOINT_V08_ADDRESS,
+        10,
+      ),
     ).toThrow(UserOperationError);
   });
 
@@ -205,9 +224,9 @@ describe("computeUserOpHash (parity with Riddler)", () => {
   ];
 
   it.each(BAD_QUANTITIES)("refuses %o as a quantity (%s)", (value) => {
-    expect(() => computeUserOpHash({ ...SPONSORED_OP, nonce: value }, ENTRYPOINT_V08_ADDRESS, 10)).toThrow(
-      UserOperationError,
-    );
+    expect(() =>
+      computeUserOpHash({ ...SPONSORED_OP, nonce: value }, ENTRYPOINT_V08_ADDRESS, 10),
+    ).toThrow(UserOperationError);
   });
 });
 
@@ -225,7 +244,10 @@ describe("decodeErc20TransferExecute", () => {
     // sign, and nothing a claim ever does.
     const approve = ethers.concat([
       "0x095ea7b3",
-      ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256"], [RECIPIENT, ethers.MaxUint256]),
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [RECIPIENT, ethers.MaxUint256],
+      ),
     ]);
     expect(() => decodeErc20TransferExecute(approve)).toThrow(/execute\(address,uint256,bytes\)/);
   });
@@ -233,11 +255,17 @@ describe("decodeErc20TransferExecute", () => {
   it("refuses an execute() wrapping something other than transfer()", () => {
     const innerApprove = ethers.concat([
       "0x095ea7b3",
-      ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256"], [RECIPIENT, ethers.MaxUint256]),
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [RECIPIENT, ethers.MaxUint256],
+      ),
     ]);
     const callData = ethers.concat([
       "0xb61d27f6",
-      ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256", "bytes"], [OP_USDC, 0, innerApprove]),
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256", "bytes"],
+        [OP_USDC, 0, innerApprove],
+      ),
     ]);
     expect(() => decodeErc20TransferExecute(callData)).toThrow(/transfer\(address,uint256\)/);
   });
@@ -245,7 +273,10 @@ describe("decodeErc20TransferExecute", () => {
   it("refuses an execute() wrapping an empty call", () => {
     const callData = ethers.concat([
       "0xb61d27f6",
-      ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256", "bytes"], [RECIPIENT, 0, "0x"]),
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256", "bytes"],
+        [RECIPIENT, 0, "0x"],
+      ),
     ]);
     expect(() => decodeErc20TransferExecute(callData)).toThrow(/empty call/);
   });
@@ -270,7 +301,9 @@ describe("assertPreparedClaimMatchesRequest", () => {
   // The load-bearing check. Without it every field read off the op is a field
   // read off a struct that has nothing to do with the digest being signed.
   it("refuses a hash that is not the served op's", () => {
-    const prepared = preparedFor(SPONSORED_OP, { userOpHash: ethers.keccak256(ethers.toUtf8Bytes("elsewhere")) });
+    const prepared = preparedFor(SPONSORED_OP, {
+      userOpHash: ethers.keccak256(ethers.toUtf8Bytes("elsewhere")),
+    });
     expect(() => assertPreparedClaimMatchesRequest(prepared, EXPECTED)).toThrow(/is not this op's/);
   });
 
@@ -287,12 +320,19 @@ describe("assertPreparedClaimMatchesRequest", () => {
 
   it("refuses an op that spends from a different account", () => {
     const op = { ...SPONSORED_OP, sender: "0x" + "66".repeat(20) };
-    expect(() => assertPreparedClaimMatchesRequest(preparedFor(op), EXPECTED)).toThrow(/different account/);
+    expect(() => assertPreparedClaimMatchesRequest(preparedFor(op), EXPECTED)).toThrow(
+      /different account/,
+    );
   });
 
   it("refuses an op that also drains the account's native balance", () => {
-    const op = { ...SPONSORED_OP, callData: claimCallData(OP_USDC, RECIPIENT, SWEPT_AMOUNT, 10n ** 18n) };
-    expect(() => assertPreparedClaimMatchesRequest(preparedFor(op), EXPECTED)).toThrow(/native balance/);
+    const op = {
+      ...SPONSORED_OP,
+      callData: claimCallData(OP_USDC, RECIPIENT, SWEPT_AMOUNT, 10n ** 18n),
+    };
+    expect(() => assertPreparedClaimMatchesRequest(preparedFor(op), EXPECTED)).toThrow(
+      /native balance/,
+    );
   });
 
   it("refuses an EntryPoint that is not the canonical v0.8 one", () => {
@@ -347,7 +387,10 @@ describe("assertPreparedClaimMatchesRequest", () => {
       assertPreparedClaimMatchesRequest(prepared, { ...EXPECTED, expectedAmount: "999999" }),
     ).toThrow(/base units/);
     expect(() =>
-      assertPreparedClaimMatchesRequest(prepared, { ...EXPECTED, expectedToken: "0x" + "44".repeat(20) }),
+      assertPreparedClaimMatchesRequest(prepared, {
+        ...EXPECTED,
+        expectedToken: "0x" + "44".repeat(20),
+      }),
     ).toThrow(/sweeps token/);
     expect(
       assertPreparedClaimMatchesRequest(prepared, {
@@ -359,8 +402,12 @@ describe("assertPreparedClaimMatchesRequest", () => {
   });
 
   it("throws XochiClaimMismatchError, not a raw signer error, for a malformed op", () => {
-    const prepared = preparedFor(SPONSORED_OP, { userOperation: { ...SPONSORED_OP, nonce: "not-a-number" } });
-    expect(() => assertPreparedClaimMatchesRequest(prepared, EXPECTED)).toThrow(XochiClaimMismatchError);
+    const prepared = preparedFor(SPONSORED_OP, {
+      userOperation: { ...SPONSORED_OP, nonce: "not-a-number" },
+    });
+    expect(() => assertPreparedClaimMatchesRequest(prepared, EXPECTED)).toThrow(
+      XochiClaimMismatchError,
+    );
   });
 
   // Rollout step 2 (#86): a server predating Riddler#851 serves no op. Warn and
@@ -368,13 +415,16 @@ describe("assertPreparedClaimMatchesRequest", () => {
   // NOT close the gap -- a hostile server can omit the field too -- it is what
   // makes step 3's hard requirement safe to ship.
   describe("staged rollout: absent fields warn instead of refusing", () => {
-    it.each([["userOperation"], ["entryPoint"]])("reports %s as unverified rather than throwing", (field) => {
-      const prepared = preparedFor(SPONSORED_OP, { [field]: undefined });
-      const result = assertPreparedClaimMatchesRequest(prepared, EXPECTED);
-      expect(result.verified).toBe(false);
-      expect(result.reason).toContain(field);
-      expect(result.reason).toContain("Riddler#851");
-    });
+    it.each([["userOperation"], ["entryPoint"]])(
+      "reports %s as unverified rather than throwing",
+      (field) => {
+        const prepared = preparedFor(SPONSORED_OP, { [field]: undefined });
+        const result = assertPreparedClaimMatchesRequest(prepared, EXPECTED);
+        expect(result.verified).toBe(false);
+        expect(result.reason).toContain(field);
+        expect(result.reason).toContain("Riddler#851");
+      },
+    );
 
     // Without this there is no configuration in which a caller actually gets the
     // guarantee the check exists to provide -- they wait for the rollout or take

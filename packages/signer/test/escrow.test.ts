@@ -94,7 +94,9 @@ describe("computeDestCommitment", () => {
   });
 
   it("rejects a zero or short blinding and an empty intentId", () => {
-    expect(() => computeDestCommitment({ ...opening, blinding: "0x" + "00".repeat(32) })).toThrow(/non-zero/);
+    expect(() => computeDestCommitment({ ...opening, blinding: "0x" + "00".repeat(32) })).toThrow(
+      /non-zero/,
+    );
     expect(() => computeDestCommitment({ ...opening, blinding: "0x1234" })).toThrow(/32 bytes/);
     expect(() => computeDestCommitment({ ...opening, intentId: "" })).toThrow(/intentId/);
   });
@@ -117,7 +119,11 @@ describe("computeOrderId", () => {
 
   it("is case-insensitive in its address fields", () => {
     expect(
-      computeOrderId({ ...terms, fromToken: ethers.getAddress(USDC_BASE), escrow: ethers.getAddress(ESCROW) }),
+      computeOrderId({
+        ...terms,
+        fromToken: ethers.getAddress(USDC_BASE),
+        escrow: ethers.getAddress(ESCROW),
+      }),
     ).toBe(ORDER_ID);
   });
 });
@@ -125,84 +131,114 @@ describe("computeOrderId", () => {
 describe("OpenAuth", () => {
   it("signatures recover to the test signer", async () => {
     // PUBLIC Hardhat/Anvil test key #0. Never fund it.
-    const wallet = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+    const wallet = new ethers.Wallet(
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    );
     const domain = { chainId: 8453, verifyingContract: ESCROW };
     const sig = await signOpenAuth(wallet, domain, ORDER_ID, 1900000000);
     expect(ethers.getBytes(sig).length).toBe(65);
-    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000000), sig)).toBe(wallet.address);
-    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000001), sig)).not.toBe(wallet.address);
+    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000000), sig)).toBe(
+      wallet.address,
+    );
+    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000001), sig)).not.toBe(
+      wallet.address,
+    );
   });
 });
 
 // Riddler's EIP712.uint/1 refuses these, so a signer that coerced them would
 // sign a value the venue/contract side never admits ("0x10" -> 16, "" -> 0).
-describe.each(["0x10", "", " 5"])("strict uint parsing on every escrow signer, digest and domain (%j)", (bad) => {
-  // PUBLIC Hardhat/Anvil test key #0. Never fund it.
-  const wallet = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
-  const domain = { chainId: 8453, verifyingContract: ESCROW };
-  const badDomain = { chainId: bad, verifyingContract: ESCROW };
-  const fa: FillAuth = { fillId: ORDER_ID, filler: wallet.address, to: RECIPIENT, token: USDC_OP, amount: "5", deadline: "1900000000" };
-  const claim: SlashClaim = {
-    orderId: ORDER_ID,
-    solver: wallet.address,
-    beneficiary: SIGNER,
-    notional: "100000000",
-    originChainId: "8453",
-    escrow: ESCROW,
-    deadline: "1900000000",
-  };
-  const acc: FillAcceptance = {
-    orderId: ORDER_ID,
-    originChainId: "8453",
-    escrow: ESCROW,
-    filler: wallet.address,
-    deadline: "1900000000",
-    fillAuth: ORDER_ID,
-  };
-  const UINT = /base-10 uint256/;
+describe.each(["0x10", "", " 5"])(
+  "strict uint parsing on every escrow signer, digest and domain (%j)",
+  (bad) => {
+    // PUBLIC Hardhat/Anvil test key #0. Never fund it.
+    const wallet = new ethers.Wallet(
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    );
+    const domain = { chainId: 8453, verifyingContract: ESCROW };
+    const badDomain = { chainId: bad, verifyingContract: ESCROW };
+    const fa: FillAuth = {
+      fillId: ORDER_ID,
+      filler: wallet.address,
+      to: RECIPIENT,
+      token: USDC_OP,
+      amount: "5",
+      deadline: "1900000000",
+    };
+    const claim: SlashClaim = {
+      orderId: ORDER_ID,
+      solver: wallet.address,
+      beneficiary: SIGNER,
+      notional: "100000000",
+      originChainId: "8453",
+      escrow: ESCROW,
+      deadline: "1900000000",
+    };
+    const acc: FillAcceptance = {
+      orderId: ORDER_ID,
+      originChainId: "8453",
+      escrow: ESCROW,
+      filler: wallet.address,
+      deadline: "1900000000",
+      fillAuth: ORDER_ID,
+    };
+    const UINT = /base-10 uint256/;
 
-  it("OpenAuth: signer expiry and every domain chainId", async () => {
-    await expect(signOpenAuth(wallet, domain, ORDER_ID, bad)).rejects.toThrow(UINT);
-    await expect(signOpenAuth(wallet, badDomain, ORDER_ID, 1900000000)).rejects.toThrow(UINT);
-    expect(() => openAuthDomainSeparator(badDomain)).toThrow(UINT);
-    expect(() => openAuthDigest(badDomain, ORDER_ID, 1900000000)).toThrow(UINT);
-  });
+    it("OpenAuth: signer expiry and every domain chainId", async () => {
+      await expect(signOpenAuth(wallet, domain, ORDER_ID, bad)).rejects.toThrow(UINT);
+      await expect(signOpenAuth(wallet, badDomain, ORDER_ID, 1900000000)).rejects.toThrow(UINT);
+      expect(() => openAuthDomainSeparator(badDomain)).toThrow(UINT);
+      expect(() => openAuthDigest(badDomain, ORDER_ID, 1900000000)).toThrow(UINT);
+    });
 
-  it("FillAuth: amount, deadline and domain chainId", async () => {
-    for (const a of [{ ...fa, amount: bad }, { ...fa, deadline: bad }]) {
-      expect(() => fillAuthStructHash(a)).toThrow(UINT);
-      expect(() => fillAuthDigest(domain, a)).toThrow(UINT);
-      await expect(signFillAuth(wallet, domain, a)).rejects.toThrow(UINT);
-    }
-    expect(() => fillAuthDomainSeparator(badDomain)).toThrow(UINT);
-    await expect(signFillAuth(wallet, badDomain, fa)).rejects.toThrow(UINT);
-  });
+    it("FillAuth: amount, deadline and domain chainId", async () => {
+      for (const a of [
+        { ...fa, amount: bad },
+        { ...fa, deadline: bad },
+      ]) {
+        expect(() => fillAuthStructHash(a)).toThrow(UINT);
+        expect(() => fillAuthDigest(domain, a)).toThrow(UINT);
+        await expect(signFillAuth(wallet, domain, a)).rejects.toThrow(UINT);
+      }
+      expect(() => fillAuthDomainSeparator(badDomain)).toThrow(UINT);
+      await expect(signFillAuth(wallet, badDomain, fa)).rejects.toThrow(UINT);
+    });
 
-  it("FillAttestation: domain chainId", async () => {
-    expect(() => fillAttestationDomainSeparator(badDomain)).toThrow(UINT);
-    await expect(signFillAttestation(wallet, badDomain, ORDER_ID, RECIPIENT)).rejects.toThrow(UINT);
-  });
+    it("FillAttestation: domain chainId", async () => {
+      expect(() => fillAttestationDomainSeparator(badDomain)).toThrow(UINT);
+      await expect(signFillAttestation(wallet, badDomain, ORDER_ID, RECIPIENT)).rejects.toThrow(
+        UINT,
+      );
+    });
 
-  it("SlashAttestation: notional, originChainId, deadline and domain chainId", async () => {
-    for (const c of [{ ...claim, notional: bad }, { ...claim, originChainId: bad }, { ...claim, deadline: bad }]) {
-      expect(() => slashAttestationStructHash(c)).toThrow(UINT);
-      expect(() => slashAttestationDigest(domain, c)).toThrow(UINT);
-      await expect(signSlashAttestation(wallet, domain, c)).rejects.toThrow(UINT);
-    }
-    expect(() => slashAttestationDomainSeparator(badDomain)).toThrow(UINT);
-    await expect(signSlashAttestation(wallet, badDomain, claim)).rejects.toThrow(UINT);
-  });
+    it("SlashAttestation: notional, originChainId, deadline and domain chainId", async () => {
+      for (const c of [
+        { ...claim, notional: bad },
+        { ...claim, originChainId: bad },
+        { ...claim, deadline: bad },
+      ]) {
+        expect(() => slashAttestationStructHash(c)).toThrow(UINT);
+        expect(() => slashAttestationDigest(domain, c)).toThrow(UINT);
+        await expect(signSlashAttestation(wallet, domain, c)).rejects.toThrow(UINT);
+      }
+      expect(() => slashAttestationDomainSeparator(badDomain)).toThrow(UINT);
+      await expect(signSlashAttestation(wallet, badDomain, claim)).rejects.toThrow(UINT);
+    });
 
-  it("FillAcceptance: originChainId, deadline and domain chainId", async () => {
-    for (const a of [{ ...acc, originChainId: bad }, { ...acc, deadline: bad }]) {
-      expect(() => fillAcceptanceStructHash(a)).toThrow(UINT);
-      expect(() => fillAcceptanceDigest(domain, a)).toThrow(UINT);
-      await expect(signFillAcceptance(wallet, domain, a)).rejects.toThrow(UINT);
-    }
-    expect(() => fillAcceptanceDomainSeparator(badDomain)).toThrow(UINT);
-    await expect(signFillAcceptance(wallet, badDomain, acc)).rejects.toThrow(UINT);
-  });
-});
+    it("FillAcceptance: originChainId, deadline and domain chainId", async () => {
+      for (const a of [
+        { ...acc, originChainId: bad },
+        { ...acc, deadline: bad },
+      ]) {
+        expect(() => fillAcceptanceStructHash(a)).toThrow(UINT);
+        expect(() => fillAcceptanceDigest(domain, a)).toThrow(UINT);
+        await expect(signFillAcceptance(wallet, domain, a)).rejects.toThrow(UINT);
+      }
+      expect(() => fillAcceptanceDomainSeparator(badDomain)).toThrow(UINT);
+      await expect(signFillAcceptance(wallet, badDomain, acc)).rejects.toThrow(UINT);
+    });
+  },
+);
 
 describe("assertEscrowBinding", () => {
   const good: EscrowBinding = {
@@ -214,7 +250,13 @@ describe("assertEscrowBinding", () => {
     terms,
     opening,
     quotedOrderId: ORDER_ID,
-    pullAuth: { kind: "erc3009", to: ESCROW, token: USDC_BASE, amount: "100000000", nonce: ORDER_ID },
+    pullAuth: {
+      kind: "erc3009",
+      to: ESCROW,
+      token: USDC_BASE,
+      amount: "100000000",
+      nonce: ORDER_ID,
+    },
     expectedEscrows: { 8453: ESCROW },
   };
 
@@ -223,7 +265,13 @@ describe("assertEscrowBinding", () => {
   const resealed = (o: DestOpening): EscrowBinding => {
     const t = { ...terms, destCommitment: computeDestCommitment(o) };
     const id = computeOrderId(t);
-    return { ...good, opening: o, terms: t, quotedOrderId: id, pullAuth: { ...good.pullAuth, nonce: id } as EscrowBinding["pullAuth"] };
+    return {
+      ...good,
+      opening: o,
+      terms: t,
+      quotedOrderId: id,
+      pullAuth: { ...good.pullAuth, nonce: id } as EscrowBinding["pullAuth"],
+    };
   };
 
   it("accepts a faithful erc3009 and permit2 binding and returns the orderId", () => {
@@ -232,47 +280,59 @@ describe("assertEscrowBinding", () => {
       assertEscrowBinding({
         ...good,
         recipient: ethers.getAddress(RECIPIENT),
-        pullAuth: { kind: "permit2", spender: ESCROW, token: USDC_BASE, amount: "100000000", witnessOrderId: ORDER_ID },
+        pullAuth: {
+          kind: "permit2",
+          spender: ESCROW,
+          token: USDC_BASE,
+          amount: "100000000",
+          witnessOrderId: ORDER_ID,
+        },
       }),
     ).toBe(ORDER_ID);
   });
 
   it("rejects a recipient swap", () => {
-    expect(() => assertEscrowBinding(resealed({ ...opening, recipient: "0x" + "66".repeat(20) }))).toThrow(
-      /opening.recipient/,
-    );
+    expect(() =>
+      assertEscrowBinding(resealed({ ...opening, recipient: "0x" + "66".repeat(20) })),
+    ).toThrow(/opening.recipient/);
   });
 
   it("rejects a token swap", () => {
-    expect(() => assertEscrowBinding(resealed({ ...opening, toToken: "0x" + "77".repeat(20) }))).toThrow(
-      /opening.toToken/,
-    );
+    expect(() =>
+      assertEscrowBinding(resealed({ ...opening, toToken: "0x" + "77".repeat(20) })),
+    ).toThrow(/opening.toToken/);
   });
 
   it("rejects toAmount below minOut", () => {
-    expect(() => assertEscrowBinding(resealed({ ...opening, toAmount: "99699999" }))).toThrow(/below minOut/);
+    expect(() => assertEscrowBinding(resealed({ ...opening, toAmount: "99699999" }))).toThrow(
+      /below minOut/,
+    );
   });
 
   it("rejects a zero blinding", () => {
-    expect(() => assertEscrowBinding({ ...good, opening: { ...opening, blinding: "0x" + "00".repeat(32) } })).toThrow(
-      /non-zero/,
-    );
+    expect(() =>
+      assertEscrowBinding({ ...good, opening: { ...opening, blinding: "0x" + "00".repeat(32) } }),
+    ).toThrow(/non-zero/);
   });
 
   it("rejects a destCommitment that does not open to the opening", () => {
-    expect(() => assertEscrowBinding({ ...good, terms: { ...terms, destCommitment: "0x" + "99".repeat(32) } })).toThrow(
-      /destCommitment mismatch/,
-    );
+    expect(() =>
+      assertEscrowBinding({ ...good, terms: { ...terms, destCommitment: "0x" + "99".repeat(32) } }),
+    ).toThrow(/destCommitment mismatch/);
   });
 
   it("rejects a quoted orderId that is not the recomputed one", () => {
-    expect(() => assertEscrowBinding({ ...good, quotedOrderId: "0x" + "ab".repeat(32) })).toThrow(/orderId mismatch/);
+    expect(() => assertEscrowBinding({ ...good, quotedOrderId: "0x" + "ab".repeat(32) })).toThrow(
+      /orderId mismatch/,
+    );
   });
 
   it("rejects terms naming a different escrow", () => {
     const t = { ...terms, escrow: "0x" + "88".repeat(20) };
     const id = computeOrderId(t);
-    expect(() => assertEscrowBinding({ ...good, terms: t, quotedOrderId: id })).toThrow(/pinned escrow/);
+    expect(() => assertEscrowBinding({ ...good, terms: t, quotedOrderId: id })).toThrow(
+      /pinned escrow/,
+    );
   });
 
   // The finding: every escrow value in a quote is the venue's. A hostile venue
@@ -294,82 +354,135 @@ describe("assertEscrowBinding", () => {
     expect(() =>
       assertEscrowBinding({
         ...hostile,
-        pullAuth: { kind: "permit2", spender: ATTACKER, token: USDC_BASE, amount: "100000000", witnessOrderId: id },
+        pullAuth: {
+          kind: "permit2",
+          spender: ATTACKER,
+          token: USDC_BASE,
+          amount: "100000000",
+          witnessOrderId: id,
+        },
       }),
     ).toThrow(/is not the pinned escrow for chain 8453/);
   });
 
   it("requires the escrow pin and refuses an origin chain it does not cover", () => {
-    const without = (pin: unknown) => ({ ...good, expectedEscrows: pin as EscrowBinding["expectedEscrows"] });
+    const without = (pin: unknown) => ({
+      ...good,
+      expectedEscrows: pin as EscrowBinding["expectedEscrows"],
+    });
     for (const pin of [undefined, null, [], ESCROW]) {
       expect(() => assertEscrowBinding(without(pin))).toThrow(/expectedEscrows is required/);
     }
-    expect(() => assertEscrowBinding(without({}))).toThrow(/no pinned escrow for origin chain 8453/);
-    expect(() => assertEscrowBinding(without({ 1: ESCROW }))).toThrow(/no pinned escrow for origin chain 8453/);
+    expect(() => assertEscrowBinding(without({}))).toThrow(
+      /no pinned escrow for origin chain 8453/,
+    );
+    expect(() => assertEscrowBinding(without({ 1: ESCROW }))).toThrow(
+      /no pinned escrow for origin chain 8453/,
+    );
     // Keys are matched by canonical decimal only; a padded key does not alias 8453.
-    expect(() => assertEscrowBinding(without({ "08453": ESCROW }))).toThrow(/no pinned escrow for origin chain 8453/);
+    expect(() => assertEscrowBinding(without({ "08453": ESCROW }))).toThrow(
+      /no pinned escrow for origin chain 8453/,
+    );
   });
 
-  it.each([["blank", ""], ["malformed", "0x1234"], ["zero", "0x" + "00".repeat(20)], ["non-string", 42]])(
-    "refuses a %s pinned escrow entry",
-    (_, entry) => {
-      expect(() =>
-        assertEscrowBinding({ ...good, expectedEscrows: { 8453: entry } as unknown as EscrowBinding["expectedEscrows"] }),
-      ).toThrow(/pinned escrow for origin chain 8453 is not a non-zero EVM address/);
-    },
-  );
+  it.each([
+    ["blank", ""],
+    ["malformed", "0x1234"],
+    ["zero", "0x" + "00".repeat(20)],
+    ["non-string", 42],
+  ])("refuses a %s pinned escrow entry", (_, entry) => {
+    expect(() =>
+      assertEscrowBinding({
+        ...good,
+        expectedEscrows: { 8453: entry } as unknown as EscrowBinding["expectedEscrows"],
+      }),
+    ).toThrow(/pinned escrow for origin chain 8453 is not a non-zero EVM address/);
+  });
 
   it("matches the pin case-insensitively and keyed by terms.fromChainId", () => {
-    expect(assertEscrowBinding({ ...good, expectedEscrows: { 1: "0x" + "88".repeat(20), 8453: ethers.getAddress(ESCROW) } })).toBe(
-      ORDER_ID,
-    );
+    expect(
+      assertEscrowBinding({
+        ...good,
+        expectedEscrows: { 1: "0x" + "88".repeat(20), 8453: ethers.getAddress(ESCROW) },
+      }),
+    ).toBe(ORDER_ID);
   });
 
   it("rejects a pull-auth whose to/spender is not the escrow", () => {
-    expect(() => assertEscrowBinding({ ...good, pullAuth: { ...good.pullAuth, to: SIGNER } as EscrowBinding["pullAuth"] })).toThrow(
-      /spender\/to/,
-    );
     expect(() =>
-      assertEscrowBinding({ ...good, pullAuth: { kind: "permit2", spender: SIGNER, token: USDC_BASE, amount: "100000000", witnessOrderId: ORDER_ID } }),
+      assertEscrowBinding({
+        ...good,
+        pullAuth: { ...good.pullAuth, to: SIGNER } as EscrowBinding["pullAuth"],
+      }),
+    ).toThrow(/spender\/to/);
+    expect(() =>
+      assertEscrowBinding({
+        ...good,
+        pullAuth: {
+          kind: "permit2",
+          spender: SIGNER,
+          token: USDC_BASE,
+          amount: "100000000",
+          witnessOrderId: ORDER_ID,
+        },
+      }),
     ).toThrow(/spender\/to/);
   });
 
   it("rejects a depositor that is not the signer", () => {
-    expect(() => assertEscrowBinding({ ...good, signer: "0x" + "55".repeat(20) })).toThrow(/depositor/);
+    expect(() => assertEscrowBinding({ ...good, signer: "0x" + "55".repeat(20) })).toThrow(
+      /depositor/,
+    );
   });
 
   it("rejects a fromToken that is not the pull-auth token", () => {
     expect(() =>
-      assertEscrowBinding({ ...good, pullAuth: { ...good.pullAuth, token: "0x" + "56".repeat(20) } as EscrowBinding["pullAuth"] }),
+      assertEscrowBinding({
+        ...good,
+        pullAuth: { ...good.pullAuth, token: "0x" + "56".repeat(20) } as EscrowBinding["pullAuth"],
+      }),
     ).toThrow(/fromToken/);
   });
 
   it("rejects a fromAmount that is not the pull-auth amount", () => {
     expect(() =>
-      assertEscrowBinding({ ...good, pullAuth: { ...good.pullAuth, amount: "100000001" } as EscrowBinding["pullAuth"] }),
+      assertEscrowBinding({
+        ...good,
+        pullAuth: { ...good.pullAuth, amount: "100000001" } as EscrowBinding["pullAuth"],
+      }),
     ).toThrow(/fromAmount/);
   });
 
   it("rejects an erc3009 nonce that is not the orderId", () => {
     expect(() =>
-      assertEscrowBinding({ ...good, pullAuth: { ...good.pullAuth, nonce: "0x" + "cd".repeat(32) } as EscrowBinding["pullAuth"] }),
+      assertEscrowBinding({
+        ...good,
+        pullAuth: { ...good.pullAuth, nonce: "0x" + "cd".repeat(32) } as EscrowBinding["pullAuth"],
+      }),
     ).toThrow(/nonce/);
   });
 
   it("rejects terms delivering on a chain other than the intent's", () => {
     const t2 = { ...terms, toChainId: 42161 };
     const id = computeOrderId(t2);
-    const resealedChain = { ...good, terms: t2, quotedOrderId: id, pullAuth: { ...good.pullAuth, nonce: id } as EscrowBinding["pullAuth"] };
+    const resealedChain = {
+      ...good,
+      terms: t2,
+      quotedOrderId: id,
+      pullAuth: { ...good.pullAuth, nonce: id } as EscrowBinding["pullAuth"],
+    };
     expect(() => assertEscrowBinding(resealedChain)).toThrow(/toChainId/);
-    expect(() => assertEscrowBinding({ ...good, toChainId: undefined as unknown as number })).toThrow(/toChainId/);
+    expect(() =>
+      assertEscrowBinding({ ...good, toChainId: undefined as unknown as number }),
+    ).toThrow(/toChainId/);
     expect(assertEscrowBinding({ ...good, toChainId: "10" })).toBe(ORDER_ID);
   });
 
   it("rejects a permit2 witness orderId that is not the orderId", () => {
     const p2 = { kind: "permit2", spender: ESCROW, token: USDC_BASE, amount: "100000000" } as const;
-    expect(() => assertEscrowBinding({ ...good, pullAuth: { ...p2, witnessOrderId: "0x" + "cd".repeat(32) } })).toThrow(
-      /witness orderId/,
-    );
+    expect(() =>
+      assertEscrowBinding({ ...good, pullAuth: { ...p2, witnessOrderId: "0x" + "cd".repeat(32) } }),
+    ).toThrow(/witness orderId/);
     expect(() =>
       assertEscrowBinding({ ...good, pullAuth: p2 as unknown as EscrowBinding["pullAuth"] }),
     ).toThrow(/witness orderId/);
@@ -385,18 +498,24 @@ describe("assertEscrowBinding", () => {
   );
 
   it("rejects a uint256 overflow and an unsafe number", () => {
-    expect(() => computeOrderId({ ...terms, fillDeadline: (1n << 256n).toString() })).toThrow(/uint256/);
+    expect(() => computeOrderId({ ...terms, fillDeadline: (1n << 256n).toString() })).toThrow(
+      /uint256/,
+    );
     expect(() => computeOrderId({ ...terms, fromAmount: 2 ** 60 })).toThrow(/base-10 uint256/);
   });
 });
 
 describe("deriveDestBlinding", () => {
   it("rejects a zero-length key", () => {
-    expect(() => deriveDestBlinding(new Uint8Array(0), 8453, ESCROW, "intent-0001")).toThrow(/non-empty/);
+    expect(() => deriveDestBlinding(new Uint8Array(0), 8453, ESCROW, "intent-0001")).toThrow(
+      /non-empty/,
+    );
     expect(() => deriveDestBlinding("0x", 8453, ESCROW, "intent-0001")).toThrow(/non-empty/);
   });
 
   it("rejects a non-decimal fromChainId", () => {
-    expect(() => deriveDestBlinding("0x01", "0x2105", ESCROW, "intent-0001")).toThrow(/base-10 uint256/);
+    expect(() => deriveDestBlinding("0x01", "0x2105", ESCROW, "intent-0001")).toThrow(
+      /base-10 uint256/,
+    );
   });
 });

@@ -142,7 +142,8 @@ export class SolverClient {
       }
       this.transport = opts.transport;
     } else {
-      if (!opts.baseUrl) throw new Error("SolverClient: baseUrl is required when no transport is injected");
+      if (!opts.baseUrl)
+        throw new Error("SolverClient: baseUrl is required when no transport is injected");
       this.transport = new HttpSolverTransport({
         baseUrl: opts.baseUrl,
         apiKey: opts.apiKey,
@@ -228,7 +229,9 @@ export class SolverClient {
   // words rather than borrowing the reachability one.
   private async assertVenueRfcVersion(signal?: AbortSignal): Promise<void> {
     const silent = (why: string): Error =>
-      new Error(`SolverClient: refusing to run -- the venue did not tell me its RFC version: ${why}`);
+      new Error(
+        `SolverClient: refusing to run -- the venue did not tell me its RFC version: ${why}`,
+      );
 
     if (!this.transport.getCapabilities) {
       throw silent(
@@ -263,7 +266,10 @@ export class SolverClient {
     if (advertised !== SOLVER_RFC_VERSION) throw new VenueVersionSkewError(advertised);
   }
 
-  private async handleAnnouncement(solver: Solver, event: Extract<SolverEvent, { type: "announcement" }>): Promise<void> {
+  private async handleAnnouncement(
+    solver: Solver,
+    event: Extract<SolverEvent, { type: "announcement" }>,
+  ): Promise<void> {
     const { announcement } = event;
     if (this.now() >= announcement.closesAt) return; // window already closed
     const draft = await solver.quote(announcement);
@@ -341,10 +347,13 @@ export class HttpSolverTransport implements SolverTransport {
   async *events(signal?: AbortSignal): AsyncIterable<SolverEvent> {
     while (!signal?.aborted) {
       const requestedCursor = this.cursor;
-      const res = await fetch(`${this.baseUrl}/solver/intents/stream?since=${encodeURIComponent(requestedCursor)}`, {
-        headers: this.headers,
-        signal,
-      });
+      const res = await fetch(
+        `${this.baseUrl}/solver/intents/stream?since=${encodeURIComponent(requestedCursor)}`,
+        {
+          headers: this.headers,
+          signal,
+        },
+      );
       if (!res.ok) throw new Error(`solver feed ${res.status}: ${await res.text()}`);
       // Envelope failures always throw -- see `onInvalidEvent` on the options.
       const batch = FeedBatchSchema.parse(await res.json());
@@ -383,7 +392,9 @@ export class HttpSolverTransport implements SolverTransport {
   // `GET /solver/capabilities` is public and unauthenticated (RFC §12), so this
   // deliberately sends no credentials -- it must work before admission.
   async getCapabilities(signal?: AbortSignal): Promise<VenueCapabilities> {
-    const res = await fetch(`${this.baseUrl}/solver/capabilities`, { signal: this.bounded(this.readTimeoutMs, signal) });
+    const res = await fetch(`${this.baseUrl}/solver/capabilities`, {
+      signal: this.bounded(this.readTimeoutMs, signal),
+    });
     if (!res.ok) throw new Error(`solver capabilities ${res.status}: ${await res.text()}`);
     return VenueCapabilitiesSchema.parse(await res.json());
   }
@@ -414,12 +425,15 @@ export class HttpSolverTransport implements SolverTransport {
     body: { orderId: string; signature: string },
     signal?: AbortSignal,
   ): Promise<FillAcceptanceReceipt> {
-    const res = await fetch(`${this.baseUrl}/solver/awards/${encodeURIComponent(auctionId)}/accept`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify(body),
-      signal: this.bounded(this.acceptTimeoutMs, signal),
-    });
+    const res = await fetch(
+      `${this.baseUrl}/solver/awards/${encodeURIComponent(auctionId)}/accept`,
+      {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(body),
+        signal: this.bounded(this.acceptTimeoutMs, signal),
+      },
+    );
     if (!res.ok) throw new Error(`solver accept ${res.status}: ${await res.text()}`);
     return FillAcceptanceReceiptSchema.parse(await res.json());
   }

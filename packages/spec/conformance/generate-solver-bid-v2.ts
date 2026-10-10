@@ -39,7 +39,9 @@ const TEST_KEY_2 = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cd
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find((v: { name: string }) => v.name === "baseline-evm-usdc").expected_order_id;
+const baselineOrderId: string = orderIds.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+).expected_order_id;
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 
 type Case = {
@@ -65,8 +67,17 @@ const base = {
 };
 
 const CASES: Case[] = [
-  { name: "baseline-escrow", why: "An escrow auction's bid: orderId is the order-id.json baseline.", ...base },
-  { name: "second-solver", why: "Same bid, another key: the recovered signer is the solverId.", ...base, key: TEST_KEY_2 },
+  {
+    name: "baseline-escrow",
+    why: "An escrow auction's bid: orderId is the order-id.json baseline.",
+    ...base,
+  },
+  {
+    name: "second-solver",
+    why: "Same bid, another key: the recovered signer is the solverId.",
+    ...base,
+    key: TEST_KEY_2,
+  },
   {
     name: "non-escrow-zero-order-id",
     why: "A non-escrow auction announces orderId 0x00..00. Well-formed and signable, never awardable.",
@@ -97,11 +108,11 @@ const CASES: Case[] = [
     validUntilMs: 0,
     minExclusiveMs: 0,
     auctionId: "auction-ünïcode-\u{1F984}",
-    intentId: "intent-\"q\"\\\n",
+    intentId: 'intent-"q"\\\n',
   },
   {
     name: "empty-ids",
-    why: "keccak256(\"\") = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470 is a well-defined member, not an error: an encoder that drops empty members or substitutes a placeholder diverges here.",
+    why: 'keccak256("") = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470 is a well-defined member, not an error: an encoder that drops empty members or substitutes a placeholder diverges here.',
     ...base,
     auctionId: "",
     intentId: "",
@@ -152,7 +163,11 @@ for (const c of CASES) {
     why: c.why,
     bid,
     message,
-    expected_struct_hash: ethers.TypedDataEncoder.hashStruct(SOLVER_BID_PRIMARY_TYPE, types, message),
+    expected_struct_hash: ethers.TypedDataEncoder.hashStruct(
+      SOLVER_BID_PRIMARY_TYPE,
+      types,
+      message,
+    ),
     expected_digest: ethers.TypedDataEncoder.hash(domain, types, message),
     signer_private_key: c.key,
     signer_address: wallet.address,

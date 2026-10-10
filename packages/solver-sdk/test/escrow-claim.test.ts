@@ -28,9 +28,9 @@ import type { Award, FillAttestationWire } from "../src/types";
 import { FakeChain, Revert } from "./fake-chain";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const baseline = JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance/order-id.json"), "utf8")).vectors.find(
-  (v: { name: string }) => v.name === "baseline-evm-usdc",
-);
+const baseline = JSON.parse(
+  fs.readFileSync(path.resolve(here, "../../spec/conformance/order-id.json"), "utf8"),
+).vectors.find((v: { name: string }) => v.name === "baseline-evm-usdc");
 
 const ORIGIN = Number(baseline.terms.fromChainId);
 const DEST = Number(baseline.terms.toChainId);
@@ -93,7 +93,12 @@ function world(
   const solver = new ethers.Wallet(SOLVER_KEY, dest);
   const claimer = new ethers.Wallet(opts.claimKey ?? CLAIM_KEY, origin);
   const attester = new ethers.Wallet(ATTESTER_KEY);
-  const state = { claimsPaused: false, filled: false, status: new Map<string, number>(), rpcDown: false };
+  const state = {
+    claimsPaused: false,
+    filled: false,
+    status: new Map<string, number>(),
+    rpcDown: false,
+  };
   const clock = { ms: T0 * 1000 };
   const statusOf = (orderId: string) => state.status.get(orderId.toLowerCase()) ?? LockStatus.Open;
 
@@ -102,7 +107,16 @@ function world(
     claimWindow: () => CLAIM_WINDOW,
     locks: ([orderId]) => {
       if (state.rpcDown) throw new Error("origin RPC unreachable");
-      return [baseline.terms.depositor, REFUNDABLE_AT, 0, statusOf(orderId), baseline.terms.fromToken, BigInt(DEST), VERIFIER, AMOUNT];
+      return [
+        baseline.terms.depositor,
+        REFUNDABLE_AT,
+        0,
+        statusOf(orderId),
+        baseline.terms.fromToken,
+        BigInt(DEST),
+        VERIFIER,
+        AMOUNT,
+      ];
     },
     claim: ([orderId]) => {
       if (state.claimsPaused) throw new Revert("ClaimsArePaused");
@@ -125,16 +139,27 @@ function world(
     fill: () => undefined,
     isFillAuthorizer: () => true,
   });
-  dest.stub(TOKEN, ["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"], {
-    balanceOf: () => AMOUNT,
-    allowance: () => AMOUNT,
-  });
+  dest.stub(
+    TOKEN,
+    [
+      "function balanceOf(address) view returns (uint256)",
+      "function allowance(address,address) view returns (uint256)",
+    ],
+    {
+      balanceOf: () => AMOUNT,
+      allowance: () => AMOUNT,
+    },
+  );
   dest.onMined = (tx) => {
     if (tx.method === "fill") state.filled = true;
   };
 
   const signature = attester.signingKey.sign(
-    fillAttestationDigest({ chainId: ORIGIN, verifyingContract: VERIFIER }, ORDER_ID, solver.address),
+    fillAttestationDigest(
+      { chainId: ORIGIN, verifyingContract: VERIFIER },
+      ORDER_ID,
+      solver.address,
+    ),
   ).serialized;
   const attestation: FillAttestationWire = {
     orderId: ORDER_ID,
@@ -177,7 +202,14 @@ function world(
     fillId: FILL_ID,
     opening: { ...baseline.opening },
     terms: { ...baseline.terms, destCommitment: baseline.expected_dest_commitment },
-    fillAuth: { fillId: FILL_ID, filler: solver.address, to: RECIPIENT, token: TOKEN, amount: AMOUNT, deadline: BigInt(T0 + 1_800) },
+    fillAuth: {
+      fillId: FILL_ID,
+      filler: solver.address,
+      to: RECIPIENT,
+      token: TOKEN,
+      amount: AMOUNT,
+      deadline: BigInt(T0 + 1_800),
+    },
     fillAuthSignature: ("0x" + "11".repeat(65)) as Hex,
     fillAuthDomain: { chainId: BigInt(DEST), verifyingContract: FILLER },
     payee: solver.address,
@@ -199,7 +231,22 @@ function world(
     bondDomain: { chainId: BigInt(ORIGIN), verifyingContract: BOND },
     bidOutput: AMOUNT,
   };
-  return { origin, dest, gateway, solver, claimer, prepared, attestation, state, clock, events, warnings, accepted: false, source, posts };
+  return {
+    origin,
+    dest,
+    gateway,
+    solver,
+    claimer,
+    prepared,
+    attestation,
+    state,
+    clock,
+    events,
+    warnings,
+    accepted: false,
+    source,
+    posts,
+  };
 }
 
 async function refusalOf(p: Promise<unknown>): Promise<EscrowRefusal> {
@@ -222,7 +269,8 @@ async function acceptThenFill(w: World) {
   return w.gateway.fill(w.prepared);
 }
 
-const loop = (w: World) => w.gateway.claimUntilRefundable(w.prepared, { pollMs: 0, onEvent: (m) => w.events.push(m) });
+const loop = (w: World) =>
+  w.gateway.claimUntilRefundable(w.prepared, { pollMs: 0, onEvent: (m) => w.events.push(m) });
 // A node error ethers cannot classify: the transaction may or may not be in a mempool.
 const AMBIGUOUS = { reject: "upstream connect error or disconnect/reset before headers" };
 
@@ -384,7 +432,9 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     w.dest.onSend = () => ({ pend: true });
     setTimeout(() => w.dest.mine(w.dest.pending()[0]!.hash), 12_000);
     const outcome = await whileTimersRun(acceptThenFill(w));
-    expect(w.dest.attempts.map((t) => [t.method, t.nonce, t.maxFeePerGas])).toEqual([["fill", 0, 3n]]);
+    expect(w.dest.attempts.map((t) => [t.method, t.nonce, t.maxFeePerGas])).toEqual([
+      ["fill", 0, 3n],
+    ]);
     expect(outcome).toMatchObject({ status: "confirmed", txHash: w.dest.attempts[0]!.hash });
   });
 
@@ -404,7 +454,9 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     }, 5_000);
     setTimeout(() => w.dest.mine(w.dest.pending()[0]!.hash), 12_000);
     const outcome = await whileTimersRun(acceptThenFill(w));
-    expect(w.dest.attempts.map((t) => [t.method, t.nonce, t.maxFeePerGas])).toEqual([["fill", 0, 21n]]);
+    expect(w.dest.attempts.map((t) => [t.method, t.nonce, t.maxFeePerGas])).toEqual([
+      ["fill", 0, 21n],
+    ]);
     expect(outcome).toMatchObject({ status: "confirmed", txHash: w.dest.attempts[0]!.hash });
   });
 
@@ -446,7 +498,11 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
 
   it("re-signs inside the receipt wait after `replaceInDoubtAfterBlocks` blocks", async () => {
     vi.useFakeTimers({ now: T0 * 1000 });
-    const w = world({ receiptTimeoutMs: 120_000, receiptPollMs: 2_000, gateway: { replaceInDoubtAfterBlocks: 1 } });
+    const w = world({
+      receiptTimeoutMs: 120_000,
+      receiptPollMs: 2_000,
+      gateway: { replaceInDoubtAfterBlocks: 1 },
+    });
     followFakeTime(w);
     w.prepared.fillAuth.deadline = BigInt(T0 + 85);
     w.dest.onSend = (tx) => (tx.maxFeePerGas! > 3n ? { mine: 1 } : { pend: true });
@@ -463,7 +519,11 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
   // counted apart: one pass due is not one block due.
   it("does not let `replaceInDoubtAfterPasses` shorten the receipt wait's block count", async () => {
     vi.useFakeTimers({ now: T0 * 1000 });
-    const w = world({ receiptTimeoutMs: 10_000, receiptPollMs: 2_000, gateway: { replaceInDoubtAfterPasses: 1 } });
+    const w = world({
+      receiptTimeoutMs: 10_000,
+      receiptPollMs: 2_000,
+      gateway: { replaceInDoubtAfterPasses: 1 },
+    });
     followFakeTime(w);
     w.prepared.fillAuth.deadline = BigInt(T0 + 85);
     w.dest.onSend = (tx) => (tx.maxFeePerGas! > 3n ? { mine: 1 } : { pend: true });
@@ -488,7 +548,13 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     const outcome = await whileTimersRun(acceptThenFill(w));
     const cancel = w.dest.attempts.find((t) => t.method === null)!;
     const lastFill = w.dest.attempts.filter((t) => t.method === "fill").at(-1)!;
-    expect(outcome).toMatchObject({ status: "cancelled", txHash: lastFill.hash, hashes: [lastFill.hash], cancelTxHash: cancel.hash, nonce: 0 });
+    expect(outcome).toMatchObject({
+      status: "cancelled",
+      txHash: lastFill.hash,
+      hashes: [lastFill.hash],
+      cancelTxHash: cancel.hash,
+      nonce: 0,
+    });
     expect(cancel.to.toLowerCase()).toBe(w.solver.address.toLowerCase());
     expect(cancel.nonce).toBe(0);
     expect(cancel.maxFeePerGas!).toBeGreaterThan(lastFill.maxFeePerGas!);
@@ -496,10 +562,18 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     expect(w.state.filled).toBe(false);
     // Followed by effect over the fill's own signings, the slot is dead.
     const followed = outcome as Extract<TxOutcome, { status: "cancelled" }>;
-    expect((await w.gateway.resolveTx(DEST, followed.hashes, followed, (tag) => w.gateway.isFilled(w.prepared, tag))).status).toBe("not_sent");
+    expect(
+      (
+        await w.gateway.resolveTx(DEST, followed.hashes, followed, (tag) =>
+          w.gateway.isFilled(w.prepared, tag),
+        )
+      ).status,
+    ).toBe("not_sent");
 
     const usdt = voidApproveToken(w);
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("confirmed");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "confirmed",
+    );
     expect(w.dest.sent.filter((t) => t.method === "approve").map((t) => t.nonce)).toEqual([1]);
     // The freed slot resolves dead, and the FillAuth has expired: a definite end.
     expect(await refusalOf(w.gateway.fill(w.prepared))).toBe("auth_expired");
@@ -516,14 +590,20 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     w.dest.gasEstimate = needed;
     w.dest.onSend = (tx) => {
       if (tx.method === "fill") return { pend: true };
-      return tx.gasLimit < needed ? { reject: `intrinsic gas too low: gas ${tx.gasLimit}, minimum needed ${needed}` } : { mine: 1 };
+      return tx.gasLimit < needed
+        ? { reject: `intrinsic gas too low: gas ${tx.gasLimit}, minimum needed ${needed}` }
+        : { mine: 1 };
     };
     const outcome = await whileTimersRun(acceptThenFill(w));
     const cancels = w.dest.sent.filter((t) => t.method === null);
     expect(cancels.map((t) => t.nonce)).toEqual([0]);
     // The estimate plus 20% for an L1 data cost that moves before it lands.
     expect(cancels[0]!.gasLimit).toBe(27_321n);
-    expect(outcome).toMatchObject({ status: "cancelled", cancelTxHash: cancels[0]!.hash, nonce: 0 });
+    expect(outcome).toMatchObject({
+      status: "cancelled",
+      cancelTxHash: cancels[0]!.hash,
+      nonce: 0,
+    });
     expect(w.dest.nonceOf(w.solver.address)).toBe(1);
   });
 
@@ -543,11 +623,19 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     const outcome = await whileTimersRun(acceptThenFill(w));
     const [first, replacement, ...rest] = w.dest.sent.filter((t) => t.method === "fill");
     expect(rest).toEqual([]);
-    expect(outcome).toMatchObject({ status: "cancelled", txHash: replacement!.hash, hashes: [first!.hash, replacement!.hash], nonce: 0 });
+    expect(outcome).toMatchObject({
+      status: "cancelled",
+      txHash: replacement!.hash,
+      hashes: [first!.hash, replacement!.hash],
+      nonce: 0,
+    });
     w.dest.mineReplaced(first!.hash);
     const followed = outcome as Extract<TxOutcome, { status: "cancelled" }>;
     const effect = (tag: number) => w.gateway.isFilled(w.prepared, tag);
-    expect(await w.gateway.resolveTx(DEST, followed.hashes, followed, effect)).toMatchObject({ status: "confirmed", txHash: first!.hash });
+    expect(await w.gateway.resolveTx(DEST, followed.hashes, followed, effect)).toMatchObject({
+      status: "confirmed",
+      txHash: first!.hash,
+    });
   });
 
   // A refused self-transfer freed nothing: never `cancelled`, and the next
@@ -561,7 +649,9 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     w.dest.gasEstimate = 21_000n; // an estimate that undershoots what the node then demands
     w.dest.onSend = (tx) => {
       if (tx.method === "fill") return { pend: true };
-      return tx.gasLimit < needed ? { reject: `intrinsic gas too low: gas ${tx.gasLimit}, minimum needed ${needed}` } : { mine: 1 };
+      return tx.gasLimit < needed
+        ? { reject: `intrinsic gas too low: gas ${tx.gasLimit}, minimum needed ${needed}` }
+        : { mine: 1 };
     };
     const outcome = await whileTimersRun(acceptThenFill(w));
     expect(outcome).toMatchObject({ status: "in_doubt", nonce: 0 });
@@ -589,7 +679,9 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     w.dest.onSend = (tx) => {
       if (tx.method === "fill") return { pend: true };
       w.dest.mine(w.dest.pending().find((t) => t.method === "fill")!.hash);
-      return { reject: "502 Bad Gateway: upstream connect error or disconnect/reset before headers" };
+      return {
+        reject: "502 Bad Gateway: upstream connect error or disconnect/reset before headers",
+      };
     };
     const outcome = await whileTimersRun(acceptThenFill(w));
     const fill = w.dest.sent.find((t) => t.method === "fill")!;
@@ -597,7 +689,10 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     expect(outcome).toMatchObject({ status: "in_doubt", from: w.solver.address, nonce: 0 });
     const followed = outcome as Extract<TxOutcome, { status: "in_doubt" }>;
     const effect = (tag: number) => w.gateway.isFilled(w.prepared, tag);
-    expect(await w.gateway.resolveTx(DEST, followed.hashes!, followed, effect)).toMatchObject({ status: "confirmed", txHash: fill.hash });
+    expect(await w.gateway.resolveTx(DEST, followed.hashes!, followed, effect)).toMatchObject({
+      status: "confirmed",
+      txHash: fill.hash,
+    });
     expect(await refusalOf(w.gateway.fill(w.prepared))).toBe("already_filled");
   });
 
@@ -609,7 +704,9 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     w.dest.timestamp = Number(w.prepared.fillAuth.deadline) + 1;
     w.dest.onSend = () => ({ mine: 1 });
     const usdt = voidApproveToken(w);
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("confirmed");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "confirmed",
+    );
     expect(w.dest.attempts.map((t) => [t.method, t.nonce])).toEqual([
       ["fill", 0],
       [null, 0],
@@ -652,9 +749,14 @@ describe("OnchainEscrowGateway: one acceptance per order", () => {
     await w.gateway.accept(w.prepared);
     const again = sameOrder(w);
     expect(await refusalOf(w.gateway.accept(again))).toBe("fill_auth_mismatch");
-    expect(await refusalOf(w.gateway.accept({ ...again, orderId: ("0x" + again.orderId.slice(2).toUpperCase()) as Hex }))).toBe(
-      "fill_auth_mismatch",
-    );
+    expect(
+      await refusalOf(
+        w.gateway.accept({
+          ...again,
+          orderId: ("0x" + again.orderId.slice(2).toUpperCase()) as Hex,
+        }),
+      ),
+    ).toBe("fill_auth_mismatch");
     expect(await refusalOf(w.gateway.fill(again))).toBe("fill_auth_mismatch");
     expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
     expect(w.dest.attempts.map((t) => t.args![0])).toEqual([FILL_ID]);
@@ -662,9 +764,14 @@ describe("OnchainEscrowGateway: one acceptance per order", () => {
 
   it("signs one acceptance when one order is accepted under two fillIds at once", async () => {
     const w = world();
-    const [a, b] = await Promise.allSettled([w.gateway.accept(w.prepared), w.gateway.accept(sameOrder(w))]);
+    const [a, b] = await Promise.allSettled([
+      w.gateway.accept(w.prepared),
+      w.gateway.accept(sameOrder(w)),
+    ]);
     expect(a.status).toBe("fulfilled");
-    expect(b.status === "rejected" && (b.reason as EscrowRefusalError).code).toBe("fill_auth_mismatch");
+    expect(b.status === "rejected" && (b.reason as EscrowRefusalError).code).toBe(
+      "fill_auth_mismatch",
+    );
     expect(await refusalOf(w.gateway.fill(sameOrder(w)))).toBe("fill_auth_mismatch");
   });
 
@@ -730,7 +837,9 @@ describe("OnchainEscrowGateway.accept: onSigned", () => {
     let release!: () => void;
     const persisted = new Promise<void>((resolve) => (release = resolve));
     let called!: (s: { digest: string; signature: string; postsSoFar: number }) => void;
-    const onSignedCall = new Promise<{ digest: string; signature: string; postsSoFar: number }>((resolve) => (called = resolve));
+    const onSignedCall = new Promise<{ digest: string; signature: string; postsSoFar: number }>(
+      (resolve) => (called = resolve),
+    );
     const accepting = w.gateway.accept(w.prepared, {
       onSigned: async (s) => {
         called({ digest: s.digest, signature: s.signature, postsSoFar: w.posts.count });
@@ -759,7 +868,9 @@ describe("OnchainEscrowGateway.accept: onSigned", () => {
     await expect(failing).rejects.toBe(failure);
     expect(w.posts.count).toBe(0);
     const retried: string[] = [];
-    const accepted = await w.gateway.accept(w.prepared, { onSigned: (s) => void retried.push(s.signature) });
+    const accepted = await w.gateway.accept(w.prepared, {
+      onSigned: (s) => void retried.push(s.signature),
+    });
     expect(retried).toEqual(first);
     expect(w.posts.signatures).toEqual(first);
     expect(accepted.signature).toBe(first[0]);
@@ -769,7 +880,9 @@ describe("OnchainEscrowGateway.accept: onSigned", () => {
     const w = world();
     await w.gateway.restoreAcceptance(w.prepared);
     const postsAtCall: number[] = [];
-    const reposted = await w.gateway.accept(w.prepared, { onSigned: () => void postsAtCall.push(w.posts.count) });
+    const reposted = await w.gateway.accept(w.prepared, {
+      onSigned: () => void postsAtCall.push(w.posts.count),
+    });
     expect(postsAtCall).toEqual([0]);
     expect(w.posts.signatures).toEqual([reposted.signature]);
   });
@@ -783,7 +896,12 @@ describe("OnchainEscrowGateway.accept: one inventory reservation at a time per t
   // Another order (and fillId) of `token`, tagged by a byte.
   const orderOf = (w: World, tag: string, token = TOKEN): PreparedFill => {
     const fillId = ("0x" + tag.repeat(32)) as Hex;
-    return { ...w.prepared, orderId: ("0x" + tag.repeat(31) + "00") as Hex, fillId, fillAuth: { ...w.prepared.fillAuth, fillId, token } };
+    return {
+      ...w.prepared,
+      orderId: ("0x" + tag.repeat(31) + "00") as Hex,
+      fillId,
+      fillAuth: { ...w.prepared.fillAuth, fillId, token },
+    };
   };
   // Holds every `eth_call` to `to` on the destination until released.
   const holdCalls = (w: World, to: string) => {
@@ -793,7 +911,10 @@ describe("OnchainEscrowGateway.accept: one inventory reservation at a time per t
     const reached = new Promise<void>((resolve) => (held = resolve));
     const send = w.dest.send.bind(w.dest);
     w.dest.send = async (method, params) => {
-      if (method === "eth_call" && (params as [{ to: string }])[0].to.toLowerCase() === to.toLowerCase()) {
+      if (
+        method === "eth_call" &&
+        (params as [{ to: string }])[0].to.toLowerCase() === to.toLowerCase()
+      ) {
         held();
         await gate;
       }
@@ -804,19 +925,31 @@ describe("OnchainEscrowGateway.accept: one inventory reservation at a time per t
 
   it("accepts one of two concurrent orders the balance covers once, refusing the other insufficient_inventory", async () => {
     const w = world();
-    const results = await Promise.allSettled([w.gateway.accept(orderOf(w, "e1")), w.gateway.accept(orderOf(w, "e2"))]);
+    const results = await Promise.allSettled([
+      w.gateway.accept(orderOf(w, "e1")),
+      w.gateway.accept(orderOf(w, "e2")),
+    ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const refused = results.filter((r) => r.status === "rejected");
-    expect(refused.map((r) => (r.reason as EscrowRefusalError).code)).toEqual(["insufficient_inventory"]);
+    expect(refused.map((r) => (r.reason as EscrowRefusalError).code)).toEqual([
+      "insufficient_inventory",
+    ]);
     expect(w.posts.count).toBe(1);
   });
 
   it("does not hold an accept of another token behind one in its preflight", async () => {
     const w = world();
-    w.dest.stub(TOKEN2, ["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"], {
-      balanceOf: () => AMOUNT,
-      allowance: () => AMOUNT,
-    });
+    w.dest.stub(
+      TOKEN2,
+      [
+        "function balanceOf(address) view returns (uint256)",
+        "function allowance(address,address) view returns (uint256)",
+      ],
+      {
+        balanceOf: () => AMOUNT,
+        allowance: () => AMOUNT,
+      },
+    );
     const hold = holdCalls(w, TOKEN);
     const first = w.gateway.accept(orderOf(w, "e1"));
     await hold.reached;
@@ -830,8 +963,13 @@ describe("OnchainEscrowGateway.accept: one inventory reservation at a time per t
   it("releases the token to the next accept when one refuses, recording nothing for it", async () => {
     const w = world();
     const late = { ...orderOf(w, "e1"), acceptBy: BigInt(T0) };
-    const [refused, accepted] = await Promise.allSettled([w.gateway.accept(late), w.gateway.accept(orderOf(w, "e2"))]);
-    expect(refused.status === "rejected" && (refused.reason as EscrowRefusalError).code).toBe("accept_window_closed");
+    const [refused, accepted] = await Promise.allSettled([
+      w.gateway.accept(late),
+      w.gateway.accept(orderOf(w, "e2")),
+    ]);
+    expect(refused.status === "rejected" && (refused.reason as EscrowRefusalError).code).toBe(
+      "accept_window_closed",
+    );
     expect(accepted.status).toBe("fulfilled");
     expect(await refusalOf(w.gateway.fill(late))).toBe("not_accepted");
   });
@@ -885,7 +1023,9 @@ describe("OnchainEscrowGateway.resolveTx", () => {
     w.dest.mine(sent.txHash);
     expect(w.state.filled).toBe(true);
     const slot = sent.status === "in_doubt" ? sent : {};
-    const resolved = await w.gateway.resolveTx(DEST, sent.txHash, slot, (blockTag) => w.gateway.isFilled(w.prepared, blockTag));
+    const resolved = await w.gateway.resolveTx(DEST, sent.txHash, slot, (blockTag) =>
+      w.gateway.isFilled(w.prepared, blockTag),
+    );
     expect(resolved.status).toBe("in_doubt");
     // ...and the fill path refuses on the visible effect rather than re-filling.
     expect(await refusalOf(acceptThenFill(w))).toBe("already_filled");
@@ -898,9 +1038,13 @@ describe("OnchainEscrowGateway.claim", () => {
   it("treats an in-doubt claim as done once the lock reads Claimed", async () => {
     const w = world();
     w.origin.onSend = () => AMBIGUOUS;
-    expect((await w.gateway.claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!)).status).toBe("in_doubt");
+    expect(
+      (await w.gateway.claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!)).status,
+    ).toBe("in_doubt");
     w.state.status.set(ORDER_ID, LockStatus.Claimed);
-    expect(await refusalOf(w.gateway.claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!))).toBe("already_claimed");
+    expect(
+      await refusalOf(w.gateway.claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!)),
+    ).toBe("already_claimed");
     expect(w.origin.attempts).toHaveLength(1);
   });
 
@@ -911,7 +1055,10 @@ describe("OnchainEscrowGateway.claim", () => {
     const attestation = (await w.gateway.fetchAttestation(w.prepared))!;
     const otherOrder = ("0x" + "ee".repeat(32)) as Hex;
     const second = { ...w.prepared, orderId: otherOrder };
-    const outcomes = await Promise.all([w.gateway.claim(w.prepared, attestation), w.gateway.claim(second, attestation)]);
+    const outcomes = await Promise.all([
+      w.gateway.claim(w.prepared, attestation),
+      w.gateway.claim(second, attestation),
+    ]);
     expect(outcomes.map((o) => o.status)).toEqual(["confirmed", "confirmed"]);
     expect(w.origin.sent.map((t) => t.nonce)).toEqual([0, 1]);
   });
@@ -925,7 +1072,9 @@ describe("OnchainEscrowGateway.claim", () => {
     let release!: () => void;
     w.origin.holdSends = new Promise<void>((resolve) => (release = resolve));
     let claimSettled = false;
-    const claim = w.gateway.claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!).finally(() => (claimSettled = true));
+    const claim = w.gateway
+      .claim(w.prepared, (await w.gateway.fetchAttestation(w.prepared))!)
+      .finally(() => (claimSettled = true));
     await settle(); // the claim is broadcasting inside the origin queue
     expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
     expect(claimSettled).toBe(false);
@@ -941,7 +1090,10 @@ describe("OnchainEscrowGateway.claim", () => {
     let firstSettled = false;
     const first = w.gateway.claim(w.prepared, attestation).finally(() => (firstSettled = true));
     while (w.origin.attempts.length === 0) await turn();
-    const second = w.gateway.claim({ ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex }, attestation);
+    const second = w.gateway.claim(
+      { ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex },
+      attestation,
+    );
     while (w.origin.attempts.length < 2) await turn();
     expect(firstSettled).toBe(false);
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([0, 1]);
@@ -993,7 +1145,8 @@ describe("OnchainEscrowGateway.claimUntilRefundable", () => {
   it("re-plans a claim the node refused outright (not_sent)", async () => {
     const w = world();
     let n = 0;
-    w.origin.onSend = () => (++n === 1 ? { reject: "insufficient funds for gas * price + value" } : { mine: 1 });
+    w.origin.onSend = () =>
+      ++n === 1 ? { reject: "insufficient funds for gas * price + value" } : { mine: 1 };
     expect((await loop(w)).status).toBe("claimed");
     expect(w.origin.attempts.map((t) => t.method)).toEqual(["claim", "claim"]);
   });
@@ -1098,7 +1251,9 @@ describe("OnchainEscrowGateway.claimUntilRefundable", () => {
         baseline.terms.depositor,
         REFUNDABLE_AT,
         0,
-        ++reads === 1 ? LockStatus.None : (w.state.status.get((orderId as string).toLowerCase()) ?? LockStatus.Open),
+        ++reads === 1
+          ? LockStatus.None
+          : (w.state.status.get((orderId as string).toLowerCase()) ?? LockStatus.Open),
         baseline.terms.fromToken,
         BigInt(DEST),
         VERIFIER,
@@ -1115,7 +1270,13 @@ describe("OnchainEscrowGateway.claimUntilRefundable", () => {
     const w = world();
     const hash = "0x" + "ab".repeat(32);
     w.state.status.set(ORDER_ID, LockStatus.Claimed);
-    w.origin.logEvent(ESCROW, new ethers.Interface(RIDDLER_ESCROW_ABI as unknown as string[]), "Claimed", [ORDER_ID, OTHER, AMOUNT, 0n], hash);
+    w.origin.logEvent(
+      ESCROW,
+      new ethers.Interface(RIDDLER_ESCROW_ABI as unknown as string[]),
+      "Claimed",
+      [ORDER_ID, OTHER, AMOUNT, 0n],
+      hash,
+    );
     expect(await loop(w)).toEqual({ status: "claimed_by_other", payee: OTHER, txHash: hash });
     expect(w.origin.attempts).toEqual([]);
   });
@@ -1124,14 +1285,23 @@ describe("OnchainEscrowGateway.claimUntilRefundable", () => {
     const w = world();
     const hash = "0x" + "ac".repeat(32);
     w.state.status.set(ORDER_ID, LockStatus.Claimed);
-    w.origin.logEvent(ESCROW, new ethers.Interface(RIDDLER_ESCROW_ABI as unknown as string[]), "Claimed", [ORDER_ID, w.solver.address, AMOUNT, 0n], hash);
+    w.origin.logEvent(
+      ESCROW,
+      new ethers.Interface(RIDDLER_ESCROW_ABI as unknown as string[]),
+      "Claimed",
+      [ORDER_ID, w.solver.address, AMOUNT, 0n],
+      hash,
+    );
     expect(await loop(w)).toEqual({ status: "claimed", txHash: hash });
   });
 
   it("reports claimed_unverified when no Claimed event is readable before refundableAt", async () => {
     const w = world();
     w.state.status.set(ORDER_ID, LockStatus.Claimed);
-    const result = await w.gateway.claimUntilRefundable(w.prepared, { pollMs: 0, onEvent: () => (w.clock.ms += 1_000_000) });
+    const result = await w.gateway.claimUntilRefundable(w.prepared, {
+      pollMs: 0,
+      onEvent: () => (w.clock.ms += 1_000_000),
+    });
     expect(result.status).toBe("claimed_unverified");
   });
 
@@ -1236,7 +1406,8 @@ describe("OnchainEscrowGateway.claimUntilRefundable", () => {
   it("claims with the attestation verified earlier while the endpoint fails", async () => {
     const w = world();
     let n = 0;
-    w.origin.onSend = () => (++n === 1 ? { reject: "insufficient funds for gas * price + value" } : { mine: 1 });
+    w.origin.onSend = () =>
+      ++n === 1 ? { reject: "insufficient funds for gas * price + value" } : { mine: 1 };
     let fetches = 0;
     const serve = w.source.serve;
     w.source.serve = async (orderId) => {
@@ -1284,7 +1455,15 @@ describe("OnchainEscrowGateway.prepare", () => {
     const w = world();
     const award = awardFor(w);
     award.escrow!.fillAuth!.to = OTHER;
-    expect(await refusalOf(w.gateway.prepare(award, { bid: { auctionId: "auc-1", orderId: ORDER_ID, output: String(AMOUNT) }, originChainId: ORIGIN, timeoutMs: 0 }))).toBe("fill_auth_mismatch");
+    expect(
+      await refusalOf(
+        w.gateway.prepare(award, {
+          bid: { auctionId: "auc-1", orderId: ORDER_ID, output: String(AMOUNT) },
+          originChainId: ORIGIN,
+          timeoutMs: 0,
+        }),
+      ),
+    ).toBe("fill_auth_mismatch");
     expect(w.origin.methods).not.toContain("eth_getLogs");
   });
 
@@ -1292,7 +1471,14 @@ describe("OnchainEscrowGateway.prepare", () => {
     const w = world();
     const award = awardFor(w);
     award.escrow!.fillAuth!.deadline = String(T0 + 30); // inside the 60s fill budget already
-    expect(await refusalOf(w.gateway.prepare(award, { bid: { auctionId: "auc-1", orderId: ORDER_ID, output: String(AMOUNT) }, originChainId: ORIGIN }))).toBe("not_final");
+    expect(
+      await refusalOf(
+        w.gateway.prepare(award, {
+          bid: { auctionId: "auc-1", orderId: ORDER_ID, output: String(AMOUNT) },
+          originChainId: ORIGIN,
+        }),
+      ),
+    ).toBe("not_final");
   });
 });
 
@@ -1302,13 +1488,21 @@ describe("OnchainEscrowGateway.ensureAllowance", () => {
     const w = world();
     const USDT = "0x6666666666666666666666666666666666666666";
     let allowance = 5n;
-    w.dest.stub(USDT, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], {
-      allowance: () => allowance,
-      approve: ([, value]) => {
-        if (allowance !== 0n && (value as bigint) !== 0n) throw new Revert("Error", ["approve: non-zero to non-zero"]);
-        return true;
+    w.dest.stub(
+      USDT,
+      [
+        "function allowance(address,address) view returns (uint256)",
+        "function approve(address,uint256) returns (bool)",
+      ],
+      {
+        allowance: () => allowance,
+        approve: ([, value]) => {
+          if (allowance !== 0n && (value as bigint) !== 0n)
+            throw new Revert("Error", ["approve: non-zero to non-zero"]);
+          return true;
+        },
       },
-    });
+    );
     w.dest.onMined = (tx) => {
       if (tx.method === "approve") allowance = tx.args![1] as bigint;
     };
@@ -1334,9 +1528,13 @@ describe("OnchainEscrowGateway.ensureAllowance", () => {
   it("leaves an allowance short of the amount standing while it covers `sufficient`", async () => {
     const w = world();
     const usdt = voidApproveToken(w, 6n);
-    expect(await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n, { sufficient: 6n })).toBeNull();
+    expect(
+      await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n, { sufficient: 6n }),
+    ).toBeNull();
     expect(w.dest.attempts).toEqual([]);
-    const outcome = await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n, { sufficient: 7n });
+    const outcome = await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n, {
+      sufficient: 7n,
+    });
     expect(outcome?.status).toBe("confirmed");
     expect(w.dest.sent.map((t) => t.args![1])).toEqual([0n, 10n]);
   });
@@ -1344,11 +1542,20 @@ describe("OnchainEscrowGateway.ensureAllowance", () => {
   it("refuses an approve that returns false, sending nothing", async () => {
     const w = world();
     const TOKEN_FALSE = "0x7777777777777777777777777777777777777777";
-    w.dest.stub(TOKEN_FALSE, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], {
-      allowance: () => 0n,
-      approve: () => false,
-    });
-    expect(await refusalOf(w.gateway.ensureAllowance(w.solver, TOKEN_FALSE, FILLER, 10n))).toBe("simulation_failed");
+    w.dest.stub(
+      TOKEN_FALSE,
+      [
+        "function allowance(address,address) view returns (uint256)",
+        "function approve(address,uint256) returns (bool)",
+      ],
+      {
+        allowance: () => 0n,
+        approve: () => false,
+      },
+    );
+    expect(await refusalOf(w.gateway.ensureAllowance(w.solver, TOKEN_FALSE, FILLER, 10n))).toBe(
+      "simulation_failed",
+    );
     expect(w.dest.attempts).toEqual([]);
   });
 
@@ -1357,13 +1564,23 @@ describe("OnchainEscrowGateway.ensureAllowance", () => {
   it("serializes an approval and a bond deposit from one signer", async () => {
     const w = world();
     const USDC = "0x8888888888888888888888888888888888888888";
-    w.origin.stub(USDC, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], {
-      allowance: () => 0n,
-      approve: () => true,
-    });
+    w.origin.stub(
+      USDC,
+      [
+        "function allowance(address,address) view returns (uint256)",
+        "function approve(address,uint256) returns (bool)",
+      ],
+      {
+        allowance: () => 0n,
+        approve: () => true,
+      },
+    );
     w.origin.stub(BOND, ["function deposit(uint256 amount)"], { deposit: () => undefined });
     const bondSigner = new ethers.Wallet(SOLVER_KEY, w.origin);
-    const outcomes = await Promise.all([w.gateway.ensureAllowance(bondSigner, USDC, BOND, 10n), w.gateway.bondDeposit(10n)]);
+    const outcomes = await Promise.all([
+      w.gateway.ensureAllowance(bondSigner, USDC, BOND, 10n),
+      w.gateway.bondDeposit(10n),
+    ]);
     expect(outcomes.map((o) => o?.status)).toEqual(["confirmed", "confirmed"]);
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([0, 1]);
     expect(w.origin.attempts.map((t) => t.method).sort()).toEqual(["approve", "deposit"]);
@@ -1392,7 +1609,9 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     const w = world({ cacheTimeout: 250 });
     await w.gateway.accept(w.prepared, { resume: true });
     const usdt = voidApproveToken(w);
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("confirmed");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "confirmed",
+    );
     expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
     expect(w.dest.attempts.map((t) => [t.method, t.nonce])).toEqual([
       ["approve", 0],
@@ -1404,7 +1623,14 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     const w = world({ cacheTimeout: 250 });
     const attestation = (await w.gateway.fetchAttestation(w.prepared))!;
     expect((await w.gateway.claim(w.prepared, attestation)).status).toBe("confirmed");
-    expect((await w.gateway.claim({ ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex }, attestation)).status).toBe("confirmed");
+    expect(
+      (
+        await w.gateway.claim(
+          { ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex },
+          attestation,
+        )
+      ).status,
+    ).toBe("confirmed");
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([0, 1]);
   });
 
@@ -1415,7 +1641,14 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     const attestation = (await w.gateway.fetchAttestation(w.prepared))!;
     expect((await w.gateway.claim(w.prepared, attestation)).status).toBe("confirmed");
     w.origin.nonceLag = 1;
-    expect((await w.gateway.claim({ ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex }, attestation)).status).toBe("confirmed");
+    expect(
+      (
+        await w.gateway.claim(
+          { ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex },
+          attestation,
+        )
+      ).status,
+    ).toBe("confirmed");
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([0, 1]);
   });
 
@@ -1426,7 +1659,14 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     const attestation = (await w.gateway.fetchAttestation(w.prepared))!;
     expect((await w.gateway.claim(w.prepared, attestation)).status).toBe("confirmed");
     w.origin.consumeNonce(w.claimer.address); // nonce 1, sent by someone else
-    expect((await w.gateway.claim({ ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex }, attestation)).status).toBe("confirmed");
+    expect(
+      (
+        await w.gateway.claim(
+          { ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex },
+          attestation,
+        )
+      ).status,
+    ).toBe("confirmed");
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([0, 2]);
   });
 
@@ -1439,7 +1679,9 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     await w.gateway.accept(w.prepared, { resume: true });
     const usdt = voidApproveToken(w);
     w.dest.onSend = () => ({ pend: true });
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("in_doubt");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "in_doubt",
+    );
     w.dest.evict();
     w.dest.onSend = () => ({ mine: 1 });
     expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
@@ -1459,7 +1701,9 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     await w.gateway.accept(w.prepared, { resume: true });
     const usdt = voidApproveToken(w);
     w.dest.onSend = () => ({ pend: true });
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("in_doubt");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "in_doubt",
+    );
     w.dest.nonceLag = 1;
     w.dest.hideTransactions = true;
     expect((await w.gateway.fill(w.prepared)).status).toBe("in_doubt");
@@ -1481,10 +1725,13 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     await w.gateway.accept(w.prepared, { resume: true });
     const usdt = voidApproveToken(w);
     w.dest.onSend = () => ({ pend: true });
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("in_doubt");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "in_doubt",
+    );
     w.dest.nonceLag = 1;
     w.dest.hideTransactions = true;
-    w.dest.onSend = (tx) => (tx.method === "approve" ? { reject: "replacement transaction underpriced" } : { pend: true });
+    w.dest.onSend = (tx) =>
+      tx.method === "approve" ? { reject: "replacement transaction underpriced" } : { pend: true };
     expect((await w.gateway.fill(w.prepared)).status).toBe("in_doubt");
     expect(w.dest.attempts.map((t) => [t.method, t.nonce])).toEqual([
       ["approve", 0],
@@ -1498,7 +1745,9 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     await w.gateway.accept(w.prepared, { resume: true });
     const usdt = voidApproveToken(w);
     w.dest.onSend = () => ({ pend: true });
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("in_doubt");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "in_doubt",
+    );
     w.dest.evict();
     w.dest.onSend = (tx) => (tx.method === "approve" ? AMBIGUOUS : { mine: 1 });
     expect((await w.gateway.fill(w.prepared)).status).toBe("confirmed");
@@ -1516,7 +1765,9 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     w.dest.evict();
     w.dest.onSend = (tx) => (tx.method === "fill" ? AMBIGUOUS : { mine: 1 });
     const usdt = voidApproveToken(w);
-    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe("confirmed");
+    expect((await w.gateway.ensureAllowance(w.solver, usdt.address, FILLER, 10n))?.status).toBe(
+      "confirmed",
+    );
     // The fill's slot is consumed with filled(fillId) false: it can never
     // land, so the fill is planned afresh at the next nonce.
     w.dest.onSend = () => ({ mine: 1 });
@@ -1538,7 +1789,14 @@ describe("OnchainEscrowGateway nonce assignment", () => {
     expect((await w.gateway.claim(w.prepared, attestation)).status).toBe("in_doubt");
     w.origin.nonceLag = 0;
     w.clock.ms += 1; // past the record's receiptTimeoutMs (0 here)
-    expect((await w.gateway.claim({ ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex }, attestation)).status).toBe("confirmed");
+    expect(
+      (
+        await w.gateway.claim(
+          { ...w.prepared, orderId: ("0x" + "ee".repeat(32)) as Hex },
+          attestation,
+        )
+      ).status,
+    ).toBe("confirmed");
     expect(w.origin.attempts.map((t) => t.nonce)).toEqual([2, 0]);
   });
 });
@@ -1548,16 +1806,25 @@ describe("OnchainEscrowGateway nonce assignment", () => {
 function voidApproveToken(w: World, initial = 0n) {
   const address = "0x6666666666666666666666666666666666666666";
   let allowance = initial;
-  w.dest.stub(address, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256)"], {
-    allowance: () => allowance,
-    approve: ([, value]) => {
-      if (allowance !== 0n && (value as bigint) !== 0n) throw new Revert("Error", ["approve: non-zero to non-zero"]);
-      return undefined;
+  w.dest.stub(
+    address,
+    [
+      "function allowance(address,address) view returns (uint256)",
+      "function approve(address,uint256)",
+    ],
+    {
+      allowance: () => allowance,
+      approve: ([, value]) => {
+        if (allowance !== 0n && (value as bigint) !== 0n)
+          throw new Revert("Error", ["approve: non-zero to non-zero"]);
+        return undefined;
+      },
     },
-  });
+  );
   const mined = w.dest.onMined;
   w.dest.onMined = (tx) => {
-    if (tx.method === "approve" && tx.to.toLowerCase() === address) allowance = tx.args![1] as bigint;
+    if (tx.method === "approve" && tx.to.toLowerCase() === address)
+      allowance = tx.args![1] as bigint;
     else mined(tx);
   };
   return { address, allowance: () => allowance };
@@ -1574,7 +1841,10 @@ async function settle(): Promise<void> {
 function followFakeTime(w: World): void {
   Object.defineProperty(w.clock, "ms", { get: () => Date.now() });
   for (const chain of [w.origin, w.dest]) {
-    Object.defineProperty(chain, "timestamp", { get: () => Math.floor(Date.now() / 1000), set: () => {} });
+    Object.defineProperty(chain, "timestamp", {
+      get: () => Math.floor(Date.now() / 1000),
+      set: () => {},
+    });
   }
 }
 

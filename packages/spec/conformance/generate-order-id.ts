@@ -52,7 +52,12 @@ const TERMS: Terms = {
 type Case = { name: string; why: string; opening: DestOpening; terms: Terms };
 
 const CASES: Case[] = [
-  { name: "baseline-evm-usdc", why: "The pinned ESCROW-RFC §2.4 reference vector.", opening: OPENING, terms: TERMS },
+  {
+    name: "baseline-evm-usdc",
+    why: "The pinned ESCROW-RFC §2.4 reference vector.",
+    opening: OPENING,
+    terms: TERMS,
+  },
   {
     name: "evm-recipient-checksummed",
     why:
@@ -63,12 +68,20 @@ const CASES: Case[] = [
       recipient: ethers.getAddress(OPENING.recipient),
       toToken: ethers.getAddress(OPENING.toToken),
     },
-    terms: { ...TERMS, fromToken: ethers.getAddress(TERMS.fromToken), escrow: ethers.getAddress(TERMS.escrow) },
+    terms: {
+      ...TERMS,
+      fromToken: ethers.getAddress(TERMS.fromToken),
+      escrow: ethers.getAddress(TERMS.escrow),
+    },
   },
   {
     name: "tron-base58-recipient",
     why: "A base58 Tron recipient and token are not EVM addresses: keccak of their UTF-8, case-sensitive.",
-    opening: { ...OPENING, recipient: "TXYZopqrstuvwxABCDEFGHijklmnopqrst", toToken: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" },
+    opening: {
+      ...OPENING,
+      recipient: "TXYZopqrstuvwxABCDEFGHijklmnopqrst",
+      toToken: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    },
     terms: { ...TERMS, toChainId: 728126428 },
   },
   {
@@ -91,7 +104,7 @@ const CASES: Case[] = [
   },
   {
     name: "symbol-to-token",
-    why: "A symbol toToken (\"Amulet\") takes the hashed path, case-sensitive.",
+    why: 'A symbol toToken ("Amulet") takes the hashed path, case-sensitive.',
     opening: { ...OPENING, toToken: "Amulet" },
     terms: TERMS,
   },

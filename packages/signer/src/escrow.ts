@@ -123,7 +123,17 @@ export function computeDestCommitment(opening: DestOpening): Hex {
 export function computeOrderId(terms: OrderTerms): Hex {
   return ethers.keccak256(
     coder.encode(
-      ["bytes32", "address", "uint256", "address", "uint256", "uint256", "uint256", "address", "bytes32"],
+      [
+        "bytes32",
+        "address",
+        "uint256",
+        "address",
+        "uint256",
+        "uint256",
+        "uint256",
+        "address",
+        "bytes32",
+      ],
       [
         ORDER_TYPEHASH,
         terms.depositor.toLowerCase(),
@@ -168,7 +178,12 @@ function typedDomain(domain: OpenAuthDomain): ethers.TypedDataDomain {
   };
 }
 
-const OPEN_AUTH_TYPES = { OpenAuth: [{ name: "orderId", type: "bytes32" }, { name: "expiry", type: "uint256" }] };
+const OPEN_AUTH_TYPES = {
+  OpenAuth: [
+    { name: "orderId", type: "bytes32" },
+    { name: "expiry", type: "uint256" },
+  ],
+};
 
 export function openAuthDomainSeparator(domain: OpenAuthDomain): Hex {
   return ethers.TypedDataEncoder.hashDomain(typedDomain(domain)) as Hex;
@@ -176,7 +191,10 @@ export function openAuthDomainSeparator(domain: OpenAuthDomain): Hex {
 
 export function openAuthStructHash(orderId: string, expiry: UintLike): Hex {
   return ethers.keccak256(
-    coder.encode(["bytes32", "bytes32", "uint256"], [OPEN_AUTH_TYPEHASH, orderId, toUint("expiry", expiry)]),
+    coder.encode(
+      ["bytes32", "bytes32", "uint256"],
+      [OPEN_AUTH_TYPEHASH, orderId, toUint("expiry", expiry)],
+    ),
   ) as Hex;
 }
 
@@ -244,7 +262,9 @@ const ZERO_ADDRESS = /^0x0{40}$/;
 // every value the guard compares the escrow to would otherwise be the venue's.
 function pinnedEscrowFor(pin: PinnedEscrows | undefined, fromChainId: UintLike): string {
   if (pin == null || typeof pin !== "object" || Array.isArray(pin)) {
-    throw new Error("expectedEscrows is required: the escrow must be a caller-pinned value, never the quote's");
+    throw new Error(
+      "expectedEscrows is required: the escrow must be a caller-pinned value, never the quote's",
+    );
   }
   const chain = toUint("terms.fromChainId", fromChainId).toString();
   const entry: unknown = Object.prototype.hasOwnProperty.call(pin, chain)
@@ -254,7 +274,9 @@ function pinnedEscrowFor(pin: PinnedEscrows | undefined, fromChainId: UintLike):
     throw new Error(`no pinned escrow for origin chain ${chain}; refusing to sign`);
   }
   if (typeof entry !== "string" || !EVM_ADDRESS.test(entry) || ZERO_ADDRESS.test(entry)) {
-    throw new Error(`pinned escrow for origin chain ${chain} is not a non-zero EVM address: ${JSON.stringify(entry)}`);
+    throw new Error(
+      `pinned escrow for origin chain ${chain} is not a non-zero EVM address: ${JSON.stringify(entry)}`,
+    );
   }
   return entry;
 }
@@ -269,10 +291,14 @@ export function assertEscrowBinding(b: EscrowBinding): Hex {
   const escrow = pinnedEscrowFor(b.expectedEscrows, terms.fromChainId);
 
   if (canonicalKey(opening.recipient) !== canonicalKey(b.recipient)) {
-    throw new Error(`opening.recipient (${opening.recipient}) is not the intent recipient (${b.recipient})`);
+    throw new Error(
+      `opening.recipient (${opening.recipient}) is not the intent recipient (${b.recipient})`,
+    );
   }
   if (canonicalKey(opening.toToken) !== canonicalKey(b.toToken)) {
-    throw new Error(`opening.toToken (${opening.toToken}) is not the intent toToken (${b.toToken})`);
+    throw new Error(
+      `opening.toToken (${opening.toToken}) is not the intent toToken (${b.toToken})`,
+    );
   }
   if (toUint("opening.toAmount", opening.toAmount) < toUint("minOut", b.minOut)) {
     throw new Error(`opening.toAmount (${opening.toAmount}) is below minOut (${b.minOut})`);
@@ -280,17 +306,26 @@ export function assertEscrowBinding(b: EscrowBinding): Hex {
   assertBlinding(opening.blinding);
   // The destination chain is outside destCommitment, so without this a quote
   // could keep recipient/token/amount and deliver on a chain the user never named.
-  if (b.toChainId == null || toUint("terms.toChainId", terms.toChainId) !== toUint("toChainId", b.toChainId)) {
-    throw new Error(`OrderTerms.toChainId (${terms.toChainId}) is not the intent toChainId (${b.toChainId})`);
+  if (
+    b.toChainId == null ||
+    toUint("terms.toChainId", terms.toChainId) !== toUint("toChainId", b.toChainId)
+  ) {
+    throw new Error(
+      `OrderTerms.toChainId (${terms.toChainId}) is not the intent toChainId (${b.toChainId})`,
+    );
   }
 
   const commitment = computeDestCommitment(opening);
   if (normalizeBytes32("terms.destCommitment", terms.destCommitment) !== commitment) {
-    throw new Error(`destCommitment mismatch: recomputed ${commitment}, terms carry ${terms.destCommitment}`);
+    throw new Error(
+      `destCommitment mismatch: recomputed ${commitment}, terms carry ${terms.destCommitment}`,
+    );
   }
   const orderId = computeOrderId(terms);
   if (normalizeBytes32("quotedOrderId", b.quotedOrderId) !== orderId) {
-    throw new Error(`orderId mismatch: recomputed ${orderId} from OrderTerms, quote witness is ${b.quotedOrderId}`);
+    throw new Error(
+      `orderId mismatch: recomputed ${orderId} from OrderTerms, quote witness is ${b.quotedOrderId}`,
+    );
   }
 
   if (!eqAddr(terms.escrow, escrow)) {
@@ -300,18 +335,29 @@ export function assertEscrowBinding(b: EscrowBinding): Hex {
   }
   const spender = pullAuth.kind === "erc3009" ? pullAuth.to : pullAuth.spender;
   if (!eqAddr(spender, escrow)) {
-    throw new Error(`pull-auth spender/to (${spender}) is not the pinned escrow (${escrow}); refusing to sign`);
+    throw new Error(
+      `pull-auth spender/to (${spender}) is not the pinned escrow (${escrow}); refusing to sign`,
+    );
   }
   if (!eqAddr(terms.depositor, b.signer)) {
     throw new Error(`OrderTerms.depositor (${terms.depositor}) is not the signer (${b.signer})`);
   }
   if (!eqAddr(terms.fromToken, pullAuth.token)) {
-    throw new Error(`OrderTerms.fromToken (${terms.fromToken}) is not the pull-auth token (${pullAuth.token})`);
+    throw new Error(
+      `OrderTerms.fromToken (${terms.fromToken}) is not the pull-auth token (${pullAuth.token})`,
+    );
   }
-  if (toUint("terms.fromAmount", terms.fromAmount) !== toUint("pull-auth amount", pullAuth.amount)) {
-    throw new Error(`OrderTerms.fromAmount (${terms.fromAmount}) is not the pull-auth amount (${pullAuth.amount})`);
+  if (
+    toUint("terms.fromAmount", terms.fromAmount) !== toUint("pull-auth amount", pullAuth.amount)
+  ) {
+    throw new Error(
+      `OrderTerms.fromAmount (${terms.fromAmount}) is not the pull-auth amount (${pullAuth.amount})`,
+    );
   }
-  if (pullAuth.kind === "erc3009" && normalizeBytes32("erc3009 nonce", pullAuth.nonce) !== orderId) {
+  if (
+    pullAuth.kind === "erc3009" &&
+    normalizeBytes32("erc3009 nonce", pullAuth.nonce) !== orderId
+  ) {
     throw new Error(`erc3009 nonce (${pullAuth.nonce}) is not the orderId (${orderId})`);
   }
   if (
@@ -319,7 +365,9 @@ export function assertEscrowBinding(b: EscrowBinding): Hex {
     (typeof pullAuth.witnessOrderId !== "string" ||
       normalizeBytes32("permit2 witness orderId", pullAuth.witnessOrderId) !== orderId)
   ) {
-    throw new Error(`permit2 witness orderId (${pullAuth.witnessOrderId}) is not the orderId (${orderId})`);
+    throw new Error(
+      `permit2 witness orderId (${pullAuth.witnessOrderId}) is not the orderId (${orderId})`,
+    );
   }
   return orderId;
 }
@@ -342,15 +390,27 @@ export function deriveFillSalt(key: string | Uint8Array, orderId: string): Hex {
 // fillId = keccak256(abi.encode(orderId, fillSalt)) -- 64 raw bytes.
 export function computeFillId(orderId: string, fillSalt: string): Hex {
   return ethers.keccak256(
-    coder.encode(["bytes32", "bytes32"], [normalizeBytes32("orderId", orderId), normalizeBytes32("fillSalt", fillSalt)]),
+    coder.encode(
+      ["bytes32", "bytes32"],
+      [normalizeBytes32("orderId", orderId), normalizeBytes32("fillSalt", fillSalt)],
+    ),
   ) as Hex;
 }
 
 // EIP-712 domain of any escrow-family contract: its chain and address.
 export type EscrowContractDomain = OpenAuthDomain;
 
-function namedDomain(name: string, version: string, domain: EscrowContractDomain): ethers.TypedDataDomain {
-  return { name, version, chainId: toUint("domain.chainId", domain.chainId), verifyingContract: domain.verifyingContract };
+function namedDomain(
+  name: string,
+  version: string,
+  domain: EscrowContractDomain,
+): ethers.TypedDataDomain {
+  return {
+    name,
+    version,
+    chainId: toUint("domain.chainId", domain.chainId),
+    verifyingContract: domain.verifyingContract,
+  };
 }
 
 function typedDigest(separator: string, structHash: string): Hex {
@@ -397,7 +457,9 @@ const FILL_AUTH_TYPES = {
 };
 
 export function fillAuthDomainSeparator(domain: EscrowContractDomain): Hex {
-  return ethers.TypedDataEncoder.hashDomain(namedDomain(FILL_AUTH_DOMAIN_NAME, FILL_AUTH_DOMAIN_VERSION, domain)) as Hex;
+  return ethers.TypedDataEncoder.hashDomain(
+    namedDomain(FILL_AUTH_DOMAIN_NAME, FILL_AUTH_DOMAIN_VERSION, domain),
+  ) as Hex;
 }
 
 export function fillAuthStructHash(a: FillAuth): Hex {
@@ -421,22 +483,33 @@ export function fillAuthDigest(domain: EscrowContractDomain, a: FillAuth): Hex {
   return typedDigest(fillAuthDomainSeparator(domain), fillAuthStructHash(a));
 }
 
-export async function signFillAuth(signer: ethers.Signer, domain: EscrowContractDomain, a: FillAuth): Promise<Hex> {
-  return signTyped(signer, namedDomain(FILL_AUTH_DOMAIN_NAME, FILL_AUTH_DOMAIN_VERSION, domain), FILL_AUTH_TYPES, {
-    fillId: a.fillId,
-    filler: a.filler,
-    to: a.to,
-    token: a.token,
-    amount: toUint("amount", a.amount),
-    deadline: toUint("deadline", a.deadline),
-  });
+export async function signFillAuth(
+  signer: ethers.Signer,
+  domain: EscrowContractDomain,
+  a: FillAuth,
+): Promise<Hex> {
+  return signTyped(
+    signer,
+    namedDomain(FILL_AUTH_DOMAIN_NAME, FILL_AUTH_DOMAIN_VERSION, domain),
+    FILL_AUTH_TYPES,
+    {
+      fillId: a.fillId,
+      filler: a.filler,
+      to: a.to,
+      token: a.token,
+      amount: toUint("amount", a.amount),
+      deadline: toUint("deadline", a.deadline),
+    },
+  );
 }
 
 // --- AttestedFillVerifier FillAttestation ---
 
 export const FILL_ATTESTATION_DOMAIN_NAME = "RiddlerFillAttestation";
 export const FILL_ATTESTATION_DOMAIN_VERSION = "1";
-export const FILL_ATTESTATION_TYPEHASH = ethers.id("FillAttestation(bytes32 orderId,address payee)") as Hex;
+export const FILL_ATTESTATION_TYPEHASH = ethers.id(
+  "FillAttestation(bytes32 orderId,address payee)",
+) as Hex;
 
 const FILL_ATTESTATION_TYPES = {
   FillAttestation: [
@@ -446,17 +519,29 @@ const FILL_ATTESTATION_TYPES = {
 };
 
 export function fillAttestationDomainSeparator(domain: EscrowContractDomain): Hex {
-  return ethers.TypedDataEncoder.hashDomain(namedDomain(FILL_ATTESTATION_DOMAIN_NAME, FILL_ATTESTATION_DOMAIN_VERSION, domain)) as Hex;
+  return ethers.TypedDataEncoder.hashDomain(
+    namedDomain(FILL_ATTESTATION_DOMAIN_NAME, FILL_ATTESTATION_DOMAIN_VERSION, domain),
+  ) as Hex;
 }
 
 export function fillAttestationStructHash(orderId: string, payee: string): Hex {
   return ethers.keccak256(
-    coder.encode(["bytes32", "bytes32", "address"], [FILL_ATTESTATION_TYPEHASH, orderId, payee.toLowerCase()]),
+    coder.encode(
+      ["bytes32", "bytes32", "address"],
+      [FILL_ATTESTATION_TYPEHASH, orderId, payee.toLowerCase()],
+    ),
   ) as Hex;
 }
 
-export function fillAttestationDigest(domain: EscrowContractDomain, orderId: string, payee: string): Hex {
-  return typedDigest(fillAttestationDomainSeparator(domain), fillAttestationStructHash(orderId, payee));
+export function fillAttestationDigest(
+  domain: EscrowContractDomain,
+  orderId: string,
+  payee: string,
+): Hex {
+  return typedDigest(
+    fillAttestationDomainSeparator(domain),
+    fillAttestationStructHash(orderId, payee),
+  );
 }
 
 export async function signFillAttestation(
@@ -465,10 +550,15 @@ export async function signFillAttestation(
   orderId: string,
   payee: string,
 ): Promise<Hex> {
-  return signTyped(signer, namedDomain(FILL_ATTESTATION_DOMAIN_NAME, FILL_ATTESTATION_DOMAIN_VERSION, domain), FILL_ATTESTATION_TYPES, {
-    orderId,
-    payee,
-  });
+  return signTyped(
+    signer,
+    namedDomain(FILL_ATTESTATION_DOMAIN_NAME, FILL_ATTESTATION_DOMAIN_VERSION, domain),
+    FILL_ATTESTATION_TYPES,
+    {
+      orderId,
+      payee,
+    },
+  );
 }
 
 // The `proof` bytes AttestedFillVerifier decodes: abi.encode(address payee, bytes signature).
@@ -510,7 +600,9 @@ const SLASH_ATTESTATION_TYPES = {
 };
 
 export function slashAttestationDomainSeparator(domain: EscrowContractDomain): Hex {
-  return ethers.TypedDataEncoder.hashDomain(namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain)) as Hex;
+  return ethers.TypedDataEncoder.hashDomain(
+    namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain),
+  ) as Hex;
 }
 
 export function slashAttestationStructHash(c: SlashClaim): Hex {
@@ -535,16 +627,25 @@ export function slashAttestationDigest(domain: EscrowContractDomain, c: SlashCla
   return typedDigest(slashAttestationDomainSeparator(domain), slashAttestationStructHash(c));
 }
 
-export async function signSlashAttestation(signer: ethers.Signer, domain: EscrowContractDomain, c: SlashClaim): Promise<Hex> {
-  return signTyped(signer, namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain), SLASH_ATTESTATION_TYPES, {
-    orderId: c.orderId,
-    solver: c.solver,
-    beneficiary: c.beneficiary,
-    notional: toUint("notional", c.notional),
-    originChainId: toUint("originChainId", c.originChainId),
-    escrow: c.escrow,
-    deadline: toUint("deadline", c.deadline),
-  });
+export async function signSlashAttestation(
+  signer: ethers.Signer,
+  domain: EscrowContractDomain,
+  c: SlashClaim,
+): Promise<Hex> {
+  return signTyped(
+    signer,
+    namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain),
+    SLASH_ATTESTATION_TYPES,
+    {
+      orderId: c.orderId,
+      solver: c.solver,
+      beneficiary: c.beneficiary,
+      notional: toUint("notional", c.notional),
+      originChainId: toUint("originChainId", c.originChainId),
+      escrow: c.escrow,
+      deadline: toUint("deadline", c.deadline),
+    },
+  );
 }
 
 // --- SolverBond v2 FillAcceptance ---
@@ -635,13 +736,22 @@ export function fillAcceptanceDigest(domain: EscrowContractDomain, a: FillAccept
   return typedDigest(fillAcceptanceDomainSeparator(domain), fillAcceptanceStructHash(a));
 }
 
-export async function signFillAcceptance(signer: ethers.Signer, domain: EscrowContractDomain, a: FillAcceptance): Promise<Hex> {
-  return signTyped(signer, namedDomain(FILL_ACCEPTANCE_DOMAIN_NAME, FILL_ACCEPTANCE_DOMAIN_VERSION, domain), FILL_ACCEPTANCE_TYPES, {
-    orderId: normalizeBytes32("orderId", a.orderId),
-    originChainId: toUint("originChainId", a.originChainId),
-    escrow: a.escrow,
-    filler: a.filler,
-    deadline: toUint("deadline", a.deadline),
-    fillAuth: normalizeBytes32("fillAuth", a.fillAuth),
-  });
+export async function signFillAcceptance(
+  signer: ethers.Signer,
+  domain: EscrowContractDomain,
+  a: FillAcceptance,
+): Promise<Hex> {
+  return signTyped(
+    signer,
+    namedDomain(FILL_ACCEPTANCE_DOMAIN_NAME, FILL_ACCEPTANCE_DOMAIN_VERSION, domain),
+    FILL_ACCEPTANCE_TYPES,
+    {
+      orderId: normalizeBytes32("orderId", a.orderId),
+      originChainId: toUint("originChainId", a.originChainId),
+      escrow: a.escrow,
+      filler: a.filler,
+      deadline: toUint("deadline", a.deadline),
+      fillAuth: normalizeBytes32("fillAuth", a.fillAuth),
+    },
+  );
 }

@@ -15,11 +15,7 @@
 import fs, { realpathSync } from "fs";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import {
-  FEE_SCHEDULE,
-  computeFeeBreakdown,
-  type FeeComputeParams,
-} from "@xochi/client";
+import { FEE_SCHEDULE, computeFeeBreakdown, type FeeComputeParams } from "@xochi/client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,17 +33,39 @@ interface Case {
 const CASES: Case[] = [
   // Full tier x asset_class matrix at the headline (no impact, non-ACP). Scores
   // carry the proofs each tier needs so no gating fires.
-  { name: "standard-stable", input: { trust_score: 0, asset_class: "stable", input_amount: CANONICAL_AMOUNT } },
-  { name: "standard-volatile", input: { trust_score: 0, asset_class: "volatile", input_amount: CANONICAL_AMOUNT } },
-  { name: "trusted-stable", input: { trust_score: 25, asset_class: "stable", input_amount: CANONICAL_AMOUNT } },
-  { name: "trusted-volatile", input: { trust_score: 25, asset_class: "volatile", input_amount: CANONICAL_AMOUNT } },
+  {
+    name: "standard-stable",
+    input: { trust_score: 0, asset_class: "stable", input_amount: CANONICAL_AMOUNT },
+  },
+  {
+    name: "standard-volatile",
+    input: { trust_score: 0, asset_class: "volatile", input_amount: CANONICAL_AMOUNT },
+  },
+  {
+    name: "trusted-stable",
+    input: { trust_score: 25, asset_class: "stable", input_amount: CANONICAL_AMOUNT },
+  },
+  {
+    name: "trusted-volatile",
+    input: { trust_score: 25, asset_class: "volatile", input_amount: CANONICAL_AMOUNT },
+  },
   {
     name: "verified-stable",
-    input: { trust_score: 50, asset_class: "stable", input_amount: CANONICAL_AMOUNT, attestations: ["compliance"] },
+    input: {
+      trust_score: 50,
+      asset_class: "stable",
+      input_amount: CANONICAL_AMOUNT,
+      attestations: ["compliance"],
+    },
   },
   {
     name: "verified-volatile",
-    input: { trust_score: 50, asset_class: "volatile", input_amount: CANONICAL_AMOUNT, attestations: ["compliance"] },
+    input: {
+      trust_score: 50,
+      asset_class: "volatile",
+      input_amount: CANONICAL_AMOUNT,
+      attestations: ["compliance"],
+    },
   },
   {
     name: "premium-stable",
@@ -86,22 +104,51 @@ const CASES: Case[] = [
     },
   },
   // Attestation gating: a verified score with no proofs is gated down to trusted.
-  { name: "gated-verified-to-trusted", input: { trust_score: 50, asset_class: "stable", input_amount: CANONICAL_AMOUNT } },
+  {
+    name: "gated-verified-to-trusted",
+    input: { trust_score: 50, asset_class: "stable", input_amount: CANONICAL_AMOUNT },
+  },
   // ACP origin waives the routing layer (standard stable 22 -> 14).
-  { name: "acp-origin-standard-stable", input: { trust_score: 0, asset_class: "stable", input_amount: CANONICAL_AMOUNT, acp_origin: true } },
+  {
+    name: "acp-origin-standard-stable",
+    input: {
+      trust_score: 0,
+      asset_class: "stable",
+      input_amount: CANONICAL_AMOUNT,
+      acp_origin: true,
+    },
+  },
   // Price impact added on a thin book (2000 / 10000 => 10 bps; total 22 -> 32).
   {
     name: "impact-standard-stable",
-    input: { trust_score: 0, asset_class: "stable", input_amount: CANONICAL_AMOUNT, fill_usd: 2000, available_liquidity_usd: 10000 },
+    input: {
+      trust_score: 0,
+      asset_class: "stable",
+      input_amount: CANONICAL_AMOUNT,
+      fill_usd: 2000,
+      available_liquidity_usd: 10000,
+    },
   },
   // Impact clamped at the cap (fill >> liquidity).
   {
     name: "impact-capped-volatile",
-    input: { trust_score: 0, asset_class: "volatile", input_amount: CANONICAL_AMOUNT, fill_usd: 100000, available_liquidity_usd: 1000 },
+    input: {
+      trust_score: 0,
+      asset_class: "volatile",
+      input_amount: CANONICAL_AMOUNT,
+      fill_usd: 100000,
+      available_liquidity_usd: 1000,
+    },
   },
   // Per-layer floor truncation: sum-of-floors (731) < floor-of-total (733).
-  { name: "floor-truncation-stable", input: { trust_score: 0, asset_class: "stable", input_amount: "333333" } },
-  { name: "floor-truncation-volatile", input: { trust_score: 0, asset_class: "volatile", input_amount: "333333" } },
+  {
+    name: "floor-truncation-stable",
+    input: { trust_score: 0, asset_class: "stable", input_amount: "333333" },
+  },
+  {
+    name: "floor-truncation-volatile",
+    input: { trust_score: 0, asset_class: "volatile", input_amount: "333333" },
+  },
 ];
 
 interface Vector {
@@ -128,13 +175,16 @@ function main(): void {
   fs.writeFileSync(vectorsPath, JSON.stringify(vectors, null, 2) + "\n");
   fs.writeFileSync(schedulePath, JSON.stringify(FEE_SCHEDULE, null, 2) + "\n");
 
-  console.log(`Wrote ${vectors.length} fee vectors to ${path.relative(process.cwd(), vectorsPath)}`);
+  console.log(
+    `Wrote ${vectors.length} fee vectors to ${path.relative(process.cwd(), vectorsPath)}`,
+  );
   console.log(`Wrote fee schedule to ${path.relative(process.cwd(), schedulePath)}`);
 }
 
 // Compared as URLs of the real path: a hand-built `file://` + path never
 // matches one that needs percent-encoding (a space) or runs through a symlink.
-const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+const isMainModule =
+  process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isMainModule) {
   main();
 }

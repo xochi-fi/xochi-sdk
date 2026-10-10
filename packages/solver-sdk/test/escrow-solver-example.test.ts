@@ -14,9 +14,21 @@ import path from "path";
 import { ethers } from "ethers";
 import { signFillAuth, type Hex } from "@xochi/signer";
 
-import { LockStatus, RIDDLER_FILLER_ABI, type Award, type IntentAnnouncement, type SolverEvent } from "../src/index";
+import {
+  LockStatus,
+  RIDDLER_FILLER_ABI,
+  type Award,
+  type IntentAnnouncement,
+  type SolverEvent,
+} from "../src/index";
 import { FillStateFile, readFillStateFile, type PersistedFill } from "../examples/fill-state-file";
-import { BackgroundTasks, FatalSolverStop, openStateFile, runAgainstVenue, startSolver } from "../examples/supervise";
+import {
+  BackgroundTasks,
+  FatalSolverStop,
+  openStateFile,
+  runAgainstVenue,
+  startSolver,
+} from "../examples/supervise";
 import {
   DEST,
   FILLER,
@@ -36,10 +48,14 @@ import {
 } from "./escrow-world";
 import { Revert, type FakeChain, type SentTx } from "./fake-chain";
 
-const AMBIGUOUS = "upstream connect error or disconnect/reset before headers. reset reason: connection termination";
+const AMBIGUOUS =
+  "upstream connect error or disconnect/reset before headers. reset reason: connection termination";
 const NO_GAS = "insufficient funds for gas * price + value";
 const DEADLINE = T0 + 1_800; // the FillAuth deadline `award()` signs
-const ERC20 = ["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"];
+const ERC20 = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+];
 
 // Step the example's 15s polls (and the gateway's 0ms ones) until every
 // background task has settled, or `passes` polls have gone by.
@@ -60,9 +76,24 @@ const isSlotRelease = (tx: SentTx) => tx.to.toLowerCase() === tx.from.toLowerCas
 async function awardUnder(fillId: Hex, auctionId = announcement.auctionId): Promise<Award> {
   const a = await award();
   const f = a.escrow!.fillAuth!;
-  const auth = { fillId, filler: f.filler!, to: f.to!, token: f.token!, amount: f.amount!, deadline: f.deadline! };
-  const signature = await signFillAuth(new ethers.Wallet(VENUE_KEY), { chainId: DEST, verifyingContract: FILLER }, auth);
-  return { ...a, auctionId, escrow: { ...a.escrow!, fillId, fillAuth: { ...f, ...auth, signature } } };
+  const auth = {
+    fillId,
+    filler: f.filler!,
+    to: f.to!,
+    token: f.token!,
+    amount: f.amount!,
+    deadline: f.deadline!,
+  };
+  const signature = await signFillAuth(
+    new ethers.Wallet(VENUE_KEY),
+    { chainId: DEST, verifyingContract: FILLER },
+    auth,
+  );
+  return {
+    ...a,
+    auctionId,
+    escrow: { ...a.escrow!, fillId, fillAuth: { ...f, ...auth, signature } },
+  };
 }
 
 // RiddlerFiller records `filled` per fillId; the world's stub answers for any.
@@ -95,7 +126,11 @@ async function anotherProcess() {
 // ones in nonce order: a fill that reads the allowance before an `approve(0)`
 // is mined and is mined after it reverts. A transaction `held` is never mined,
 // nor is anything behind it.
-function allowanceFollowsBlocks(w: ReturnType<typeof world>, initial: bigint, held: (tx: SentTx) => boolean = () => false): { allowance: bigint } {
+function allowanceFollowsBlocks(
+  w: ReturnType<typeof world>,
+  initial: bigint,
+  held: (tx: SentTx) => boolean = () => false,
+): { allowance: bigint } {
   const ledger = { allowance: initial };
   // `stub` keeps the first ABI registered at an address; this one adds approve.
   const stubs: Map<string, unknown> = Reflect.get(w.dest, "stubs");
@@ -139,12 +174,16 @@ describe("escrow example: an accepted fill not confirmed on its first try", () =
   // the rescue that re-broadcasts the same bytes; observing alone would sit
   // until the FillAuth deadline and be slashed.
   it("re-drives an in-doubt fill through the gateway until it lands, well before the deadline, then claims", async () => {
-    const w = world([
-      { type: "announcement", announcement },
-      { type: "award", award: await award({ deadline: DEADLINE }) },
-    ], { receiptTimeoutMs: 0 });
+    const w = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award({ deadline: DEADLINE }) },
+      ],
+      { receiptTimeoutMs: 0 },
+    );
     let fillSends = 0;
-    w.dest.onSend = (tx) => (tx.method === "fill" && ++fillSends === 1 ? { reject: AMBIGUOUS } : { mine: 1 });
+    w.dest.onSend = (tx) =>
+      tx.method === "fill" && ++fillSends === 1 ? { reject: AMBIGUOUS } : { mine: 1 };
 
     await w.client.run(w.escrowSolver);
     expect(w.lock.filled).toBe(false);
@@ -169,7 +208,8 @@ describe("escrow example: an accepted fill not confirmed on its first try", () =
       { type: "award", award: await award() },
     ]);
     let fillSends = 0;
-    w.dest.onSend = (tx) => (tx.method === "fill" && ++fillSends === 1 ? { reject: NO_GAS } : { mine: 1 });
+    w.dest.onSend = (tx) =>
+      tx.method === "fill" && ++fillSends === 1 ? { reject: NO_GAS } : { mine: 1 };
 
     await w.client.run(w.escrowSolver);
     expect(await drain(w.background, 4)).toBe(true);
@@ -220,7 +260,8 @@ describe("escrow example: an accepted fill not confirmed on its first try", () =
       { type: "award", award: await award() },
     ]);
     let fillSends = 0;
-    w.dest.onSend = (tx) => (tx.method === "fill" && ++fillSends <= 2 ? { reject: NO_GAS } : { mine: 1 });
+    w.dest.onSend = (tx) =>
+      tx.method === "fill" && ++fillSends <= 2 ? { reject: NO_GAS } : { mine: 1 };
 
     await w.client.run(w.escrowSolver);
     expect(await drain(w.background, 6)).toBe(true);
@@ -294,7 +335,8 @@ describe("escrow example: a fill the destination RPC does not show landing", () 
         return { pend: true };
       }
       if (isSlotRelease(tx)) {
-        for (const pending of w.dest.pending()) if (pending.method === "fill") w.dest.mine(pending.hash);
+        for (const pending of w.dest.pending())
+          if (pending.method === "fill") w.dest.mine(pending.hash);
         return { reject: "502 Bad Gateway" };
       }
       return { mine: 1 };
@@ -340,10 +382,13 @@ describe("escrow example: a fill the destination RPC does not show landing", () 
   // `filled` false for good, so `followFill` gives up at the deadline. The
   // venue attested the fill, and only the claim loop asks it.
   it("still runs the claim loop past a destination RPC that hides the landed fill, and claims once attested", async () => {
-    const w = world([
-      { type: "announcement", announcement },
-      { type: "award", award: await award({ deadline: T0 + 600 }) },
-    ], { receiptTimeoutMs: 0 });
+    const w = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award({ deadline: T0 + 600 }) },
+      ],
+      { receiptTimeoutMs: 0 },
+    );
     const mined = w.dest.onMined;
     w.dest.onMined = (tx) => {
       mined(tx);
@@ -375,10 +420,13 @@ describe("escrow example: a fill the destination RPC does not show landing", () 
     it("keeps a `cancelled` fill that never landed persisted until the claim loop ends", async () => {
       const file = path.join(dir, "state.json");
       const state = new FillStateFile(file);
-      const w = world([
-        { type: "announcement", announcement },
-        { type: "award", award: await award() },
-      ], { state });
+      const w = world(
+        [
+          { type: "announcement", announcement },
+          { type: "award", award: await award() },
+        ],
+        { state },
+      );
       w.dest.onSend = (tx) => {
         if (tx.method === "fill") {
           w.dest.timestamp = DEADLINE + 1;
@@ -409,10 +457,13 @@ describe("escrow example: a fill the destination RPC does not show landing", () 
     it("claims a landed fill whose `filled` state write fails", async () => {
       const file = path.join(dir, "state.json");
       const state = new FillStateFile(file);
-      const w = world([
-        { type: "announcement", announcement },
-        { type: "award", award: await award() },
-      ], { state });
+      const w = world(
+        [
+          { type: "announcement", announcement },
+          { type: "award", award: await award() },
+        ],
+        { state },
+      );
       w.dest.onSend = (tx) => {
         if (tx.method === "fill") {
           fs.rmSync(file);
@@ -441,7 +492,10 @@ describe("escrow example: one acceptance per order", () => {
     const w = world([
       { type: "announcement", announcement },
       { type: "award", award: await award() },
-      { type: "award", award: await awardUnder(ethers.id("another fillId for the same order") as Hex) },
+      {
+        type: "award",
+        award: await awardUnder(ethers.id("another fillId for the same order") as Hex),
+      },
     ]);
     const prepares = vi.spyOn(w.gateway, "prepare");
 
@@ -472,45 +526,60 @@ describe("escrow example: one acceptance per order", () => {
     it.each([
       ["the gateway re-registers the persisted acceptance", false],
       ["the gateway cannot re-register it (the key that accepted it was rotated)", true],
-    ])("refuses a new auction for an order a previous process filled under another fillId: %s", async (_label, rotated) => {
-      const file = path.join(dir, "state.json");
-      const filled = new Set<string>();
-      const firstState = new FillStateFile(file);
-      const first = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: firstState });
-      filledPerFillId(first, filled);
-      first.venue.getAttestation = async () => null;
-      await first.client.run(first.escrowSolver);
-      expect(filled).toEqual(new Set([FILL_ID.toLowerCase()]));
-      if (rotated) {
-        const [entry] = firstState.entries();
-        firstState.put({ ...entry!, prepared: { ...entry!.prepared, fillAuth: { ...entry!.prepared.fillAuth, filler: "0x" + "77".repeat(20) } } });
-      }
-      firstState.close(); // ... the process stops here
+    ])(
+      "refuses a new auction for an order a previous process filled under another fillId: %s",
+      async (_label, rotated) => {
+        const file = path.join(dir, "state.json");
+        const filled = new Set<string>();
+        const firstState = new FillStateFile(file);
+        const first = world(
+          [
+            { type: "announcement", announcement },
+            { type: "award", award: await award() },
+          ],
+          { state: firstState },
+        );
+        filledPerFillId(first, filled);
+        first.venue.getAttestation = async () => null;
+        await first.client.run(first.escrowSolver);
+        expect(filled).toEqual(new Set([FILL_ID.toLowerCase()]));
+        if (rotated) {
+          const [entry] = firstState.entries();
+          firstState.put({
+            ...entry!,
+            prepared: {
+              ...entry!.prepared,
+              fillAuth: { ...entry!.prepared.fillAuth, filler: "0x" + "77".repeat(20) },
+            },
+          });
+        }
+        firstState.close(); // ... the process stops here
 
-      const reAnnounced = { ...announcement, auctionId: "auc-2" };
-      const freshFillId = ("0x" + "f1".repeat(32)) as Hex;
-      const after = world(
-        [
-          { type: "announcement", announcement: reAnnounced },
-          { type: "award", award: await awardUnder(freshFillId, "auc-2") },
-        ],
-        { state: new FillStateFile(file) },
-      );
-      filledPerFillId(after, filled);
-      after.venue.attestation = first.venue.attestation;
-      for (const entry of readFillStateFile(file)) after.escrowSolver.resume(entry);
-      await after.client.run(after.escrowSolver);
-      expect(await drain(after.background, 4)).toBe(true);
+        const reAnnounced = { ...announcement, auctionId: "auc-2" };
+        const freshFillId = ("0x" + "f1".repeat(32)) as Hex;
+        const after = world(
+          [
+            { type: "announcement", announcement: reAnnounced },
+            { type: "award", award: await awardUnder(freshFillId, "auc-2") },
+          ],
+          { state: new FillStateFile(file) },
+        );
+        filledPerFillId(after, filled);
+        after.venue.attestation = first.venue.attestation;
+        for (const entry of readFillStateFile(file)) after.escrowSolver.resume(entry);
+        await after.client.run(after.escrowSolver);
+        expect(await drain(after.background, 4)).toBe(true);
 
-      expect(after.venue.bids).toHaveLength(1);
-      expect(after.venue.accepts).toHaveLength(0);
-      expect(fillsOn(after.dest)).toHaveLength(0);
-      expect(filled).toEqual(new Set([FILL_ID.toLowerCase()]));
-      expect(after.errors).toHaveLength(1);
-      // The resumed order's claim is unaffected.
-      expect(claimsOn(after.origin)).toHaveLength(1);
-      expect(after.lock.status).toBe(LockStatus.Claimed);
-    });
+        expect(after.venue.bids).toHaveLength(1);
+        expect(after.venue.accepts).toHaveLength(0);
+        expect(fillsOn(after.dest)).toHaveLength(0);
+        expect(filled).toEqual(new Set([FILL_ID.toLowerCase()]));
+        expect(after.errors).toHaveLength(1);
+        // The resumed order's claim is unaffected.
+        expect(claimsOn(after.origin)).toHaveLength(1);
+        expect(after.lock.status).toBe(LockStatus.Claimed);
+      },
+    );
 
     // One field of the order's entry no longer decodes (a hand edit, a partial
     // restore): the entry is skipped and never resumed, so neither the
@@ -520,7 +589,13 @@ describe("escrow example: one acceptance per order", () => {
       const file = path.join(dir, "state.json");
       const filled = new Set<string>();
       const firstState = new FillStateFile(file);
-      const first = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: firstState });
+      const first = world(
+        [
+          { type: "announcement", announcement },
+          { type: "award", award: await award() },
+        ],
+        { state: firstState },
+      );
       filledPerFillId(first, filled);
       first.venue.getAttestation = async () => null;
       await first.client.run(first.escrowSolver);
@@ -554,7 +629,10 @@ describe("escrow example: one acceptance per order", () => {
     // With no orderId there is nothing to refuse awards by: the file is refused.
     it("refuses a state file holding an entry that does not decode and names no orderId", () => {
       const file = path.join(dir, "state.json");
-      fs.writeFileSync(file, JSON.stringify({ fills: [{ auctionId: "auc-1", prepared: { fillId: FILL_ID } }] }));
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ fills: [{ auctionId: "auc-1", prepared: { fillId: FILL_ID } }] }),
+      );
       expect(() => new FillStateFile(file, { log: () => {} })).toThrow(/names no orderId/);
       expect(fs.existsSync(`${file}.lock`)).toBe(false);
     });
@@ -623,10 +701,13 @@ describe("escrow example: an acceptance is posted only once SOLVER_STATE_FILE re
   // acceptance no restart knows to fill.
   it("posts and fills nothing when the `accepted` write fails", async () => {
     const state = new FillStateFile(file);
-    const w = world([
-      { type: "announcement", announcement },
-      { type: "award", award: await award() },
-    ], { state });
+    const w = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state },
+    );
     const put = state.put.bind(state);
     state.put = (entry) => {
       if (entry.phase !== "accepted") return put(entry);
@@ -654,7 +735,13 @@ describe("escrow example: an acceptance is posted only once SOLVER_STATE_FILE re
   // an acceptance the venue holds.
   async function acceptingOnDisk() {
     const before = new FillStateFile(file);
-    const w = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: before });
+    const w = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state: before },
+    );
     w.dest.holdSends = new Promise(() => {});
     void w.client.run(w.escrowSolver);
     await vi.advanceTimersByTimeAsync(0);
@@ -712,11 +799,22 @@ describe("escrow example: an acceptance is posted only once SOLVER_STATE_FILE re
     let wrote = false;
     vi.doMock("fs", async (importOriginal) => {
       const real = await importOriginal<typeof fs>();
-      const writeSync = ((fd: number, data: string | NodeJS.ArrayBufferView, offset?: number, length?: number) => {
+      const writeSync = ((
+        fd: number,
+        data: string | NodeJS.ArrayBufferView,
+        offset?: number,
+        length?: number,
+      ) => {
         if (!full) return (real.writeSync as (...a: unknown[]) => number)(fd, data, offset, length);
-        if (wrote) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+        if (wrote)
+          throw Object.assign(new Error("ENOSPC: no space left on device, write"), {
+            code: "ENOSPC",
+          });
         wrote = true;
-        const bytes = typeof data === "string" ? Buffer.from(data) : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+        const bytes =
+          typeof data === "string"
+            ? Buffer.from(data)
+            : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
         return real.writeSync(fd, bytes.subarray(offset ?? 0, (offset ?? 0) + 64));
       }) as typeof real.writeSync;
       return { ...real, writeSync, default: { ...real, writeSync } };
@@ -746,12 +844,18 @@ describe("escrow example: a restart resumes persisted orders", () => {
   });
 
   // A fill landed, its attestation not out yet when the process stopped.
-  async function filledBeforeStop(file: string, feed: { announcement?: IntentAnnouncement; award?: Award } = {}) {
+  async function filledBeforeStop(
+    file: string,
+    feed: { announcement?: IntentAnnouncement; award?: Award } = {},
+  ) {
     const state = new FillStateFile(file);
-    const before = world([
-      { type: "announcement", announcement: feed.announcement ?? announcement },
-      { type: "award", award: feed.award ?? (await award()) },
-    ], { state });
+    const before = world(
+      [
+        { type: "announcement", announcement: feed.announcement ?? announcement },
+        { type: "award", award: feed.award ?? (await award()) },
+      ],
+      { state },
+    );
     before.venue.getAttestation = async () => null;
     await before.client.run(before.escrowSolver);
     expect(before.lock.filled).toBe(true);
@@ -824,8 +928,12 @@ describe("escrow example: a restart resumes persisted orders", () => {
 
     const logs: string[] = [];
     const state = new FillStateFile(file, { log: (m) => logs.push(m) });
-    expect(state.entries().map((e) => e.prepared.orderId)).toEqual([onDisk.fills[0].prepared.orderId]);
-    expect(logs.filter((l) => l.includes(bad.prepared.orderId) && l.includes("NOT resumed"))).toHaveLength(1);
+    expect(state.entries().map((e) => e.prepared.orderId)).toEqual([
+      onDisk.fills[0].prepared.orderId,
+    ]);
+    expect(
+      logs.filter((l) => l.includes(bad.prepared.orderId) && l.includes("NOT resumed")),
+    ).toHaveLength(1);
     const after = world([], { state });
     after.lock.filled = true;
     after.venue.attestation = attestation;
@@ -840,7 +948,13 @@ describe("escrow example: a restart resumes persisted orders", () => {
   it("fills and claims an order the previous process accepted and never filled", async () => {
     const file = path.join(dir, "state.json");
     const beforeState = new FillStateFile(file);
-    const before = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: beforeState });
+    const before = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state: beforeState },
+    );
     // The fill broadcast never returns before the process stops.
     before.dest.holdSends = new Promise(() => {});
     void before.client.run(before.escrowSolver);
@@ -856,7 +970,9 @@ describe("escrow example: a restart resumes persisted orders", () => {
     expect(await drain(after.background, 4)).toBe(true);
 
     // The same acceptance re-posted, never a second one signed.
-    expect(after.venue.accepts.map((a) => a.signature)).toEqual(before.venue.accepts.map((a) => a.signature));
+    expect(after.venue.accepts.map((a) => a.signature)).toEqual(
+      before.venue.accepts.map((a) => a.signature),
+    );
     expect(fillsOn(after.dest)).toHaveLength(1);
     expect(after.lock.filled).toBe(true);
     expect(after.lock.status).toBe(LockStatus.Claimed);
@@ -872,10 +988,17 @@ describe("escrow example: a restart resumes persisted orders", () => {
   it("re-runs every acceptance refusal for an order the previous process died accepting", async () => {
     const file = path.join(dir, "state.json");
     const beforeState = new FillStateFile(file);
-    const before = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: beforeState });
+    const before = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state: beforeState },
+    );
     // Once the order is persisted, the destination stops answering.
     const send = before.dest.send.bind(before.dest);
-    before.dest.send = (method, params) => (readFillStateFile(file).length > 0 ? new Promise(() => {}) : send(method, params));
+    before.dest.send = (method, params) =>
+      readFillStateFile(file).length > 0 ? new Promise(() => {}) : send(method, params);
     void before.client.run(before.escrowSolver);
     await vi.advanceTimersByTimeAsync(0);
     expect(before.venue.accepts).toHaveLength(0);
@@ -900,12 +1023,24 @@ describe("escrow example: a restart resumes persisted orders", () => {
   it("stops re-driving a persisted fill this gateway refuses to send, and still runs the claim loop", async () => {
     const file = path.join(dir, "state.json");
     const beforeState = new FillStateFile(file);
-    const before = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: beforeState });
+    const before = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state: beforeState },
+    );
     before.dest.holdSends = new Promise(() => {});
     void before.client.run(before.escrowSolver);
     await vi.advanceTimersByTimeAsync(0);
     const [entry] = beforeState.entries();
-    beforeState.put({ ...entry!, prepared: { ...entry!.prepared, fillAuth: { ...entry!.prepared.fillAuth, filler: "0x" + "77".repeat(20) } } });
+    beforeState.put({
+      ...entry!,
+      prepared: {
+        ...entry!.prepared,
+        fillAuth: { ...entry!.prepared.fillAuth, filler: "0x" + "77".repeat(20) },
+      },
+    });
     beforeState.close();
 
     const state = new FillStateFile(file);
@@ -934,7 +1069,10 @@ describe("escrow example: a restart resumes persisted orders", () => {
     const attestation = await filledBeforeStop(file);
 
     const state = new FillStateFile(file);
-    const after = world([{ type: "announcement", announcement: { ...announcement, auctionId: "auc-2" } }], { state });
+    const after = world(
+      [{ type: "announcement", announcement: { ...announcement, auctionId: "auc-2" } }],
+      { state },
+    );
     after.lock.filled = true;
     after.venue.attestation = attestation;
     after.dest.stub(TOKEN, ERC20, {
@@ -969,7 +1107,13 @@ describe("escrow example: a restart resumes persisted orders", () => {
   // Process A accepted the award and was stopped before its fill went out.
   async function acceptedBeforeStop(file: string) {
     const state = new FillStateFile(file);
-    const before = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state });
+    const before = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state },
+    );
     before.dest.holdSends = new Promise(() => {});
     void before.client.run(before.escrowSolver);
     await vi.advanceTimersByTimeAsync(0);
@@ -979,10 +1123,15 @@ describe("escrow example: a restart resumes persisted orders", () => {
   }
 
   // A feed that runs until the solver stops.
-  const idleFeed = (signal: AbortSignal) => new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+  const idleFeed = (signal: AbortSignal) =>
+    new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
 
   const approvals = (chain: FakeChain) =>
-    chain.attempts.map((t) => (t.method === "approve" ? `approve(${t.args![1] === 0n ? "0" : t.args![1] === ethers.MaxUint256 ? "max" : t.args![1]})` : t.method));
+    chain.attempts.map((t) =>
+      t.method === "approve"
+        ? `approve(${t.args![1] === 0n ? "0" : t.args![1] === ethers.MaxUint256 ? "max" : t.args![1]})`
+        : t.method,
+    );
 
   // USDC debits even a MaxUint256 allowance; here B finds it short of the
   // owed fill, so the startup approval resets it -- `approve(0)`, then the
@@ -1030,7 +1179,11 @@ describe("escrow example: a restart resumes persisted orders", () => {
     const state = new FillStateFile(file);
     const after = world([], { state, receiptTimeoutMs: 0 });
     // Any approval stays pending: it is in doubt when its receipt wait ends.
-    const ledger = allowanceFollowsBlocks(after, ethers.MaxUint256 - OUTPUT, (tx) => tx.method === "approve");
+    const ledger = allowanceFollowsBlocks(
+      after,
+      ethers.MaxUint256 - OUTPUT,
+      (tx) => tx.method === "approve",
+    );
     const stop = new AbortController();
     const started = startSolver({
       solver: after.escrowSolver,
@@ -1067,7 +1220,8 @@ describe("escrow example: a restart resumes persisted orders", () => {
     const mineInOrder = after.dest.onSend;
     let refused = false;
     after.dest.onSend = (tx) => {
-      if (tx.method !== "approve" || tx.args![1] !== ethers.MaxUint256 || refused) return mineInOrder(tx);
+      if (tx.method !== "approve" || tx.args![1] !== ethers.MaxUint256 || refused)
+        return mineInOrder(tx);
       refused = true;
       return { reject: NO_GAS };
     };
@@ -1234,7 +1388,13 @@ describe("escrow example: a restart resumes persisted orders", () => {
     expect(await drain(after.background, 8)).toBe(true);
     expect(await outcome).toBeInstanceOf(FatalSolverStop);
 
-    expect(approvals(after.dest)).toEqual(["fill", "approve(0)", `approve(${CAP})`, `approve(${CAP})`, "fill"]);
+    expect(approvals(after.dest)).toEqual([
+      "fill",
+      "approve(0)",
+      `approve(${CAP})`,
+      `approve(${CAP})`,
+      "fill",
+    ]);
     expect(after.lock.filled).toBe(true);
     expect(ledger.allowance).toBe(CAP - OUTPUT);
     expect(claimsOn(after.origin)).toHaveLength(1);
@@ -1251,7 +1411,11 @@ describe("escrow example: a restart resumes persisted orders", () => {
     const state = new FillStateFile(file);
     const after = world([], { state, receiptTimeoutMs: 0 });
     let holding = true;
-    const ledger = allowanceFollowsBlocks(after, OUTPUT / 2n, (tx) => holding && tx.method === "approve");
+    const ledger = allowanceFollowsBlocks(
+      after,
+      OUTPUT / 2n,
+      (tx) => holding && tx.method === "approve",
+    );
     const outcome = startSolver({
       solver: after.escrowSolver,
       state,
@@ -1282,42 +1446,52 @@ describe("escrow example: a restart resumes persisted orders", () => {
   // A FillAuth amount the writer never spells (`amountWire` writes decimal
   // strings) is an entry that does not decode: skipped, never summed into
   // the allowance the resumed fills need.
-  it.each([["1e6"], [1.5], ["-5000000"]])("skips an entry whose fillAuth.amount is %j, and starts on the others", async (amount) => {
-    const file = path.join(dir, "state.json");
-    await acceptedBeforeStop(file);
-    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
-    const bad = structuredClone(onDisk.fills[0]);
-    bad.prepared.orderId = "0x" + "ab".repeat(32);
-    bad.prepared.fillAuth.amount = amount;
-    onDisk.fills.push(bad);
-    fs.writeFileSync(file, JSON.stringify(onDisk));
+  it.each([["1e6"], [1.5], ["-5000000"]])(
+    "skips an entry whose fillAuth.amount is %j, and starts on the others",
+    async (amount) => {
+      const file = path.join(dir, "state.json");
+      await acceptedBeforeStop(file);
+      const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+      const bad = structuredClone(onDisk.fills[0]);
+      bad.prepared.orderId = "0x" + "ab".repeat(32);
+      bad.prepared.fillAuth.amount = amount;
+      onDisk.fills.push(bad);
+      fs.writeFileSync(file, JSON.stringify(onDisk));
 
-    const logs: string[] = [];
-    const state = new FillStateFile(file, { log: (m) => logs.push(m) });
-    expect(state.entries().map((e) => e.prepared.orderId)).toEqual([onDisk.fills[0].prepared.orderId]);
-    expect(state.holdsUnreadable(bad.prepared.orderId)).toBe(true);
-    expect(logs.filter((l) => l.includes(bad.prepared.orderId) && l.includes("NOT resumed"))).toHaveLength(1);
-    const after = world([], { state });
-    allowanceFollowsBlocks(after, ethers.MaxUint256);
-    const sufficient: bigint[] = [];
-    const stop = new AbortController();
-    const started = startSolver({
-      solver: after.escrowSolver,
-      state,
-      background: after.background,
-      allowance: { ...after.allowance, ensure: (s) => (sufficient.push(s), after.allowance.ensure(s)) },
-      run: idleFeed,
-      signal: stop.signal,
-      log: () => {},
-    });
-    expect(await drain(after.background, 4)).toBe(true);
-    stop.abort();
-    await started;
+      const logs: string[] = [];
+      const state = new FillStateFile(file, { log: (m) => logs.push(m) });
+      expect(state.entries().map((e) => e.prepared.orderId)).toEqual([
+        onDisk.fills[0].prepared.orderId,
+      ]);
+      expect(state.holdsUnreadable(bad.prepared.orderId)).toBe(true);
+      expect(
+        logs.filter((l) => l.includes(bad.prepared.orderId) && l.includes("NOT resumed")),
+      ).toHaveLength(1);
+      const after = world([], { state });
+      allowanceFollowsBlocks(after, ethers.MaxUint256);
+      const sufficient: bigint[] = [];
+      const stop = new AbortController();
+      const started = startSolver({
+        solver: after.escrowSolver,
+        state,
+        background: after.background,
+        allowance: {
+          ...after.allowance,
+          ensure: (s) => (sufficient.push(s), after.allowance.ensure(s)),
+        },
+        run: idleFeed,
+        signal: stop.signal,
+        log: () => {},
+      });
+      expect(await drain(after.background, 4)).toBe(true);
+      stop.abort();
+      await started;
 
-    expect(sufficient[0]).toBe(OUTPUT);
-    expect(after.lock.filled).toBe(true);
-    state.close();
-  });
+      expect(sufficient[0]).toBe(OUTPUT);
+      expect(after.lock.filled).toBe(true);
+      state.close();
+    },
+  );
 
   // The approval cannot be made (here its simulation fails), so the solver
   // does not bid; the resumed fill waits while the approval is retried, and
@@ -1327,7 +1501,10 @@ describe("escrow example: a restart resumes persisted orders", () => {
     await acceptedBeforeStop(file);
 
     const state = new FillStateFile(file);
-    const after = world([{ type: "announcement", announcement: { ...announcement, auctionId: "auc-2" } }], { state });
+    const after = world(
+      [{ type: "announcement", announcement: { ...announcement, auctionId: "auc-2" } }],
+      { state },
+    );
     let allowance = 0n;
     after.dest.stub(TOKEN, ERC20, { allowance: () => allowance });
     let outcome: unknown = "pending";
@@ -1364,7 +1541,13 @@ describe("escrow example: a restart resumes persisted orders", () => {
   it("fills an order whose acceptance POST never answered, after a restart past acceptBy", async () => {
     const file = path.join(dir, "state.json");
     const beforeState = new FillStateFile(file);
-    const before = world([{ type: "announcement", announcement }, { type: "award", award: await award() }], { state: beforeState });
+    const before = world(
+      [
+        { type: "announcement", announcement },
+        { type: "award", award: await award() },
+      ],
+      { state: beforeState },
+    );
     before.venue.acceptAward = (auctionId, body) => {
       before.venue.accepts.push({ auctionId, ...body });
       return new Promise(() => {});
@@ -1380,7 +1563,9 @@ describe("escrow example: a restart resumes persisted orders", () => {
     for (const entry of state.entries()) after.escrowSolver.resume(entry);
     expect(await drain(after.background, 4)).toBe(true);
 
-    expect(after.venue.accepts.map((a) => a.signature)).toEqual(before.venue.accepts.map((a) => a.signature));
+    expect(after.venue.accepts.map((a) => a.signature)).toEqual(
+      before.venue.accepts.map((a) => a.signature),
+    );
     expect(fillsOn(after.dest)).toHaveLength(1);
     expect(after.lock.filled).toBe(true);
     expect(after.lock.status).toBe(LockStatus.Claimed);
@@ -1396,30 +1581,33 @@ describe("escrow example: a restart resumes persisted orders", () => {
   it.each([
     ["inside acceptBy", T0],
     ["past acceptBy", T0 + 60],
-  ])("claims a landed fill the state file still records as `accepting` (%s)", async (_label, now) => {
-    const file = path.join(dir, "state.json");
-    const attestation = await filledBeforeStop(file);
-    const rewrite = new FillStateFile(file);
-    const [entry] = rewrite.entries();
-    rewrite.put({ ...entry!, phase: "accepting" });
-    rewrite.close();
+  ])(
+    "claims a landed fill the state file still records as `accepting` (%s)",
+    async (_label, now) => {
+      const file = path.join(dir, "state.json");
+      const attestation = await filledBeforeStop(file);
+      const rewrite = new FillStateFile(file);
+      const [entry] = rewrite.entries();
+      rewrite.put({ ...entry!, phase: "accepting" });
+      rewrite.close();
 
-    const state = new FillStateFile(file);
-    const after = world([], { state });
-    after.lock.filled = true;
-    after.venue.attestation = attestation;
-    after.origin.timestamp = after.dest.timestamp = now;
-    for (const e of state.entries()) after.escrowSolver.resume(e);
-    expect(await drain(after.background, 4)).toBe(true);
+      const state = new FillStateFile(file);
+      const after = world([], { state });
+      after.lock.filled = true;
+      after.venue.attestation = attestation;
+      after.origin.timestamp = after.dest.timestamp = now;
+      for (const e of state.entries()) after.escrowSolver.resume(e);
+      expect(await drain(after.background, 4)).toBe(true);
 
-    expect(after.venue.accepts).toHaveLength(0);
-    expect(fillsOn(after.dest)).toHaveLength(0);
-    expect(after.claimLoops).toHaveBeenCalledTimes(1);
-    expect(claimsOn(after.origin)).toHaveLength(1);
-    expect(after.lock.status).toBe(LockStatus.Claimed);
-    expect(readFillStateFile(file)).toEqual([]);
-    state.close();
-  });
+      expect(after.venue.accepts).toHaveLength(0);
+      expect(fillsOn(after.dest)).toHaveLength(0);
+      expect(after.claimLoops).toHaveBeenCalledTimes(1);
+      expect(claimsOn(after.origin)).toHaveLength(1);
+      expect(after.lock.status).toBe(LockStatus.Claimed);
+      expect(readFillStateFile(file)).toEqual([]);
+      state.close();
+    },
+  );
 
   // `resume` re-registers the persisted acceptance in the new gateway, so the
   // gateway itself -- not only the example's state-file guard -- refuses the
@@ -1435,13 +1623,20 @@ describe("escrow example: a restart resumes persisted orders", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     const reAnnounced = { ...announcement, auctionId: "auc-2" };
-    const fresh = await after.gateway.prepare(await awardUnder(("0x" + "f1".repeat(32)) as Hex, "auc-2"), {
-      announcement: reAnnounced,
-      bid: { auctionId: "auc-2", orderId: reAnnounced.orderId, output: OUTPUT.toString() },
-      originChainId: ORIGIN,
-    });
-    expect(codeOf(await after.gateway.accept(fresh).catch((err: unknown) => err))).toBe("fill_auth_mismatch");
-    expect(codeOf(await after.gateway.fill(fresh).catch((err: unknown) => err))).toBe("fill_auth_mismatch");
+    const fresh = await after.gateway.prepare(
+      await awardUnder(("0x" + "f1".repeat(32)) as Hex, "auc-2"),
+      {
+        announcement: reAnnounced,
+        bid: { auctionId: "auc-2", orderId: reAnnounced.orderId, output: OUTPUT.toString() },
+        originChainId: ORIGIN,
+      },
+    );
+    expect(codeOf(await after.gateway.accept(fresh).catch((err: unknown) => err))).toBe(
+      "fill_auth_mismatch",
+    );
+    expect(codeOf(await after.gateway.fill(fresh).catch((err: unknown) => err))).toBe(
+      "fill_auth_mismatch",
+    );
     expect(after.venue.accepts).toHaveLength(0);
     expect(fillsOn(after.dest)).toHaveLength(0);
 
@@ -1475,7 +1670,9 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
   const lockFile = () => `${file}.lock`;
   const lockToken = () => {
     const lease: unknown = JSON.parse(fs.readFileSync(lockFile(), "utf8"));
-    return typeof lease === "object" && lease !== null && "token" in lease ? lease.token : undefined;
+    return typeof lease === "object" && lease !== null && "token" in lease
+      ? lease.token
+      : undefined;
   };
 
   // A live holder renews its lease, so a second starter refuses however long
@@ -1500,7 +1697,15 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
   // pod comes back under another hostname: neither may need a hand to resume
   // its owed orders, and neither host nor pid is consulted.
   it("takes over a lease not renewed for three intervals, whatever host it names", async () => {
-    fs.writeFileSync(lockFile(), JSON.stringify({ token: "dead", host: "pod-before-reschedule", pid: 1, renewedAt: Date.now() }));
+    fs.writeFileSync(
+      lockFile(),
+      JSON.stringify({
+        token: "dead",
+        host: "pod-before-reschedule",
+        pid: 1,
+        renewedAt: Date.now(),
+      }),
+    );
     await vi.advanceTimersByTimeAsync(29_999);
     expect(() => new FillStateFile(file)).toThrow();
     expect(lockToken()).toBe("dead");
@@ -1516,10 +1721,16 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
   // replacement waits for it in-process, naming the holder, instead of exiting
   // for a restart policy to retry -- and takes it over the moment it is stale.
   it("waits in-process for a dead holder's lease and takes it over once it is stale", async () => {
-    fs.writeFileSync(lockFile(), JSON.stringify({ token: "dead", host: "pod-a", pid: 7, renewedAt: Date.now() }));
+    fs.writeFileSync(
+      lockFile(),
+      JSON.stringify({ token: "dead", host: "pod-a", pid: 7, renewedAt: Date.now() }),
+    );
     const logs: string[] = [];
     let opened: FillStateFile | null | undefined;
-    void openStateFile(file, { signal: new AbortController().signal, log: (m) => logs.push(m) }).then((s) => (opened = s));
+    void openStateFile(file, {
+      signal: new AbortController().signal,
+      log: (m) => logs.push(m),
+    }).then((s) => (opened = s));
 
     await vi.advanceTimersByTimeAsync(29_999);
     expect(opened).toBeUndefined();
@@ -1535,9 +1746,14 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
   // A lease 25s silent goes stale 5s from now, between two 10s retries: the
   // starter looks again exactly then, not at the next interval.
   it("takes over a held lease exactly when it goes stale, between two retry intervals", async () => {
-    fs.writeFileSync(lockFile(), JSON.stringify({ token: "dead", host: "pod-a", pid: 7, renewedAt: Date.now() - 25_000 }));
+    fs.writeFileSync(
+      lockFile(),
+      JSON.stringify({ token: "dead", host: "pod-a", pid: 7, renewedAt: Date.now() - 25_000 }),
+    );
     let opened: FillStateFile | null | undefined;
-    void openStateFile(file, { signal: new AbortController().signal, log: () => {} }).then((s) => (opened = s));
+    void openStateFile(file, { signal: new AbortController().signal, log: () => {} }).then(
+      (s) => (opened = s),
+    );
 
     await vi.advanceTimersByTimeAsync(4_999);
     expect(opened).toBeUndefined();
@@ -1569,10 +1785,16 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
 
   // Both starters judge the lease stale; the second runs its whole takeover
   // either just before or just after the first moves the lease aside.
-  it.each([["before", false], ["after", true]])(
+  it.each([
+    ["before", false],
+    ["after", true],
+  ])(
     "lets exactly one of two starters racing for a stale lease win (the second moves in %s the first's rename)",
     async (_label, afterRename) => {
-      fs.writeFileSync(lockFile(), JSON.stringify({ token: "stale", host: "gone", pid: 1, renewedAt: Date.now() - 60_000 }));
+      fs.writeFileSync(
+        lockFile(),
+        JSON.stringify({ token: "stale", host: "gone", pid: 1, renewedAt: Date.now() - 60_000 }),
+      );
       const second = await anotherProcess();
       let winner: FillStateFile | undefined;
       let interleave: (() => void) | null = () => {
@@ -1613,7 +1835,13 @@ describe("escrow example: SOLVER_STATE_FILE is one process's", () => {
 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(lost).toHaveBeenCalledTimes(1);
-    const entry = { auctionId: "auc-x", announcement, output: "1", prepared: { orderId: "0x01" }, phase: "filled" } as unknown as PersistedFill;
+    const entry = {
+      auctionId: "auc-x",
+      announcement,
+      output: "1",
+      prepared: { orderId: "0x01" },
+      phase: "filled",
+    } as unknown as PersistedFill;
     expect(() => holder.put(entry)).toThrow();
     expect(fs.existsSync(file)).toBe(false);
     expect(lockToken()).toBe(token);

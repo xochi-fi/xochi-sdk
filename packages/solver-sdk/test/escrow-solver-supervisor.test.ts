@@ -20,7 +20,14 @@ import {
   type VenueCapabilities,
 } from "../src/index";
 import { EventEmitter } from "events";
-import { BackgroundTasks, FatalSolverStop, installStopSignals, runAgainstVenue, solverStop, superviseFeed } from "../examples/supervise";
+import {
+  BackgroundTasks,
+  FatalSolverStop,
+  installStopSignals,
+  runAgainstVenue,
+  solverStop,
+  superviseFeed,
+} from "../examples/supervise";
 
 const SOLVER_KEY = "0x0000000000000000000000000000000000000000000000000000000000000001";
 const SOLVER_ID = solverIdFromKey(SOLVER_KEY);
@@ -42,7 +49,9 @@ class FlakyTransport implements SolverTransport {
     if (!conn) throw new Error("test script exhausted");
     for (const ev of conn.events) yield ev;
     if (conn.then !== "hold") throw conn.then;
-    await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true }));
+    await new Promise<void>((resolve) =>
+      signal?.addEventListener("abort", () => resolve(), { once: true }),
+    );
   }
   async submitBid(bid: Bid): Promise<void> {
     this.bids.push(bid);
@@ -127,7 +136,18 @@ describe("escrow example feed supervisor", () => {
     const transport = new FlakyTransport(
       [
         {
-          events: [{ type: "award", award: { auctionId: "a-1", intentId: "intent-a-1", solverId: SOLVER_ID, output: "1", exclusiveUntil: 9_999 } }],
+          events: [
+            {
+              type: "award",
+              award: {
+                auctionId: "a-1",
+                intentId: "intent-a-1",
+                solverId: SOLVER_ID,
+                output: "1",
+                exclusiveUntil: 9_999,
+              },
+            },
+          ],
           then: new TypeError("fetch failed"),
         },
         { events: [{ type: "announcement", announcement: announcement("a-2") }], then: "hold" },
@@ -137,10 +157,14 @@ describe("escrow example feed supervisor", () => {
     const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: () => 1_500 });
     const abort = new AbortController();
     let settled = false;
-    const supervised = superviseFeed(runAgainstVenue(client, claimingSolver(background, claim.promise)), background, {
-      signal: abort.signal,
-      log,
-    }).finally(() => (settled = true));
+    const supervised = superviseFeed(
+      runAgainstVenue(client, claimingSolver(background, claim.promise)),
+      background,
+      {
+        signal: abort.signal,
+        log,
+      },
+    ).finally(() => (settled = true));
 
     // The award was filled, then the feed dropped: backing off, not exiting.
     await vi.advanceTimersByTimeAsync(999);
@@ -176,13 +200,19 @@ describe("escrow example feed supervisor", () => {
     );
     const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: () => 1_500 });
     const abort = new AbortController();
-    const supervised = superviseFeed(runAgainstVenue(client, claimingSolver(background, Promise.resolve())), background, {
-      signal: abort.signal,
-      log,
-    });
+    const supervised = superviseFeed(
+      runAgainstVenue(client, claimingSolver(background, Promise.resolve())),
+      background,
+      {
+        signal: abort.signal,
+        log,
+      },
+    );
 
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(logs[0]).toMatch(/^feed  SolverClient: refusing to run .*fetch failed.*restarting in 1000ms/);
+    expect(logs[0]).toMatch(
+      /^feed  SolverClient: refusing to run .*fetch failed.*restarting in 1000ms/,
+    );
     expect(transport.bids.map((b) => b.auctionId)).toEqual(["a-1"]);
     abort.abort();
     await supervised;
@@ -198,10 +228,14 @@ describe("escrow example feed supervisor", () => {
     );
     const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: () => 1_500 });
     let outcome: unknown = "pending";
-    const supervised = superviseFeed(runAgainstVenue(client, claimingSolver(background, Promise.resolve())), background, {
-      signal: new AbortController().signal,
-      log,
-    }).then(
+    const supervised = superviseFeed(
+      runAgainstVenue(client, claimingSolver(background, Promise.resolve())),
+      background,
+      {
+        signal: new AbortController().signal,
+        log,
+      },
+    ).then(
       () => (outcome = "resolved"),
       (err: unknown) => (outcome = err),
     );
@@ -232,13 +266,9 @@ describe("escrow example feed supervisor", () => {
     await vi.advanceTimersByTimeAsync(1_000 + 2_000 + 4_000 + 4_000);
     abort.abort();
     await supervised;
-    expect(logs.filter((l) => l.startsWith("feed")).map((l) => l.match(/in (\d+)ms/)?.[1])).toEqual([
-      "1000",
-      "2000",
-      "4000",
-      "4000",
-      "4000",
-    ]);
+    expect(logs.filter((l) => l.startsWith("feed")).map((l) => l.match(/in (\d+)ms/)?.[1])).toEqual(
+      ["1000", "2000", "4000", "4000", "4000"],
+    );
   });
 
   it("starts the backoff over after a run that lasted healthyRunMs", async () => {
@@ -252,7 +282,13 @@ describe("escrow example feed supervisor", () => {
         throw new Error("fetch failed");
       },
       background,
-      { signal: abort.signal, log, initialBackoffMs: 1_000, maxBackoffMs: 60_000, healthyRunMs: 10_000 },
+      {
+        signal: abort.signal,
+        log,
+        initialBackoffMs: 1_000,
+        maxBackoffMs: 60_000,
+        healthyRunMs: 10_000,
+      },
     );
 
     await vi.advanceTimersByTimeAsync(1_000 + 2_000 + 10_000);
@@ -281,39 +317,46 @@ describe("escrow example stop signals", () => {
     ["SIGTERM", 143],
     ["SIGHUP", 129],
     ["SIGINT", 130],
-  ] as const)("%s stops bidding and drains in-flight work; a second abandons it", async (signal, code) => {
-    vi.useFakeTimers();
-    try {
-      const logs: string[] = [];
-      const proc = new FakeProcess();
-      const background = new BackgroundTasks((m) => logs.push(m));
-      const claim = deferred();
-      background.track("claim c-1", claim.promise);
-      const abort = new AbortController();
-      installStopSignals(abort, background, (m) => logs.push(m), proc);
-      let settled = false;
-      const supervised = superviseFeed((s) => new Promise((resolve) => s.addEventListener("abort", () => resolve())), background, {
-        signal: abort.signal,
-        log: (m) => logs.push(m),
-      }).finally(() => (settled = true));
+  ] as const)(
+    "%s stops bidding and drains in-flight work; a second abandons it",
+    async (signal, code) => {
+      vi.useFakeTimers();
+      try {
+        const logs: string[] = [];
+        const proc = new FakeProcess();
+        const background = new BackgroundTasks((m) => logs.push(m));
+        const claim = deferred();
+        background.track("claim c-1", claim.promise);
+        const abort = new AbortController();
+        installStopSignals(abort, background, (m) => logs.push(m), proc);
+        let settled = false;
+        const supervised = superviseFeed(
+          (s) => new Promise((resolve) => s.addEventListener("abort", () => resolve())),
+          background,
+          {
+            signal: abort.signal,
+            log: (m) => logs.push(m),
+          },
+        ).finally(() => (settled = true));
 
-      proc.emit(signal);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(abort.signal.aborted).toBe(true);
-      expect(proc.exits).toEqual([]);
-      expect(settled).toBe(false);
-      expect(logs).toContain("drain waiting for 1 in-flight task(s): claim c-1");
+        proc.emit(signal);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(abort.signal.aborted).toBe(true);
+        expect(proc.exits).toEqual([]);
+        expect(settled).toBe(false);
+        expect(logs).toContain("drain waiting for 1 in-flight task(s): claim c-1");
 
-      proc.emit(signal);
-      expect(proc.exits).toEqual([code]);
-      expect(logs).toContain(`${signal} again: abandoning claim c-1`);
+        proc.emit(signal);
+        expect(proc.exits).toEqual([code]);
+        expect(logs).toContain(`${signal} again: abandoning claim c-1`);
 
-      claim.resolve();
-      await supervised;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        claim.resolve();
+        await supervised;
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   // A successor took the state lease over while this process stalled: bidding
   // stops, and the orchestrator's first SIGTERM after that is still a FIRST
@@ -328,11 +371,20 @@ describe("escrow example stop signals", () => {
       const claim = deferred();
       background.track("claim c-1", claim.promise);
       const released: number[] = [];
-      const stop = solverStop(background, (m) => logs.push(m), proc, () => released.push(proc.exits.length));
-      const supervised = superviseFeed((s) => new Promise((resolve) => s.addEventListener("abort", () => resolve())), background, {
-        signal: stop.signal,
-        log: (m) => logs.push(m),
-      });
+      const stop = solverStop(
+        background,
+        (m) => logs.push(m),
+        proc,
+        () => released.push(proc.exits.length),
+      );
+      const supervised = superviseFeed(
+        (s) => new Promise((resolve) => s.addEventListener("abort", () => resolve())),
+        background,
+        {
+          signal: stop.signal,
+          log: (m) => logs.push(m),
+        },
+      );
 
       stop.leaseLost("state.json.lock is now the lease of pid 7 on pod-b");
       await vi.advanceTimersByTimeAsync(0);

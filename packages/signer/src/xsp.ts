@@ -113,8 +113,21 @@ export function hashObligation(terms: XochiObligation): Hex {
   return keccak(
     coder.encode(
       [
-        "bytes32", "uint256", "address", "uint256", "uint256", "bytes32", "uint256",
-        "bytes32", "bytes32", "bool", "address", "uint8", "uint64", "bytes32", "uint256",
+        "bytes32",
+        "uint256",
+        "address",
+        "uint256",
+        "uint256",
+        "bytes32",
+        "uint256",
+        "bytes32",
+        "bytes32",
+        "bool",
+        "address",
+        "uint8",
+        "uint64",
+        "bytes32",
+        "uint256",
       ],
       [
         OBLIGATION_TYPEHASH,
@@ -162,7 +175,9 @@ const RECORD_TYPE =
 export const TRANSFER_TYPEHASH = ethers.id(TRANSFER_TYPE) as Hex;
 export const RECORD_TYPEHASH = ethers.id(RECORD_TYPE) as Hex;
 export const CALL_REQUEST_TYPEHASH = ethers.id(
-  "CallRequest(bytes32 id,uint64 expiry,Transfer[] transfers,Record[] consume)" + RECORD_TYPE + TRANSFER_TYPE,
+  "CallRequest(bytes32 id,uint64 expiry,Transfer[] transfers,Record[] consume)" +
+    RECORD_TYPE +
+    TRANSFER_TYPE,
 ) as Hex;
 export const MARK_CONSUMED_TYPEHASH = ethers.id(
   "MarkConsumed(Record[] consume,uint64 expiry,bytes32 salt)" + RECORD_TYPE,
@@ -247,7 +262,13 @@ export function hashCallRequest(req: CallRequest): Hex {
   return keccak(
     coder.encode(
       ["bytes32", "bytes32", "uint64", "bytes32", "bytes32"],
-      [CALL_REQUEST_TYPEHASH, req.id, uint64(req.expiry, "expiry"), hashTransfers(req.transfers), hashRecords(req.consume)],
+      [
+        CALL_REQUEST_TYPEHASH,
+        req.id,
+        uint64(req.expiry, "expiry"),
+        hashTransfers(req.transfers),
+        hashRecords(req.consume),
+      ],
     ),
   );
 }
@@ -262,11 +283,17 @@ export function hashMarkConsumed(msg: MarkConsumed): Hex {
 }
 
 export function callRequestDigest(req: CallRequest, chainId: UintLike, depository: string): Hex {
-  return typedDataDigest(xspDomainSeparator(depositoryDomain(chainId, depository)), hashCallRequest(req));
+  return typedDataDigest(
+    xspDomainSeparator(depositoryDomain(chainId, depository)),
+    hashCallRequest(req),
+  );
 }
 
 export function markConsumedDigest(msg: MarkConsumed, chainId: UintLike, depository: string): Hex {
-  return typedDataDigest(xspDomainSeparator(depositoryDomain(chainId, depository)), hashMarkConsumed(msg));
+  return typedDataDigest(
+    xspDomainSeparator(depositoryDomain(chainId, depository)),
+    hashMarkConsumed(msg),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +315,13 @@ export function computeDepositAddressSalt(inputs: DepositAddressInputs): Hex {
   return keccak(
     coder.encode(
       ["bytes32", "bytes32", "bool", "address", "uint256"],
-      [inputs.obligationId, inputs.refundCommitment, inputs.recoverable, inputs.originToken, amount],
+      [
+        inputs.obligationId,
+        inputs.refundCommitment,
+        inputs.recoverable,
+        inputs.originToken,
+        amount,
+      ],
     ),
   );
 }
@@ -310,7 +343,12 @@ export function computeDepositAddress(
 ): Hex {
   const salt = computeDepositAddressSalt(inputs);
   const hash = keccak(
-    ethers.concat(["0xff", ethers.getAddress(factory), salt, keccak(minimalProxyInitCode(implementation))]),
+    ethers.concat([
+      "0xff",
+      ethers.getAddress(factory),
+      salt,
+      keccak(minimalProxyInitCode(implementation)),
+    ]),
   );
   return ethers.dataSlice(hash, 12).toLowerCase() as Hex;
 }

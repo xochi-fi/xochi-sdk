@@ -72,7 +72,9 @@ const ORDER_TYPEHASH_LIT = ethers.id(
   "RiddlerOrder(address depositor,uint256 fromChainId,address fromToken,uint256 fromAmount,uint256 toChainId,uint256 fillDeadline,address escrow,bytes32 destCommitment)",
 );
 const OPEN_AUTH_TYPEHASH_LIT = ethers.id("OpenAuth(bytes32 orderId,uint256 expiry)");
-const FILL_AUTH_TYPEHASH_LIT = ethers.id("FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)");
+const FILL_AUTH_TYPEHASH_LIT = ethers.id(
+  "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)",
+);
 const FILL_ATTESTATION_TYPEHASH_LIT = ethers.id("FillAttestation(bytes32 orderId,address payee)");
 const SLASH_ATTESTATION_TYPEHASH_LIT = ethers.id(
   "SlashAttestation(bytes32 orderId,address solver,address beneficiary,uint256 notional,uint256 originChainId,address escrow,uint256 deadline)",
@@ -85,7 +87,13 @@ const load = (name: string) =>
 type OrderVector = {
   name: string;
   why: string;
-  opening: { recipient: string; toToken: string; toAmount: string; blinding: string; intentId: string };
+  opening: {
+    recipient: string;
+    toToken: string;
+    toAmount: string;
+    blinding: string;
+    intentId: string;
+  };
   expected_recipient_key: string;
   expected_to_token_key: string;
   expected_intent_id_hash: string;
@@ -109,7 +117,10 @@ const orderIds = load("order-id.json") as {
 
 describe("order-id.json", () => {
   it("pins the typehashes", () => {
-    expect(orderIds.typehashes).toEqual({ DEST_TYPEHASH: DEST_TYPEHASH_LIT, ORDER_TYPEHASH: ORDER_TYPEHASH_LIT });
+    expect(orderIds.typehashes).toEqual({
+      DEST_TYPEHASH: DEST_TYPEHASH_LIT,
+      ORDER_TYPEHASH: ORDER_TYPEHASH_LIT,
+    });
     expect({ DEST_TYPEHASH, ORDER_TYPEHASH }).toEqual(orderIds.typehashes);
   });
 
@@ -118,7 +129,9 @@ describe("order-id.json", () => {
     expect(canonicalKey(v.opening.toToken)).toBe(v.expected_to_token_key);
     expect(computeIntentIdHash(v.opening.intentId)).toBe(v.expected_intent_id_hash);
     expect(computeDestCommitment(v.opening)).toBe(v.expected_dest_commitment);
-    expect(computeOrderId({ ...v.terms, destCommitment: v.expected_dest_commitment })).toBe(v.expected_order_id);
+    expect(computeOrderId({ ...v.terms, destCommitment: v.expected_dest_commitment })).toBe(
+      v.expected_order_id,
+    );
   });
 
   it("keeps every case spec §6 requires, with well-formed fields", () => {
@@ -141,10 +154,23 @@ describe("order-id.json", () => {
     expect(names.size).toBe(orderIds.vectors.length);
     for (const v of orderIds.vectors) {
       expect(v.why.length, v.name).toBeGreaterThan(0);
-      for (const h of [v.expected_recipient_key, v.expected_to_token_key, v.expected_intent_id_hash, v.expected_dest_commitment, v.expected_order_id, v.opening.blinding]) {
+      for (const h of [
+        v.expected_recipient_key,
+        v.expected_to_token_key,
+        v.expected_intent_id_hash,
+        v.expected_dest_commitment,
+        v.expected_order_id,
+        v.opening.blinding,
+      ]) {
         expect(h, v.name).toMatch(/^0x[0-9a-f]{64}$/);
       }
-      for (const n of [v.opening.toAmount, v.terms.fromChainId, v.terms.fromAmount, v.terms.toChainId, v.terms.fillDeadline]) {
+      for (const n of [
+        v.opening.toAmount,
+        v.terms.fromChainId,
+        v.terms.fromAmount,
+        v.terms.toChainId,
+        v.terms.fillDeadline,
+      ]) {
         expect(n, v.name).toMatch(/^[0-9]+$/);
       }
     }
@@ -184,7 +210,11 @@ describe("open-auth.json", () => {
   it("pins the domain and typehash", () => {
     expect(openAuth.domain).toEqual({ name: "RiddlerEscrow", version: "1" });
     expect(openAuth.typehash).toBe(OPEN_AUTH_TYPEHASH_LIT);
-    expect({ name: OPEN_AUTH_DOMAIN_NAME, version: OPEN_AUTH_DOMAIN_VERSION, typehash: OPEN_AUTH_TYPEHASH }).toEqual({ ...openAuth.domain, typehash: openAuth.typehash });
+    expect({
+      name: OPEN_AUTH_DOMAIN_NAME,
+      version: OPEN_AUTH_DOMAIN_VERSION,
+      typehash: OPEN_AUTH_TYPEHASH,
+    }).toEqual({ ...openAuth.domain, typehash: openAuth.typehash });
   });
 
   it.each(openAuth.vectors)("$name reproduces digest and a recoverable signature", async (v) => {
@@ -193,7 +223,9 @@ describe("open-auth.json", () => {
     expect(openAuthDomainSeparator(domain)).toBe(v.expected_domain_separator);
     expect(openAuthDigest(domain, v.orderId, v.expiry)).toBe(v.expected_digest);
     const wallet = new ethers.Wallet(v.signer_private_key);
-    expect((await signOpenAuth(wallet, domain, v.orderId, v.expiry)).toLowerCase()).toBe(v.expected_signature);
+    expect((await signOpenAuth(wallet, domain, v.orderId, v.expiry)).toLowerCase()).toBe(
+      v.expected_signature,
+    );
     expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
     expect(wallet.address).toBe(v.signer_address);
   });
@@ -202,7 +234,13 @@ describe("open-auth.json", () => {
 const blinding = load("dest-blinding.json") as {
   domain_tag: string;
   key: string;
-  vectors: { name: string; fromChainId: string; escrow: string; intentId: string; expected_blinding: string }[];
+  vectors: {
+    name: string;
+    fromChainId: string;
+    escrow: string;
+    intentId: string;
+    expected_blinding: string;
+  }[];
 };
 
 describe("dest-blinding.json", () => {
@@ -212,13 +250,21 @@ describe("dest-blinding.json", () => {
   });
 
   it.each(blinding.vectors)("$name reproduces its blinding", (v) => {
-    expect(deriveDestBlinding(blinding.key, v.fromChainId, v.escrow, v.intentId)).toBe(v.expected_blinding);
+    expect(deriveDestBlinding(blinding.key, v.fromChainId, v.escrow, v.intentId)).toBe(
+      v.expected_blinding,
+    );
   });
 });
 
 const fillSalt = load("fill-salt.json") as {
   domain_tag: string;
-  vectors: { name: string; key: string; orderId: string; expected_fill_salt: string; expected_fill_id: string }[];
+  vectors: {
+    name: string;
+    key: string;
+    orderId: string;
+    expected_fill_salt: string;
+    expected_fill_id: string;
+  }[];
 };
 
 describe("fill-salt.json", () => {
@@ -248,14 +294,25 @@ type SignedVector = {
 const fillAuth = load("fill-auth.json") as {
   domain: { name: string; version: string };
   typehash: string;
-  vectors: (SignedVector & { fillId: string; filler: string; to: string; token: string; amount: string; deadline: string })[];
+  vectors: (SignedVector & {
+    fillId: string;
+    filler: string;
+    to: string;
+    token: string;
+    amount: string;
+    deadline: string;
+  })[];
 };
 
 describe("fill-auth.json", () => {
   it("pins the domain and typehash", () => {
     expect(fillAuth.domain).toEqual({ name: "RiddlerFiller", version: "1" });
     expect(fillAuth.typehash).toBe(FILL_AUTH_TYPEHASH_LIT);
-    expect({ name: FILL_AUTH_DOMAIN_NAME, version: FILL_AUTH_DOMAIN_VERSION, typehash: FILL_AUTH_TYPEHASH }).toEqual({ ...fillAuth.domain, typehash: fillAuth.typehash });
+    expect({
+      name: FILL_AUTH_DOMAIN_NAME,
+      version: FILL_AUTH_DOMAIN_VERSION,
+      typehash: FILL_AUTH_TYPEHASH,
+    }).toEqual({ ...fillAuth.domain, typehash: fillAuth.typehash });
   });
 
   it.each(fillAuth.vectors)("$name reproduces digest and a recoverable signature", async (v) => {
@@ -280,7 +337,11 @@ describe("fill-attestation.json", () => {
   it("pins the domain and typehash", () => {
     expect(fillAttestation.domain).toEqual({ name: "RiddlerFillAttestation", version: "1" });
     expect(fillAttestation.typehash).toBe(FILL_ATTESTATION_TYPEHASH_LIT);
-    expect({ name: FILL_ATTESTATION_DOMAIN_NAME, version: FILL_ATTESTATION_DOMAIN_VERSION, typehash: FILL_ATTESTATION_TYPEHASH }).toEqual({ ...fillAttestation.domain, typehash: fillAttestation.typehash });
+    expect({
+      name: FILL_ATTESTATION_DOMAIN_NAME,
+      version: FILL_ATTESTATION_DOMAIN_VERSION,
+      typehash: FILL_ATTESTATION_TYPEHASH,
+    }).toEqual({ ...fillAttestation.domain, typehash: fillAttestation.typehash });
   });
 
   it.each(fillAttestation.vectors)("$name reproduces digest, signature and proof", async (v) => {
@@ -289,11 +350,16 @@ describe("fill-attestation.json", () => {
     expect(fillAttestationDomainSeparator(domain)).toBe(v.expected_domain_separator);
     expect(fillAttestationDigest(domain, v.orderId, v.payee)).toBe(v.expected_digest);
     const wallet = new ethers.Wallet(v.signer_private_key);
-    expect((await signFillAttestation(wallet, domain, v.orderId, v.payee)).toLowerCase()).toBe(v.expected_signature);
+    expect((await signFillAttestation(wallet, domain, v.orderId, v.payee)).toLowerCase()).toBe(
+      v.expected_signature,
+    );
     expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
     expect(wallet.address).toBe(v.signer_address);
     expect(encodeAttestedProof(v.payee, v.expected_signature)).toBe(v.expected_proof);
-    const [payee, sig] = ethers.AbiCoder.defaultAbiCoder().decode(["address", "bytes"], v.expected_proof);
+    const [payee, sig] = ethers.AbiCoder.defaultAbiCoder().decode(
+      ["address", "bytes"],
+      v.expected_proof,
+    );
     expect(payee.toLowerCase()).toBe(v.payee.toLowerCase());
     expect(sig).toBe(v.expected_signature);
   });
@@ -303,7 +369,15 @@ const slashAttestation = load("slash-attestation.json") as {
   domain: { name: string; version: string };
   typehash: string;
   vectors: (SignedVector & {
-    claim: { orderId: string; solver: string; beneficiary: string; notional: string; originChainId: string; escrow: string; deadline: string };
+    claim: {
+      orderId: string;
+      solver: string;
+      beneficiary: string;
+      notional: string;
+      originChainId: string;
+      escrow: string;
+      deadline: string;
+    };
   })[];
 };
 
@@ -312,26 +386,36 @@ describe("slash-attestation.json", () => {
     // A literal: SolverBond v2's whole domain is version "2" (ESCROW-RFC §6).
     expect(slashAttestation.domain).toEqual({ name: "RiddlerSolverBond", version: "2" });
     expect(slashAttestation.typehash).toBe(SLASH_ATTESTATION_TYPEHASH_LIT);
-    expect({ name: SLASH_ATTESTATION_DOMAIN_NAME, version: SLASH_ATTESTATION_DOMAIN_VERSION, typehash: SLASH_ATTESTATION_TYPEHASH }).toEqual({ ...slashAttestation.domain, typehash: slashAttestation.typehash });
+    expect({
+      name: SLASH_ATTESTATION_DOMAIN_NAME,
+      version: SLASH_ATTESTATION_DOMAIN_VERSION,
+      typehash: SLASH_ATTESTATION_TYPEHASH,
+    }).toEqual({ ...slashAttestation.domain, typehash: slashAttestation.typehash });
   });
 
-  it.each(slashAttestation.vectors)("$name reproduces digest and a recoverable signature", async (v) => {
-    const domain = { chainId: v.chainId, verifyingContract: v.verifyingContract };
-    expect(slashAttestationStructHash(v.claim)).toBe(v.expected_struct_hash);
-    expect(slashAttestationDomainSeparator(domain)).toBe(v.expected_domain_separator);
-    expect(slashAttestationDigest(domain, v.claim)).toBe(v.expected_digest);
-    const wallet = new ethers.Wallet(v.signer_private_key);
-    expect((await signSlashAttestation(wallet, domain, v.claim)).toLowerCase()).toBe(v.expected_signature);
-    expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
-    expect(wallet.address).toBe(v.signer_address);
-  });
+  it.each(slashAttestation.vectors)(
+    "$name reproduces digest and a recoverable signature",
+    async (v) => {
+      const domain = { chainId: v.chainId, verifyingContract: v.verifyingContract };
+      expect(slashAttestationStructHash(v.claim)).toBe(v.expected_struct_hash);
+      expect(slashAttestationDomainSeparator(domain)).toBe(v.expected_domain_separator);
+      expect(slashAttestationDigest(domain, v.claim)).toBe(v.expected_digest);
+      const wallet = new ethers.Wallet(v.signer_private_key);
+      expect((await signSlashAttestation(wallet, domain, v.claim)).toLowerCase()).toBe(
+        v.expected_signature,
+      );
+      expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
+      expect(wallet.address).toBe(v.signer_address);
+    },
+  );
 });
 
 // The type strings as SolverBond v2 and RiddlerFiller declare them -- literals,
 // so a change to the signer's copy cannot pass by regenerating the vectors.
 const FILL_ACCEPTANCE_TYPE =
   "FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth)";
-const FILL_AUTH_TYPE = "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)";
+const FILL_AUTH_TYPE =
+  "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)";
 
 const typesOf = (primary: string, type: string) => ({
   [primary]: type
@@ -343,8 +427,22 @@ const typesOf = (primary: string, type: string) => ({
     }),
 });
 
-type Acceptance = { orderId: string; originChainId: string; escrow: string; filler: string; deadline: string; fillAuth: string };
-type FillAuthPreimage = { fillId: string; filler: string; to: string; token: string; amount: string; deadline: string };
+type Acceptance = {
+  orderId: string;
+  originChainId: string;
+  escrow: string;
+  filler: string;
+  deadline: string;
+  fillAuth: string;
+};
+type FillAuthPreimage = {
+  fillId: string;
+  filler: string;
+  to: string;
+  token: string;
+  amount: string;
+  deadline: string;
+};
 
 const fillAcceptance = load("fill-acceptance.json") as {
   domain: { name: string; version: string };
@@ -373,41 +471,59 @@ describe("fill-acceptance.json", () => {
   });
 
   it("covers distinct bond and filler domains and uint256 max", () => {
-    const bonds = new Set(fillAcceptance.vectors.map((v) => `${v.chainId}:${v.verifyingContract.toLowerCase()}`));
-    const fillers = new Set(fillAcceptance.vectors.map((v) => `${v.fill_auth_domain.chainId}:${v.fill_auth_domain.verifyingContract.toLowerCase()}`));
+    const bonds = new Set(
+      fillAcceptance.vectors.map((v) => `${v.chainId}:${v.verifyingContract.toLowerCase()}`),
+    );
+    const fillers = new Set(
+      fillAcceptance.vectors.map(
+        (v) =>
+          `${v.fill_auth_domain.chainId}:${v.fill_auth_domain.verifyingContract.toLowerCase()}`,
+      ),
+    );
     expect(bonds.size).toBeGreaterThan(1);
     expect(fillers.size).toBeGreaterThan(1);
-    expect(fillAcceptance.vectors.some((v) => v.fill_auth.amount === (2n ** 256n - 1n).toString())).toBe(true);
+    expect(
+      fillAcceptance.vectors.some((v) => v.fill_auth.amount === (2n ** 256n - 1n).toString()),
+    ).toBe(true);
   });
 
-  it.each(fillAcceptance.vectors)("$name reproduces both steps and a signature recovering to the filler", async (v) => {
-    // Step 1: the FillAuth commitment, by the signer AND by ethers' own encoder.
-    const fillerDomain = v.fill_auth_domain;
-    expect(fillAuthDigest(fillerDomain, v.fill_auth)).toBe(v.expected_fill_auth_digest);
-    expect(
-      ethers.TypedDataEncoder.hash({ name: "RiddlerFiller", version: "1", ...fillerDomain }, typesOf("FillAuth", FILL_AUTH_TYPE), v.fill_auth),
-    ).toBe(v.expected_fill_auth_digest);
-    expect(v.acceptance.fillAuth).toBe(v.expected_fill_auth_digest);
-    expect(v.acceptance.filler).toBe(v.fill_auth.filler);
-    expect(v.acceptance.deadline).toBe(v.fill_auth.deadline);
-    // Step 2: the acceptance.
-    const domain = { chainId: v.chainId, verifyingContract: v.verifyingContract };
-    expect(fillAcceptanceStructHash(v.acceptance)).toBe(v.expected_struct_hash);
-    expect(fillAcceptanceDomainSeparator(domain)).toBe(v.expected_domain_separator);
-    expect(fillAcceptanceDigest(domain, v.acceptance)).toBe(v.expected_digest);
-    expect(
-      ethers.TypedDataEncoder.hash(
-        { name: "RiddlerSolverBond", version: "2", ...domain },
-        typesOf("FillAcceptance", FILL_ACCEPTANCE_TYPE),
-        v.acceptance,
-      ),
-    ).toBe(v.expected_digest);
-    const wallet = new ethers.Wallet(v.signer_private_key);
-    expect((await signFillAcceptance(wallet, domain, v.acceptance)).toLowerCase()).toBe(v.expected_signature);
-    expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
-    expect(wallet.address).toBe(v.signer_address);
-    expect(ethers.getAddress(v.acceptance.filler)).toBe(v.signer_address);
-  });
+  it.each(fillAcceptance.vectors)(
+    "$name reproduces both steps and a signature recovering to the filler",
+    async (v) => {
+      // Step 1: the FillAuth commitment, by the signer AND by ethers' own encoder.
+      const fillerDomain = v.fill_auth_domain;
+      expect(fillAuthDigest(fillerDomain, v.fill_auth)).toBe(v.expected_fill_auth_digest);
+      expect(
+        ethers.TypedDataEncoder.hash(
+          { name: "RiddlerFiller", version: "1", ...fillerDomain },
+          typesOf("FillAuth", FILL_AUTH_TYPE),
+          v.fill_auth,
+        ),
+      ).toBe(v.expected_fill_auth_digest);
+      expect(v.acceptance.fillAuth).toBe(v.expected_fill_auth_digest);
+      expect(v.acceptance.filler).toBe(v.fill_auth.filler);
+      expect(v.acceptance.deadline).toBe(v.fill_auth.deadline);
+      // Step 2: the acceptance.
+      const domain = { chainId: v.chainId, verifyingContract: v.verifyingContract };
+      expect(fillAcceptanceStructHash(v.acceptance)).toBe(v.expected_struct_hash);
+      expect(fillAcceptanceDomainSeparator(domain)).toBe(v.expected_domain_separator);
+      expect(fillAcceptanceDigest(domain, v.acceptance)).toBe(v.expected_digest);
+      expect(
+        ethers.TypedDataEncoder.hash(
+          { name: "RiddlerSolverBond", version: "2", ...domain },
+          typesOf("FillAcceptance", FILL_ACCEPTANCE_TYPE),
+          v.acceptance,
+        ),
+      ).toBe(v.expected_digest);
+      const wallet = new ethers.Wallet(v.signer_private_key);
+      expect((await signFillAcceptance(wallet, domain, v.acceptance)).toLowerCase()).toBe(
+        v.expected_signature,
+      );
+      expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(wallet.address);
+      expect(wallet.address).toBe(v.signer_address);
+      expect(ethers.getAddress(v.acceptance.filler)).toBe(v.signer_address);
+    },
+  );
 });
 
 // SNAPSHOT-DRIFT CHECK, NOT AN ORACLE. Riddler's ExUnit and Foundry suites read
@@ -441,7 +557,10 @@ describe("Riddler vendored-vector snapshot (drift check)", () => {
   });
 
   it("compares every vendored set, so a newly vendored one cannot sit unchecked", () => {
-    const onDisk = fs.readdirSync(vendored).filter((f) => f.endsWith(".json")).sort();
+    const onDisk = fs
+      .readdirSync(vendored)
+      .filter((f) => f.endsWith(".json"))
+      .sort();
     expect(onDisk).toEqual(PARITY_SETS.map(([, theirs]) => theirs).sort());
   });
 });
@@ -487,9 +606,18 @@ const CAST_BASELINE = {
 // Every escrow-family domain at chain 8453, by `cast`. SolverBond is listed at
 // BOTH versions so a separator that silently fell back to "1" is named.
 const CAST_SEPARATORS = {
-  openAuth: { verifyingContract: "0x3333333333333333333333333333333333333333", v1: "0x5dbf8305d61f4dbfba28be4935fa076f17bdae11fc2d67a526f19921418c8e66" },
-  fillAuth: { verifyingContract: "0x4444444444444444444444444444444444444444", v1: "0xc4525d261cfdfa05e297777bf9e1cc5d93ba9054592134a5369b1dd2e937b0b1" },
-  fillAttestation: { verifyingContract: "0x5555555555555555555555555555555555555555", v1: "0x2395d70aeb8baed8da6a2ff73e15e894153cc5b09082d42e0707fe40d54a5ac0" },
+  openAuth: {
+    verifyingContract: "0x3333333333333333333333333333333333333333",
+    v1: "0x5dbf8305d61f4dbfba28be4935fa076f17bdae11fc2d67a526f19921418c8e66",
+  },
+  fillAuth: {
+    verifyingContract: "0x4444444444444444444444444444444444444444",
+    v1: "0xc4525d261cfdfa05e297777bf9e1cc5d93ba9054592134a5369b1dd2e937b0b1",
+  },
+  fillAttestation: {
+    verifyingContract: "0x5555555555555555555555555555555555555555",
+    v1: "0x2395d70aeb8baed8da6a2ff73e15e894153cc5b09082d42e0707fe40d54a5ac0",
+  },
   solverBond: {
     verifyingContract: "0x6666666666666666666666666666666666666666",
     v1: "0xc19cdaa2390e5f04cf4cb7a6dc9fdef32ad012bb3b82f4ed2a9131dd7ed3a9d9",
@@ -501,20 +629,29 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
   it("reproduces the ESCROW-RFC §2.4 baseline destCommitment and orderId", () => {
     const commitment = computeDestCommitment(CAST_BASELINE.opening);
     expect(commitment).toBe(CAST_BASELINE.destCommitment);
-    expect(computeOrderId({ ...CAST_BASELINE.terms, destCommitment: commitment })).toBe(CAST_BASELINE.orderId);
+    expect(computeOrderId({ ...CAST_BASELINE.terms, destCommitment: commitment })).toBe(
+      CAST_BASELINE.orderId,
+    );
   });
 
-  it("hashes every escrow-family domain with its declared version, SolverBond at \"2\"", () => {
+  it('hashes every escrow-family domain with its declared version, SolverBond at "2"', () => {
     const d = (verifyingContract: string) => ({ chainId: 8453, verifyingContract });
-    expect(openAuthDomainSeparator(d(CAST_SEPARATORS.openAuth.verifyingContract))).toBe(CAST_SEPARATORS.openAuth.v1);
-    expect(fillAuthDomainSeparator(d(CAST_SEPARATORS.fillAuth.verifyingContract))).toBe(CAST_SEPARATORS.fillAuth.v1);
-    expect(fillAttestationDomainSeparator(d(CAST_SEPARATORS.fillAttestation.verifyingContract))).toBe(
-      CAST_SEPARATORS.fillAttestation.v1,
+    expect(openAuthDomainSeparator(d(CAST_SEPARATORS.openAuth.verifyingContract))).toBe(
+      CAST_SEPARATORS.openAuth.v1,
     );
+    expect(fillAuthDomainSeparator(d(CAST_SEPARATORS.fillAuth.verifyingContract))).toBe(
+      CAST_SEPARATORS.fillAuth.v1,
+    );
+    expect(
+      fillAttestationDomainSeparator(d(CAST_SEPARATORS.fillAttestation.verifyingContract)),
+    ).toBe(CAST_SEPARATORS.fillAttestation.v1);
     const bond = d(CAST_SEPARATORS.solverBond.verifyingContract);
     expect(SLASH_ATTESTATION_DOMAIN_VERSION).toBe("2");
     expect(FILL_ACCEPTANCE_DOMAIN_VERSION).toBe("2");
-    for (const sep of [slashAttestationDomainSeparator(bond), fillAcceptanceDomainSeparator(bond)]) {
+    for (const sep of [
+      slashAttestationDomainSeparator(bond),
+      fillAcceptanceDomainSeparator(bond),
+    ]) {
       expect(sep).toBe(CAST_SEPARATORS.solverBond.v2);
       expect(sep).not.toBe(CAST_SEPARATORS.solverBond.v1);
     }
@@ -525,9 +662,12 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
   // is the cast literal: a signer hashing a literal version instead of its
   // *_DOMAIN_VERSION constant recovers to a different address.
   it("signs every escrow-family struct under the cast-pinned domain", async () => {
-    const wallet = new ethers.Wallet("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+    const wallet = new ethers.Wallet(
+      "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+    );
     const d = (verifyingContract: string) => ({ chainId: 8453, verifyingContract });
-    const digest = (sep: string, struct: string) => ethers.keccak256(ethers.concat(["0x1901", sep, struct]));
+    const digest = (sep: string, struct: string) =>
+      ethers.keccak256(ethers.concat(["0x1901", sep, struct]));
     const recovers = (sep: string, struct: string, sig: string) =>
       expect(ethers.recoverAddress(digest(sep, struct), sig)).toBe(wallet.address);
     const orderId = CAST_BASELINE.orderId;
@@ -536,14 +676,35 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
     recovers(
       CAST_SEPARATORS.openAuth.v1,
       openAuthStructHash(orderId, "1900000000"),
-      await signOpenAuth(wallet, d(CAST_SEPARATORS.openAuth.verifyingContract), orderId, "1900000000"),
+      await signOpenAuth(
+        wallet,
+        d(CAST_SEPARATORS.openAuth.verifyingContract),
+        orderId,
+        "1900000000",
+      ),
     );
-    const fa = { fillId: "0x" + "ab".repeat(32), filler: wallet.address, to: addr("77"), token: addr("88"), amount: "5", deadline: "1900000000" };
-    recovers(CAST_SEPARATORS.fillAuth.v1, fillAuthStructHash(fa), await signFillAuth(wallet, d(CAST_SEPARATORS.fillAuth.verifyingContract), fa));
+    const fa = {
+      fillId: "0x" + "ab".repeat(32),
+      filler: wallet.address,
+      to: addr("77"),
+      token: addr("88"),
+      amount: "5",
+      deadline: "1900000000",
+    };
+    recovers(
+      CAST_SEPARATORS.fillAuth.v1,
+      fillAuthStructHash(fa),
+      await signFillAuth(wallet, d(CAST_SEPARATORS.fillAuth.verifyingContract), fa),
+    );
     recovers(
       CAST_SEPARATORS.fillAttestation.v1,
       fillAttestationStructHash(orderId, addr("77")),
-      await signFillAttestation(wallet, d(CAST_SEPARATORS.fillAttestation.verifyingContract), orderId, addr("77")),
+      await signFillAttestation(
+        wallet,
+        d(CAST_SEPARATORS.fillAttestation.verifyingContract),
+        orderId,
+        addr("77"),
+      ),
     );
     const bond = d(CAST_SEPARATORS.solverBond.verifyingContract);
     const claim = {
@@ -555,7 +716,11 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
       escrow: CAST_BASELINE.terms.escrow,
       deadline: "1900000000",
     };
-    recovers(CAST_SEPARATORS.solverBond.v2, slashAttestationStructHash(claim), await signSlashAttestation(wallet, bond, claim));
+    recovers(
+      CAST_SEPARATORS.solverBond.v2,
+      slashAttestationStructHash(claim),
+      await signSlashAttestation(wallet, bond, claim),
+    );
     const acc = {
       orderId,
       originChainId: "8453",
@@ -564,6 +729,10 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
       deadline: "1900000000",
       fillAuth: "0x" + "cd".repeat(32),
     };
-    recovers(CAST_SEPARATORS.solverBond.v2, fillAcceptanceStructHash(acc), await signFillAcceptance(wallet, bond, acc));
+    recovers(
+      CAST_SEPARATORS.solverBond.v2,
+      fillAcceptanceStructHash(acc),
+      await signFillAcceptance(wallet, bond, acc),
+    );
   });
 });

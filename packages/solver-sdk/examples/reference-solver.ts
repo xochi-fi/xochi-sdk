@@ -260,7 +260,9 @@ const DEMO_KEY = /^0x0{48}[0-9a-fA-F]{16}$/;
 // the VARIABLE NAME and the reason, never the value.
 function assertKeyShape(name: string, key: string): void {
   if (!KEY_SHAPE.test(key)) {
-    throw new Error(`${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`);
+    throw new Error(
+      `${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`,
+    );
   }
 }
 
@@ -271,7 +273,9 @@ function assertKeyShape(name: string, key: string): void {
 function assertDemoKey(name: string, key: string): void {
   assertKeyShape(name, key);
   if (!DEMO_KEY.test(key)) {
-    throw new Error(`${name} is not one of this harness's demo keys; the offline run signs real, valid bids and must never hold a real key`);
+    throw new Error(
+      `${name} is not one of this harness's demo keys; the offline run signs real, valid bids and must never hold a real key`,
+    );
   }
 }
 
@@ -281,7 +285,9 @@ function assertDemoKey(name: string, key: string): void {
 function assertLiveKey(name: string, key: string): void {
   assertKeyShape(name, key);
   if (DEMO_KEY.test(key)) {
-    throw new Error(`${name} is a demo key from this example (top 24 bytes zero); --live signs firm offers, so it is refused`);
+    throw new Error(
+      `${name} is a demo key from this example (top 24 bytes zero); --live signs firm offers, so it is refused`,
+    );
   }
 }
 
@@ -335,12 +341,17 @@ class ReferenceSolver implements Solver {
 
     // Cheap refusals first, before spending the pricing budget.
     const remaining = ann.closesAt - this.clock.now();
-    if (remaining <= PRICING_MS) return pass(`${remaining}ms of window left, pricing needs ${PRICING_MS}ms`);
+    if (remaining <= PRICING_MS)
+      return pass(`${remaining}ms of window left, pricing needs ${PRICING_MS}ms`);
     if (remaining > MAX_WINDOW_AHEAD_MS) {
-      return pass(`window closes ${remaining}ms out, past the ${MAX_WINDOW_AHEAD_MS}ms we will hold a firm offer open for`);
+      return pass(
+        `window closes ${remaining}ms out, past the ${MAX_WINDOW_AHEAD_MS}ms we will hold a firm offer open for`,
+      );
     }
     if (ann.exclusiveWindowMs > MAX_EXCLUSIVE_WINDOW_MS) {
-      return pass(`exclusive fill window ${ann.exclusiveWindowMs}ms exceeds our ${MAX_EXCLUSIVE_WINDOW_MS}ms hedge`);
+      return pass(
+        `exclusive fill window ${ann.exclusiveWindowMs}ms exceeds our ${MAX_EXCLUSIVE_WINDOW_MS}ms hedge`,
+      );
     }
 
     const unservicable = this.filter(ann);
@@ -357,7 +368,8 @@ class ReferenceSolver implements Solver {
     if (ann.fromAmount === undefined) return pass("exact_input announcement carries no fromAmount");
     const origin = TOKENS[symbolOf(ann.fromToken)];
     const dest = TOKENS[symbolOf(ann.toToken)];
-    if (!origin || !dest) return pass(`corridor ${tame(ann.fromToken)} -> ${tame(ann.toToken)} is not one we price`);
+    if (!origin || !dest)
+      return pass(`corridor ${tame(ann.fromToken)} -> ${tame(ann.toToken)} is not one we price`);
 
     const size = BigInt(ann.fromAmount); // ORIGIN base units
     const deliverable = rescale(size, origin.decimals, dest.decimals); // DESTINATION base units
@@ -368,7 +380,9 @@ class ReferenceSolver implements Solver {
     // gain by sending it. At or above it the bid is ADMISSIBLE, not winning:
     // the reserve is private and may well be higher than this.
     if (!isAdmissible(output, floor)) {
-      return pass(`our ${OWN_COST_BPS}bp cost puts output ${output} below the floor ${floor} (both destination base units)`);
+      return pass(
+        `our ${OWN_COST_BPS}bp cost puts output ${output} below the floor ${floor} (both destination base units)`,
+      );
     }
 
     // A re-quote REPLACES the live bid at the venue, so it must replace the
@@ -398,7 +412,11 @@ class ReferenceSolver implements Solver {
     say(
       `  bid   ${tame(ann.intentId)}  output=${output} (floor ${floor}, +${overFloorBps}bp of floor)  hold ${output} on ${holdKey}, ${available - output} uncommitted`,
     );
-    return { output: output.toString(), validUntilMs: ann.closesAt + BID_LIFETIME_MS, minExclusiveMs: MIN_EXCLUSIVE_MS };
+    return {
+      output: output.toString(),
+      validUntilMs: ann.closesAt + BID_LIFETIME_MS,
+      minExclusiveMs: MIN_EXCLUSIVE_MS,
+    };
   }
 
   async fill(award: Award): Promise<FillReceipt> {
@@ -421,7 +439,9 @@ class ReferenceSolver implements Solver {
     }
 
     if (this.clock.now() >= award.exclusiveUntil) {
-      throw new Error(`exclusive window for ${tame(award.intentId)} closed at ${award.exclusiveUntil}; the backstop has it`);
+      throw new Error(
+        `exclusive window for ${tame(award.intentId)} closed at ${award.exclusiveUntil}; the backstop has it`,
+      );
     }
 
     // The settle rule may credit an output other than the one bid (§2.1's
@@ -429,13 +449,17 @@ class ReferenceSolver implements Solver {
     // priced rather than assumed equal to it.
     const awarded = BigInt(award.output);
     if (awarded > tracked.bidOutput) {
-      throw new Error(`award output ${awarded} exceeds our bid ${tracked.bidOutput} for ${tame(award.intentId)}`);
+      throw new Error(
+        `award output ${awarded} exceeds our bid ${tracked.bidOutput} for ${tame(award.intentId)}`,
+      );
     }
 
     if (award.escrow) {
       // P1. Before filling, bind to the escrow: recompute the v2 orderId (ESCROW-RFC 2.3)
       // and check it equals `intentRef` (ESCROW-RFC.md §2, §7).
-      say(`  note  escrow envelope present: ${tame(award.escrow.address)} intentRef=${tame(award.escrow.intentRef)}`);
+      say(
+        `  note  escrow envelope present: ${tame(award.escrow.address)} intentRef=${tame(award.escrow.intentRef)}`,
+      );
     }
 
     // The hold taken at bid time already covers `awarded` (awarded <=
@@ -445,7 +469,8 @@ class ReferenceSolver implements Solver {
     this.tracked.delete(award.intentId);
     settled.set(tracked.holdKey, (settled.get(tracked.holdKey) ?? 0n) + awarded);
     const unspent = tracked.held - awarded;
-    if (unspent > 0n) inventory.set(tracked.holdKey, (inventory.get(tracked.holdKey) ?? 0n) + unspent);
+    if (unspent > 0n)
+      inventory.set(tracked.holdKey, (inventory.get(tracked.holdKey) ?? 0n) + unspent);
 
     // STUB. Replace with the destination transaction you actually broadcast:
     // the venue's oracle watch resolves this hash on `chainId`, so a hash that
@@ -453,7 +478,9 @@ class ReferenceSolver implements Solver {
     const txHash = ethers.id(`${award.intentId}:${award.output}`);
 
     this.stats.filled += 1;
-    say(`  fill  ${tame(award.intentId)}  ${awarded} on chain ${tracked.ann.toChainId}  tx=${txHash.slice(0, 18)}...`);
+    say(
+      `  fill  ${tame(award.intentId)}  ${awarded} on chain ${tracked.ann.toChainId}  tx=${txHash.slice(0, 18)}...`,
+    );
     return {
       auctionId: award.auctionId,
       intentId: award.intentId,
@@ -488,7 +515,8 @@ class ReferenceSolver implements Solver {
       // on). Refused rather than trusted not to arrive.
       return `swapKind ${tame(ann.swapKind)} is unwinnable under an output-only bid`;
     }
-    if (!SUPPORTED_SETTLEMENT[ann.settlementPreference]) return `settlement ${tame(ann.settlementPreference)}`;
+    if (!SUPPORTED_SETTLEMENT[ann.settlementPreference])
+      return `settlement ${tame(ann.settlementPreference)}`;
     if (!SUPPORTED_CHAINS.includes(ann.fromChainId)) return `origin chain ${ann.fromChainId}`;
     if (!SUPPORTED_CHAINS.includes(ann.toChainId)) return `destination chain ${ann.toChainId}`;
 
@@ -503,8 +531,10 @@ class ReferenceSolver implements Solver {
     // Reading them off the destination token worked only because `TOKENS` holds
     // a single 6-decimal symbol.
     const size = BigInt(ann.fromAmount);
-    if (size < origin.minFill) return `size ${size} below min ${origin.minFill} (origin base units)`;
-    if (size > origin.maxFill) return `size ${size} above max ${origin.maxFill} (origin base units)`;
+    if (size < origin.minFill)
+      return `size ${size} below min ${origin.minFill} (origin base units)`;
+    if (size > origin.maxFill)
+      return `size ${size} above max ${origin.maxFill} (origin base units)`;
     return null;
   }
 
@@ -524,7 +554,8 @@ class ReferenceSolver implements Solver {
   private prune(): void {
     const now = this.clock.now();
     for (const [intentId, entry] of this.tracked) {
-      if (now > this.fillDeadline(entry.ann)) this.drop(intentId, entry, "fill window elapsed unawarded");
+      if (now > this.fillDeadline(entry.ann))
+        this.drop(intentId, entry, "fill window elapsed unawarded");
     }
     // Everything the time pass left is still inside its fill window -- i.e.
     // still winnable -- so there is no free entry to drop and exceeding
@@ -535,7 +566,8 @@ class ReferenceSolver implements Solver {
     while (this.tracked.size > MAX_TRACKED) {
       let victim: [string, Tracked] | undefined;
       for (const candidate of this.tracked) {
-        if (!victim || this.fillDeadline(candidate[1].ann) < this.fillDeadline(victim[1].ann)) victim = candidate;
+        if (!victim || this.fillDeadline(candidate[1].ann) < this.fillDeadline(victim[1].ann))
+          victim = candidate;
       }
       if (!victim) break;
       this.stats.evicted += 1;
@@ -604,7 +636,12 @@ class StubAuctioneer implements SolverTransport {
     return {
       rfcVersion: SOLVER_RFC_VERSION,
       phase: "P0",
-      auction: { model: "sealed_bid_best_output", settleRule: "first_price", windowMs: WINDOW_MS, exclusiveWindowMs: EXCLUSIVE_WINDOW_MS },
+      auction: {
+        model: "sealed_bid_best_output",
+        settleRule: "first_price",
+        windowMs: WINDOW_MS,
+        exclusiveWindowMs: EXCLUSIVE_WINDOW_MS,
+      },
       admission: { model: "riddler_only", panelSize: 1 },
       chains: [...SUPPORTED_CHAINS],
       settlementTypes: ["public"],
@@ -651,19 +688,25 @@ class StubAuctioneer implements SolverTransport {
     // assuming a venue can always log who sent a bad bid.
     const verdict = verifyBidDetailed(bid);
     if (!verdict.ok) {
-      const status = verdict.reason === "unencodable" || verdict.reason === "non_canonical" ? 400 : 403;
-      const from = verdict.signer === null ? " from an unattributable signature" : ` from ${verdict.signer}`;
-      throw new Error(`${status} ${verdict.reason}${from}: ${tame(verdict.detail, MAX_LOGGED_ERROR_CHARS)}`);
+      const status =
+        verdict.reason === "unencodable" || verdict.reason === "non_canonical" ? 400 : 403;
+      const from =
+        verdict.signer === null ? " from an unattributable signature" : ` from ${verdict.signer}`;
+      throw new Error(
+        `${status} ${verdict.reason}${from}: ${tame(verdict.detail, MAX_LOGGED_ERROR_CHARS)}`,
+      );
     }
     const ann = this.open.get(bid.auctionId);
     if (!ann) throw new Error(`404 no open auction ${tame(bid.auctionId)}`);
-    if (bid.intentId !== ann.intentId) throw new Error("400 intentId does not match the announced intent");
+    if (bid.intentId !== ann.intentId)
+      throw new Error("400 intentId does not match the announced intent");
     if (!isAdmissible(BigInt(bid.output), BigInt(ann.minOutput))) {
       // Below the admissibility floor there is nothing to settle against, so
       // the bid is refused outright rather than carried into selection.
       throw new Error(`422 output ${bid.output} below minOutput ${ann.minOutput}`);
     }
-    if (this.clock.t >= ann.closesAt) throw new Error(`409 window closed at ${ann.closesAt}, bid arrived ${this.clock.t}`);
+    if (this.clock.t >= ann.closesAt)
+      throw new Error(`409 window closed at ${ann.closesAt}, bid arrived ${this.clock.t}`);
     const book = this.live.get(bid.auctionId) ?? new Map<string, Bid>();
     book.set(bid.solverId.toLowerCase(), bid); // a resubmission REPLACES, never accumulates
     this.live.set(bid.auctionId, book);
@@ -684,7 +727,9 @@ class StubAuctioneer implements SolverTransport {
       assertDemoKey("rival key", rival.key);
       const wallet = new ethers.Wallet(rival.key);
       const validUntilMs = round.announcement.closesAt + rival.lifetimeMs;
-      say(`  rival ${wallet.address.slice(0, 10)} output=${rival.output} validUntilMs=${validUntilMs}`);
+      say(
+        `  rival ${wallet.address.slice(0, 10)} output=${rival.output} validUntilMs=${validUntilMs}`,
+      );
       const bid = await signBid(wallet, round.announcement, {
         output: rival.output.toString(),
         validUntilMs,
@@ -734,10 +779,14 @@ class StubAuctioneer implements SolverTransport {
       // close, so a bid signed to lapse AT closesAt is excluded only once the
       // clock is past it -- the stub selects one tick after.
       if (selectionAt > bid.validUntilMs) {
-        say(`  close ${bid.solverId.slice(0, 10)} output ${bid.output} EXCLUDED: validUntilMs ${bid.validUntilMs} passed by selection`);
+        say(
+          `  close ${bid.solverId.slice(0, 10)} output ${bid.output} EXCLUDED: validUntilMs ${bid.validUntilMs} passed by selection`,
+        );
         continue;
       }
-      say(`  close ${bid.solverId.slice(0, 10)} output ${bid.output} eligible (until ${bid.validUntilMs})`);
+      say(
+        `  close ${bid.solverId.slice(0, 10)} output ${bid.output} eligible (until ${bid.validUntilMs})`,
+      );
       if (!best || BigInt(bid.output) > BigInt(best.output)) best = bid;
     }
 
@@ -748,7 +797,9 @@ class StubAuctioneer implements SolverTransport {
     // Strictly greater: equal output loses, so the taker is never settled below
     // the venue's own quote (RFC §2.1).
     if (BigInt(best.output) <= round.venueReserve) {
-      say(`  close best bid ${best.output} did not beat the private reserve ${round.venueReserve}; reserve wins`);
+      say(
+        `  close best bid ${best.output} did not beat the private reserve ${round.venueReserve}; reserve wins`,
+      );
       return null;
     }
     const award: Award = {
@@ -827,7 +878,13 @@ function round(index: number, label: string, spec: RoundSpec = {}): Round {
     recipientCommitment: ethers.id(`recipient-${index}`), // venue-keyed HMAC; opaque to you
     ...overrides,
   };
-  return { label, clockAt: opensAt + (spec.offsetMs ?? 5), announcement, venueReserve, rivals: spec.rivals };
+  return {
+    label,
+    clockAt: opensAt + (spec.offsetMs ?? 5),
+    announcement,
+    venueReserve,
+    rivals: spec.rivals,
+  };
 }
 
 // Fixed keys so the run is reproducible. NOT keys to reuse anywhere: the top 24
@@ -848,19 +905,33 @@ const OVERLAP_CHAIN = 11155420;
 const SCRIPT: Round[] = [
   round(1, "1. we are cheaper than the venue -> bid, award, fill"),
   round(2, "2. exact_output round -> pass (unwinnable, and not announced live)", {
-    announcement: { swapKind: "exact_output", fromAmount: undefined, outputAmount: DEFAULT_NOTIONAL },
+    announcement: {
+      swapKind: "exact_output",
+      fromAmount: undefined,
+      outputAmount: DEFAULT_NOTIONAL,
+    },
   }),
-  round(3, "3. unsupported token -> pass", { announcement: { fromToken: "usdt", toToken: "usdt" } }),
+  round(3, "3. unsupported token -> pass", {
+    announcement: { fromToken: "usdt", toToken: "usdt" },
+  }),
   round(4, "4. size above our cap -> pass", { announcement: { fromAmount: "250000000000" } }),
-  round(5, "5. shielded settlement -> pass", { announcement: { settlementPreference: "shielded" } }),
-  round(6, "6. window already closed on arrival -> client skips before quoting", { offsetMs: 350 }),
-  round(7, "7. priced in time, submitted late -> 409 from the venue (and the hold comes straight back)", {
-    offsetMs: WINDOW_MS - (PRICING_MS + 10),
+  round(5, "5. shielded settlement -> pass", {
+    announcement: { settlementPreference: "shielded" },
   }),
+  round(6, "6. window already closed on arrival -> client skips before quoting", { offsetMs: 350 }),
+  round(
+    7,
+    "7. priced in time, submitted late -> 409 from the venue (and the hold comes straight back)",
+    {
+      offsetMs: WINDOW_MS - (PRICING_MS + 10),
+    },
+  ),
   // The round the published-reserve design could not produce: our bid clears
   // the floor, so it is admissible, and still loses because the venue's own
   // reserve -- which we cannot see -- is better than our cost allows.
-  round(8, "8. venue is cheaper than us -> admissible bid loses to the private reserve", { reserveBps: 10n }),
+  round(8, "8. venue is cheaper than us -> admissible bid loses to the private reserve", {
+    reserveBps: 10n,
+  }),
   // The best output on the book is a rival's and it is thrown out at selection
   // because its signed validUntilMs has passed; the second rival's bid still
   // stands and is simply outbid.
@@ -871,7 +942,10 @@ const SCRIPT: Round[] = [
     ],
   }),
   round(10, "10. window closes an hour out -> pass (a firm offer we cannot hedge)", {
-    announcement: { opensAt: T0 + 10 * ROUND_SPACING_MS, closesAt: T0 + 10 * ROUND_SPACING_MS + 3_600_000 },
+    announcement: {
+      opensAt: T0 + 10 * ROUND_SPACING_MS,
+      closesAt: T0 + 10 * ROUND_SPACING_MS + 3_600_000,
+    },
   }),
   // Three auctions open at once against one float. The first two commit
   // 19,972 USDC each at BID time; the third is refused because the inventory is
@@ -941,19 +1015,26 @@ async function runOffline(): Promise<void> {
     // owns its feed and must report gaps itself.
     onError: (err, event) => {
       say(`  error ${event.type}: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`);
-      if (event.type === "announcement") solver.releaseBid(event.announcement.intentId, "bid refused by the venue");
+      if (event.type === "announcement")
+        solver.releaseBid(event.announcement.intentId, "bid refused by the venue");
     },
   });
 
   await client.run(solver);
 
   say("\n--- summary ---");
-  say(`quoted ${solver.stats.quoted}  bids ${solver.stats.bid}  passes ${solver.stats.passed}  evictions ${solver.stats.evicted}`);
-  say(`awards ${venue.awards.length}  fills ${solver.stats.filled}  receipts ${venue.fills.length}`);
+  say(
+    `quoted ${solver.stats.quoted}  bids ${solver.stats.bid}  passes ${solver.stats.passed}  evictions ${solver.stats.evicted}`,
+  );
+  say(
+    `awards ${venue.awards.length}  fills ${solver.stats.filled}  receipts ${venue.fills.length}`,
+  );
   for (const [key, paid] of settled) say(`settled ${key}: ${paid}`);
-  for (const [key, held] of solver.outstandingHolds()) say(`held    ${key}: ${held} still committed to a live bid`);
+  for (const [key, held] of solver.outstandingHolds())
+    say(`held    ${key}: ${held} still committed to a live bid`);
   for (const [key, available] of inventory) {
-    if (available !== INITIAL_FLOAT) say(`float   ${key}: ${available} uncommitted of ${INITIAL_FLOAT}`);
+    if (available !== INITIAL_FLOAT)
+      say(`float   ${key}: ${available} uncommitted of ${INITIAL_FLOAT}`);
   }
 }
 
@@ -963,7 +1044,10 @@ async function runOffline(): Promise<void> {
 
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY, SOLVER_API_KEY)`);
+  if (!value)
+    throw new Error(
+      `${name} is required for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY, SOLVER_API_KEY)`,
+    );
   return value;
 }
 
@@ -986,12 +1070,17 @@ function assertVenueUrl(raw: string): void {
     throw new Error(`RIDDLER_SOLVER_URL is not a URL: ${tame(raw)}`);
   }
   if (url.protocol === "https:") return;
-  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  const loopback =
+    url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
   if (url.protocol === "http:" && loopback) {
-    say(`WARNING ${tame(url.origin)} is plain http, allowed only because it is loopback: the panel secret is sent unencrypted`);
+    say(
+      `WARNING ${tame(url.origin)} is plain http, allowed only because it is loopback: the panel secret is sent unencrypted`,
+    );
     return;
   }
-  throw new Error(`RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${tame(raw)}`);
+  throw new Error(
+    `RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${tame(raw)}`,
+  );
 }
 
 interface LiveConfig {
@@ -1024,12 +1113,16 @@ async function runLive(): Promise<void> {
     apiKey,
     onError: (err, event) => {
       say(`  error ${event.type}: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`);
-      if (event.type === "announcement") solver.releaseBid(event.announcement.intentId, "bid refused by the venue");
+      if (event.type === "announcement")
+        solver.releaseBid(event.announcement.intentId, "bid refused by the venue");
     },
     // A gap means intents you will NEVER see. Acting on it is the point.
     onFeedGap: (gap: FeedGap) =>
-      say(`  GAP   dropped=${gap.dropped} reset=${gap.reset} lost (${tame(gap.requestedCursor)}, ${tame(gap.cursor)}]`),
-    onInvalidEvent: (err) => say(`  skip  malformed feed entry: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`),
+      say(
+        `  GAP   dropped=${gap.dropped} reset=${gap.reset} lost (${tame(gap.requestedCursor)}, ${tame(gap.cursor)}]`,
+      ),
+    onInvalidEvent: (err) =>
+      say(`  skip  malformed feed entry: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`),
   });
 
   // Public and unauthenticated: readable before admission. PRINTED, not
@@ -1045,9 +1138,13 @@ async function runLive(): Promise<void> {
   );
   say(`this solver implements RFC ${SOLVER_RFC_VERSION}`);
   if (phase === null) {
-    say("the venue advertises no phase; assume nothing about whether an award can reach this solver");
+    say(
+      "the venue advertises no phase; assume nothing about whether an award can reach this solver",
+    );
   } else if (phase.toUpperCase() === "P0") {
-    say("phase P0: bids are scored but the venue's reserve wins every auction -- `fill` will not run");
+    say(
+      "phase P0: bids are scored but the venue's reserve wins every auction -- `fill` will not run",
+    );
   }
   say(`solverId=${solver.solverId}\n`);
 
@@ -1061,7 +1158,9 @@ async function runLive(): Promise<void> {
     // exit 1 and read like the venue dropped the feed.
     if (!abort.signal.aborted) throw err;
   } finally {
-    say(`\nquoted ${solver.stats.quoted}  bids ${solver.stats.bid}  passes ${solver.stats.passed}  fills ${solver.stats.filled}`);
+    say(
+      `\nquoted ${solver.stats.quoted}  bids ${solver.stats.bid}  passes ${solver.stats.passed}  fills ${solver.stats.filled}`,
+    );
   }
 }
 

@@ -47,7 +47,9 @@ const TEST_KEY_2 = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cd
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find((v: { name: string }) => v.name === "baseline-evm-usdc").expected_order_id;
+const baselineOrderId: string = orderIds.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+).expected_order_id;
 
 // The fixed bond deployment the baseline vectors are signed on.
 const BOND_CHAIN_ID = "8453";
@@ -81,15 +83,44 @@ const fillAuth = {
   amount: "99700000",
   deadline: "1900000000",
 };
-const base = { chainId: BOND_CHAIN_ID, verifyingContract: BOND, order, fillerDomain, fillAuth, key: TEST_KEY_1 };
+const base = {
+  chainId: BOND_CHAIN_ID,
+  verifyingContract: BOND,
+  order,
+  fillerDomain,
+  fillAuth,
+  key: TEST_KEY_1,
+};
 
 const CASES: Case[] = [
   { name: "baseline-base-to-optimism", ...base },
-  { ...base, name: "second-solver", fillAuth: { ...fillAuth, filler: addr(TEST_KEY_2) }, key: TEST_KEY_2 },
-  { ...base, name: "other-bond-domain", chainId: "1", verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508" },
+  {
+    ...base,
+    name: "second-solver",
+    fillAuth: { ...fillAuth, filler: addr(TEST_KEY_2) },
+    key: TEST_KEY_2,
+  },
+  {
+    ...base,
+    name: "other-bond-domain",
+    chainId: "1",
+    verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508",
+  },
   // Same FillAuth fields, another RiddlerFiller domain: only `fillAuth` moves.
-  { ...base, name: "other-filler-domain", fillerDomain: { chainId: "42161", verifyingContract: "0x5555555555555555555555555555555555555555" } },
-  { ...base, name: "same-chain-fill", fillerDomain: { ...fillerDomain, chainId: "8453" }, fillAuth: { ...fillAuth, deadline: "1" } },
+  {
+    ...base,
+    name: "other-filler-domain",
+    fillerDomain: {
+      chainId: "42161",
+      verifyingContract: "0x5555555555555555555555555555555555555555",
+    },
+  },
+  {
+    ...base,
+    name: "same-chain-fill",
+    fillerDomain: { ...fillerDomain, chainId: "8453" },
+    fillAuth: { ...fillAuth, deadline: "1" },
+  },
   {
     ...base,
     name: "zero-amount-zero-ids",
@@ -146,7 +177,8 @@ const out = {
   type: FILL_ACCEPTANCE_TYPE,
   typehash: FILL_ACCEPTANCE_TYPEHASH,
   fill_auth_domain: { name: FILL_AUTH_DOMAIN_NAME, version: FILL_AUTH_DOMAIN_VERSION },
-  fill_auth_type: "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)",
+  fill_auth_type:
+    "FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)",
   fill_auth_typehash: FILL_AUTH_TYPEHASH,
   vectors,
 };

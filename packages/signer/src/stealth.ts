@@ -55,7 +55,6 @@ export function signUserOpHash(userOpHash: string, stealthPrivHex: string): stri
   return new ethers.SigningKey(stealthPrivHex).sign(userOpHash).serialized;
 }
 
-
 /** What a prepared claim op does. Anything other than a sweep binds the action. */
 export type ClaimAction = "transfer" | "approve_permit2";
 

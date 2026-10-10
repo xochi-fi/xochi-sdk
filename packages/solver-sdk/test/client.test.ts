@@ -44,7 +44,9 @@ class StubTransport implements SolverTransport {
   capabilityReads = 0;
   constructor(
     private readonly script: SolverEvent[],
-    private readonly capabilities: Partial<VenueCapabilities> | null = { rfcVersion: SOLVER_RFC_VERSION },
+    private readonly capabilities: Partial<VenueCapabilities> | null = {
+      rfcVersion: SOLVER_RFC_VERSION,
+    },
   ) {}
   async *events(): AsyncIterable<SolverEvent> {
     for (const ev of this.script) yield ev;
@@ -137,7 +139,9 @@ describe("SolverClient loop", () => {
     // recover through the pinned domain and types directly. Fails if the
     // client ever seals a bid with anything other than this EIP-712 struct.
     const { message } = bidTypedData(bid);
-    expect(ethers.verifyTypedData(SOLVER_BID_DOMAIN, SOLVER_BID_TYPES, message, bid.signature)).toBe(SOLVER_ID);
+    expect(
+      ethers.verifyTypedData(SOLVER_BID_DOMAIN, SOLVER_BID_TYPES, message, bid.signature),
+    ).toBe(SOLVER_ID);
 
     expect(transport.fills).toHaveLength(1);
     expect(transport.fills[0]!.proof).toEqual({ kind: "tx_hash", chainId: 10, txHash: "0xfeed" });
@@ -163,7 +167,9 @@ describe("SolverClient loop", () => {
   });
 
   it("ignores an award addressed to a different solver", async () => {
-    const transport = new StubTransport([{ type: "award", award: award({ solverId: OTHER_SOLVER }) }]);
+    const transport = new StubTransport([
+      { type: "award", award: award({ solverId: OTHER_SOLVER }) },
+    ]);
     const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow });
 
     await client.run(eagerSolver);
@@ -181,7 +187,10 @@ describe("SolverClient loop", () => {
     };
     const transport = new StubTransport([
       { type: "announcement", announcement: announcement({ intentId: "intent-bad" }) },
-      { type: "announcement", announcement: announcement({ intentId: "intent-good", auctionId: "auction-2" }) },
+      {
+        type: "announcement",
+        announcement: announcement({ intentId: "intent-good", auctionId: "auction-2" }),
+      },
     ]);
     const errors: unknown[] = [];
     const client = new SolverClient({
@@ -200,7 +209,12 @@ describe("SolverClient loop", () => {
   });
 
   it("propagates errors out of run() when no onError is provided (fail loud)", async () => {
-    const boom: Solver = { ...eagerSolver, quote: async () => { throw new Error("no swallow"); } };
+    const boom: Solver = {
+      ...eagerSolver,
+      quote: async () => {
+        throw new Error("no swallow");
+      },
+    };
     const transport = new StubTransport([{ type: "announcement", announcement: announcement() }]);
     const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow });
 
@@ -252,17 +266,27 @@ describe("SolverClient RFC version gate", () => {
     // reachability one. They must not share a sentence.
     const noField = new StubTransport(openAnnouncement, {});
     await expect(
-      new SolverClient({ solverKey: SOLVER_KEY, transport: noField, now: clockInWindow }).run(eagerSolver),
+      new SolverClient({ solverKey: SOLVER_KEY, transport: noField, now: clockInWindow }).run(
+        eagerSolver,
+      ),
     ).rejects.toThrow(/did not tell me its RFC version/);
     expect(noField.bids).toHaveLength(0);
 
     const down = new StubTransport(openAnnouncement, null);
-    const downError = await new SolverClient({ solverKey: SOLVER_KEY, transport: down, now: clockInWindow })
+    const downError = await new SolverClient({
+      solverKey: SOLVER_KEY,
+      transport: down,
+      now: clockInWindow,
+    })
       .run(eagerSolver)
       .catch((err: unknown) => (err instanceof Error ? err.message : String(err)));
     expect(downError).toMatch(/did not tell me its RFC version/);
     expect(downError).not.toMatch(/skew/);
-    const downErr = await new SolverClient({ solverKey: SOLVER_KEY, transport: new StubTransport(openAnnouncement, null), now: clockInWindow })
+    const downErr = await new SolverClient({
+      solverKey: SOLVER_KEY,
+      transport: new StubTransport(openAnnouncement, null),
+      now: clockInWindow,
+    })
       .run(eagerSolver)
       .catch((e: unknown) => e);
     expect(downErr).not.toBeInstanceOf(VenueVersionSkewError);
@@ -325,9 +349,14 @@ describe("SolverClient RFC version gate", () => {
     // which arrived in the same `catch` as a connection refusal -- so the SDK
     // told the operator to check reachability, routing and the base URL about a
     // venue that had answered correctly.
-    for (const body of [{ rfcVersion: SOLVER_RFC_VERSION, phase: "P0" }, { rfcVersion: SOLVER_RFC_VERSION }]) {
+    for (const body of [
+      { rfcVersion: SOLVER_RFC_VERSION, phase: "P0" },
+      { rfcVersion: SOLVER_RFC_VERSION },
+    ]) {
       const { bids, transport } = servedBody(body);
-      await new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow }).run(eagerSolver);
+      await new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow }).run(
+        eagerSolver,
+      );
       expect(bids, JSON.stringify(body)).toHaveLength(1);
       expect(verifyBid(bids[0]!)).toBe(true);
     }
@@ -338,7 +367,11 @@ describe("SolverClient RFC version gate", () => {
     // third's sentence. A body that fails validation is the venue's contract
     // problem; only a request that never completed is a routing problem.
     const { transport: unreadable } = servedBody({ rfcVersion: 7, phase: "P0" });
-    const bodyError = await new SolverClient({ solverKey: SOLVER_KEY, transport: unreadable, now: clockInWindow })
+    const bodyError = await new SolverClient({
+      solverKey: SOLVER_KEY,
+      transport: unreadable,
+      now: clockInWindow,
+    })
       .run(eagerSolver)
       .catch((err: unknown) => (err instanceof Error ? err.message : String(err)));
     expect(bodyError).toMatch(/answered a body this SDK cannot read/);
@@ -346,7 +379,11 @@ describe("SolverClient RFC version gate", () => {
     expect(bodyError).not.toMatch(/check reachability, routing and the base URL/);
 
     const down = new StubTransport(openAnnouncement, null); // getCapabilities throws
-    const reachError = await new SolverClient({ solverKey: SOLVER_KEY, transport: down, now: clockInWindow })
+    const reachError = await new SolverClient({
+      solverKey: SOLVER_KEY,
+      transport: down,
+      now: clockInWindow,
+    })
       .run(eagerSolver)
       .catch((err: unknown) => (err instanceof Error ? err.message : String(err)));
     expect(reachError).toMatch(/check reachability, routing and the base URL/);
@@ -356,7 +393,9 @@ describe("SolverClient RFC version gate", () => {
     // usable `rfcVersion` is neither of the two above.
     const { transport: noVersion } = servedBody({ phase: "P0" });
     await expect(
-      new SolverClient({ solverKey: SOLVER_KEY, transport: noVersion, now: clockInWindow }).run(eagerSolver),
+      new SolverClient({ solverKey: SOLVER_KEY, transport: noVersion, now: clockInWindow }).run(
+        eagerSolver,
+      ),
     ).rejects.toThrow(/answered a body this SDK cannot read/);
   });
 
@@ -371,7 +410,10 @@ describe("SolverClient RFC version gate", () => {
     const served = [SOLVER_RFC_VERSION, "9.9.9-draft"];
     transport.getCapabilities = async () => {
       transport.capabilityReads += 1;
-      return { phase: "P0", rfcVersion: served[transport.capabilityReads - 1]! } as VenueCapabilities;
+      return {
+        phase: "P0",
+        rfcVersion: served[transport.capabilityReads - 1]!,
+      } as VenueCapabilities;
     };
     const handed: Award[] = [];
     const errors: unknown[] = [];
@@ -396,15 +438,21 @@ describe("SolverClient RFC version gate", () => {
   });
 
   it("does not re-check for an award addressed to another solver", async () => {
-    const transport = new StubTransport([{ type: "award", award: award({ solverId: OTHER_SOLVER }) }]);
-    await new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow }).run(eagerSolver);
+    const transport = new StubTransport([
+      { type: "award", award: award({ solverId: OTHER_SOLVER }) },
+    ]);
+    await new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow }).run(
+      eagerSolver,
+    );
     expect(transport.capabilityReads).toBe(1);
   });
 });
 
 describe("wire validation", () => {
   it("parses a valid feed event", () => {
-    expect(() => parseSolverEvent({ type: "announcement", announcement: announcement() })).not.toThrow();
+    expect(() =>
+      parseSolverEvent({ type: "announcement", announcement: announcement() }),
+    ).not.toThrow();
     expect(() => parseSolverEvent({ type: "award", award: award() })).not.toThrow();
   });
 
@@ -420,7 +468,13 @@ describe("wire validation", () => {
     // Signed by a different key, but claims SOLVER_ID: recovers to the wrong
     // address -> false.
     const impostor = new ethers.Wallet("0x" + "0".repeat(63) + "2");
-    const fields = { ...BID_TERMS, orderId: ZERO_ORDER_ID, auctionId: "auction-1", intentId: "intent-1", output: "998000" };
+    const fields = {
+      ...BID_TERMS,
+      orderId: ZERO_ORDER_ID,
+      auctionId: "auction-1",
+      intentId: "intent-1",
+      output: "998000",
+    };
     const { domain, types, message } = bidTypedData(fields);
     const forged: Bid = {
       ...fields,

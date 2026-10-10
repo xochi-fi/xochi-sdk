@@ -3,7 +3,17 @@
 // (`StateLock`). Split out so the reference solver reads on its own; nothing
 // here knows about awards beyond the `PreparedFill` it stores.
 
-import { closeSync, constants, fsyncSync, linkSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "fs";
+import {
+  closeSync,
+  constants,
+  fsyncSync,
+  linkSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from "fs";
 import { randomUUID } from "crypto";
 import { hostname } from "os";
 import { dirname, resolve } from "path";
@@ -70,19 +80,25 @@ const REQUIRED_BIGINTS = 9;
 // `held` and no award for that order is accepted until a human resolves it.
 // An entry with no string orderId cannot be held that way, so it refuses the
 // file whole, as does a file that is not JSON or holds no `fills` list.
-function parseFillStateFile(path: string, log: (msg: string) => void): { fills: PersistedFill[]; unreadable: unknown[]; held: Set<string> } {
+function parseFillStateFile(
+  path: string,
+  log: (msg: string) => void,
+): { fills: PersistedFill[]; unreadable: unknown[]; held: Set<string> } {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { fills: [], unreadable: [], held: new Set() };
+    if ((err as NodeJS.ErrnoException).code === "ENOENT")
+      return { fills: [], unreadable: [], held: new Set() };
     throw new Error(`SOLVER_STATE_FILE ${path}: ${errorText(err)}`);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new Error(`SOLVER_STATE_FILE ${path} is not JSON (${errorText(err)}); restore it, or move it aside by hand`);
+    throw new Error(
+      `SOLVER_STATE_FILE ${path} is not JSON (${errorText(err)}); restore it, or move it aside by hand`,
+    );
   }
   const raw = isRecord(parsed) ? parsed.fills : undefined;
   if (!Array.isArray(raw)) throw new Error(`SOLVER_STATE_FILE ${path} holds no \`fills\` list`);
@@ -93,7 +109,8 @@ function parseFillStateFile(path: string, log: (msg: string) => void): { fills: 
     try {
       fills.push(decodeEntry(structuredClone(entry)));
     } catch (err) {
-      const orderId = isRecord(entry) && isRecord(entry.prepared) ? entry.prepared.orderId : undefined;
+      const orderId =
+        isRecord(entry) && isRecord(entry.prepared) ? entry.prepared.orderId : undefined;
       if (typeof orderId !== "string") {
         throw new Error(
           `SOLVER_STATE_FILE ${path}: entry ${i} does not decode (${errorText(err)}) and names no orderId, so no award ` +
@@ -111,14 +128,22 @@ function parseFillStateFile(path: string, log: (msg: string) => void): { fills: 
   return { fills, unreadable, held };
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
 function decodeEntry(entry: unknown): PersistedFill {
-  if (!isRecord(entry) || typeof entry.auctionId !== "string" || typeof entry.output !== "string") throw new Error("no auctionId or output");
-  if (typeof entry.phase !== "string" || !PHASES.includes(entry.phase)) throw new Error(`phase ${String(entry.phase)}`);
+  if (!isRecord(entry) || typeof entry.auctionId !== "string" || typeof entry.output !== "string")
+    throw new Error("no auctionId or output");
+  if (typeof entry.phase !== "string" || !PHASES.includes(entry.phase))
+    throw new Error(`phase ${String(entry.phase)}`);
   if (!isRecord(entry.announcement)) throw new Error("no announcement");
   const prepared = entry.prepared;
-  if (!isRecord(prepared) || typeof prepared.orderId !== "string" || typeof prepared.fillId !== "string") throw new Error("no orderId or fillId");
+  if (
+    !isRecord(prepared) ||
+    typeof prepared.orderId !== "string" ||
+    typeof prepared.fillId !== "string"
+  )
+    throw new Error("no orderId or fillId");
   BIGINT_PATHS.forEach((path, i) => {
     const [head = "", leaf] = path.split(".");
     const holder = leaf === undefined ? prepared : prepared[head];
@@ -129,7 +154,10 @@ function decodeEntry(entry: unknown): PersistedFill {
     if (typeof tagged === "string" && /^\d+$/.test(tagged)) holder[key] = BigInt(tagged);
     else if (
       i < REQUIRED_BIGINTS ||
-      !((typeof value === "string" && /^\d+$/.test(value)) || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0))
+      !(
+        (typeof value === "string" && /^\d+$/.test(value)) ||
+        (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
+      )
     ) {
       throw new Error(`prepared.${path} is ${JSON.stringify(value)}, not a decimal`);
     }
@@ -171,7 +199,13 @@ function persistable(e: PersistedFill): PersistedFill {
       auctionId: p.auctionId,
       orderId: p.orderId,
       fillId: p.fillId,
-      opening: { recipient: p.opening.recipient, toToken: p.opening.toToken, toAmount: p.opening.toAmount, blinding: p.opening.blinding, intentId: p.opening.intentId },
+      opening: {
+        recipient: p.opening.recipient,
+        toToken: p.opening.toToken,
+        toAmount: p.opening.toAmount,
+        blinding: p.opening.blinding,
+        intentId: p.opening.intentId,
+      },
       terms: {
         depositor: p.terms.depositor,
         fromChainId: p.terms.fromChainId,
@@ -191,7 +225,10 @@ function persistable(e: PersistedFill): PersistedFill {
         deadline: p.fillAuth.deadline,
       },
       fillAuthSignature: p.fillAuthSignature,
-      fillAuthDomain: { chainId: p.fillAuthDomain.chainId, verifyingContract: p.fillAuthDomain.verifyingContract },
+      fillAuthDomain: {
+        chainId: p.fillAuthDomain.chainId,
+        verifyingContract: p.fillAuthDomain.verifyingContract,
+      },
       payee: p.payee,
       acceptBy: p.acceptBy,
       originChainId: p.originChainId,
@@ -208,7 +245,10 @@ function persistable(e: PersistedFill): PersistedFill {
         blockHash: p.lock.blockHash,
       },
       fillAuthSigner: p.fillAuthSigner,
-      bondDomain: { chainId: p.bondDomain.chainId, verifyingContract: p.bondDomain.verifyingContract },
+      bondDomain: {
+        chainId: p.bondDomain.chainId,
+        verifyingContract: p.bondDomain.verifyingContract,
+      },
       bidOutput: p.bidOutput,
     },
     phase: e.phase,
@@ -310,9 +350,11 @@ export class FillStateFile {
   private write(): void {
     if (this.lock.released) throw new Error(`SOLVER_STATE_FILE ${this.path} is closed`);
     this.lock.assertHeld();
-    const text = JSON.stringify({ fills: [...this.entries().map(persistable), ...this.unreadable] }, (_key, value) =>
-      typeof value === "bigint" ? { $bigint: value.toString() } : value,
-    2);
+    const text = JSON.stringify(
+      { fills: [...this.entries().map(persistable), ...this.unreadable] },
+      (_key, value) => (typeof value === "bigint" ? { $bigint: value.toString() } : value),
+      2,
+    );
     // Named for this lease's token, so no other process's temp file shares
     // it; created exclusively and never through a symlink: whatever sits at
     // that name (this process's own temp file from a write that failed, or
@@ -342,12 +384,17 @@ export class FillStateFile {
 // volume returns a short count rather than ENOSPC: every byte is written, or
 // it throws and the caller never renames a truncated file into place.
 function writeNewFile(path: string, text: string): void {
-  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
+  const fd = openSync(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
   try {
     const bytes = Buffer.from(text, "utf8");
     for (let offset = 0; offset < bytes.length; ) {
       const written = writeSync(fd, bytes, offset, bytes.length - offset);
-      if (written <= 0) throw new Error(`writing ${path}: wrote ${offset} of ${bytes.length} bytes`);
+      if (written <= 0)
+        throw new Error(`writing ${path}: wrote ${offset} of ${bytes.length} bytes`);
       offset += written;
     }
     fsyncSync(fd);
@@ -437,9 +484,14 @@ class StateLock {
     this.renewal.unref?.();
   }
 
-  static acquire(path: string, onLost: (reason: string) => void, log: (msg: string) => void): StateLock {
+  static acquire(
+    path: string,
+    onLost: (reason: string) => void,
+    log: (msg: string) => void,
+  ): StateLock {
     const key = resolve(path);
-    if (HELD_LOCKS.has(key)) throw new Error(`SOLVER_STATE_FILE is in use: this process already holds ${path}`);
+    if (HELD_LOCKS.has(key))
+      throw new Error(`SOLVER_STATE_FILE is in use: this process already holds ${path}`);
     const token = randomUUID();
     const tmp = `${path}.${token}.tmp`;
     writeNewFile(tmp, StateLock.lease(token));
@@ -455,7 +507,9 @@ class StateLock {
         const holder = readLockHolder(path);
         if (holder === "gone") continue;
         if (holder === "unreadable") {
-          throw new Error(`SOLVER_STATE_FILE is in use: ${path} names a holder it cannot parse; remove it only once no process uses the file`);
+          throw new Error(
+            `SOLVER_STATE_FILE is in use: ${path} names a holder it cannot parse; remove it only once no process uses the file`,
+          );
         }
         const silentMs = Date.now() - holder.renewedAt;
         if (silentMs < LEASE_STALE_MS) {
@@ -465,17 +519,27 @@ class StateLock {
             Math.min(LEASE_RENEW_MS, LEASE_STALE_MS - silentMs),
           );
         }
-        log(`SOLVER_STATE_FILE: taking over ${path} from pid ${holder.pid} on ${holder.host}, not renewed for ${silentMs}ms`);
+        log(
+          `SOLVER_STATE_FILE: taking over ${path} from pid ${holder.pid} on ${holder.host}, not renewed for ${silentMs}ms`,
+        );
         takeOverLock(path, holder, `${path}.${token}.stale`);
       }
-      throw new LeaseHeldError(`SOLVER_STATE_FILE is in use: ${path} changed hands while this process started`, LEASE_RENEW_MS);
+      throw new LeaseHeldError(
+        `SOLVER_STATE_FILE is in use: ${path} changed hands while this process started`,
+        LEASE_RENEW_MS,
+      );
     } finally {
       unlinkSync(tmp);
     }
   }
 
   private static lease(token: string): string {
-    return JSON.stringify({ token, host: hostname(), pid: process.pid, renewedAt: Date.now() } satisfies LockHolder);
+    return JSON.stringify({
+      token,
+      host: hostname(),
+      pid: process.pid,
+      renewedAt: Date.now(),
+    } satisfies LockHolder);
   }
 
   // Throws once the lock is not this lease; the first time, stops renewing
@@ -510,7 +574,8 @@ class StateLock {
     } catch (err) {
       // A lost lease was reported by `assertHeld`; anything else is retried
       // next interval, the lease standing for LEASE_STALE_MS meanwhile.
-      if (this.lostReason === null) this.log(`SOLVER_STATE_FILE: renewing ${this.path}: ${errorText(err)}; retrying`);
+      if (this.lostReason === null)
+        this.log(`SOLVER_STATE_FILE: renewing ${this.path}: ${errorText(err)}; retrying`);
     }
   }
 
@@ -558,7 +623,11 @@ function takeOverLock(path: string, stale: LockHolder, aside: string): void {
     throw err;
   }
   const moved = readLockHolder(aside);
-  if (typeof moved === "object" && moved.token === stale.token && moved.renewedAt === stale.renewedAt) {
+  if (
+    typeof moved === "object" &&
+    moved.token === stale.token &&
+    moved.renewedAt === stale.renewedAt
+  ) {
     unlinkSync(aside);
     return;
   }
@@ -569,5 +638,8 @@ function takeOverLock(path: string, stale: LockHolder, aside: string): void {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
   }
   unlinkSync(aside);
-  throw new LeaseHeldError(`SOLVER_STATE_FILE is in use: ${path} was taken or renewed by another process while this one started`, LEASE_RENEW_MS);
+  throw new LeaseHeldError(
+    `SOLVER_STATE_FILE is in use: ${path} was taken or renewed by another process while this one started`,
+    LEASE_RENEW_MS,
+  );
 }

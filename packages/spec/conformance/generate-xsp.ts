@@ -141,7 +141,12 @@ const termsJson = (t: XochiObligation) => ({
   nonce: String(t.nonce),
 });
 
-const domainJson = (d: { name: string; version: string; chainId: unknown; verifyingContract: string }) => ({
+const domainJson = (d: {
+  name: string;
+  version: string;
+  chainId: unknown;
+  verifyingContract: string;
+}) => ({
   name: d.name,
   version: d.version,
   chainId: String(d.chainId),
@@ -203,7 +208,13 @@ const recordJson = (r: DepositoryRecord) => ({
 
 type DepoCase =
   | { name: string; kind: "callRequest"; chainId: number; depository: string; message: CallRequest }
-  | { name: string; kind: "markConsumed"; chainId: number; depository: string; message: MarkConsumed };
+  | {
+      name: string;
+      kind: "markConsumed";
+      chainId: number;
+      depository: string;
+      message: MarkConsumed;
+    };
 
 const DEPOSITORY_CASES: DepoCase[] = [
   {
@@ -222,8 +233,16 @@ const DEPOSITORY_CASES: DepoCase[] = [
       id: "0x" + "02".repeat(32),
       expiry: UINT64_MAX,
       transfers: [
-        { token: BASE.originToken, to: "0x4444444444444444444444444444444444444444", amount: "60000000" },
-        { token: ZERO_ADDRESS, to: "0x5555555555555555555555555555555555555555", amount: "40000000" },
+        {
+          token: BASE.originToken,
+          to: "0x4444444444444444444444444444444444444444",
+          amount: "60000000",
+        },
+        {
+          token: ZERO_ADDRESS,
+          to: "0x5555555555555555555555555555555555555555",
+          amount: "40000000",
+        },
       ],
       consume: [RECORD_A, RECORD_B],
     },
@@ -254,7 +273,11 @@ const depositoryVectors = DEPOSITORY_CASES.map((c) => {
       message: {
         id: m.id.toLowerCase(),
         expiry: String(m.expiry),
-        transfers: m.transfers.map((t) => ({ token: t.token.toLowerCase(), to: t.to.toLowerCase(), amount: String(t.amount) })),
+        transfers: m.transfers.map((t) => ({
+          token: t.token.toLowerCase(),
+          to: t.to.toLowerCase(),
+          amount: String(t.amount),
+        })),
         consume: m.consume.map(recordJson),
       },
       domainSeparator: xspDomainSeparator(domain),
@@ -265,7 +288,11 @@ const depositoryVectors = DEPOSITORY_CASES.map((c) => {
   const m = c.message;
   return {
     ...common,
-    message: { consume: m.consume.map(recordJson), expiry: String(m.expiry), salt: m.salt.toLowerCase() },
+    message: {
+      consume: m.consume.map(recordJson),
+      expiry: String(m.expiry),
+      salt: m.salt.toLowerCase(),
+    },
     domainSeparator: xspDomainSeparator(domain),
     structHash: hashMarkConsumed(m),
     digest: markConsumedDigest(m, c.chainId, c.depository),
@@ -278,15 +305,33 @@ type AddrCase = { name: string; inputs: DepositAddressInputs };
 const ADDR_CASES: AddrCase[] = [
   {
     name: "erc20-recoverable",
-    inputs: { obligationId: OBL_A, refundCommitment: REFUND_COMMITMENT, recoverable: true, originToken: BASE.originToken, originAmount: "100000000" },
+    inputs: {
+      obligationId: OBL_A,
+      refundCommitment: REFUND_COMMITMENT,
+      recoverable: true,
+      originToken: BASE.originToken,
+      originAmount: "100000000",
+    },
   },
   {
     name: "erc20-not-recoverable",
-    inputs: { obligationId: OBL_A, refundCommitment: REFUND_COMMITMENT, recoverable: false, originToken: BASE.originToken, originAmount: "100000000" },
+    inputs: {
+      obligationId: OBL_A,
+      refundCommitment: REFUND_COMMITMENT,
+      recoverable: false,
+      originToken: BASE.originToken,
+      originAmount: "100000000",
+    },
   },
   {
     name: "native-recoverable",
-    inputs: { obligationId: OBL_B, refundCommitment: REFUND_COMMITMENT, recoverable: true, originToken: ZERO_ADDRESS, originAmount: "1000000000000000000" },
+    inputs: {
+      obligationId: OBL_B,
+      refundCommitment: REFUND_COMMITMENT,
+      recoverable: true,
+      originToken: ZERO_ADDRESS,
+      originAmount: "1000000000000000000",
+    },
   },
 ];
 
@@ -314,9 +359,16 @@ try {
 } catch (e) {
   zeroError = (e as Error).message;
 }
-if (zeroError !== "ZeroOriginAmount") throw new Error(`zero-amount case did not reject: ${zeroError}`);
+if (zeroError !== "ZeroOriginAmount")
+  throw new Error(`zero-amount case did not reject: ${zeroError}`);
 const rejections = [
-  { name: "zero-origin-amount", factory: FACTORY, implementation: IMPLEMENTATION, ...addrInputsJson(ZERO_CASE), error: zeroError },
+  {
+    name: "zero-origin-amount",
+    factory: FACTORY,
+    implementation: IMPLEMENTATION,
+    ...addrInputsJson(ZERO_CASE),
+    error: zeroError,
+  },
 ];
 
 const out = {
@@ -349,8 +401,20 @@ const obj = (props: Record<string, unknown>) => ({
   additionalProperties: false,
   properties: props,
 });
-const DOMAIN = obj({ name: { type: "string" }, version: { type: "string" }, chainId: UINT, verifyingContract: ADDR });
-const RECORD = obj({ obligationId: HEX32, refundCommitment: HEX32, depositor: ADDR, token: ADDR, amount: UINT, depositedAt: UINT });
+const DOMAIN = obj({
+  name: { type: "string" },
+  version: { type: "string" },
+  chainId: UINT,
+  verifyingContract: ADDR,
+});
+const RECORD = obj({
+  obligationId: HEX32,
+  refundCommitment: HEX32,
+  depositor: ADDR,
+  token: ADDR,
+  amount: UINT,
+  depositedAt: UINT,
+});
 const TRANSFER = obj({ token: ADDR, to: ADDR, amount: UINT });
 const ADDR_INPUTS = {
   name: { type: "string" },
@@ -370,7 +434,7 @@ const schema = {
   description:
     "Cross-implementation vectors for the XochiObligation EIP-712 obligationId, refundCommitment, the " +
     "XochiDepository CallRequest/MarkConsumed digests and the deposit-address derivation (ESCROW-RFC " +
-    "\"XSP obligation\"). Reference: @xochi/signer. uint values are decimal strings; bytes/addresses lowercase hex.",
+    '"XSP obligation"). Reference: @xochi/signer. uint values are decimal strings; bytes/addresses lowercase hex.',
   ...obj({
     version: { const: 1 },
     generator: { type: "string" },
@@ -407,7 +471,12 @@ const schema = {
       refundCommitments: {
         type: "array",
         minItems: 1,
-        items: obj({ name: { type: "string" }, refundAddress: ADDR, refundSalt: HEX32, refundCommitment: HEX32 }),
+        items: obj({
+          name: { type: "string" },
+          refundAddress: ADDR,
+          refundSalt: HEX32,
+          refundCommitment: HEX32,
+        }),
       },
     }),
     depository: obj({
@@ -438,7 +507,11 @@ const schema = {
               name: { type: "string" },
               kind: { const: "markConsumed" },
               domain: DOMAIN,
-              message: obj({ consume: { type: "array", items: RECORD }, expiry: UINT, salt: HEX32 }),
+              message: obj({
+                consume: { type: "array", items: RECORD },
+                expiry: UINT,
+                salt: HEX32,
+              }),
               domainSeparator: HEX32,
               structHash: HEX32,
               digest: HEX32,
@@ -448,8 +521,16 @@ const schema = {
       },
     }),
     depositAddress: obj({
-      vectors: { type: "array", minItems: 1, items: obj({ ...ADDR_INPUTS, salt: HEX32, address: ADDR }) },
-      rejections: { type: "array", minItems: 1, items: obj({ ...ADDR_INPUTS, error: { const: "ZeroOriginAmount" } }) },
+      vectors: {
+        type: "array",
+        minItems: 1,
+        items: obj({ ...ADDR_INPUTS, salt: HEX32, address: ADDR }),
+      },
+      rejections: {
+        type: "array",
+        minItems: 1,
+        items: obj({ ...ADDR_INPUTS, error: { const: "ZeroOriginAmount" } }),
+      },
     }),
   }),
 };
@@ -457,5 +538,7 @@ const schema = {
 const dir = path.dirname(fileURLToPath(import.meta.url));
 fs.writeFileSync(path.join(dir, "xsp.json"), JSON.stringify(out, null, 2) + "\n");
 fs.writeFileSync(path.join(dir, "xsp.schema.json"), JSON.stringify(schema, null, 2) + "\n");
-console.log(`wrote xsp.json: ${obligationVectors.length} obligations, ${depositoryVectors.length} depository, ${depositAddressVectors.length} deposit addresses`);
+console.log(
+  `wrote xsp.json: ${obligationVectors.length} obligations, ${depositoryVectors.length} depository, ${depositAddressVectors.length} deposit addresses`,
+);
 for (const v of obligationVectors) console.log(`  ${v.name.padEnd(40)} ${v.obligationId}`);

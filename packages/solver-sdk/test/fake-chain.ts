@@ -95,7 +95,10 @@ export class FakeChain extends ethers.JsonRpcProvider {
   onMined: (tx: SentTx) => void = () => {};
 
   private readonly stubs = new Map<string, Stub>();
-  private readonly receipts = new Map<string, { blockNumber: number; status: number; from: string; to: string }>();
+  private readonly receipts = new Map<
+    string,
+    { blockNumber: number; status: number; from: string; to: string }
+  >();
   private readonly nonces = new Map<string, number>();
   private readonly mempool = new Map<string, SentTx>(); // by `${from}:${nonce}`
   private readonly raws = new Map<string, string>(); // every accepted transaction's raw bytes, by hash
@@ -136,7 +139,8 @@ export class FakeChain extends ethers.JsonRpcProvider {
   mine(hash: string, status: 1 | 0 = 1): void {
     const tx = [...this.mempool.values()].find((t) => t.hash === hash);
     if (!tx) throw new Error(`fake chain ${this.chainId}: ${hash} is not pending`);
-    if (tx.nonce !== this.nonceOf(tx.from)) throw new Error(`fake chain ${this.chainId}: ${hash} is not next for ${tx.from}`);
+    if (tx.nonce !== this.nonceOf(tx.from))
+      throw new Error(`fake chain ${this.chainId}: ${hash} is not next for ${tx.from}`);
     this.mempool.delete(slotOf(tx));
     this.land(tx, status);
   }
@@ -148,7 +152,8 @@ export class FakeChain extends ethers.JsonRpcProvider {
   mineReplaced(hash: string): void {
     const tx = this.sent.find((t) => t.hash === hash);
     if (!tx) throw new Error(`fake chain ${this.chainId}: ${hash} was never accepted`);
-    if (tx.nonce !== this.nonceOf(tx.from)) throw new Error(`fake chain ${this.chainId}: ${hash} is not next for ${tx.from}`);
+    if (tx.nonce !== this.nonceOf(tx.from))
+      throw new Error(`fake chain ${this.chainId}: ${hash} is not next for ${tx.from}`);
     this.mempool.delete(slotOf(tx));
     this.land(tx, 1);
   }
@@ -161,17 +166,27 @@ export class FakeChain extends ethers.JsonRpcProvider {
   // the one hash): pool eviction, a node restart, a load-balanced backend that
   // took the broadcast and never propagated it. The node no longer knows them.
   evict(hash?: string): void {
-    for (const [slot, tx] of this.mempool) if (hash === undefined || tx.hash === hash) this.mempool.delete(slot);
+    for (const [slot, tx] of this.mempool)
+      if (hash === undefined || tx.hash === hash) this.mempool.delete(slot);
   }
 
   // Record an event in the current head block, as a mined transaction would.
-  logEvent(address: string, iface: ethers.Interface, event: string, args: unknown[], transactionHash: string): void {
+  logEvent(
+    address: string,
+    iface: ethers.Interface,
+    event: string,
+    args: unknown[],
+    transactionHash: string,
+  ): void {
     const { topics, data } = iface.encodeEventLog(event, args);
     this.logs.push({ address, topics, data, blockNumber: this.head, transactionHash });
   }
 
   // Answer directly, without ethers' batch-drain timer (see the header).
-  override async send(method: string, params: unknown[] | Record<string, unknown>): Promise<unknown> {
+  override async send(
+    method: string,
+    params: unknown[] | Record<string, unknown>,
+  ): Promise<unknown> {
     if (method === "eth_sendRawTransaction" && this.holdSends) await this.holdSends;
     const payload = { method, params, id: this.nextId++, jsonrpc: "2.0" } as ethers.JsonRpcPayload;
     const [result] = await this._send(payload);
@@ -179,14 +194,17 @@ export class FakeChain extends ethers.JsonRpcProvider {
     return (result as ethers.JsonRpcResult).result;
   }
 
-  override async _send(payload: ethers.JsonRpcPayload | ethers.JsonRpcPayload[]): Promise<ethers.JsonRpcResult[]> {
+  override async _send(
+    payload: ethers.JsonRpcPayload | ethers.JsonRpcPayload[],
+  ): Promise<ethers.JsonRpcResult[]> {
     const requests = Array.isArray(payload) ? payload : [payload];
     return requests.map((req) => {
       this.methods.push(req.method);
       try {
         return { id: req.id, result: this.handle(req.method, req.params as unknown[]) };
       } catch (err) {
-        if (err instanceof RpcError) return { id: req.id, error: { code: err.code, message: err.message, data: err.data } };
+        if (err instanceof RpcError)
+          return { id: req.id, error: { code: err.code, message: err.message, data: err.data } };
         throw err;
       }
     }) as ethers.JsonRpcResult[];
@@ -205,19 +223,33 @@ export class FakeChain extends ethers.JsonRpcProvider {
       case "eth_maxPriorityFeePerGas":
         return ethers.toQuantity(this.tip);
       case "eth_getBalance":
-        return ethers.toQuantity(this.balances.get((params[0] as string).toLowerCase()) ?? ethers.WeiPerEther);
+        return ethers.toQuantity(
+          this.balances.get((params[0] as string).toLowerCase()) ?? ethers.WeiPerEther,
+        );
       case "eth_estimateGas":
         return ethers.toQuantity(this.gasEstimate);
       case "eth_getTransactionCount":
         return ethers.toQuantity(
-          Math.max(0, (params[1] === "pending" ? this.pendingNonceOf(params[0] as string) : this.nonceOf(params[0] as string)) - this.nonceLag),
+          Math.max(
+            0,
+            (params[1] === "pending"
+              ? this.pendingNonceOf(params[0] as string)
+              : this.nonceOf(params[0] as string)) - this.nonceLag,
+          ),
         );
       case "eth_getCode":
         return this.stubs.has((params[0] as string).toLowerCase()) ? "0x01" : "0x";
       case "eth_call":
         return this.ethCall(params[0] as { to: string; data: string; from?: string });
       case "eth_getLogs":
-        return this.logsJson(params[0] as { address?: string; topics?: (string | null)[]; fromBlock?: string; toBlock?: string });
+        return this.logsJson(
+          params[0] as {
+            address?: string;
+            topics?: (string | null)[];
+            fromBlock?: string;
+            toBlock?: string;
+          },
+        );
       case "eth_sendRawTransaction":
         return this.sendRaw(params[0] as string);
       case "eth_getTransactionReceipt":
@@ -262,33 +294,54 @@ export class FakeChain extends ethers.JsonRpcProvider {
     const stub = this.stubs.get(tx.to.toLowerCase());
     if (!stub) throw new Error(`fake chain ${this.chainId}: eth_call to unstubbed ${tx.to}`);
     const parsed = stub.iface.parseTransaction({ data: tx.data });
-    if (!parsed) throw new Error(`fake chain ${this.chainId}: unknown selector ${tx.data.slice(0, 10)} on ${tx.to}`);
+    if (!parsed)
+      throw new Error(
+        `fake chain ${this.chainId}: unknown selector ${tx.data.slice(0, 10)} on ${tx.to}`,
+      );
     const impl = stub.impl[parsed.name];
-    if (!impl) throw new Error(`fake chain ${this.chainId}: ${parsed.name} not stubbed on ${tx.to}`);
+    if (!impl)
+      throw new Error(`fake chain ${this.chainId}: ${parsed.name} not stubbed on ${tx.to}`);
     let out: unknown;
     try {
       out = impl(parsed.args, tx.from);
     } catch (err) {
       if (err instanceof Revert) {
-        throw new RpcError(3, "execution reverted", stub.iface.encodeErrorResult(err.errorName, err.args));
+        throw new RpcError(
+          3,
+          "execution reverted",
+          stub.iface.encodeErrorResult(err.errorName, err.args),
+        );
       }
       throw err;
     }
     const outputs = parsed.fragment.outputs;
     if (outputs.length === 0) return "0x";
-    return stub.iface.encodeFunctionResult(parsed.fragment, outputs.length === 1 ? [out] : (out as unknown[]));
+    return stub.iface.encodeFunctionResult(
+      parsed.fragment,
+      outputs.length === 1 ? [out] : (out as unknown[]),
+    );
   }
 
-  private logsJson(filter: { address?: string; topics?: (string | null)[]; fromBlock?: string; toBlock?: string }): unknown[] {
+  private logsJson(filter: {
+    address?: string;
+    topics?: (string | null)[];
+    fromBlock?: string;
+    toBlock?: string;
+  }): unknown[] {
     const from = filter.fromBlock === undefined ? 0 : Number(filter.fromBlock);
-    const to = filter.toBlock === undefined || filter.toBlock === "latest" ? this.head : Number(filter.toBlock);
+    const to =
+      filter.toBlock === undefined || filter.toBlock === "latest"
+        ? this.head
+        : Number(filter.toBlock);
     return this.logs
       .filter(
         (l) =>
           (!filter.address || l.address.toLowerCase() === filter.address.toLowerCase()) &&
           l.blockNumber >= from &&
           l.blockNumber <= to &&
-          (filter.topics ?? []).every((t, i) => t === null || t.toLowerCase() === l.topics[i]?.toLowerCase()),
+          (filter.topics ?? []).every(
+            (t, i) => t === null || t.toLowerCase() === l.topics[i]?.toLowerCase(),
+          ),
       )
       .map((l, i) => ({
         address: l.address,
@@ -321,11 +374,13 @@ export class FakeChain extends ethers.JsonRpcProvider {
     this.attempts.push(tx);
     const behavior = this.onSend(tx);
     if ("reject" in behavior) throw new RpcError(-32000, behavior.reject);
-    if (tx.nonce < this.nonceOf(tx.from)) throw new RpcError(-32000, `nonce too low: next nonce ${this.nonceOf(tx.from)}`);
+    if (tx.nonce < this.nonceOf(tx.from))
+      throw new RpcError(-32000, `nonce too low: next nonce ${this.nonceOf(tx.from)}`);
     const occupant = this.mempool.get(slotOf(tx));
     if (occupant?.hash === tx.hash) throw new RpcError(-32000, "already known");
     // geth's rule: a replacement must offer at least 10% more.
-    if (occupant && feeOf(tx) * 10n < feeOf(occupant) * 11n) throw new RpcError(-32000, "replacement transaction underpriced");
+    if (occupant && feeOf(tx) * 10n < feeOf(occupant) * 11n)
+      throw new RpcError(-32000, "replacement transaction underpriced");
     this.sent.push(tx);
     this.raws.set(tx.hash, raw);
     if ("mine" in behavior && tx.nonce === this.nonceOf(tx.from)) {
@@ -386,7 +441,10 @@ export class FakeChain extends ethers.JsonRpcProvider {
       chainId: ethers.toQuantity(tx.chainId),
       type: ethers.toQuantity(tx.type ?? 0),
       ...(tx.maxFeePerGas !== null
-        ? { maxFeePerGas: ethers.toQuantity(tx.maxFeePerGas), maxPriorityFeePerGas: ethers.toQuantity(tx.maxPriorityFeePerGas ?? 0n) }
+        ? {
+            maxFeePerGas: ethers.toQuantity(tx.maxFeePerGas),
+            maxPriorityFeePerGas: ethers.toQuantity(tx.maxPriorityFeePerGas ?? 0n),
+          }
         : { gasPrice: ethers.toQuantity(tx.gasPrice ?? 0n) }),
       r: tx.signature!.r,
       s: tx.signature!.s,

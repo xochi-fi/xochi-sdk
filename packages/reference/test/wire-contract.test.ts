@@ -86,7 +86,8 @@ function enumOf(name: string, ...at: string[]): string[] {
     node = child;
   }
   const values = node.enum ?? [];
-  if (values.length === 0) throw new Error(`served \`${[name, ...at].join(".")}\` declares no enum`);
+  if (values.length === 0)
+    throw new Error(`served \`${[name, ...at].join(".")}\` declares no enum`);
   return values;
 }
 
@@ -128,7 +129,10 @@ describe("fee_breakdown wire object", () => {
   // every fee-bearing quote unsignable.
   it("LayeredFeeBreakdownSchema requires nothing the server treats as optional", () => {
     const overStrict = sdkRequired.filter((k) => !servedRequired.includes(k));
-    expect(overStrict, `required by fee.ts, optional on the wire: ${overStrict.join(", ")}`).toEqual([]);
+    expect(
+      overStrict,
+      `required by fee.ts, optional on the wire: ${overStrict.join(", ")}`,
+    ).toEqual([]);
   });
 
   // The lenient direction genuinely disagrees TODAY, and is pinned rather than asserted
@@ -159,10 +163,12 @@ describe("fee_breakdown wire object", () => {
 describe("capability chain encodings the parser recognises", () => {
   // `chains` is an array, so `enumOf` (which walks `properties`) cannot reach its items.
   function chainItemEnum(key: string): string[] {
-    const items = (schema("CapabilityMatrix").properties?.chains as { items?: OpenApiSchema } | undefined)
-      ?.items;
+    const items = (
+      schema("CapabilityMatrix").properties?.chains as { items?: OpenApiSchema } | undefined
+    )?.items;
     const values = items?.properties?.[key]?.enum ?? [];
-    if (values.length === 0) throw new Error(`served CapabilityMatrix.chains[].${key} declares no enum`);
+    if (values.length === 0)
+      throw new Error(`served CapabilityMatrix.chains[].${key} declares no enum`);
     return values;
   }
 
@@ -175,7 +181,10 @@ describe("capability chain encodings the parser recognises", () => {
       const c = parseCapabilities({ chains: [{ chain_id: 1, vm_type: vm }] });
       return c === null || chainVmType(c, 1) !== vm;
     });
-    expect(unrecognised, "served vm_type(s) capabilities.ts does not recognise; add them to VmType").toEqual([]);
+    expect(
+      unrecognised,
+      "served vm_type(s) capabilities.ts does not recognise; add them to VmType",
+    ).toEqual([]);
   });
 
   // A served format the whitelist lacks falls back to the VM's own, which hides it.

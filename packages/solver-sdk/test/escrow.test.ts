@@ -23,8 +23,12 @@ describe("StubEscrowGateway fund-safety", () => {
   it("fails closed on an unproven / unknown-kind proof (principal stays locked)", async () => {
     const e = new StubEscrowGateway();
     await e.lock("i1", funds, SOLVER, 1900000000);
-    await expect(e.release("i1", { kind: "gossip" } as unknown as FillProof)).rejects.toThrow(/not verifiable/);
-    await expect(e.release("i1", { kind: "tx_hash", chainId: 10, txHash: "" })).rejects.toThrow(/not verifiable/);
+    await expect(e.release("i1", { kind: "gossip" } as unknown as FillProof)).rejects.toThrow(
+      /not verifiable/,
+    );
+    await expect(e.release("i1", { kind: "tx_hash", chainId: 10, txHash: "" })).rejects.toThrow(
+      /not verifiable/,
+    );
     expect(e.stateOf("i1")?.state).toBe("locked");
   });
 

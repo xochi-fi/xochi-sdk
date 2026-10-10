@@ -216,43 +216,47 @@ describe("deposit attestation encoding", () => {
   // The encoding must only lowercase 0x-prefixed values.
   it("lowercases 0x values and leaves everything else byte-identical", () => {
     fc.assert(
-      fc.property(evmAddress, nastyText.filter((s) => !s.startsWith("0x") && !s.includes("\n")), (evm, other) => {
-        // `other` lands in deposit_address, recipient and refund_address: the v2
-        // field that is base58 on a Tron-destination route, and the v3 one that
-        // is base58 on a Tron-ORIGIN route. Neither may be folded. refund_address
-        // goes through the optional encoder, so this also pins that the optional
-        // path normalizes the same way the required one does -- encoding it with
-        // a bare passthrough would leave a base58 value correct by luck and an
-        // 0x one subtly wrong.
-        const msg = buildDepositAttestationMessage({
-          intent_id: "i",
-          quote_id: "q",
-          wallet: evm.toUpperCase().replace("0X", "0x"),
-          from_chain_id: 1,
-          from_token: evm.toUpperCase().replace("0X", "0x"),
-          from_amount: "1",
-          deposit_address: other,
-          deposit_deadline: null,
-          refund_address: other,
-          to_chain_id: 728126428,
-          to_token: other,
-          to_amount: "1",
-          min_to_amount: "1",
-          recipient: other,
-          stealth_spending_pub_key: null,
-          stealth_viewing_pub_key: null,
-          settlement_preference: "public",
-        });
-        const lines = msg.split("\n");
-        return (
-          lines[3] === evm.toLowerCase() &&
-          lines[5] === evm.toLowerCase() &&
-          lines[7] === other &&
-          lines[9] === other &&
-          lines[11] === other &&
-          lines[14] === other
-        );
-      }),
+      fc.property(
+        evmAddress,
+        nastyText.filter((s) => !s.startsWith("0x") && !s.includes("\n")),
+        (evm, other) => {
+          // `other` lands in deposit_address, recipient and refund_address: the v2
+          // field that is base58 on a Tron-destination route, and the v3 one that
+          // is base58 on a Tron-ORIGIN route. Neither may be folded. refund_address
+          // goes through the optional encoder, so this also pins that the optional
+          // path normalizes the same way the required one does -- encoding it with
+          // a bare passthrough would leave a base58 value correct by luck and an
+          // 0x one subtly wrong.
+          const msg = buildDepositAttestationMessage({
+            intent_id: "i",
+            quote_id: "q",
+            wallet: evm.toUpperCase().replace("0X", "0x"),
+            from_chain_id: 1,
+            from_token: evm.toUpperCase().replace("0X", "0x"),
+            from_amount: "1",
+            deposit_address: other,
+            deposit_deadline: null,
+            refund_address: other,
+            to_chain_id: 728126428,
+            to_token: other,
+            to_amount: "1",
+            min_to_amount: "1",
+            recipient: other,
+            stealth_spending_pub_key: null,
+            stealth_viewing_pub_key: null,
+            settlement_preference: "public",
+          });
+          const lines = msg.split("\n");
+          return (
+            lines[3] === evm.toLowerCase() &&
+            lines[5] === evm.toLowerCase() &&
+            lines[7] === other &&
+            lines[9] === other &&
+            lines[11] === other &&
+            lines[14] === other
+          );
+        },
+      ),
       CFG,
     );
   });
@@ -285,36 +289,51 @@ describe("escrow order v2 preimage", () => {
   });
 
   // A collision would redirect principal to a lock key nobody else can open.
-  it("destCommitment is injective over openings", () => {
-    fc.assert(
-      fc.property(opening, opening, (a, b) => {
-        const same = JSON.stringify(a) === JSON.stringify(b);
-        return computeDestCommitment(a) === computeDestCommitment(b) ? same : true;
-      }),
-      HEAVY,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "destCommitment is injective over openings",
+    () => {
+      fc.assert(
+        fc.property(opening, opening, (a, b) => {
+          const same = JSON.stringify(a) === JSON.stringify(b);
+          return computeDestCommitment(a) === computeDestCommitment(b) ? same : true;
+        }),
+        HEAVY,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("orderId is injective over terms and well-formed", () => {
-    fc.assert(
-      fc.property(terms, terms, (a, b) => {
-        const same = JSON.stringify(a) === JSON.stringify(b);
-        const id = computeOrderId(a);
-        return /^0x[0-9a-f]{64}$/.test(id) && (id === computeOrderId(b) ? same : true);
-      }),
-      HEAVY,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "orderId is injective over terms and well-formed",
+    () => {
+      fc.assert(
+        fc.property(terms, terms, (a, b) => {
+          const same = JSON.stringify(a) === JSON.stringify(b);
+          const id = computeOrderId(a);
+          return /^0x[0-9a-f]{64}$/.test(id) && (id === computeOrderId(b) ? same : true);
+        }),
+        HEAVY,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
   // recipient and toToken are hashed into separate words, so swapping them is a
   // different destination, never the same commitment.
-  it("distinguishes recipient and toToken swapped", () => {
-    fc.assert(
-      fc.property(opening, (o) => {
-        fc.pre(o.recipient !== o.toToken);
-        return computeDestCommitment(o) !== computeDestCommitment({ ...o, recipient: o.toToken, toToken: o.recipient });
-      }),
-      HEAVY,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "distinguishes recipient and toToken swapped",
+    () => {
+      fc.assert(
+        fc.property(opening, (o) => {
+          fc.pre(o.recipient !== o.toToken);
+          return (
+            computeDestCommitment(o) !==
+            computeDestCommitment({ ...o, recipient: o.toToken, toToken: o.recipient })
+          );
+        }),
+        HEAVY,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 });

@@ -110,15 +110,24 @@ function normalizeErc3009Nonce(nonce: string | Uint8Array): string {
   return "0x" + hex.padStart(64, "0").toLowerCase();
 }
 
-export async function signERC3009(quote: Quote, inputChain: string, config: SignerConfig): Promise<SignResult> {
+export async function signERC3009(
+  quote: Quote,
+  inputChain: string,
+  config: SignerConfig,
+): Promise<SignResult> {
   const wallet = new ethers.Wallet(config.PRIVATE_KEY);
   const chainConfig = requireChain(config, inputChain);
 
   debug("\n   Signing ERC-3009 ReceiveWithAuthorization...");
   debug(`   Wallet: ${wallet.address}`);
 
-  if (quote.request.refundAddress && wallet.address.toLowerCase() !== quote.request.refundAddress.toLowerCase()) {
-    console.warn(`WARNING: Wallet address (${wallet.address}) does not match refundAddress (${quote.request.refundAddress})`);
+  if (
+    quote.request.refundAddress &&
+    wallet.address.toLowerCase() !== quote.request.refundAddress.toLowerCase()
+  ) {
+    console.warn(
+      `WARNING: Wallet address (${wallet.address}) does not match refundAddress (${quote.request.refundAddress})`,
+    );
   }
 
   const domain = {
@@ -130,7 +139,9 @@ export async function signERC3009(quote: Quote, inputChain: string, config: Sign
 
   // ERC3009_TYPES is a fixed, module-level constant -- the key always exists;
   // the non-null assertion only satisfies noUncheckedIndexedAccess.
-  const erc3009TypesForSigning = { ReceiveWithAuthorization: ERC3009_TYPES.ReceiveWithAuthorization! };
+  const erc3009TypesForSigning = {
+    ReceiveWithAuthorization: ERC3009_TYPES.ReceiveWithAuthorization!,
+  };
 
   const normalizedNonce = normalizeErc3009Nonce(quote.gasless.nonce);
 
@@ -139,7 +150,9 @@ export async function signERC3009(quote: Quote, inputChain: string, config: Sign
 
   if (config.VALIDATE_SOLVER_ADDRESS && config.TEST_SOLVER_WALLET) {
     if (solverAddress.toLowerCase() !== config.TEST_SOLVER_WALLET.toLowerCase()) {
-      throw new Error(`Solver address mismatch: quote has ${solverAddress}, expected ${config.TEST_SOLVER_WALLET}`);
+      throw new Error(
+        `Solver address mismatch: quote has ${solverAddress}, expected ${config.TEST_SOLVER_WALLET}`,
+      );
     }
   }
 
@@ -175,33 +188,20 @@ export async function signERC3009(quote: Quote, inputChain: string, config: Sign
         )}`,
       );
       debug(
-        `   EIP-712 Hash: ${ethers.TypedDataEncoder.hash(
-          domain,
-          erc3009TypesForSigning,
-          message,
-        )}`,
+        `   EIP-712 Hash: ${ethers.TypedDataEncoder.hash(domain, erc3009TypesForSigning, message)}`,
       );
     } catch (error) {
       debug(`   Could not compute message hash: ${(error as Error).message}`);
     }
   }
 
-  const signature = await wallet.signTypedData(
-    domain,
-    erc3009TypesForSigning,
-    message,
-  );
+  const signature = await wallet.signTypedData(domain, erc3009TypesForSigning, message);
 
   debug(`   Signature: ${signature.substring(0, 20)}...`);
 
   if (DEBUG) {
     try {
-      const recovered = ethers.verifyTypedData(
-        domain,
-        erc3009TypesForSigning,
-        message,
-        signature,
-      );
+      const recovered = ethers.verifyTypedData(domain, erc3009TypesForSigning, message, signature);
       debug(`   Recovery: ${recovered === wallet.address ? "OK" : "MISMATCH " + recovered}`);
     } catch (error) {
       debug(`   Recovery failed: ${(error as Error).message}`);
@@ -254,7 +254,9 @@ export async function signPermit2(
     orderId = "0x" + orderId;
   }
   if (orderId.length !== 66) {
-    throw new Error(`orderId must be 32 bytes (66 hex chars), got ${orderId.length} chars: ${orderId}`);
+    throw new Error(
+      `orderId must be 32 bytes (66 hex chars), got ${orderId.length} chars: ${orderId}`,
+    );
   }
 
   const solverAddress = quote.gasless.to;
@@ -262,7 +264,9 @@ export async function signPermit2(
 
   if (config.VALIDATE_SOLVER_ADDRESS && config.TEST_SOLVER_WALLET) {
     if (solverAddress.toLowerCase() !== config.TEST_SOLVER_WALLET.toLowerCase()) {
-      throw new Error(`Solver address mismatch: quote has ${solverAddress}, expected ${config.TEST_SOLVER_WALLET}`);
+      throw new Error(
+        `Solver address mismatch: quote has ${solverAddress}, expected ${config.TEST_SOLVER_WALLET}`,
+      );
     }
   }
 
@@ -290,8 +294,13 @@ export async function signPermit2(
   debug("   Signing Permit2 PermitWitnessTransferFrom...");
   debug(`   Wallet: ${wallet.address}`);
 
-  if (quote.request.refundAddress && wallet.address.toLowerCase() !== quote.request.refundAddress.toLowerCase()) {
-    console.warn(`WARNING: Wallet address (${wallet.address}) does not match refundAddress (${quote.request.refundAddress})`);
+  if (
+    quote.request.refundAddress &&
+    wallet.address.toLowerCase() !== quote.request.refundAddress.toLowerCase()
+  ) {
+    console.warn(
+      `WARNING: Wallet address (${wallet.address}) does not match refundAddress (${quote.request.refundAddress})`,
+    );
   }
 
   if (DEBUG) {
@@ -309,37 +318,26 @@ export async function signPermit2(
     );
     try {
       debug(`   Domain Separator: ${ethers.TypedDataEncoder.hashDomain(domain)}`);
-      const witnessTypeHash = ethers.keccak256(ethers.toUtf8Bytes("OriginPullWitness(bytes32 orderId)"));
+      const witnessTypeHash = ethers.keccak256(
+        ethers.toUtf8Bytes("OriginPullWitness(bytes32 orderId)"),
+      );
       const witnessStructHash = ethers.keccak256(ethers.concat([witnessTypeHash, orderId]));
       debug(`   Witness Struct Hash: ${witnessStructHash}`);
       debug(
-        `   EIP-712 Hash: ${ethers.TypedDataEncoder.hash(
-          domain,
-          permit2TypesForSigning,
-          message,
-        )}`,
+        `   EIP-712 Hash: ${ethers.TypedDataEncoder.hash(domain, permit2TypesForSigning, message)}`,
       );
     } catch (error) {
       debug(`   Could not compute message hash: ${(error as Error).message}`);
     }
   }
 
-  const signature = await wallet.signTypedData(
-    domain,
-    permit2TypesForSigning,
-    message,
-  );
+  const signature = await wallet.signTypedData(domain, permit2TypesForSigning, message);
 
   debug(`   Signature: ${signature.substring(0, 20)}...`);
 
   if (DEBUG) {
     try {
-      const recovered = ethers.verifyTypedData(
-        domain,
-        permit2TypesForSigning,
-        message,
-        signature,
-      );
+      const recovered = ethers.verifyTypedData(domain, permit2TypesForSigning, message, signature);
       debug(`   Recovery: ${recovered === wallet.address ? "OK" : "MISMATCH " + recovered}`);
     } catch (error) {
       debug(`   Recovery failed: ${(error as Error).message}`);
@@ -364,7 +362,13 @@ export async function signPermit2(
   const abiCoder = ethers.AbiCoder.defaultAbiCoder();
   const signedObject = abiCoder.encode(
     ["address", "uint256", "address", "uint256", "uint256"],
-    [message.permitted.token, message.permitted.amount, message.spender, message.nonce, message.deadline],
+    [
+      message.permitted.token,
+      message.permitted.amount,
+      message.spender,
+      message.nonce,
+      message.deadline,
+    ],
   );
   debug(`   signedObject length: ${signedObject.length}`);
 

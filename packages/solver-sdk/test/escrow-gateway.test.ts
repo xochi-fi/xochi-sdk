@@ -27,10 +27,14 @@ import {
 } from "../src/index";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const load = (name: string) => JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
-const baseline = load("order-id.json").vectors.find((v: { name: string }) => v.name === "baseline-evm-usdc");
-const fillId: string = load("fill-salt.json").vectors.find((v: { orderId: string }) => v.orderId === baseline.expected_order_id)
-  .expected_fill_id;
+const load = (name: string) =>
+  JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
+const baseline = load("order-id.json").vectors.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+);
+const fillId: string = load("fill-salt.json").vectors.find(
+  (v: { orderId: string }) => v.orderId === baseline.expected_order_id,
+).expected_fill_id;
 
 // PUBLIC Anvil TEST keys. Never fund them.
 const SOLVER_KEY = "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6"; // #3
@@ -80,10 +84,16 @@ class Chain extends ethers.JsonRpcProvider {
     private readonly chainId: number,
     private readonly state: ChainState,
   ) {
-    super("http://chain.invalid", ethers.Network.from(chainId), { staticNetwork: true, batchMaxCount: 1, cacheTimeout: -1 });
+    super("http://chain.invalid", ethers.Network.from(chainId), {
+      staticNetwork: true,
+      batchMaxCount: 1,
+      cacheTimeout: -1,
+    });
   }
 
-  override async _send(payload: ethers.JsonRpcPayload | ethers.JsonRpcPayload[]): Promise<ethers.JsonRpcResult[]> {
+  override async _send(
+    payload: ethers.JsonRpcPayload | ethers.JsonRpcPayload[],
+  ): Promise<ethers.JsonRpcResult[]> {
     const p = Array.isArray(payload) ? payload[0]! : payload;
     try {
       return [{ id: p.id, result: this.answer(p.method, p.params as unknown[]) }];
@@ -95,7 +105,12 @@ class Chain extends ethers.JsonRpcProvider {
   }
 
   private block(tag: unknown) {
-    const n = tag === "latest" || tag === "pending" ? HEAD : tag === "safe" || tag === "finalized" ? HEAD - 10 : Number(tag);
+    const n =
+      tag === "latest" || tag === "pending"
+        ? HEAD
+        : tag === "safe" || tag === "finalized"
+          ? HEAD - 10
+          : Number(tag);
     return {
       number: hex(n),
       hash: hashOf(n),
@@ -211,12 +226,18 @@ class Chain extends ethers.JsonRpcProvider {
       const fn = fillerIface.parseTransaction({ data })!;
       if (fn.name === "filled") return fillerIface.encodeFunctionResult("filled", [s.filled]);
       if (fn.name === "isFillAuthorizer") {
-        return fillerIface.encodeFunctionResult("isFillAuthorizer", [fn.args[0] === new ethers.Wallet(VENUE_KEY).address]);
+        return fillerIface.encodeFunctionResult("isFillAuthorizer", [
+          fn.args[0] === new ethers.Wallet(VENUE_KEY).address,
+        ]);
       }
       if (fn.name === "fill") {
         if (s.fillReverts) {
           throw Object.assign(new Error("revert"), {
-            rpc: { code: 3, message: "execution reverted", data: fillerIface.encodeErrorResult("ShortDelivery", [1, 0]) },
+            rpc: {
+              code: 3,
+              message: "execution reverted",
+              data: fillerIface.encodeErrorResult("ShortDelivery", [1, 0]),
+            },
           });
         }
         return "0x";
@@ -225,7 +246,8 @@ class Chain extends ethers.JsonRpcProvider {
     if (target === TOKEN.toLowerCase()) {
       const fn = erc20Iface.parseTransaction({ data })!;
       if (fn.name === "balanceOf") return erc20Iface.encodeFunctionResult("balanceOf", [s.balance]);
-      if (fn.name === "allowance") return erc20Iface.encodeFunctionResult("allowance", [s.allowance]);
+      if (fn.name === "allowance")
+        return erc20Iface.encodeFunctionResult("allowance", [s.allowance]);
     }
     throw new Error(`unexpected eth_call to ${to}`);
   }
@@ -234,20 +256,33 @@ class Chain extends ethers.JsonRpcProvider {
 // ---------------------------------------------------------------------------
 // The venue's accept endpoint.
 
-type Venue = (auctionId: string, body: { orderId: string; signature: string }, signal?: AbortSignal) => Promise<FillAcceptanceReceipt>;
+type Venue = (
+  auctionId: string,
+  body: { orderId: string; signature: string },
+  signal?: AbortSignal,
+) => Promise<FillAcceptanceReceipt>;
 
-const honest: Venue = async (auctionId, body) => ({ ...body, auctionId, acceptedAt: DEADLINE - 500 });
+const honest: Venue = async (auctionId, body) => ({
+  ...body,
+  auctionId,
+  acceptedAt: DEADLINE - 500,
+});
 
 let state: ChainState;
 let posts: { orderId: string; signature: string }[];
 let warnings: string[];
 
-function gatewayWith(venue: Venue, extra: Partial<ConstructorParameters<typeof OnchainEscrowGateway>[0]> = {}) {
+function gatewayWith(
+  venue: Venue,
+  extra: Partial<ConstructorParameters<typeof OnchainEscrowGateway>[0]> = {},
+) {
   const origin = new Chain(ORIGIN, state);
   const dest = new Chain(DEST, state);
   return new OnchainEscrowGateway({
     origins: { [ORIGIN]: { signer: new ethers.Wallet(SOLVER_KEY, origin), escrow: ESCROW } },
-    destinations: { [DEST]: { signer: new ethers.Wallet(SOLVER_KEY, dest), fillerContract: FILLER } },
+    destinations: {
+      [DEST]: { signer: new ethers.Wallet(SOLVER_KEY, dest), fillerContract: FILLER },
+    },
     bond: { signer: new ethers.Wallet(SOLVER_KEY, origin), address: BOND },
     acceptances: {
       acceptAward: (auctionId, body, signal) => {
@@ -262,7 +297,9 @@ function gatewayWith(venue: Venue, extra: Partial<ConstructorParameters<typeof O
   });
 }
 
-async function awardWith(over: { amount?: bigint; bond?: string; acceptBy?: number } = {}): Promise<Award> {
+async function awardWith(
+  over: { amount?: bigint; bond?: string; acceptBy?: number } = {},
+): Promise<Award> {
   const fillAuth = {
     fillId,
     filler: SOLVER,
@@ -271,7 +308,11 @@ async function awardWith(over: { amount?: bigint; bond?: string; acceptBy?: numb
     amount: (over.amount ?? AMOUNT).toString(),
     deadline: String(DEADLINE),
   };
-  const signature = await signFillAuth(new ethers.Wallet(VENUE_KEY), { chainId: DEST, verifyingContract: FILLER }, fillAuth);
+  const signature = await signFillAuth(
+    new ethers.Wallet(VENUE_KEY),
+    { chainId: DEST, verifyingContract: FILLER },
+    fillAuth,
+  );
   return {
     auctionId: "auc-1",
     intentId: baseline.opening.intentId,
@@ -298,7 +339,11 @@ const bidFor = (output: bigint = AMOUNT) => ({
   output: output.toString(),
 });
 
-async function prepared(gw: OnchainEscrowGateway, bidOutput?: bigint, amount?: bigint): Promise<PreparedFill> {
+async function prepared(
+  gw: OnchainEscrowGateway,
+  bidOutput?: bigint,
+  amount?: bigint,
+): Promise<PreparedFill> {
   return gw.prepare(await awardWith({ amount }), { bid: bidFor(bidOutput), originChainId: ORIGIN });
 }
 
@@ -340,7 +385,12 @@ function altSignature(digest: string, key: string): string {
   const r = BigInt(ethers.hexlify(point.slice(1, 33))) % SECP256K1_N;
   const yOdd = (point[64]! & 1) === 1;
   const inv = (a: bigint): bigint => {
-    let [t, newT, rr, newR]: bigint[] = [0n, 1n, SECP256K1_N, ((a % SECP256K1_N) + SECP256K1_N) % SECP256K1_N];
+    let [t, newT, rr, newR]: bigint[] = [
+      0n,
+      1n,
+      SECP256K1_N,
+      ((a % SECP256K1_N) + SECP256K1_N) % SECP256K1_N,
+    ];
     while (newR !== 0n) {
       const q: bigint = rr! / newR!;
       [t, newT] = [newT!, t! - q * newT!];
@@ -354,11 +404,22 @@ function altSignature(digest: string, key: string): string {
     s = SECP256K1_N - s;
     odd = !odd;
   }
-  return ethers.concat([ethers.toBeHex(r, 32), ethers.toBeHex(s, 32), new Uint8Array([odd ? 28 : 27])]).toLowerCase();
+  return ethers
+    .concat([ethers.toBeHex(r, 32), ethers.toBeHex(s, 32), new Uint8Array([odd ? 28 : 27])])
+    .toLowerCase();
 }
 
 beforeEach(() => {
-  state = { timestamp: DEADLINE - 600, filled: false, balance: AMOUNT, allowance: AMOUNT, fillReverts: false, claimsPaused: false, claimGas: 10n ** 18n, sent: [] };
+  state = {
+    timestamp: DEADLINE - 600,
+    filled: false,
+    balance: AMOUNT,
+    allowance: AMOUNT,
+    fillReverts: false,
+    claimsPaused: false,
+    claimGas: 10n ** 18n,
+    sent: [],
+  };
   posts = [];
   warnings = [];
 });
@@ -374,7 +435,11 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
     expect(accepted.digest).toBe(expectedDigest());
     expect(posts).toEqual([{ orderId: baseline.expected_order_id, signature: accepted.signature }]);
     expect(ethers.recoverAddress(expectedDigest(), posts[0]!.signature)).toBe(SOLVER);
-    expect(accepted.receipt).toEqual({ status: "recorded", signature: accepted.signature, acceptedAt: DEADLINE - 500 });
+    expect(accepted.receipt).toEqual({
+      status: "recorded",
+      signature: accepted.signature,
+      acceptedAt: DEADLINE - 500,
+    });
 
     expect((await gw.fill(p)).status).toBe("confirmed");
     expect(state.sent).toHaveLength(1);
@@ -390,14 +455,18 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
   it("refuses an award naming a bond other than the configured one, before reading the origin", async () => {
     const gw = gatewayWith(honest);
     const award = await awardWith({ bond: "0x9999999999999999999999999999999999999999" });
-    expect(await refusal(gw.prepare(award, { bid: bidFor(), originChainId: ORIGIN }))).toBe("bond_mismatch");
+    expect(await refusal(gw.prepare(award, { bid: bidFor(), originChainId: ORIGIN }))).toBe(
+      "bond_mismatch",
+    );
   });
 
   it("refuses an award for an order or auction other than the bid it signed", async () => {
     const gw = gatewayWith(honest);
     const award = await awardWith();
     const otherOrder = { ...bidFor(), orderId: "0x" + "ab".repeat(32) };
-    expect(await refusal(gw.prepare(award, { bid: otherOrder, originChainId: ORIGIN }))).toBe("announcement_mismatch");
+    expect(await refusal(gw.prepare(award, { bid: otherOrder, originChainId: ORIGIN }))).toBe(
+      "announcement_mismatch",
+    );
   });
 
   // The required bid is the ceiling from `prepare` on, before any waiting.
@@ -410,17 +479,32 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
 
   it.each([
     ["already filled", (s: ChainState): void => void (s.filled = true), "already_filled"],
-    ["short inventory", (s: ChainState): void => void (s.balance = AMOUNT - 1n), "insufficient_inventory"],
-    ["short allowance", (s: ChainState): void => void (s.allowance = AMOUNT - 1n), "insufficient_allowance"],
-    ["fill would revert", (s: ChainState): void => void (s.fillReverts = true), "simulation_failed"],
-  ] as const)("refuses before signing when the fill preflight fails: %s", async (_label, breakIt, code) => {
-    const gw = gatewayWith(honest);
-    const p = await prepared(gw);
-    breakIt(state);
-    expect(await refusal(gw.accept(p))).toBe(code);
-    expect(posts).toEqual([]);
-    expect(state.sent).toEqual([]);
-  });
+    [
+      "short inventory",
+      (s: ChainState): void => void (s.balance = AMOUNT - 1n),
+      "insufficient_inventory",
+    ],
+    [
+      "short allowance",
+      (s: ChainState): void => void (s.allowance = AMOUNT - 1n),
+      "insufficient_allowance",
+    ],
+    [
+      "fill would revert",
+      (s: ChainState): void => void (s.fillReverts = true),
+      "simulation_failed",
+    ],
+  ] as const)(
+    "refuses before signing when the fill preflight fails: %s",
+    async (_label, breakIt, code) => {
+      const gw = gatewayWith(honest);
+      const p = await prepared(gw);
+      breakIt(state);
+      expect(await refusal(gw.accept(p))).toBe(code);
+      expect(posts).toEqual([]);
+      expect(state.sent).toEqual([]);
+    },
+  );
 
   it("refuses before signing when the accept would land after the venue's acceptBy", async () => {
     const gw = gatewayWith(honest, { acceptBudgetSec: 15 });
@@ -439,7 +523,9 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
     const gw = gatewayWith(honest);
     const award = await awardWith();
     delete award.escrow!.acceptBy;
-    expect(await refusal(gw.prepare(award, { bid: bidFor(), originChainId: ORIGIN }))).toBe("malformed_award");
+    expect(await refusal(gw.prepare(award, { bid: bidFor(), originChainId: ORIGIN }))).toBe(
+      "malformed_award",
+    );
   });
 
   it("refuses to sign without headroom for the accept round-trip on top of the fill budget", async () => {
@@ -454,8 +540,16 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
 
   describe("once the acceptance is sent the fill is owed, whatever the venue answers", () => {
     it.each<[string, Venue, "mismatch" | "unacknowledged"]>([
-      ["a 5xx", async () => Promise.reject(new Error("solver accept 503: unavailable")), "unacknowledged"],
-      ["a 200 for another auction", async (_a, body) => ({ ...body, auctionId: "auc-other", acceptedAt: 1 }), "mismatch"],
+      [
+        "a 5xx",
+        async () => Promise.reject(new Error("solver accept 503: unavailable")),
+        "unacknowledged",
+      ],
+      [
+        "a 200 for another auction",
+        async (_a, body) => ({ ...body, auctionId: "auc-other", acceptedAt: 1 }),
+        "mismatch",
+      ],
       [
         "a 200 holding someone else's signature",
         async (auctionId, body) => ({
@@ -487,7 +581,12 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
 
     it("an earlier first-writer signature of ours counts as recorded", async () => {
       const earlier = altSignature(expectedDigest(), SOLVER_KEY);
-      const gw = gatewayWith(async (auctionId, body) => ({ ...body, auctionId, signature: earlier, acceptedAt: 7 }));
+      const gw = gatewayWith(async (auctionId, body) => ({
+        ...body,
+        auctionId,
+        signature: earlier,
+        acceptedAt: 7,
+      }));
       const p = await prepared(gw);
       const accepted = await gw.accept(p);
       expect(accepted.signature).not.toBe(earlier);
@@ -548,10 +647,18 @@ describe("OnchainEscrowGateway prepare -> accept -> fill", () => {
     it("a restarted gateway resumes: the same deterministic signature, no preflight refusal", async () => {
       const acceptBy = state.timestamp + 30;
       const before = gatewayWith(honest);
-      const first = await before.accept(await before.prepare(await awardWith({ acceptBy }), { bid: bidFor(), originChainId: ORIGIN }));
+      const first = await before.accept(
+        await before.prepare(await awardWith({ acceptBy }), {
+          bid: bidFor(),
+          originChainId: ORIGIN,
+        }),
+      );
       state.timestamp = DEADLINE - 30; // past acceptBy and inside the accept budget now
       const restarted = gatewayWith(honest);
-      const p = await restarted.prepare(await awardWith({ acceptBy }), { bid: bidFor(), originChainId: ORIGIN });
+      const p = await restarted.prepare(await awardWith({ acceptBy }), {
+        bid: bidFor(),
+        originChainId: ORIGIN,
+      });
       expect(await refusal(restarted.accept(p))).toBe("accept_window_closed");
       const resumed = await restarted.accept(p, { resume: true });
       expect(resumed.signature).toBe(first.signature);

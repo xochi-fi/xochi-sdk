@@ -30,7 +30,9 @@ const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fillIds = JSON.parse(fs.readFileSync(path.join(here, "fill-salt.json"), "utf8")).vectors;
-const baselineFillId: string = fillIds.find((v: { name: string }) => v.name === "baseline").expected_fill_id;
+const baselineFillId: string = fillIds.find(
+  (v: { name: string }) => v.name === "baseline",
+).expected_fill_id;
 
 const FILLER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const TO = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
@@ -39,11 +41,66 @@ const FILLER_CONTRACT = "0x4444444444444444444444444444444444444444";
 const MAX = (2n ** 256n - 1n).toString();
 
 const CASES = [
-  { name: "baseline-base", chainId: "8453", verifyingContract: FILLER_CONTRACT, fillId: baselineFillId, filler: FILLER, to: TO, token: USDC_BASE, amount: "1000000", deadline: "1900000000", key: TEST_KEY_0 },
-  { name: "second-signer", chainId: "8453", verifyingContract: FILLER_CONTRACT, fillId: baselineFillId, filler: FILLER, to: TO, token: USDC_BASE, amount: "1000000", deadline: "1900000000", key: TEST_KEY_1 },
-  { name: "other-chain-and-filler", chainId: "1", verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508", fillId: baselineFillId, filler: FILLER, to: TO, token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", amount: "1000000", deadline: "1900000000", key: TEST_KEY_0 },
-  { name: "zero-amount-zero-deadline", chainId: "8453", verifyingContract: FILLER_CONTRACT, fillId: "0x" + "00".repeat(31) + "01", filler: FILLER, to: TO, token: USDC_BASE, amount: "0", deadline: "0", key: TEST_KEY_0 },
-  { name: "max-uint256-amount-and-deadline", chainId: "42161", verifyingContract: FILLER_CONTRACT, fillId: "0x" + "ff".repeat(32), filler: "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF", to: TO, token: USDC_BASE, amount: MAX, deadline: MAX, key: TEST_KEY_1 },
+  {
+    name: "baseline-base",
+    chainId: "8453",
+    verifyingContract: FILLER_CONTRACT,
+    fillId: baselineFillId,
+    filler: FILLER,
+    to: TO,
+    token: USDC_BASE,
+    amount: "1000000",
+    deadline: "1900000000",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "second-signer",
+    chainId: "8453",
+    verifyingContract: FILLER_CONTRACT,
+    fillId: baselineFillId,
+    filler: FILLER,
+    to: TO,
+    token: USDC_BASE,
+    amount: "1000000",
+    deadline: "1900000000",
+    key: TEST_KEY_1,
+  },
+  {
+    name: "other-chain-and-filler",
+    chainId: "1",
+    verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508",
+    fillId: baselineFillId,
+    filler: FILLER,
+    to: TO,
+    token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    amount: "1000000",
+    deadline: "1900000000",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "zero-amount-zero-deadline",
+    chainId: "8453",
+    verifyingContract: FILLER_CONTRACT,
+    fillId: "0x" + "00".repeat(31) + "01",
+    filler: FILLER,
+    to: TO,
+    token: USDC_BASE,
+    amount: "0",
+    deadline: "0",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "max-uint256-amount-and-deadline",
+    chainId: "42161",
+    verifyingContract: FILLER_CONTRACT,
+    fillId: "0x" + "ff".repeat(32),
+    filler: "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+    to: TO,
+    token: USDC_BASE,
+    amount: MAX,
+    deadline: MAX,
+    key: TEST_KEY_1,
+  },
 ];
 
 const vectors = [];

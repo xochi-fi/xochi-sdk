@@ -25,7 +25,9 @@ export function pbtRuns(defaultRuns: number): number {
   // way a zero budget still reaches fast-check. Checked for the same reason the
   // env var is: a property that runs zero rounds passes.
   if (!Number.isInteger(defaultRuns) || defaultRuns <= 0) {
-    throw new Error(`pbtRuns default must be a positive integer, got ${JSON.stringify(defaultRuns)}`);
+    throw new Error(
+      `pbtRuns default must be a positive integer, got ${JSON.stringify(defaultRuns)}`,
+    );
   }
   const raw = process.env.PBT_RUNS;
   if (raw === undefined || raw === "") return defaultRuns;

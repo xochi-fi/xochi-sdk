@@ -147,13 +147,17 @@ export function walletFromKey(solverKey: string): ethers.Wallet {
   try {
     return new ethers.Wallet(solverKey);
   } catch {
-    throw new Error("solver key must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown");
+    throw new Error(
+      "solver key must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown",
+    );
   }
 }
 
 function checkMs(label: string, v: unknown): number {
   if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > MAX_BID_MS) {
-    throw new Error(`bid ${label} must be an integer in 0..${MAX_BID_MS} (2^53-1), got ${String(v)}`);
+    throw new Error(
+      `bid ${label} must be an integer in 0..${MAX_BID_MS} (2^53-1), got ${String(v)}`,
+    );
   }
   return v;
 }
@@ -175,10 +179,14 @@ export function bidTypedData(fields: {
   }
   if (typeof auctionId !== "string") throw new Error("bid auctionId must be a string");
   if (typeof intentId !== "string") throw new Error("bid intentId must be a string");
-  if (LONE_SURROGATE.test(auctionId)) throw new Error("bid auctionId has an unpaired surrogate; not UTF-8 encodable");
-  if (LONE_SURROGATE.test(intentId)) throw new Error("bid intentId has an unpaired surrogate; not UTF-8 encodable");
+  if (LONE_SURROGATE.test(auctionId))
+    throw new Error("bid auctionId has an unpaired surrogate; not UTF-8 encodable");
+  if (LONE_SURROGATE.test(intentId))
+    throw new Error("bid intentId has an unpaired surrogate; not UTF-8 encodable");
   if (typeof output !== "string" || !CANONICAL_UINT.test(output)) {
-    throw new Error(`bid output must be a canonical decimal uint256 string, got ${JSON.stringify(output)}`);
+    throw new Error(
+      `bid output must be a canonical decimal uint256 string, got ${JSON.stringify(output)}`,
+    );
   }
   if (BigInt(output) > MAX_UINT256) throw new Error(`bid output ${output} exceeds uint256`);
   const validUntilMs = checkMs("validUntilMs", fields.validUntilMs);
@@ -215,7 +223,9 @@ export async function signBid(
     minExclusiveMs: draft.minExclusiveMs,
   };
   const { domain, types, message } = bidTypedData(fields);
-  const signature = ethers.Signature.from(await wallet.signTypedData(domain, types, message)).serialized.toLowerCase();
+  const signature = ethers.Signature.from(
+    await wallet.signTypedData(domain, types, message),
+  ).serialized.toLowerCase();
   return { ...fields, solverId: wallet.address, signature };
 }
 
@@ -271,7 +281,12 @@ export function verifyBidDetailed(bid: Bid): BidVerification {
   try {
     typedData = bidTypedData({ ...bid, output: canonicalOutput });
   } catch (err) {
-    return { ok: false, reason: "unencodable", signer: null, detail: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      reason: "unencodable",
+      signer: null,
+      detail: err instanceof Error ? err.message : String(err),
+    };
   }
 
   // Refuse a re-spelled signature BEFORE recovery. Two encodings ethers reads
@@ -322,11 +337,21 @@ export function verifyBidDetailed(bid: Bid): BidVerification {
 
   let recovered: string;
   try {
-    recovered = ethers.verifyTypedData(typedData.domain, typedData.types, typedData.message, bid.signature);
+    recovered = ethers.verifyTypedData(
+      typedData.domain,
+      typedData.types,
+      typedData.message,
+      bid.signature,
+    );
   } catch (err) {
     // Includes the malleated high-s twin: ethers refuses to read a
     // non-canonical `s` at all, so it never reaches a recovered address.
-    return { ok: false, reason: "bad_signature", signer: null, detail: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      reason: "bad_signature",
+      signer: null,
+      detail: err instanceof Error ? err.message : String(err),
+    };
   }
   if (recovered.toLowerCase() !== String(bid.solverId).toLowerCase()) {
     return {

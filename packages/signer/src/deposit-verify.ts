@@ -430,10 +430,10 @@ export function depositAttestationFields(
     // the value under attack. Absent stays null, since the server's
     // `optional_address` writes an empty line and its fallback to `wallet`
     // happens at refund time, not signing time.
-    refund_address:
-      (requestedParam(params, "refund_address", "refundAddress") as string) ?? null,
+    refund_address: (requestedParam(params, "refund_address", "refundAddress") as string) ?? null,
     stealth_spending_pub_key:
-      (requestedParam(params, "stealth_spending_pub_key", "stealthSpendingPubKey") as string) ?? null,
+      (requestedParam(params, "stealth_spending_pub_key", "stealthSpendingPubKey") as string) ??
+      null,
     stealth_viewing_pub_key:
       (requestedParam(params, "stealth_viewing_pub_key", "stealthViewingPubKey") as string) ?? null,
     settlement_preference: String(

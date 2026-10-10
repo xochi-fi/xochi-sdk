@@ -34,10 +34,15 @@ import { BackgroundTasks } from "../examples/supervise";
 import { FakeChain, Revert } from "./fake-chain";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const load = (name: string) => JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
-const baseline = load("order-id.json").vectors.find((v: { name: string }) => v.name === "baseline-evm-usdc");
+const load = (name: string) =>
+  JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
+const baseline = load("order-id.json").vectors.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+);
 export const ORDER_ID: Hex = baseline.expected_order_id;
-export const FILL_ID: Hex = load("fill-salt.json").vectors.find((v: { orderId: string }) => v.orderId === ORDER_ID).expected_fill_id;
+export const FILL_ID: Hex = load("fill-salt.json").vectors.find(
+  (v: { orderId: string }) => v.orderId === ORDER_ID,
+).expected_fill_id;
 
 export const ORIGIN = Number(baseline.terms.fromChainId);
 export const DEST = Number(baseline.terms.toChainId);
@@ -88,7 +93,11 @@ export async function award(fillAuth: { amount?: bigint; deadline?: number } = {
     amount: (fillAuth.amount ?? OUTPUT).toString(),
     deadline: String(fillAuth.deadline ?? T0 + 1_800),
   };
-  const signature = await signFillAuth(new ethers.Wallet(VENUE_KEY), { chainId: DEST, verifyingContract: FILLER }, auth);
+  const signature = await signFillAuth(
+    new ethers.Wallet(VENUE_KEY),
+    { chainId: DEST, verifyingContract: FILLER },
+    auth,
+  );
   return {
     auctionId: announcement.auctionId,
     intentId: announcement.intentId,
@@ -126,9 +135,17 @@ export class Venue implements SolverTransport {
     return { rfcVersion: SOLVER_RFC_VERSION, phase: "P0" } as VenueCapabilities;
   }
   // First writer kept, as the venue does.
-  async acceptAward(auctionId: string, body: { orderId: string; signature: string }): Promise<FillAcceptanceReceipt> {
+  async acceptAward(
+    auctionId: string,
+    body: { orderId: string; signature: string },
+  ): Promise<FillAcceptanceReceipt> {
     this.accepts.push({ auctionId, ...body });
-    return { auctionId, orderId: body.orderId, signature: this.accepts[0]!.signature, acceptedAt: T0 };
+    return {
+      auctionId,
+      orderId: body.orderId,
+      signature: this.accepts[0]!.signature,
+      acceptedAt: T0,
+    };
   }
   attestation: FillAttestationWire | null = null;
   async getAttestation(): Promise<FillAttestationWire | null> {
@@ -139,7 +156,10 @@ export class Venue implements SolverTransport {
 // `receiptTimeoutMs: 0` returns a pending send `in_doubt` at once (the clock is
 // fixed). `fillerAllowance` is FILLER_ALLOWANCE (default unlimited); `allowance`
 // is the standing allowance wired exactly as `runSolver` wires it.
-export function world(feed: SolverEvent[], opts: { receiptTimeoutMs?: number; state?: FillStateFile; fillerAllowance?: bigint } = {}) {
+export function world(
+  feed: SolverEvent[],
+  opts: { receiptTimeoutMs?: number; state?: FillStateFile; fillerAllowance?: bigint } = {},
+) {
   const origin = new FakeChain(ORIGIN);
   const dest = new FakeChain(DEST);
   origin.timestamp = T0;
@@ -174,13 +194,26 @@ export function world(feed: SolverEvent[], opts: { receiptTimeoutMs?: number; st
     ESCROW,
     escrowIface,
     "Opened",
-    [ORDER_ID, baseline.terms.depositor, baseline.terms.fromToken, BigInt(baseline.terms.fromAmount), BigInt(DEST), REFUNDABLE_AT],
+    [
+      ORDER_ID,
+      baseline.terms.depositor,
+      baseline.terms.fromToken,
+      BigInt(baseline.terms.fromAmount),
+      BigInt(DEST),
+      REFUNDABLE_AT,
+    ],
     ethers.id("open"),
   );
   origin.onMined = (tx) => {
     if (tx.method !== "claim") return;
     lock.status = LockStatus.Claimed;
-    origin.logEvent(ESCROW, escrowIface, "Claimed", [ORDER_ID, SOLVER, BigInt(baseline.terms.fromAmount), 0n], tx.hash);
+    origin.logEvent(
+      ESCROW,
+      escrowIface,
+      "Claimed",
+      [ORDER_ID, SOLVER, BigInt(baseline.terms.fromAmount), 0n],
+      tx.hash,
+    );
   };
 
   dest.stub(FILLER, RIDDLER_FILLER_ABI as unknown as string[], {
@@ -188,12 +221,20 @@ export function world(feed: SolverEvent[], opts: { receiptTimeoutMs?: number; st
     fill: ([fillId]) => {
       if (lock.filled && !lock.lagging) throw new Revert("AlreadyFilled", [fillId]);
     },
-    isFillAuthorizer: ([signer]) => (signer as string).toLowerCase() === new ethers.Wallet(VENUE_KEY).address.toLowerCase(),
+    isFillAuthorizer: ([signer]) =>
+      (signer as string).toLowerCase() === new ethers.Wallet(VENUE_KEY).address.toLowerCase(),
   });
-  dest.stub(TOKEN, ["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"], {
-    balanceOf: () => OUTPUT * 10n,
-    allowance: () => OUTPUT * 10n,
-  });
+  dest.stub(
+    TOKEN,
+    [
+      "function balanceOf(address) view returns (uint256)",
+      "function allowance(address,address) view returns (uint256)",
+    ],
+    {
+      balanceOf: () => OUTPUT * 10n,
+      allowance: () => OUTPUT * 10n,
+    },
+  );
 
   const venue = new Venue(feed);
   dest.onMined = (tx) => {
@@ -243,10 +284,28 @@ export function world(feed: SolverEvent[], opts: { receiptTimeoutMs?: number; st
   const background = new BackgroundTasks(() => {});
   const escrowSolver = new EscrowSolver(cfg, gateway, solver, false, background, opts.state);
   const errors: unknown[] = [];
-  const client = new SolverClient({ solverKey: SOLVER_KEY, transport: venue, now: clockMs, onError: (err) => errors.push(err) });
+  const client = new SolverClient({
+    solverKey: SOLVER_KEY,
+    transport: venue,
+    now: clockMs,
+    onError: (err) => errors.push(err),
+  });
   const claimLoops = vi.spyOn(gateway, "claimUntilRefundable");
 
-  return { origin, dest, venue, gateway, client, escrowSolver, background, errors, claimLoops, lock, allowance: fillerAllowance(gateway, solver, cfg) };
+  return {
+    origin,
+    dest,
+    venue,
+    gateway,
+    client,
+    escrowSolver,
+    background,
+    errors,
+    claimLoops,
+    lock,
+    allowance: fillerAllowance(gateway, solver, cfg),
+  };
 }
 
-export const codeOf = (err: unknown) => (err instanceof EscrowRefusalError ? err.code : String(err));
+export const codeOf = (err: unknown) =>
+  err instanceof EscrowRefusalError ? err.code : String(err);

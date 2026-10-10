@@ -33,23 +33,62 @@ const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find((v: { name: string }) => v.name === "baseline-evm-usdc").expected_order_id;
+const baselineOrderId: string = orderIds.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+).expected_order_id;
 
 const VERIFIER = "0x5555555555555555555555555555555555555555";
 const PAYEE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
 const CASES = [
-  { name: "baseline-base", chainId: "8453", verifyingContract: VERIFIER, orderId: baselineOrderId, payee: PAYEE, key: TEST_KEY_0 },
-  { name: "second-signer", chainId: "8453", verifyingContract: VERIFIER, orderId: baselineOrderId, payee: PAYEE, key: TEST_KEY_1 },
-  { name: "other-chain-and-verifier", chainId: "1", verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508", orderId: baselineOrderId, payee: PAYEE, key: TEST_KEY_0 },
-  { name: "one-order-id-zero-payee", chainId: "8453", verifyingContract: VERIFIER, orderId: "0x" + "00".repeat(31) + "01", payee: "0x0000000000000000000000000000000000000000", key: TEST_KEY_0 },
-  { name: "max-uint256-order-id-max-payee", chainId: "42161", verifyingContract: VERIFIER, orderId: "0x" + "ff".repeat(32), payee: "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF", key: TEST_KEY_1 },
+  {
+    name: "baseline-base",
+    chainId: "8453",
+    verifyingContract: VERIFIER,
+    orderId: baselineOrderId,
+    payee: PAYEE,
+    key: TEST_KEY_0,
+  },
+  {
+    name: "second-signer",
+    chainId: "8453",
+    verifyingContract: VERIFIER,
+    orderId: baselineOrderId,
+    payee: PAYEE,
+    key: TEST_KEY_1,
+  },
+  {
+    name: "other-chain-and-verifier",
+    chainId: "1",
+    verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508",
+    orderId: baselineOrderId,
+    payee: PAYEE,
+    key: TEST_KEY_0,
+  },
+  {
+    name: "one-order-id-zero-payee",
+    chainId: "8453",
+    verifyingContract: VERIFIER,
+    orderId: "0x" + "00".repeat(31) + "01",
+    payee: "0x0000000000000000000000000000000000000000",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "max-uint256-order-id-max-payee",
+    chainId: "42161",
+    verifyingContract: VERIFIER,
+    orderId: "0x" + "ff".repeat(32),
+    payee: "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+    key: TEST_KEY_1,
+  },
 ];
 
 const vectors = [];
 for (const c of CASES) {
   const domain = { chainId: c.chainId, verifyingContract: c.verifyingContract };
-  const signature = (await signFillAttestation(new ethers.Wallet(c.key), domain, c.orderId, c.payee)).toLowerCase();
+  const signature = (
+    await signFillAttestation(new ethers.Wallet(c.key), domain, c.orderId, c.payee)
+  ).toLowerCase();
   vectors.push({
     name: c.name,
     chainId: c.chainId,

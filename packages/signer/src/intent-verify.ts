@@ -201,7 +201,8 @@ export function assertIntentMatchesRequest(
   ] as const) {
     const want = pick(params, snake, camel);
     if (want !== undefined && want !== null) {
-      if (!sameAddressish(String(message[field] ?? ""), String(want))) fail(field, message[field], want);
+      if (!sameAddressish(String(message[field] ?? ""), String(want)))
+        fail(field, message[field], want);
     }
   }
 
@@ -710,14 +711,21 @@ export function assertPullMatchesIntent(
   if (intent.fromToken !== undefined) {
     if (kind === "erc3009") {
       if (!sameAddressish(String(domain.verifyingContract ?? ""), String(intent.fromToken))) {
-        fail("domain.verifyingContract (the token being pulled)", domain.verifyingContract, intent.fromToken);
+        fail(
+          "domain.verifyingContract (the token being pulled)",
+          domain.verifyingContract,
+          intent.fromToken,
+        );
       }
     } else if (!sameAddressish(String(m.permitted?.token ?? ""), String(intent.fromToken))) {
       fail("permitted.token", m.permitted?.token, intent.fromToken);
     }
   }
 
-  if (kind === "permit2" && !sameAddressish(String(domain.verifyingContract ?? ""), PERMIT2_ADDRESS)) {
+  if (
+    kind === "permit2" &&
+    !sameAddressish(String(domain.verifyingContract ?? ""), PERMIT2_ADDRESS)
+  ) {
     throw new XochiIntentMismatchError(
       `pull_authorization domain.verifyingContract is ${JSON.stringify(domain.verifyingContract)} but ` +
         `Permit2 is ${PERMIT2_ADDRESS} on every EVM chain -- refusing to sign a Permit2-shaped ` +

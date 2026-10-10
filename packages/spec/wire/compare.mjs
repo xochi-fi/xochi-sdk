@@ -435,7 +435,8 @@ const canon = (x, depth = 0) => {
 };
 
 /** A one-element `type` array is the scalar form of the same constraint. */
-const canonConstraint = (key, x) => (key === "type" && Array.isArray(x) && x.length === 1 ? canon(x[0]) : canon(x));
+const canonConstraint = (key, x) =>
+  key === "type" && Array.isArray(x) && x.length === 1 ? canon(x[0]) : canon(x);
 
 const keysOf = (node) => (isObj(node) ? Object.keys(node) : []);
 const setDiff = (a, b) => a.filter((k) => !b.includes(k));
@@ -494,7 +495,13 @@ export const compareContract = (served, vendored) => {
       // walked below -- so the skip needs BOTH sides to be walking. Object
       // against absent is a constraint that appeared or vanished, and skipping
       // it here left it on no axis at all.
-      if (k === "additionalProperties" && sHas && vHas && typeof s[k] !== "boolean" && typeof v[k] !== "boolean") {
+      if (
+        k === "additionalProperties" &&
+        sHas &&
+        vHas &&
+        typeof s[k] !== "boolean" &&
+        typeof v[k] !== "boolean"
+      ) {
         continue;
       }
       checks += 1;
@@ -566,7 +573,8 @@ export const compareContract = (served, vendored) => {
       }
       const added = setDiff(sList, vList);
       const removed = setDiff(vList, sList);
-      if (added.length > 0) addedList.push(`${at(path, key)}: served adds ${quoted(added)}${addedNote}`);
+      if (added.length > 0)
+        addedList.push(`${at(path, key)}: served adds ${quoted(added)}${addedNote}`);
       if (removed.length > 0) breaking.push(`${at(path, key)}: served drops ${quoted(removed)}`);
     };
     listDiff("required", breaking, "");
@@ -587,7 +595,9 @@ export const compareContract = (served, vendored) => {
       // dropped branch is a narrowed union, which is `ChainAddress` losing the
       // base58 half of hex-or-base58 and taking Tron with it.
       if (sa.length !== va.length) {
-        breaking.push(`${at(path, k)}: served has ${sa.length} branch(es), vendored has ${va.length}`);
+        breaking.push(
+          `${at(path, k)}: served has ${sa.length} branch(es), vendored has ${va.length}`,
+        );
       }
       for (let i = 0; i < Math.min(sa.length, va.length); i += 1) {
         compareNode(sa[i], va[i], `${at(path, k)}[${i}]`, depth + 1);
@@ -662,7 +672,9 @@ export const compareContract = (served, vendored) => {
   }
   checks += 1;
   if (canon(served?.info?.version) !== canon(vendored?.info?.version)) {
-    stale.push(`info.version: served ${show(served?.info?.version)}, vendored ${show(vendored?.info?.version)}`);
+    stale.push(
+      `info.version: served ${show(served?.info?.version)}, vendored ${show(vendored?.info?.version)}`,
+    );
   }
 
   // 1. Paths, methods, and the operation surface under each method. A path and a
@@ -673,7 +685,8 @@ export const compareContract = (served, vendored) => {
   const vendoredPaths = keysOf(vendored?.paths);
 
   checks += servedPaths.length + setDiff(vendoredPaths, servedPaths).length;
-  for (const p of setDiff(servedPaths, vendoredPaths)) stale.push(`path ${sanitize(p)} is served but not vendored`);
+  for (const p of setDiff(servedPaths, vendoredPaths))
+    stale.push(`path ${sanitize(p)} is served but not vendored`);
   for (const p of setDiff(vendoredPaths, servedPaths)) {
     breaking.push(`path ${sanitize(p)} is vendored but no longer served`);
   }
@@ -702,7 +715,9 @@ export const compareContract = (served, vendored) => {
    * prose and is not read.
    */
   const serverUrls = (list) =>
-    (Array.isArray(list) ? list : []).map((e) => (isObj(e) && typeof e.url === "string" ? e.url : canon(e)));
+    (Array.isArray(list) ? list : []).map((e) =>
+      isObj(e) && typeof e.url === "string" ? e.url : canon(e),
+    );
 
   const compareServers = (label, sList, vList) => {
     if (!Array.isArray(sList) && !Array.isArray(vList)) return;
@@ -740,7 +755,10 @@ export const compareContract = (served, vendored) => {
       if (!Array.isArray(list)) continue;
       for (const p of list) {
         if (!isObj(p)) continue;
-        out.set(typeof p.$ref === "string" ? p.$ref : `${p.in ?? "(no in)"}:${p.name ?? "(no name)"}`, p);
+        out.set(
+          typeof p.$ref === "string" ? p.$ref : `${p.in ?? "(no in)"}:${p.name ?? "(no name)"}`,
+          p,
+        );
       }
     }
     return out;
@@ -756,7 +774,9 @@ export const compareContract = (served, vendored) => {
    * the removal of every alternative, and reports as such.
    */
   const effectiveSecurity = (op, root) =>
-    (Array.isArray(op?.security) ? op.security : Array.isArray(root) ? root : []).map((r) => canon(r)).sort();
+    (Array.isArray(op?.security) ? op.security : Array.isArray(root) ? root : [])
+      .map((r) => canon(r))
+      .sort();
 
   /**
    * A served-only parameter or requestBody given as a local `$ref` carries its
@@ -767,7 +787,12 @@ export const compareContract = (served, vendored) => {
   const resolveServed = (node) => {
     const seen = new Set();
     let cur = node;
-    while (isObj(cur) && typeof cur.$ref === "string" && cur.$ref.startsWith("#/") && !seen.has(cur.$ref)) {
+    while (
+      isObj(cur) &&
+      typeof cur.$ref === "string" &&
+      cur.$ref.startsWith("#/") &&
+      !seen.has(cur.$ref)
+    ) {
       seen.add(cur.$ref);
       let target = served;
       for (const raw of cur.$ref.slice(2).split("/")) {
@@ -854,7 +879,8 @@ export const compareContract = (served, vendored) => {
     const sCodes = keysOf(sOp?.responses);
     const vCodes = keysOf(vOp?.responses);
     checks += sCodes.length + setDiff(vCodes, sCodes).length;
-    for (const c of setDiff(sCodes, vCodes)) stale.push(`${label} response ${sanitize(c)} is served but not vendored`);
+    for (const c of setDiff(sCodes, vCodes))
+      stale.push(`${label} response ${sanitize(c)} is served but not vendored`);
     for (const c of setDiff(vCodes, sCodes)) {
       breaking.push(`${label} response ${sanitize(c)} is vendored but no longer served`);
     }
@@ -916,8 +942,10 @@ export const compareContract = (served, vendored) => {
     const s = methodsOf(sItem);
     const v = methodsOf(vItem);
     checks += s.length + setDiff(v, s).length;
-    for (const m of setDiff(s, v)) stale.push(`${m.toUpperCase()} ${sanitize(p)} is served but not vendored`);
-    for (const m of setDiff(v, s)) breaking.push(`${m.toUpperCase()} ${sanitize(p)} is vendored but no longer served`);
+    for (const m of setDiff(s, v))
+      stale.push(`${m.toUpperCase()} ${sanitize(p)} is served but not vendored`);
+    for (const m of setDiff(v, s))
+      breaking.push(`${m.toUpperCase()} ${sanitize(p)} is vendored but no longer served`);
     for (const m of s.filter((m) => v.includes(m))) {
       compareOperation(`${m.toUpperCase()} ${sanitize(p)}`, sItem, vItem, sItem[m], vItem[m]);
     }
@@ -956,7 +984,9 @@ export const compareContract = (served, vendored) => {
       stale.push(`components.${sanitize(section)}.${sanitize(n)} is served but not vendored`);
     }
     for (const n of setDiff(vNames, sNames)) {
-      breaking.push(`components.${sanitize(section)}.${sanitize(n)} is vendored but no longer served`);
+      breaking.push(
+        `components.${sanitize(section)}.${sanitize(n)} is vendored but no longer served`,
+      );
     }
     const shared = sNames.filter((n) => vNames.includes(n));
     counts[section] = shared.length;
@@ -973,7 +1003,9 @@ export const compareContract = (served, vendored) => {
       }
       checks += 1;
       if (canon(withoutProse(sMembers[n])) !== canon(withoutProse(vMembers[n]))) {
-        breaking.push(`${label}: served ${show(withoutProse(sMembers[n]))}, vendored ${show(withoutProse(vMembers[n]))}`);
+        breaking.push(
+          `${label}: served ${show(withoutProse(sMembers[n]))}, vendored ${show(withoutProse(vMembers[n]))}`,
+        );
       }
     }
   }

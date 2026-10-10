@@ -42,7 +42,22 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 const nastyText = fc
   .oneof(
     fc.string(),
-    fc.constantFrom("", "\n", "\\n", '"', "\\", "\t", "\r", " ", ",", ":", "|", "ü", "日本語", "\u{1F984}"),
+    fc.constantFrom(
+      "",
+      "\n",
+      "\\n",
+      '"',
+      "\\",
+      "\t",
+      "\r",
+      " ",
+      ",",
+      ":",
+      "|",
+      "ü",
+      "日本語",
+      "\u{1F984}",
+    ),
     fc.string().map((s) => `${s}\n${s}`),
     fc.string().map((s) => `"${s}"`),
   )
@@ -75,17 +90,40 @@ describe("solver bid sealing (v2)", () => {
   // A single-field MUTATION is falsifiable: it fails for an encoder that drops
   // a member (the mutation stops changing the digest) or normalizes `output`
   // (the padded spelling stops being refused).
-  const MUTATIONS: { label: string; outcome: "differs" | "refused"; apply: (b: BidFields) => BidFields }[] = [
+  const MUTATIONS: {
+    label: string;
+    outcome: "differs" | "refused";
+    apply: (b: BidFields) => BidFields;
+  }[] = [
     {
       label: "orderId",
       outcome: "differs",
-      apply: (b) => ({ ...b, orderId: b.orderId.slice(0, -1) + (b.orderId.endsWith("0") ? "1" : "0") }),
+      apply: (b) => ({
+        ...b,
+        orderId: b.orderId.slice(0, -1) + (b.orderId.endsWith("0") ? "1" : "0"),
+      }),
     },
-    { label: "auctionId", outcome: "differs", apply: (b) => ({ ...b, auctionId: `${b.auctionId}x` }) },
+    {
+      label: "auctionId",
+      outcome: "differs",
+      apply: (b) => ({ ...b, auctionId: `${b.auctionId}x` }),
+    },
     { label: "intentId", outcome: "differs", apply: (b) => ({ ...b, intentId: `${b.intentId}x` }) },
-    { label: "output+1", outcome: "differs", apply: (b) => ({ ...b, output: (BigInt(b.output) + 1n).toString() }) },
-    { label: "validUntilMs+1", outcome: "differs", apply: (b) => ({ ...b, validUntilMs: b.validUntilMs + 1 }) },
-    { label: "minExclusiveMs+1", outcome: "differs", apply: (b) => ({ ...b, minExclusiveMs: b.minExclusiveMs + 1 }) },
+    {
+      label: "output+1",
+      outcome: "differs",
+      apply: (b) => ({ ...b, output: (BigInt(b.output) + 1n).toString() }),
+    },
+    {
+      label: "validUntilMs+1",
+      outcome: "differs",
+      apply: (b) => ({ ...b, validUntilMs: b.validUntilMs + 1 }),
+    },
+    {
+      label: "minExclusiveMs+1",
+      outcome: "differs",
+      apply: (b) => ({ ...b, minExclusiveMs: b.minExclusiveMs + 1 }),
+    },
     // validUntilMs and minExclusiveMs are both uint64: a swapped pair must not
     // collide, or a venue could read a window as a deadline.
     {
@@ -93,14 +131,19 @@ describe("solver bid sealing (v2)", () => {
       outcome: "differs",
       apply: (b) => ({ ...b, validUntilMs: b.minExclusiveMs, minExclusiveMs: b.validUntilMs }),
     },
-    { label: "output zero-padded", outcome: "refused", apply: (b) => ({ ...b, output: `0${b.output}` }) },
+    {
+      label: "output zero-padded",
+      outcome: "refused",
+      apply: (b) => ({ ...b, output: `0${b.output}` }),
+    },
   ];
 
   it("no single-field mutation leaves the digest unchanged", () => {
     fc.assert(
       fc.property(bid, fc.constantFrom(...MUTATIONS), (a, mutation) => {
         if (mutation.label === "output+1" && BigInt(a.output) === 2n ** 256n - 1n) return true;
-        if (mutation.label === "time fields swapped" && a.validUntilMs === a.minExclusiveMs) return true;
+        if (mutation.label === "time fields swapped" && a.validUntilMs === a.minExclusiveMs)
+          return true;
         const mutated = mutation.apply(a);
         if (mutation.outcome === "refused") {
           expect(() => bidDigest(mutated)).toThrow(/canonical/);
@@ -128,11 +171,15 @@ describe("solver bid sealing (v2)", () => {
 
   it("refuses a non-canonical output rather than normalizing it", () => {
     fc.assert(
-      fc.property(fc.bigInt({ min: 0n, max: 2n ** 64n }), fc.integer({ min: 1, max: 3 }), (n, zeros) => {
-        const padded = "0".repeat(zeros) + n.toString();
-        expect(() => bidTypedData(fields({ output: padded }))).toThrow(/canonical/);
-        return true;
-      }),
+      fc.property(
+        fc.bigInt({ min: 0n, max: 2n ** 64n }),
+        fc.integer({ min: 1, max: 3 }),
+        (n, zeros) => {
+          const padded = "0".repeat(zeros) + n.toString();
+          expect(() => bidTypedData(fields({ output: padded }))).toThrow(/canonical/);
+          return true;
+        },
+      ),
       CFG,
     );
   });
@@ -140,11 +187,17 @@ describe("solver bid sealing (v2)", () => {
   it("refuses times past the range the wire can carry, and admits the boundary", () => {
     // uint64 in the struct, a bare JSON number on the wire: past 2^53-1 a
     // receiver reads back a different number than was signed.
-    expect(() => bidTypedData(fields({ validUntilMs: MAX_BID_MS, minExclusiveMs: MAX_BID_MS }))).not.toThrow();
+    expect(() =>
+      bidTypedData(fields({ validUntilMs: MAX_BID_MS, minExclusiveMs: MAX_BID_MS })),
+    ).not.toThrow();
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 1_000_000 }), (delta) => {
-        expect(() => bidTypedData(fields({ validUntilMs: MAX_BID_MS + delta }))).toThrow(/validUntilMs/);
-        expect(() => bidTypedData(fields({ minExclusiveMs: MAX_BID_MS + delta }))).toThrow(/minExclusiveMs/);
+        expect(() => bidTypedData(fields({ validUntilMs: MAX_BID_MS + delta }))).toThrow(
+          /validUntilMs/,
+        );
+        expect(() => bidTypedData(fields({ minExclusiveMs: MAX_BID_MS + delta }))).toThrow(
+          /minExclusiveMs/,
+        );
         return true;
       }),
       CFG,
@@ -163,7 +216,9 @@ describe("solver bid sealing (v2)", () => {
 
   it("refuses a lone surrogate instead of substituting U+FFFD", () => {
     expect(() => bidTypedData(fields({ auctionId: "\uD800" }))).toThrow();
-    expect(verifyBid({ ...fields({ auctionId: "\uD800" }), solverId: SIGNER, signature: "0x" })).toBe(false);
+    expect(
+      verifyBid({ ...fields({ auctionId: "\uD800" }), solverId: SIGNER, signature: "0x" }),
+    ).toBe(false);
   });
 });
 

@@ -139,7 +139,11 @@ export function assertPreparedClaimMatchesRequest(
 
   let recomputed: string;
   try {
-    recomputed = computeUserOpHash(prepared.userOperation, String(prepared.entryPoint), prepared.chainId);
+    recomputed = computeUserOpHash(
+      prepared.userOperation,
+      String(prepared.entryPoint),
+      prepared.chainId,
+    );
   } catch (e) {
     if (e instanceof UserOperationError) {
       throw new XochiClaimMismatchError(e.message);

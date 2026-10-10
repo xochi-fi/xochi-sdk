@@ -140,7 +140,8 @@ describe("independent cross-check (Riddler #798 signature_conformance.json)", ()
     to_amount: "997000",
     min_to_amount: "992015",
     recipient: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-    stealth_spending_pub_key: "0x02abababababababababababababababababababababababababababababababab",
+    stealth_spending_pub_key:
+      "0x02abababababababababababababababababababababababababababababababab",
     stealth_viewing_pub_key: "0x03cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
     settlement_preference: "stealth",
   };

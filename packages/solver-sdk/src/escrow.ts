@@ -29,7 +29,11 @@ function isProven(proof: FillProof): boolean {
   if (!proof || !KNOWN_PROOF_KINDS.has(proof.kind)) return false;
   switch (proof.kind) {
     case "tx_hash":
-      return typeof proof.txHash === "string" && proof.txHash.length > 0 && Number.isFinite(proof.chainId);
+      return (
+        typeof proof.txHash === "string" &&
+        proof.txHash.length > 0 &&
+        Number.isFinite(proof.chainId)
+      );
     case "oracle_attestation":
       return !!proof.attestation && !!proof.signer;
     case "light_client":
@@ -45,7 +49,12 @@ export class StubEscrowGateway implements EscrowGateway {
   private readonly records = new Map<string, EscrowRecord>();
   private seq = 0;
 
-  async lock(intentId: string, funds: Funds, solver: string, exclusiveUntil: number): Promise<{ lockRef: string }> {
+  async lock(
+    intentId: string,
+    funds: Funds,
+    solver: string,
+    exclusiveUntil: number,
+  ): Promise<{ lockRef: string }> {
     if (this.records.has(intentId)) {
       throw new Error(`escrow already locked for intent ${intentId}`);
     }
@@ -61,7 +70,9 @@ export class StubEscrowGateway implements EscrowGateway {
     }
     if (!isProven(proof)) {
       // Fail closed -- principal stays locked, never paid on an unproven fill.
-      throw new Error(`cannot release intent ${intentId}: proof is not verifiable (kind ${proof?.kind})`);
+      throw new Error(
+        `cannot release intent ${intentId}: proof is not verifiable (kind ${proof?.kind})`,
+      );
     }
     rec.state = "released";
     rec.proof = proof;

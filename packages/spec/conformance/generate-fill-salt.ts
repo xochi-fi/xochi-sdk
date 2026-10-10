@@ -22,7 +22,9 @@ const TEST_KEY_ALT = "0x" + "0d".repeat(16);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find((v: { name: string }) => v.name === "baseline-evm-usdc").expected_order_id;
+const baselineOrderId: string = orderIds.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+).expected_order_id;
 
 const CASES = [
   { name: "baseline", key: TEST_KEY, orderId: baselineOrderId },

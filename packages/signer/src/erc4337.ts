@@ -46,7 +46,9 @@ const PACKED_USEROP_TYPEHASH = ethers.keccak256(
 );
 
 const EIP712_DOMAIN_TYPEHASH = ethers.keccak256(
-  ethers.toUtf8Bytes("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+  ethers.toUtf8Bytes(
+    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+  ),
 );
 
 const DOMAIN_NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("ERC4337"));
@@ -173,7 +175,10 @@ function paymasterAndDataOf(op: UserOperationV08): string {
       toBigInt(op.paymasterVerificationGasLimit, "paymasterVerificationGasLimit"),
       "paymasterVerificationGasLimit",
     ),
-    toUint128Word(toBigInt(op.paymasterPostOpGasLimit, "paymasterPostOpGasLimit"), "paymasterPostOpGasLimit"),
+    toUint128Word(
+      toBigInt(op.paymasterPostOpGasLimit, "paymasterPostOpGasLimit"),
+      "paymasterPostOpGasLimit",
+    ),
     toBytes(op.paymasterData, "paymasterData"),
   ]);
 }
@@ -190,12 +195,18 @@ function paymasterAndDataOf(op: UserOperationV08): string {
  */
 function computeStructHash(op: UserOperationV08): string {
   const accountGasLimits = ethers.concat([
-    toUint128Word(toBigInt(op.verificationGasLimit, "verificationGasLimit"), "verificationGasLimit"),
+    toUint128Word(
+      toBigInt(op.verificationGasLimit, "verificationGasLimit"),
+      "verificationGasLimit",
+    ),
     toUint128Word(toBigInt(op.callGasLimit, "callGasLimit"), "callGasLimit"),
   ]);
 
   const gasFees = ethers.concat([
-    toUint128Word(toBigInt(op.maxPriorityFeePerGas, "maxPriorityFeePerGas"), "maxPriorityFeePerGas"),
+    toUint128Word(
+      toBigInt(op.maxPriorityFeePerGas, "maxPriorityFeePerGas"),
+      "maxPriorityFeePerGas",
+    ),
     toUint128Word(toBigInt(op.maxFeePerGas, "maxFeePerGas"), "maxFeePerGas"),
   ]);
 
@@ -228,7 +239,10 @@ function computeStructHash(op: UserOperationV08): string {
 }
 
 /** The EIP-712 domain separator: `ERC4337`/`1`, bound to a chain and an EntryPoint. */
-export function computeUserOpDomainSeparator(chainId: bigint | number | string, entryPoint: string): string {
+export function computeUserOpDomainSeparator(
+  chainId: bigint | number | string,
+  entryPoint: string,
+): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
       ["bytes32", "bytes32", "bytes32", "uint256", "address"],
@@ -258,7 +272,11 @@ export function computeUserOpHash(
   chainId: bigint | number | string,
 ): string {
   return ethers.keccak256(
-    ethers.concat(["0x1901", computeUserOpDomainSeparator(chainId, entryPoint), computeStructHash(op)]),
+    ethers.concat([
+      "0x1901",
+      computeUserOpDomainSeparator(chainId, entryPoint),
+      computeStructHash(op),
+    ]),
   );
 }
 

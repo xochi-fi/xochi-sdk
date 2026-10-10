@@ -98,7 +98,9 @@ describe("SolverBid v2 conformance vectors", () => {
     expect(fixture.typehash).toBe(TYPE_HASH);
     expect(fixture.domain_separator).toBe(DOMAIN_SEPARATOR);
     // ...and the CODE still reaches them, which is the half that can drift.
-    expect(ethers.TypedDataEncoder.from(SOLVER_BID_TYPES).encodeType(SOLVER_BID_PRIMARY_TYPE)).toBe(ENCODE_TYPE);
+    expect(ethers.TypedDataEncoder.from(SOLVER_BID_TYPES).encodeType(SOLVER_BID_PRIMARY_TYPE)).toBe(
+      ENCODE_TYPE,
+    );
     expect(ethers.keccak256(ethers.toUtf8Bytes(ENCODE_TYPE))).toBe(TYPE_HASH);
     expect(ethers.TypedDataEncoder.hashDomain(SOLVER_BID_DOMAIN)).toBe(DOMAIN_SEPARATOR);
   });
@@ -108,13 +110,17 @@ describe("SolverBid v2 conformance vectors", () => {
     expect(fixture.vectors.length).toBeGreaterThanOrEqual(5);
     expect(fixture.vectors.some((v) => v.bid.orderId === ZERO_ORDER_ID)).toBe(true);
     expect(fixture.vectors.some((v) => v.bid.output === (2n ** 256n - 1n).toString())).toBe(true);
-    expect(fixture.vectors.some((v) => v.bid.validUntilMs === MAX_BID_MS && v.bid.minExclusiveMs === MAX_BID_MS)).toBe(
-      true,
-    );
+    expect(
+      fixture.vectors.some(
+        (v) => v.bid.validUntilMs === MAX_BID_MS && v.bid.minExclusiveMs === MAX_BID_MS,
+      ),
+    ).toBe(true);
     expect(new Set(names).size).toBe(names.length);
     // Every digest distinct: in particular the baseline and its orderId-only
     // mutation, which is what binds a bid to one order.
-    expect(new Set(fixture.vectors.map((v) => v.expected_digest)).size).toBe(fixture.vectors.length - 1);
+    expect(new Set(fixture.vectors.map((v) => v.expected_digest)).size).toBe(
+      fixture.vectors.length - 1,
+    );
   });
 
   for (const v of fixture.vectors) {
@@ -138,15 +144,21 @@ describe("SolverBid v2 conformance vectors", () => {
       it(`derives the struct, struct hash and digest (${v.why})`, () => {
         const { message } = bidTypedData(v.bid);
         expect(message).toEqual(v.message);
-        expect(ethers.TypedDataEncoder.hashStruct(SOLVER_BID_PRIMARY_TYPE, SOLVER_BID_TYPES, message)).toBe(
-          v.expected_struct_hash,
-        );
+        expect(
+          ethers.TypedDataEncoder.hashStruct(SOLVER_BID_PRIMARY_TYPE, SOLVER_BID_TYPES, message),
+        ).toBe(v.expected_struct_hash);
         expect(bidDigest(v.bid)).toBe(v.expected_digest);
-        expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(v.signer_address);
+        expect(ethers.recoverAddress(v.expected_digest, v.expected_signature)).toBe(
+          v.signer_address,
+        );
       });
 
       it("passes verifyBid and BidSchema, and fails when any signed field is tampered with", () => {
-        expect(verifyBidDetailed(toBid(v))).toEqual({ ok: true, reason: "verified", signer: v.signer_address });
+        expect(verifyBidDetailed(toBid(v))).toEqual({
+          ok: true,
+          reason: "verified",
+          signer: v.signer_address,
+        });
         expect(BidSchema.safeParse(toBid(v)).success).toBe(true);
         const flips: Partial<Bid>[] = [
           { output: v.bid.output === "0" ? "1" : "0" },
@@ -154,7 +166,8 @@ describe("SolverBid v2 conformance vectors", () => {
           { validUntilMs: v.bid.validUntilMs === 0 ? 1 : v.bid.validUntilMs - 1 },
           { minExclusiveMs: v.bid.minExclusiveMs === 0 ? 1 : v.bid.minExclusiveMs - 1 },
         ];
-        for (const flip of flips) expect(verifyBid({ ...toBid(v), ...flip }), JSON.stringify(flip)).toBe(false);
+        for (const flip of flips)
+          expect(verifyBid({ ...toBid(v), ...flip }), JSON.stringify(flip)).toBe(false);
       });
     });
   }
@@ -167,7 +180,11 @@ describe("SolverBid v2 conformance vectors", () => {
       ethers.toBeHex(SECP256K1_N - BigInt(sig.s), 32),
       new Uint8Array([sig.v === 27 ? 28 : 27]),
     ]);
-    for (const respelled of [highS, sig.compactSerialized, `0x${v.expected_signature.slice(2).toUpperCase()}`]) {
+    for (const respelled of [
+      highS,
+      sig.compactSerialized,
+      `0x${v.expected_signature.slice(2).toUpperCase()}`,
+    ]) {
       const verdict = verifyBidDetailed({ ...toBid(v), signature: respelled });
       expect(verdict.ok).toBe(false);
       expect(verdict.reason).toBe("bad_signature");
@@ -177,7 +194,11 @@ describe("SolverBid v2 conformance vectors", () => {
   it("refuses the v1 domain: a v1-sealed bid does not verify under v2", async () => {
     const v = fixture.vectors[0]!;
     const wallet = new ethers.Wallet(v.signer_private_key);
-    const v1 = await wallet.signTypedData({ name: "RiddlerSolver", version: "1" }, SOLVER_BID_TYPES, v.message);
+    const v1 = await wallet.signTypedData(
+      { name: "RiddlerSolver", version: "1" },
+      SOLVER_BID_TYPES,
+      v.message,
+    );
     expect(verifyBidDetailed({ ...toBid(v), signature: v1 }).reason).toBe("signer_mismatch");
   });
 });

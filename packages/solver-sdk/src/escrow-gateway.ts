@@ -24,9 +24,21 @@
 // nonce; "never retry blindly" is the rule, not a courtesy.
 
 import { ethers } from "ethers";
-import { fillAcceptanceDigest, fillAuthDigest, signFillAcceptance, type FillAcceptance, type Hex } from "@xochi/signer";
+import {
+  fillAcceptanceDigest,
+  fillAuthDigest,
+  signFillAcceptance,
+  type FillAcceptance,
+  type Hex,
+} from "@xochi/signer";
 
-import type { Award, Bid, FillAcceptanceReceipt, IntentAnnouncement, SolverTransport } from "./types";
+import type {
+  Award,
+  Bid,
+  FillAcceptanceReceipt,
+  IntentAnnouncement,
+  SolverTransport,
+} from "./types";
 import {
   EscrowRefusalError,
   checkAwardBond,
@@ -131,7 +143,14 @@ export type TxOutcome =
   // a NEW transaction for it. `from`/`nonce` are the slot it was signed for:
   // only a transaction in that slot can land (`resolveTx`). `hashes`, when
   // given, is every signing of the action in that slot (`txHash` last).
-  | { status: "in_doubt"; txHash: Hex; reason: string; from?: string; nonce?: number; hashes?: Hex[] }
+  | {
+      status: "in_doubt";
+      txHash: Hex;
+      reason: string;
+      from?: string;
+      nonce?: number;
+      hashes?: Hex[];
+    }
   // A fill or claim whose slot was still unmined when chain time reached the
   // last moment it could land (`landBy`: past the FillAuth deadline, at
   // refundableAt), so the slot is being freed: a zero-value self-transfer was
@@ -145,10 +164,22 @@ export type TxOutcome =
   // not the action's -- or call `fill` again for the fillId. It is a no-show
   // only once that resolves `not_sent` (the nonce consumed with the effect
   // absent at that block). `txHash` is the action's latest signing.
-  | { status: "cancelled"; txHash: Hex; hashes: Hex[]; cancelTxHash: Hex; reason: string; from: string; nonce: number };
+  | {
+      status: "cancelled";
+      txHash: Hex;
+      hashes: Hex[];
+      cancelTxHash: Hex;
+      reason: string;
+      from: string;
+      nonce: number;
+    };
 
 // ethers codes for a node that REJECTED the raw transaction outright.
-const DEFINITE_REJECTIONS: Record<string, true> = { INSUFFICIENT_FUNDS: true, NONCE_EXPIRED: true, REPLACEMENT_UNDERPRICED: true };
+const DEFINITE_REJECTIONS: Record<string, true> = {
+  INSUFFICIENT_FUNDS: true,
+  NONCE_EXPIRED: true,
+  REPLACEMENT_UNDERPRICED: true,
+};
 // Node answers ethers leaves UNKNOWN_ERROR. "intrinsic gas too low" fails the
 // pool's validation on every node of the chain, so it is as definite as the
 // codes above (Arbitrum answers it to a 21000-gas transfer).
@@ -165,7 +196,10 @@ function codeOf(err: unknown): unknown {
 // The node's own message, which ethers keeps under `error` (UNKNOWN_ERROR) or
 // `info.error` (the codes it maps).
 function nodeMessage(err: unknown): string {
-  const e = err as { error?: { message?: unknown }; info?: { error?: { message?: unknown } } } | null;
+  const e = err as {
+    error?: { message?: unknown };
+    info?: { error?: { message?: unknown } };
+  } | null;
   const message = e?.error?.message ?? e?.info?.error?.message;
   return typeof message === "string" ? message : "";
 }
@@ -173,7 +207,10 @@ function nodeMessage(err: unknown): string {
 // The broadcast failed with one of those codes or answers: the bytes are in no mempool.
 function definitelyRejected(err: unknown): boolean {
   const code = codeOf(err);
-  return (typeof code === "string" && DEFINITE_REJECTIONS[code] === true) || INTRINSIC_GAS_TOO_LOW.test(nodeMessage(err));
+  return (
+    (typeof code === "string" && DEFINITE_REJECTIONS[code] === true) ||
+    INTRINSIC_GAS_TOO_LOW.test(nodeMessage(err))
+  );
 }
 
 // A same-nonce replacement pays at least this much more (geth and most
@@ -197,7 +234,11 @@ function bumpFee(paid: bigint, floor: bigint): bigint {
 // Not ethers' `maxFeePerGas` (~2 x baseFee + tip), which is a headroom
 // heuristic for a NEW send: against it a send at 21 is "underpriced" the
 // moment the base fee moves 10 -> 11, though it still clears that block.
-function belowInclusion(r: ethers.TransactionLike<string>, baseFee: bigint | null, fees: ethers.FeeData): boolean {
+function belowInclusion(
+  r: ethers.TransactionLike<string>,
+  baseFee: bigint | null,
+  fees: ethers.FeeData,
+): boolean {
   if (r.maxFeePerGas != null) {
     const tip = BigInt(r.maxPriorityFeePerGas ?? 0);
     if (baseFee !== null && BigInt(r.maxFeePerGas) < baseFee + tip) return true;
@@ -207,20 +248,29 @@ function belowInclusion(r: ethers.TransactionLike<string>, baseFee: bigint | nul
 }
 
 function describeRevert(err: unknown): string {
-  const e = err as { revert?: { name: string; args: unknown[] }; shortMessage?: string; message?: string };
+  const e = err as {
+    revert?: { name: string; args: unknown[] };
+    shortMessage?: string;
+    message?: string;
+  };
   if (e?.revert) return `${e.revert.name}(${e.revert.args.map(String).join(", ")})`;
   return e?.shortMessage ?? e?.message ?? String(err);
 }
 
 function providerOf(runner: ethers.Signer): ethers.Provider {
-  if (!runner.provider) throw new Error("escrow gateway: every signer must be connected to a provider");
+  if (!runner.provider)
+    throw new Error("escrow gateway: every signer must be connected to a provider");
   return runner.provider;
 }
 
 // Run `run` after every earlier `run` queued under `key` has settled. `queues`
 // holds each key's tail, which only orders the NEXT run (a run's own failure
 // still reaches its caller); a key is deleted once its queue drains.
-async function queued<T>(queues: Map<string, Promise<unknown>>, key: string, run: () => Promise<T>): Promise<T> {
+async function queued<T>(
+  queues: Map<string, Promise<unknown>>,
+  key: string,
+  run: () => Promise<T>,
+): Promise<T> {
   const prior = queues.get(key) ?? Promise.resolve();
   const mine = prior.then(run, run);
   const tail = mine.catch(() => undefined);
@@ -257,13 +307,22 @@ function pause(ms: number, signal?: AbortSignal): Promise<void> {
 
 // Simulate `approve` through a raw `eth_call` and accept what SafeERC20
 // accepts: no return data (USDT) or exactly `true`. A revert or `false` refuses.
-async function simulateApprove(provider: ethers.Provider, token: string, from: string, spender: string, value: bigint): Promise<void> {
+async function simulateApprove(
+  provider: ethers.Provider,
+  token: string,
+  from: string,
+  spender: string,
+  value: bigint,
+): Promise<void> {
   const data = new ethers.Interface(APPROVE_ABI).encodeFunctionData("approve", [spender, value]);
   let returned: string;
   try {
     returned = await provider.call({ to: token, from, data });
   } catch (err) {
-    throw new EscrowRefusalError("simulation_failed", `approve would revert: ${describeRevert(err)}`);
+    throw new EscrowRefusalError(
+      "simulation_failed",
+      `approve would revert: ${describeRevert(err)}`,
+    );
   }
   if (returned !== "0x" && returned.toLowerCase() !== ABI_TRUE) {
     throw new EscrowRefusalError("simulation_failed", `approve would return ${returned}, not true`);
@@ -473,7 +532,11 @@ export interface AcceptOptions {
   // If it throws, nothing is posted and `accept` rethrows its error; the
   // signature stays recorded, so the fill is still treated as accepted and a
   // retried `accept` calls `onSigned` again and posts the same bytes.
-  onSigned?: (signed: { acceptance: FillAcceptance; digest: Hex; signature: Hex }) => void | Promise<void>;
+  onSigned?: (signed: {
+    acceptance: FillAcceptance;
+    digest: Hex;
+    signature: Hex;
+  }) => void | Promise<void>;
 }
 
 export interface VerifiedAttestation {
@@ -528,7 +591,10 @@ export class OnchainEscrowGateway {
   // POST: from then on the fill is owed. Process-local like `inDoubt`; a
   // restarted solver re-registers each persisted one (`restoreAcceptance`,
   // which records no signature) or re-runs `accept(prepared, { resume: true })`.
-  private readonly accepted = new Map<string, { acceptance: FillAcceptance; digest: Hex; signature: Hex | null }>();
+  private readonly accepted = new Map<
+    string,
+    { acceptance: FillAcceptance; digest: Hex; signature: Hex | null }
+  >();
   // The one fillId (and FillAuth digest) accepted per lowercased orderId. The
   // lock repays ONE fill: a second award for the same order under a fresh
   // fillId -- the salt is the venue's, so a solver cannot tie a fillId to its
@@ -539,7 +605,10 @@ export class OnchainEscrowGateway {
   // await, so two `accept` calls for one order cannot both pass the `accepted`
   // checks and sign two acceptances over two different FillAuths: one of them
   // would be a slashable no-show the moment the other is filled.
-  private readonly accepting = new Map<string, { fillId: string; digest: Hex; done: Promise<unknown> }>();
+  private readonly accepting = new Map<
+    string,
+    { fillId: string; digest: Hex; done: Promise<unknown> }
+  >();
   // fillIds with a `fill` in progress in this process, and the fills this
   // gateway saw confirm. One award may reach `fill` twice (the venue
   // re-publishes an award until it records the delivery, Riddler#1250): the
@@ -551,7 +620,10 @@ export class OnchainEscrowGateway {
   // holds back the ones not yet landed from the balance a new fill may count
   // on: a second acceptance against inventory the first still owes reverts
   // its fill, and an accepted no-show is slashed.
-  private readonly owedFills = new Map<string, { chainId: bigint; token: string; amount: bigint; deadline: bigint }>();
+  private readonly owedFills = new Map<
+    string,
+    { chainId: bigint; token: string; amount: bigint; deadline: bigint }
+  >();
   // One inventory reservation at a time per `${destinationChainId}:${token}`
   // (lowercased): two `accept`s for different orders of one token that both
   // read the balance and `owedFills` before either records itself would both
@@ -568,7 +640,9 @@ export class OnchainEscrowGateway {
     this.now = opts.now ?? (() => Date.now());
     this.receiptTimeoutMs = opts.receiptTimeoutMs ?? 120_000;
     this.receiptPollMs = opts.receiptPollMs ?? 2_000;
-    this.warn = opts.onWarning ?? ((message, orderId) => console.warn(`escrow gateway ${orderId}: ${message}`));
+    this.warn =
+      opts.onWarning ??
+      ((message, orderId) => console.warn(`escrow gateway ${orderId}: ${message}`));
   }
 
   // Verify an award end to end before any inventory moves: resolve its origin,
@@ -578,7 +652,10 @@ export class OnchainEscrowGateway {
   // FillAuth to be signed by a key the trusted RiddlerFiller accepts.
   async prepare(award: Award, p: PrepareOptions): Promise<PreparedFill> {
     const env = requireFillableEscrow(award);
-    if (p.bid.auctionId !== award.auctionId || p.bid.orderId.toLowerCase() !== env.intentRef.toLowerCase()) {
+    if (
+      p.bid.auctionId !== award.auctionId ||
+      p.bid.orderId.toLowerCase() !== env.intentRef.toLowerCase()
+    ) {
       throw new EscrowRefusalError(
         "announcement_mismatch",
         `award ${award.auctionId} for order ${env.intentRef} is not the bid this solver signed (${p.bid.auctionId}, ${p.bid.orderId})`,
@@ -617,7 +694,9 @@ export class OnchainEscrowGateway {
     // No lock is worth waiting for past the last moment the fill could land
     // under its FillAuth: `SolverClient.run` awaits this, so an unbounded wait
     // stalls bidding on every other announcement.
-    const fillableForMs = Number((BigInt(env.fillAuth.deadline) - BigInt(this.opts.fillInclusionSec ?? 60)) * 1000n) - this.now();
+    const fillableForMs =
+      Number((BigInt(env.fillAuth.deadline) - BigInt(this.opts.fillInclusionSec ?? 60)) * 1000n) -
+      this.now();
     const timeoutMs = Math.max(0, Math.min(p.timeoutMs ?? 45 * 60_000, fillableForMs));
     const lock = await this.awaitOpenedFinal(env.intentRef, originChainId, { ...p, timeoutMs });
 
@@ -628,16 +707,28 @@ export class OnchainEscrowGateway {
       // The CURRENT claimWindow (SOLVER-RFC §7.1): the one in force at open is
       // an archive read most RPCs cannot serve. A window changed since the open
       // derives a deadline the orderId does not reproduce, and that refuses.
-      const escrow = new ethers.Contract(origin.escrow, RIDDLER_ESCROW_ABI, providerOf(origin.signer));
+      const escrow = new ethers.Contract(
+        origin.escrow,
+        RIDDLER_ESCROW_ABI,
+        providerOf(origin.signer),
+      );
       const claimWindow: bigint = await escrow.getFunction("claimWindow")();
-      originTerms = originTermsFromLock(lock, { originChainId, escrow: origin.escrow, claimWindow });
+      originTerms = originTermsFromLock(lock, {
+        originChainId,
+        escrow: origin.escrow,
+        claimWindow,
+      });
     }
 
     const verified = verify(originTerms, solver);
     checkLockMatchesTerms(lock, verified.terms);
 
     const fillAuthSigner = recoverFillAuthSigner(verified);
-    const filler = new ethers.Contract(dest.fillerContract, RIDDLER_FILLER_ABI, providerOf(dest.signer));
+    const filler = new ethers.Contract(
+      dest.fillerContract,
+      RIDDLER_FILLER_ABI,
+      providerOf(dest.signer),
+    );
     if (!(await filler.getFunction("isFillAuthorizer")(fillAuthSigner))) {
       throw new EscrowRefusalError(
         "fill_auth_mismatch",
@@ -692,7 +783,10 @@ export class OnchainEscrowGateway {
     const digest = fillAuthDigest(prepared.fillAuthDomain, prepared.fillAuth);
     const inFlight = this.accepting.get(order);
     if (inFlight) {
-      if (inFlight.fillId.toLowerCase() !== prepared.fillId.toLowerCase() || digest !== inFlight.digest) {
+      if (
+        inFlight.fillId.toLowerCase() !== prepared.fillId.toLowerCase() ||
+        digest !== inFlight.digest
+      ) {
         throw new EscrowRefusalError(
           "fill_auth_mismatch",
           `FillAuth ${digest} for fillId ${prepared.fillId} while this gateway is accepting ${inFlight.digest} for fillId ${inFlight.fillId} of order ${prepared.orderId}`,
@@ -742,7 +836,11 @@ export class OnchainEscrowGateway {
     const order = prepared.orderId.toLowerCase();
     const digest = fillAuthDigest(prepared.fillAuthDomain, prepared.fillAuth);
     const inFlight = this.accepting.get(order);
-    if (inFlight && (inFlight.fillId.toLowerCase() !== prepared.fillId.toLowerCase() || inFlight.digest !== digest)) {
+    if (
+      inFlight &&
+      (inFlight.fillId.toLowerCase() !== prepared.fillId.toLowerCase() ||
+        inFlight.digest !== digest)
+    ) {
       throw new EscrowRefusalError(
         "fill_auth_mismatch",
         `FillAuth ${digest} for fillId ${prepared.fillId} while this gateway is accepting ${inFlight.digest} for fillId ${inFlight.fillId} of order ${prepared.orderId}`,
@@ -756,7 +854,11 @@ export class OnchainEscrowGateway {
       return;
     }
     const acceptance = fillAcceptanceFor(prepared);
-    this.accepted.set(prepared.fillId, { acceptance, digest: fillAcceptanceDigest(prepared.bondDomain, acceptance), signature: null });
+    this.accepted.set(prepared.fillId, {
+      acceptance,
+      digest: fillAcceptanceDigest(prepared.bondDomain, acceptance),
+      signature: null,
+    });
     this.acceptedOrders.set(order, { fillId: prepared.fillId, fillAuthDigest: digest });
     this.recordOwedFill(prepared);
   }
@@ -774,7 +876,11 @@ export class OnchainEscrowGateway {
   // The FillAuth names this signer as filler and asks no more than this solver bid.
   private requireOwnFillAuth(prepared: PreparedFill, self: string): void {
     if (self.toLowerCase() !== prepared.fillAuth.filler.toLowerCase()) {
-      throw new EscrowRefusalError("fill_auth_mismatch", `FillAuth names filler ${prepared.fillAuth.filler}, this signer is ${self}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "fill_auth_mismatch",
+        `FillAuth names filler ${prepared.fillAuth.filler}, this signer is ${self}`,
+        prepared.orderId,
+      );
     }
     if (BigInt(prepared.fillAuth.amount) > prepared.bidOutput) {
       throw new EscrowRefusalError(
@@ -810,7 +916,9 @@ export class OnchainEscrowGateway {
     const sign = async () => {
       const acceptance = fillAcceptanceFor(prepared);
       const digest = fillAcceptanceDigest(prepared.bondDomain, acceptance);
-      const signature = (await signFillAcceptance(dest.signer, prepared.bondDomain, acceptance)).toLowerCase() as Hex;
+      const signature = (
+        await signFillAcceptance(dest.signer, prepared.bondDomain, acceptance)
+      ).toLowerCase() as Hex;
       const signed = { acceptance, digest, signature };
       // Recorded BEFORE the POST: the obligation starts when the bytes leave.
       this.accepted.set(prepared.fillId, signed);
@@ -828,7 +936,10 @@ export class OnchainEscrowGateway {
       : await queued(this.acceptQueues, key, async () => {
           const fillInclusionSec = this.opts.fillInclusionSec ?? 60;
           const acceptBudgetSec = this.opts.acceptBudgetSec ?? 15;
-          const nowSec = await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer), providerOf(dest.signer)]);
+          const nowSec = await this.nowSec([
+            providerOf(this.origin(prepared.originChainId, prepared.orderId).signer),
+            providerOf(dest.signer),
+          ]);
           // Past `acceptBy` the venue refuses the acceptance and gives the order to
           // the reserve (no slash, the award is lost). Refuse while nothing is out
           // rather than sign an acceptance that may land after the window.
@@ -847,7 +958,12 @@ export class OnchainEscrowGateway {
           });
           await this.fillPreflight(prepared, dest, true);
           const unclaimable = await this.claimReadiness(prepared);
-          if (unclaimable) throw new EscrowRefusalError(unclaimable.code, `${unclaimable.message}; not accepting`, prepared.orderId);
+          if (unclaimable)
+            throw new EscrowRefusalError(
+              unclaimable.code,
+              `${unclaimable.message}; not accepting`,
+              prepared.orderId,
+            );
           return sign();
         });
     // Outside the slot: `owedFills` already holds this fill, and a caller's
@@ -888,20 +1004,35 @@ export class OnchainEscrowGateway {
     try {
       // Never past the point the fill itself must start.
       const untilFillMs =
-        (Number(prepared.fillAuth.deadline) - (this.opts.fillInclusionSec ?? 60)) * 1000 - this.now();
+        (Number(prepared.fillAuth.deadline) - (this.opts.fillInclusionSec ?? 60)) * 1000 -
+        this.now();
       const timeoutMs = Math.min(this.opts.acceptTimeoutMs ?? 10_000, Math.max(1_000, untilFillMs));
-      const bounded = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+      const bounded = AbortSignal.any([
+        AbortSignal.timeout(timeoutMs),
+        ...(signal ? [signal] : []),
+      ]);
       const receipt = await this.opts.acceptances!.acceptAward(
         prepared.auctionId,
         { orderId: prepared.orderId, signature: signed.signature },
         bounded,
       );
-      status = classifyAcceptanceReceipt(prepared, receipt, signed.digest, await dest.signer.getAddress());
+      status = classifyAcceptanceReceipt(
+        prepared,
+        receipt,
+        signed.digest,
+        await dest.signer.getAddress(),
+      );
     } catch (err) {
-      status = { status: "unacknowledged", detail: err instanceof Error ? err.message : String(err) };
+      status = {
+        status: "unacknowledged",
+        detail: err instanceof Error ? err.message : String(err),
+      };
     }
     if (status.status !== "recorded") {
-      this.warn(`acceptance sent but ${status.status} (${status.detail}); the fill is owed regardless`, prepared.orderId);
+      this.warn(
+        `acceptance sent but ${status.status} (${status.detail}); the fill is owed regardless`,
+        prepared.orderId,
+      );
     }
     return status;
   }
@@ -931,7 +1062,14 @@ export class OnchainEscrowGateway {
       const logs: ethers.Log[] = [];
       for (let from = fromBlock; from <= head; from += maxRange) {
         const to = Math.min(head, from + maxRange - 1);
-        logs.push(...(await provider.getLogs({ address: origin.escrow, topics: [OPENED_TOPIC, orderId], fromBlock: from, toBlock: to })));
+        logs.push(
+          ...(await provider.getLogs({
+            address: origin.escrow,
+            topics: [OPENED_TOPIC, orderId],
+            fromBlock: from,
+            toBlock: to,
+          })),
+        );
       }
       const live = logs.filter((l) => !l.removed);
       if (live.length > 1) {
@@ -955,7 +1093,11 @@ export class OnchainEscrowGateway {
         }
       }
       if (this.now() >= deadline) {
-        throw new EscrowRefusalError("not_final", `Opened(${orderId}) not final before timeout: ${lastSeen}`, orderId);
+        throw new EscrowRefusalError(
+          "not_final",
+          `Opened(${orderId}) not final before timeout: ${lastSeen}`,
+          orderId,
+        );
       }
       await pause(pollMs);
     }
@@ -990,7 +1132,11 @@ export class OnchainEscrowGateway {
     this.requireOneFillPerOrder(prepared);
     const sent = this.accepted.get(prepared.fillId);
     if (!sent) {
-      throw new EscrowRefusalError("not_accepted", `fillId ${prepared.fillId} was never accepted; call accept first`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "not_accepted",
+        `fillId ${prepared.fillId} was never accepted; call accept first`,
+        prepared.orderId,
+      );
     }
     // Only the FillAuth this solver signed for, at no more than it bid: an
     // accepted fillId is not a licence to send another FillAuth for it.
@@ -1014,7 +1160,10 @@ export class OnchainEscrowGateway {
     try {
       const outcome = await this.sendFill(prepared);
       if (outcome.status === "confirmed") {
-        this.landed.set(prepared.fillId, { txHash: outcome.txHash, blockNumber: outcome.blockNumber });
+        this.landed.set(prepared.fillId, {
+          txHash: outcome.txHash,
+          blockNumber: outcome.blockNumber,
+        });
         this.owedFills.delete(prepared.fillId);
       }
       return outcome;
@@ -1038,16 +1187,25 @@ export class OnchainEscrowGateway {
     );
     const destNow = await this.nowSec([provider], false);
     if (destNow > BigInt(a.deadline)) {
-      throw new EscrowRefusalError("auth_expired", `destination time ${destNow} is past the FillAuth deadline ${a.deadline}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "auth_expired",
+        `destination time ${destNow} is past the FillAuth deadline ${a.deadline}`,
+        prepared.orderId,
+      );
     }
     // Advisory only: the acceptance is out, so neither a short budget nor an
     // unreadable origin may stop the fill. Without the origin's time the
     // window is judged on the destination's and the local clock.
     let windowNow: bigint;
     try {
-      windowNow = await this.nowSec([providerOf(this.origin(prepared.originChainId, prepared.orderId).signer)]);
+      windowNow = await this.nowSec([
+        providerOf(this.origin(prepared.originChainId, prepared.orderId).signer),
+      ]);
     } catch (err) {
-      this.warn(`could not read the origin time (${describeRevert(err)}); the acceptance is out, so the fill is sent anyway`, prepared.orderId);
+      this.warn(
+        `could not read the origin time (${describeRevert(err)}); the acceptance is out, so the fill is sent anyway`,
+        prepared.orderId,
+      );
       windowNow = BigInt(Math.floor(this.now() / 1000));
     }
     if (destNow > windowNow) windowNow = destNow;
@@ -1060,7 +1218,10 @@ export class OnchainEscrowGateway {
       });
     } catch (err) {
       if (!(err instanceof EscrowRefusalError)) throw err;
-      this.warn(`filling on a short budget (${err.message}); the acceptance is out, so the fill is sent anyway`, prepared.orderId);
+      this.warn(
+        `filling on a short budget (${err.message}); the acceptance is out, so the fill is sent anyway`,
+        prepared.orderId,
+      );
     }
     const filler = await this.fillPreflight(prepared, dest);
     // Owed now: a claim that cannot be paid for or is paused is a reason to top
@@ -1068,15 +1229,29 @@ export class OnchainEscrowGateway {
     // be slashed for the no-show. Even an unreadable origin is only a warning.
     try {
       const unclaimable = await this.claimReadiness(prepared);
-      if (unclaimable) this.warn(`${unclaimable.message}; the acceptance is out, so the fill is sent anyway`, prepared.orderId);
+      if (unclaimable)
+        this.warn(
+          `${unclaimable.message}; the acceptance is out, so the fill is sent anyway`,
+          prepared.orderId,
+        );
     } catch (err) {
-      this.warn(`could not check the origin claim path (${describeRevert(err)}); the acceptance is out, so the fill is sent anyway`, prepared.orderId);
+      this.warn(
+        `could not check the origin claim path (${describeRevert(err)}); the acceptance is out, so the fill is sent anyway`,
+        prepared.orderId,
+      );
     }
     return this.send({
       signer: dest.signer,
       contract: filler,
       method: "fill",
-      args: [prepared.fillId, a.to, a.token, BigInt(a.amount), BigInt(a.deadline), prepared.fillAuthSignature],
+      args: [
+        prepared.fillId,
+        a.to,
+        a.token,
+        BigInt(a.amount),
+        BigInt(a.deadline),
+        prepared.fillAuthSignature,
+      ],
       inDoubtKey: `fill:${prepared.fillId}`,
       orderId: prepared.orderId,
       landBy: BigInt(a.deadline) + 1n,
@@ -1102,12 +1277,20 @@ export class OnchainEscrowGateway {
   // `reserveOwed` (from `accept` only) also holds back the inventory this
   // gateway's other accepted fills of the token still owe. Never from `fill`:
   // once accepted, refusing the fill is the no-show itself.
-  private async fillPreflight(prepared: PreparedFill, dest: DestinationChainConfig, reserveOwed = false): Promise<ethers.Contract> {
+  private async fillPreflight(
+    prepared: PreparedFill,
+    dest: DestinationChainConfig,
+    reserveOwed = false,
+  ): Promise<ethers.Contract> {
     const provider = providerOf(dest.signer);
     const filler = new ethers.Contract(dest.fillerContract, RIDDLER_FILLER_ABI, provider);
     const a = prepared.fillAuth;
     if (await filler.getFunction("filled")(prepared.fillId)) {
-      throw new EscrowRefusalError("already_filled", `fillId ${prepared.fillId} is already filled`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "already_filled",
+        `fillId ${prepared.fillId} is already filled`,
+        prepared.orderId,
+      );
     }
     const self = await dest.signer.getAddress();
     const erc20 = new ethers.Contract(a.token, ERC20_ABI, provider);
@@ -1133,9 +1316,20 @@ export class OnchainEscrowGateway {
       await filler
         .connect(dest.signer)
         .getFunction("fill")
-        .staticCall(prepared.fillId, a.to, a.token, amount, BigInt(a.deadline), prepared.fillAuthSignature);
+        .staticCall(
+          prepared.fillId,
+          a.to,
+          a.token,
+          amount,
+          BigInt(a.deadline),
+          prepared.fillAuthSignature,
+        );
     } catch (err) {
-      throw new EscrowRefusalError("simulation_failed", `fill would revert: ${describeRevert(err)}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "simulation_failed",
+        `fill would revert: ${describeRevert(err)}`,
+        prepared.orderId,
+      );
     }
     return filler;
   }
@@ -1143,11 +1337,19 @@ export class OnchainEscrowGateway {
   // The inventory of `prepared`'s token on its destination that this gateway's
   // other accepted fills still owe: not seen landing here, not past their
   // FillAuth deadline by destination time, and not `filled` on chain.
-  private async owedInventory(prepared: PreparedFill, filler: ethers.Contract, provider: ethers.Provider): Promise<bigint> {
+  private async owedInventory(
+    prepared: PreparedFill,
+    filler: ethers.Contract,
+    provider: ethers.Provider,
+  ): Promise<bigint> {
     const chainId = BigInt(prepared.destinationChainId);
     const token = prepared.fillAuth.token.toLowerCase();
     const candidates = [...this.owedFills].filter(
-      ([fillId, f]) => fillId !== prepared.fillId && f.chainId === chainId && f.token === token && !this.landed.has(fillId),
+      ([fillId, f]) =>
+        fillId !== prepared.fillId &&
+        f.chainId === chainId &&
+        f.token === token &&
+        !this.landed.has(fillId),
     );
     if (candidates.length === 0) return 0n;
     const now = await this.nowSec([provider], false);
@@ -1170,7 +1372,9 @@ export class OnchainEscrowGateway {
   // and the claim signer able to pay for one claim. `accept` refuses on it
   // (SOLVER-RFC §7.1 step 4: MUST NOT accept); after acceptance `fill` only
   // warns, since the fill is owed and the claim loop retries.
-  private async claimReadiness(prepared: PreparedFill): Promise<{ code: EscrowRefusal; message: string } | null> {
+  private async claimReadiness(
+    prepared: PreparedFill,
+  ): Promise<{ code: EscrowRefusal; message: string } | null> {
     const origin = this.origin(prepared.originChainId, prepared.orderId);
     const originProvider = providerOf(origin.signer);
     const escrow = new ethers.Contract(origin.escrow, RIDDLER_ESCROW_ABI, originProvider);
@@ -1183,10 +1387,16 @@ export class OnchainEscrowGateway {
     // The claim is the only way this fill is repaid, and it is sent from the
     // ORIGIN signer: without gas there, the fill lands and the lock refunds.
     const claimer = await origin.signer.getAddress();
-    const [gasBalance, fees] = await Promise.all([originProvider.getBalance(claimer), originProvider.getFeeData()]);
+    const [gasBalance, fees] = await Promise.all([
+      originProvider.getBalance(claimer),
+      originProvider.getFeeData(),
+    ]);
     const maxFee = fees.maxFeePerGas ?? fees.gasPrice;
     if (maxFee === null) {
-      return { code: "insufficient_claim_gas", message: `origin chain ${prepared.originChainId} serves no fee data to budget the claim` };
+      return {
+        code: "insufficient_claim_gas",
+        message: `origin chain ${prepared.originChainId} serves no fee data to budget the claim`,
+      };
     }
     const claimCost = (this.opts.claimGasBudget ?? CLAIM_GAS_BUDGET) * maxFee;
     if (gasBalance < claimCost) {
@@ -1201,15 +1411,23 @@ export class OnchainEscrowGateway {
   // `blockTag` reads the flag as of that block (`resolveTx`'s effect check).
   async isFilled(prepared: PreparedFill, blockTag?: number): Promise<boolean> {
     const dest = this.destination(prepared.destinationChainId, prepared.orderId);
-    const filled = new ethers.Contract(dest.fillerContract, RIDDLER_FILLER_ABI, providerOf(dest.signer)).getFunction("filled");
+    const filled = new ethers.Contract(
+      dest.fillerContract,
+      RIDDLER_FILLER_ABI,
+      providerOf(dest.signer),
+    ).getFunction("filled");
     return blockTag === undefined ? filled(prepared.fillId) : filled(prepared.fillId, { blockTag });
   }
 
   // The venue's FillAttestation, verified: the payee is this solver's, the
   // domain is the lock's own verifier, the proof re-encodes, and the recovered
   // signer is an ACTIVE attester on that verifier. Null while none is served.
-  async fetchAttestation(prepared: PreparedFill, signal?: AbortSignal): Promise<VerifiedAttestation | null> {
-    if (!this.opts.attestations) throw new Error("escrow gateway: no attestation source configured");
+  async fetchAttestation(
+    prepared: PreparedFill,
+    signal?: AbortSignal,
+  ): Promise<VerifiedAttestation | null> {
+    if (!this.opts.attestations)
+      throw new Error("escrow gateway: no attestation source configured");
     const wire = await this.opts.attestations.getAttestation(prepared.orderId, signal);
     if (!wire) return null;
     const { proof, attester } = verifyAttestation(wire, {
@@ -1219,7 +1437,11 @@ export class OnchainEscrowGateway {
       verifier: prepared.lock.verifier,
     });
     const origin = this.origin(prepared.originChainId, prepared.orderId);
-    const verifier = new ethers.Contract(prepared.lock.verifier, ATTESTED_FILL_VERIFIER_ABI, providerOf(origin.signer));
+    const verifier = new ethers.Contract(
+      prepared.lock.verifier,
+      ATTESTED_FILL_VERIFIER_ABI,
+      providerOf(origin.signer),
+    );
     if (!(await verifier.getFunction("isAttester")(attester))) {
       throw new EscrowRefusalError(
         "attestation_mismatch",
@@ -1241,10 +1463,18 @@ export class OnchainEscrowGateway {
     await this.guardInDoubtClaim(prepared);
     const status = await this.lockStatus(prepared);
     if (status === LockStatus.Claimed) {
-      throw new EscrowRefusalError("already_claimed", `lock ${prepared.orderId} is already claimed`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "already_claimed",
+        `lock ${prepared.orderId} is already claimed`,
+        prepared.orderId,
+      );
     }
     if (status !== LockStatus.Open) {
-      throw new EscrowRefusalError("lock_not_open", `lock ${prepared.orderId} has status ${status}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "lock_not_open",
+        `lock ${prepared.orderId} has status ${status}`,
+        prepared.orderId,
+      );
     }
     const checkWindow = async () => {
       const landsBy = (await this.nowSec([provider])) + BigInt(this.opts.claimInclusionSec ?? 60);
@@ -1259,12 +1489,23 @@ export class OnchainEscrowGateway {
     await checkWindow();
     let payee: string;
     try {
-      payee = await escrow.connect(origin.signer).getFunction("claim").staticCall(prepared.orderId, attestation.proof);
+      payee = await escrow
+        .connect(origin.signer)
+        .getFunction("claim")
+        .staticCall(prepared.orderId, attestation.proof);
     } catch (err) {
-      throw new EscrowRefusalError("simulation_failed", `claim would revert: ${describeRevert(err)}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "simulation_failed",
+        `claim would revert: ${describeRevert(err)}`,
+        prepared.orderId,
+      );
     }
     if (payee.toLowerCase() !== prepared.payee.toLowerCase()) {
-      throw new EscrowRefusalError("attestation_mismatch", `claim would pay ${payee}, expected ${prepared.payee}`, prepared.orderId);
+      throw new EscrowRefusalError(
+        "attestation_mismatch",
+        `claim would pay ${payee}, expected ${prepared.payee}`,
+        prepared.orderId,
+      );
     }
     return this.send({
       signer: origin.signer,
@@ -1309,8 +1550,12 @@ export class OnchainEscrowGateway {
   // and gets its result (its `signal`, `pollMs` and `onEvent` are the first
   // caller's), so a fill observed twice -- an award delivered twice, or an
   // in-doubt fill's observer racing a re-sent one -- never claims twice.
-  async claimUntilRefundable(prepared: PreparedFill, o: ClaimLoopOptions = {}): Promise<ClaimLoopResult> {
-    if (!this.opts.attestations) throw new Error("escrow gateway: no attestation source configured");
+  async claimUntilRefundable(
+    prepared: PreparedFill,
+    o: ClaimLoopOptions = {},
+  ): Promise<ClaimLoopResult> {
+    if (!this.opts.attestations)
+      throw new Error("escrow gateway: no attestation source configured");
     const key = prepared.orderId.toLowerCase();
     const running = this.claimLoops.get(key);
     if (running) return running;
@@ -1323,7 +1568,10 @@ export class OnchainEscrowGateway {
     }
   }
 
-  private async runClaimLoop(prepared: PreparedFill, o: ClaimLoopOptions): Promise<ClaimLoopResult> {
+  private async runClaimLoop(
+    prepared: PreparedFill,
+    o: ClaimLoopOptions,
+  ): Promise<ClaimLoopResult> {
     const provider = providerOf(this.origin(prepared.originChainId, prepared.orderId).signer);
     const pollMs = o.pollMs ?? 15_000;
     const maxBackoffMs = o.maxBackoffMs ?? 120_000;
@@ -1337,14 +1585,17 @@ export class OnchainEscrowGateway {
       if (o.signal?.aborted) return { status: "aborted" };
       // The local clock bounds the loop even when every RPC read fails; the
       // chain-aware `nowSec` below can only end it sooner.
-      if (BigInt(Math.floor(this.now() / 1000)) >= lastSendSec) return this.afterWindow(prepared, say);
+      if (BigInt(Math.floor(this.now() / 1000)) >= lastSendSec)
+        return this.afterWindow(prepared, say);
       let delayMs = pollMs;
       try {
         const status = await this.lockStatus(prepared);
         if (status === LockStatus.Claimed) return await this.whoClaimed(prepared);
         if (status === LockStatus.Refunded) return { status: "lock_not_open", lockStatus: status };
         if (status !== LockStatus.Open) {
-          throw new Error(`lock reads status ${status}; prepare saw it Open at a safe block, so this node is lagging or misrouted`);
+          throw new Error(
+            `lock reads status ${status}; prepare saw it Open at a safe block, so this node is lagging or misrouted`,
+          );
         }
         const chainNow = await this.nowSec([provider]);
         aheadMs = Math.max(0, Number(chainNow) * 1000 - this.now());
@@ -1355,7 +1606,9 @@ export class OnchainEscrowGateway {
           attestation = (await this.fetchAttestation(prepared, o.signal)) ?? verified;
         } catch (err) {
           if (!verified) throw err;
-          say(`attestation source failed (${err instanceof Error ? err.message : String(err)}); claiming with the one verified earlier`);
+          say(
+            `attestation source failed (${err instanceof Error ? err.message : String(err)}); claiming with the one verified earlier`,
+          );
           attestation = verified;
         }
         verified = attestation;
@@ -1386,7 +1639,8 @@ export class OnchainEscrowGateway {
       // what is left instead (never below 1s; with under 1s left, sleep to the
       // end), so a final attempt runs within the window's last two seconds.
       const leftMs = Number(lastSendSec) * 1000 - (this.now() + aheadMs);
-      if (delayMs >= leftMs) delayMs = Math.max(0, Math.min(leftMs, Math.max(1_000, Math.floor(leftMs / 2))));
+      if (delayMs >= leftMs)
+        delayMs = Math.max(0, Math.min(leftMs, Math.max(1_000, Math.floor(leftMs / 2))));
       await pause(delayMs, o.signal);
     }
   }
@@ -1394,8 +1648,14 @@ export class OnchainEscrowGateway {
   // The window has shut. One best-effort look at the lock first: a late claim
   // can go in doubt and still land, and "the fill was lost" must not be
   // reported over a lock that reads Claimed.
-  private async afterWindow(prepared: PreparedFill, say: (message: string) => void): Promise<ClaimLoopResult> {
-    const closed: ClaimLoopResult = { status: "window_closed", reason: `no claim landed before refundableAt ${prepared.lock.refundableAt}` };
+  private async afterWindow(
+    prepared: PreparedFill,
+    say: (message: string) => void,
+  ): Promise<ClaimLoopResult> {
+    const closed: ClaimLoopResult = {
+      status: "window_closed",
+      reason: `no claim landed before refundableAt ${prepared.lock.refundableAt}`,
+    };
     try {
       const status = await this.lockStatus(prepared);
       if (status === LockStatus.Refunded) return { status: "lock_not_open", lockStatus: status };
@@ -1407,7 +1667,10 @@ export class OnchainEscrowGateway {
     try {
       return await this.whoClaimed(prepared);
     } catch (err) {
-      return { status: "claimed_unverified", reason: `lock reads Claimed, but ${describeRevert(err)}` };
+      return {
+        status: "claimed_unverified",
+        reason: `lock reads Claimed, but ${describeRevert(err)}`,
+      };
     }
   }
 
@@ -1423,7 +1686,12 @@ export class OnchainEscrowGateway {
     const head = await provider.getBlockNumber();
     for (let from = prepared.lock.blockNumber; from <= head; from += maxRange) {
       const to = Math.min(head, from + maxRange - 1);
-      const logs = await provider.getLogs({ address: origin.escrow, topics: [CLAIMED_TOPIC, prepared.orderId], fromBlock: from, toBlock: to });
+      const logs = await provider.getLogs({
+        address: origin.escrow,
+        topics: [CLAIMED_TOPIC, prepared.orderId],
+        fromBlock: from,
+        toBlock: to,
+      });
       for (const log of logs) {
         if (log.removed) continue;
         const parsed = escrow.interface.parseLog(log);
@@ -1435,13 +1703,24 @@ export class OnchainEscrowGateway {
           : { status: "claimed_by_other", payee, txHash };
       }
     }
-    throw new Error(`lock ${prepared.orderId} reads Claimed but no Claimed event is visible in blocks ${prepared.lock.blockNumber}..${head}`);
+    throw new Error(
+      `lock ${prepared.orderId} reads Claimed but no Claimed event is visible in blocks ${prepared.lock.blockNumber}..${head}`,
+    );
   }
 
-  async lockStatus(prepared: Pick<PreparedFill, "orderId" | "originChainId">, blockTag?: number): Promise<number> {
+  async lockStatus(
+    prepared: Pick<PreparedFill, "orderId" | "originChainId">,
+    blockTag?: number,
+  ): Promise<number> {
     const origin = this.origin(prepared.originChainId, prepared.orderId);
-    const locks = new ethers.Contract(origin.escrow, RIDDLER_ESCROW_ABI, providerOf(origin.signer)).getFunction("locks");
-    const lock = await (blockTag === undefined ? locks(prepared.orderId) : locks(prepared.orderId, { blockTag }));
+    const locks = new ethers.Contract(
+      origin.escrow,
+      RIDDLER_ESCROW_ABI,
+      providerOf(origin.signer),
+    ).getFunction("locks");
+    const lock = await (blockTag === undefined
+      ? locks(prepared.orderId)
+      : locks(prepared.orderId, { blockTag }));
     return Number(lock.status);
   }
 
@@ -1463,10 +1742,15 @@ export class OnchainEscrowGateway {
     effect?: (blockTag: number) => Promise<boolean>,
   ): Promise<TxOutcome> {
     const hashes: Hex[] = typeof txHash === "string" ? [txHash] : [...txHash];
-    if (hashes.length === 0) throw new Error("escrow gateway: resolveTx needs at least one transaction hash");
-    const signer = this.opts.destinations[Number(chainId)]?.signer ?? this.opts.origins[Number(chainId)]?.signer;
+    if (hashes.length === 0)
+      throw new Error("escrow gateway: resolveTx needs at least one transaction hash");
+    const signer =
+      this.opts.destinations[Number(chainId)]?.signer ?? this.opts.origins[Number(chainId)]?.signer;
     if (!signer) throw new Error(`escrow gateway: chain ${chainId} is not configured`);
-    const known = slot?.from !== undefined && slot.nonce !== undefined ? { from: slot.from, nonce: slot.nonce } : undefined;
+    const known =
+      slot?.from !== undefined && slot.nonce !== undefined
+        ? { from: slot.from, nonce: slot.nonce }
+        : undefined;
     return this.resolveSlot(providerOf(signer), hashes, known, effect);
   }
 
@@ -1493,10 +1777,18 @@ export class OnchainEscrowGateway {
     if (landed) return landed;
     if (consumedBy === null || !slot) return pending("no receipt yet");
     const consumed = `nonce ${slot.nonce} of ${slot.from} was consumed by block ${consumedBy} and no receipt for ${hashes.join(", ")} is served`;
-    if (!effect) return pending(`${consumed}; without an effect check that does not prove it never landed`);
-    if (await effect(consumedBy)) return pending(`${consumed}, but its effect is on chain at that block: it landed`);
+    if (!effect)
+      return pending(`${consumed}; without an effect check that does not prove it never landed`);
+    if (await effect(consumedBy))
+      return pending(`${consumed}, but its effect is on chain at that block: it landed`);
     // One more look: the receipt may have been indexed since the first read.
-    return (await this.receiptOf(provider, hashes)) ?? { status: "not_sent", txHash, reason: `${consumed} and its effect is absent at that block; it can never land` };
+    return (
+      (await this.receiptOf(provider, hashes)) ?? {
+        status: "not_sent",
+        txHash,
+        reason: `${consumed} and its effect is absent at that block; it can never land`,
+      }
+    );
   }
 
   private async receiptOf(provider: ethers.Provider, hashes: Hex[]): Promise<TxOutcome | null> {
@@ -1528,11 +1820,19 @@ export class OnchainEscrowGateway {
   ): Promise<TxOutcome | null> {
     const provider = providerOf(signer);
     const self = await signer.getAddress();
-    const current: bigint = await new ethers.Contract(token, ERC20_ABI, provider).getFunction("allowance")(self, spender);
+    const current: bigint = await new ethers.Contract(token, ERC20_ABI, provider).getFunction(
+      "allowance",
+    )(self, spender);
     if (current >= amount || (o.sufficient !== undefined && current >= o.sufficient)) return null;
     const contract = new ethers.Contract(token, APPROVE_ABI, provider);
     const approve = (value: bigint) =>
-      this.send({ signer, contract, method: "approve", args: [spender, value], simulate: () => simulateApprove(provider, token, self, spender, value) });
+      this.send({
+        signer,
+        contract,
+        method: "approve",
+        args: [spender, value],
+        simulate: () => simulateApprove(provider, token, self, spender, value),
+      });
     if (current > 0n) {
       const reset = await approve(0n);
       if (reset.status !== "confirmed") return reset;
@@ -1613,7 +1913,10 @@ export class OnchainEscrowGateway {
         try {
           await fn.staticCall(...args);
         } catch (err) {
-          throw new EscrowRefusalError("simulation_failed", `${method} would revert: ${describeRevert(err)}`);
+          throw new EscrowRefusalError(
+            "simulation_failed",
+            `${method} would revert: ${describeRevert(err)}`,
+          );
         }
       }
       // Nothing sent after an unmined slot can land before it: a dead one is
@@ -1621,7 +1924,9 @@ export class OnchainEscrowGateway {
       await this.releaseDeadSlots(key, provider);
       const from = await signer.getAddress();
       const nonce = await this.assignNonce(key, provider, from);
-      const request = await signer.populateTransaction(await fn.populateTransaction(...args, { nonce }));
+      const request = await signer.populateTransaction(
+        await fn.populateTransaction(...args, { nonce }),
+      );
       const raw = await signer.signTransaction(request);
       const slot: InDoubtSend = {
         key,
@@ -1650,11 +1955,13 @@ export class OnchainEscrowGateway {
       return { slot, error: null };
     });
     const reason = error === null ? "" : `broadcast of ${method} failed: ${describeRevert(error)}`;
-    if (error !== null && definitelyRejected(error)) return { status: "not_sent", txHash: slot.hashes[0]!, reason };
+    if (error !== null && definitelyRejected(error))
+      return { status: "not_sent", txHash: slot.hashes[0]!, reason };
     // An ambiguous broadcast is followed like an accepted one: the wait
     // re-broadcasts whatever the node turns out not to hold.
     const outcome = await this.awaitReceipt(provider, method, slot, reason);
-    if ((outcome.status === "in_doubt" || outcome.status === "cancelled") && plan.inDoubtKey) this.inDoubt.set(plan.inDoubtKey, slot);
+    if ((outcome.status === "in_doubt" || outcome.status === "cancelled") && plan.inDoubtKey)
+      this.inDoubt.set(plan.inDoubtKey, slot);
     return outcome;
   }
 
@@ -1672,7 +1979,12 @@ export class OnchainEscrowGateway {
   // `in_doubt`). The head is read BEFORE the receipts, so a signing mined in
   // any block up to the head that decides `landBy` is seen as landed. `note`
   // is why the first broadcast was ambiguous, if it was.
-  private async awaitReceipt(provider: ethers.Provider, method: string, slot: InDoubtSend, note: string): Promise<TxOutcome> {
+  private async awaitReceipt(
+    provider: ethers.Provider,
+    method: string,
+    slot: InDoubtSend,
+    note: string,
+  ): Promise<TxOutcome> {
     const deadline = this.now() + this.receiptTimeoutMs;
     const afterBlocks = this.opts.replaceInDoubtAfterBlocks ?? 3;
     let lastError = note ? `: ${note}` : "";
@@ -1713,18 +2025,26 @@ export class OnchainEscrowGateway {
         if (lastHead === null || head.number > lastHead) lastHead = head.number;
       }
       if (this.now() >= deadline) {
-        return { status: "in_doubt", ...followed, reason: `no receipt for ${method} within ${this.receiptTimeoutMs}ms${lastError}` };
+        return {
+          status: "in_doubt",
+          ...followed,
+          reason: `no receipt for ${method} within ${this.receiptTimeoutMs}ms${lastError}`,
+        };
       }
       await pause(this.receiptPollMs);
       try {
         if (newBlock) {
           const fees = await provider.getFeeData();
-          if ((belowInclusion(slot.request, headBaseFee, fees) || missed >= afterBlocks) && (await this.replaceAtSameNonce(slot, fees)).adopted) {
+          if (
+            (belowInclusion(slot.request, headBaseFee, fees) || missed >= afterBlocks) &&
+            (await this.replaceAtSameNonce(slot, fees)).adopted
+          ) {
             missed = 0;
             continue;
           }
         }
-        if ((await this.txState(provider, slot.hashes[slot.hashes.length - 1]!)) === null) await this.rebroadcast(slot);
+        if ((await this.txState(provider, slot.hashes[slot.hashes.length - 1]!)) === null)
+          await this.rebroadcast(slot);
       } catch (err) {
         lastError = `: ${describeRevert(err)}`;
       }
@@ -1750,15 +2070,27 @@ export class OnchainEscrowGateway {
     const resolved = await this.resolveSlot(providerOf(prior.signer), prior.hashes, prior, isDone);
     if (resolved.status === "confirmed") {
       this.inDoubt.delete(key);
-      throw new EscrowRefusalError(doneCode, `earlier ${key} ${resolved.txHash} confirmed in block ${resolved.blockNumber}`, orderId);
+      throw new EscrowRefusalError(
+        doneCode,
+        `earlier ${key} ${resolved.txHash} confirmed in block ${resolved.blockNumber}`,
+        orderId,
+      );
     }
     if (resolved.status === "in_doubt") {
       if (await isDone()) {
         this.inDoubt.delete(key);
-        throw new EscrowRefusalError(doneCode, `earlier ${key} ${resolved.txHash} has no receipt, but the chain shows it done`, orderId);
+        throw new EscrowRefusalError(
+          doneCode,
+          `earlier ${key} ${resolved.txHash} has no receipt, but the chain shows it done`,
+          orderId,
+        );
       }
       const rescued = await this.rescue(prior, landBy);
-      throw new EscrowRefusalError("in_doubt", `earlier ${key} at nonce ${prior.nonce} is unresolved; ${rescued}`, orderId);
+      throw new EscrowRefusalError(
+        "in_doubt",
+        `earlier ${key} at nonce ${prior.nonce} is unresolved; ${rescued}`,
+        orderId,
+      );
     }
     this.inDoubt.delete(key);
   }
@@ -1777,7 +2109,8 @@ export class OnchainEscrowGateway {
     if (now >= landBy) return (await this.releaseSlot(prior, landBy)).note;
     prior.passes += 1;
     const due =
-      prior.passes >= (this.opts.replaceInDoubtAfterPasses ?? 3) || landBy - now <= BigInt(this.opts.replaceInDoubtWithinSec ?? 300);
+      prior.passes >= (this.opts.replaceInDoubtAfterPasses ?? 3) ||
+      landBy - now <= BigInt(this.opts.replaceInDoubtWithinSec ?? 300);
     const replaced = due ? await this.replaceAtSameNonce(prior) : null;
     if (replaced?.adopted) return replaced.note;
     const rebroadcast = await this.rebroadcast(prior);
@@ -1802,7 +2135,10 @@ export class OnchainEscrowGateway {
   // of its original fee and the market's. Adopted (it becomes the slot's
   // latest signing) unless the node refused it outright. `given` is a market
   // read the caller already holds.
-  private async replaceAtSameNonce(prior: InDoubtSend, given?: ethers.FeeData): Promise<{ adopted: boolean; note: string }> {
+  private async replaceAtSameNonce(
+    prior: InDoubtSend,
+    given?: ethers.FeeData,
+  ): Promise<{ adopted: boolean; note: string }> {
     const provider = providerOf(prior.signer);
     const fees = given ?? (await provider.getFeeData());
     const r = prior.request;
@@ -1810,8 +2146,13 @@ export class OnchainEscrowGateway {
     const offered = BigInt((eip1559 ? r.maxFeePerGas : r.gasPrice) ?? 0);
     const market = (eip1559 ? fees.maxFeePerGas : fees.gasPrice) ?? 0n;
     const fee = bumpFee(offered, market);
-    const cap = REPLACEMENT_FEE_CAP_MULTIPLE * (prior.originalFee > market ? prior.originalFee : market);
-    if (fee > cap) return { adopted: false, note: `replacement at nonce ${prior.nonce} would offer ${fee}, over the cap ${cap}` };
+    const cap =
+      REPLACEMENT_FEE_CAP_MULTIPLE * (prior.originalFee > market ? prior.originalFee : market);
+    if (fee > cap)
+      return {
+        adopted: false,
+        note: `replacement at nonce ${prior.nonce} would offer ${fee}, over the cap ${cap}`,
+      };
     let next: ethers.TransactionLike<string>;
     if (eip1559) {
       const tip = bumpFee(BigInt(r.maxPriorityFeePerGas ?? 0), fees.maxPriorityFeePerGas ?? 0n);
@@ -1825,7 +2166,11 @@ export class OnchainEscrowGateway {
     try {
       await provider.broadcastTransaction(raw);
     } catch (err) {
-      if (definitelyRejected(err)) return { adopted: false, note: `replacement at nonce ${prior.nonce} refused: ${describeRevert(err)}` };
+      if (definitelyRejected(err))
+        return {
+          adopted: false,
+          note: `replacement at nonce ${prior.nonce} refused: ${describeRevert(err)}`,
+        };
       // Ambiguous: it may be in a mempool, so it is followed like the original.
       Object.assign(prior, { request: next, raw, hashes: [...prior.hashes, hash], passes: 0 });
       return { adopted: true, note: `${note}, broadcast ambiguous: ${describeRevert(err)}` };
@@ -1846,7 +2191,10 @@ export class OnchainEscrowGateway {
   // Never throws. `cancelTxHash` is the self-transfer only once a node is
   // shown to hold it -- the broadcast succeeded, or its hash reads pending or
   // mined -- and null otherwise: a refused or unheard cancel frees nothing.
-  private async releaseSlot(slot: InDoubtSend, landBy: bigint): Promise<{ cancelTxHash: Hex | null; note: string }> {
+  private async releaseSlot(
+    slot: InDoubtSend,
+    landBy: bigint,
+  ): Promise<{ cancelTxHash: Hex | null; note: string }> {
     const provider = providerOf(slot.signer);
     const past = `past ${landBy}, when it could last land`;
     try {
@@ -1880,7 +2228,10 @@ export class OnchainEscrowGateway {
         slot.cancel ??= { hash: ethers.keccak256(raw) as Hex, raw };
       }
     } catch (err) {
-      return { cancelTxHash: null, note: `${past}; could not sign a self-transfer to free nonce ${slot.nonce}: ${describeRevert(err)}` };
+      return {
+        cancelTxHash: null,
+        note: `${past}; could not sign a self-transfer to free nonce ${slot.nonce}: ${describeRevert(err)}`,
+      };
     }
     const { hash, raw } = slot.cancel!;
     try {
@@ -1895,7 +2246,10 @@ export class OnchainEscrowGateway {
         // Not in any mempool ("intrinsic gas too low" included): the next
         // call estimates and signs it afresh, at the market then.
         slot.cancel = undefined;
-        return { cancelTxHash: null, note: `${past}; self-transfer ${hash} to free nonce ${slot.nonce} refused: ${describeRevert(err)}` };
+        return {
+          cancelTxHash: null,
+          note: `${past}; self-transfer ${hash} to free nonce ${slot.nonce} refused: ${describeRevert(err)}`,
+        };
       }
       // Ambiguous: out only if a node is shown to hold it. Kept either way,
       // so the next call re-broadcasts the same bytes.
@@ -1903,21 +2257,35 @@ export class OnchainEscrowGateway {
       try {
         held = await this.txState(provider, hash);
       } catch (readErr) {
-        return { cancelTxHash: null, note: `${past}; self-transfer ${hash} to free nonce ${slot.nonce} unconfirmed (${describeRevert(err)}; ${describeRevert(readErr)})` };
+        return {
+          cancelTxHash: null,
+          note: `${past}; self-transfer ${hash} to free nonce ${slot.nonce} unconfirmed (${describeRevert(err)}; ${describeRevert(readErr)})`,
+        };
       }
       if (held === null) {
-        return { cancelTxHash: null, note: `${past}; no node is shown to hold self-transfer ${hash} to free nonce ${slot.nonce}: ${describeRevert(err)}` };
+        return {
+          cancelTxHash: null,
+          note: `${past}; no node is shown to hold self-transfer ${hash} to free nonce ${slot.nonce}: ${describeRevert(err)}`,
+        };
       }
       this.recordBroadcast(slot, hash, raw, undefined);
-      return { cancelTxHash: hash, note: `${past}; freeing nonce ${slot.nonce} with self-transfer ${hash} (${held}): ${describeRevert(err)}` };
+      return {
+        cancelTxHash: hash,
+        note: `${past}; freeing nonce ${slot.nonce} with self-transfer ${hash} (${held}): ${describeRevert(err)}`,
+      };
     }
     this.recordBroadcast(slot, hash, raw, undefined);
-    return { cancelTxHash: hash, note: `${past}; freeing nonce ${slot.nonce} with self-transfer ${hash}` };
+    return {
+      cancelTxHash: hash,
+      note: `${past}; freeing nonce ${slot.nonce} with self-transfer ${hash}`,
+    };
   }
 
   // Free every in-doubt slot of `key` that is past its `landBy` (see `releaseSlot`).
   private async releaseDeadSlots(key: string, provider: ethers.Provider): Promise<void> {
-    const slots = [...this.inDoubt.entries()].filter(([, s]) => s.key === key && s.landBy !== undefined && !s.released);
+    const slots = [...this.inDoubt.entries()].filter(
+      ([, s]) => s.key === key && s.landBy !== undefined && !s.released,
+    );
     if (slots.length === 0) return;
     const now = await this.nowSec([provider], false);
     for (const [inDoubtKey, slot] of slots) {
@@ -1933,10 +2301,21 @@ export class OnchainEscrowGateway {
   // (and a same-nonce re-signing) inherits its expiry: the expiry bounds how
   // long the node's count may fail to show this gateway's sends, and renewing
   // it on every send would let steady traffic keep a gap open forever.
-  private recordBroadcast(slot: Pick<InDoubtSend, "key" | "nonce">, hash: Hex, raw: string, landBy: bigint | undefined): void {
+  private recordBroadcast(
+    slot: Pick<InDoubtSend, "key" | "nonce">,
+    hash: Hex,
+    raw: string,
+    landBy: bigint | undefined,
+  ): void {
     const prior = this.lastNonce.get(slot.key);
     if (prior && prior.nonce > slot.nonce) return;
-    this.lastNonce.set(slot.key, { nonce: slot.nonce, hash, raw, landBy, expiresAtMs: prior?.expiresAtMs ?? this.now() + this.receiptTimeoutMs });
+    this.lastNonce.set(slot.key, {
+      nonce: slot.nonce,
+      hash,
+      raw,
+      landBy,
+      expiresAtMs: prior?.expiresAtMs ?? this.now() + this.receiptTimeoutMs,
+    });
   }
 
   // Whether the node knows a transaction, read around any request cache: null
@@ -1971,7 +2350,10 @@ export class OnchainEscrowGateway {
   private async assignNonce(key: string, provider: ethers.Provider, from: string): Promise<number> {
     const pending =
       provider instanceof ethers.JsonRpcApiProvider
-        ? ethers.getNumber(await provider.send("eth_getTransactionCount", [from, "pending"]), "pending nonce")
+        ? ethers.getNumber(
+            await provider.send("eth_getTransactionCount", [from, "pending"]),
+            "pending nonce",
+          )
         : await provider.getTransactionCount(from, "pending");
     const last = this.lastNonce.get(key);
     if (last === undefined || pending > last.nonce) {
@@ -1981,7 +2363,8 @@ export class OnchainEscrowGateway {
     const held = await this.txState(provider, last.hash);
     if (held === "mined") return last.nonce + 1;
     const expired =
-      this.now() > last.expiresAtMs || (last.landBy !== undefined && (await this.nowSec([provider], false)) >= last.landBy);
+      this.now() > last.expiresAtMs ||
+      (last.landBy !== undefined && (await this.nowSec([provider], false)) >= last.landBy);
     if (!expired) {
       if (held === "pending") return last.nonce + 1;
       try {
@@ -1989,8 +2372,14 @@ export class OnchainEscrowGateway {
         return last.nonce + 1;
       } catch (err) {
         const code = codeOf(err);
-        if (code === "NONCE_EXPIRED" || code === "REPLACEMENT_UNDERPRICED" || ALREADY_HELD.test(nodeMessage(err))) return last.nonce + 1;
-        if (!definitelyRejected(err) && (await this.txState(provider, last.hash)) !== null) return last.nonce + 1;
+        if (
+          code === "NONCE_EXPIRED" ||
+          code === "REPLACEMENT_UNDERPRICED" ||
+          ALREADY_HELD.test(nodeMessage(err))
+        )
+          return last.nonce + 1;
+        if (!definitelyRejected(err) && (await this.txState(provider, last.hash)) !== null)
+          return last.nonce + 1;
       }
     }
     this.lastNonce.delete(key);
@@ -2000,7 +2389,10 @@ export class OnchainEscrowGateway {
   // Run `send` after every earlier send from the same `${chainId}:${address}`
   // has left the queue (it leaves once broadcast; see `send`). `send` gets
   // that key.
-  private async serialized<T>(signer: ethers.Signer, send: (key: string) => Promise<T>): Promise<T> {
+  private async serialized<T>(
+    signer: ethers.Signer,
+    send: (key: string) => Promise<T>,
+  ): Promise<T> {
     const { chainId } = await providerOf(signer).getNetwork();
     const key = `${chainId}:${(await signer.getAddress()).toLowerCase()}`;
     return queued(this.sendQueues, key, () => send(key));
@@ -2010,12 +2402,21 @@ export class OnchainEscrowGateway {
   // signer is connected to. Required to accept, and so to fill.
   private async trustedBond(orderId: string): Promise<{ chainId: bigint; address: string }> {
     const cfg = this.opts.bond;
-    if (!cfg) throw new EscrowRefusalError("bond_mismatch", "no SolverBond configured; an award cannot be accepted", orderId);
+    if (!cfg)
+      throw new EscrowRefusalError(
+        "bond_mismatch",
+        "no SolverBond configured; an award cannot be accepted",
+        orderId,
+      );
     const { chainId } = await providerOf(cfg.signer).getNetwork();
     return { chainId, address: cfg.address };
   }
 
-  private async bondContract(): Promise<{ bond: ethers.Contract; signer: ethers.Signer; self: string }> {
+  private async bondContract(): Promise<{
+    bond: ethers.Contract;
+    signer: ethers.Signer;
+    self: string;
+  }> {
     const cfg = this.opts.bond;
     if (!cfg) throw new Error("escrow gateway: no SolverBond configured");
     return {
@@ -2029,10 +2430,16 @@ export class OnchainEscrowGateway {
     if (p.originChainId !== undefined) return BigInt(p.originChainId);
     if (p.announcement) return BigInt(p.announcement.fromChainId);
     if (env.orderTerms) return BigInt(env.orderTerms.fromChainId);
-    const matches = Object.entries(this.opts.origins).filter(([, o]) => o.escrow.toLowerCase() === env.address.toLowerCase());
+    const matches = Object.entries(this.opts.origins).filter(
+      ([, o]) => o.escrow.toLowerCase() === env.address.toLowerCase(),
+    );
     if (matches.length === 1) return BigInt(matches[0]![0]);
     if (matches.length === 0) {
-      throw new EscrowRefusalError("wrong_escrow", `award names escrow ${env.address}, which no configured origin uses`, env.intentRef);
+      throw new EscrowRefusalError(
+        "wrong_escrow",
+        `award names escrow ${env.address}, which no configured origin uses`,
+        env.intentRef,
+      );
     }
     throw new EscrowRefusalError(
       "malformed_award",
@@ -2043,13 +2450,23 @@ export class OnchainEscrowGateway {
 
   private origin(chainId: number | bigint, orderId: string): OriginChainConfig {
     const o = this.opts.origins[Number(chainId)];
-    if (!o) throw new EscrowRefusalError("wrong_chain", `origin chain ${chainId} is not configured`, orderId);
+    if (!o)
+      throw new EscrowRefusalError(
+        "wrong_chain",
+        `origin chain ${chainId} is not configured`,
+        orderId,
+      );
     return o;
   }
 
   private destination(chainId: number | bigint, orderId: string): DestinationChainConfig {
     const d = this.opts.destinations[Number(chainId)];
-    if (!d) throw new EscrowRefusalError("wrong_chain", `destination chain ${chainId} is not configured`, orderId);
+    if (!d)
+      throw new EscrowRefusalError(
+        "wrong_chain",
+        `destination chain ${chainId} is not configured`,
+        orderId,
+      );
     return d;
   }
 
@@ -2067,7 +2484,11 @@ export class OnchainEscrowGateway {
     return finalized ? finalized.number : null;
   }
 
-  private async readFinalLock(escrow: ethers.Contract, log: ethers.Log, safe: number): Promise<OpenedLock | null> {
+  private async readFinalLock(
+    escrow: ethers.Contract,
+    log: ethers.Log,
+    safe: number,
+  ): Promise<OpenedLock | null> {
     const parsed = escrow.interface.parseLog(log);
     if (!parsed) return null;
     const orderId = (parsed.args.orderId as string).toLowerCase() as Hex;
@@ -2075,7 +2496,11 @@ export class OnchainEscrowGateway {
     const status = Number(l.status);
     if (status === LockStatus.None) return null;
     if (status !== LockStatus.Open) {
-      throw new EscrowRefusalError("lock_not_open", `lock ${orderId} has status ${status} at safe block ${safe}`, orderId);
+      throw new EscrowRefusalError(
+        "lock_not_open",
+        `lock ${orderId} has status ${status} at safe block ${safe}`,
+        orderId,
+      );
     }
     const lock: OpenedLock = {
       orderId,
@@ -2095,7 +2520,11 @@ export class OnchainEscrowGateway {
       l.toChainId === lock.toChainId &&
       l.refundableAt === lock.refundableAt;
     if (!agrees) {
-      throw new EscrowRefusalError("opened_mismatch", `lock state at safe block ${safe} disagrees with its Opened log`, orderId);
+      throw new EscrowRefusalError(
+        "opened_mismatch",
+        `lock state at safe block ${safe} disagrees with its Opened log`,
+        orderId,
+      );
     }
     return lock;
   }
@@ -2120,20 +2549,35 @@ function classifyAcceptanceReceipt(
   self: string,
 ): AcceptanceReceiptStatus {
   if (receipt.auctionId !== prepared.auctionId) {
-    return { status: "mismatch", detail: `venue answered for auction ${receipt.auctionId}, not ${prepared.auctionId}` };
+    return {
+      status: "mismatch",
+      detail: `venue answered for auction ${receipt.auctionId}, not ${prepared.auctionId}`,
+    };
   }
   if (receipt.orderId.toLowerCase() !== prepared.orderId.toLowerCase()) {
-    return { status: "mismatch", detail: `venue answered for order ${receipt.orderId}, not ${prepared.orderId}` };
+    return {
+      status: "mismatch",
+      detail: `venue answered for order ${receipt.orderId}, not ${prepared.orderId}`,
+    };
   }
   let signer: string;
   try {
     signer = ethers.recoverAddress(digest, receipt.signature);
   } catch (err) {
-    return { status: "mismatch", detail: `venue holds an unrecoverable signature: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      status: "mismatch",
+      detail: `venue holds an unrecoverable signature: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   if (signer.toLowerCase() !== self.toLowerCase()) {
-    return { status: "mismatch", detail: `venue holds an acceptance recovering to ${signer}, not ${self}` };
+    return {
+      status: "mismatch",
+      detail: `venue holds an acceptance recovering to ${signer}, not ${self}`,
+    };
   }
-  return { status: "recorded", signature: receipt.signature.toLowerCase() as Hex, acceptedAt: receipt.acceptedAt };
+  return {
+    status: "recorded",
+    signature: receipt.signature.toLowerCase() as Hex,
+    acceptedAt: receipt.acceptedAt,
+  };
 }
-

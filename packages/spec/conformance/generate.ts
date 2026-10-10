@@ -208,7 +208,11 @@ async function xochiVector(
 function serializeMessage(message: unknown): unknown {
   return JSON.parse(
     JSON.stringify(message, (_key, value) => {
-      if (value && typeof value === "object" && (value as { _isBigNumber?: boolean })._isBigNumber) {
+      if (
+        value &&
+        typeof value === "object" &&
+        (value as { _isBigNumber?: boolean })._isBigNumber
+      ) {
         return (value as { toString(): string }).toString();
       }
       return value;
@@ -329,7 +333,8 @@ async function main(): Promise<void> {
 
 // Compared as URLs of the real path: a hand-built `file://` + path never
 // matches one that needs percent-encoding (a space) or runs through a symlink.
-const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+const isMainModule =
+  process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isMainModule) {
   main().catch((err) => {
     console.error("generate-conformance failed:", err);

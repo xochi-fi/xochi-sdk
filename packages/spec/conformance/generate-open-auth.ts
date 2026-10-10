@@ -31,14 +31,51 @@ const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b
 const orderIds = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "order-id.json"), "utf8"),
 ).vectors;
-const baselineOrderId: string = orderIds.find((v: { name: string }) => v.name === "baseline-evm-usdc").expected_order_id;
+const baselineOrderId: string = orderIds.find(
+  (v: { name: string }) => v.name === "baseline-evm-usdc",
+).expected_order_id;
 
 const CASES = [
-  { name: "baseline-base", chainId: "8453", verifyingContract: "0x3333333333333333333333333333333333333333", orderId: baselineOrderId, expiry: "1900000000", key: TEST_KEY_0 },
-  { name: "second-signer", chainId: "8453", verifyingContract: "0x3333333333333333333333333333333333333333", orderId: baselineOrderId, expiry: "1900000000", key: TEST_KEY_1 },
-  { name: "other-chain-and-escrow", chainId: "1", verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508", orderId: baselineOrderId, expiry: "1900000000", key: TEST_KEY_0 },
-  { name: "zero-expiry", chainId: "8453", verifyingContract: "0x3333333333333333333333333333333333333333", orderId: "0x" + "00".repeat(31) + "01", expiry: "0", key: TEST_KEY_0 },
-  { name: "max-uint256-expiry-high-bit-order", chainId: "42161", verifyingContract: "0x3333333333333333333333333333333333333333", orderId: "0x" + "ff".repeat(32), expiry: (2n ** 256n - 1n).toString(), key: TEST_KEY_1 },
+  {
+    name: "baseline-base",
+    chainId: "8453",
+    verifyingContract: "0x3333333333333333333333333333333333333333",
+    orderId: baselineOrderId,
+    expiry: "1900000000",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "second-signer",
+    chainId: "8453",
+    verifyingContract: "0x3333333333333333333333333333333333333333",
+    orderId: baselineOrderId,
+    expiry: "1900000000",
+    key: TEST_KEY_1,
+  },
+  {
+    name: "other-chain-and-escrow",
+    chainId: "1",
+    verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508",
+    orderId: baselineOrderId,
+    expiry: "1900000000",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "zero-expiry",
+    chainId: "8453",
+    verifyingContract: "0x3333333333333333333333333333333333333333",
+    orderId: "0x" + "00".repeat(31) + "01",
+    expiry: "0",
+    key: TEST_KEY_0,
+  },
+  {
+    name: "max-uint256-expiry-high-bit-order",
+    chainId: "42161",
+    verifyingContract: "0x3333333333333333333333333333333333333333",
+    orderId: "0x" + "ff".repeat(32),
+    expiry: (2n ** 256n - 1n).toString(),
+    key: TEST_KEY_1,
+  },
 ];
 
 const vectors = [];
@@ -55,7 +92,9 @@ for (const c of CASES) {
     expected_digest: openAuthDigest(domain, c.orderId, c.expiry),
     signer_private_key: c.key,
     signer_address: new ethers.Wallet(c.key).address,
-    expected_signature: (await signOpenAuth(new ethers.Wallet(c.key), domain, c.orderId, c.expiry)).toLowerCase(),
+    expected_signature: (
+      await signOpenAuth(new ethers.Wallet(c.key), domain, c.orderId, c.expiry)
+    ).toLowerCase(),
   });
 }
 

@@ -283,7 +283,12 @@ export interface Funds {
 }
 
 export interface EscrowGateway {
-  lock(intentId: string, funds: Funds, solver: string, exclusiveUntil: number): Promise<{ lockRef: string }>;
+  lock(
+    intentId: string,
+    funds: Funds,
+    solver: string,
+    exclusiveUntil: number,
+  ): Promise<{ lockRef: string }>;
   release(intentId: string, proof: FillProof): Promise<void>;
   void(intentId: string): Promise<void>;
 }

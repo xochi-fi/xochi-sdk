@@ -336,7 +336,7 @@ function parseToken(raw: unknown): TokenCapability | null {
     symbol,
     decimals: asNumber(r.decimals),
     pullMethod: asPullMethod(r.pull_method),
-    gaslessOrigin: (r.gasless_origin) === true,
+    gaslessOrigin: r.gasless_origin === true,
     roles,
     addresses: parseAddresses(r.addresses),
     pullMethods: parseTokenPullMethods(r.pull_methods),
@@ -385,7 +385,7 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
     // fills are allowed", a caller-visible relaxation handed over by an empty body.
     // Riddler types the field as the literal `true`, so absence means "did not
     // say", and "did not say" must not widen.
-    crossChainOnly: (r.cross_chain_only) !== false,
+    crossChainOnly: r.cross_chain_only !== false,
     specVersion: asString(r.spec_version),
     orderBoundsUsd: {
       min: boundsMin !== null && boundsMin >= 0 ? boundsMin : null,
@@ -394,12 +394,8 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
 
     depositAttestationSigner: asEvmAddress(r.deposit_attestation_signer),
     depositAttestationVersion: asString(r.deposit_attestation_version),
-    depositAttestationVectorsUrl: asString(
-      r.deposit_attestation_vectors_url,
-    ),
-    depositAttestationVectorsSha256: asString(
-      r.deposit_attestation_vectors_sha256,
-    ),
+    depositAttestationVectorsUrl: asString(r.deposit_attestation_vectors_url),
+    depositAttestationVectorsSha256: asString(r.deposit_attestation_vectors_sha256),
 
     pullRecipients: parsePullRecipients(r.pull_recipients),
     // `non_neg_integer()` server-side, so a negative or fractional value is not
@@ -426,10 +422,7 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
  * whose VM this client does not recognise is returned with `vmType: null`; every
  * accessor below reads that as unaddressable.
  */
-export function chainCapability(
-  caps: SolverCapabilities,
-  chainId: number,
-): ChainCapability | null {
+export function chainCapability(caps: SolverCapabilities, chainId: number): ChainCapability | null {
   const matches = caps.chains.filter((c) => c.chainId === chainId);
   // A repeated chain id is malformed; `.find()` would take the first, letting a
   // prepended `{chain_id: 728126428, vm_type: "evm"}` shadow the real TVM entry.
@@ -448,7 +441,10 @@ export function chainVmType(caps: SolverCapabilities, chainId: number): VmType |
 }
 
 /** Address encoding for a chain, or `null` on the same terms as {@link chainVmType}. */
-export function chainAddressFormat(caps: SolverCapabilities, chainId: number): AddressFormat | null {
+export function chainAddressFormat(
+  caps: SolverCapabilities,
+  chainId: number,
+): AddressFormat | null {
   return chainCapability(caps, chainId)?.addressFormat ?? null;
 }
 
@@ -530,10 +526,7 @@ export function depositAttestationVersionSkew(
  * does not mean the solver will accept the order; failing means it will not. An
  * absent bound is unknown, not zero, so it is not enforced.
  */
-export function orderBoundsViolation(
-  caps: SolverCapabilities,
-  notionalUsd: number,
-): string | null {
+export function orderBoundsViolation(caps: SolverCapabilities, notionalUsd: number): string | null {
   // NaN compares false against everything, so an unchecked notional (a missing
   // price feed, say) would report "fits".
   if (!Number.isFinite(notionalUsd)) {
@@ -557,7 +550,6 @@ export function orderBoundsViolation(
 export function stealthNotionalFloor(caps: SolverCapabilities, chainId: number): number | null {
   return chainCapability(caps, chainId)?.minStealthNotionalUsd ?? null;
 }
-
 
 /**
  * The static chain keys the venue actually serves right now.

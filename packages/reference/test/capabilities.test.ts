@@ -168,7 +168,9 @@ describe("parseCapabilities", () => {
   it("rejects NaN and Infinity rather than carrying them into a comparison", () => {
     // NaN compares false against everything, so it would silently disable the
     // bound while looking like it was set.
-    const c = parseCapabilities(matrix({ order_bounds_usd: { min: "not-a-number", max: "Infinity" } }))!;
+    const c = parseCapabilities(
+      matrix({ order_bounds_usd: { min: "not-a-number", max: "Infinity" } }),
+    )!;
     expect(c.orderBoundsUsd).toEqual({ min: null, max: null });
   });
 
@@ -196,7 +198,13 @@ describe("parseCapabilities", () => {
   it("ignores an unrecognised pull method rather than trusting it", () => {
     const c = parseCapabilities(
       matrix({
-        tokens: [{ symbol: "USDC", pull_method: "telepathy", pull_methods: { "8453": { method: "telepathy" } } }],
+        tokens: [
+          {
+            symbol: "USDC",
+            pull_method: "telepathy",
+            pull_methods: { "8453": { method: "telepathy" } },
+          },
+        ],
       }),
     )!;
     expect(c.tokens[0]!.pullMethod).toBeNull();
@@ -231,7 +239,12 @@ describe("accessors", () => {
   it("reads a chain whose served vm_type it does not recognise as unaddressable, not evm", () => {
     // Absent still means evm (above); PRESENT and unknown is a chain we cannot address.
     const c = parseCapabilities(
-      matrix({ chains: [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 999999, vm_type: "zvm" }] }),
+      matrix({
+        chains: [
+          { chain_id: 8453, vm_type: "evm" },
+          { chain_id: 999999, vm_type: "zvm" },
+        ],
+      }),
     )!;
     expect(chainVmType(c, 999999)).toBeNull();
     expect(chainAddressFormat(c, 999999)).toBeNull();
@@ -277,7 +290,10 @@ describe("accessors", () => {
   it("falls back to the token-level method for an advertised chain with no per-chain entry", () => {
     const c = parseCapabilities(
       matrix({
-        chains: [...matrix().chains, { chain_id: 10, chain_name: "OP", vm_type: "evm", address_format: "hex20" }],
+        chains: [
+          ...matrix().chains,
+          { chain_id: 10, chain_name: "OP", vm_type: "evm", address_format: "hex20" },
+        ],
       }),
     )!;
     expect(originPullMethod(c, "USDC", 10)).toBe("erc3009");
@@ -289,8 +305,14 @@ describe("accessors", () => {
     // `erc3009` for an unadvertised chain, a duplicated one and an unknown VM alike.
     expect(originPullMethod(caps(), "USDC", 10)).toBeNull();
     for (const chains of [
-      [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 8453, vm_type: "tvm2" }],
-      [{ chain_id: 8453, vm_type: "tvm" }, { chain_id: 8453, vm_type: "evm" }],
+      [
+        { chain_id: 8453, vm_type: "evm" },
+        { chain_id: 8453, vm_type: "tvm2" },
+      ],
+      [
+        { chain_id: 8453, vm_type: "tvm" },
+        { chain_id: 8453, vm_type: "evm" },
+      ],
       [{ chain_id: 8453, vm_type: "evm2" }],
     ]) {
       const c = parseCapabilities(matrix({ chains }))!;
@@ -319,14 +341,18 @@ describe("accessors", () => {
 
 describe("deposit attestation version skew (riddler-sdk#92)", () => {
   it("is silent when the server signs what this client verifies", () => {
-    const c = parseCapabilities(matrix({ deposit_attestation_version: DEPOSIT_ATTESTATION_VERSION }))!;
+    const c = parseCapabilities(
+      matrix({ deposit_attestation_version: DEPOSIT_ATTESTATION_VERSION }),
+    )!;
     expect(depositAttestationVersionSkew(c, DEPOSIT_ATTESTATION_VERSION)).toBeNull();
   });
 
   it("names the skew instead of leaving it to look like a wrong signer", () => {
     // The whole reason the field exists: a v2 client against a v3 solver fails
     // closed as "signer is not the pinned solver", which reads as a rotation.
-    const c = parseCapabilities(matrix({ deposit_attestation_version: "xochi-deposit-attestation:v4" }))!;
+    const c = parseCapabilities(
+      matrix({ deposit_attestation_version: "xochi-deposit-attestation:v4" }),
+    )!;
     const skew = depositAttestationVersionSkew(c, DEPOSIT_ATTESTATION_VERSION);
     expect(skew).toContain("v4");
     expect(skew).toContain(DEPOSIT_ATTESTATION_VERSION);
@@ -393,7 +419,9 @@ describe("hostile payloads (review follow-ups)", () => {
     // An unchecked `as` let a server label a TVM chain hex20, or emit a value
     // that type-checks as AddressFormat and matches no switch branch.
     const c = parseCapabilities(
-      matrix({ chains: [{ chain_id: 728126428, vm_type: "tvm", address_format: "totally-bogus" }] }),
+      matrix({
+        chains: [{ chain_id: 728126428, vm_type: "tvm", address_format: "totally-bogus" }],
+      }),
     )!;
     expect(c.chains[0]!.addressFormat).toBe("base58check");
   });
@@ -422,7 +450,9 @@ describe("hostile payloads (review follow-ups)", () => {
       const c = parseCapabilities(matrix({ pull_deadline_buffer_seconds: bad }))!;
       expect(c.pullDeadlineBufferSeconds).toBeNull();
     }
-    expect(parseCapabilities(matrix({ pull_deadline_buffer_seconds: 300 }))!.pullDeadlineBufferSeconds).toBe(300);
+    expect(
+      parseCapabilities(matrix({ pull_deadline_buffer_seconds: 300 }))!.pullDeadlineBufferSeconds,
+    ).toBe(300);
   });
 
   it("drops a negative order max instead of rejecting every order", () => {
@@ -517,10 +547,18 @@ describe("servedChainKeys / chainUnservedReason", () => {
   it("does not serve a chain id advertised twice, whatever VMs its rows name", () => {
     // A per-row filter kept the recognised row of a duplicated pair as served.
     for (const chains of [
-      [{ chain_id: 8453, vm_type: "evm" }, { chain_id: 8453, vm_type: "tvm2" }],
-      [{ chain_id: 8453, vm_type: "tvm" }, { chain_id: 8453, vm_type: "evm" }],
+      [
+        { chain_id: 8453, vm_type: "evm" },
+        { chain_id: 8453, vm_type: "tvm2" },
+      ],
+      [
+        { chain_id: 8453, vm_type: "tvm" },
+        { chain_id: 8453, vm_type: "evm" },
+      ],
     ]) {
-      const c = parseCapabilities(matrix({ chains: [...chains, { chain_id: 1, vm_type: "evm" }] }))!;
+      const c = parseCapabilities(
+        matrix({ chains: [...chains, { chain_id: 1, vm_type: "evm" }] }),
+      )!;
       expect(servedChainKeys(c, CONFIG.CHAINS)).toEqual(["ethereum"]);
     }
   });

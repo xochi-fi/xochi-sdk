@@ -26,11 +26,18 @@ import { parseSolverEvent } from "../src/schema";
 import type { Award, AwardEscrow, IntentAnnouncement } from "../src/types";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const load = (name: string) => JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
+const load = (name: string) =>
+  JSON.parse(fs.readFileSync(path.resolve(here, "../../spec/conformance", name), "utf8"));
 
 type OrderVector = {
   name: string;
-  opening: { recipient: string; toToken: string; toAmount: string; blinding: string; intentId: string };
+  opening: {
+    recipient: string;
+    toToken: string;
+    toAmount: string;
+    blinding: string;
+    intentId: string;
+  };
   expected_dest_commitment: string;
   terms: {
     depositor: string;
@@ -55,11 +62,14 @@ type AttestationVector = {
 };
 
 const orderVectors: OrderVector[] = load("order-id.json").vectors;
-const fillSaltVectors: { orderId: string; expected_fill_id: string }[] = load("fill-salt.json").vectors;
+const fillSaltVectors: { orderId: string; expected_fill_id: string }[] =
+  load("fill-salt.json").vectors;
 const attestationVectors: AttestationVector[] = load("fill-attestation.json").vectors;
 
 const baseline = orderVectors.find((v) => v.name === "baseline-evm-usdc")!;
-const baselineFillId = fillSaltVectors.find((v) => v.orderId === baseline.expected_order_id)!.expected_fill_id;
+const baselineFillId = fillSaltVectors.find(
+  (v) => v.orderId === baseline.expected_order_id,
+)!.expected_fill_id;
 
 const SOLVER = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
 const OTHER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
@@ -149,10 +159,17 @@ describe("verifyAward refuses an opening the lock does not commit to", () => {
   const cases: [string, (e: AwardEscrow) => void][] = [
     ["recipient", (e) => (e.destOpening!.recipient = OTHER)],
     ["toToken", (e) => (e.destOpening!.toToken = BASE_USDC)],
-    ["toAmount", (e) => (e.destOpening!.toAmount = (BigInt(baseline.opening.toAmount) + 1n).toString())],
+    [
+      "toAmount",
+      (e) => (e.destOpening!.toAmount = (BigInt(baseline.opening.toAmount) + 1n).toString()),
+    ],
     ["blinding", (e) => (e.destOpening!.blinding = baseline.opening.blinding.slice(0, -1) + "b")],
     ["intentId", (e) => (e.destOpening!.intentId = "intent-0002")],
-    ["intentRef", (e) => (e.intentRef = orderVectors.find((v) => v.name === "high-bit-blinding")!.expected_order_id)],
+    [
+      "intentRef",
+      (e) =>
+        (e.intentRef = orderVectors.find((v) => v.name === "high-bit-blinding")!.expected_order_id),
+    ],
   ];
   for (const [field, patch] of cases) {
     it(`a changed ${field} is order_id_mismatch`, () => {
@@ -169,15 +186,23 @@ describe("verifyAward refuses an opening the lock does not commit to", () => {
   }
 
   it("a zero blinding is malformed, not a commitment", () => {
-    const award = withEscrow(awardFor(baseline), (e) => (e.destOpening!.blinding = "0x" + "00".repeat(32)));
+    const award = withEscrow(
+      awardFor(baseline),
+      (e) => (e.destOpening!.blinding = "0x" + "00".repeat(32)),
+    );
     expect(refusalOf(() => verifyAward(award, x))).toBe("malformed_award");
   });
 
   it("origin terms that drift (a claimWindow-derived fillDeadline off by one) are order_id_mismatch", () => {
-    const drifted = { ...x, originTerms: { ...x.originTerms, fillDeadline: BigInt(baseline.terms.fillDeadline) - 1n } };
+    const drifted = {
+      ...x,
+      originTerms: { ...x.originTerms, fillDeadline: BigInt(baseline.terms.fillDeadline) - 1n },
+    };
     expect(refusalOf(() => verifyAward(awardFor(baseline), drifted))).toBe("order_id_mismatch");
     const otherDepositor = { ...x, originTerms: { ...x.originTerms, depositor: OTHER } };
-    expect(refusalOf(() => verifyAward(awardFor(baseline), otherDepositor))).toBe("order_id_mismatch");
+    expect(refusalOf(() => verifyAward(awardFor(baseline), otherDepositor))).toBe(
+      "order_id_mismatch",
+    );
   });
 
   it("an award orderTerms whose destCommitment is not the opening's is refused", () => {
@@ -197,12 +222,18 @@ describe("verifyAward refuses the wrong escrow or chain", () => {
   });
 
   it("a trusted escrow that is not the one the order terms name", () => {
-    expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, escrow: FILLER_CONTRACT }))).toBe("wrong_escrow");
+    expect(
+      refusalOf(() => verifyAward(awardFor(baseline), { ...x, escrow: FILLER_CONTRACT })),
+    ).toBe("wrong_escrow");
   });
 
   it("an origin or destination other than the configured chain", () => {
-    expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, originChainId: 1 }))).toBe("wrong_chain");
-    expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, destinationChainId: 8453 }))).toBe("wrong_chain");
+    expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, originChainId: 1 }))).toBe(
+      "wrong_chain",
+    );
+    expect(
+      refusalOf(() => verifyAward(awardFor(baseline), { ...x, destinationChainId: 8453 })),
+    ).toBe("wrong_chain");
   });
 });
 
@@ -211,7 +242,10 @@ describe("verifyAward requires the FillAuth to be exactly the committed fill, by
   const cases: [string, (e: AwardEscrow) => void][] = [
     ["pays another recipient", (e) => (e.fillAuth!.to = OTHER)],
     ["pays another token", (e) => (e.fillAuth!.token = BASE_USDC)],
-    ["authorizes below the committed floor", (e) => (e.fillAuth!.amount = (BigInt(baseline.opening.toAmount) - 1n).toString())],
+    [
+      "authorizes below the committed floor",
+      (e) => (e.fillAuth!.amount = (BigInt(baseline.opening.toAmount) - 1n).toString()),
+    ],
     ["names another filler", (e) => (e.fillAuth!.filler = OTHER)],
     ["targets another RiddlerFiller", (e) => (e.fillAuth!.fillerContract = OTHER)],
     ["is for another destination chain", (e) => (e.fillAuth!.chainId = "8453")],
@@ -219,7 +253,9 @@ describe("verifyAward requires the FillAuth to be exactly the committed fill, by
   ];
   for (const [what, patch] of cases) {
     it(`refuses a FillAuth that ${what}`, () => {
-      expect(refusalOf(() => verifyAward(withEscrow(awardFor(baseline), patch), x))).toBe("fill_auth_mismatch");
+      expect(refusalOf(() => verifyAward(withEscrow(awardFor(baseline), patch), x))).toBe(
+        "fill_auth_mismatch",
+      );
     });
   }
 
@@ -234,7 +270,9 @@ describe("verifyAward requires the FillAuth to be exactly the committed fill, by
   it("refuses a FillAuth amount above the awarded output", () => {
     const award = withEscrow(awardFor(baseline), (e) => (e.fillAuth!.amount = "99700001"));
     expect(award.output).toBe("99700000");
-    expect(refusalOf(() => verifyAward(award, { ...x, bidOutput: "99700001" }))).toBe("fill_auth_mismatch");
+    expect(refusalOf(() => verifyAward(award, { ...x, bidOutput: "99700001" }))).toBe(
+      "fill_auth_mismatch",
+    );
   });
 
   // The ceiling is the bid this solver holds, not the venue's echo: a venue
@@ -242,7 +280,9 @@ describe("verifyAward requires the FillAuth to be exactly the committed fill, by
   it("refuses a FillAuth amount above the solver's signed bid even when award.output matches it", () => {
     const award = withEscrow(awardFor(baseline), (e) => (e.fillAuth!.amount = "99800000"));
     award.output = "99800000";
-    expect(refusalOf(() => verifyAward(award, { ...x, bidOutput: "99799999" }))).toBe("fill_auth_mismatch");
+    expect(refusalOf(() => verifyAward(award, { ...x, bidOutput: "99799999" }))).toBe(
+      "fill_auth_mismatch",
+    );
     expect(verifyAward(award, { ...x, bidOutput: "99800000" }).fillAuth.amount).toBe("99800000");
   });
 
@@ -274,7 +314,9 @@ describe("verifyAward binds the award's intent to the lock's", () => {
   it("refuses an award for another intent than the one the lock commits to", () => {
     const award = awardFor(baseline);
     award.intentId = "intent-0002";
-    expect(refusalOf(() => verifyAward(award, expectationsFor(baseline)))).toBe("order_id_mismatch");
+    expect(refusalOf(() => verifyAward(award, expectationsFor(baseline)))).toBe(
+      "order_id_mismatch",
+    );
   });
 });
 
@@ -297,34 +339,51 @@ describe("verifyAward cross-checks the announcement it bid on", () => {
   };
 
   it("accepts the announcement the lock matches", () => {
-    expect(verifyAward(awardFor(baseline), { ...expectationsFor(baseline), announcement }).orderId).toBe(
-      baseline.expected_order_id,
-    );
+    expect(
+      verifyAward(awardFor(baseline), { ...expectationsFor(baseline), announcement }).orderId,
+    ).toBe(baseline.expected_order_id);
   });
 
   it("refuses a lock for a different size or token than announced", () => {
     const x = expectationsFor(baseline);
-    expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, announcement: { ...announcement, fromAmount: "1" } }))).toBe(
-      "announcement_mismatch",
-    );
     expect(
-      refusalOf(() => verifyAward(awardFor(baseline), { ...x, announcement: { ...announcement, toToken: BASE_USDC } })),
+      refusalOf(() =>
+        verifyAward(awardFor(baseline), {
+          ...x,
+          announcement: { ...announcement, fromAmount: "1" },
+        }),
+      ),
+    ).toBe("announcement_mismatch");
+    expect(
+      refusalOf(() =>
+        verifyAward(awardFor(baseline), {
+          ...x,
+          announcement: { ...announcement, toToken: BASE_USDC },
+        }),
+      ),
     ).toBe("announcement_mismatch");
   });
 
   it("refuses an award for an order other than the one the bid signed", () => {
     const x = expectationsFor(baseline);
     for (const orderId of ["0x" + "00".repeat(32), "0x" + "ab".repeat(32)]) {
-      expect(refusalOf(() => verifyAward(awardFor(baseline), { ...x, announcement: { ...announcement, orderId } }))).toBe(
-        "announcement_mismatch",
-      );
+      expect(
+        refusalOf(() =>
+          verifyAward(awardFor(baseline), { ...x, announcement: { ...announcement, orderId } }),
+        ),
+      ).toBe("announcement_mismatch");
     }
   });
 
   it("refuses a lock for another intent than the one announced", () => {
     const x = expectationsFor(baseline);
     expect(
-      refusalOf(() => verifyAward(awardFor(baseline), { ...x, announcement: { ...announcement, intentId: "intent-0002" } })),
+      refusalOf(() =>
+        verifyAward(awardFor(baseline), {
+          ...x,
+          announcement: { ...announcement, intentId: "intent-0002" },
+        }),
+      ),
     ).toBe("announcement_mismatch");
   });
 });
@@ -335,21 +394,49 @@ describe("checkFillWindow: now + fill + attestation(120) + margin(300) < refunda
 
   it("admits a fill that leaves the full budget with a second to spare", () => {
     const nowSec = refundableAt - fill - 120n - 300n - 1n;
-    expect(() => checkFillWindow({ nowSec, refundableAt, fillAuthDeadline: refundableAt, fillInclusionSec: fill })).not.toThrow();
+    expect(() =>
+      checkFillWindow({
+        nowSec,
+        refundableAt,
+        fillAuthDeadline: refundableAt,
+        fillInclusionSec: fill,
+      }),
+    ).not.toThrow();
   });
 
   it("refuses at the boundary: landing exactly at refundableAt leaves no margin", () => {
     const nowSec = refundableAt - fill - 120n - 300n;
-    expect(refusalOf(() => checkFillWindow({ nowSec, refundableAt, fillAuthDeadline: refundableAt, fillInclusionSec: fill }))).toBe(
-      "window_closed",
-    );
+    expect(
+      refusalOf(() =>
+        checkFillWindow({
+          nowSec,
+          refundableAt,
+          fillAuthDeadline: refundableAt,
+          fillInclusionSec: fill,
+        }),
+      ),
+    ).toBe("window_closed");
   });
 
   it("refuses a fill that would land after the FillAuth deadline", () => {
     const nowSec = 1_000n;
-    expect(() => checkFillWindow({ nowSec, refundableAt, fillAuthDeadline: nowSec + fill, fillInclusionSec: fill })).not.toThrow();
+    expect(() =>
+      checkFillWindow({
+        nowSec,
+        refundableAt,
+        fillAuthDeadline: nowSec + fill,
+        fillInclusionSec: fill,
+      }),
+    ).not.toThrow();
     expect(
-      refusalOf(() => checkFillWindow({ nowSec, refundableAt, fillAuthDeadline: nowSec + fill - 1n, fillInclusionSec: fill })),
+      refusalOf(() =>
+        checkFillWindow({
+          nowSec,
+          refundableAt,
+          fillAuthDeadline: nowSec + fill - 1n,
+          fillInclusionSec: fill,
+        }),
+      ),
     ).toBe("auth_expired");
   });
 });
@@ -381,9 +468,15 @@ describe("verifyAttestation against the fill-attestation vectors", () => {
 
   const v = usable[0]!;
   it("refuses an attestation for another payee, verifier, chain or with a foreign proof", () => {
-    expect(refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), payee: OTHER }))).toBe("attestation_mismatch");
-    expect(refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), verifier: OTHER }))).toBe("attestation_mismatch");
-    expect(refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), originChainId: 10 }))).toBe("attestation_mismatch");
+    expect(refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), payee: OTHER }))).toBe(
+      "attestation_mismatch",
+    );
+    expect(
+      refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), verifier: OTHER })),
+    ).toBe("attestation_mismatch");
+    expect(
+      refusalOf(() => verifyAttestation(wireOf(v), { ...expectFor(v), originChainId: 10 })),
+    ).toBe("attestation_mismatch");
     const foreign = { ...wireOf(v), proof: v.expected_proof.slice(0, -2) + "ff" };
     expect(refusalOf(() => verifyAttestation(foreign, expectFor(v)))).toBe("attestation_mismatch");
   });
@@ -396,7 +489,9 @@ describe("award wire", () => {
     const event = parseSolverEvent({ type: "award", award: wire });
     if (event.type !== "award") throw new Error("expected an award");
     expect(event.award.escrow?.fillAuth?.deadline).toBe("1899990000");
-    expect(verifyAward(event.award, expectationsFor(baseline)).orderId).toBe(baseline.expected_order_id);
+    expect(verifyAward(event.award, expectationsFor(baseline)).orderId).toBe(
+      baseline.expected_order_id,
+    );
   });
 
   it("refuses a numeric uint past 2^53, which JSON has already rounded", () => {
@@ -412,7 +507,9 @@ describe("award wire", () => {
     wire.escrow.fillAuth = { filler: SOLVER, deadline: 1899990000, signature: DUMMY_SIG };
     const event = parseSolverEvent({ type: "award", award: wire });
     if (event.type !== "award") throw new Error("expected an award");
-    expect(refusalOf(() => verifyAward(event.award, expectationsFor(baseline)))).toBe("malformed_award");
+    expect(refusalOf(() => verifyAward(event.award, expectationsFor(baseline)))).toBe(
+      "malformed_award",
+    );
   });
 
   it("still refuses a fillAuth member that is present but malformed", () => {
@@ -433,7 +530,12 @@ describe("FillAcceptance over a verified award (SOLVER-RFC §5.3)", () => {
     // from the builder: the FillAuth digest on its RiddlerFiller domain.
     const fillAuthOf = (f: typeof fa) =>
       ethers.TypedDataEncoder.hash(
-        { name: "RiddlerFiller", version: "1", chainId: f.chainId, verifyingContract: f.fillerContract },
+        {
+          name: "RiddlerFiller",
+          version: "1",
+          chainId: f.chainId,
+          verifyingContract: f.fillerContract,
+        },
         {
           FillAuth: [
             { name: "fillId", type: "bytes32" },
@@ -472,14 +574,24 @@ describe("FillAcceptance over a verified award (SOLVER-RFC §5.3)", () => {
 
   it("accepts only the bond this solver trusts", () => {
     const award = withBond(awardFor(baseline));
-    expect(checkAwardBond(award, BOND)).toEqual({ chainId: 8453n, verifyingContract: BOND.address });
-    expect(checkAwardBond(award, { chainId: 8453n, address: BOND.address.toUpperCase().replace("0X", "0x") })).toEqual({
+    expect(checkAwardBond(award, BOND)).toEqual({
+      chainId: 8453n,
+      verifyingContract: BOND.address,
+    });
+    expect(
+      checkAwardBond(award, {
+        chainId: 8453n,
+        address: BOND.address.toUpperCase().replace("0X", "0x"),
+      }),
+    ).toEqual({
       chainId: 8453n,
       verifyingContract: BOND.address,
     });
     expect(refusalOf(() => checkAwardBond(awardFor(baseline), BOND))).toBe("malformed_award");
     expect(refusalOf(() => checkAwardBond(award, { ...BOND, chainId: "1" }))).toBe("bond_mismatch");
-    expect(refusalOf(() => checkAwardBond(award, { ...BOND, address: OTHER }))).toBe("bond_mismatch");
+    expect(refusalOf(() => checkAwardBond(award, { ...BOND, address: OTHER }))).toBe(
+      "bond_mismatch",
+    );
   });
 
   it("parses the bond off the award wire", () => {
@@ -488,4 +600,3 @@ describe("FillAcceptance over a verified award (SOLVER-RFC §5.3)", () => {
     expect(parsed.type === "award" && parsed.award.escrow?.bond).toEqual(BOND);
   });
 });
-

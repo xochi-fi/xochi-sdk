@@ -47,8 +47,20 @@ interface XspFile {
   obligation: {
     typeString: string;
     typehash: string;
-    vectors: { name: string; domain: Domain; terms: Terms; domainSeparator: string; structHash: string; obligationId: string }[];
-    refundCommitments: { name: string; refundAddress: string; refundSalt: string; refundCommitment: string }[];
+    vectors: {
+      name: string;
+      domain: Domain;
+      terms: Terms;
+      domainSeparator: string;
+      structHash: string;
+      obligationId: string;
+    }[];
+    refundCommitments: {
+      name: string;
+      refundAddress: string;
+      refundSalt: string;
+      refundCommitment: string;
+    }[];
   };
   depository: {
     transferTypehash: string;
@@ -56,8 +68,18 @@ interface XspFile {
     callRequestTypehash: string;
     markConsumedTypehash: string;
     vectors: (
-      | ({ name: string; kind: "callRequest"; domain: Domain; message: Parameters<typeof hashCallRequest>[0] } & Hashes)
-      | ({ name: string; kind: "markConsumed"; domain: Domain; message: { consume: DepoRecord[]; expiry: string; salt: string } } & Hashes)
+      | ({
+          name: string;
+          kind: "callRequest";
+          domain: Domain;
+          message: Parameters<typeof hashCallRequest>[0];
+        } & Hashes)
+      | ({
+          name: string;
+          kind: "markConsumed";
+          domain: Domain;
+          message: { consume: DepoRecord[]; expiry: string; salt: string };
+        } & Hashes)
     )[];
   };
   depositAddress: {
@@ -146,7 +168,9 @@ describe("xsp.json: obligation", () => {
       expect(ethers.TypedDataEncoder.hashStruct("XochiObligation", OBLIGATION_TYPES, v.terms)).toBe(
         v.structHash,
       );
-      expect(ethers.TypedDataEncoder.hash(v.domain, OBLIGATION_TYPES, v.terms)).toBe(v.obligationId);
+      expect(ethers.TypedDataEncoder.hash(v.domain, OBLIGATION_TYPES, v.terms)).toBe(
+        v.obligationId,
+      );
     });
   }
 
@@ -169,9 +193,9 @@ describe("xsp.json: obligation", () => {
     const [first] = xsp.obligation.vectors;
     if (!first) throw new Error("no obligation vectors");
     for (const st of [0, 4]) {
-      expect(() => computeObligationId({ ...first.terms, settlementType: st }, first.domain.verifyingContract)).toThrow(
-        /settlementType/,
-      );
+      expect(() =>
+        computeObligationId({ ...first.terms, settlementType: st }, first.domain.verifyingContract),
+      ).toThrow(/settlementType/);
     }
   });
 
@@ -179,7 +203,12 @@ describe("xsp.json: obligation", () => {
     it(`refundCommitment ${r.name}`, () => {
       expect(computeRefundCommitment(r.refundAddress, r.refundSalt)).toBe(r.refundCommitment);
       expect(
-        ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes32"], [r.refundAddress, r.refundSalt])),
+        ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ["address", "bytes32"],
+            [r.refundAddress, r.refundSalt],
+          ),
+        ),
       ).toBe(r.refundCommitment);
     });
   }
@@ -191,18 +220,18 @@ describe("xsp.json: depository", () => {
     expect(xsp.depository.recordTypehash).toBe(RECORD_TYPEHASH);
     expect(xsp.depository.callRequestTypehash).toBe(CALL_REQUEST_TYPEHASH);
     expect(xsp.depository.markConsumedTypehash).toBe(MARK_CONSUMED_TYPEHASH);
-    expect(ethers.id(ethers.TypedDataEncoder.from(CALL_REQUEST_TYPES).encodeType("CallRequest"))).toBe(
-      CALL_REQUEST_TYPEHASH,
-    );
-    expect(ethers.id(ethers.TypedDataEncoder.from(MARK_CONSUMED_TYPES).encodeType("MarkConsumed"))).toBe(
-      MARK_CONSUMED_TYPEHASH,
-    );
-    expect(ethers.id(ethers.TypedDataEncoder.from({ Transfer: TRANSFER_FIELDS }).encodeType("Transfer"))).toBe(
-      TRANSFER_TYPEHASH,
-    );
-    expect(ethers.id(ethers.TypedDataEncoder.from({ Record: RECORD_FIELDS }).encodeType("Record"))).toBe(
-      RECORD_TYPEHASH,
-    );
+    expect(
+      ethers.id(ethers.TypedDataEncoder.from(CALL_REQUEST_TYPES).encodeType("CallRequest")),
+    ).toBe(CALL_REQUEST_TYPEHASH);
+    expect(
+      ethers.id(ethers.TypedDataEncoder.from(MARK_CONSUMED_TYPES).encodeType("MarkConsumed")),
+    ).toBe(MARK_CONSUMED_TYPEHASH);
+    expect(
+      ethers.id(ethers.TypedDataEncoder.from({ Transfer: TRANSFER_FIELDS }).encodeType("Transfer")),
+    ).toBe(TRANSFER_TYPEHASH);
+    expect(
+      ethers.id(ethers.TypedDataEncoder.from({ Record: RECORD_FIELDS }).encodeType("Record")),
+    ).toBe(RECORD_TYPEHASH);
   });
 
   for (const v of xsp.depository.vectors) {
@@ -213,11 +242,15 @@ describe("xsp.json: depository", () => {
       if (v.kind === "callRequest") {
         expect(hashCallRequest(v.message)).toBe(v.structHash);
         expect(callRequestDigest(v.message, chainId, verifyingContract)).toBe(v.digest);
-        expect(ethers.TypedDataEncoder.hash(v.domain, CALL_REQUEST_TYPES, v.message)).toBe(v.digest);
+        expect(ethers.TypedDataEncoder.hash(v.domain, CALL_REQUEST_TYPES, v.message)).toBe(
+          v.digest,
+        );
       } else {
         expect(hashMarkConsumed(v.message)).toBe(v.structHash);
         expect(markConsumedDigest(v.message, chainId, verifyingContract)).toBe(v.digest);
-        expect(ethers.TypedDataEncoder.hash(v.domain, MARK_CONSUMED_TYPES, v.message)).toBe(v.digest);
+        expect(ethers.TypedDataEncoder.hash(v.domain, MARK_CONSUMED_TYPES, v.message)).toBe(
+          v.digest,
+        );
       }
     });
   }
@@ -225,7 +258,9 @@ describe("xsp.json: depository", () => {
   it("covers empty arrays (keccak256 of empty bytes)", () => {
     const empty = xsp.depository.vectors.find(
       (v) =>
-        v.kind === "callRequest" && v.message.transfers.length === 0 && v.message.consume.length === 0,
+        v.kind === "callRequest" &&
+        v.message.transfers.length === 0 &&
+        v.message.consume.length === 0,
     );
     expect(empty).toBeDefined();
   });
@@ -241,7 +276,9 @@ describe("xsp.json: deposit address", () => {
         v.implementation,
         "0x5af43d82803e903d91602b57fd5bf3",
       ]);
-      expect(ethers.getCreate2Address(v.factory, v.salt, ethers.keccak256(initCode)).toLowerCase()).toBe(v.address);
+      expect(
+        ethers.getCreate2Address(v.factory, v.salt, ethers.keccak256(initCode)).toLowerCase(),
+      ).toBe(v.address);
     });
   }
 

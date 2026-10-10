@@ -62,7 +62,10 @@ describe("escrow example resolveConfig", () => {
 describe("SDK key parsing", () => {
   it("never echoes a malformed solver key", () => {
     const bad = `${SOLVER_KEY}\n`;
-    for (const parse of [() => solverIdFromKey(bad), () => new SolverClient({ solverKey: bad, baseUrl: "https://venue.invalid" })]) {
+    for (const parse of [
+      () => solverIdFromKey(bad),
+      () => new SolverClient({ solverKey: bad, baseUrl: "https://venue.invalid" }),
+    ]) {
       expect(parse).toThrow(/value not shown/);
       try {
         parse();
@@ -81,6 +84,8 @@ describe("EscrowSolver bid index", () => {
     // Long past the first bid's validUntilMs: the next quote prunes it.
     now.mockReturnValue(announcement.closesAt + 365 * 86_400_000);
     expect(await w.escrowSolver.quote({ ...announcement, auctionId: "other" })).not.toBeNull();
-    await expect(w.escrowSolver.fill(await award())).rejects.toThrow(/for no bid this process signed/);
+    await expect(w.escrowSolver.fill(await award())).rejects.toThrow(
+      /for no bid this process signed/,
+    );
   });
 });

@@ -24,7 +24,13 @@ import {
   type OrderTerms,
 } from "@xochi/signer";
 
-import type { Award, AwardEscrow, AwardFillAuth, FillAttestationWire, IntentAnnouncement } from "./types";
+import type {
+  Award,
+  AwardEscrow,
+  AwardFillAuth,
+  FillAttestationWire,
+  IntentAnnouncement,
+} from "./types";
 
 type UintLike = bigint | number | string;
 
@@ -75,16 +81,37 @@ const eqAddr = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 // narrows to it; the feed schema only checks the shape of what is present, so
 // an award missing a fill field still reaches `Solver.fill` and is refused
 // HERE -- not as a parse error that ends `SolverClient.run` for every solver.
-export type FillableEscrow = Required<Pick<AwardEscrow, "address" | "intentRef" | "fillId" | "destOpening" | "acceptBy">> &
+export type FillableEscrow = Required<
+  Pick<AwardEscrow, "address" | "intentRef" | "fillId" | "destOpening" | "acceptBy">
+> &
   AwardEscrow & { fillAuth: Required<AwardFillAuth> };
 
-const FILL_AUTH_FIELDS = ["fillId", "filler", "to", "token", "amount", "deadline", "chainId", "fillerContract", "signature"] as const;
+const FILL_AUTH_FIELDS = [
+  "fillId",
+  "filler",
+  "to",
+  "token",
+  "amount",
+  "deadline",
+  "chainId",
+  "fillerContract",
+  "signature",
+] as const;
 
 export function requireFillableEscrow(award: Award): FillableEscrow {
   const e = award.escrow;
-  if (!e) throw new EscrowRefusalError("malformed_award", `award ${award.auctionId} carries no escrow envelope`);
-  const missing: string[] = (["fillId", "destOpening", "fillAuth", "acceptBy"] as const).filter((k) => e[k] === undefined);
-  if (e.fillAuth) missing.push(...FILL_AUTH_FIELDS.filter((k) => e.fillAuth![k] === undefined).map((k) => `fillAuth.${k}`));
+  if (!e)
+    throw new EscrowRefusalError(
+      "malformed_award",
+      `award ${award.auctionId} carries no escrow envelope`,
+    );
+  const missing: string[] = (["fillId", "destOpening", "fillAuth", "acceptBy"] as const).filter(
+    (k) => e[k] === undefined,
+  );
+  if (e.fillAuth)
+    missing.push(
+      ...FILL_AUTH_FIELDS.filter((k) => e.fillAuth![k] === undefined).map((k) => `fillAuth.${k}`),
+    );
   if (missing.length > 0) {
     throw new EscrowRefusalError(
       "malformed_award",
@@ -145,14 +172,26 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
   const orderRef = env.intentRef;
 
   if (!eqAddr(env.address, x.escrow)) {
-    throw new EscrowRefusalError("wrong_escrow", `award names escrow ${env.address}, expected ${x.escrow}`, orderRef);
+    throw new EscrowRefusalError(
+      "wrong_escrow",
+      `award names escrow ${env.address}, expected ${x.escrow}`,
+      orderRef,
+    );
   }
   const t = x.originTerms;
   if (!eqAddr(t.escrow, x.escrow)) {
-    throw new EscrowRefusalError("wrong_escrow", `order terms name escrow ${t.escrow}, expected ${x.escrow}`, orderRef);
+    throw new EscrowRefusalError(
+      "wrong_escrow",
+      `order terms name escrow ${t.escrow}, expected ${x.escrow}`,
+      orderRef,
+    );
   }
   if (!sameUint(t.fromChainId, x.originChainId)) {
-    throw new EscrowRefusalError("wrong_chain", `order origin is chain ${t.fromChainId}, expected ${x.originChainId}`, orderRef);
+    throw new EscrowRefusalError(
+      "wrong_chain",
+      `order origin is chain ${t.fromChainId}, expected ${x.originChainId}`,
+      orderRef,
+    );
   }
   if (!sameUint(t.toChainId, x.destinationChainId)) {
     throw new EscrowRefusalError(
@@ -174,7 +213,11 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
   try {
     destCommitment = computeDestCommitment(opening);
   } catch (err) {
-    throw new EscrowRefusalError("malformed_award", `destOpening does not encode: ${(err as Error).message}`, orderRef);
+    throw new EscrowRefusalError(
+      "malformed_award",
+      `destOpening does not encode: ${(err as Error).message}`,
+      orderRef,
+    );
   }
   if (env.orderTerms && env.orderTerms.destCommitment.toLowerCase() !== destCommitment) {
     throw new EscrowRefusalError(
@@ -219,14 +262,19 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
   const fail = (why: string): never => {
     throw new EscrowRefusalError("fill_auth_mismatch", why, orderId);
   };
-  if (a.fillId.toLowerCase() !== env.fillId.toLowerCase()) fail(`fillAuth.fillId ${a.fillId} is not the award fillId ${env.fillId}`);
-  if (!eqAddr(a.filler, x.solver)) fail(`fillAuth names filler ${a.filler}, not this solver ${x.solver}`);
+  if (a.fillId.toLowerCase() !== env.fillId.toLowerCase())
+    fail(`fillAuth.fillId ${a.fillId} is not the award fillId ${env.fillId}`);
+  if (!eqAddr(a.filler, x.solver))
+    fail(`fillAuth names filler ${a.filler}, not this solver ${x.solver}`);
   if (!eqAddr(a.fillerContract, x.fillerContract)) {
     fail(`fillAuth targets RiddlerFiller ${a.fillerContract}, expected ${x.fillerContract}`);
   }
-  if (!sameUint(a.chainId, x.destinationChainId)) fail(`fillAuth is for chain ${a.chainId}, expected ${x.destinationChainId}`);
-  if (!eqAddr(a.to, opening.recipient)) fail(`fillAuth pays ${a.to}, the lock commits to ${opening.recipient}`);
-  if (!eqAddr(a.token, opening.toToken)) fail(`fillAuth pays token ${a.token}, the lock commits to ${opening.toToken}`);
+  if (!sameUint(a.chainId, x.destinationChainId))
+    fail(`fillAuth is for chain ${a.chainId}, expected ${x.destinationChainId}`);
+  if (!eqAddr(a.to, opening.recipient))
+    fail(`fillAuth pays ${a.to}, the lock commits to ${opening.recipient}`);
+  if (!eqAddr(a.token, opening.toToken))
+    fail(`fillAuth pays token ${a.token}, the lock commits to ${opening.toToken}`);
   // The attester releases on `Filled.amount >= toAmount`: an authorization
   // below the floor is a fill that can never be claimed.
   const amount = BigInt(a.amount);
@@ -240,9 +288,14 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
   try {
     awarded = BigInt(award.output);
   } catch {
-    throw new EscrowRefusalError("malformed_award", `award output ${award.output} is not an integer`, orderId);
+    throw new EscrowRefusalError(
+      "malformed_award",
+      `award output ${award.output} is not an integer`,
+      orderId,
+    );
   }
-  if (amount > awarded) fail(`fillAuth amount ${a.amount} exceeds the awarded output ${award.output}`);
+  if (amount > awarded)
+    fail(`fillAuth amount ${a.amount} exceeds the awarded output ${award.output}`);
   let bidOutput: bigint;
   try {
     bidOutput = BigInt(x.bidOutput);
@@ -264,7 +317,14 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
     fillId: a.fillId.toLowerCase() as Hex,
     opening,
     terms,
-    fillAuth: { fillId: a.fillId, filler: a.filler, to: a.to, token: a.token, amount: a.amount, deadline: a.deadline },
+    fillAuth: {
+      fillId: a.fillId,
+      filler: a.filler,
+      to: a.to,
+      token: a.token,
+      amount: a.amount,
+      deadline: a.deadline,
+    },
     fillAuthSignature: a.signature as Hex,
     fillAuthDomain: { chainId: BigInt(a.chainId), verifyingContract: a.fillerContract },
     acceptBy: BigInt(env.acceptBy),
@@ -282,21 +342,30 @@ function checkAnnouncement(
   const fail = (why: string): never => {
     throw new EscrowRefusalError("announcement_mismatch", why, orderId);
   };
-  if (ann.auctionId !== award.auctionId) fail(`award auction ${award.auctionId} is not announcement ${ann.auctionId}`);
+  if (ann.auctionId !== award.auctionId)
+    fail(`award auction ${award.auctionId} is not announcement ${ann.auctionId}`);
   // The bid signed `ann.orderId` (SolverBid v2): an award for another order is
   // one this solver never bid on.
-  if (ann.orderId.toLowerCase() !== orderId.toLowerCase()) fail(`lock order ${orderId}, announced ${ann.orderId}`);
-  if (ann.intentId !== opening.intentId) fail(`the lock commits to intent ${opening.intentId}, announced ${ann.intentId}`);
-  if (!sameUint(terms.fromChainId, ann.fromChainId)) fail(`lock origin ${terms.fromChainId}, announced ${ann.fromChainId}`);
-  if (!sameUint(terms.toChainId, ann.toChainId)) fail(`lock destination ${terms.toChainId}, announced ${ann.toChainId}`);
-  if (!eqAddr(terms.fromToken, ann.fromToken)) fail(`lock token ${terms.fromToken}, announced ${ann.fromToken}`);
+  if (ann.orderId.toLowerCase() !== orderId.toLowerCase())
+    fail(`lock order ${orderId}, announced ${ann.orderId}`);
+  if (ann.intentId !== opening.intentId)
+    fail(`the lock commits to intent ${opening.intentId}, announced ${ann.intentId}`);
+  if (!sameUint(terms.fromChainId, ann.fromChainId))
+    fail(`lock origin ${terms.fromChainId}, announced ${ann.fromChainId}`);
+  if (!sameUint(terms.toChainId, ann.toChainId))
+    fail(`lock destination ${terms.toChainId}, announced ${ann.toChainId}`);
+  if (!eqAddr(terms.fromToken, ann.fromToken))
+    fail(`lock token ${terms.fromToken}, announced ${ann.fromToken}`);
   if (ann.fromAmount !== undefined && !sameUint(terms.fromAmount, ann.fromAmount)) {
     fail(`lock amount ${terms.fromAmount}, announced ${ann.fromAmount}`);
   }
-  if (canonicalKey(opening.toToken) !== canonicalKey(ann.toToken)) fail(`opening token ${opening.toToken}, announced ${ann.toToken}`);
+  if (canonicalKey(opening.toToken) !== canonicalKey(ann.toToken))
+    fail(`opening token ${opening.toToken}, announced ${ann.toToken}`);
 }
 
-export function recoverFillAuthSigner(v: Pick<VerifiedAward, "fillAuth" | "fillAuthSignature" | "fillAuthDomain">): string {
+export function recoverFillAuthSigner(
+  v: Pick<VerifiedAward, "fillAuth" | "fillAuthSignature" | "fillAuthDomain">,
+): string {
   return ethers.recoverAddress(fillAuthDigest(v.fillAuthDomain, v.fillAuth), v.fillAuthSignature);
 }
 
@@ -341,10 +410,14 @@ export function checkLockMatchesTerms(lock: OpenedLock, terms: OrderTerms): void
   const fail = (why: string): never => {
     throw new EscrowRefusalError("opened_mismatch", why, lock.orderId);
   };
-  if (!eqAddr(lock.token, terms.fromToken)) fail(`Opened token ${lock.token}, terms ${terms.fromToken}`);
-  if (lock.amount !== BigInt(terms.fromAmount)) fail(`Opened amount ${lock.amount}, terms ${terms.fromAmount}`);
-  if (!eqAddr(lock.depositor, terms.depositor)) fail(`Opened depositor ${lock.depositor}, terms ${terms.depositor}`);
-  if (lock.toChainId !== BigInt(terms.toChainId)) fail(`Opened toChainId ${lock.toChainId}, terms ${terms.toChainId}`);
+  if (!eqAddr(lock.token, terms.fromToken))
+    fail(`Opened token ${lock.token}, terms ${terms.fromToken}`);
+  if (lock.amount !== BigInt(terms.fromAmount))
+    fail(`Opened amount ${lock.amount}, terms ${terms.fromAmount}`);
+  if (!eqAddr(lock.depositor, terms.depositor))
+    fail(`Opened depositor ${lock.depositor}, terms ${terms.depositor}`);
+  if (lock.toChainId !== BigInt(terms.toChainId))
+    fail(`Opened toChainId ${lock.toChainId}, terms ${terms.toChainId}`);
   if (lock.refundableAt < BigInt(terms.fillDeadline)) {
     fail(`Opened refundableAt ${lock.refundableAt} precedes fillDeadline ${terms.fillDeadline}`);
   }
@@ -372,7 +445,9 @@ export function checkFillWindow(w: FillWindowInput): void {
   const now = BigInt(w.nowSec);
   const landsBy = now + BigInt(w.fillInclusionSec);
   const needed =
-    landsBy + BigInt(w.attestationLatencySec ?? ATTESTATION_LATENCY_SEC) + BigInt(w.safetyMarginSec ?? SAFETY_MARGIN_SEC);
+    landsBy +
+    BigInt(w.attestationLatencySec ?? ATTESTATION_LATENCY_SEC) +
+    BigInt(w.safetyMarginSec ?? SAFETY_MARGIN_SEC);
   if (needed >= BigInt(w.refundableAt)) {
     throw new EscrowRefusalError(
       "window_closed",
@@ -380,7 +455,10 @@ export function checkFillWindow(w: FillWindowInput): void {
     );
   }
   if (landsBy > BigInt(w.fillAuthDeadline)) {
-    throw new EscrowRefusalError("auth_expired", `fill would land at ${landsBy}, after the FillAuth deadline ${w.fillAuthDeadline}`);
+    throw new EscrowRefusalError(
+      "auth_expired",
+      `fill would land at ${landsBy}, after the FillAuth deadline ${w.fillAuthDeadline}`,
+    );
   }
 }
 
@@ -401,13 +479,21 @@ export function verifyAttestation(
   const fail = (why: string): never => {
     throw new EscrowRefusalError("attestation_mismatch", why, x.orderId);
   };
-  if (wire.orderId.toLowerCase() !== x.orderId.toLowerCase()) fail(`attestation is for ${wire.orderId}`);
+  if (wire.orderId.toLowerCase() !== x.orderId.toLowerCase())
+    fail(`attestation is for ${wire.orderId}`);
   if (!eqAddr(wire.payee, x.payee)) fail(`attestation pays ${wire.payee}, expected ${x.payee}`);
-  if (!sameUint(wire.chainId, x.originChainId)) fail(`attestation domain chain ${wire.chainId}, expected ${x.originChainId}`);
-  if (!eqAddr(wire.verifier, x.verifier)) fail(`attestation verifier ${wire.verifier}, the lock's is ${x.verifier}`);
+  if (!sameUint(wire.chainId, x.originChainId))
+    fail(`attestation domain chain ${wire.chainId}, expected ${x.originChainId}`);
+  if (!eqAddr(wire.verifier, x.verifier))
+    fail(`attestation verifier ${wire.verifier}, the lock's is ${x.verifier}`);
   const proof = encodeAttestedProof(wire.payee, wire.signature);
-  if (wire.proof.toLowerCase() !== proof) fail(`attestation proof is not abi.encode(payee, signature)`);
-  const digest = fillAttestationDigest({ chainId: x.originChainId, verifyingContract: x.verifier }, x.orderId, x.payee);
+  if (wire.proof.toLowerCase() !== proof)
+    fail(`attestation proof is not abi.encode(payee, signature)`);
+  const digest = fillAttestationDigest(
+    { chainId: x.originChainId, verifyingContract: x.verifier },
+    x.orderId,
+    x.payee,
+  );
   let attester: string;
   try {
     attester = ethers.recoverAddress(digest, wire.signature);
@@ -440,7 +526,11 @@ export function checkAwardBond(
   const env = requireFillableEscrow(award);
   const bond = env.bond;
   if (!bond) {
-    throw new EscrowRefusalError("malformed_award", `award ${award.auctionId} names no SolverBond; it cannot be accepted`, env.intentRef);
+    throw new EscrowRefusalError(
+      "malformed_award",
+      `award ${award.auctionId} names no SolverBond; it cannot be accepted`,
+      env.intentRef,
+    );
   }
   if (!eqAddr(bond.address, trusted.address) || !sameUint(bond.chainId, trusted.chainId)) {
     throw new EscrowRefusalError(
@@ -451,4 +541,3 @@ export function checkAwardBond(
   }
   return { chainId: BigInt(bond.chainId), verifyingContract: bond.address };
 }
-

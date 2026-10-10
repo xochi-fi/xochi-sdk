@@ -50,7 +50,8 @@ const numRuns = (() => {
   const raw = process.env.PBT_RUNS;
   if (raw === undefined || raw === "") return 200;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) throw new Error(`PBT_RUNS must be a positive integer, got ${JSON.stringify(raw)}`);
+  if (!Number.isInteger(n) || n <= 0)
+    throw new Error(`PBT_RUNS must be a positive integer, got ${JSON.stringify(raw)}`);
   return Math.max(n, 200);
 })();
 
@@ -92,7 +93,10 @@ const step: fc.Arbitrary<Step> = fc.oneof(
   }),
 );
 
-function announcementFor(s: Extract<Step, { kind: "announcement" }>, seq: number): IntentAnnouncement {
+function announcementFor(
+  s: Extract<Step, { kind: "announcement" }>,
+  seq: number,
+): IntentAnnouncement {
   return {
     intentId: `intent-${s.id}-${seq}`,
     auctionId: `auction-${s.id}-${seq}`,
@@ -190,7 +194,12 @@ async function runScript(steps: Step[]): Promise<RunOutcome> {
       filled.push(award.intentId);
       const s = awardBehaviour.get(award.intentId)!;
       if (s.throws) throw new Error("fill blew up");
-      return { auctionId: award.auctionId, intentId: award.intentId, solverId: SOLVER_ID, proof: { kind: "tx_hash", chainId: 10, txHash: "0x" + "ab".repeat(32) } };
+      return {
+        auctionId: award.auctionId,
+        intentId: award.intentId,
+        solverId: SOLVER_ID,
+        proof: { kind: "tx_hash", chainId: 10, txHash: "0x" + "ab".repeat(32) },
+      };
     },
   };
 
@@ -210,144 +219,192 @@ async function runScript(steps: Step[]): Promise<RunOutcome> {
 describe("SolverClient.run against a model", () => {
   const script = fc.array(step, { minLength: 0, maxLength: 12 });
 
-  it("bids exactly when the window was open and the solver did not pass", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport } = await runScript(steps);
-        const expected = steps.filter((s) => s.kind === "announcement" && s.open && !s.pass && !s.throws).length;
-        return transport.bids.length === expected;
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "bids exactly when the window was open and the solver did not pass",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport } = await runScript(steps);
+          const expected = steps.filter(
+            (s) => s.kind === "announcement" && s.open && !s.pass && !s.throws,
+          ).length;
+          return transport.bids.length === expected;
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
   // The money-relevant invariant: never fill an award addressed to someone else.
-  it("never fills an award addressed to another solver", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { filled } = await runScript(steps);
-        const mine = new Set(
-          steps
-            .map((s, i) => (s.kind === "award" && s.mine ? `intent-${s.id}-${i}` : null))
-            .filter((x): x is string => x !== null),
-        );
-        return filled.every((id) => mine.has(id));
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "never fills an award addressed to another solver",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { filled } = await runScript(steps);
+          const mine = new Set(
+            steps
+              .map((s, i) => (s.kind === "award" && s.mine ? `intent-${s.id}-${i}` : null))
+              .filter((x): x is string => x !== null),
+          );
+          return filled.every((id) => mine.has(id));
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("fills exactly the awards addressed to this solver", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { filled } = await runScript(steps);
-        const expected = steps.filter((s) => s.kind === "award" && s.mine).length;
-        return filled.length === expected;
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "fills exactly the awards addressed to this solver",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { filled } = await runScript(steps);
+          const expected = steps.filter((s) => s.kind === "award" && s.mine).length;
+          return filled.length === expected;
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("never quotes an announcement whose window had already closed", async () => {
-    // The auctioneer rejects late bids anyway; skipping saves the round trip,
-    // and quoting a closed window would mean paying to compute an unwinnable price.
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { quoted } = await runScript(steps);
-        const closed = new Set(
-          steps
-            .map((s, i) => (s.kind === "announcement" && !s.open ? `intent-${s.id}-${i}` : null))
-            .filter((x): x is string => x !== null),
-        );
-        return quoted.every((id) => !closed.has(id));
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "never quotes an announcement whose window had already closed",
+    async () => {
+      // The auctioneer rejects late bids anyway; skipping saves the round trip,
+      // and quoting a closed window would mean paying to compute an unwinnable price.
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { quoted } = await runScript(steps);
+          const closed = new Set(
+            steps
+              .map((s, i) => (s.kind === "announcement" && !s.open ? `intent-${s.id}-${i}` : null))
+              .filter((x): x is string => x !== null),
+          );
+          return quoted.every((id) => !closed.has(id));
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("every submitted bid is signed by this solver and verifies", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport } = await runScript(steps);
-        return transport.bids.every((b) => b.solverId === SOLVER_ID && verifyBid(b));
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "every submitted bid is signed by this solver and verifies",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport } = await runScript(steps);
+          return transport.bids.every((b) => b.solverId === SOLVER_ID && verifyBid(b));
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("every bid corresponds to an announcement that was actually seen", async () => {
-    // A bid for an auction nobody announced would be a fabricated commitment.
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport } = await runScript(steps);
-        const seen = new Set(
-          steps
-            .map((s, i) => (s.kind === "announcement" ? `${s.id}-${i}` : null))
-            .filter((x): x is string => x !== null),
-        );
-        return transport.bids.every(
-          (b) => seen.has(b.intentId.replace("intent-", "")) && b.auctionId === b.intentId.replace("intent-", "auction-"),
-        );
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "every bid corresponds to an announcement that was actually seen",
+    async () => {
+      // A bid for an auction nobody announced would be a fabricated commitment.
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport } = await runScript(steps);
+          const seen = new Set(
+            steps
+              .map((s, i) => (s.kind === "announcement" ? `${s.id}-${i}` : null))
+              .filter((x): x is string => x !== null),
+          );
+          return transport.bids.every(
+            (b) =>
+              seen.has(b.intentId.replace("intent-", "")) &&
+              b.auctionId === b.intentId.replace("intent-", "auction-"),
+          );
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("bids on exactly the expected set of auctions, not merely the right number", async () => {
-    // Set equality rather than a count: it also catches a bid attributed to the
-    // wrong announcement, which a count cannot see. Subsumes the pass guard --
-    // a passed auction appearing here fails regardless of how it got there.
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport } = await runScript(steps);
-        const expected = new Set(
-          steps
-            .map((s, i) =>
-              s.kind === "announcement" && s.open && !s.pass && !s.throws ? `auction-${s.id}-${i}` : null,
-            )
-            .filter((x): x is string => x !== null),
-        );
-        const actual = new Set(transport.bids.map((b) => b.auctionId));
-        return actual.size === expected.size && [...actual].every((a) => expected.has(a));
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "bids on exactly the expected set of auctions, not merely the right number",
+    async () => {
+      // Set equality rather than a count: it also catches a bid attributed to the
+      // wrong announcement, which a count cannot see. Subsumes the pass guard --
+      // a passed auction appearing here fails regardless of how it got there.
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport } = await runScript(steps);
+          const expected = new Set(
+            steps
+              .map((s, i) =>
+                s.kind === "announcement" && s.open && !s.pass && !s.throws
+                  ? `auction-${s.id}-${i}`
+                  : null,
+              )
+              .filter((x): x is string => x !== null),
+          );
+          const actual = new Set(transport.bids.map((b) => b.auctionId));
+          return actual.size === expected.size && [...actual].every((a) => expected.has(a));
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("reports every thrown error exactly once", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { errors } = await runScript(steps);
-        const thrown =
-          steps.filter((s) => s.kind === "announcement" && s.open && s.throws).length +
-          steps.filter((s) => s.kind === "award" && s.mine && s.throws).length;
-        return errors === thrown;
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "reports every thrown error exactly once",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { errors } = await runScript(steps);
+          const thrown =
+            steps.filter((s) => s.kind === "announcement" && s.open && s.throws).length +
+            steps.filter((s) => s.kind === "award" && s.mine && s.throws).length;
+          return errors === thrown;
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("keeps running after a throw -- one bad intent does not end the loop", async () => {
-    // Asserted separately from the error count so a failure says which of the
-    // two broke. Every step after a throwing one must still take effect.
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport, filled } = await runScript(steps);
-        const expectedBids = steps.filter((s) => s.kind === "announcement" && s.open && !s.pass && !s.throws).length;
-        const expectedFills = steps.filter((s) => s.kind === "award" && s.mine).length;
-        return transport.bids.length === expectedBids && filled.length === expectedFills;
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "keeps running after a throw -- one bad intent does not end the loop",
+    async () => {
+      // Asserted separately from the error count so a failure says which of the
+      // two broke. Every step after a throwing one must still take effect.
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport, filled } = await runScript(steps);
+          const expectedBids = steps.filter(
+            (s) => s.kind === "announcement" && s.open && !s.pass && !s.throws,
+          ).length;
+          const expectedFills = steps.filter((s) => s.kind === "award" && s.mine).length;
+          return transport.bids.length === expectedBids && filled.length === expectedFills;
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 
-  it("submits no more bids than announcements it saw", async () => {
-    await fc.assert(
-      fc.asyncProperty(script, async (steps) => {
-        const { transport } = await runScript(steps);
-        return transport.bids.length <= steps.filter((s) => s.kind === "announcement").length;
-      }),
-      CFG,
-    );
-  }, PBT_TIMEOUT_MS);
+  it(
+    "submits no more bids than announcements it saw",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const { transport } = await runScript(steps);
+          return transport.bids.length <= steps.filter((s) => s.kind === "announcement").length;
+        }),
+        CFG,
+      );
+    },
+    PBT_TIMEOUT_MS,
+  );
 });

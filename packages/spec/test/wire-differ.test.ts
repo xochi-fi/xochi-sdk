@@ -31,9 +31,7 @@ interface Findings {
 
 // Computed specifier: the differ is a plain .mjs with no declarations, and a literal
 // import would need one. The shape it returns is asserted by every case below.
-const wire = (await import(
-  path.join(path.dirname(DOC_PATH), "compare.mjs")
-)) as {
+const wire = (await import(path.join(path.dirname(DOC_PATH), "compare.mjs"))) as {
   compareContract: (served: unknown, vendored: unknown) => Findings;
   numberTokens: (text: string) => string[];
   numberTokenDiff: (
@@ -173,9 +171,10 @@ describe("value constraints", () => {
       const { breaking, stale } = served((d) => {
         d.components.schemas.EthAddress[key] = "__probe__";
       });
-      expect([...breaking, ...stale].join("\n"), `\`${key}\` is advertised but not compared`).toMatch(
-        new RegExp(`EthAddress\\.\\$?${key.replace("$", "")}`),
-      );
+      expect(
+        [...breaking, ...stale].join("\n"),
+        `\`${key}\` is advertised but not compared`,
+      ).toMatch(new RegExp(`EthAddress\\.\\$?${key.replace("$", "")}`));
     }
   });
 });
@@ -265,14 +264,18 @@ describe("servers", () => {
       d.servers.reverse();
     });
     expect(stale).toEqual([]);
-    expect(one(breaking)).toMatch(/servers: same urls in a new order -- served leads with https:\/\/localhost:4000/);
+    expect(one(breaking)).toMatch(
+      /servers: same urls in a new order -- served leads with https:\/\/localhost:4000/,
+    );
   });
 
   it("an operation-level override reroutes one operation and is BREAKING", () => {
     const { breaking } = served((d) => {
       d.paths["/xochi/quote"].post.servers = [{ url: "https://evil.example" }];
     });
-    expect(one(breaking)).toMatch(/POST \/xochi\/quote servers: served declares an operation-level override/);
+    expect(one(breaking)).toMatch(
+      /POST \/xochi\/quote servers: served declares an operation-level override/,
+    );
   });
 });
 
@@ -325,7 +328,10 @@ describe("authentication", () => {
     // node walk does not reach, so it is compared whole. Every scheme, not the first:
     // picking one by index tests whichever the generator happened to emit first.
     const names = Object.keys(vendored().components.securitySchemes ?? {});
-    expect(names.length, "the served contract declares no security scheme to rename").toBeGreaterThan(0);
+    expect(
+      names.length,
+      "the served contract declares no security scheme to rename",
+    ).toBeGreaterThan(0);
     for (const name of names) {
       const { breaking } = served((d) => {
         d.components.securitySchemes[name].name = "X-Not-The-Api-Key";
@@ -346,7 +352,11 @@ describe("documents this differ refuses to grade", () => {
       for (let i = 0; i < n; i += 1) node = { type: "object", properties: { a: node } };
       return node;
     };
-    const doc = (): Doc => ({ openapi: "3.0.3", paths: {}, components: { schemas: { D: deep(5000) } } });
+    const doc = (): Doc => ({
+      openapi: "3.0.3",
+      paths: {},
+      components: { schemas: { D: deep(5000) } },
+    });
     expect(() => wire.compareContract(doc(), doc())).toThrow(wire.IncomparableDocument);
   });
 
@@ -381,7 +391,9 @@ describe("the path item as a node", () => {
     const { breaking } = served((d) => {
       d.paths["/xochi/quote"].servers = [{ url: "https://evil.example" }];
     });
-    expect(one(breaking)).toMatch(/path \/xochi\/quote servers: served declares a path-item override/);
+    expect(one(breaking)).toMatch(
+      /path \/xochi\/quote servers: served declares a path-item override/,
+    );
   });
 
   it("a path-item servers override on every path is BREAKING once per path", () => {
@@ -396,7 +408,9 @@ describe("the path item as a node", () => {
     const { breaking } = served((d) => {
       d.paths["/xochi/quote"].$ref = "#/paths/~1xochi~1health";
     });
-    expect(one(breaking)).toMatch(/path \/xochi\/quote\.\$ref: served replaces the whole path item/);
+    expect(one(breaking)).toMatch(
+      /path \/xochi\/quote\.\$ref: served replaces the whole path item/,
+    );
   });
 });
 
@@ -545,7 +559,9 @@ describe("required in its boolean form", () => {
       op.requestBody = { $ref: "#/components/requestBodies/Filter" };
     });
     const all = breaking.join("\n");
-    expect(all).toMatch(/parameter #\/components\/parameters\/Tenant is served but not vendored \(required\)/);
+    expect(all).toMatch(
+      /parameter #\/components\/parameters\/Tenant is served but not vendored \(required\)/,
+    );
     expect(all).toMatch(/requestBody is served but not vendored \(required\)/);
   });
 });
@@ -596,7 +612,10 @@ describe("numberTokenDiff", () => {
   it("a duplicated literal re-spelled in the VENDORED copy is caught", () => {
     expect(respelledVendored).not.toBe(RAW);
     expect(zeros(respelledVendored)).toBe(zeros(RAW) - 1);
-    expect(zeros(respelledVendored), "the folded spelling must still occur elsewhere").toBeGreaterThan(0);
+    expect(
+      zeros(respelledVendored),
+      "the folded spelling must still occur elsewhere",
+    ).toBeGreaterThan(0);
 
     const { servedOnly, vendoredOnly } = wire.numberTokenDiff(RAW, respelledVendored);
     expect(vendoredOnly, "the local fault this axis exists to catch").toEqual(["0.0"]);
@@ -612,7 +631,9 @@ describe("numberTokenDiff", () => {
   it("the de-duplicated one-directional filter it replaces sees neither direction", () => {
     const vendoredTokens = new Set(wire.numberTokens(respelledVendored));
     expect([...new Set(wire.numberTokens(RAW))].filter((t) => !vendoredTokens.has(t))).toEqual([]);
-    expect(wire.compareContract(JSON.parse(RAW), JSON.parse(respelledVendored)).breaking).toEqual([]);
+    expect(wire.compareContract(JSON.parse(RAW), JSON.parse(respelledVendored)).breaking).toEqual(
+      [],
+    );
   });
 
   it("two identical texts report nothing on either side", () => {
@@ -660,7 +681,15 @@ describe("the vendored form", () => {
   // reintroduces the folding on exactly those inputs, silently. So it throws, and the
   // caller reports INCONCLUSIVE rather than writing.
   it("malformed input throws instead of falling back", () => {
-    for (const bad of ['{"a":1,}', "{\"a\": 01}", "{} {}", '{"a": +1}', '{"a": .5}', "{'a':1}", "{"]) {
+    for (const bad of [
+      '{"a":1,}',
+      '{"a": 01}',
+      "{} {}",
+      '{"a": +1}',
+      '{"a": .5}',
+      "{'a':1}",
+      "{",
+    ]) {
       expect(() => format.formatDocument(bad), bad).toThrow(format.MalformedDocument);
     }
   });
