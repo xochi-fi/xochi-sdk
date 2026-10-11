@@ -19,5 +19,4 @@ export default defineConfig({
   target: "es2022",
   platform: "node",
   clean: true,
-  sourcemap: true,
 });
