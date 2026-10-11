@@ -59,6 +59,8 @@ Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal
 - Each signing request writes a JSONL audit line (`signed` / `replayed` / `rejected`) before the
   signature is returned; a failed write returns `500 AUDIT_FAILED`.
 - An identical retry returns the identical signature (deterministic signing, audited `replayed`).
+- Process log lines on stderr carry the `[xochi-provider]` prefix; the audit log is separate
+  (`SIGNER_AUDIT_LOG`, stdout by default).
 
 ## Configuration
 

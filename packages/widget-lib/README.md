@@ -36,10 +36,10 @@ widget.destroy();
 
 ## Security model
 
-- Messages are handled only if `event.source` is this iframe **and** `event.origin` is the configured origin; every post names that origin, never `"*"`.
-- Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200`. Every connection, signature, chain switch and transaction still prompts.
-- Inbound JSON is capped at 128 KiB; at most 16 wallet requests may be pending, and an unanswered prompt holds its slot until it settles.
-- Wallet events reach the frame only after it has connected in the current load.
+- Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`.
+- Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200` without reaching it. Every connection, signature, chain switch and transaction still prompts.
+- Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is deliberately no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
+- Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
 

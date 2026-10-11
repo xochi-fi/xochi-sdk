@@ -45,7 +45,22 @@ Reverts: `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `Dupl
 
 ## Input builders
 
-`buildComplianceInputs`, `buildRiskScoreInputs`, `buildPatternInputs`, `buildAttestationInputs`, `buildMembershipInputs`, `buildNonMembershipInputs`, `buildComplianceSignedInputs`, `buildRiskScoreSignedInputs` and `buildComplianceMultiSignedInputs` build circuit inputs outside `ERC8262Prover` and validate signals, weights, timestamps and Merkle depth first. Every circuit takes `submitter` as a public input; the Oracle enforces `submitter == msg.sender`.
+`buildComplianceInputs`, `buildRiskScoreInputs`, `buildPatternInputs`, `buildAttestationInputs`, `buildMembershipInputs`, `buildNonMembershipInputs`, `buildComplianceSignedInputs`, `buildRiskScoreSignedInputs` and `buildComplianceMultiSignedInputs` build circuit inputs outside `ERC8262Prover`. Each validates before proving (fail-fast, with a readable error instead of a circuit execution failure):
+
+- Signals are integers in 0-100.
+- Weights are integers in [0, 10000] (circuit `MAX_WEIGHT`): > 0 for active provider slots, 0 for inactive ones; the active weights must sum to > 0.
+- Provider ID != 0 for active slots, `"0"` for inactive ones.
+- Timestamps are safe integers in [2021-01-01, 2^40); NaN and non-numeric strings are rejected.
+- Reporting threshold: non-negative integer, at most 2^64 / 90 (overflow-protected).
+- Submitter: a 20-byte address (or its 32-byte left-padded form), non-zero. Every circuit takes `submitter` as a public input and the Oracle enforces `submitter == msg.sender`.
+- Credential type 1-4.
+- Merkle path length exactly 20.
+
+The compliance and risk-score builders (plain and signed) take a single-provider shorthand (`{ score: 60 }`) or multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`), max 8 providers.
+
+The signed builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`, `buildComplianceMultiSignedInputs`) also require `chainId` and `oracleAddress`, which must equal the provider's signing values: both are committed in the in-circuit Pedersen digest and the Oracle asserts `block.chainid` / `address(this)` (audit F-6).
+
+`buildComplianceMultiSignedInputs` takes `slots: (MultiSignedSlot | null)[]` of length exactly `MAX_PROVIDERS_MULTI` (5). Each non-null slot is one signer's output from `@xochi/provider`'s `signSlotPayload` or the daemon's `POST /sign-multi` (`signals`, `weights`, `pubkeyX`, `pubkeyY`, `signature`, `signerPubkeyHash`); `null` slots get inactive padding (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`). The active count must be `>= thresholdM`, and `thresholdM` must satisfy the jurisdiction floor.
 
 `proofTypeToCircuit`, `circuitToProofType` and `PUBLIC_INPUT_COUNTS` map between proof type ids and circuit names.
 

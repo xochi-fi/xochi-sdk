@@ -1,6 +1,6 @@
 # On-chain clients and settlement
 
-Part of the [`@xochi/sdk`](../README.md) reference. `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistryClient` use viem and need a wallet client with a bound account for writes; `OracleLite` needs no viem. Specs for XIP-1/2: [XIPs](https://github.com/xochi-fi/XIPs).
+Part of the [`@xochi/sdk`](../README.md) reference. `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistryClient` use viem: a `PublicClient` for reads and, for writes, a `ConfiguredWalletClient` (`WalletClient<Transport, Chain | undefined, Account>`, a bound account is required). `OracleLite` needs no viem. Specs for XIP-1/2: [XIPs](https://github.com/xochi-fi/XIPs).
 
 ## Oracle
 
@@ -23,9 +23,13 @@ const byType = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.PATTER
 const history = await oracle.getAttestationHistory("0x...", 0);
 ```
 
-`checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately.
+`checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately. The contract reports `meetsThreshold: true` for every proof type, so this policy is client-side until ERC-8262 enforces it on-chain. `ComplianceAttestation` carries `proofType` (uint8) between `jurisdictionId` and `meetsThreshold`, in both the viem and the `OracleLite` (`ComplianceAttestationLite`) shape.
 
-`oracle.submitBatch({ batch, jurisdictionId, proofType, providerSetHash })` submits a `proveBatch`/`provePlan` result in one atomic transaction, max 10 proofs (`MAX_BATCH_SIZE`); `submissions[i].proofHash` feeds `SettlementRegistryClient`.
+On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`; `submitCompliance` pre-checks it with `assertProofRecent` when `proofTimestamp` is passed) and `MIN_TIME_WINDOW = 3600` for PATTERN analysis.
+
+Beyond the calls above, the client wraps the Oracle's history queries (`getHistoricalProof`, `getAttestationHistoryPaginated`, `getProofType`, `isAttestationValid`, `isAttestationRevoked`, `invalidateAttestation`, `attestationTTL`), config / Merkle root / reporting threshold validation (`providerConfigHash`, `isValidConfig`, `isRevokedConfig`, `isValidMerkleRoot`, `isValidReportingThreshold`), the signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`, `signerProvider`) and credential roots (`setProviderPublisher`, `getProviderPublisher`, `setCredentialSigner`, `getCredentialSigner`, `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`, `revokeCredentialRoot`, `isValidCredentialRoot`, `getCredentialRoot`).
+
+`oracle.submitBatch({ batch, jurisdictionId, proofType, providerSetHash })` submits a `proveBatch`/`provePlan` result in one atomic `submitComplianceBatch` transaction, max 10 proofs (`MAX_BATCH_SIZE`, audit F-3), parses one `ComplianceVerified` event per sub-trade and returns `submissions[i].proofHash` for `SettlementRegistryClient`.
 
 ## Verifier
 
@@ -38,7 +42,7 @@ await verifier.verifyProofBatch(types, proofs, publicInputs); // all-or-nothing
 await verifier.verifyProofAtVersion(PROOF_TYPES.COMPLIANCE, 1n, proofHex, publicInputsHex);
 ```
 
-Owner-only (with a wallet client): `revokeVerifierVersion`; `isVersionRevoked` reads.
+Reads: `getVerifier`, `getVerifierVersion`, `getVerifierAtVersion`, `isVersionRevoked`, `isVerifierRevoked`, `getPendingRevocation`, `revocationTimelock`. Owner-only (with a wallet client): `revokeVerifierVersion` emergency-revokes any non-current version, after which `verifyProofAtVersion` rejects it; the timelocked path is `proposeVersionRevocation` -> `executeVersionRevocation` (or `cancelVersionRevocation`). Verifier setup (`setVerifierInitial`, then `proposeVerifier` + `executeVerifierUpdate`) is the contract owner's and is not wrapped.
 
 ## OracleLite (no viem)
 
@@ -54,11 +58,11 @@ if (result.valid && result.publicInputs) {
 }
 ```
 
-`verifyProof`'s `valid` means the verifier accepted the proof, **not** a compliance verdict; read the claim from the verified public inputs. Each call times out after `timeoutMs` (default 15 s).
+`verifyProof`'s `valid` means the verifier accepted the proof, **not** a compliance verdict; read the claim from the verified public inputs. The wallet, jurisdiction and proof type are validated before any request, and the returned attestation is asserted to match the query. Each call times out after `timeoutMs` (default 15 s). For Cloudflare Workers and other environments without viem.
 
 ## Typed contract errors
 
-Reverts decode to `ERC8262ContractError` subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `SettlementRootMismatchError`, ...; full list in `src/errors.ts`). Undeclared ones are a plain `ERC8262ContractError` with `errorName` and `args`.
+Every write goes through viem's `writeContract` inside `withDecodedErrors`, so reverts decode to `ERC8262ContractError` subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `TradeNotFoundError`, `SettlementRootMismatchError`, ...; full list in `src/errors.ts`), `instanceof`-able. Undeclared ones are a plain `ERC8262ContractError` with `errorName` and `args`.
 
 ## Settlement splitting (XIP-1)
 
@@ -94,7 +98,7 @@ const pattern = await prover.provePattern({
 await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
 
-Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`.
+Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`. `SettlementRegistryClient` also wraps `expireTrade`, `getSettlement` and `getSubSettlements`.
 
 ## Execution planning (XIP-2)
 

@@ -47,8 +47,6 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 - **src/batch-prover.ts**: `proveBatch` / `provePlan`, compliance proofs for all sub-trades
 - **src/settlement-registry.ts**: `SettlementRegistryClient`, on-chain SettlementRegistry (viem)
 
-`ERC8262Oracle.submitBatch()` calls on-chain `submitComplianceBatch` (single atomic tx, max 10 proofs per `MAX_BATCH_SIZE`, audit F-3), parses one `ComplianceVerified` event per sub-trade and returns proofHashes for settlement recording.
-
 #### Execution Planning (XIP-2)
 
 - **src/venue-router.ts**: `assignVenues`, route sub-trades to venues
@@ -104,16 +102,7 @@ The transport validates quote/execute bodies against `QuoteResponseSchema`/`Exec
 
 Host-side embed library modeled on `@cowprotocol/widget-lib`, zero runtime deps. `createXochiWidget(container, { params, provider?, origin?, autoConnect?, listeners? })` mounts `<origin>/embed?<params>` (default `https://widget.xochi.fi`) and bridges the host's EIP-1193 provider over postMessage (`xochi:rpc` -> `xochi:rpc:result`; provider events as `xochi:provider:event`), plus `xochi:resize` and `xochi:event` lifecycle events. `autoConnect` (default `false`) travels in `xochi:provider`; without it the frame lists the host wallet and connects only on the user's click. `src/params.ts` is the single definition of the frame URL params (moved from xochi-widget `src/pages/trade/embedParams.ts`); `src/protocol.ts` holds message types and the RPC allowlist.
 
-Security invariants, each pinned by a test:
-
-- a message is handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin
-- every post names that origin as `targetOrigin`, never `"*"`
-- methods off `ALLOWED_RPC_METHODS` get `4200` without reaching the wallet
-- inbound JSON is capped at `MAX_MESSAGE_LENGTH`
-
-Tests run in jsdom with a real iframe and real MessageEvents. The deployed widget does not speak this protocol yet, and its `frame-ancestors 'self'` blocks third-party embedding until xochi-fi/xochi#573. See `packages/widget-lib/README.md`.
-
-Provider events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only once it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts`/`eth_accounts` returned accounts. `MAX_PENDING_RPC` (16) counts wallet requests until the wallet settles them, across frame reloads. No per-request deadline, by design (a prompt waits on a person), so a never-settled request holds its slot.
+Security invariants (source/origin check, `targetOrigin`, `ALLOWED_RPC_METHODS` -> `4200`, `MAX_MESSAGE_LENGTH`, `MAX_PENDING_RPC` with no per-request deadline, provider events only after the frame connects): `packages/widget-lib/README.md` "Security model". Each is pinned by a test; tests run in jsdom with a real iframe and real MessageEvents. The deployed widget does not speak this protocol yet, and its `frame-ancestors 'self'` blocks third-party embedding until xochi-fi/xochi#573.
 
 ```bash
 npm run build -w @xochi/widget-lib       # dist/esm + dist/cjs
@@ -267,61 +256,12 @@ Under `packages/signer/src/` unless noted.
 
 ### Pull verification
 
-The origin-pull checks in `@xochi/signer`'s `intent-verify.ts` (mechanics in TSDoc). The calling flows (`xochiExecute` / `xochiFlow`, `fetchPullRecipients`), the destination pin (`assertPullDestination`), the chain reader and the `RESULT_JSON` rules live in Riddler's `packages/e2e-signer`. Undoing any rule below has cost money or nearly did.
+The origin-pull rules (`assertPullMatchesIntent`'s domain binding, the escrow-envelope refusal and `expectedEscrows`, the expiry bound and its local ceiling, the `expectedPullRecipients` pin and its set semantics) are in `packages/signer/README.md` "Pull verification"; mechanics in `intent-verify.ts`'s TSDoc. Undoing any of them has cost money or nearly did. The calling flows (`xochiExecute` / `xochiFlow`, `fetchPullRecipients`), the destination pin (`assertPullDestination`), the chain reader and the `RESULT_JSON` rules live in Riddler's `packages/e2e-signer`; the rules below bind that harness and anything else wrapping the primitives:
 
-#### Binding the pull to the intent
-
-- **A pull's DOMAIN is as load-bearing as its message.** `assertPullMatchesIntent` holds the pull to the request-verified intent on `domain.chainId`, token identity, amount and expiry. **ERC-3009**: `verifyingContract` must equal `intent.fromToken`. **Permit2**: it must equal `PERMIT2_ADDRESS` and `permitted.token` must equal `intent.fromToken`.
-
-- Bound to the intent, not a `getChainKeyByChainId` lookup, so a chain the server adds does not fail closed.
-
-- **Any quote with a non-null `escrow` envelope is refused before signing** (`assertNoEscrowEnvelope`, in `assertPullMatchesIntent` and `assertDepositQuoteMatchesRequest`; in Riddler's harness `xochiQuote`, `xochiExecute` even under `skipVerification`, and `xochiFlow`). Who an escrow pays is the `orderId` the pull binds (ERC-3009 `nonce`, Permit2 witness), checked only by the SPEC §2.3 binding (`assertEscrowBinding` against a caller-pinned escrow per origin chain), which this SDK does not wire. **A recipient pin naming the escrow is not sufficient**; `fetchPullRecipients` never folds `pull_recipients[chain].escrow` into the pin (discovery only, SPEC §6). Lift the refusal only by wiring the binding.
-
-- **The `domain.chainId` vs `intent.fromChainId` comparison is unconditional.** Do not gate it on presence or loosen it to `!= null`; an intent missing `fromChainId` refuses with **no pin at all**.
-
-- **`assertPullMatchesIntent` is offline and pure.** It takes the recipient pin and the escrow pin, never the settlement pin or the chain reader.
-
-- **A pull to a caller-pinned escrow is escrow-bearing with or without the envelope** (SPEC.md §6). `expectedEscrows` (`{ [originChainId]: address }`, both spellings via `pick`) on `xochiFlow`/`xochiExecute`/`assertPullMatchesIntent` refuses a `to`/`spender` naming the escrow pinned for `intent.fromChainId`; a blank pin refuses. Never merge it into `expectedPullRecipients`. One resolver (`src/escrow-pin.ts`, `resolvePinnedEscrow`) reads `expectedEscrows` for both this guard and `assertEscrowBinding`: keys are positive chain ids in decimal or `0x` hex, trimmed; any other key, or two keys for one chain with different escrows, refuses.
-
-- **`xochiFlow` runs `xochiQuote`'s checks (fees, escrow) inside its pre-sign try**, so those refusals emit `verification_error` too; the `xochi-quote` command uses `xochiQuoteReported`, which does the same.
-
-- `signPullAuthorization` gets the shape check only; value checks need an intent, so they live in `intent-verify.ts`.
-
-#### Expiry bound
-
-- Expiry is bounded by `intent.deadline + pullExpiryBoundSeconds(advertised)`: the **tighter** of advertised `pull_deadline_buffer_seconds` and the local `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` ceiling (3600s vs the 300s prod advertises; #101).
-
-- Reading a served number is sound only because it is a minimum: the local ceiling still caps it.
-
-- An advertised `0` is an outage. An absent or malformed value falls through to the local ceiling, **never** to zero.
-
-- **Do NOT tighten `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` to a number read off a live deployment.** The buffer was `1500` until 2026-08-12 (Riddler#789 §B); a hardcoded 600 would have refused every honest quote.
-
-- The advertised value is **opt-in and never auto-fetched**: nothing on the signing path reads `/xochi/capabilities`; absent means the ceiling. Pass `advertisedPullDeadlineBufferSeconds` / `advertised_pull_deadline_buffer_seconds`; Riddler's `xochiFlow` forwards it into `xochiExecute`, so the re-check cannot loosen it.
-
-- The `*_SLACK_SECONDS` aliases are gone. Use `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` and `MAX_INTENT_DEADLINE_AHEAD_OF_NOW_SECONDS`.
-
-#### The recipient pin
-
-- **`to`/`spender` is checked only against a caller-supplied `expectedPullRecipients` pin.** Riddler advertises the matrix per chain and method on `/xochi/capabilities` (#848; on prod ERC-3009 is a different solver EOA per chain, Permit2 one universal proxy), read by `fetchPullRecipients` for **discovery** only.
-
-- **Absence of a pin skips the check**; an attacker can drop a field from the quote but not an entry from your pin.
-
-- **The chain and method axes grade differently.** A chain absent from the pin is unchecked; a chain present but missing the method in use **refuses**.
-
-- **A method may name a SET of accepted values** (`erc3009: [outgoing, incoming]`; `pinAccepts`, `describePin`, #102) to cross a solver rollover (Riddler rotates the ERC-3009 EOA per chain and rewrites `settlementWallet` on 11 proxies over 6 chains, Riddler#798/#800). Both pins share the `MethodPin` shape; `pinAccepts` is the one comparison site.
-
-- **A set is a window, not a configuration**: the outgoing value keeps verifying until removed, so a long-lived two-value pin is weaker. An empty list, blank entry or non-string entry refuses, like `{}` and `""`.
-
-- **`fetchPullRecipients` (Riddler's harness) throws when the solver advertises no matrix** (#103). It returns `{ recipients, dropped }` and omits unadvertised methods rather than manufacturing a `null` (Riddler#852); `pinnedFor` refuses either shape.
-
-- **The pin is keyed on `intent.fromChainId` only, never the pull's `domain.chainId`.** A pin against an intent with no chain refuses, as does a blank pin entry.
-
-- **An ERC-3009 `to` is the payee; a Permit2 `spender` only _may_ pull.** `SignatureTransferDetails.to` is not in the signed struct (`OriginPullWitness` binds an `orderId`), so the refusals say different things.
-
-- The pin is read through `pick` in **both** spellings (camelCase-only let `expected_pull_recipients` be absorbed by `XochiQuoteParams`' index signature and never run).
-
-- `xochiExecute` **refuses** a pin passed with `skipVerification` and no `{ request }`.
+- The escrow-envelope refusal runs in `xochiQuote`, in `xochiExecute` even under `skipVerification`, and in `xochiFlow`, whose pre-sign try runs `xochiQuote`'s checks (fees, escrow) so those refusals emit `verification_error` too; the `xochi-quote` command uses `xochiQuoteReported`, which does the same.
+- `fetchPullRecipients` is **discovery** only: it never folds `pull_recipients[chain].escrow` into the pin (SPEC §6), throws when the solver advertises no matrix (#103), and returns `{ recipients, dropped }`, omitting unadvertised methods rather than manufacturing a `null` (Riddler#852); `pinnedFor` refuses either shape.
+- `xochiFlow` forwards `advertisedPullDeadlineBufferSeconds` into `xochiExecute`, so the re-check cannot loosen the expiry bound. The `*_SLACK_SECONDS` aliases are gone; use `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` and `MAX_INTENT_DEADLINE_AHEAD_OF_NOW_SECONDS`.
+- Pins are read through `pick` in **both** spellings (camelCase-only let `expected_pull_recipients` be absorbed by `XochiQuoteParams`' index signature and never run). `xochiExecute` **refuses** a pin passed with `skipVerification` and no `{ request }`.
 
 ### Producer-drift probes (scheduled, not per-PR)
 
@@ -418,24 +358,7 @@ L1 stealth is open to all and never separately priced. Min scores: stealth 0 (ER
 
 ## Input Builders
 
-Each `buildXInputs()` validates before proving (fail-fast):
-
-- Signal range 0-100
-- Weights are integers in [0, 10000] (circuit `MAX_WEIGHT`): > 0 for active provider slots, 0 for inactive
-- Provider ID != 0 for active slots
-- Timestamps are safe integers within bounds (2021 to 2^40); NaN / non-numeric strings are rejected
-- Reporting threshold: non-negative integer, overflow-protected
-- Submitter: 20-byte address (or its 32-byte left-padded form), non-zero
-- Credential type 1-4
-- Merkle path length exactly 20
-
-Supports single-provider shorthand (`{ score: 60 }`) and multi-provider mode (`{ signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }`). Max 8 providers.
-
-All 9 builders require `submitter` (the on-chain submitting address).
-
-The signed builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`, `buildComplianceMultiSignedInputs`) also require `chainId` and `oracleAddress`, which MUST equal the provider's signing values (committed in the in-circuit Pedersen digest; the Oracle asserts `block.chainid` / `address(this)`, audit F-6).
-
-`buildComplianceMultiSignedInputs` takes `slots: (MultiSignedSlot | null)[]` of length exactly `MAX_PROVIDERS_MULTI = 5`. Each non-null slot is one signer's output from `@xochi/provider`'s `signSlotPayload` or the daemon's `POST /sign-multi` (`signals`, `weights`, `pubkeyX`, `pubkeyY`, `signature`, `signerPubkeyHash`). `null` slots get inactive padding; the active count MUST be `>= thresholdM`, and `thresholdM` MUST satisfy the jurisdiction floor.
+What each `buildXInputs()` validates before proving (signals, weights, provider ids, timestamps, reporting threshold, submitter, credential type, Merkle depth), the single-/multi-provider modes, and the signed builders' `chainId` / `oracleAddress` and `slots` requirements: `packages/sdk/docs/signed-proofs.md` "Input builders". The checks live in `src/inputs/validate.ts` and mirror the circuit assertions; keep both aligned.
 
 ## Circuit Binaries
 
@@ -452,23 +375,11 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## Reference Signing Daemon
 
-`packages/provider/daemon/` is a reference HTTP daemon around `@xochi/provider` (`POST /sign`, `/sign-multi`, `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`). It ships as TS source (not in the npm tarball) and runs under Node type stripping via `npm run daemon -w @xochi/provider` (builds first), so relative imports carry `.ts` extensions and the signers are imported as `@xochi/provider` (self-reference to `dist/` at runtime; mapped to source by the package tsconfig `paths` and the vitest alias). It pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window and circuit range checks, scopes credentials per route group (signals vs credential-root), refuses non-loopback plain-HTTP binds, and writes each audit record before releasing a signature. Logs carry `[xochi-provider]`; `SIGNER_*` env vars. `@xochi/sdk`'s `test/integration-signed-onchain.test.ts` runs it in-process. See `packages/provider/daemon/README.md`.
+`packages/provider/daemon/`: endpoints, policy refusals, security properties and `SIGNER_*` configuration are in `packages/provider/daemon/README.md`. Dev notes: it ships as TS source (not in the tarball) and runs under Node type stripping via `npm run daemon -w @xochi/provider` (builds first), so relative imports carry `.ts` extensions and the signers are imported as `@xochi/provider` (self-reference to `dist/` at runtime; mapped to source by the package tsconfig `paths` and the vitest alias). `@xochi/sdk`'s `test/integration-signed-onchain.test.ts` runs it in-process.
 
 ## On-Chain Clients
 
-**ERC8262Oracle** (viem): submitCompliance, submitBatch, checkCompliance, checkComplianceByType, history queries, getProofType, config/Merkle root/threshold validation, signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`), credential roots (`setCredentialSigner`, `getCredentialSigner`, 6-arg `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`). Needs a viem PublicClient + optional WalletClient. `checkCompliance` returns `valid: true` only when the proof type is in `acceptedProofTypes` (default `COMPLIANCE_PROOF_TYPES` = 0x01/0x07/0x09): the contract reports `meetsThreshold: true` for every type, so the policy is client-side until ERC-8262 fixes it. On-chain `MAX_PROOF_AGE = 1 hour` and `MIN_TIME_WINDOW = 3600` for pattern analysis. `submitBatch`: see [Settlement Splitting](#settlement-splitting-xip-1).
-
-**ComplianceAttestation** has a `proofType` field (uint8) between `jurisdictionId` and `meetsThreshold`, in both `ComplianceAttestation` (viem) and `ComplianceAttestationLite` (OracleLite).
-
-**ERC8262Verifier** (viem): verifyProof, verifyProofBatch, verifyProofAtVersion, getVerifier, getVerifierVersion, isVersionRevoked, revokeVerifierVersion. Write methods need a wallet. Timelock: `setVerifierInitial` for first setup, `proposeVerifier` + `executeVerifierUpdate` after. The owner can emergency-revoke any non-current version via `revokeVerifierVersion`; revoked versions reject all `verifyProofAtVersion` calls.
-
-**OracleLite** (fetch): checkCompliance (same proof-type policy), checkComplianceByType and verifyProof via raw JSON-RPC eth_call, `timeoutMs` (default 15 s) per call. Validates wallet / jurisdiction / proof type before any request and asserts the returned attestation matches the query. `verifyProof` returns the verified `publicInputs`; its `valid` is not a compliance verdict. No viem. For Cloudflare Workers and other restricted environments.
-
-**SettlementRegistryClient** (viem): registerTrade, recordSubSettlement, finalizeTrade, expireTrade, getSettlement, getSubSettlements.
-
-**Wallet typing**: `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistryClient` accept `ConfiguredWalletClient = WalletClient<Transport, Chain | undefined, Account>` (a bound account is required). Calls use viem's functional `writeContract` (no `as any`), and reverts are wrapped in `withDecodedErrors`, so callers get typed `ERC8262ContractError` instances (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `TradeNotFoundError`, etc.).
-
-**Submitter typing**: input builders and `generateTierProof` take `submitter: Address` (viem). `validateSubmitter` rejects the zero address (mirrors the circuit's `assert(submitter != 0)`).
+`ERC8262Oracle`, `ERC8262Verifier`, `OracleLite` and `SettlementRegistryClient` (surface, wallet typing, the client-side `checkCompliance` proof-type policy, on-chain limits, typed errors): `packages/sdk/docs/onchain.md`. Invariants: the proof-type policy stays client-side until ERC-8262 enforces it on-chain (`COMPLIANCE_PROOF_TYPES` is the default `acceptedProofTypes`); writes use viem's functional `writeContract` (no `as any`) inside `withDecodedErrors`; `submitter: Address` everywhere, and `validateSubmitter` rejects the zero address (mirrors the circuit's `assert(submitter != 0)`).
 
 ## Dependencies (`@xochi/sdk`)
 
