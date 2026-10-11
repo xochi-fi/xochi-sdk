@@ -18,6 +18,18 @@ transport without it is re-checked only before its awards. New
 `readTimeoutMs` (default 10s) bounds `getCapabilities` and `getAttestation`, so
 a hung read no longer freezes `run`.
 
+Also in this release:
+
+- New public `HttpSolverTransportOptions.postTimeoutMs` (default 10s) bounds
+  `submitBid` and `submitFill`. A POST slower than that now rejects; with no
+  `onError` the rejection ends `run`, as any handler error does.
+- `OnchainEscrowGateway.accept` resolves the fills it still owes BEFORE reading
+  `balanceOf`, so a fill landing between the two reads is counted twice (a
+  conservative refusal) instead of in neither (accepting on spent inventory).
+- `run` subscribes its feed-gap listener (`addFeedGapListener`) only for its
+  own duration and unsubscribes when it ends, so clients rebuilt over one
+  transport no longer accumulate listeners.
+
 ## `0.4.0` — RFC `0.4.0-draft` → `0.5.0-draft`: decline instead of skip, and claim until repaid
 
 No digest moves; solver obligations and `OnchainEscrowGateway`'s API do.

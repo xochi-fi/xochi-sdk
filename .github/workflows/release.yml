@@ -13,11 +13,29 @@
 #
 # npm trusted publishing (OIDC), so there is no NPM_TOKEN anywhere: npm
 # exchanges this job's id-token for a short-lived publish credential, and only
-# for the package/repo/workflow/environment configured on npmjs.com. SETUP,
-# once per package on npmjs.com: Settings -> Trusted publisher -> GitHub
-# Actions, repository xochi-fi/xochi-sdk, workflow `release.yml`, environment
-# `npm-publish`. The environment field is REQUIRED, not optional: see "Why the
-# environment" below. `--provenance` needs the repository to be public.
+# for the package/repo/workflow/environment configured on npmjs.com
+# (https://docs.npmjs.com/trusted-publishers). SETUP, once per package on
+# npmjs.com: Settings -> Trusted publisher -> GitHub Actions, with
+#   - repository xochi-fi/xochi-sdk, workflow `release.yml`;
+#   - environment `npm-publish`. REQUIRED although npm calls it optional: it is
+#     the ONLY thing stopping a tag on a pre-fix commit, whose own release.yml
+#     publishes with `--tag latest` and no environment, from publishing the
+#     never-published @xochi/spec 0.8.0, @xochi/signer 0.5.0, @xochi/client
+#     0.1.0 or @xochi/widget-lib 0.1.0 (see "Why the environment" below);
+#   - Allowed actions: `npm publish`. A config created after 2026-09-03 allows
+#     only `npm stage publish` by default, and this job runs `npm publish`.
+# A new config expires unless its first publish succeeds within 2 days, so
+# create it only when the tag is ready to push. `--provenance` needs the
+# repository to be public.
+#
+# First publish. A trusted publisher can only be attached to a package that
+# already exists, so @xochi/spec, @xochi/signer, @xochi/client and
+# @xochi/widget-lib cannot make their first publish here. The conservative
+# procedure, once per package: an npm owner with 2FA checks out the reviewed
+# release tag's commit (on main), runs the same gates this job runs for that
+# package, and runs `npm publish -w <name>` by hand (no provenance; the real
+# reviewed version, never a placeholder). Only then attach the config above;
+# every later version publishes only from this workflow.
 #
 # Why the environment. A tag push runs the release.yml of the TAGGED commit,
 # not main's, so no step in this file can guard a tag on a commit that does not
@@ -139,16 +157,57 @@ jobs:
             echo "tag $TAG says $version but $dir/package.json is $manifest; refusing to publish" >&2
             exit 1
           fi
-          # A prerelease goes to `next`. A stable version passes no --tag at all:
-          # npm then applies `latest` itself and refuses when a higher version is
-          # already published, so a backport (sdk-v0.3.1 after 0.4.0) fails here
-          # instead of rolling every unpinned install back. An explicit
-          # `--tag latest` switches that refusal off. Publish a backport by hand
-          # under a maintenance tag.
+          # A prerelease goes to `next`. A stable version passes no --tag at all
+          # (an explicit `--tag latest` would let a backport roll `latest`
+          # back), and is refused below unless it sorts above the current
+          # `latest`. npm's own refusal is not relied on: it reads registry
+          # versions through a path that swallows errors and then sees none.
+          # Publish a backport by hand under a maintenance tag.
           case "$version" in
             *-*) dist_tag='next' ;;
             *)   dist_tag='' ;;
           esac
+          if [ -z "$dist_tag" ]; then
+            if latest="$(npm view "$name" dist-tags.latest 2>"$RUNNER_TEMP/npm-view.err")"; then
+              :
+            elif grep -q E404 "$RUNNER_TEMP/npm-view.err"; then
+              latest=''
+            else
+              cat "$RUNNER_TEMP/npm-view.err" >&2
+              echo "cannot read $name's latest dist-tag; refusing to publish" >&2
+              exit 1
+            fi
+            if [ -n "$latest" ]; then
+              # Exit 0 only when $1 > $2 (semver precedence, prerelease below
+              # its release; build metadata ignored).
+              node -e '
+                const parse = (v) => {
+                  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(v);
+                  if (!m) { console.error(`not a semver version: ${v}`); process.exit(2); }
+                  return { core: m.slice(1, 4).map(BigInt), pre: m[4] ? m[4].split(".") : [] };
+                };
+                const cmpId = (x, y) => {
+                  const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+                  if (nx && ny) return BigInt(x) < BigInt(y) ? -1 : BigInt(x) > BigInt(y) ? 1 : 0;
+                  if (nx !== ny) return nx ? -1 : 1;
+                  return x < y ? -1 : x > y ? 1 : 0;
+                };
+                const cmp = (a, b) => {
+                  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] < b.core[i] ? -1 : 1;
+                  if (!a.pre.length || !b.pre.length) return b.pre.length - a.pre.length;
+                  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
+                    const c = cmpId(a.pre[i], b.pre[i]);
+                    if (c) return c;
+                  }
+                  return a.pre.length - b.pre.length;
+                };
+                process.exit(cmp(parse(process.argv[1]), parse(process.argv[2])) > 0 ? 0 : 1);
+              ' "$version" "$latest" || {
+                echo "$name@$version does not sort above latest $latest; refusing to publish" >&2
+                exit 1
+              }
+            fi
+          fi
           # The root package is published without -w; a workspace with it.
           if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"

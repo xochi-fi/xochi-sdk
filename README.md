@@ -594,7 +594,7 @@ const plan = planExecution(
 const batch = await provePlan(prover, plan, complianceInput);
 ```
 
-Shielded needs score 50+; public and stealth 0+. Scores above 100 are valid; non-finite or negative throws. Submissions are 12 s apart, so windows need `(n - 1) * 12` seconds.
+Shielded needs score 50+; public and stealth 0+. Scores above 100 are valid; non-finite or negative throws. Submissions are at least 12 s apart (jittered spacing), and any window of at least `(n - 1) * 12` seconds always schedules.
 
 ## Circuit loaders
 
