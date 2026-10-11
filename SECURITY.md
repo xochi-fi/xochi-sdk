@@ -11,6 +11,7 @@ Highest severity: anything that signs, or lets a caller sign, bytes that move fu
 - `@xochi/solver-sdk`: escrow gateway (fills, claims, nonce handling)
 - `@xochi/widget-lib`: postMessage origin checks, RPC allowlist
 - `@xochi/sdk`: proof generation, input validation, on-chain clients
+- `@xochi/provider`: provider attestation signing, key loading, the reference daemon's auth and signing policy
 - `@xochi/spec`: conformance vectors and the wire differ
 
 Out of scope: `sdks/{python,go,rust}` (conformance runners, not production signers) and services not deployed from this repo.
