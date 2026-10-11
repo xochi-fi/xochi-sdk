@@ -14,7 +14,7 @@ Scope: this repo owns what a counterparty must reproduce (signing, vectors, the 
 
 ### Repo layout
 
-Root `npm run build` / `typecheck` / `test` span every workspace (`build:workspaces` builds `@xochi/signer` first); one workspace is `-w @xochi/<pkg>` (root shortcuts `test:sdk`, `test:integration`, `test:provider`, `test:signer`, ...). Root `format` / `format:check` cover only root `*.{json,md}`. Each tarball is its package's `files` (`@xochi/sdk`: `dist` + `circuits`; `@xochi/provider`: `dist`, so its daemon is not shipped). `.github/workflows/release.yml` publishes one package per tag: `sdk-v*`, `provider-v*`, `spec-v*`, `signer-v*`, `client-v*`, `widget-lib-v*`. An ERC-8262 checkout beside the repo is the default for circuit sync, drift and integration tests; `ERC_8262_PATH` overrides it for the tests.
+Root `npm run build` / `typecheck` / `test` span every workspace (`build:workspaces` builds `@xochi/signer` first); one workspace is `-w @xochi/<pkg>` (root shortcuts `test:sdk`, `test:integration`, `test:provider`, `test:signer`, `test:conformance`, `test:fee`; the escrow generators run as `npm run generate:<set> -w @xochi/spec`). Root `format` / `format:check` cover only root `*.{json,md}`. Each tarball is its package's `files` plus `CHANGELOG.md` (`@xochi/sdk`: `dist` + `circuits`; `@xochi/provider`: `dist`, so its daemon is not shipped; no source maps). Each published package owns its `CHANGELOG.md` (Keep a Changelog, `## [Unreleased]` first); there is no root changelog. Manifests share one field order, `publishConfig: { access: "public" }` (provenance comes only from `release.yml`'s `--provenance`), and `prepublishOnly` = `format:check && typecheck && test && build`. `engines.node` is `>=22.12` for the ESM-only `@xochi/sdk` / `@xochi/provider` (`require(esm)`), `>=22` elsewhere. Shared tooling (`typescript`, `vitest`, `prettier`, `@types/node`) is a root devDependency only. `.github/workflows/release.yml` publishes one package per tag: `sdk-v*`, `provider-v*`, `spec-v*`, `signer-v*`, `client-v*`, `widget-lib-v*`. An ERC-8262 checkout beside the repo is the default for circuit sync, drift and integration tests; `ERC_8262_PATH` overrides it for the tests.
 
 ### `packages/sdk` (`@xochi/sdk`)
 
@@ -150,11 +150,11 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
 
 - **`packages/reference`** (`@xochi/reference`, **private, never published**): network-free fixtures for the generators and vector suites: the chain/token registry (`src/config.ts`) and the ERC-3009/Permit2 sign-only composition (`src/sign-only.ts`, from the CLI's `acp.ts`). The registry is not in `@xochi/signer` because it is fixture data (third-party RPC defaults, env-overridable Tron addresses) a signing library must not ship. `exports` point at `.ts` source so generators read what is on disk. Tests in `test/`: conformance, fee vectors against `@xochi/client`'s fee reference, signing encodings, deposit attestation vectors, capabilities, wire contract. Riddler's harness carries its own registry copy and takes the fee reference from `@xochi/client`.
 
-- **`packages/spec`** (`@xochi/spec`): the wire contract at `0.8.1` (additive MINORs), published by `.github/workflows/release.yml` on a `spec-v*` tag (consumers pin exactly; `packages/spec/README.md` "Consuming the spec"). The tarball ships the data, the three RFC/spec docs and `wire/compare.mjs`; the `*.ts` generators and `wire/{generate,format}.mjs` stay in the repo (`files` negations) since they import workspace siblings and `scripts/`. Contents: `SPEC.md`; `conformance/{conformance.json,generate.ts,schema.json}`; solver-bid parity `conformance/{solver-bid-v2.json,solver-bid-v2.schema.json,generate-solver-bid-v2.ts}` (SOLVER-RFC §5.1, `npm run generate:solver-bid-v2`); escrow parity sets incl. `conformance/fill-acceptance.json` (`npm run generate:fill-acceptance`, also run by `generate:escrow`); normative fee artifacts `fee/{vectors,schedule,schema}.json` + `fee/generate.ts` (SPEC.md §4); `SOLVER-RFC.md` (sealed-bid RFQ, SPEC §7; versions independently, `0.5.0-draft`, exported as `SOLVER_RFC_VERSION`); `ESCROW-RFC.md` (`0.5.0-draft`: v2 `orderId`/`destCommitment` preimage, `OpenAuth`, `FillAcceptance`, proof-of-fill tiers, escrow activation; SPEC §2.3/§5.2).
+- **`packages/spec`** (`@xochi/spec`): the wire contract at `0.8.1` (additive MINORs), published by `.github/workflows/release.yml` on a `spec-v*` tag (consumers pin exactly; `packages/spec/README.md` "Consuming the spec"). The tarball ships the data, the three RFC/spec docs and `wire/compare.mjs`; the `*.ts` generators and `wire/{generate,format}.mjs` stay in the repo (`files` negations) since they import workspace siblings and `scripts/`. Contents: `SPEC.md`; `conformance/{conformance.json,generate.ts,schema.json}`; solver-bid parity `conformance/{solver-bid-v2.json,solver-bid-v2.schema.json,generate-solver-bid-v2.ts}` (SOLVER-RFC §5.1, `npm run generate:solver-bid-v2`); escrow parity sets incl. `conformance/fill-acceptance.json` (`npm run generate:fill-acceptance -w @xochi/spec`, also run by `generate:escrow`); normative fee artifacts `fee/{vectors,schedule,schema}.json` + `fee/generate.ts` (SPEC.md §4); `SOLVER-RFC.md` (sealed-bid RFQ, SPEC §7; versions independently, `0.5.0-draft`, exported as `SOLVER_RFC_VERSION`); `ESCROW-RFC.md` (`0.5.0-draft`: v2 `orderId`/`destCommitment` preimage, `OpenAuth`, `FillAcceptance`, proof-of-fill tiers, escrow activation; SPEC §2.3/§5.2).
 
 - **`packages/spec/wire/`**: the served `/xochi/*` OpenAPI (SPEC.md §3's source of truth), vendored **reformatted** to sorted-key 2-space JSON: structurally identical but **not byte-verbatim**; every numeric literal keeps the served spelling because `wire/format.mjs` emits each number from its source token, never through `JSON.parse`. `openapi.json` (exported as `./wire/openapi.json`) with its digest in `openapi.sha256` (of the formatted file), refreshed by `npm run generate:wire`. Compared axes and refusals: `packages/spec/wire/README.md`. Rules:
   - SPEC.md matches the served enums (`IntentLifecycleStatus` incl. `bridging`, `refunded` and non-terminal `refund_pending`; `ErrorCode` has no `quote_expired`).
-  - `TERMINAL_STATUSES` equals the served terminal set. Riddler's harness `wire-contract.test.ts` pins it as a **partition** of the served enum (served terminal / served non-terminal lists covering it exactly, no unreviewed extras), so a new server state fails loudly. Never add a mid-flight state (`refund_pending` included) to `TERMINAL_STATUSES`.
+  - `TERMINAL_STATUSES` (Riddler's harness; not defined here) equals the served terminal set. Riddler's harness `wire-contract.test.ts` pins it as a **partition** of the served enum (served terminal / served non-terminal lists covering it exactly, no unreviewed extras), so a new server state fails loudly. Never add a mid-flight state (`refund_pending` included) to `TERMINAL_STATUSES`.
   - `packages/reference/test/wire-contract.test.ts` holds the fee reference (and Riddler's harness copy the taker constants) to the vendored copy **offline**, after verifying `openapi.sha256` over the bytes it parses; `verify:openapi` holds the copy to the producer.
   - **`generate.mjs` is the only writer**, and it runs the probe's differ (`packages/spec/wire/compare.mjs`, Node builtins only), so the writer never installs what the checker would fail.
   - It refuses (exit 4): a document graded **BREAKING** against the baseline (`--allow-breaking`); a resolved URL whose origin is not `PROD_ORIGIN` (`--allow-non-prod`; the `RIDDLER_SERVER` label is not consulted); a baseline that cannot be read (not a git checkout, nothing committed at HEAD) or is not recognisably a contract (`unrecognisedContract`) (`--first-vendoring`, checked before the fetch); with **no flag**, a committed pair whose digest does not match, an unparseable committed copy, or a numeric literal `wire/format.mjs` failed to preserve. The accepted flags are exactly those three, none inferred from a near-miss.
@@ -180,7 +180,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
   - On restart call `restoreAcceptance(prepared)` for every persisted order before any award, then `accept(prepared, { resume: true })` only for a process that may have sent the acceptance before crashing.
   - The example (`SOLVER_STATE_FILE`, `examples/fill-state-file.ts`, `examples/supervise.ts`) persists `accepting` / `accepted` (from `onSigned`) / `filled` and holds the file by a renewed lease (`SOLVER_STATE_FILE.lock`); never use a pid/hostname liveness check.
   - `run()` subscribes `addFeedGapListener` for its own duration and unsubscribes when it ends.
-  - `HttpSolverTransport` bounds `getCapabilities`/`getAttestation` with `readTimeoutMs` and `submitBid`/`submitFill` with `postTimeoutMs` (both default 10 s). Key parse errors never echo the key (`walletFromKey`).
+  - `HttpSolverTransport` bounds `getCapabilities`/`getAttestation` with `readTimeoutMs`, `submitBid`/`submitFill` with `postTimeoutMs` and `acceptAward` with `acceptTimeoutMs` (all default 10 s). Key parse errors never echo the key (`walletFromKey`).
 
 - **`sdks/{python,go,rust}`** (`xochi-conformance`; Python import `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): conformance runners reproducing all 45 `conformance.json` vectors byte-for-byte, each in its own CI job (`python-conformance`/`go-conformance`/`rust-conformance`; Python runs a pinned `uv` with `uv sync --locked`). **Not production signers**: they reject non-canonical input rather than normalize it (see each `sdks/*/README`). `@xochi/signer` also holds the inert `computeOrderId`/`assertEscrowBinding` (`escrow.ts`).
 
@@ -354,7 +354,7 @@ Rule (#92, where `deposit.test.ts` stayed green while the SDK was wrong): _an eq
 openapi probe classification:
 
 - **BREAKING**: a removal (path, method, schema, property, `enum` member, `required` entry); a served addition that is `required` or NARROWS; a changed value constraint or `openapi` dialect; any change (incl. addition or reorder) to an ordered `servers` list at any level, or a one-sided override; a changed path-item `$ref`; a dropped `security` requirement; a JSON type mismatch; a served `$ref` anywhere (outside example/default/const/enum/`x-*` data) that is external, malformed, dangling or cyclic, unless the vendored copy fails the same ref at the same place. Fragments decode in RFC 6901 §6 order.
-- **STALE**: an addition old clients survive: new path, method, **optional** property or parameter, appended `enum` member (`ErrorCode` is append-only, so expected), **served-only `default`**, added `security` alternative, changed `info.version`.
+- **STALE**: an addition old clients survive: new path, method, **optional** property or parameter, appended `enum` member (`ErrorCode` is append-only, so expected), **served-only `default` or `deprecated`**, added `security` alternative, changed `info.version`.
 - **RE-SPELLED**: structure agrees but a numeric literal's spelling differs (ordered **multiset, both directions**, reported only without STALE/BREAKING). Always a **LOCAL** fault; `npm run generate:wire` clears it.
 - **INCONCLUSIVE (2)**: served document malformed or not this API (`paths` not an object, `components` absent, a health stub). Never DRIFT.
 
@@ -426,30 +426,15 @@ The multi-signed variant (0x09) has up to `MAX_PROVIDERS_MULTI = 5` signer slots
 
 ## Trust Tiers
 
-Source of truth: `docs/planning/economics.md` Part 1 in the xochi repo. In-code mirrors: xochi's `packages/shared/src/tiers.ts` and Riddler's `fee_policy.ex`; the normalized wire form is `@xochi/spec`'s `fee/schedule.json` (`packages/spec`), which Riddler asserts against. `packages/sdk/src/tiers.ts` conforms to it via `packages/sdk/test/fee-schedule-drift.test.ts` (part of `npm test`, reading the workspace `@xochi/spec`; moving the vector means `npm run generate:fee`, a lockstep wire change with Riddler). It is a test, not a runtime read, so `@xochi/spec` is not a runtime dependency of `@xochi/sdk`. Do not hand-edit the numbers below without moving the vector.
+Source of truth: `docs/planning/economics.md` Part 1 in the xochi repo. In-code mirrors: xochi's `packages/shared/src/tiers.ts` and Riddler's `fee_policy.ex`; the normalized wire form is `@xochi/spec`'s `fee/schedule.json` (`packages/spec`), which Riddler asserts against. `packages/sdk/src/tiers.ts` conforms to it via `packages/sdk/test/fee-schedule-drift.test.ts` (part of `npm test`, reading the workspace `@xochi/spec`; moving the vector means `npm run generate:fee`, a lockstep wire change with Riddler). It is a test, not a runtime read, so `@xochi/spec` is not a runtime dependency of `@xochi/sdk`. Do not hand-edit the tier numbers (here, in `tiers.ts` or the docs) without moving the vector.
 
-| Tier          | Score | Fee (stable / volatile) |
-| ------------- | ----- | ----------------------- |
-| Standard      | 0-24  | 0.22% / 0.40%           |
-| Trusted       | 25-49 | 0.19% / 0.35%           |
-| Verified      | 50-74 | 0.15% / 0.29%           |
-| Premium       | 75-99 | 0.12% / 0.25%           |
-| Institutional | 100+  | 0.10% / 0.22%           |
+Tables (tiers, privacy levels, scoring caps): `packages/sdk/docs/tiers-privacy-scoring.md`.
 
 Each cell is `solverBps + venueBps + routingBps`. The solver spread (8 stable / 18 volatile) is the same across tiers and never discounted; only venue and routing taper. Plus 15% of intent surplus. The old 0.30%–0.10% schedule with MEV rebates ("Whitepaper Appendix F") is retired; MEV rebates no longer exist.
 
 ## Privacy Levels (Whitepaper Section 4)
 
-| Level     | Min Score | Settlement |
-| --------- | --------- | ---------- |
-| open      | 0         | public     |
-| public    | 0         | public     |
-| standard  | 0         | public     |
-| stealth   | 0         | ERC-5564   |
-| private   | 50        | Aztec L2   |
-| sovereign | 75        | Aztec L2   |
-
-L1 stealth is open to all and never separately priced. `VENUE_MIN_SCORES` (venue-router) and `hasShieldedEligibility` (tier-proofs) derive from this table; do not restate it. `SHIELDED_MIN_SCORE` is the Aztec threshold (50), not the stealth one.
+L1 stealth is open to all and never separately priced. Min scores: stealth 0 (ERC-5564), private 50 and sovereign 75 (Aztec L2). `VENUE_MIN_SCORES` (venue-router) derives from `PRIVACY_LEVELS`; do not restate it. `SHIELDED_MIN_SCORE` is the Aztec threshold (50), not the stealth one.
 
 ## Attestation Scoring (Whitepaper I.8)
 
