@@ -57,9 +57,31 @@ def test_short_nonce_rejected_not_silently_signed() -> None:
 
 @pytest.mark.parametrize("value", ["1_000", " 1000", "1000\n", "\u0661\u0660\u0660\u0660", "1e3", "0x3e8", True])
 def test_non_canonical_integer_rejected_not_silently_signed(value: object) -> None:
-    # Python's int() accepts several of these spellings; the TS reference
-    # (ethers) does not sign them as the same value, so the port must refuse.
+    # The port accepts canonical input only (an int or an ASCII decimal string).
+    # Python's int() takes several of these spellings, and ethers signs " 1000",
+    # "1000\n" and "0x3e8" as 1000 -- the port refuses them all the same.
     base = next(v for v in VECTORS if v["protocol"] == "erc3009")
     bad = {**base, "message": {**base["message"], "value": value}}
     with pytest.raises(ValueError, match="non-canonical integer"):
         sign(bad)
+
+
+@pytest.mark.parametrize("value", [" 1", "1\n", "\u0661", "0x1", "1_0", "1e0", True])
+@pytest.mark.parametrize("protocol", ["erc3009", "permit2", "xochi"])
+def test_non_canonical_domain_chain_id_rejected_not_silently_signed(protocol: str, value: object) -> None:
+    # eth_account parses a string domain chainId leniently: " 1", "0x1" and an
+    # Arabic-Indic digit all signed as chain 1 before the domain was checked.
+    base = next(v for v in VECTORS if v["protocol"] == protocol)
+    if protocol == "xochi":
+        eip712 = base["eip712"]
+        bad = {**base, "eip712": {**eip712, "domain": {**eip712["domain"], "chainId": value}}}
+    else:
+        bad = {**base, "domain": {**base["domain"], "chainId": value}}
+    with pytest.raises(ValueError, match="non-canonical integer"):
+        sign(bad)
+
+
+def test_decimal_string_domain_chain_id_signs_as_the_integer() -> None:
+    base = next(v for v in VECTORS if v["protocol"] == "erc3009")
+    as_string = {**base, "domain": {**base["domain"], "chainId": str(base["domain"]["chainId"])}}
+    assert sign(as_string)["digest"] == base["expected_digest"]

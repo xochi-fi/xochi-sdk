@@ -49,9 +49,11 @@ class SignResult(dict):
     """{'digest': str, 'signature': str, 'signed_object': str | None}."""
 
 
-# ASCII decimal only. Python's int() also takes "1_000", surrounding whitespace
-# and non-ASCII Unicode digits, none of which the TS reference signs as the
-# same value (ethers rejects "1_000"), so those are refused, not normalized.
+# ASCII decimal only: this port accepts canonical input and nothing else.
+# Python's int() also takes "1_000", surrounding whitespace and non-ASCII
+# Unicode digits. The TS reference (ethers' getBigInt, i.e. BigInt()) is not a
+# guide here: it rejects "1_000", "1e3" and Unicode digits but signs " 1000",
+# "1000\n" and "0x3e8" as 1000. All of them are refused, not normalized.
 _DECIMAL = re.compile(r"-?[0-9]+", re.ASCII)
 
 
@@ -89,10 +91,19 @@ def _primary_type(types: dict[str, list[dict[str, str]]]) -> str:
     return roots[0]
 
 
+def _coerce_domain(domain: dict[str, Any]) -> dict[str, Any]:
+    # `chainId` is the domain's one integer member (uint256). eth_account parses
+    # a string chainId leniently, so " 1", "0x1" and Arabic-Indic "1" all signed
+    # as 1; it gets the same canonical-only check as the message's integers.
+    if "chainId" not in domain:
+        return domain
+    return {**domain, "chainId": _coerce_int(domain["chainId"])}
+
+
 def _sign_typed(private_key: str, domain: dict[str, Any], types: dict[str, list[dict[str, str]]], message: dict[str, Any]) -> tuple[str, str]:
     primary = _primary_type(types)
     coerced = _coerce_message(message, types, primary)
-    signable = encode_typed_data(domain, types, coerced)
+    signable = encode_typed_data(_coerce_domain(domain), types, coerced)
     signed = Account.sign_message(signable, private_key)
     return signed.message_hash.to_0x_hex(), signed.signature.to_0x_hex()
 
