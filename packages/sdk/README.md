@@ -4,17 +4,17 @@ Client-side [ERC-8262](https://github.com/xochi-fi/ERC-8262) ZK compliance proof
 
 ## Which package?
 
-| To…                                 | Use                 | Path                    |
-| ----------------------------------- | ------------------- | ----------------------- |
-| Trade via the Xochi API             | `@xochi/client`     | `packages/client`       |
-| Embed the swap widget               | `@xochi/widget-lib` | `packages/widget-lib`   |
-| Sign or verify intents offline      | `@xochi/signer`     | `packages/signer`       |
-| Generate ERC-8262 proofs            | `@xochi/sdk`        | repo root (this README) |
-| Implement or test the protocol      | `@xochi/spec`       | `packages/spec`         |
-| Run a solver (not yet published)    | `@xochi/solver-sdk` | `packages/solver-sdk`   |
-| Port the signer to Python, Go, Rust | conformance ports   | `sdks/{python,go,rust}` |
+| To…                                 | Use                 | Path                      |
+| ----------------------------------- | ------------------- | ------------------------- |
+| Trade via the Xochi API             | `@xochi/client`     | `packages/client`         |
+| Embed the swap widget               | `@xochi/widget-lib` | `packages/widget-lib`     |
+| Sign or verify intents offline      | `@xochi/signer`     | `packages/signer`         |
+| Generate ERC-8262 proofs            | `@xochi/sdk`        | `packages/sdk` (this one) |
+| Implement or test the protocol      | `@xochi/spec`       | `packages/spec`           |
+| Run a solver (not yet published)    | `@xochi/solver-sdk` | `packages/solver-sdk`     |
+| Port the signer to Python, Go, Rust | conformance ports   | `sdks/{python,go,rust}`   |
 
-`@xochi/client` does not install `@aztec/bb.js` or `noir_js`. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Security reports: [SECURITY.md](SECURITY.md).
+`@xochi/client` does not install `@aztec/bb.js` or `noir_js`. Architecture: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md). Security reports: [SECURITY.md](../../SECURITY.md).
 
 ## Install
 
@@ -697,7 +697,8 @@ Lower level: `decodeContractError(err, abi)` returns the typed error or `null`; 
 ## Development
 
 ```bash
-npm install
+npm install              # at the repo root (npm workspaces), then:
+cd packages/sdk
 npm test                 # unit tests + drift checks (integration excluded via vitest.config.ts); the fee
                          # schedule is checked against the workspace @xochi/spec (packages/spec)
 npm run test:integration # proof generation + anvil tests (uses vitest.integration.config.ts)
@@ -710,12 +711,12 @@ npm run daemon           # build, then run the reference signing daemon (see dae
 # Sync circuit artifacts from ERC-8262. Strips debug data (file_map /
 # debug_symbols) and exits non-zero, leaving circuits/ untouched, if any
 # artifact is missing or its noir_version differs from EXPECTED_NOIR_VERSION.
-./scripts/sync-circuits.sh ../ERC-8262
+./scripts/sync-circuits.sh ../../../ERC-8262   # default: an ERC-8262 checkout beside the repo
 ```
 
 Integration tests run on anvil and need [foundry](https://book.getfoundry.sh/getting-started/installation) and a compiled [ERC-8262](https://github.com/xochi-fi/ERC-8262) clone.
 
-Protocol workspaces build `@xochi/signer` first; their generated artifacts are CI gates:
+From the repo root, protocol workspaces build `@xochi/signer` first; their generated artifacts are CI gates:
 
 ```bash
 npm run build:workspaces && npm run typecheck:workspaces && npm run test:workspaces

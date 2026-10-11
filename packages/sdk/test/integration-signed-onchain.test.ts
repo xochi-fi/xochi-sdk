@@ -61,7 +61,8 @@ import type { DaemonConfig } from "../daemon/src/config.js";
 // ============================================================
 
 const ERC_8262 =
-  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+  process.env.ERC_8262_PATH ??
+  resolve(new URL(".", import.meta.url).pathname, "../../../../ERC-8262");
 
 interface LinkRefEntry {
   start: number; // byte offset

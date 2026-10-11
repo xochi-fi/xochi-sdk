@@ -39,7 +39,8 @@ import {
 } from "../src/tier-proofs.js";
 
 const ERC_8262 =
-  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+  process.env.ERC_8262_PATH ??
+  resolve(new URL(".", import.meta.url).pathname, "../../../../ERC-8262");
 
 const ANVIL_PORT = 8551;
 const ANVIL_URL = `http://127.0.0.1:${String(ANVIL_PORT)}`;

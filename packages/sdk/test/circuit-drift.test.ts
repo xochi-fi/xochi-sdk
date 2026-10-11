@@ -36,7 +36,7 @@ import {
 
 const TEST_DIR = new URL(".", import.meta.url).pathname;
 const CIRCUITS_DIR = resolve(TEST_DIR, "../circuits");
-const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../ERC-8262");
+const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../../../ERC-8262");
 
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";

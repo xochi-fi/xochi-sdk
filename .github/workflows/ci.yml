@@ -8,11 +8,12 @@ on:
 
 env:
   # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
-  # with scripts/sync-circuits.sh output.
+  # with packages/sdk/scripts/sync-circuits.sh output.
   ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
+  # @xochi/sdk (packages/sdk). The job key stays `check`.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -43,19 +44,22 @@ jobs:
       # Same gates as prepublishOnly, so a green CI means `npm publish` passes.
       # Drift tests run against the pinned ERC-8262 and fail (not skip) when it is missing.
       - name: Format
+        run: npm run format:check -w @xochi/sdk
+
+      - name: Format (repo root json/md)
         run: npm run format:check
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck -w @xochi/sdk
 
       - name: Unit tests
-        run: npm test
+        run: npm test -w @xochi/sdk
 
       - name: Build
-        run: npm run build
+        run: npm run build -w @xochi/sdk
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: npm pack --dry-run -w @xochi/sdk
 
   # @xochi/client (packages/client): the same prepublishOnly gates, run from the
   # workspace root so the root lockfile resolves it. Needs no foundry.
@@ -264,4 +268,4 @@ jobs:
         run: forge build
 
       - name: Integration tests
-        run: npm run test:integration
+        run: npm run test:integration -w @xochi/sdk

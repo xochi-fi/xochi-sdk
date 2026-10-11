@@ -2,8 +2,9 @@
 # shellcheck disable=SC2016 # single-quoted node programs use JS template literals
 set -euo pipefail
 
-# Sync compiled Noir circuit artifacts from ERC-8262 to xochi-sdk.
-# Usage: ./scripts/sync-circuits.sh [path-to-ERC-8262]
+# Sync compiled Noir circuit artifacts from ERC-8262 to @xochi/sdk (packages/sdk).
+# Usage: packages/sdk/scripts/sync-circuits.sh [path-to-ERC-8262]
+# The default is an ERC-8262 checkout beside the xochi-sdk repo.
 #
 # Every artifact must exist and be compiled with EXPECTED_NOIR_VERSION from
 # src/noir-version.ts. Debug data (`file_map`, `debug_symbols`) is stripped:
@@ -14,10 +15,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SDK_ROOT}/../.." && pwd)"
 SDK_CIRCUITS="${SDK_ROOT}/circuits"
 NOIR_VERSION_TS="${SDK_ROOT}/src/noir-version.ts"
 
-ERC_REPO="${1:-${SDK_ROOT}/../ERC-8262}"
+ERC_REPO="${1:-${REPO_ROOT}/../ERC-8262}"
 
 if [[ ! -d "${ERC_REPO}" ]]; then
   printf "Error: ERC-8262 repo not found at %s\n" "${ERC_REPO}" >&2
@@ -109,4 +111,4 @@ done
 
 printf "\nSynced %d/%d circuits (Noir %s)\n\n" "${#CIRCUITS[@]}" "${#CIRCUITS[@]}" "${expected_version}"
 printf "Verify the synced artifacts with:\n"
-printf "  npm test\n"
+printf "  npm test -w @xochi/sdk\n"

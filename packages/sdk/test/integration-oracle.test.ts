@@ -44,7 +44,8 @@ import { withDecodedErrors } from "../src/errors.js";
 // ============================================================
 
 const ERC_8262 =
-  process.env.ERC_8262_PATH ?? resolve(new URL(".", import.meta.url).pathname, "../../ERC-8262");
+  process.env.ERC_8262_PATH ??
+  resolve(new URL(".", import.meta.url).pathname, "../../../../ERC-8262");
 
 function loadBytecode(contractPath: string, contractName: string): Hex {
   const artifact = JSON.parse(

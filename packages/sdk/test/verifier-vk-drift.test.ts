@@ -26,7 +26,7 @@ import { CIRCUIT_TO_PROOF_TYPE } from "../src/constants.js";
 import type { CircuitName } from "../src/types.js";
 
 const TEST_DIR = new URL(".", import.meta.url).pathname;
-const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../ERC-8262");
+const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../../../ERC-8262");
 const GENERATED = resolve(ERC_8262, "src/generated");
 /** Exhaustive: CIRCUIT_TO_PROOF_TYPE is a Record<CircuitName, ProofType>. */
 const CIRCUITS = Object.keys(CIRCUIT_TO_PROOF_TYPE) as CircuitName[];

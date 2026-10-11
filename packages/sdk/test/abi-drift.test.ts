@@ -20,7 +20,7 @@ import { ORACLE_ABI, VERIFIER_ABI } from "../src/abis.js";
 import { SETTLEMENT_REGISTRY_ABI } from "../src/settlement-registry.js";
 
 const TEST_DIR = new URL(".", import.meta.url).pathname;
-const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../ERC-8262");
+const ERC_8262 = process.env.ERC_8262_PATH ?? resolve(TEST_DIR, "../../../../ERC-8262");
 const OUT = resolve(ERC_8262, "out");
 
 interface AbiParam {

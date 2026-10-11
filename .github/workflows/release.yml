@@ -1,6 +1,6 @@
 # Publish one package to npm from a tag.
 #
-#   sdk-v<version>         -> npm publish            (@xochi/sdk, the repo root)
+#   sdk-v<version>         -> npm publish -w @xochi/sdk
 #   spec-v<version>        -> npm publish -w @xochi/spec
 #   signer-v<version>      -> npm publish -w @xochi/signer
 #   client-v<version>      -> npm publish -w @xochi/client
@@ -57,9 +57,9 @@
 #   - GitHub tag ruleset "release tags" lets only repository admins create,
 #     move or delete those tags.
 #
-# @xochi/sdk used to be published by hand (`npm publish` at the root, gated by
-# its prepublishOnly). That still works and still runs the same gates; this
-# workflow runs them too, in CI, with provenance.
+# @xochi/sdk used to be published by hand (`npm publish`, gated by its
+# prepublishOnly; now `npm publish -w @xochi/sdk`). That still works and still
+# runs the same gates; this workflow runs them too, in CI, with provenance.
 #
 # The publish runs only after the gates ci.yml runs for that package, and only
 # when the tag's version is the version in that package's package.json: a tag
@@ -148,7 +148,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           case "$TAG" in
-            sdk-v*)        name='@xochi/sdk';        dir='.';                   version="${TAG#sdk-v}" ;;
+            sdk-v*)        name='@xochi/sdk';        dir='packages/sdk';        version="${TAG#sdk-v}" ;;
             spec-v*)       name='@xochi/spec';       dir='packages/spec';       version="${TAG#spec-v}" ;;
             signer-v*)     name='@xochi/signer';     dir='packages/signer';     version="${TAG#signer-v}" ;;
             client-v*)     name='@xochi/client';     dir='packages/client';     version="${TAG#client-v}" ;;
@@ -216,10 +216,7 @@ jobs:
               }
             fi
           fi
-          # The root package is published without -w; a workspace with it.
-          if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "ws=$ws" >> "$GITHUB_OUTPUT"
           echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
           echo "publishing $name@$version (dist-tag ${dist_tag:-latest, if highest})"
 
@@ -272,4 +269,4 @@ jobs:
       # (format, typecheck, test, build) in prepublishOnly, which npm publish
       # runs; @xochi/signer's build runs in its prepublishOnly too.
       - name: Publish
-        run: npm publish ${{ steps.pkg.outputs.ws }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public
+        run: npm publish -w ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public
