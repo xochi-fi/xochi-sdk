@@ -17,6 +17,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 - `package.json` gains description, keywords and homepage.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `spec-v*` tag.
 - `engines.node` is `>=22`. `prepublishOnly` runs `format:check`, `typecheck` and `test` before every publish. The tarball ships this `CHANGELOG.md`.
+- SPEC.md no longer links `docs/ARCHITECTURE.md`, which exists nowhere and shipped in no tarball; §5.2 and §9 still cite it by name.
 
 ### Fixed
 

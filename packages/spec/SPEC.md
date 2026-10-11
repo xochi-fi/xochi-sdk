@@ -10,8 +10,7 @@
 > The normative contract for the Riddler Xochi cross-chain intent venue. §2
 > (Signatures) and §4 (Fees) are normative and conformance-tested: §2 by
 > `conformance/conformance.json`, §4 by `fee/vectors.json` +
-> `fee/schema.json`. §3 (HTTP) defers to the server-generated OpenAPI. Package
-> graph: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> `fee/schema.json`. §3 (HTTP) defers to the server-generated OpenAPI.
 
 ---
 
