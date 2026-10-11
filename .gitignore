@@ -1,6 +1,5 @@
 node_modules/
 dist/
-*.tsbuildinfo
 
 # OS
 .DS_Store
@@ -16,12 +15,6 @@ Thumbs.db
 # Environment
 .env
 .env.*
-
-# Test artifacts
-coverage/
-
-# Session artifacts
-HANDOVER.md
 
 # Claude Code
 .claude/
