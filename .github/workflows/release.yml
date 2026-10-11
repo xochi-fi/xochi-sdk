@@ -66,8 +66,8 @@
 # The publish runs only after the gates ci.yml runs for that package, and only
 # when the tag's version is the version in that package's package.json: a tag
 # that disagrees would publish bytes under a name nobody reviewed. Every
-# package's own prepublishOnly (where it has one) runs again inside `npm
-# publish`.
+# package's prepublishOnly (format:check, typecheck, test and, where it has a
+# build, build) runs again inside `npm publish`.
 name: release
 
 on:
@@ -228,10 +228,13 @@ jobs:
 
       - run: npm ci
 
-      # Every workspace consumes @xochi/signer's .d.ts, the bid-vector
-      # generator imports the built @xochi/solver-sdk, and the fee generator
-      # and fee vector suite import the built @xochi/client.
+      # @xochi/client's typecheck reads @xochi/signer's built .d.ts; the protocol
+      # gate (spec, signer) also needs the built @xochi/solver-sdk (the bid-vector
+      # generator imports it) and @xochi/client (the fee generator and fee vector
+      # suite import it). @xochi/sdk, @xochi/provider and @xochi/widget-lib
+      # depend on none of them.
       - name: Build @xochi/signer, @xochi/solver-sdk and @xochi/client
+        if: steps.pkg.outputs.name == '@xochi/spec' || steps.pkg.outputs.name == '@xochi/signer' || steps.pkg.outputs.name == '@xochi/client'
         run: |
           npm run build -w @xochi/signer
           npm run build -w @xochi/solver-sdk
@@ -271,9 +274,8 @@ jobs:
           cd packages/spec/wire
           printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
 
-      # @xochi/sdk, @xochi/client, @xochi/widget-lib and @xochi/provider carry
-      # their full gate (format, typecheck, test, build; @xochi/provider's
-      # typecheck covers its daemon) in prepublishOnly, which npm publish runs;
-      # @xochi/signer's build runs in its prepublishOnly too.
+      # Every package's prepublishOnly runs its full gate again inside npm
+      # publish: format:check, typecheck, test and build (@xochi/spec has no
+      # build; @xochi/provider's typecheck covers its daemon).
       - name: Publish
         run: npm publish -w ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public
