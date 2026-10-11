@@ -33,9 +33,14 @@
 # @xochi/widget-lib cannot make their first publish here. The conservative
 # procedure, once per package: an npm owner with 2FA checks out the reviewed
 # release tag's commit (on main), runs the same gates this job runs for that
-# package, and runs `npm publish -w <name>` by hand (no provenance; the real
-# reviewed version, never a placeholder). Only then attach the config above;
-# every later version publishes only from this workflow.
+# package, and runs `npm publish -w <name> --provenance=false` by hand (spec
+# and signer set `publishConfig.provenance`, which fails outside CI; the real
+# reviewed version, never a placeholder). @xochi/signer goes before
+# @xochi/client, which depends on it. Then attach the config above
+# (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
+# --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
+# "Require two-factor authentication and disallow tokens", so every later
+# version publishes only from this workflow.
 #
 # Why the environment. A tag push runs the release.yml of the TAGGED commit,
 # not main's, so no step in this file can guard a tag on a commit that does not
@@ -116,8 +121,11 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
-          cache: npm
           registry-url: "https://registry.npmjs.org"
+          # No dependency cache: this job holds id-token: write, and a cache
+          # entry written by another workflow run would be installed here
+          # (npm's trusted-publishing guide: never cache in release builds).
+          package-manager-cache: false
 
       # Trusted publishing needs npm >= 11.5.1; refuse rather than fall back to
       # a token-less publish that fails late with an opaque 404. Pinned exactly,
