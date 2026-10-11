@@ -1,8 +1,8 @@
 /**
  * EIP-712 typed-data digest for `CredentialRootPublication`.
  *
- * Mirrors `src/libraries/EIP712CredentialRoot.sol` byte-for-byte. A parity test
- * lives at `xochi-sdk/test/eip712-credential-root.test.ts`; if either side
+ * Mirrors ERC-8262's `src/libraries/EIP712CredentialRoot.sol` byte-for-byte. A
+ * parity test lives at `packages/provider/test/eip712-credential-root.test.ts`; if either side
  * drifts, both test suites fail.
  *
  * Domain: name="ERC8262Oracle", version="1", chainId, verifyingContract
