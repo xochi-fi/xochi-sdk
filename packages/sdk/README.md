@@ -79,7 +79,7 @@ const result = await prover.proveComplianceSigned({
 - [Tiers, privacy levels, scoring and tier proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/tiers-privacy-scoring.md)
 - [Provider-signed proofs, input builders and loaders](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md)
 - [On-chain clients, typed errors, XIP-1 settlement and XIP-2 planning](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md)
-- [CHANGELOG](https://github.com/xochi-fi/xochi-sdk/blob/main/CHANGELOG.md)
+- [CHANGELOG](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/CHANGELOG.md)
 
 ## License
 

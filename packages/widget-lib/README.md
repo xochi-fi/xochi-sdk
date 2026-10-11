@@ -41,6 +41,8 @@ widget.destroy();
 - Inbound JSON is capped at 128 KiB; at most 16 wallet requests may be pending, and an unanswered prompt holds its slot until it settles.
 - Wallet events reach the frame only after it has connected in the current load.
 
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
+
 ## License
 
 MIT

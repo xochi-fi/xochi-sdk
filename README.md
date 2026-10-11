@@ -22,7 +22,7 @@ Tags publish through `.github/workflows/release.yml`, one package per tag. Each 
 
 - **`@xochi/signer`: the taker's signer. It moves funds.** EIP-712 Xochi intents, ERC-3009 and Permit2 pull authorizations, plus the pre-sign checks that hold a server quote to the request. A bug here loses money.
 - **`@xochi/provider`: a compliance-data provider's attestations. It moves no funds.** Secp256k1 signatures over risk signals that the ERC-8262 signed circuits (0x07, 0x08, 0x09) verify in-circuit, and EIP-712 credential-root publications. `@xochi/sdk` turns them into proofs.
-- **`sdks/*` (`xochi-conformance`; Python `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/signer` conformance vector byte-for-byte and reject non-canonical input rather than normalize it.
+- **`sdks/*` (`xochi-conformance`; Python `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/spec` `conformance.json` vector byte-for-byte and reject non-canonical input rather than normalize it.
 
 ## Development
 
@@ -30,7 +30,7 @@ Node 22.12+. From the root: `npm ci`, then `npm run build`, `npm run typecheck`,
 
 ## More
 
-- [CHANGELOG.md](CHANGELOG.md)
+- Changelogs: each package's own `packages/<name>/CHANGELOG.md`
 - [SECURITY.md](SECURITY.md)
 - [CLAUDE.md](CLAUDE.md): repo rules and invariants (fund-safety, wire contract, parity state)
 - [LICENSE](LICENSE) (MIT)

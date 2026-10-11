@@ -43,6 +43,8 @@ Checks throw on mismatch. Deposit-address routes use `verifyDepositAttestation`,
 - **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` recomputed.
 - **`recordDepositAddress` needs a store you supply** to refuse an address reused across intents.
 
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/signer/CHANGELOG.md).
+
 ## License
 
 MIT

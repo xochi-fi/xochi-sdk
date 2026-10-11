@@ -73,12 +73,12 @@ const client = new SolverClient({
 await client.run(solver);
 ```
 
-Reference solvers:
+Reference solvers, from a repo checkout (the examples are not in the tarball):
 
 ```bash
-npm run example:solver              # offline: full loop incl. award + fill
-npm run example:solver -- --live    # against a venue's /solver/* surface
-npm run example:escrow              # escrowed award: prepare -> accept -> fill -> claim
+npm run example:solver -w @xochi/solver-sdk             # offline: full loop incl. award + fill
+npm run example:solver -w @xochi/solver-sdk -- --live   # against a venue's /solver/* surface
+npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepare -> accept -> fill -> claim
 ```
 
 ## Rules you must follow
@@ -128,4 +128,4 @@ npm run example:escrow              # escrowed award: prepare -> accept -> fill 
 - Escrow: `OnchainEscrowGateway`, `StubEscrowGateway`, `verifyAward`, `requireFillableEscrow`,
   `checkFillWindow`, `verifyAttestation`, `EscrowRefusalError`
 
-Breaking changes: [CHANGELOG.md](CHANGELOG.md).
+Breaking changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/solver-sdk/CHANGELOG.md).

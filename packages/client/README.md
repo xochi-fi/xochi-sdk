@@ -74,6 +74,8 @@ if (quote.feeBreakdown) {
 
 `computeFeeBreakdown` predicts the layers; `FEE_SCHEDULE` mirrors the solver's policy. The invariant check reconciles layers, not the rate; capping it is your policy.
 
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/client/CHANGELOG.md).
+
 ## License
 
 MIT

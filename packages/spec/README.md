@@ -71,6 +71,8 @@ Wire: check `openapi.json` against `openapi.sha256`; compare a served document w
 Reference runners live in the repo:
 [`packages/reference/test`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/reference/test).
 
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/CHANGELOG.md).
+
 ## License
 
 MIT

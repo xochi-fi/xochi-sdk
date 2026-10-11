@@ -121,6 +121,8 @@ A reference HTTP daemon that keeps the key out of the proving process ships as s
 not in this tarball: see
 [daemon/README.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md).
 
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/CHANGELOG.md).
+
 ## License
 
 MIT
