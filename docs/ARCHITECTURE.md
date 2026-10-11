@@ -1,6 +1,6 @@
 # Architecture
 
-Usage: [README](../README.md). Module map: [CLAUDE.md](../CLAUDE.md).
+Package chooser and per-package READMEs: [README](../README.md). Module map: [CLAUDE.md](../CLAUDE.md).
 
 ## The packages
 
@@ -14,7 +14,9 @@ Usage: [README](../README.md). Module map: [CLAUDE.md](../CLAUDE.md).
       │      └──── @xochi/solver-sdk
       └─────────── @xochi/reference (private: registry, sign-only)
 
-@xochi/sdk (ERC-8262 prover, repo root) and @xochi/widget-lib depend on none of the above at runtime.
+@xochi/provider (provider attestation signing + reference daemon) ──(dev only, tests)──> @xochi/sdk
+
+@xochi/sdk (ERC-8262 prover, packages/sdk), @xochi/provider and @xochi/widget-lib depend on none of the above at runtime.
 ```
 
 `@xochi/signer` is pure (no network, config or process exit), so three other
@@ -40,8 +42,15 @@ on zod) so takers can reconcile `fee_breakdown`; `fee/generate.ts` projects it
 into `@xochi/spec`.
 
 `@xochi/spec` has dev-only dependencies (its generators). `@xochi/sdk`'s
-`src/tiers.ts` keeps its own fee table, tested against `fee/schedule.json`, to
+`packages/sdk/src/tiers.ts` keeps its own fee table, tested against `fee/schedule.json`, to
 avoid a runtime dependency.
+
+`@xochi/provider` signs what the ERC-8262 signed circuits (0x07, 0x08, 0x09)
+verify: provider secp256k1 signatures over screening signals, plus EIP-712
+credential-root publications. It moves no funds and is unrelated to
+`@xochi/signer`'s taker signing. `@xochi/sdk` consumes its output as plain
+bytes (`signedBundle`, `slots`) and keeps its own two byte helpers, so the
+prover has no dependency on the signer; only the sdk's tests import it.
 
 ## Why the vectors exist
 
@@ -83,9 +92,9 @@ contracts.
 signed bytes is not additive (`SPEC.md §0.3`).
 
 `.github/workflows/release.yml` publishes from tags with provenance:
-`@xochi/sdk` (`sdk-v*`), `@xochi/spec` (`spec-v*`), `@xochi/signer`
-(`signer-v*`), `@xochi/client` (`client-v*`), `@xochi/widget-lib`
-(`widget-lib-v*`). `@xochi/solver-sdk` publishes when the solver panel opens;
+`@xochi/sdk` (`sdk-v*`), `@xochi/provider` (`provider-v*`), `@xochi/spec`
+(`spec-v*`), `@xochi/signer` (`signer-v*`), `@xochi/client` (`client-v*`),
+`@xochi/widget-lib` (`widget-lib-v*`). `@xochi/solver-sdk` publishes when the solver panel opens;
 `@xochi/reference` is private. Consumers pin `@xochi/spec` exactly. A tag runs
 its own commit's workflow, so the gate is outside it: the `npm-publish`
 environment, the admin-only "release tags" ruleset, and npm trusted-publisher
@@ -109,10 +118,12 @@ Full map: `xochi-fi/xochi` `docs/STACK.md` (private). Decisions:
 | `@xochi/client` fee reference (`FEE_SCHEDULE`, `parseFeeBreakdown`, `assertFeeBreakdownInvariants`) | Riddler `packages/e2e-signer` (private harness) | package dep     | `^0.1.0`                                                                                                               |
 | `@xochi/client`, `@xochi/widget-lib`                                                                | xochi, xochi-widget                             | package dep     | published versions                                                                                                     |
 | `@xochi/solver-sdk`                                                                                 | third-party solvers                             | package dep     | published when the panel opens                                                                                         |
+| `@xochi/provider` signing + reference daemon                                                        | compliance-data providers                       | package dep     | published versions                                                                                                     |
 
 **Inside this repo** (workspace links): `@xochi/client` -> `@xochi/signer`;
-`fee/generate.ts` and the reference fee suite -> `@xochi/client`; the root fee
-drift test -> `@xochi/spec` `fee/schedule.json`.
+`fee/generate.ts` and the reference fee suite -> `@xochi/client`; `@xochi/sdk`'s
+fee drift test -> `@xochi/spec` `fee/schedule.json`; `@xochi/sdk`'s signed-proof
+tests -> `@xochi/provider` (devDependency).
 
 **Inbound**:
 

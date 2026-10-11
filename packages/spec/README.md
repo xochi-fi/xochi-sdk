@@ -203,8 +203,8 @@ npm run test:fee       # re-checks every vector + the schedule projection
 
 `FEE_SCHEDULE` is byte-parity with Riddler's
 `Riddler.Integrations.Xochi.FeePolicy`; a schedule change lands on both sides
-together. `@xochi/sdk`'s `src/tiers.ts` is held to the same
-`fee/schedule.json` by the root `test/fee-schedule-drift.test.ts`.
+together. `@xochi/sdk`'s `packages/sdk/src/tiers.ts` is held to the same
+`fee/schedule.json` by `packages/sdk/test/fee-schedule-drift.test.ts`.
 
 ### Wire contract
 
