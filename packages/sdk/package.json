@@ -104,8 +104,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md,ts}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md,ts}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"docs/**/*.md\" \"*.{json,md,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"docs/**/*.md\" \"*.{json,md,ts}\"",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },

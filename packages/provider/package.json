@@ -43,8 +43,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md,ts}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md,ts}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"daemon/*.md\" \"*.{json,md,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"daemon/*.md\" \"*.{json,md,ts}\"",
     "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },

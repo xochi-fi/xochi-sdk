@@ -312,7 +312,7 @@ npm run daemon -w @xochi/provider     # build, then run the reference signing da
 packages/sdk/scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
 ```
 
-Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); the root's cover only root `*.{json,md}`; `@xochi/sdk`, `@xochi/provider`, `@xochi/client` and `@xochi/widget-lib` include their top-level `*.md` (not `packages/sdk/docs/` or `packages/provider/daemon/README.md`); for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (`SPEC.md` is parsed by the spec-version probe).
+Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); the root's cover only root `*.{json,md}`; `@xochi/sdk` (incl. `docs/`), `@xochi/provider` (incl. `daemon/README.md`), `@xochi/client` and `@xochi/widget-lib` include their Markdown; for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (hand-wrapped; `SPEC.md` is parsed by the spec-version probe).
 
 Integration tests deploy ERC8262Verifier, ERC8262Oracle and SettlementRegistry on anvil. Requires foundry and compiled ERC-8262 artifacts (`out/` of the ERC-8262 checkout beside the repo, or `ERC_8262_PATH`).
 

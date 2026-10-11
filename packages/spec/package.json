@@ -73,8 +73,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
-    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
+    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
+    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
     "generate:fee": "tsx fee/generate.ts",
     "generate:order-id": "tsx conformance/generate-order-id.ts",
     "generate:open-auth": "tsx conformance/generate-open-auth.ts",
