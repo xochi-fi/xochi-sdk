@@ -58,28 +58,39 @@ root delegation's trailing ` --`: `npm run generate:wire -- --allow-breaking`.
 the PR (review reads it, not the ~2000-line diff): server key and resolved URL
 (the label is not the host, so an `stg` refresh is otherwise invisible), served
 `info.version`, both byte counts and digests, a `numbers` row (distinct numeric
-literals served and whether all survived verbatim), and the BREAKING and STALE
-findings against the replaced copy.
+literals served and whether all survived verbatim), the baseline commit, and
+the BREAKING and STALE findings against it.
 
-Refusals (exit 4 REFUSED, nothing written; MISCONFIGURED stays 3):
+**The baseline is the pair committed at `HEAD`**, read through `git show`,
+never the working tree. The working-tree pair is only held to itself: gutting
+`openapi.json` to one real path and re-digesting it passed the digest and
+`unrecognisedContract` checks, so a served BREAKING change graded STALE against
+a baseline that declared almost nothing. A gutted commit is still possible, but
+only as a reviewed diff in the branch's history. A hand-edited or half-written
+working tree is overwritten and noted in the provenance block, never diffed.
+
+Refusals (exit 4 REFUSED, nothing written; MISCONFIGURED stays 3, including
+`git` missing from `PATH`):
 
 - **Any BREAKING finding**, graded by the nightly probe's differ
   (`compare.mjs`), so the writer cannot install what the probe would fail and
-  then self-verify (a 173-byte health stub once passed). Unresolvable served
-  `$ref`s (external, dangling, cyclic) grade BREAKING. Consent:
-  `--allow-breaking`, then paste the delta. An unparseable vendored copy
-  refuses regardless.
+  then self-verify (a 173-byte health stub once passed). Every served `$ref`
+  that does not resolve (external, malformed, dangling, cyclic), in any node
+  including served-only subtrees, grades BREAKING, unless the baseline fails to
+  resolve the same ref at the same location. Consent: `--allow-breaking`, then
+  paste the delta. An unparseable committed copy refuses regardless.
 - **A resolved origin other than prod's** (`PROD_ORIGIN`,
   `https://riddler.axol.io`) without `--allow-non-prod`. The gate reads the host
   that answered, not the `RIDDLER_SERVER` label, which defaults to `prod` over
   a URL unvalidated past `https:`; an stg document once became the prod
   contract that way. The dialed URL is printed every run.
-- **An absent vendored copy, or one that mismatches `openapi.sha256` or fails
-  `unrecognisedContract`** (an `openapi` string, `paths` with an operation,
-  `components`), checked before the fetch; consent is `--first-vendoring`.
-  Without it `rm` or a re-digested stub switched the BREAKING gate off. A file
-  missing at any other time is a restore
-  (`git checkout -- packages/spec/wire/openapi.json`), not a flag.
+- **No committed baseline** (not a git checkout, no commit, `openapi.json` not
+  committed at `HEAD`) **or one that fails `unrecognisedContract`** (an
+  `openapi` string, `paths` with an operation, `components`), checked before
+  the fetch; consent is `--first-vendoring`, which stands in only for those.
+- **A committed pair whose digest does not match its document**, with no
+  override: that commit fails the per-PR digest gate and is fixed, and it is
+  not a missing baseline, so `--first-vendoring` never skips the diff for it.
 - **A numeric literal its own output re-spelled** (`rewrittenNumbers`), with no
   override: that is a `format.mjs` defect.
 
@@ -100,11 +111,13 @@ falling back to `JSON.parse`. The former `--allow-renumbering` flag was removed
 because Jason emits `0.0`, which consent folded to `0`, leaving
 `verify:openapi` red (RE-SPELLED) every night with no working remedy.
 
-Both files are staged as `.tmp` siblings and renamed **digest first**, so an
-interrupted refresh leaves a pair both gates fail. Temporaries are swept on
-every exit; `packages/spec/wire/*.tmp` is gitignored and excluded from `files`
-(a leaked one was otherwise committed by `git add -A` and published). A failed
-rename names which file moved.
+Both files are staged as `.tmp` siblings and renamed **document first**, so an
+interrupted refresh leaves the new document beside the old digest, a pair both
+gates fail, and never the intact old document beside a new digest (which once
+read as an "untrusted prior" and steered to `--first-vendoring`). Temporaries
+are swept on every exit; `packages/spec/wire/*.tmp` is gitignored and excluded
+from `files` (a leaked one was otherwise committed by `git add -A` and
+published). A failed rename names which file moved.
 
 ## Verify
 
@@ -130,7 +143,13 @@ one fails the job. Through `compare.mjs` it compares:
   property-count bounds, `uniqueItems`, `const`, `nullable`, `readOnly`,
   `writeOnly`, `additionalProperties`, `default`, `deprecated`), the ten
   narrowing applicators in **both** object and boolean forms, and
-  `oneOf`/`anyOf`/`allOf`/`prefixItems` branches element-wise.
+  `oneOf`/`anyOf`/`allOf`/`prefixItems` branches element-wise;
+- every string `$ref` in the served document, served-only subtrees included,
+  resolved as an RFC 6901 fragment (percent-decode the whole fragment, split on
+  `/`, then unescape `~1`/`~0`); one that is external, malformed, dangling or
+  cyclic is BREAKING unless the vendored copy fails the same ref at the same
+  location. `$ref`s inside `example`/`examples`, `default`, `const`, `enum` and
+  `x-*` are data and are not resolved.
 
 The probe prints both lists from the exported `CONSTRAINTS` and `NARROWING`.
 Descriptions, summaries and examples are not compared.

@@ -22,9 +22,10 @@
  * This is the only writer of the artifact, so it is also the only place a
  * refresh can be refused, and it refuses six things:
  *
- *   - A BREAKING delta against the copy being replaced, computed by the SAME
- *     differ the nightly probe runs (`./compare.mjs`). It used to refuse only a
- *     dropped path, operation or schema NAME -- a strictly narrower rule than
+ *   - A BREAKING delta against the copy COMMITTED at `HEAD` (read through
+ *     git, never the working tree), computed by the SAME differ the nightly
+ *     probe runs (`./compare.mjs`). It used to refuse only a dropped path,
+ *     operation or schema NAME -- a strictly narrower rule than
  *     the probe's comparison, and everything in the gap laundered itself: a
  *     served document that keeps every name while stripping `pattern` from
  *     `EthAddress`, `oneOf` from `ChainAddress` and `pattern`/`maxLength` from
@@ -44,23 +45,27 @@
  *     write is not a control either: stg's contract vendored as prod's passes
  *     the per-PR digest gate and the offline suite, both of which only check
  *     internal consistency. Overriding needs `--allow-non-prod`.
- *   - A prior copy that cannot be parsed, flags or not: with no delta to
- *     review, `--allow-breaking` has nothing to consent to.
- *   - An ABSENT prior copy, which is the same refusal wearing a different hat.
- *     There is nothing to diff against, so the BREAKING gate cannot run at all,
- *     and `rm packages/spec/wire/openapi.json` was therefore a way to buy
- *     silence from it: whatever the server served installed with no flag and no
- *     delta, after which the digest written over it satisfied both self-
- *     referential gates. A genuine first vendoring happens once and says so
- *     with `--first-vendoring`.
- *   - A prior copy that IS there but is no baseline: one that does not match
- *     `openapi.sha256`, or is not recognisably an OpenAPI contract by the
- *     probe's own test (`unrecognisedContract`: an `openapi` string, `paths`
- *     with an operation, `components`). Gutting the file and re-digesting it
- *     was the way around the absent-prior refusal, so it takes the same
- *     consent, `--first-vendoring`, and is then not diffed against. These
- *     prior-copy checks run BEFORE the fetch: they are decisions about local
- *     state.
+ *   - A committed baseline that cannot be parsed, flags or not: with no delta
+ *     to review, `--allow-breaking` has nothing to consent to.
+ *   - An ABSENT baseline: no git checkout, no commit, or no `openapi.json` at
+ *     `HEAD`. There is nothing to diff against, so the BREAKING gate cannot run
+ *     at all; `rm packages/spec/wire/openapi.json` was once a way to buy
+ *     silence from it. A genuine first vendoring happens once and says so with
+ *     `--first-vendoring`; everything else fails closed.
+ *   - A committed baseline that is no baseline: one that is not recognisably
+ *     an OpenAPI contract by the probe's own test (`unrecognisedContract`: an
+ *     `openapi` string, `paths` with an operation, `components`). That takes
+ *     the same consent, `--first-vendoring`, and is then not diffed against.
+ *     A committed pair whose digest does not match its document is a broken
+ *     commit, refused with NO flag: it is not a missing baseline, so
+ *     `--first-vendoring` never skips the diff for it.
+ *     Why `HEAD` and not the working tree: the working-tree pair is only held
+ *     to itself, so gutting `openapi.json` to one real path and its schema
+ *     closure and re-digesting it passed both checks above and graded a served
+ *     BREAKING change STALE against a baseline that declared almost nothing.
+ *     A commit can be gutted too, but only as a diff in the branch's history
+ *     that review reads; the provenance block names the commit. These checks
+ *     run BEFORE the fetch: they are decisions about local state.
  *   - Its own output disagreeing with the served bytes about a numeric literal,
  *     which is the one refusal that is not a decision about anybody's document.
  *     `./format.mjs` emits every number from its source token, so
@@ -102,6 +107,7 @@
  * most different outcomes this has.
  */
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
@@ -214,90 +220,140 @@ if (!isProd && !ALLOW_NON_PROD) {
   );
 }
 
-/** The copy being replaced, and whether it currently matches its own digest. */
-const readPrior = () => {
-  let bytes;
-  try {
-    bytes = readFileSync(OUT_JSON);
-  } catch (e) {
-    if (e.code === "ENOENT") return { absent: true };
-    misconfigured(`packages/spec/wire/openapi.json is unreadable: ${e.message}`);
+/**
+ * The baseline the served document is graded against: the copy COMMITTED at
+ * `HEAD`, read through git, never the working tree.
+ *
+ * It was the working-tree file, held to its own digest and to
+ * `unrecognisedContract`, and both checks are about the pair agreeing with
+ * itself. Gut `openapi.json` to one real path and that path's schema closure,
+ * run `shasum` over it, and the prior was self-consistent and recognisably a
+ * contract: the served document was then graded against a baseline that
+ * declared almost nothing, so a served BREAKING change -- every path but one
+ * gone, `EthAddress.pattern` loosened -- graded STALE and installed with no
+ * flag. Neither file is a value the operator cannot rewrite locally. A commit
+ * is not either, but it is one review reads: to move the baseline, the gutting
+ * has to land in the branch's history as its own diff, where every removed path
+ * shows. That is the residual, and the provenance block prints the commit so a
+ * reviewer can check it against the base branch.
+ *
+ * The working-tree pair is not consulted at all, which is also what makes an
+ * interrupted refresh harmless: whatever two files a crash left behind, the
+ * next run diffs against `HEAD`.
+ */
+const WIRE_DIR = fileURLToPath(new URL(".", import.meta.url));
+const git = (...args) => {
+  const r = spawnSync("git", ["-C", WIRE_DIR, ...args], {
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+  });
+  if (r.error) {
+    misconfigured(
+      `could not run git to read the committed baseline: ${sanitize(r.error.message)}\n` +
+        "  The served document is graded against the copy committed at HEAD, never the\n" +
+        "  working tree, so this script needs git on PATH. Nothing was fetched or written.",
+    );
   }
-  const actual = createHash("sha256").update(bytes).digest("hex");
-  // The digest is read for reporting only -- this run replaces it either way --
-  // but it is arbitrary file content reaching a block a human approves a
-  // refresh from, so it is held to the same shape the probe requires and is
-  // never echoed raw. `.trim()` strips the ends; interior newlines would
-  // otherwise render as extra aligned rows.
-  let recorded = null;
-  try {
-    const raw = readFileSync(OUT_SHA, "utf8").trim();
-    recorded = /^[0-9a-f]{64}$/.test(raw) ? raw : `(malformed: ${sanitize(raw)})`;
-  } catch {
-    // A missing or unreadable digest is what this run is about to fix.
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(bytes.toString("utf8"));
-  } catch (e) {
-    return { bytes, actual, recorded, unparseable: e.message };
-  }
-  return { bytes, actual, recorded, doc: parsed };
+  return {
+    ok: r.status === 0,
+    out: r.stdout,
+    err: sanitize(r.stderr.toString("utf8").trim(), 200),
+  };
 };
 
-const prior = readPrior();
+/** `{ absent: why }`, or the committed pair: `{ commit, bytes, actual, recorded, doc | unparseable }`. */
+const readBaseline = () => {
+  const head = git("rev-parse", "--verify", "--quiet", "HEAD^{commit}");
+  if (!head.ok) {
+    const inside = git("rev-parse", "--is-inside-work-tree");
+    return {
+      absent: inside.ok
+        ? "the repository has no commit at HEAD"
+        : `packages/spec/wire is not inside a git checkout (${inside.err || "git refused"})`,
+    };
+  }
+  const commit = head.out.toString("utf8").trim();
+  const doc = git("show", `${commit}:./openapi.json`);
+  if (!doc.ok) return { absent: `openapi.json is not committed at HEAD (${commit})` };
+  const bytes = doc.out;
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  // Arbitrary committed content reaching a block a human approves a refresh
+  // from, so it is held to the shape the probe requires and never echoed raw.
+  const sha = git("show", `${commit}:./openapi.sha256`);
+  const raw = sha.ok ? sha.out.toString("utf8").trim() : null;
+  const recorded =
+    raw === null ? null : /^[0-9a-f]{64}$/.test(raw) ? raw : `(malformed: ${sanitize(raw)})`;
+  try {
+    return { commit, bytes, actual, recorded, doc: JSON.parse(bytes.toString("utf8")) };
+  } catch (e) {
+    return { commit, bytes, actual, recorded, unparseable: e.message };
+  }
+};
+
+const prior = readBaseline();
 
 if (prior.unparseable) {
   refused(
-    `packages/spec/wire/openapi.json is not parseable JSON: ${prior.unparseable}\n` +
+    `packages/spec/wire/openapi.json committed at HEAD (${prior.commit}) is not parseable JSON: ` +
+      `${sanitize(prior.unparseable)}\n` +
       "  Nothing was written. No delta can be computed against it, so there is nothing for\n" +
-      "  --allow-breaking to consent to. Restore the file from git and re-run.",
+      "  --allow-breaking to consent to. Fix the commit and re-run.",
   );
 }
 
-// Before the delta, because there is no delta: with no prior copy the BREAKING
-// gate below cannot run, so `rm packages/spec/wire/openapi.json` was a way to
-// switch it off. Whatever the server served would install with no comparison
-// and no flag, and the digest written beside it would satisfy both the per-PR
-// gate and the offline suite, neither of which does more than check that the
-// pair agrees with itself.
+// Before the delta, because there is no delta: with no committed copy the
+// BREAKING gate below cannot run. A genuine first vendoring happens once and
+// says so; anything else -- a tarball extract, a copied directory, a checkout
+// git cannot read -- fails closed rather than installing whatever was served
+// with no comparison.
 if (prior.absent && !FIRST_VENDORING) {
   refused(
-    "packages/spec/wire/openapi.json does not exist, so there is nothing to diff the served\n" +
-      "  document against and no delta to review. Nothing was written.\n" +
-      "  Restore it (`git checkout -- packages/spec/wire/openapi.json`) and re-run. If this\n" +
+    `there is no committed baseline to diff the served document against: ${prior.absent}.\n` +
+      "  Nothing was written. The served document is graded against the copy committed at\n" +
+      "  HEAD, never the working tree, so run this from a git checkout of the repo. If this\n" +
       "  genuinely is the first vendoring, say so with --first-vendoring.",
   );
 }
 
-// A prior copy that IS there but cannot be trusted is the absent case again,
-// and was the way around it: gut `openapi.json` to `{}` (or one schema), run
-// `shasum` over it, and the BREAKING gate compared the served document against
-// nothing that could break -- every served name an addition, graded STALE,
-// installed with no flag. So a prior that does not match its own digest, or is
-// not recognisably an OpenAPI contract by the probe's own test
-// (`unrecognisedContract`), refuses under the same consent: there is no
-// trustworthy baseline, which is exactly what --first-vendoring declares.
-const untrusted = prior.absent
-  ? null
-  : prior.recorded !== prior.actual
-    ? `it does not match openapi.sha256 (recorded ${prior.recorded ?? "(unreadable)"}, ` +
-      `actual ${prior.actual})`
-    : unrecognisedContract(prior.doc) === null
-      ? null
-      : `it is not recognisably an OpenAPI contract (${unrecognisedContract(prior.doc)})`;
-if (untrusted !== null && !FIRST_VENDORING) {
+// A committed copy that is not recognisably an OpenAPI contract by the probe's
+// own test is no baseline either: diffed against `{}`, every served name is an
+// addition and nothing can be BREAKING. That, and only that, is what
+// --first-vendoring stands in for.
+const unrecognisedPrior = prior.absent ? null : unrecognisedContract(prior.doc);
+if (unrecognisedPrior !== null && !FIRST_VENDORING) {
   refused(
-    `packages/spec/wire/openapi.json cannot serve as the baseline: ${untrusted}.\n` +
-      "  Nothing was written. A delta against an edited or gutted copy grades the served\n" +
-      "  document against nothing it could break, so the BREAKING gate would not run.\n" +
-      "  Restore both files (`git checkout -- packages/spec/wire/`) and re-run. If there\n" +
-      "  genuinely is no trustworthy prior, say so with --first-vendoring.",
+    `packages/spec/wire/openapi.json committed at HEAD (${prior.commit}) cannot serve as the ` +
+      `baseline: it is not recognisably an OpenAPI contract (${unrecognisedPrior}).\n` +
+      "  Nothing was written. A delta against it grades the served document against nothing\n" +
+      "  it could break, so the BREAKING gate would not run. If there genuinely is no\n" +
+      "  contract to compare against, say so with --first-vendoring.",
   );
 }
-// With consent, an untrusted prior is treated as no prior: nothing is diffed
-// against it, and the provenance block says so.
-const noBaseline = prior.absent || untrusted !== null;
+
+const noBaseline = prior.absent !== undefined || unrecognisedPrior !== null;
+
+// A committed pair that disagrees with itself fails the per-PR digest gate, so
+// the commit is wrong: it is fixed, and no flag consents to it. In particular
+// it is NOT a missing baseline, and --first-vendoring -- which stands in only
+// for an absent or unrecognisable one -- neither overrides this nor skips the
+// diff. It used to do both: a digest that merely did not match took the
+// "untrusted prior" branch, the refusal steered the operator to
+// --first-vendoring, and that dropped the BREAKING comparison for a document
+// that was intact. An interrupted run of this script produced exactly that
+// state in the working tree, which is no longer read.
+const digestMismatch =
+  noBaseline || prior.recorded === prior.actual
+    ? null
+    : `openapi.sha256 committed beside it records ${prior.recorded ?? "(nothing)"}, ` +
+      `the document hashes to ${prior.actual}`;
+if (digestMismatch !== null) {
+  refused(
+    `the pair committed at HEAD (${prior.commit}) does not agree: ${digestMismatch}.\n` +
+      "  Nothing was written. The per-PR digest gate fails that commit, so fix the commit (the\n" +
+      "  digest must be sha256 of the document beside it) and re-run. No flag overrides this:\n" +
+      "  a pair that disagrees is a broken commit, not a missing baseline.",
+  );
+}
 
 const url = `${baseUrl}/xochi/openapi.json`;
 
@@ -441,11 +497,29 @@ console.log(
 );
 console.log(
   prior.absent
-    ? row("replaces", "(nothing -- first vendoring)")
-    : row("replaces", `${prior.bytes.length} bytes, sha256 ${prior.actual}`),
+    ? row("baseline", `(none -- --first-vendoring: ${sanitize(prior.absent, 400)})`)
+    : row("baseline", `HEAD ${prior.commit}, ${prior.bytes.length} bytes, sha256 ${prior.actual}`),
 );
-if (untrusted !== null) {
-  console.log(cont(`--first-vendoring: not diffed against it, since ${sanitize(untrusted, 400)}`));
+if (unrecognisedPrior !== null) {
+  console.log(
+    cont(`--first-vendoring: not diffed against it, since it is not recognisably an OpenAPI`),
+  );
+  console.log(cont(`contract (${sanitize(unrecognisedPrior, 400)})`));
+}
+// The working tree is overwritten and never diffed; say so when it is not the
+// baseline, so a hand edit or a half-finished earlier refresh is visible.
+const workingTree = (() => {
+  try {
+    return createHash("sha256").update(readFileSync(OUT_JSON)).digest("hex");
+  } catch {
+    return null;
+  }
+})();
+if (workingTree !== null && workingTree !== prior.actual) {
+  console.log(
+    cont(`working-tree openapi.json (sha256 ${workingTree}) differs from HEAD; overwritten,`),
+  );
+  console.log(cont("not diffed: the delta below is against HEAD"));
 }
 console.log(axis("paths", paths));
 console.log(axis("operations", operations));
@@ -454,7 +528,7 @@ console.log(axis("schemas", schemas));
 // pattern, a narrowed union or a dropped auth requirement, which is the whole
 // reason the differ below exists.
 if (noBaseline) {
-  console.log(row("delta", "(no trustworthy prior copy to diff against)"));
+  console.log(row("delta", "(no committed baseline to diff against)"));
 } else {
   console.log(
     row(
@@ -495,9 +569,9 @@ if (rewrittenNumbers.length > 0) {
 
 if (breaking.length > 0 && !ALLOW_BREAKING) {
   refused(
-    `the served document breaks the copy it would replace: ${breaking.length} BREAKING finding(s),\n` +
+    `the served document breaks the copy committed at HEAD: ${breaking.length} BREAKING finding(s),\n` +
       "  each named in the delta above (a removal, a required addition, a changed value\n" +
-      "  constraint or a dropped auth requirement).\n" +
+      "  constraint, a dropped auth requirement or a $ref that does not resolve).\n" +
       "  Nothing was written; the vendored copy and its digest are untouched.\n" +
       "  A server does not usually remove or re-encode anything, and this script re-digests\n" +
       "  whatever it writes, so a truncated, gutted or wrong-host document would be vendored\n" +
@@ -513,10 +587,15 @@ if (breaking.length > 0) {
   );
 }
 
-// Two writes are not one. Both temporaries land first, then the digest is moved
-// into place BEFORE the document: an interrupted run leaves an inconsistent
-// pair, which the per-PR digest gate and the nightly probe both fail, rather
-// than a new document under an old digest, which the digest gate accepts.
+// Two writes are not one. Both temporaries land first, then the DOCUMENT is
+// moved into place before the digest. An interrupted run therefore leaves the
+// new document beside the old digest -- a pair the per-PR digest gate, the
+// offline suite and the nightly probe all fail -- and never the old, intact
+// document beside a new digest. That second state is the one the previous
+// order produced, and it read as "the prior does not match its digest": a
+// refusal that steered to --first-vendoring, which then skipped the BREAKING
+// diff for a document nothing was wrong with. Neither leftover can move the
+// baseline now, since the next run diffs against HEAD and not the working tree.
 //
 // The temporaries are swept on EVERY exit, not just on a staging error. Neither
 // `*.tmp` is gitignored and `packages/spec` publishes the whole `wire/`
@@ -543,13 +622,13 @@ try {
 }
 
 // Rename failure is not "the probe itself failed, nothing was compared" -- the
-// comparison ran, and by the second call the digest on disk is already the new
-// one. Report which of the two moved, because that decides the remedy.
+// comparison ran, and by the second call the document on disk is already the
+// new one. Report which of the two moved, because that decides the remedy.
 let moved = "neither file";
 try {
-  renameSync(TMP_SHA, OUT_SHA);
-  moved = "openapi.sha256 (the document was NOT replaced, so the pair is now mismatched)";
   renameSync(TMP_JSON, OUT_JSON);
+  moved = "openapi.json (the digest was NOT replaced, so the pair is now mismatched)";
+  renameSync(TMP_SHA, OUT_SHA);
   moved = "both files";
 } catch (e) {
   misconfigured(

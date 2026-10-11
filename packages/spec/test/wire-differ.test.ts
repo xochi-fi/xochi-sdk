@@ -602,6 +602,122 @@ describe("required in its boolean form", () => {
         `POST /xochi/claim parameter ${ref} is served but not vendored (required)`,
       );
     });
+
+    // RFC 6901 §6: percent-decode the whole fragment, THEN split on `/`, THEN unescape.
+    it("%2F in a fragment separates tokens; ~1 is the slash inside a key", () => {
+      const nested = { a: { b: { in: "header", name: "X-AB", required: true } } };
+      expect(claimWith("#/components/parameters/a%2Fb", nested).breaking).toContain(
+        "POST /xochi/claim parameter #/components/parameters/a%2Fb is served but not vendored (required)",
+      );
+      const slashKey = { "a/b": { in: "header", name: "X-AB", required: true } };
+      expect(claimWith("#/components/parameters/a~1b", slashKey).breaking).toContain(
+        "POST /xochi/claim parameter #/components/parameters/a~1b is served but not vendored (required)",
+      );
+      // Decoding per segment after the split read `%2F` as part of the key `a/b`.
+      const line = claimWith("#/components/parameters/a%2Fb", slashKey).breaking.find((b) =>
+        b.includes("parameters/a%2Fb"),
+      );
+      expect(line).toContain("dangling");
+    });
+
+    it("an unknown ~ escape is malformed", () => {
+      const line = claimWith("#/components/parameters/a~2b").breaking.find((b) =>
+        b.includes("parameters/a~2b"),
+      );
+      expect(line).toContain("malformed ~ escape");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+// The walks follow the vendored copy's shape, so a served-only subtree is graded by its
+// NAME and never entered: a dangling or external `$ref` inside one read as an optional
+// addition, STALE, and `generate:wire` installed it with no flag.
+describe("a served $ref that does not resolve is BREAKING wherever it sits", () => {
+  const addProperty = (schema: Doc) =>
+    served((d) => {
+      d.components.schemas.QuoteResponse.properties.zz = schema;
+    });
+
+  it.each([
+    ["a served-only property", { $ref: "#/components/schemas/DoesNotExist" }, "dangling"],
+    ["an external ref", { $ref: "https://evil.example/s.json#/X" }, "not a local ref"],
+    [
+      "nested under items/allOf",
+      { type: "array", items: { allOf: [{ $ref: "#/components/schemas/Nope" }] } },
+      "dangling",
+    ],
+    ["a malformed fragment", { $ref: "#/components/schemas/%ZZ" }, "malformed"],
+    ["a plain-name fragment", { $ref: "#Anchor" }, "malformed"],
+  ])("%s", (_name, schema, reason) => {
+    const { breaking } = addProperty(schema);
+    const line = breaking.find((b) => b.includes("cannot be resolved"));
+    expect(line, breaking.join("\n")).toContain(reason);
+    expect(line).toContain("QuoteResponse.properties.zz");
+  });
+
+  it("a cyclic chain through served-only components", () => {
+    const { breaking } = served((d) => {
+      d.components.schemas.CycA = { $ref: "#/components/schemas/CycB" };
+      d.components.schemas.CycB = { $ref: "#/components/schemas/CycA" };
+    });
+    expect(breaking.join("\n")).toMatch(/CycB cannot be resolved .*\(cyclic\)/);
+  });
+
+  it("a served-only path and response are entered too", () => {
+    const { breaking } = served((d) => {
+      d.paths["/xochi/new"] = {
+        get: { responses: { "200": { $ref: "#/components/responses/Gone" } } },
+      };
+    });
+    expect(one(breaking)).toMatch(/components\/responses\/Gone .*paths\.\/xochi\/new\.get/);
+  });
+
+  it("a recursive schema resolves", () => {
+    const { breaking } = served((d) => {
+      d.components.schemas.Tree = {
+        type: "object",
+        properties: { child: { $ref: "#/components/schemas/Tree" } },
+      };
+    });
+    expect(breaking).toEqual([]);
+  });
+
+  it("a $ref inside an example or an x- extension is data", () => {
+    const { breaking } = addProperty({
+      type: "object",
+      example: { $ref: "#/nowhere" },
+      "x-note": { $ref: "#/nowhere" },
+    });
+    expect(breaking).toEqual([]);
+  });
+
+  it("a member NAMED like a payload keyword is still entered", () => {
+    const { breaking } = addProperty({
+      type: "object",
+      properties: { default: { $ref: "#/components/schemas/Nope" } },
+    });
+    expect(one(breaking)).toMatch(/zz\.properties\.default/);
+  });
+
+  it("a ref the vendored copy already fails at the same place is not a change", () => {
+    const broken = vendored();
+    broken.components.schemas.QuoteResponse.properties.zz = {
+      $ref: "#/components/schemas/Nope",
+    };
+    const { breaking, stale } = wire.compareContract(broken, structuredClone(broken));
+    expect(breaking).toEqual([]);
+    expect(stale).toEqual([]);
+  });
+
+  it("an existing ref whose target was dropped is reported on both axes", () => {
+    const { breaking } = served((d) => {
+      delete d.components.schemas.EthAddress;
+    });
+    const all = breaking.join("\n");
+    expect(all).toMatch(/components\.schemas\.EthAddress is vendored but no longer served/);
+    expect(all).toMatch(/\$ref #\/components\/schemas\/EthAddress cannot be resolved/);
   });
 });
 
