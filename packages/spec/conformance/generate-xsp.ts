@@ -177,8 +177,8 @@ const refundCommitments = [
 
 // --- Depository ------------------------------------------------------------
 
-const OBL_A = obligationVectors[0].obligationId;
-const OBL_B = obligationVectors[4].obligationId;
+const OBL_A = obligationVectors[0]!.obligationId;
+const OBL_B = obligationVectors[4]!.obligationId;
 
 const RECORD_A: DepositoryRecord = {
   obligationId: OBL_A,
@@ -190,7 +190,7 @@ const RECORD_A: DepositoryRecord = {
 };
 const RECORD_B: DepositoryRecord = {
   obligationId: OBL_B,
-  refundCommitment: refundCommitments[2].refundCommitment,
+  refundCommitment: refundCommitments[2]!.refundCommitment,
   depositor: "0x2222222222222222222222222222222222222222",
   token: ZERO_ADDRESS,
   amount: "1000000000000000000",
@@ -352,7 +352,7 @@ const depositAddressVectors = ADDR_CASES.map(({ name, inputs }) => ({
   address: computeDepositAddress(FACTORY, IMPLEMENTATION, inputs),
 }));
 
-const ZERO_CASE = { ...ADDR_CASES[0].inputs, originAmount: "0" };
+const ZERO_CASE = { ...ADDR_CASES[0]!.inputs, originAmount: "0" };
 let zeroError = "";
 try {
   computeDepositAddress(FACTORY, IMPLEMENTATION, ZERO_CASE);
