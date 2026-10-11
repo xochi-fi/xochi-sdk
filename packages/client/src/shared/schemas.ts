@@ -85,16 +85,41 @@ export const REFERRAL_CODE_REGEX = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
  */
 export const REFERRAL_NOT_APPLIED_NOTE = "Referral code not applied.";
 
+/**
+ * The neutral referral line (xochi#603): served on a quote whose `ref` was
+ * applied when the request is not signed in as the quoting wallet. One fixed
+ * text, identical whether or not the wallet has a referral binding.
+ */
+export const REFERRAL_NEUTRAL_NOTE = "A referrer may earn part of the routing fee on this trade.";
+
 export const QuoteReferralSchema = z
-  .object({
-    code: z.string().regex(REFERRAL_CODE_REGEX).describe("The applied code, normalized uppercase."),
-    name: z
-      .string()
-      .describe("Affiliate display name, rendered as `Referral: {name}` on the routing line."),
-  })
-  .strict()
+  .union([
+    z
+      .object({
+        code: z
+          .string()
+          .regex(REFERRAL_CODE_REGEX)
+          .describe("The code this trade credits, normalized uppercase."),
+        name: z
+          .string()
+          .describe("Affiliate display name, rendered as `Referral: {name}` on the routing line."),
+      })
+      .strict()
+      .describe(
+        "Served only when the request carries a wallet-bound session (SIWE JWT or Mandate) for the quoting wallet: the code the trade will credit if executed now. The wallet's open referral binding wins over `ref`; otherwise it is the applied `ref`.",
+      ),
+    z
+      .object({
+        neutral: z.literal(true),
+        note: z.literal(REFERRAL_NEUTRAL_NOTE),
+      })
+      .strict()
+      .describe(
+        "Served when `ref` was applied but the request is not signed in as the quoting wallet: a referrer may be credited, and who is not said. Identical whether or not the wallet has a referral binding.",
+      ),
+  ])
   .describe(
-    "Present when the `ref` sent on the quote was applied: the routing fee layer (`fee_breakdown.routing_fee`) is earned by this affiliate instead of the publishable key's routing recipient. Attribution only: no amount, rate or total differs from the same quote without `ref`.",
+    "Who earns the routing fee layer (`fee_breakdown.routing_fee`) in place of the publishable key's routing recipient. Attribution only: no amount, rate or total differs from the same quote without `ref`.",
   );
 
 /**

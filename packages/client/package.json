@@ -1,6 +1,6 @@
 {
   "name": "@xochi/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client for the Xochi trade API (api.xochi.fi/api/*): wire contract, pure trade state machine, transport, and pre-sign fund-safety checks.",
   "license": "MIT",
   "type": "module",
