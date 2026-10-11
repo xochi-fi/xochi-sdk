@@ -562,12 +562,15 @@ export function encodeAttestedProof(payee: string, signature: string): Hex {
   return coder.encode(["address", "bytes"], [payee.toLowerCase(), signature]).toLowerCase() as Hex;
 }
 
-// --- SolverBond SlashAttestation ---
+// --- SolverBond domain (SlashAttestation and FillAcceptance share it) ---
 
-export const SLASH_ATTESTATION_DOMAIN_NAME = "RiddlerSolverBond";
+export const SOLVER_BOND_DOMAIN_NAME = "RiddlerSolverBond";
 // SolverBond v2 (ESCROW-RFC §6): redeployed with the FillAcceptance check, so
 // every signature on its domain -- slash attestations included -- moves to "2".
-export const SLASH_ATTESTATION_DOMAIN_VERSION = "2";
+export const SOLVER_BOND_DOMAIN_VERSION = "2";
+
+// --- SolverBond SlashAttestation ---
+
 export const SLASH_ATTESTATION_TYPEHASH = ethers.id(
   "SlashAttestation(bytes32 orderId,address solver,address beneficiary,uint256 notional,uint256 originChainId,address escrow,uint256 deadline)",
 ) as Hex;
@@ -597,7 +600,7 @@ const SLASH_ATTESTATION_TYPES = {
 
 export function slashAttestationDomainSeparator(domain: EscrowContractDomain): Hex {
   return ethers.TypedDataEncoder.hashDomain(
-    namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain),
+    namedDomain(SOLVER_BOND_DOMAIN_NAME, SOLVER_BOND_DOMAIN_VERSION, domain),
   ) as Hex;
 }
 
@@ -630,7 +633,7 @@ export async function signSlashAttestation(
 ): Promise<Hex> {
   return signTyped(
     signer,
-    namedDomain(SLASH_ATTESTATION_DOMAIN_NAME, SLASH_ATTESTATION_DOMAIN_VERSION, domain),
+    namedDomain(SOLVER_BOND_DOMAIN_NAME, SOLVER_BOND_DOMAIN_VERSION, domain),
     SLASH_ATTESTATION_TYPES,
     {
       orderId: c.orderId,
@@ -658,8 +661,6 @@ export async function signSlashAttestation(
 // digest is hiding because `fillId` commits the venue's `fillSalt`. `deadline`
 // stays in the clear for SolverBond's `FillWindowOpen` check.
 
-export const FILL_ACCEPTANCE_DOMAIN_NAME = SLASH_ATTESTATION_DOMAIN_NAME;
-export const FILL_ACCEPTANCE_DOMAIN_VERSION = SLASH_ATTESTATION_DOMAIN_VERSION;
 export const FILL_ACCEPTANCE_TYPE =
   "FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth)";
 export const FILL_ACCEPTANCE_TYPEHASH = ethers.id(FILL_ACCEPTANCE_TYPE) as Hex;
@@ -707,7 +708,7 @@ export function fillAcceptanceOf(
 
 export function fillAcceptanceDomainSeparator(domain: EscrowContractDomain): Hex {
   return ethers.TypedDataEncoder.hashDomain(
-    namedDomain(FILL_ACCEPTANCE_DOMAIN_NAME, FILL_ACCEPTANCE_DOMAIN_VERSION, domain),
+    namedDomain(SOLVER_BOND_DOMAIN_NAME, SOLVER_BOND_DOMAIN_VERSION, domain),
   ) as Hex;
 }
 
@@ -739,7 +740,7 @@ export async function signFillAcceptance(
 ): Promise<Hex> {
   return signTyped(
     signer,
-    namedDomain(FILL_ACCEPTANCE_DOMAIN_NAME, FILL_ACCEPTANCE_DOMAIN_VERSION, domain),
+    namedDomain(SOLVER_BOND_DOMAIN_NAME, SOLVER_BOND_DOMAIN_VERSION, domain),
     FILL_ACCEPTANCE_TYPES,
     {
       orderId: normalizeBytes32("orderId", a.orderId),

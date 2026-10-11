@@ -17,6 +17,7 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `signer-v*` tag.
 - Sources and tests are Prettier-formatted; `format:check` gates CI and `prepublishOnly` (with typecheck, test and build).
 - The tarball ships this `CHANGELOG.md`.
+- **`SLASH_ATTESTATION_DOMAIN_NAME` / `_VERSION` and `FILL_ACCEPTANCE_DOMAIN_NAME` / `_VERSION` are one pair, `SOLVER_BOND_DOMAIN_NAME` / `SOLVER_BOND_DOMAIN_VERSION`** (`RiddlerSolverBond` / `"2"`): both structs sign under the SolverBond domain, and the two aliases hid that. No digest changes.
 
 ### Removed
 

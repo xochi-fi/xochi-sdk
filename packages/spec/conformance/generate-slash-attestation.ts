@@ -16,8 +16,8 @@ import { ethers } from "ethers";
 
 import {
   signSlashAttestation,
-  SLASH_ATTESTATION_DOMAIN_NAME,
-  SLASH_ATTESTATION_DOMAIN_VERSION,
+  SOLVER_BOND_DOMAIN_NAME,
+  SOLVER_BOND_DOMAIN_VERSION,
   SLASH_ATTESTATION_TYPEHASH,
   slashAttestationDigest,
   slashAttestationDomainSeparator,
@@ -109,7 +109,7 @@ const out = {
     "EIP-712 SlashAttestation(bytes32 orderId,address solver,address beneficiary,uint256 notional," +
     "uint256 originChainId,address escrow,uint256 deadline) vectors for SolverBond. signer_private_key " +
     "values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
-  domain: { name: SLASH_ATTESTATION_DOMAIN_NAME, version: SLASH_ATTESTATION_DOMAIN_VERSION },
+  domain: { name: SOLVER_BOND_DOMAIN_NAME, version: SOLVER_BOND_DOMAIN_VERSION },
   typehash: SLASH_ATTESTATION_TYPEHASH,
   vectors,
 };

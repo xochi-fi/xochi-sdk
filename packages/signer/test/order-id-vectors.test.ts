@@ -40,15 +40,14 @@ import {
   fillAuthStructHash,
   signFillAttestation,
   signFillAuth,
-  FILL_ACCEPTANCE_DOMAIN_VERSION,
   FILL_ACCEPTANCE_TYPEHASH,
   fillAcceptanceDigest,
   fillAcceptanceDomainSeparator,
   fillAcceptanceStructHash,
   signFillAcceptance,
   signSlashAttestation,
-  SLASH_ATTESTATION_DOMAIN_NAME,
-  SLASH_ATTESTATION_DOMAIN_VERSION,
+  SOLVER_BOND_DOMAIN_NAME,
+  SOLVER_BOND_DOMAIN_VERSION,
   SLASH_ATTESTATION_TYPEHASH,
   slashAttestationDigest,
   slashAttestationDomainSeparator,
@@ -387,8 +386,8 @@ describe("slash-attestation.json", () => {
     expect(slashAttestation.domain).toEqual({ name: "RiddlerSolverBond", version: "2" });
     expect(slashAttestation.typehash).toBe(SLASH_ATTESTATION_TYPEHASH_LIT);
     expect({
-      name: SLASH_ATTESTATION_DOMAIN_NAME,
-      version: SLASH_ATTESTATION_DOMAIN_VERSION,
+      name: SOLVER_BOND_DOMAIN_NAME,
+      version: SOLVER_BOND_DOMAIN_VERSION,
       typehash: SLASH_ATTESTATION_TYPEHASH,
     }).toEqual({ ...slashAttestation.domain, typehash: slashAttestation.typehash });
   });
@@ -646,8 +645,7 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
       fillAttestationDomainSeparator(d(CAST_SEPARATORS.fillAttestation.verifyingContract)),
     ).toBe(CAST_SEPARATORS.fillAttestation.v1);
     const bond = d(CAST_SEPARATORS.solverBond.verifyingContract);
-    expect(SLASH_ATTESTATION_DOMAIN_VERSION).toBe("2");
-    expect(FILL_ACCEPTANCE_DOMAIN_VERSION).toBe("2");
+    expect(SOLVER_BOND_DOMAIN_VERSION).toBe("2");
     for (const sep of [
       slashAttestationDomainSeparator(bond),
       fillAcceptanceDomainSeparator(bond),
