@@ -1,19 +1,10 @@
 {
   // Typecheck for sources and tests. The two build configs emit; the machine
   // config is the purity check (see tsconfig.machine.json).
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
     "lib": ["ES2022", "ES2024.Promise", "DOM"],
-    "types": ["node"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "noFallthroughCasesInSwitch": true
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src", "vitest.config.ts"]
 }
