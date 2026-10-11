@@ -15,7 +15,7 @@
 
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
-import { bytesToHexField } from "../provider/pedersen.js";
+import { bytesToHexField } from "./field-bytes.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 import type { SignedSignalsBundle } from "./compliance-signed.js";
 

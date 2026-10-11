@@ -1,0 +1,66 @@
+{
+  "name": "@xochi/provider",
+  "version": "0.1.0",
+  "description": "Compliance-data provider attestation signing for ERC-8262 signed circuits (0x07/0x08/0x09) and credential roots, plus a reference HTTP signing daemon.",
+  "keywords": [
+    "erc-8262",
+    "zero-knowledge",
+    "compliance",
+    "attestation",
+    "secp256k1",
+    "pedersen",
+    "xochi"
+  ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/provider#readme",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/provider"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
+    "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
+    "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "4.0.0-nightly.20260120",
+    "@noble/curves": "^1.9.0"
+  },
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "prettier": "^3.3.3",
+    "typescript": "^6.0.3",
+    "viem": "^2.21.0",
+    "vitest": "^4.0.0"
+  }
+}

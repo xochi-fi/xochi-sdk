@@ -1,8 +1,8 @@
 /**
  * EIP-712 parity for the CredentialRootPublication digest.
  *
- * The TS digest at `src/provider/eip712.ts` MUST match the Solidity digest
- * at `src/libraries/EIP712CredentialRoot.sol` byte-for-byte; otherwise the
+ * The TS digest at `src/eip712.ts` MUST match the Solidity digest
+ * at ERC-8262's `src/libraries/EIP712CredentialRoot.sol` byte-for-byte; otherwise the
  * provider's signature won't recover to the registered signer at
  * `publishCredentialRoot` time.
  *
@@ -18,7 +18,7 @@ import {
   cidHash,
   credentialRootDigest,
   hashPublication,
-} from "../src/provider/eip712.js";
+} from "../src/eip712.js";
 
 const ORACLE_ADDRESS = "0x1234567890123456789012345678901234567890" as const;
 const CHAIN_ID = 31337n; // foundry default

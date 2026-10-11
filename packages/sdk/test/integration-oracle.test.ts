@@ -35,8 +35,7 @@ import { ERC8262Verifier } from "../src/verifier.js";
 import { OracleLite } from "../src/oracle-lite.js";
 import { ORACLE_ABI } from "../src/abis.js";
 import { PROOF_TYPES, type ProofType } from "../src/constants.js";
-import { loadSignerKey, RawKeyLoader } from "../src/provider/keystore.js";
-import { signCredentialRoot } from "../src/provider/credential-root-signer.js";
+import { loadSignerKey, RawKeyLoader, signCredentialRoot } from "@xochi/provider";
 import { withDecodedErrors } from "../src/errors.js";
 
 // ============================================================

@@ -51,7 +51,6 @@ const NOT_LIGHT_SUBPATHS: Record<string, string> = {
   ".": "root barrel re-exports ERC8262Prover",
   "./browser": "browser circuit loader for the prover",
   "./node": "node circuit loader for the prover",
-  "./provider": "provider signing daemon helpers (bb.js Pedersen)",
   "./circuits/*": "compiled circuit artifacts, not JavaScript",
 };
 

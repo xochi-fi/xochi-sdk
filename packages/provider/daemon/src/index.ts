@@ -6,10 +6,10 @@
  * shutdown.
  *
  * Runs as TypeScript source under Node's type stripping (Node 22.6+ with
- * `--experimental-strip-types`, on by default from Node 23.6). The SDK is
- * imported by its package name, `@xochi/sdk/provider`: inside this repo that
+ * `--experimental-strip-types`, on by default from Node 23.6). The signers are
+ * imported by package name, `@xochi/provider`: inside this repo that
  * self-references the built `dist/` (run `npm run build` first, which
- * `npm run daemon` does), and a copied daemon resolves the installed SDK.
+ * `npm run daemon` does), and a copied daemon resolves the installed package.
  *
  *   SIGNER_PRIVATE_KEY_HEX=0x... \
  *   SIGNER_API_KEY=$(openssl rand -hex 32) \
@@ -27,7 +27,7 @@
 
 import { Barretenberg } from "@aztec/bb.js";
 
-import { HexKeyLoader, loadSignerKey, MemoryReplayDb } from "@xochi/sdk/provider";
+import { HexKeyLoader, loadSignerKey, MemoryReplayDb } from "@xochi/provider";
 import { loadConfig } from "./config.ts";
 import { makeAuditSink } from "./audit.ts";
 import { createDaemonServer } from "./server.ts";
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   process.stderr.write(
-    `[xochi-signer] starting on ${config.host}:${String(config.port)}` +
+    `[xochi-provider] starting on ${config.host}:${String(config.port)}` +
       ` (tls=${String(Boolean(config.tlsCertPath))} mtls=${String(Boolean(config.clientCaPath))})` +
       ` chainId=${config.chainId.toString()} oracle=${config.oracleAddress}\n`,
   );
@@ -55,16 +55,16 @@ async function main(): Promise<void> {
   const server = createDaemonServer({ api, signerKey, replayDb, audit }, config);
 
   const { host, port } = await server.listen();
-  process.stderr.write(`[xochi-signer] listening on ${host}:${String(port)}\n`);
+  process.stderr.write(`[xochi-provider] listening on ${host}:${String(port)}\n`);
 
   const shutdown = async (signal: string): Promise<void> => {
-    process.stderr.write(`[xochi-signer] received ${signal}, shutting down\n`);
+    process.stderr.write(`[xochi-provider] received ${signal}, shutting down\n`);
     try {
       await server.close();
       await audit.close();
       await api.destroy();
     } catch (err) {
-      process.stderr.write(`[xochi-signer] shutdown error: ${(err as Error).message}\n`);
+      process.stderr.write(`[xochi-provider] shutdown error: ${(err as Error).message}\n`);
       process.exit(1);
     }
     process.exit(0);
@@ -75,6 +75,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: Error) => {
-  process.stderr.write(`[xochi-signer] fatal: ${err.message}\n`);
+  process.stderr.write(`[xochi-provider] fatal: ${err.message}\n`);
   process.exit(1);
 });

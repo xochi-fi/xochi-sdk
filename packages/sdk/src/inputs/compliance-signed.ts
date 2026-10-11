@@ -14,12 +14,12 @@
 
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH, HIGH_RISK_THRESHOLDS_BPS } from "../constants.js";
-import { bytesToHexField } from "../provider/pedersen.js";
+import { bytesToHexField } from "./field-bytes.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 
 const MAX_PROVIDERS = 8;
 
-/** Provider-supplied signing artifacts (from `signSignals` in src/provider). */
+/** Provider-supplied signing artifacts (from `signSignals` in `@xochi/provider`). */
 export interface SignedSignalsBundle {
   /** 64-byte ECDSA signature `r || s`, low-S normalized. */
   signature: Uint8Array;

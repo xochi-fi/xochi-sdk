@@ -2,16 +2,15 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 /**
- * The daemon imports the SDK by package name (`@xochi/sdk/provider`), which at
- * runtime self-references the built `dist/`. Tests resolve it to source instead
- * so they never run against a stale build.
+ * Tests that sign with `@xochi/provider` (a devDependency, the workspace
+ * package) resolve it to its source rather than its possibly stale `dist/`.
  */
-export const sdkSourceAlias = {
-  "@xochi/sdk/provider": fileURLToPath(new URL("./src/provider/index.ts", import.meta.url)),
+export const providerSourceAlias = {
+  "@xochi/provider": fileURLToPath(new URL("../provider/src/index.ts", import.meta.url)),
 };
 
 export default defineConfig({
-  resolve: { alias: sdkSourceAlias },
+  resolve: { alias: providerSourceAlias },
   test: {
     globals: true,
     environment: "node",

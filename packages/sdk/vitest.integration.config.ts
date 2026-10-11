@@ -1,8 +1,8 @@
 import { defineConfig } from "vitest/config";
-import { sdkSourceAlias } from "./vitest.config.ts";
+import { providerSourceAlias } from "./vitest.config.ts";
 
 export default defineConfig({
-  resolve: { alias: sdkSourceAlias },
+  resolve: { alias: providerSourceAlias },
   test: {
     globals: true,
     environment: "node",

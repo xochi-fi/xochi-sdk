@@ -5,9 +5,9 @@
     // stripping (`npm run daemon`; Node 22.6+). Building to JS is intentionally
     // not supported -- the daemon's canonical install path is "copy the
     // source". Relative imports therefore carry `.ts` extensions (what Node
-    // resolves at runtime), and the SDK is imported as `@xochi/sdk/provider`,
-    // mapped by the root `paths` to source for typechecking.
+    // resolves at runtime), and the signers are imported as `@xochi/provider`,
+    // mapped by the package `paths` to source for typechecking.
     "noEmit": true
   },
-  "include": ["src", "../src/provider"]
+  "include": ["src", "../src"]
 }

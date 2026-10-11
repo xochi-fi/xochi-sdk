@@ -1,6 +1,6 @@
 {
   "name": "@xochi/sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Generate and verify ERC-8262 zero-knowledge compliance proofs, EVM-verifiable.",
   "keywords": [
     "erc-8262",
@@ -24,9 +24,6 @@
       ],
       "node": [
         "./dist/circuits.d.ts"
-      ],
-      "provider": [
-        "./dist/provider/index.d.ts"
       ],
       "tiers": [
         "./dist/tiers.d.ts"
@@ -60,11 +57,6 @@
       "types": "./dist/circuits.d.ts",
       "import": "./dist/circuits.js",
       "default": "./dist/circuits.js"
-    },
-    "./provider": {
-      "types": "./dist/provider/index.d.ts",
-      "import": "./dist/provider/index.js",
-      "default": "./dist/provider/index.js"
     },
     "./circuits/*": "./circuits/*",
     "./tiers": {
@@ -106,18 +98,16 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
-    "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
     "prepare": "npm run build",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
-    "@noble/curves": "^1.9.0",
     "@noir-lang/noir_js": "1.0.0-beta.19"
   },
   "peerDependencies": {
@@ -129,6 +119,7 @@
     "typescript": "^6.0.3",
     "viem": "^2.21.0",
     "vitest": "^4.0.0",
-    "@xochi/spec": "0.8.1"
+    "@xochi/spec": "0.8.1",
+    "@xochi/provider": "0.1.0"
   }
 }

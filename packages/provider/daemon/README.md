@@ -1,6 +1,6 @@
 # ERC-8262 Provider Signing Daemon (reference)
 
-A small HTTP daemon that wraps `@xochi/sdk/provider`'s signers so a provider
+A small HTTP daemon that wraps [`@xochi/provider`](../README.md)'s signers so a provider
 can host their secp256k1 signing key behind an authenticated API. Anchors
 signal honesty cryptographically by anchoring screening signals to a registered
 provider's signature; the on-chain `ERC8262Oracle` validates the
@@ -188,8 +188,9 @@ A failing log file does not crash the process.
 
 The daemon ships as TypeScript source, not as a compiled artifact, and runs
 under Node's type stripping (Node 22.6+; on by default from 23.6). It imports
-the SDK as `@xochi/sdk/provider`; inside this repo that resolves to the built
-`dist/`, so `npm run daemon` builds first:
+the signers as `@xochi/provider`; inside this repo that resolves to the
+package's built `dist/`, so `npm run daemon` builds first (from the repo root,
+`npm run daemon -w @xochi/provider`):
 
 ```bash
 SIGNER_PRIVATE_KEY_HEX=0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20 \
@@ -199,11 +200,12 @@ SIGNER_ORACLE_ADDRESS=0x... \
 npm run daemon
 ```
 
-`npm run typecheck` typechecks the daemon (`tsc -p daemon/tsconfig.json`,
-`noEmit`); there is no compiled output by design. To deploy, copy
-`daemon/src/` into a project that depends on `@xochi/sdk` and run
-`node --experimental-strip-types src/index.ts` (or build it with your own
-pipeline); the `@xochi/sdk/provider` import resolves to the installed SDK.
+`npm run typecheck` (in `packages/provider`) typechecks the daemon
+(`tsc -p daemon/tsconfig.json`, `noEmit`); there is no compiled output by
+design, and the published `@xochi/provider` tarball does not include it. To
+deploy, copy `daemon/src/` into a project that depends on `@xochi/provider`
+and run `node --experimental-strip-types src/index.ts` (or build it with your
+own pipeline); the `@xochi/provider` import resolves to the installed package.
 
 ## Bootstrap on-chain
 

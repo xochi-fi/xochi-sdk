@@ -20,7 +20,7 @@ import type { Address } from "viem";
 import { Barretenberg } from "@aztec/bb.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import { ERC8262Prover, PUBLIC_INPUT_COUNTS, PROOF_TYPES } from "../src/index.js";
-import { RawKeyLoader, loadSignerKey, signSignals, type SignerKey } from "../src/provider/index.js";
+import { RawKeyLoader, loadSignerKey, signSignals, type SignerKey } from "@xochi/provider";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;

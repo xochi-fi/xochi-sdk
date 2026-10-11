@@ -33,7 +33,7 @@ import {
   DOMAIN_SIGNER_PUBKEY,
   DOMAIN_MULTI_SIGNED_SIGNALS,
   MAX_PROVIDERS_MULTI,
-} from "../src/provider/pedersen.js";
+} from "../src/pedersen.js";
 
 let api: Barretenberg;
 

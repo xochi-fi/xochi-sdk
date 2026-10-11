@@ -26,7 +26,7 @@ import {
   type SignerKey,
   type SignSignalsRequest,
   type SignSlotRequest,
-} from "@xochi/sdk/provider";
+} from "@xochi/provider";
 import type { AuditEvent, AuditRoute, AuditSink } from "./audit.ts";
 import type { DaemonConfig } from "./config.ts";
 

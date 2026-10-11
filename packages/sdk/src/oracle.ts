@@ -380,7 +380,7 @@ export class ERC8262Oracle {
    *
    * `signature` is the provider signing key's EIP-712 signature over
    * `CredentialRootPublication(providerId, root, keccak256(cid), notBefore,
-   * notAfter)`, as produced by `signCredentialRoot` (`@xochi/sdk/provider`).
+   * notAfter)`, as produced by `signCredentialRoot` (`@xochi/provider`).
    * The Oracle rejects it outside `[notBefore, notAfter]` or when it does not
    * recover to the key registered via {@link setCredentialSigner}.
    * Emits {@link CredentialRootPublished} with the IPFS CID for tree contents.
@@ -429,7 +429,7 @@ export class ERC8262Oracle {
    * REGISTRAR_ROLE: authorize a provider signer's pubkey hash so the Oracle
    * accepts COMPLIANCE_SIGNED / RISK_SCORE_SIGNED / COMPLIANCE_MULTI_SIGNED
    * proofs signed by it. The hash is `signerPubkeyHash` from the provider
-   * signer output (`@xochi/sdk/provider`). `providerId` operates the key:
+   * signer output (`@xochi/provider`). `providerId` operates the key:
    * COMPLIANCE_MULTI_SIGNED counts providers, not keys; `denyProvider` rejects its keys.
    */
   async registerSignerPubkeyHash(signerPubkeyHash: Hex, providerId: bigint): Promise<Hex> {

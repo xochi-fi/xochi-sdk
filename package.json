@@ -20,6 +20,7 @@
     "test:workspaces": "npm run test --workspaces --if-present",
     "test:sdk": "npm test -w @xochi/sdk",
     "test:integration": "npm run test:integration -w @xochi/sdk",
+    "test:provider": "npm test -w @xochi/provider",
     "test:signer": "npm test -w @xochi/signer",
     "test:solver": "npm test -w @xochi/solver-sdk",
     "test:reference": "npm test -w @xochi/reference",

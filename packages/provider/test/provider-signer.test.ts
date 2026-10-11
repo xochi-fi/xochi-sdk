@@ -25,7 +25,7 @@ import {
   formatSignSignalsResult,
   bytesToHex,
   type SignSignalsRequest,
-} from "../src/provider/index.js";
+} from "../src/index.js";
 
 let api: Barretenberg;
 

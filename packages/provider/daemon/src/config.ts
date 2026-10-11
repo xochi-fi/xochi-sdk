@@ -1,7 +1,7 @@
 /**
  * Reference signing daemon -- env var parsing.
  *
- * The daemon is a thin HTTP wrapper around `@xochi/sdk/provider`'s signers.
+ * The daemon is a thin HTTP wrapper around `@xochi/provider`'s signers.
  * Production deployments typically replace this with a service that authenticates
  * to a KMS for the signing key; this reference parses the key from an env var
  * (HEX) for simplicity. NEVER use SIGNER_PRIVATE_KEY_HEX in production.

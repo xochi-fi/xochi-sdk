@@ -75,7 +75,7 @@ export class ERC8262Prover {
    * Generate a COMPLIANCE_SIGNED proof.
    *
    * Caller MUST provide a `signedBundle` produced by
-   * `signSignals()` (in `src/provider`) -- the circuit verifies the provider's
+   * `signSignals()` (in `@xochi/provider`) -- the circuit verifies the provider's
    * secp256k1 signature in-circuit. The `signer_pubkey_hash` from the bundle
    * also becomes a public input that the Oracle validates against
    * `_validSignerPubkeyHashes`.
@@ -102,7 +102,7 @@ export class ERC8262Prover {
    * over a slot-specific Pedersen digest AND each must individually attest the
    * subject is below the jurisdiction's high-risk floor.
    *
-   * Per-slot signatures are produced by `signSlotPayload()` in src/provider --
+   * Per-slot signatures are produced by `signSlotPayload()` in `@xochi/provider` --
    * each signer signs the digest that embeds its own `slotIndex`. Inactive
    * slots are passed as `null` in `opts.slots`; the builder fills the
    * inactive-slot witness convention (weight_sum=1, weights=[1,0..0],

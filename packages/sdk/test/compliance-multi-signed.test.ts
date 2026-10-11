@@ -27,7 +27,7 @@ import {
   loadSignerKey,
   signSlotPayload,
   type SignerKey,
-} from "../src/provider/index.js";
+} from "@xochi/provider";
 
 const SIGNALS = [10, 20, 30, 0, 0, 0, 0, 0];
 const WEIGHTS = [50, 30, 20, 0, 0, 0, 0, 0];

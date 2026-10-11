@@ -86,7 +86,7 @@ export class FileAuditSink implements AuditSink {
     // later record() rejects, so signing stops with AUDIT_FAILED.
     this.stream.on("error", (err) => {
       this.failure = err;
-      process.stderr.write(`[xochi-signer] audit log error: ${err.message}\n`);
+      process.stderr.write(`[xochi-provider] audit log error: ${err.message}\n`);
     });
   }
 

@@ -15,12 +15,7 @@ import { join } from "node:path";
 import { Barretenberg } from "@aztec/bb.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
 
-import {
-  RawKeyLoader,
-  loadSignerKey,
-  MemoryReplayDb,
-  type SignerKey,
-} from "../src/provider/index.js";
+import { RawKeyLoader, loadSignerKey, MemoryReplayDb, type SignerKey } from "../src/index.js";
 import { createDaemonServer, scopesFor, type DaemonServer } from "../daemon/src/server.js";
 import { FileAuditSink, MemoryAuditSink, type AuditSink } from "../daemon/src/audit.js";
 import { loadConfig, type DaemonConfig } from "../daemon/src/config.js";

@@ -11,7 +11,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@xochi/sdk/provider": ["./src/provider/index.ts"]
+      "@xochi/provider": ["../provider/src/index.ts"]
     }
   },
   "include": ["src", "test"]

@@ -50,11 +50,12 @@ import {
   loadSignerKey,
   MemoryReplayDb,
   bytesToHex,
+  computeSignerPubkeyHash,
   type SignerKey,
-} from "../src/provider/index.js";
-import { createDaemonServer, type DaemonServer } from "../daemon/src/server.js";
-import { MemoryAuditSink } from "../daemon/src/audit.js";
-import type { DaemonConfig } from "../daemon/src/config.js";
+} from "@xochi/provider";
+import { createDaemonServer, type DaemonServer } from "../../provider/daemon/src/server.js";
+import { MemoryAuditSink } from "../../provider/daemon/src/audit.js";
+import type { DaemonConfig } from "../../provider/daemon/src/config.js";
 
 // ============================================================
 // Locations
@@ -322,8 +323,10 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
     // Cross-check: the daemon's hash must equal what `loadSignerKey` would
     // produce -- otherwise the on-chain registry would not authenticate
     // the signer this test uses.
-    const expectedHash = await import("../src/provider/index.js").then((m) =>
-      m.computeSignerPubkeyHash(api, signerKey.publicKeyX, signerKey.publicKeyY),
+    const expectedHash = await computeSignerPubkeyHash(
+      api,
+      signerKey.publicKeyX,
+      signerKey.publicKeyY,
     );
     expect(signerPubkeyHash).toBe(bytesToHex(expectedHash));
 

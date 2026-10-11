@@ -1,10 +1,10 @@
 /**
- * Provider signing daemon entry point.
+ * `@xochi/provider`: compliance-data provider signing.
  *
- * Imported by reference signing daemons and SDK callers that need to mint
- * provider-signed signal bundles for COMPLIANCE_SIGNED / RISK_SCORE_SIGNED
- * proofs. NOT imported in browser circuit-loader paths -- this is a
- * server-side concern.
+ * Imported by signing daemons (see `daemon/`) and provider services that mint
+ * provider-signed signal bundles for COMPLIANCE_SIGNED / RISK_SCORE_SIGNED /
+ * COMPLIANCE_MULTI_SIGNED proofs and EIP-712 credential-root publications.
+ * A server-side concern: never imported by `@xochi/sdk`'s proving paths.
  *
  * Audit context: closes I-1 (signal honesty) by anchoring screening signals
  * to a registered provider's secp256k1 signature.

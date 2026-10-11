@@ -27,7 +27,7 @@ import {
   MIN_MULTI_PROVIDER_THRESHOLDS,
 } from "../constants.js";
 import type { JurisdictionId } from "../constants.js";
-import { bytesToHexField, fieldToBytes } from "../provider/pedersen.js";
+import { bytesToHexField, fieldToBytes } from "./field-bytes.js";
 import { validateSubmitter, validateTimestamp } from "./validate.js";
 
 const SIGNALS_PER_SLOT = 8;
@@ -56,7 +56,7 @@ const PADDING_PUBKEY_Y =
 const PADDING_SIGNATURE = new Uint8Array([...fieldToBytes(1n), ...fieldToBytes(1n)]); // r || s
 
 /**
- * Per-slot signing artifacts. Produced by `signSlotPayload()` in src/provider.
+ * Per-slot signing artifacts. Produced by `signSlotPayload()` in `@xochi/provider`.
  * Caller orchestrates M independent daemon calls -- each daemon signs ONE slot.
  */
 export interface MultiSignedSlot {
