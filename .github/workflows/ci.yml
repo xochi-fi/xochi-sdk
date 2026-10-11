@@ -122,6 +122,37 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run -w @xochi/widget-lib
 
+  # @xochi/provider (packages/provider): the same prepublishOnly gates. Its
+  # typecheck covers the reference daemon, which is not in the tarball; the
+  # pack step shows that. Needs no foundry: the parity vectors are pinned in
+  # the tests, and the daemon -> proof -> on-chain path runs in `integration`.
+  provider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check -w @xochi/provider
+
+      - name: Typecheck (sources, tests and daemon)
+        run: npm run typecheck -w @xochi/provider
+
+      - name: Unit tests
+        run: npm test -w @xochi/provider
+
+      - name: Build
+        run: npm run build -w @xochi/provider
+
+      - name: Verify package contents
+        run: npm pack --dry-run -w @xochi/provider
+
   # The protocol packages (packages/{signer,spec,solver-sdk,reference}). The
   # build order is not optional: @xochi/signer first, since every other
   # workspace consumes its .d.ts. The generate steps are the gate that matters:
