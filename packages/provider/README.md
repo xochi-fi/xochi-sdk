@@ -1,11 +1,11 @@
 # @xochi/provider
 
-Signing for compliance-data providers in [ERC-8262](https://github.com/xochi-fi/ERC-8262). A screening provider signs the risk signals it produced. The ERC-8262 signed circuits (`COMPLIANCE_SIGNED` 0x07, `RISK_SCORE_SIGNED` 0x08, `COMPLIANCE_MULTI_SIGNED` 0x09) check that secp256k1 signature in-circuit, and the Oracle accepts only `signer_pubkey_hash` values registered in `_validSignerPubkeyHashes` (audit I-1, signal honesty). The package also signs EIP-712 credential-root publications for `ERC8262Oracle.publishCredentialRoot`, and ships a [reference HTTP signing daemon](daemon/README.md) as source.
+Signing for compliance-data providers in [ERC-8262](https://github.com/xochi-fi/ERC-8262). A screening provider signs the risk signals it produced. The ERC-8262 signed circuits (`COMPLIANCE_SIGNED` 0x07, `RISK_SCORE_SIGNED` 0x08, `COMPLIANCE_MULTI_SIGNED` 0x09) check that secp256k1 signature in-circuit, and the Oracle accepts only `signer_pubkey_hash` values registered in `_validSignerPubkeyHashes` (audit I-1, signal honesty). The package also signs EIP-712 credential-root publications for `ERC8262Oracle.publishCredentialRoot`, and ships a [reference HTTP signing daemon](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md) as source.
 
 What this package is **not**:
 
-- **Not the taker signer.** EIP-712 intent, ERC-3009 and Permit2 signing live in [`@xochi/signer`](../signer).
-- **Not the prover.** Proof generation and the input builders live in [`@xochi/sdk`](../sdk). That package takes this one's output (`signedBundle`, `slots`) and does not depend on it.
+- **Not the taker signer.** EIP-712 intent, ERC-3009 and Permit2 signing live in [`@xochi/signer`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme).
+- **Not the prover.** Proof generation and the input builders live in [`@xochi/sdk`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/sdk#readme). That package takes this one's output (`signedBundle`, `slots`) and does not depend on it; its prover side is documented in [signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md).
 - **It moves no funds.** A signature here attests to compliance signals or a credential root. It authorizes no transfer.
 
 ## Install
@@ -69,7 +69,7 @@ const slotA = await signSlotPayload(api, keyA, { ...shared, slotIndex: 0 });
 const slotB = await signSlotPayload(api, keyB, { ...shared, slotIndex: 1 });
 ```
 
-Each result goes into the `slots` array of `@xochi/sdk`'s `proveComplianceMultiSigned` at the index it was signed for, with its `signals` / `weights` as numbers. Pass `null` for inactive slots and the builder pads them.
+Each result goes into the `slots` array of `@xochi/sdk`'s `proveComplianceMultiSigned` at the index it was signed for, with its `signals` / `weights` as numbers. Pass `null` for inactive slots and the builder pads them. The proof needs at least `thresholdM` active slots with distinct signers and providers, and M may not sit below the jurisdiction's floor (`MIN_MULTI_PROVIDER_THRESHOLDS`: EU 1, UK 1, US 2, SG 2, UAE 2); the full slot semantics are in [signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md#m-of-n-multi-provider-proofs-0x09).
 
 ## Credential roots: `signCredentialRoot`
 
@@ -105,11 +105,11 @@ Signing is deterministic (RFC 6979, low-S). For a ledger that answers an identic
 
 ## Registering the signer
 
-`computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY)` gives the `signer_pubkey_hash`. Register it once through `ERC8262Oracle.registerSignerPubkeyHash(hash, providerId)`, available as `oracle.registerSignerPubkeyHash` in `@xochi/sdk`. The same registry covers 0x07, 0x08 and 0x09.
+`computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY)` gives the `signer_pubkey_hash`. Register it once through `ERC8262Oracle.registerSignerPubkeyHash(hash, providerId)`, available as `oracle.registerSignerPubkeyHash` in `@xochi/sdk`. The same registry covers 0x07, 0x08 and 0x09, so a key (or daemon) registered for 0x07 can sign 0x09 slots, subject to jurisdiction policy.
 
 ## Daemon
 
-[`daemon/`](daemon/README.md) is a reference HTTP daemon around these signers: `POST /sign`, `/sign-multi`, `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`. It keeps the key out of the proving process, pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window, scopes credentials per route group, and writes an audit record before it returns a signature. It ships as TypeScript source and is **not** in the npm tarball. From the repo root:
+[`daemon/`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md) is a reference HTTP daemon around these signers: `POST /sign`, `/sign-multi` (one slot per call), `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`. It keeps the key out of the proving process, pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window, scopes credentials per route group, and writes an audit record before it returns a signature. Responses carry the same fields as the in-process signers, as `0x` hex, and an identical retry returns the identical signature. It ships as TypeScript source and is **not** in the npm tarball. From the repo root:
 
 ```bash
 SIGNER_PRIVATE_KEY_HEX=0x... SIGNER_API_KEY=dev-key \
@@ -117,21 +117,21 @@ SIGNER_CHAIN_ID=8453 SIGNER_ORACLE_ADDRESS=0x... \
 npm run daemon -w @xochi/provider
 ```
 
-Endpoints, policy codes, mTLS, the audit log, and production hardening are covered in [daemon/README.md](daemon/README.md).
+Endpoints, request bodies, status and policy codes, mTLS, the audit log, and production hardening are covered in [daemon/README.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md).
 
 ## Development
 
 ```bash
-npm install              # at the repo root (npm workspaces), then:
+npm ci                   # at the repo root (npm workspaces), then:
 cd packages/provider
 npm test                 # unit tests: Noir parity vectors, signer, EIP-712 parity, daemon
 npm run typecheck        # tsc --noEmit (sources + tests) and the daemon
 npm run format:check     # prettier --check (run in CI / prepublishOnly)
 npm run build            # compile to dist/
-npm run daemon           # build, then run the reference daemon
+npm run daemon           # build, then run the reference daemon (logs as [xochi-provider])
 ```
 
-The Pedersen digests are pinned to ERC-8262's Noir parity tests (`circuits/shared/src/{sig,multi_sig}.nr`, `nargo test parity`). The end-to-end path (daemon, proof, on-chain `submitCompliance`) runs in `@xochi/sdk`'s integration suite.
+The Pedersen digests are pinned to ERC-8262's Noir parity tests (`circuits/shared/src/{sig,multi_sig}.nr`, `nargo test parity`). The end-to-end path (daemon, proof, on-chain `submitCompliance`) runs in `@xochi/sdk`'s integration suite (`packages/sdk/test/integration-signed-onchain.test.ts`, `npm run test:integration` from the repo root).
 
 ## License
 
