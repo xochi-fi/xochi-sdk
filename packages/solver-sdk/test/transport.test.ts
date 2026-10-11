@@ -276,6 +276,45 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
     expect(bids).toHaveLength(1);
     expect(capabilityReads()).toBe(1);
   });
+
+  // Each run subscribes for its own lifetime: clients rebuilt over one
+  // transport (a supervisor restarting the loop) must not leave a listener
+  // apiece behind on it.
+  it("leaves no gap listener on a shared transport once each run ends", async () => {
+    const baseUrl = await serve((req, res) => {
+      if ((req.url ?? "").startsWith("/solver/capabilities")) return json(res, CAPABILITIES);
+      return json(res, { error: "gone" }, 500);
+    });
+    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    let live = 0;
+    const add = transport.addFeedGapListener.bind(transport);
+    transport.addFeedGapListener = (listener) => {
+      live += 1;
+      const off = add(listener);
+      return () => {
+        live -= 1;
+        off();
+      };
+    };
+    const solver: Solver = {
+      capabilities: () => ({
+        solverId: SOLVER_ID,
+        chains: [8453, 10],
+        tokens: ["USDC"],
+        settlementTypes: ["public"],
+        rfcVersion: SOLVER_RFC_VERSION,
+      }),
+      quote: async () => null,
+      fill: async () => {
+        throw new Error("no award in this script");
+      },
+    };
+    for (let i = 0; i < 3; i++) {
+      const client = new SolverClient({ solverKey: SOLVER_KEY, transport });
+      await expect(client.run(solver)).rejects.toThrow(/solver feed 500/);
+    }
+    expect(live).toBe(0);
+  });
 });
 
 describe("HttpSolverTransport getCapabilities", () => {
@@ -298,6 +337,15 @@ describe("HttpSolverTransport getCapabilities", () => {
     const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, readTimeoutMs: 50 });
     await expect(transport.getCapabilities()).rejects.toThrow(/timeout|abort/i);
     await expect(transport.getAttestation("0x01")).rejects.toThrow(/timeout|abort/i);
+  });
+
+  it("aborts a bid or fill POST the venue never answers after postTimeoutMs", async () => {
+    const baseUrl = await serve(() => {
+      // never respond
+    });
+    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, postTimeoutMs: 50 });
+    await expect(transport.submitBid({} as Bid)).rejects.toThrow(/timeout|abort/i);
+    await expect(transport.submitFill({} as FillReceipt)).rejects.toThrow(/timeout|abort/i);
   });
 
   it("sends no credentials -- the endpoint is public and pre-admission", async () => {

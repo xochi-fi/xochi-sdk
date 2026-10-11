@@ -9,6 +9,7 @@ import type { Eip712Signable } from "./types";
 import { PERMIT2_ADDRESS } from "./permit2";
 import { pick, sameAddressish, sameNumeric } from "./compare";
 import type { PinnedEscrows } from "./escrow";
+import { resolvePinnedEscrow } from "./escrow-pin";
 
 /**
  * The request fields the checks compare against, in either spelling. Only what the caller
@@ -596,36 +597,19 @@ function assertPullNotToPinnedEscrow(
   }
   // Keyed on the canonical chain id, not the server's spelling: `"0x2105"`, `"08453"` and
   // `" 8453"` all pass the chain checks and sign as uint256 8453, so a raw-string lookup
-  // would miss a `{8453: ESCROW}` pin and let the escrow pull through unguarded. Pin keys
-  // are canonicalized the same way (as `pinnedEscrowFor` does), so a non-canonical key
-  // still pins its chain.
-  const chainKey = String(requireIntentChainId(intent, "expectedEscrows"));
-  const matches: unknown[] = [];
-  for (const [key, value] of Object.entries(pins as Record<string, unknown>)) {
-    let canonical: string;
-    try {
-      canonical = BigInt(key.trim()).toString();
-    } catch {
-      throw new XochiIntentMismatchError(
-        `expectedEscrows key ${JSON.stringify(key)} is not a chain id. Refusing to sign.`,
-      );
-    }
-    if (canonical === chainKey) matches.push(value);
-  }
-  if (matches.length === 0) return;
-  const trimmed = matches.map((v) => (typeof v === "string" ? v.trim() : v));
-  const pinned = trimmed[0];
-  if (
-    typeof pinned !== "string" ||
-    !/^0x[0-9a-fA-F]{40}$/.test(pinned) ||
-    /^0x0{40}$/i.test(pinned) ||
-    trimmed.some((v) => typeof v !== "string" || v.toLowerCase() !== pinned.toLowerCase())
-  ) {
-    throw new XochiIntentMismatchError(
-      `expectedEscrows[${chainKey}] is ${JSON.stringify(matches.length === 1 ? matches[0] : matches)}, ` +
-        "not one non-zero EVM address -- the escrow pin cannot be compared against. Refusing to sign.",
-    );
-  }
+  // would miss a `{8453: ESCROW}` pin and let the escrow pull through unguarded. The pin
+  // is read by `resolvePinnedEscrow`, the same reader `assertEscrowBinding` uses, so a key
+  // or value means one thing to both guards.
+  const chainKey = requireIntentChainId(intent, "expectedEscrows");
+  const pinned = resolvePinnedEscrow(
+    pins,
+    chainKey,
+    (message) =>
+      new XochiIntentMismatchError(
+        `${message} -- the escrow pin cannot be compared against. Refusing to sign.`,
+      ),
+  );
+  if (pinned === undefined) return;
   const served = kind === "erc3009" ? m.to : m.spender;
   if (served !== undefined && served !== null && sameAddressish(String(served), pinned)) {
     throw new XochiIntentMismatchError(

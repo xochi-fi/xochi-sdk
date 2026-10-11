@@ -401,6 +401,31 @@ describe("timeouts cover the response body", () => {
       await c.prepareStealthClaim({ counterfactualAddress: "0x1", recipientAddress: "0x2" }),
     ).toEqual({ ok: false, error: "Request timeout" });
   });
+
+  // A body that never enqueues, and resolves `cancelled` when it is cancelled.
+  const cancellable = (status: number) => {
+    const { promise: cancelled, resolve } = Promise.withResolvers<void>();
+    const response = () =>
+      new Response(new ReadableStream({ cancel: () => resolve() }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    return { cancelled, response };
+  };
+
+  it("cancels a stalled body once the attempt times out", async () => {
+    const { cancelled, response } = cancellable(200);
+    const { c } = client(response, fast);
+    expect(await c.getIntentStatus("xi_stall")).toBeNull();
+    await cancelled;
+  });
+
+  it("cancels the unread body of a non-ok GET", async () => {
+    const { cancelled, response } = cancellable(500);
+    const { c } = client(response);
+    await rejection(c.getIntentHistory("0xabc"));
+    await cancelled;
+  });
 });
 
 // A pull-bearing quote embeds a single-use ERC-3009 nonce. It must never be

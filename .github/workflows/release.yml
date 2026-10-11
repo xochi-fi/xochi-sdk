@@ -13,10 +13,26 @@
 #
 # npm trusted publishing (OIDC), so there is no NPM_TOKEN anywhere: npm
 # exchanges this job's id-token for a short-lived publish credential, and only
-# for the package/repo/workflow pair configured on npmjs.com. SETUP, once per
-# package on npmjs.com: Settings -> Trusted publisher -> GitHub Actions,
-# repository xochi-fi/xochi-sdk, workflow `release.yml`. `--provenance` needs
-# the repository to be public.
+# for the package/repo/workflow/environment configured on npmjs.com. SETUP,
+# once per package on npmjs.com: Settings -> Trusted publisher -> GitHub
+# Actions, repository xochi-fi/xochi-sdk, workflow `release.yml`, environment
+# `npm-publish`. The environment field is REQUIRED, not optional: see "Why the
+# environment" below. `--provenance` needs the repository to be public.
+#
+# Why the environment. A tag push runs the release.yml of the TAGGED commit,
+# not main's, so no step in this file can guard a tag on a commit that does not
+# carry this file: every older main commit runs its own older workflow, and a
+# commit on any branch can carry a release.yml with the checks deleted. What
+# such a workflow cannot change is the OIDC token's `environment` claim, which
+# GitHub sets only for a job that enters the environment and passes its
+# protection rules. So the gate is three settings outside this file, and the
+# steps below are defence in depth on top of them:
+#   - npmjs.com trusted publisher requires environment `npm-publish`, so a
+#     workflow without it (every commit before this one) gets no credential;
+#   - GitHub environment `npm-publish` accepts deployments only from tags
+#     matching the five patterns below;
+#   - GitHub tag ruleset "release tags" lets only repository admins create,
+#     move or delete those tags.
 #
 # @xochi/sdk used to be published by hand (`npm publish` at the root, gated by
 # its prepublishOnly). That still works and still runs the same gates; this
@@ -54,6 +70,10 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The gate this file cannot enforce on itself (header, "Why the
+    # environment"): npm issues a credential only to a job in this environment,
+    # and the environment admits only release tags.
+    environment: npm-publish
     permissions:
       contents: read
       id-token: write
@@ -119,17 +139,22 @@ jobs:
             echo "tag $TAG says $version but $dir/package.json is $manifest; refusing to publish" >&2
             exit 1
           fi
-          # A prerelease must not become `latest`.
+          # A prerelease goes to `next`. A stable version passes no --tag at all:
+          # npm then applies `latest` itself and refuses when a higher version is
+          # already published, so a backport (sdk-v0.3.1 after 0.4.0) fails here
+          # instead of rolling every unpinned install back. An explicit
+          # `--tag latest` switches that refusal off. Publish a backport by hand
+          # under a maintenance tag.
           case "$version" in
             *-*) dist_tag='next' ;;
-            *)   dist_tag='latest' ;;
+            *)   dist_tag='' ;;
           esac
           # The root package is published without -w; a workspace with it.
           if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "ws=$ws" >> "$GITHUB_OUTPUT"
           echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
-          echo "publishing $name@$version (dist-tag $dist_tag)"
+          echo "publishing $name@$version (dist-tag ${dist_tag:-latest, if highest})"
 
       - run: npm ci
 
@@ -164,6 +189,7 @@ jobs:
         if: steps.pkg.outputs.name == '@xochi/spec' || steps.pkg.outputs.name == '@xochi/signer'
         run: |
           for w in @xochi/signer @xochi/solver-sdk @xochi/reference @xochi/spec; do
+            npm run format:check -w "$w"
             npm run typecheck -w "$w"
             npm test -w "$w"
           done
@@ -179,4 +205,4 @@ jobs:
       # (format, typecheck, test, build) in prepublishOnly, which npm publish
       # runs; @xochi/signer's build runs in its prepublishOnly too.
       - name: Publish
-        run: npm publish ${{ steps.pkg.outputs.ws }} --tag "${{ steps.pkg.outputs.dist_tag }}" --provenance --access public
+        run: npm publish ${{ steps.pkg.outputs.ws }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public

@@ -326,12 +326,31 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    // The source body's reader, held here so an abort can cancel the stream
+    // even while a `read` holds the (locked) body it was re-wrapped into.
+    let source: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const attempt = async (): Promise<T> => {
-      const response = await doFetch(`${baseUrl}${path}`, {
+      const fetched = await doFetch(`${baseUrl}${path}`, {
         ...init,
         headers,
         signal: controller.signal,
       });
+      let response = fetched;
+      if (fetched.body) {
+        const reader = fetched.body.getReader();
+        source = reader;
+        response = new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(sink) {
+              const chunk = await reader.read();
+              if (chunk.done) sink.close();
+              else sink.enqueue(chunk.value);
+            },
+            cancel: (reason) => reader.cancel(reason),
+          }),
+          { status: fetched.status, statusText: fetched.statusText, headers: fetched.headers },
+        );
+      }
 
       if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
         const body = await response
@@ -355,6 +374,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     };
     try {
       return await untilAborted(attempt(), controller.signal);
+    } catch (err) {
+      // An injected fetch may ignore the signal: release the stalled body
+      // stream rather than leaving it open behind the abandoned read.
+      if (controller.signal.aborted) source?.cancel().catch(() => {});
+      throw err;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -698,7 +722,20 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
 
 /** The response, with its JSON body read when it is a success (the GET reads). */
 async function readOkJson(response: Response): Promise<{ response: Response; body: unknown }> {
-  return { response, body: response.ok ? ((await response.json()) as unknown) : undefined };
+  if (!response.ok) {
+    cancelBody(response);
+    return { response, body: undefined };
+  }
+  return { response, body: (await response.json()) as unknown };
+}
+
+/** Cancel a response body that will not be read, ignoring any failure. */
+function cancelBody(response: Response | undefined): void {
+  try {
+    response?.body?.cancel().catch(() => {});
+  } catch {
+    // A locked or already-consumed body: nothing left to release.
+  }
 }
 
 /**

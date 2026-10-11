@@ -20,7 +20,7 @@
  * re-verify locally belongs.
  *
  * This is the only writer of the artifact, so it is also the only place a
- * refresh can be refused, and it refuses five things:
+ * refresh can be refused, and it refuses six things:
  *
  *   - A BREAKING delta against the copy being replaced, computed by the SAME
  *     differ the nightly probe runs (`./compare.mjs`). It used to refuse only a
@@ -53,6 +53,14 @@
  *     delta, after which the digest written over it satisfied both self-
  *     referential gates. A genuine first vendoring happens once and says so
  *     with `--first-vendoring`.
+ *   - A prior copy that IS there but is no baseline: one that does not match
+ *     `openapi.sha256`, or is not recognisably an OpenAPI contract by the
+ *     probe's own test (`unrecognisedContract`: an `openapi` string, `paths`
+ *     with an operation, `components`). Gutting the file and re-digesting it
+ *     was the way around the absent-prior refusal, so it takes the same
+ *     consent, `--first-vendoring`, and is then not diffed against. These
+ *     prior-copy checks run BEFORE the fetch: they are decisions about local
+ *     state.
  *   - Its own output disagreeing with the served bytes about a numeric literal,
  *     which is the one refusal that is not a decision about anybody's document.
  *     `./format.mjs` emits every number from its source token, so
@@ -84,8 +92,8 @@
  * 3 mean there what they mean here (a generator has no DRIFT verdict). A
  * deliberate refusal is its own code, 4 REFUSED: `misconfigured()` documents 3
  * as "this machine's own state or configuration, before anyone was asked", and
- * none of the five refusals is that: each is a deliberate refusal of a target,
- * of a document or of this script's own output, three of them overridable by a
+ * none of the six refusals is that: each is a deliberate refusal of a target,
+ * of a document or of this script's own output, four of them overridable by a
  * flag, and two -- the BREAKING gate and the literal post-condition -- are taken
  * about a document already fetched.
  * On one code, "you forgot to export RIDDLER_URL_PROD" and "the producer
@@ -107,7 +115,13 @@ import {
   readTimeoutMs,
   resolveServer,
 } from "../../../scripts/probe-lib.mjs";
-import { IncomparableDocument, compareContract, numberTokens, sanitize } from "./compare.mjs";
+import {
+  IncomparableDocument,
+  compareContract,
+  numberTokens,
+  sanitize,
+  unrecognisedContract,
+} from "./compare.mjs";
 import { MalformedDocument, formatDocument } from "./format.mjs";
 
 installCrashHandlers();
@@ -200,6 +214,91 @@ if (!isProd && !ALLOW_NON_PROD) {
   );
 }
 
+/** The copy being replaced, and whether it currently matches its own digest. */
+const readPrior = () => {
+  let bytes;
+  try {
+    bytes = readFileSync(OUT_JSON);
+  } catch (e) {
+    if (e.code === "ENOENT") return { absent: true };
+    misconfigured(`packages/spec/wire/openapi.json is unreadable: ${e.message}`);
+  }
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  // The digest is read for reporting only -- this run replaces it either way --
+  // but it is arbitrary file content reaching a block a human approves a
+  // refresh from, so it is held to the same shape the probe requires and is
+  // never echoed raw. `.trim()` strips the ends; interior newlines would
+  // otherwise render as extra aligned rows.
+  let recorded = null;
+  try {
+    const raw = readFileSync(OUT_SHA, "utf8").trim();
+    recorded = /^[0-9a-f]{64}$/.test(raw) ? raw : `(malformed: ${sanitize(raw)})`;
+  } catch {
+    // A missing or unreadable digest is what this run is about to fix.
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch (e) {
+    return { bytes, actual, recorded, unparseable: e.message };
+  }
+  return { bytes, actual, recorded, doc: parsed };
+};
+
+const prior = readPrior();
+
+if (prior.unparseable) {
+  refused(
+    `packages/spec/wire/openapi.json is not parseable JSON: ${prior.unparseable}\n` +
+      "  Nothing was written. No delta can be computed against it, so there is nothing for\n" +
+      "  --allow-breaking to consent to. Restore the file from git and re-run.",
+  );
+}
+
+// Before the delta, because there is no delta: with no prior copy the BREAKING
+// gate below cannot run, so `rm packages/spec/wire/openapi.json` was a way to
+// switch it off. Whatever the server served would install with no comparison
+// and no flag, and the digest written beside it would satisfy both the per-PR
+// gate and the offline suite, neither of which does more than check that the
+// pair agrees with itself.
+if (prior.absent && !FIRST_VENDORING) {
+  refused(
+    "packages/spec/wire/openapi.json does not exist, so there is nothing to diff the served\n" +
+      "  document against and no delta to review. Nothing was written.\n" +
+      "  Restore it (`git checkout -- packages/spec/wire/openapi.json`) and re-run. If this\n" +
+      "  genuinely is the first vendoring, say so with --first-vendoring.",
+  );
+}
+
+// A prior copy that IS there but cannot be trusted is the absent case again,
+// and was the way around it: gut `openapi.json` to `{}` (or one schema), run
+// `shasum` over it, and the BREAKING gate compared the served document against
+// nothing that could break -- every served name an addition, graded STALE,
+// installed with no flag. So a prior that does not match its own digest, or is
+// not recognisably an OpenAPI contract by the probe's own test
+// (`unrecognisedContract`), refuses under the same consent: there is no
+// trustworthy baseline, which is exactly what --first-vendoring declares.
+const untrusted = prior.absent
+  ? null
+  : prior.recorded !== prior.actual
+    ? `it does not match openapi.sha256 (recorded ${prior.recorded ?? "(unreadable)"}, ` +
+      `actual ${prior.actual})`
+    : unrecognisedContract(prior.doc) === null
+      ? null
+      : `it is not recognisably an OpenAPI contract (${unrecognisedContract(prior.doc)})`;
+if (untrusted !== null && !FIRST_VENDORING) {
+  refused(
+    `packages/spec/wire/openapi.json cannot serve as the baseline: ${untrusted}.\n` +
+      "  Nothing was written. A delta against an edited or gutted copy grades the served\n" +
+      "  document against nothing it could break, so the BREAKING gate would not run.\n" +
+      "  Restore both files (`git checkout -- packages/spec/wire/`) and re-run. If there\n" +
+      "  genuinely is no trustworthy prior, say so with --first-vendoring.",
+  );
+}
+// With consent, an untrusted prior is treated as no prior: nothing is diffed
+// against it, and the provenance block says so.
+const noBaseline = prior.absent || untrusted !== null;
+
 const url = `${baseUrl}/xochi/openapi.json`;
 
 const got = orInconclusive(await probeGet({ url, timeoutMs: TIMEOUT_MS }));
@@ -207,9 +306,10 @@ const doc = orInconclusive(parseJsonBody(got, { url })).value;
 
 // JSON, but not an OpenAPI document. A stale copy is a known quantity; an error
 // page under the artifact's name is not.
-if (typeof doc?.openapi !== "string" || typeof doc?.paths !== "object" || doc.paths === null) {
+const unrecognisedServed = unrecognisedContract(doc);
+if (unrecognisedServed !== null) {
   inconclusive(
-    `${url} returned JSON with no "openapi"/"paths" -- not an OpenAPI document.\n` +
+    `${url} returned JSON that is not recognisably an OpenAPI contract (${unrecognisedServed}).\n` +
       "  The vendored copy was left alone.",
   );
 }
@@ -268,65 +368,10 @@ const servedNumbers = [...new Set(numberTokens(got.text))];
 const writtenNumbers = new Set(numberTokens(formatted));
 const rewrittenNumbers = servedNumbers.filter((t) => !writtenNumbers.has(t));
 
-/** The copy being replaced, and whether it currently matches its own digest. */
-const readPrior = () => {
-  let bytes;
-  try {
-    bytes = readFileSync(OUT_JSON);
-  } catch (e) {
-    if (e.code === "ENOENT") return { absent: true };
-    misconfigured(`packages/spec/wire/openapi.json is unreadable: ${e.message}`);
-  }
-  const actual = createHash("sha256").update(bytes).digest("hex");
-  // The digest is read for reporting only -- this run replaces it either way --
-  // but it is arbitrary file content reaching a block a human approves a
-  // refresh from, so it is held to the same shape the probe requires and is
-  // never echoed raw. `.trim()` strips the ends; interior newlines would
-  // otherwise render as extra aligned rows.
-  let recorded = null;
-  try {
-    const raw = readFileSync(OUT_SHA, "utf8").trim();
-    recorded = /^[0-9a-f]{64}$/.test(raw) ? raw : `(malformed: ${sanitize(raw)})`;
-  } catch {
-    // A missing or unreadable digest is what this run is about to fix.
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(bytes.toString("utf8"));
-  } catch (e) {
-    return { bytes, actual, recorded, unparseable: e.message };
-  }
-  return { bytes, actual, recorded, doc: parsed };
-};
-
-const prior = readPrior();
-
-if (prior.unparseable) {
-  refused(
-    `packages/spec/wire/openapi.json is not parseable JSON: ${prior.unparseable}\n` +
-      "  Nothing was written. No delta can be computed against it, so there is nothing for\n" +
-      "  --allow-breaking to consent to. Restore the file from git and re-run.",
-  );
-}
-
-// Before the delta, because there is no delta: with no prior copy the BREAKING
-// gate below cannot run, so `rm packages/spec/wire/openapi.json` was a way to
-// switch it off. Whatever the server served would install with no comparison
-// and no flag, and the digest written beside it would satisfy both the per-PR
-// gate and the offline suite, neither of which does more than check that the
-// pair agrees with itself.
-if (prior.absent && !FIRST_VENDORING) {
-  refused(
-    "packages/spec/wire/openapi.json does not exist, so there is nothing to diff the served\n" +
-      "  document against and no delta to review. Nothing was written.\n" +
-      "  Restore it (`git checkout -- packages/spec/wire/openapi.json`) and re-run. If this\n" +
-      "  genuinely is the first vendoring, say so with --first-vendoring.",
-  );
-}
-
-const paths = delta(pathNames(prior.doc), pathNames(doc));
-const operations = delta(operationNames(prior.doc), operationNames(doc));
-const schemas = delta(schemaNames(prior.doc), schemaNames(doc));
+const baseline = noBaseline ? undefined : prior.doc;
+const paths = delta(pathNames(baseline), pathNames(doc));
+const operations = delta(operationNames(baseline), operationNames(doc));
+const schemas = delta(schemaNames(baseline), schemaNames(doc));
 
 // The gate. Same function the nightly probe runs, so the two cannot disagree
 // about what a break is: `./compare.mjs` documents every axis and why it exists.
@@ -345,7 +390,7 @@ const compared = () => {
     throw e;
   }
 };
-const { breaking, stale, stats } = prior.absent
+const { breaking, stale, stats } = noBaseline
   ? { breaking: [], stale: [], stats: null }
   : compared();
 
@@ -399,11 +444,8 @@ console.log(
     ? row("replaces", "(nothing -- first vendoring)")
     : row("replaces", `${prior.bytes.length} bytes, sha256 ${prior.actual}`),
 );
-if (!prior.absent && prior.recorded !== prior.actual) {
-  console.log(
-    `${cont(`WARNING: openapi.sha256 recorded ${prior.recorded ?? "(unreadable)"};`)}\n` +
-      cont("the copy being replaced did not match its own digest."),
-  );
+if (untrusted !== null) {
+  console.log(cont(`--first-vendoring: not diffed against it, since ${sanitize(untrusted, 400)}`));
 }
 console.log(axis("paths", paths));
 console.log(axis("operations", operations));
@@ -411,8 +453,8 @@ console.log(axis("schemas", schemas));
 // The name axes above are a summary, not the gate: they cannot see a loosened
 // pattern, a narrowed union or a dropped auth requirement, which is the whole
 // reason the differ below exists.
-if (prior.absent) {
-  console.log(row("delta", "(no prior copy to diff against)"));
+if (noBaseline) {
+  console.log(row("delta", "(no trustworthy prior copy to diff against)"));
 } else {
   console.log(
     row(

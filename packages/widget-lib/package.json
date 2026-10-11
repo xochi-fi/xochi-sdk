@@ -1,7 +1,15 @@
 {
   "name": "@xochi/widget-lib",
-  "version": "0.1.0",
-  "description": "Embed the Xochi swap widget in any page: an iframe with its trade defaults, the host wallet bridged in over EIP-1193 postMessage, auto-resize and trade lifecycle events.",
+  "version": "0.1.1",
+  "description": "Embed the Xochi swap widget: iframe, EIP-1193 wallet bridge, auto-resize, trade events.",
+  "keywords": [
+    "xochi",
+    "swap",
+    "widget",
+    "iframe",
+    "eip-1193"
+  ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/widget-lib#readme",
   "license": "MIT",
   "type": "module",
   "repository": {

@@ -53,3 +53,13 @@ def test_short_nonce_rejected_not_silently_signed() -> None:
     bad = {**base, "message": {**base["message"], "nonce": "0x01"}}
     with pytest.raises(Exception):
         sign(bad)
+
+
+@pytest.mark.parametrize("value", ["1_000", " 1000", "1000\n", "\u0661\u0660\u0660\u0660", "1e3", "0x3e8", True])
+def test_non_canonical_integer_rejected_not_silently_signed(value: object) -> None:
+    # Python's int() accepts several of these spellings; the TS reference
+    # (ethers) does not sign them as the same value, so the port must refuse.
+    base = next(v for v in VECTORS if v["protocol"] == "erc3009")
+    bad = {**base, "message": {**base["message"], "value": value}}
+    with pytest.raises(ValueError, match="non-canonical integer"):
+        sign(bad)

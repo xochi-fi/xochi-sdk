@@ -1,6 +1,6 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.8.0`
+- **Spec version:** `0.8.1`
 - **Status:** Draft (signature and fee layers are substantive and
   conformance-tested; transport defers to the server OpenAPI; escrow/solver
   sections are reserved)
@@ -36,6 +36,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
+| 0.8.1 | current | 3 | Release-hygiene PATCH: no wire field, signed struct or vector changes. Moves the version past every pre-fix commit that declared `0.8.0`, and ships the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
 | 0.8.0 | current | 3 | XSP hash primitives (`ESCROW-RFC 0.4.0-draft` §13, riddler #1223): `XochiObligation` EIP-712 `obligationId`, Depository CallRequest/MarkConsumed digests, deposit-address derivation, pinned by `conformance/xsp.json`. Additive; no taker signed struct or wire field changes |
 | 0.7.0 | current | 3 | Slash proof on solver signatures (`SOLVER-RFC 0.4.0-draft`, `ESCROW-RFC 0.3.0-draft`): SolverBid v2 (`conformance/solver-bid-v2.json`, replaces `bid.json`), FillAcceptance (`conformance/fill-acceptance.json`), SolverBond v2 domain `"2"` (`slash-attestation.json` regenerated). No taker signed struct or wire field changes |
 | 0.6.0 | current | 3 | Escrow order v2 (`ESCROW-RFC 0.2.0-draft`): blinded `destCommitment` in `orderId`, venue `OpenAuth`, reserved envelope reshaped (`order_terms` + `dest_opening` + `open_auth`). Still RESERVED/inert; §2.1 and the conformance suite unchanged |
@@ -130,6 +131,13 @@
   which such a client never requested. The one client-visible hazard is §3.3's: a
   party id is case-sensitive and may begin `0x`, so folding case on every
   `0x`-prefixed value names a different party.
+- `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that no commit
+  older than the second adversarial review declares an unpublished version a
+  `spec-v*` tag could publish (a tag runs that commit's own `release.yml`), and
+  so the tarball's `wire/compare.mjs` carries the unresolvable-`$ref` fix. The
+  server MUST advertise `spec_version: "0.8.1"` (Riddler `Xochi.Config
+  @spec_version`, riddler #1285) in lockstep; until it does the `spec_version`
+  probe reports DRIFT, which is correct.
 - `0.8.0`: XSP obligation (riddler #1223; `ESCROW-RFC 0.4.0-draft` §13).
   New vector artifact `conformance/xsp.json` (+ schema) pinning the
   user-signed `XochiObligation` EIP-712 digest (`obligationId`, domain

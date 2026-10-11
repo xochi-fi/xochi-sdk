@@ -564,6 +564,45 @@ describe("required in its boolean form", () => {
     );
     expect(all).toMatch(/requestBody is served but not vendored \(required\)/);
   });
+
+  // A served-only ref nobody can resolve was graded on the bare ref object, whose
+  // `required` is absent: "(optional)", STALE, installed by `generate:wire` with no flag.
+  describe("a served-only parameter whose $ref cannot be resolved is BREAKING", () => {
+    const claimWith = (ref: string, parameters: Doc = {}) =>
+      served((d) => {
+        d.components.parameters = { ...(d.components.parameters ?? {}), ...parameters };
+        const op = d.paths["/xochi/claim"].post;
+        op.parameters = [...(op.parameters ?? []), { $ref: ref }];
+      });
+
+    it.each([
+      ["external", "https://evil.example/params.json#/X", {}, "not a local ref"],
+      ["dangling", "#/components/parameters/Nowhere", {}, "dangling"],
+      [
+        "cyclic",
+        "#/components/parameters/A",
+        { A: { $ref: "#/components/parameters/B" }, B: { $ref: "#/components/parameters/A" } },
+        "cyclic",
+      ],
+      ["malformed percent-encoding", "#/components/parameters/X%ZZ", {}, "malformed"],
+    ])("%s", (_name, ref, parameters, reason) => {
+      const { breaking, stale } = claimWith(ref, parameters);
+      const line = breaking.find((b) => b.includes(`parameter ${ref}`));
+      expect(line, breaking.join("\n")).toContain("cannot be resolved");
+      expect(line).toContain(reason);
+      expect(stale.join("\n")).not.toContain(`parameter ${ref}`);
+    });
+
+    it("a percent-encoded ref resolves and is graded on its required target", () => {
+      const ref = "#/components/parameters/X%20Y";
+      const { breaking } = claimWith(ref, {
+        "X Y": { in: "header", name: "X-Y", required: true, schema: { type: "string" } },
+      });
+      expect(breaking).toContain(
+        `POST /xochi/claim parameter ${ref} is served but not vendored (required)`,
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

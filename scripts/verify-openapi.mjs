@@ -98,13 +98,16 @@ import {
   numberTokenDiff,
   numberTokens,
   sanitize,
+  unrecognisedContract,
 } from "../packages/spec/wire/compare.mjs";
 
 installCrashHandlers();
 
 const TIMEOUT_MS = readTimeoutMs();
 const VENDORED_JSON = fileURLToPath(new URL("../packages/spec/wire/openapi.json", import.meta.url));
-const VENDORED_SHA = fileURLToPath(new URL("../packages/spec/wire/openapi.sha256", import.meta.url));
+const VENDORED_SHA = fileURLToPath(
+  new URL("../packages/spec/wire/openapi.sha256", import.meta.url),
+);
 
 /**
  * Digest prefix printed in the preamble: 16 hex chars is 64 bits, which tells
@@ -145,7 +148,9 @@ const readVendored = () => {
 
   const actual = createHash("sha256").update(bytes).digest("hex");
   if (!/^[0-9a-f]{64}$/.test(recorded)) {
-    return { problem: `packages/spec/wire/openapi.sha256 is not a bare sha256 hex digest: "${sanitize(recorded)}"` };
+    return {
+      problem: `packages/spec/wire/openapi.sha256 is not a bare sha256 hex digest: "${sanitize(recorded)}"`,
+    };
   }
   if (actual !== recorded) {
     return {
@@ -271,10 +276,11 @@ if (!served.ok) inconclusive(served.reason);
 
 const servedDoc = served.value;
 
-if (typeof servedDoc?.openapi !== "string" || !isObj(servedDoc?.paths)) {
+const unrecognised = unrecognisedContract(servedDoc);
+if (unrecognised !== null) {
   inconclusive(
-    `${target} returned JSON with no "openapi" string or no "paths" object -- not an OpenAPI\n` +
-      "  document, so there was nothing to compare the vendored contract against.",
+    `${target} returned JSON that is not recognisably an OpenAPI contract (${unrecognised}),\n` +
+      "  so there was nothing to compare the vendored contract against.",
   );
 }
 
@@ -283,11 +289,18 @@ if (typeof servedDoc?.openapi !== "string" || !isObj(servedDoc?.paths)) {
 // stub or a generator behind a flag -- not the producer disagreeing about the
 // protocol. Exit 1 is reserved for that disagreement, so this exits 2 with the
 // counts instead of one BREAKING line per vanished name.
-const servedNames = Object.keys(isObj(servedDoc.components?.schemas) ? servedDoc.components.schemas : {});
-const vendoredNames = Object.keys(isObj(local.doc.components?.schemas) ? local.doc.components.schemas : {});
+const servedNames = Object.keys(
+  isObj(servedDoc.components?.schemas) ? servedDoc.components.schemas : {},
+);
+const vendoredNames = Object.keys(
+  isObj(local.doc.components?.schemas) ? local.doc.components.schemas : {},
+);
 const missingNames = vendoredNames.filter((n) => !servedNames.includes(n));
 
-if (vendoredNames.length > 0 && missingNames.length > vendoredNames.length * INCOMPARABLE_MISSING_RATIO) {
+if (
+  vendoredNames.length > 0 &&
+  missingNames.length > vendoredNames.length * INCOMPARABLE_MISSING_RATIO
+) {
   inconclusive(
     `${target} declares ${servedNames.length} component schema(s); the vendored contract declares\n` +
       `  ${vendoredNames.length}, of which ${missingNames.length} are absent from the served copy. That is not\n` +
@@ -351,7 +364,9 @@ const { breaking, stale, stats } = compared;
  */
 const vendoredTokens = numberTokens(local.text);
 const respelled =
-  breaking.length === 0 && stale.length === 0 ? numberTokenDiff(got.text, local.text) : { servedOnly: [], vendoredOnly: [] };
+  breaking.length === 0 && stale.length === 0
+    ? numberTokenDiff(got.text, local.text)
+    : { servedOnly: [], vendoredOnly: [] };
 const respelledCount = respelled.servedOnly.length + respelled.vendoredOnly.length;
 
 /**
@@ -367,7 +382,9 @@ const MAX_LISTED = 50;
 const bullets = (list, pad = "    ") => {
   const shown = list.slice(0, MAX_LISTED).map((p) => `${pad}- ${p}`);
   if (list.length > MAX_LISTED) {
-    shown.push(`${pad}- ... and ${list.length - MAX_LISTED} more not listed (${list.length} in total)`);
+    shown.push(
+      `${pad}- ... and ${list.length - MAX_LISTED} more not listed (${list.length} in total)`,
+    );
   }
   return shown.join("\n");
 };

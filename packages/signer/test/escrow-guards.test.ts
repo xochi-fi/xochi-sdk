@@ -59,11 +59,41 @@ describe("expectedEscrows pull guard", () => {
     ).toThrow(XochiIntentMismatchError);
   });
 
-  it.each(["0x2105", "08453", " 8453"])("honors a non-canonical pin key %j", (key) => {
-    const opts = { expectedEscrows: { [key]: ESCROW } as Record<string, string> };
-    expect(() => assertPullMatchesIntent(erc3009Quote(8453, ESCROW), opts)).toThrow(
+  it.each(["0x2105", "0X2105", "08453", " 8453", "8453\n"])(
+    "honors a non-canonical pin key %j",
+    (key) => {
+      const opts = { expectedEscrows: { [key]: ESCROW } as Record<string, string> };
+      expect(() => assertPullMatchesIntent(erc3009Quote(8453, ESCROW), opts)).toThrow(
+        XochiIntentMismatchError,
+      );
+      expect(() => assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts)).not.toThrow();
+    },
+  );
+
+  // Same key set `assertEscrowBinding` refuses: one reader for both guards.
+  it.each(["1e3", "__proto__", "-8453", "", "  ", "0", "0x", "0b10", "+8453", "8453.0"])(
+    "refuses a pin carrying the non-chain key %j",
+    (key) => {
+      const pin = JSON.parse(`{"8453": "${ESCROW}", ${JSON.stringify(key)}: "${ESCROW}"}`);
+      expect(() =>
+        assertPullMatchesIntent(erc3009Quote(8453, OTHER), { expectedEscrows: pin }),
+      ).toThrow(/is not a positive chain id/);
+    },
+  );
+
+  it("refuses two keys naming the chain with different escrows", () => {
+    const opts = (second: string) => ({
+      expectedEscrows: { 8453: ESCROW, ["0x2105"]: second } as Record<string, string>,
+    });
+    expect(() => assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts(OTHER))).toThrow(
+      /under 2 keys with different escrows/,
+    );
+    expect(() => assertPullMatchesIntent(erc3009Quote(8453, ESCROW), opts(` ${ESCROW}`))).toThrow(
       XochiIntentMismatchError,
     );
+    expect(() =>
+      assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts(` ${ESCROW}`)),
+    ).not.toThrow();
   });
 
   it.each([` ${ESCROW}`, `${ESCROW} `, ESCROW.toUpperCase().replace("0X", "0x")])(

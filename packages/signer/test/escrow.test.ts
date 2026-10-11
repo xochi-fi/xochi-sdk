@@ -379,14 +379,64 @@ describe("assertEscrowBinding", () => {
     expect(() => assertEscrowBinding(without({ 1: ESCROW }))).toThrow(
       /no pinned escrow for origin chain 8453/,
     );
-    // Keys are matched by canonical decimal only; a padded key does not alias 8453.
-    expect(() => assertEscrowBinding(without({ "08453": ESCROW }))).toThrow(
-      /no pinned escrow for origin chain 8453/,
-    );
+  });
+
+  // One reading of the pin for this guard and the pull guard: a key names its
+  // chain in decimal (leading zeros allowed) or 0x hex, whitespace-trimmed.
+  it.each(["0x2105", "0X2105", "08453", " 8453 ", "8453\n"])(
+    "honors a non-canonical pin key %j",
+    (key) => {
+      expect(
+        assertEscrowBinding({
+          ...good,
+          expectedEscrows: { [key]: ESCROW } as EscrowBinding["expectedEscrows"],
+        }),
+      ).toBe(ORDER_ID);
+    },
+  );
+
+  it.each([` ${ESCROW}`, `${ESCROW} `, `${ESCROW}\n`, `\t${ethers.getAddress(ESCROW)}`])(
+    "honors a padded pin value %j",
+    (entry) => {
+      expect(assertEscrowBinding({ ...good, expectedEscrows: { 8453: entry } })).toBe(ORDER_ID);
+    },
+  );
+
+  // A key that names no chain refuses the whole pin, even beside a good 8453
+  // entry. Built with JSON.parse, as a config file would be, so `__proto__` is
+  // an own key rather than a prototype assignment.
+  it.each(["1e3", "__proto__", "-8453", "", "  ", "0", "0x", "0b10", "+8453", "8453.0"])(
+    "refuses a pin carrying the non-chain key %j",
+    (key) => {
+      const pin = JSON.parse(`{"8453": "${ESCROW}", ${JSON.stringify(key)}: "${ESCROW}"}`);
+      expect(() => assertEscrowBinding({ ...good, expectedEscrows: pin })).toThrow(
+        /is not a positive chain id/,
+      );
+    },
+  );
+
+  it("refuses two keys naming the origin chain with different escrows", () => {
+    const OTHER = "0x" + "88".repeat(20);
+    expect(() =>
+      assertEscrowBinding({
+        ...good,
+        expectedEscrows: { 8453: ESCROW, ["0x2105"]: OTHER } as EscrowBinding["expectedEscrows"],
+      }),
+    ).toThrow(/under 2 keys with different escrows/);
+    expect(
+      assertEscrowBinding({
+        ...good,
+        expectedEscrows: {
+          8453: ESCROW,
+          ["0x2105"]: ` ${ethers.getAddress(ESCROW)}`,
+        } as EscrowBinding["expectedEscrows"],
+      }),
+    ).toBe(ORDER_ID);
   });
 
   it.each([
-    ["blank", ""],
+    ["empty", ""],
+    ["blank", "  "],
     ["malformed", "0x1234"],
     ["zero", "0x" + "00".repeat(20)],
     ["non-string", 42],

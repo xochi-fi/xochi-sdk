@@ -1295,8 +1295,12 @@ export class OnchainEscrowGateway {
     const self = await dest.signer.getAddress();
     const erc20 = new ethers.Contract(a.token, ERC20_ABI, provider);
     const amount = BigInt(a.amount);
-    const balance: bigint = await erc20.getFunction("balanceOf")(self);
+    // The owed set is resolved BEFORE the balance is read: a fill landing
+    // between the two reads is then counted twice (still owed, and already out
+    // of the balance), a conservative refusal. The other order counts it in
+    // neither and accepts on inventory that fill already spent.
     const owed = reserveOwed ? await this.owedInventory(prepared, filler, provider) : 0n;
+    const balance: bigint = await erc20.getFunction("balanceOf")(self);
     if (balance < amount + owed) {
       throw new EscrowRefusalError(
         "insufficient_inventory",

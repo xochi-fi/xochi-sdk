@@ -1,20 +1,26 @@
 {
   "name": "@xochi/solver-sdk",
   "version": "0.4.1",
-  "description": "Maker-side SDK for the Riddler sealed-bid RFQ (Solver RFC): discovery -> bid -> award -> fill. Scaffold -- the /solver/* surface is PROPOSED, not yet served.",
+  "description": "Solver SDK for Xochi's sealed-bid RFQ: discovery, bid, award, fill.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "scripts": {
@@ -42,7 +48,7 @@
     "directory": "packages/solver-sdk"
   },
   "dependencies": {
-    "@xochi/signer": "^0.5.0",
+    "@xochi/signer": "^0.5.1",
     "ethers": "^6.17.0",
     "zod": "^4.5.4"
   },

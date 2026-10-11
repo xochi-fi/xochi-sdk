@@ -7,6 +7,7 @@ Mirrors the TypeScript reference signer in `@xochi/signer`. Network-free.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from eth_abi import encode as abi_encode
@@ -48,9 +49,23 @@ class SignResult(dict):
     """{'digest': str, 'signature': str, 'signed_object': str | None}."""
 
 
+# ASCII decimal only. Python's int() also takes "1_000", surrounding whitespace
+# and non-ASCII Unicode digits, none of which the TS reference signs as the
+# same value (ethers rejects "1_000"), so those are refused, not normalized.
+_DECIMAL = re.compile(r"-?[0-9]+", re.ASCII)
+
+
+def _coerce_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and _DECIMAL.fullmatch(value):
+        return int(value)
+    raise ValueError(f"non-canonical integer {value!r}: expected an int or an ASCII decimal string")
+
+
 def _coerce_scalar(value: Any, abi_type: str) -> Any:
     if abi_type.startswith(("uint", "int")):
-        return int(value)
+        return _coerce_int(value)
     if abi_type.startswith("bytes"):
         return to_bytes(hexstr=value) if isinstance(value, str) else value
     return value  # address / string pass through as str

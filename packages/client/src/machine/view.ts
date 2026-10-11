@@ -4,7 +4,7 @@
  */
 
 import { canSignQuote } from "./decisions.js";
-import type { Model } from "./machine.js";
+import { holdsCurrentQuote, type Model } from "./machine.js";
 import { phaseFromStatus } from "./phase.js";
 import {
   costOf,
@@ -43,7 +43,10 @@ function signingSlot(model: Model): SigningSlot {
       : { kind: "in_wallet", step: 2, of: 2 };
   }
   if (model.awaitingPull) return { kind: "awaiting_second" };
-  if (!canSignQuote(model.intent.status, quote)) return { kind: "unavailable" };
+  // A quote for a trade the form no longer describes is shown, never offered.
+  if (!canSignQuote(model.intent.status, quote) || !holdsCurrentQuote(model)) {
+    return { kind: "unavailable" };
+  }
   if (model.intent.refusal) return { kind: "refused", refusal: model.intent.refusal };
   return quote?.depositAddress ? { kind: "deposit" } : { kind: "ready", signatures };
 }

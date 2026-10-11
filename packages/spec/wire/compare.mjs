@@ -144,6 +144,28 @@
 /** Plain object. An array satisfies `typeof x === "object"` and is not a map. */
 export const isObj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
 
+const OPERATION_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
+
+/**
+ * Why `doc` is not recognisably an OpenAPI contract of this shape, or `null` if
+ * it is: an `openapi` string, a `paths` object declaring at least one
+ * operation, and a `components` object. The probe reads a served document
+ * failing it as INCONCLUSIVE (not the producer disagreeing about the protocol);
+ * the writer refuses a PRIOR copy failing it, because a gutted prior leaves the
+ * BREAKING gate nothing to compare against -- the absent-prior case again.
+ */
+export const unrecognisedContract = (doc) => {
+  if (!isObj(doc)) return "not a JSON object";
+  if (typeof doc.openapi !== "string") return 'no "openapi" string';
+  if (!isObj(doc.paths)) return 'no "paths" object';
+  const hasOperation = Object.values(doc.paths).some(
+    (item) => isObj(item) && OPERATION_METHODS.some((m) => isObj(item[m])),
+  );
+  if (!hasOperation) return '"paths" declares no operation';
+  if (!isObj(doc.components)) return 'no "components" object';
+  return null;
+};
+
 /**
  * The comparison ran out of depth. Not a finding: a document this differ cannot
  * walk is one it has said nothing about, so the callers report it as
@@ -782,26 +804,60 @@ export const compareContract = (served, vendored) => {
    * A served-only parameter or requestBody given as a local `$ref` carries its
    * `required` on the target, so it is graded on that: read off the bare ref
    * object, a newly served required `$ref` parameter graded STALE. Chains are
-   * followed; an unresolvable or cyclic ref yields the ref object itself.
+   * followed. Each fragment segment is percent-decoded (RFC 6901 in a URI
+   * fragment, RFC 3986) BEFORE `~1`/`~0` are unescaped, so
+   * `#/components/parameters/X%20Y` names the key `X Y`.
+   *
+   * Returns `{ node }`, or `{ unresolved }` naming why: an external ref, a
+   * dangling one, a cycle or a malformed escape. An unresolved ref is graded
+   * BREAKING by the caller, never on the bare ref object: `isRequired({$ref})`
+   * is false, so it read "(optional)", graded STALE, and `generate:wire`
+   * installed with no flag a parameter whose requirements nobody can read --
+   * and an external ref is the producer pointing the contract at bytes this
+   * repo never vendored.
    */
   const resolveServed = (node) => {
     const seen = new Set();
     let cur = node;
-    while (
-      isObj(cur) &&
-      typeof cur.$ref === "string" &&
-      cur.$ref.startsWith("#/") &&
-      !seen.has(cur.$ref)
-    ) {
-      seen.add(cur.$ref);
+    while (isObj(cur) && typeof cur.$ref === "string") {
+      const ref = cur.$ref;
+      if (!ref.startsWith("#/")) return { unresolved: "not a local ref" };
+      if (seen.has(ref)) return { unresolved: "cyclic" };
+      seen.add(ref);
       let target = served;
-      for (const raw of cur.$ref.slice(2).split("/")) {
-        target = isObj(target) ? target[raw.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined;
+      for (const raw of ref.slice(2).split("/")) {
+        let seg;
+        try {
+          seg = decodeURIComponent(raw);
+        } catch {
+          return { unresolved: "malformed percent-encoding" };
+        }
+        seg = seg.replace(/~1/g, "/").replace(/~0/g, "~");
+        target =
+          target !== null && typeof target === "object" && Object.hasOwn(target, seg)
+            ? target[seg]
+            : undefined;
       }
-      if (!isObj(target)) return cur;
+      if (!isObj(target)) return { unresolved: "dangling" };
       cur = target;
     }
-    return cur;
+    return { node: cur };
+  };
+
+  /** Grade a served-only parameter or requestBody; `what` names it in the finding. */
+  const servedOnly = (what, node) => {
+    const r = resolveServed(node);
+    if (r.unresolved) {
+      breaking.push(
+        `${what} is served but not vendored, and its $ref ${sanitize(node.$ref)} cannot be ` +
+          `resolved (${r.unresolved})`,
+      );
+      return;
+    }
+    const required = isRequired(r.node);
+    (required ? breaking : stale).push(
+      `${what} is served but not vendored (${required ? "required" : "optional"})`,
+    );
   };
 
   const compareOperation = (label, sItem, vItem, sOp, vOp) => {
@@ -813,10 +869,7 @@ export const compareContract = (served, vendored) => {
       checks += 1;
       const vp = vParams.get(k);
       if (vp === undefined) {
-        const required = isRequired(resolveServed(sp));
-        (required ? breaking : stale).push(
-          `${label} parameter ${sanitize(k)} is served but not vendored (${required ? "required" : "optional"})`,
-        );
+        servedOnly(`${label} parameter ${sanitize(k)}`, sp);
         continue;
       }
       // No `required` comparison here: `compareNode` compares the boolean form
@@ -863,10 +916,7 @@ export const compareContract = (served, vendored) => {
     if (isObj(sBody) || isObj(vBody)) {
       checks += 1;
       if (!isObj(vBody)) {
-        const required = isRequired(resolveServed(sBody));
-        (required ? breaking : stale).push(
-          `${label} requestBody is served but not vendored (${required ? "required" : "optional"})`,
-        );
+        servedOnly(`${label} requestBody`, sBody);
       } else if (!isObj(sBody)) {
         breaking.push(`${label} requestBody is vendored but no longer served`);
       } else {
