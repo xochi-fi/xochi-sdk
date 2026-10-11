@@ -1,4 +1,4 @@
-# Does the running solver still sign what this SDK verifies?
+# Does the running solver still sign what @xochi/signer verifies?
 #
 # Separate from ci.yml on purpose. The event these probes detect is a SERVER
 # deploy, not a client change, so running them per-PR would gate unrelated work
@@ -8,7 +8,7 @@
 #
 # Every probe here fails on "could not check". That is deliberate and is the
 # whole lesson of riddler-sdk#92: the local version assertion was green for the
-# entire window in which this SDK verified v2 against a v3 solver, because both
+# entire window in which @xochi/signer verified v2 against a v3 solver, because both
 # sides of it lived in this repo and went stale together. A probe that skips on a
 # network error reproduces exactly that -- reporting success without having
 # executed.
@@ -90,7 +90,7 @@ jobs:
       # Node exits 1: the code this workflow reserves for DRIFT, pointed at the
       # producer for a runner problem. `!cancelled()` keeps "run even though the
       # sibling probe failed"; the outcome check keeps "not without a checkout".
-      - name: Version the solver signs vs the version this SDK verifies
+      - name: Version the solver signs vs the version @xochi/signer verifies
         if: >-
           ${{ !cancelled()
           && steps.checkout.outcome == 'success'

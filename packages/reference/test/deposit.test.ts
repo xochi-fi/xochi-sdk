@@ -6,7 +6,7 @@
  * (`mix run scripts/generate_deposit_attestation_vectors.exs`), which is the only
  * side that produces attestations. They are never recomputed here.
  *
- * That direction is the whole point. This SDK only verifies, so a test that
+ * That direction is the whole point. @xochi/signer only verifies, so a test that
  * derived its expectation from `buildDepositAttestationMessage` would pass for
  * any encoding -- including one that disagrees with the server on every real
  * quote. The failure would then surface as a client refusing legitimate deposit

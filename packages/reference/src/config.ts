@@ -156,7 +156,7 @@ export const CONFIG: SignerConfig = {
     // destination and -- via the deposit-address path -- a first-class ORIGIN.
     // As an origin the user sends a TRC-20 to a per-intent deposit address the
     // server allocates and attests; there is nothing to sign, so `rpc: null`
-    // still holds and no Tron key ever reaches this SDK.
+    // still holds and no Tron key ever reaches @xochi/signer.
     //
     // Every T-address here is base58 and CASE-SENSITIVE. Pass them to quote
     // params verbatim: never run one through ethers.getAddress/checksum, and

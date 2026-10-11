@@ -1,4 +1,4 @@
-// Cross-checks this SDK against the SERVED wire contract, vendored at
+// Cross-checks @xochi/client's fee reference against the SERVED wire contract, vendored at
 // `@xochi/spec/wire/openapi.json` (SPEC.md Section 3: "Source of truth:
 // GET /xochi/openapi.json"). Offline and CI-safe: the file is read off disk, never
 // fetched -- the vendored copy's agreement with the live document is the scheduled
@@ -119,13 +119,13 @@ describe("fee_breakdown wire object", () => {
 
   // The reverse direction is not symmetric in consequence but is symmetric in evidence:
   // `LayeredFeeBreakdownSchema` is `.passthrough()`, so an undeclared key parses fine and is then
-  // invisible to every reconciliation the SDK runs on it.
+  // invisible to every reconciliation @xochi/client runs on it.
   it("every LayeredFeeBreakdownSchema key is served", () => {
     expect(sdkKeys.filter((k) => !servedKeys.includes(k))).toEqual([]);
   });
 
   // The dangerous direction of the required axis. `parseFeeBreakdown` runs inside
-  // `xochiQuote` and THROWS, so a field the SDK requires and the server may omit makes
+  // `xochiQuote` and THROWS, so a field the schema requires and the server may omit makes
   // every fee-bearing quote unsignable.
   it("LayeredFeeBreakdownSchema requires nothing the server treats as optional", () => {
     const overStrict = sdkRequired.filter((k) => !servedRequired.includes(k));
@@ -139,7 +139,7 @@ describe("fee_breakdown wire object", () => {
   // away: the server marks `gas_floor` and `total_usd` required, `fee.ts` marks both
   // `.optional()` on purpose (price-oracle-derived, so a pre-adapter core still parses).
   // Pinned exactly, so a THIRD server-required field going optional here -- which would be
-  // a real hole, since the SDK would then accept a breakdown it cannot reconcile -- fails.
+  // a real hole, since the client would then accept a breakdown it cannot reconcile -- fails.
   it("the only fields fee.ts relaxes are the two price-oracle-derived ones", () => {
     const relaxed = servedRequired.filter((k) => !sdkRequired.includes(k));
     expect(

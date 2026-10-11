@@ -2,8 +2,8 @@
  * Capability-matrix parsing (#93).
  *
  * The fixture below mirrors the shape of Riddler's
- * `Xochi.Config.capability_matrix/0` -- the producer -- rather than anything this
- * SDK generates. It is a read path with no signature over it, so unlike the
+ * `Xochi.Config.capability_matrix/0` -- the producer -- rather than anything
+ * @xochi/signer generates. It is a read path with no signature over it, so unlike the
  * deposit-attestation vectors these bytes are not a byte-equality contract;
  * what matters is that the parser survives what the server actually sends and
  * never *invents* a value it did not.
@@ -498,7 +498,7 @@ describe("hostile payloads (review follow-ups)", () => {
  * Static table intersected with the live matrix. Two chains in `CONFIG.CHAINS`
  * are flag-gated server-side (Tron behind ENABLE_TRON, Arc behind ENABLE_ARC)
  * and vanish from the matrix while their flag is off, so the table alone
- * answers "quotable" wrong -- which is how this SDK shipped two dead Tron
+ * answers "quotable" wrong -- which is how this registry shipped two dead Tron
  * testnets and no Arc.
  */
 describe("servedChainKeys / chainUnservedReason", () => {
