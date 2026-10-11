@@ -60,9 +60,9 @@ export interface DaemonConfig {
   allowInsecureBind: boolean;
 }
 
-export const DEFAULT_MAX_TIMESTAMP_AGE_SECONDS = 300;
-export const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 30;
-export const DEFAULT_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS = 3600;
+const DEFAULT_MAX_TIMESTAMP_AGE_SECONDS = 300;
+const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 30;
+const DEFAULT_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS = 3600;
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -90,7 +90,7 @@ function envList(env: NodeJS.ProcessEnv, name: string): string[] | undefined {
 }
 
 /** True for addresses that never leave the host. */
-export function isLoopbackHost(host: string): boolean {
+function isLoopbackHost(host: string): boolean {
   return host === "localhost" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 }
 

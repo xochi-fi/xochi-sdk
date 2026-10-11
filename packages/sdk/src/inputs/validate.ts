@@ -10,13 +10,13 @@ const MAX_TIMESTAMP = 1099511627776; // 2^40 (~year 36812)
 const MAX_REPORTING_THRESHOLD = 204962515653461695n; // 2^64 / 90
 const MAX_WEIGHT = 10000; // circuits/shared risk.nr MAX_WEIGHT
 
-export function validateSignal(signal: number, index: number): void {
+function validateSignal(signal: number, index: number): void {
   if (!Number.isInteger(signal) || signal < 0 || signal > 100) {
     throw new Error(`Signal[${String(index)}] must be 0-100, got ${String(signal)}`);
   }
 }
 
-export function validateWeight(weight: number, index: number, active: boolean): void {
+function validateWeight(weight: number, index: number, active: boolean): void {
   if (!Number.isInteger(weight) || weight < 0 || weight > MAX_WEIGHT) {
     throw new Error(
       `Weight[${String(index)}] must be an integer in [0, ${String(MAX_WEIGHT)}], got ${String(weight)}`,
@@ -34,7 +34,7 @@ export function validateWeight(weight: number, index: number, active: boolean): 
   }
 }
 
-export function validateProviderId(id: string, index: number, active: boolean): void {
+function validateProviderId(id: string, index: number, active: boolean): void {
   if (active && (id === "0" || id === "")) {
     throw new Error(`Provider ID[${String(index)}] must be non-zero for active provider`);
   }

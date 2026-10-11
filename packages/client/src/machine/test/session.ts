@@ -40,7 +40,7 @@ export const CONFIG: MachineConfig = {
  * against the WALL clock (no lower bound, an upper bound of an hour ahead), and
  * T0 is in the past, so this is always inside it.
  */
-export const INTENT_DEADLINE = Math.floor(T0 / 1000) + 3600;
+const INTENT_DEADLINE = Math.floor(T0 / 1000) + 3600;
 
 export function ctx(over: Partial<Context> = {}, wallet: Partial<Context["wallet"]> = {}): Context {
   return {

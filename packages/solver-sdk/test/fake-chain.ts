@@ -37,7 +37,7 @@ interface Stub {
 // message the node returns (ethers maps "insufficient funds", "nonce too low",
 // ... to its codes; anything else is ambiguous); `mine` lands it at once with
 // that receipt status; `pend` accepts it into the mempool without mining it.
-export type SendBehavior = { reject: string } | { mine: 1 | 0 } | { pend: true };
+type SendBehavior = { reject: string } | { mine: 1 | 0 } | { pend: true };
 
 export interface SentTx {
   hash: string;
