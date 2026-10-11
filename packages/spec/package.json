@@ -64,7 +64,8 @@
     "!wire/generate.mjs",
     "!wire/format.mjs",
     "!conformance/*.ts",
-    "!fee/*.ts"
+    "!fee/*.ts",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public"

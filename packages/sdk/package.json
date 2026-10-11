@@ -94,7 +94,8 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "circuits"
+    "circuits",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public"
