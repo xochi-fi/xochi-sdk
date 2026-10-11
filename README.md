@@ -30,7 +30,7 @@ Node 22.12+. From the root: `npm ci`, then `npm run build`, `npm run typecheck`,
 
 ## More
 
-- Changelogs: each package's own `packages/<name>/CHANGELOG.md`
+- Changelogs: each published package's own `packages/<name>/CHANGELOG.md`
 - [SECURITY.md](SECURITY.md)
 - [CLAUDE.md](CLAUDE.md): repo rules and invariants (fund-safety, wire contract, parity state)
 - [LICENSE](LICENSE) (MIT)

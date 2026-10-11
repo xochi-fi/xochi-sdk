@@ -16,7 +16,7 @@ A bundle is signed for ONE proof type: a `COMPLIANCE_SIGNED` signature fails as 
 
 - A slot `i` signature fails in slot `j`.
 - Pass inactive slots as `null`; the builder pads them.
-- Active count `>= thresholdM`, with distinct signers and providers.
+- Active count `>= thresholdM`, with a distinct signer key (`signerPubkeyHash`) per active slot.
 
 All signers sign over the same `chainId`, `oracleAddress`, `jurisdictionId`, `providerSetHash`, `configHash`, signals, weights, timestamp and submitter:
 
