@@ -6,7 +6,7 @@ npm workspace monorepo: the root (`xochi-sdk-workspace`, `private`, `workspaces:
 
 Also provides the trust tier system, privacy levels, attestation scoring and tier proof generation: the shared business logic the xochi frontend and backend consume.
 
-Three things here sign bytes; never conflate them: **`@xochi/signer`** (taker EIP-712 intent / ERC-3009 / Permit2 signing; moves funds), **`@xochi/provider`** (compliance-data provider attestations for the signed circuits and credential roots; moves no funds), **`sdks/*` `xochi-conformance`** (CI byte-parity runners, not production).
+Three things here sign bytes; never conflate them: **`@xochi/signer`** (taker EIP-712 intent / ERC-3009 / Permit2 signing; moves funds), **`@xochi/provider`** (compliance-data provider attestations for the signed circuits and credential roots; moves no funds), **`conformance/*` `xochi-conformance`** (CI byte-parity runners, not production).
 
 Scope: this repo owns what a counterparty must reproduce (signing, vectors, the prose contract, client guards), so the venue is verifiable without running it. The venue itself (quoting, routing, settlement, escrow contracts) is the private Riddler server and its harness `packages/e2e-signer`. EIP-712 domain and contract names stay `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond` (intent domain `Xochi`): they are signed bytes and deployed contracts. In `ESCROW-RFC.md` / `SOLVER-RFC.md`, `[RESERVED]` means fixed shape, inert code (typed, never populated); never read `[PROPOSED]` as live.
 
@@ -30,7 +30,7 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 - **src/circuits-browser.ts**: BrowserCircuitLoader, no node:fs dependency
 - **src/inputs/**: per-circuit input builders that validate constraints and construct witness inputs
 - **src/inputs/validate.ts**: shared validation (signal range, weights, timestamps, credential types, submitter non-zero)
-- **src/inputs/field-bytes.ts**: the sdk's own `fieldToBytes` / `bytesToHexField`, so the signed builders take `@xochi/provider`'s byte bundles without depending on it (`@xochi/provider` is a devDependency for tests only)
+- **src/inputs/field-bytes.ts**: `@xochi/sdk`'s own `fieldToBytes` / `bytesToHexField`, so the signed builders take `@xochi/provider`'s byte bundles without depending on it (`@xochi/provider` is a devDependency for tests only)
 - **src/abis.ts**: full Solidity ABIs for Oracle, Verifier and SettlementRegistry (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when the sibling ERC-8262 `out/` or `ERC_8262_PATH` exists)
 - **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 21 subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: pinned `EXPECTED_NOIR_VERSION` + `assertCompatibleNoirVersion` (used by both loaders)
@@ -133,7 +133,7 @@ npm run generate:solver-bid-v2 && npm run generate:escrow && git diff --exit-cod
 (cd packages/spec/wire && shasum -a 256 -c <(echo "$(cat openapi.sha256)  openapi.json"))
 ```
 
-The generate lines are the gate (CI runs exactly these). Those bytes are a contract other implementations are held to: regenerating is a deliberate wire change that lands with the server, never a refresh to make CI pass. `sdks/{python,go,rust}` have their own CI jobs (`uv run pytest`, `go test ./...`, `cargo test`). `@xochi/sdk`'s anvil suite is CI job `integration` (`npm run test:integration`; foundry + a compiled ERC-8262).
+The generate lines are the gate (CI runs exactly these). Those bytes are a contract other implementations are held to: regenerating is a deliberate wire change that lands with the server, never a refresh to make CI pass. `conformance/{python,go,rust}` have their own CI jobs (`uv run pytest`, `go test ./...`, `cargo test`). `@xochi/sdk`'s anvil suite is CI job `integration` (`npm run test:integration`; foundry + a compiled ERC-8262).
 
 ### Packages
 
@@ -148,7 +148,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
   - `npm run generate:wire` is the only writer. Its refusals (exit 4, exactly three consent flags), the HEAD baseline, `format.mjs`'s number handling and the provenance block to paste into the PR: `packages/spec/wire/README.md` "Refresh". Per-PR CI checks only `openapi.json` against `openapi.sha256`; matching the server is nightly.
   - Known served-contract gap, pinned: `ExecuteRequest.required` is `["intent_id", "quote_id", "signature"]`, so `aztec_proof` is optional in the schema and "required for `shielded`" lives only in its `description` (prose the differ never compares); no `QuoteResponse` field declares `aztec_proof`, so shielded settlement reads an undeclared field (SPEC.md §3.2). Riddler's harness `wire-contract.test.ts` pins both: `required` does not list it, and the description still states it.
 
-- **What belongs in `packages/spec`**: the served `/xochi/*` contract as **language-neutral** artifacts (`sdks/{python,go,rust}` consume them), not TS validators; every current dependency is dev-only. #93's row moving xochi's `packages/shared/src/schemas.ts` here is mis-scoped: that file validates the Worker's own `/api/*` and treats `/xochi/*` as opaque (`CapabilitiesResponseSchema` is `capabilities: z.unknown()`), so it stays in xochi.
+- **What belongs in `packages/spec`**: the served `/xochi/*` contract as **language-neutral** artifacts (`conformance/{python,go,rust}` consume them), not TS validators; every current dependency is dev-only. #93's row moving xochi's `packages/shared/src/schemas.ts` here is mis-scoped: that file validates the Worker's own `/api/*` and treats `/xochi/*` as opaque (`CapabilitiesResponseSchema` is `capabilities: z.unknown()`), so it stays in xochi.
 
 - **`packages/solver-sdk`** (`@xochi/solver-sdk`): maker-side sealed-bid RFQ SDK (ethers + zod + `@xochi/signer`); unpublished until the panel opens, but not `private`. `SolverClient.run(solver)` drives discovery -> bid -> award -> fill; a solver implements `capabilities`/`quote`/`fill`. Mechanics (nonce handling, accept/fill/claim outcomes, restart, state-file lease, allowance top-ups): the TSDoc and `examples/{escrow-solver,fill-state-file,supervise}.ts`. Rules:
   - Consumer rules (version gate, live vs gated, escrow flow, `onSigned`, restart, fill re-drive, same-nonce resends, gateway queue, one key, state-file lease, timeouts): `packages/solver-sdk/README.md` "Rules you must follow". Implementation invariants not stated there:
@@ -159,7 +159,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
   - The example persists `accepting` / `accepted` (from `onSigned`) / `filled` in `SOLVER_STATE_FILE` (`examples/fill-state-file.ts`, `examples/supervise.ts`).
   - Key parse errors never echo the key (`walletFromKey`). Claim-path tests use real ethers wallets against `test/fake-chain.ts`.
 
-- **`sdks/{python,go,rust}`** (`xochi-conformance`; Python import `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): conformance runners reproducing all 45 `conformance.json` vectors byte-for-byte, each in its own CI job (`python-conformance`/`go-conformance`/`rust-conformance`; Python runs a pinned `uv` with `uv sync --locked`). **Not production signers**: they reject non-canonical input rather than normalize it (see each `sdks/*/README`). `@xochi/signer` also holds the inert `computeOrderId`/`assertEscrowBinding` (`escrow.ts`).
+- **`conformance/{python,go,rust}`** (`xochi-conformance`; Python import `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): conformance runners reproducing all 45 `conformance.json` vectors byte-for-byte, each in its own CI job (`python-conformance`/`go-conformance`/`rust-conformance`; Python runs a pinned `uv` with `uv sync --locked`). **Not production signers**: they reject non-canonical input rather than normalize it (see each `conformance/*/README`). `@xochi/signer` also holds the inert `computeOrderId`/`assertEscrowBinding` (`escrow.ts`).
 
 ### Modules
 
@@ -249,7 +249,7 @@ Under `packages/signer/src/` unless noted.
   - The fixture ships `encode_type`, `typehash` and `domain_separator` (per vector `expected_struct_hash`/`expected_digest`/`expected_signature`), checked in that order, so a port learns which is wrong. Drift silently rejects every honest bid. `npm run generate:solver-bid-v2` is a **wire change** in lockstep with the server; CI gates staleness.
 
 - **The announcement never carries the venue's reserve; re-adding it silently zeroes the auction.** Since SOLVER-RFC `0.3.0-draft`, `IntentAnnouncement` (`packages/solver-sdk/src/{types,schema}.ts`) carries **`minOutput`** (a bid below gets `422`, equal is admissible), not the private reserve; `minOutput + 1` is admissible and still loses. Prod quotes made the reserve a public function of the request (Riddler `docs/economics/AUCTION-DISCLOSURE-MEMO.md` §7.1, §2.1); withholding removed the field, not the derivability, so no doc may call the reserve unpredictable, only undisclosed. `trustScore` was removed too (it disclosed the fee tier, 12–18 bps of reserve).
-  - Schemas stay `.passthrough()`, but `reserveOutput` and `trustScore` are **explicitly deleted** after parse. That delete is defence in depth only: the panel member runs this SDK and can read the raw feed. Enforcement is server-side (SOLVER-RFC "Migrating from `0.2.0-draft`" steps 1–2: compute `minOutput` with the venue-wide `SOLVER_ANNOUNCE_FLOOR_BPS`, never a per-taker value; stop emitting the retired keys; §4.2 forbids `minOutput` equal to the quoted output). No doc may claim the client-side delete withholds anything.
+  - Schemas stay `.passthrough()`, but `reserveOutput` and `trustScore` are **explicitly deleted** after parse. That delete is defence in depth only: the panel member runs `@xochi/solver-sdk` and can read the raw feed. Enforcement is server-side (SOLVER-RFC "Migrating from `0.2.0-draft`" steps 1–2: compute `minOutput` with the venue-wide `SOLVER_ANNOUNCE_FLOOR_BPS`, never a per-taker value; stop emitting the retired keys; §4.2 forbids `minOutput` equal to the quoted output). No doc may claim the client-side delete withholds anything.
   - Do **not** restore either field, and do not publish a binned reserve without sizing the bin (`w ≈ θ/2`).
 
 - **The fee schedule is parity state with Riddler.** `FEE_SCHEDULE` and `packages/spec/fee/{vectors,schedule}.json` mirror `Riddler.Integrations.Xochi.FeePolicy` (solver 8/18, venue+routing by tier, impact k=50/cap=150, surplus 15%). The per-layer **floor** rule is normative: `total_fee` is the sum of independently floored layers, not `floor(amount * total_bps / 10000)`. A schedule change lands on both sides in lockstep and regenerates the vectors (`npm run generate:fee`). Default-**on** server-side (`config/runtime.exs` `xochi_layered_fees`; `XOCHI_LAYERED_FEES=false` rolls back); SPEC §4.6 deprecates the legacy path, and a quote without `fee_breakdown` is legacy.
@@ -267,7 +267,7 @@ The origin-pull rules (`assertPullMatchesIntent`'s domain binding, the escrow-en
 
 `scripts/verify-attestation-version.mjs`, `scripts/verify-attestation-vectors.mjs`, `scripts/verify-spec-version.mjs` and `scripts/verify-openapi.mjs`, run daily by `.github/workflows/producer-drift.yml` (`npm run verify:version` / `verify:vectors` / `verify:spec-version` / `verify:openapi` locally).
 
-Rule (#92, where `deposit.test.ts` stayed green while the SDK was wrong): _an equality assertion is informative only if at least one side is a value this repo cannot edit._ The spec-version and openapi probes share a job separate from the attestation job, so a pending spec bump cannot mask a vector failure (#92). That job's key is **`spec-version-drift`** (branch protection names it), displayed as **"contract drift (spec_version + served openapi)"**; red means `verify-spec-version.mjs` **or** `verify-openapi.mjs`, so read the step name. A `workflow_dispatch` selecting only one of the two fails the job, since a partial sweep is indistinguishable from a full one.
+Rule (#92, where `deposit.test.ts` stayed green while `@xochi/signer` was wrong): _an equality assertion is informative only if at least one side is a value this repo cannot edit._ The spec-version and openapi probes share a job separate from the attestation job, so a pending spec bump cannot mask a vector failure (#92). That job's key is **`spec-version-drift`** (branch protection names it), displayed as **"contract drift (spec_version + served openapi)"**; red means `verify-spec-version.mjs` **or** `verify-openapi.mjs`, so read the step name. A `workflow_dispatch` selecting only one of the two fails the job, since a partial sweep is indistinguishable from a full one.
 
 - **version probe**: one unauthenticated GET comparing `capabilities.deposit_attestation_version` (Riddler#877) to `DEPOSIT_ATTESTATION_VERSION`. It does not quote: a real attestation permanently consumes a Tron deposit address.
 - **vectors probe**: fetches `/xochi/vectors/deposit-attestation.json`, checks `sha256(bytes)` against `capabilities.deposit_attestation_vectors_sha256`, then compares to the vendored copy **structurally and by vector name**, never by index or byte-for-byte. The server-supplied artifact path must stay **same-origin**.
@@ -404,7 +404,7 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **XIPs**: protocol proposals. XIP-1 (settlement splitting) and XIP-2 (adaptive settlement) are implemented here.
 
-**@xochi/shared** (xochi monorepo): trading constants, validators, schemas. Re-exports proof constants (`PROOF_TYPES`, `JURISDICTIONS`, `ORACLE_ABI`) from the SDK to avoid divergence.
+**@xochi/shared** (xochi monorepo): trading constants, validators, schemas. Re-exports proof constants (`PROOF_TYPES`, `JURISDICTIONS`, `ORACLE_ABI`) from `@xochi/sdk` to avoid divergence.
 
 **xochi frontend** (xochi monorepo): consumes `@xochi/sdk`. `noir-proving.ts` wraps BrowserCircuitLoader, `tier-proofs.ts` delegates to SDK proof gen/verify, `workers/counter/src/oracle.ts` wraps OracleLite.
 
@@ -412,4 +412,4 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **raxol** (`raxol_payments`): reads `packages/spec/conformance/conformance.json` byte-for-byte in ExUnit (`Raxol.Payments.Test.ConformanceFixture`).
 
-**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `sdks/` and the probes.
+**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `conformance/` and the probes.

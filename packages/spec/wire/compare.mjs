@@ -875,7 +875,7 @@ export const compareContract = (served, vendored) => {
    * document root. A served copy that rewrites `servers[0].url` to another host
    * graded OK on every axis, was written by the refresh with no flag, and was
    * then verified against that same server forever. `packages/spec` exports
-   * this document to sdks/{python,go,rust}, where `servers[0].url` is the base
+   * this document to conformance/{python,go,rust}, where `servers[0].url` is the base
    * URL a generated client bakes in.
    *
    * Compared as an ORDERED list of urls, and this is where it parts company

@@ -70,7 +70,7 @@ function requireChain(config: SignerConfig, chainKey: string) {
  * A 0x-hex nonce shorter than 32 bytes is LEFT-padded. That is the reference
  * normalization the server mirrors, so removing it would break any quote that
  * carries a short nonce. The Python/Go/Rust conformance runners instead reject
- * a non-32-byte nonce outright (see each `sdks/<lang>/README`) because they are
+ * a non-32-byte nonce outright (see each `conformance/<lang>/README`) because they are
  * checked against a fixture whose vectors are all full-width; this is the one
  * input class where the reference is deliberately more permissive.
  *

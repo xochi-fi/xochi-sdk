@@ -2,7 +2,7 @@
 // reproduces the digest, signature, and signed_object of every vector in
 // @xochi/spec conformance/conformance.json byte-for-byte (SPEC.md §2/§8),
 // reproducing the signatures of @xochi/signer for the vectors, like the
-// Python runner (sdks/python). Network-free.
+// Python runner (conformance/python). Network-free.
 package conformance
 
 import (

@@ -8,7 +8,7 @@
  * an IEEE-754 double, so the round trip re-spells literals --
  * `115792089...639935` becomes `1.157920892373162e+77`, `1e400` becomes `null`,
  * and a served `0.0` becomes `0`. `packages/spec` ships this file to
- * `sdks/{python,go,rust}`, and not every parser folds: Go's `json.Number` and
+ * `conformance/{python,go,rust}`, and not every parser folds: Go's `json.Number` and
  * serde_json's `arbitrary_precision` keep the literal, so a re-spelled bound is
  * this repo asserting to those consumers a value the producer never served.
  *
