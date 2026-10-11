@@ -1,12 +1,16 @@
 # @xochi/provider
 
-Signing for compliance-data providers in [ERC-8262](https://github.com/xochi-fi/ERC-8262). A screening provider signs the risk signals it produced. The ERC-8262 signed circuits (`COMPLIANCE_SIGNED` 0x07, `RISK_SCORE_SIGNED` 0x08, `COMPLIANCE_MULTI_SIGNED` 0x09) check that secp256k1 signature in-circuit, and the Oracle accepts only `signer_pubkey_hash` values registered in `_validSignerPubkeyHashes` (audit I-1, signal honesty). The package also signs EIP-712 credential-root publications for `ERC8262Oracle.publishCredentialRoot`, and ships a [reference HTTP signing daemon](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md) as source.
+Signing for compliance-data providers in [ERC-8262](https://github.com/xochi-fi/ERC-8262). A
+provider signs the risk signals it produced; the signed circuits (`COMPLIANCE_SIGNED` 0x07,
+`RISK_SCORE_SIGNED` 0x08, `COMPLIANCE_MULTI_SIGNED` 0x09) verify that secp256k1 signature
+in-circuit, and the Oracle accepts only registered `signer_pubkey_hash` values. It also signs
+EIP-712 credential-root publications for `publishCredentialRoot`.
 
-What this package is **not**:
-
-- **Not the taker signer.** EIP-712 intent, ERC-3009 and Permit2 signing live in [`@xochi/signer`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme).
-- **Not the prover.** Proof generation and the input builders live in [`@xochi/sdk`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/sdk#readme). That package takes this one's output (`signedBundle`, `slots`) and does not depend on it; its prover side is documented in [signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md).
-- **It moves no funds.** A signature here attests to compliance signals or a credential root. It authorizes no transfer.
+Taker signing (intents, ERC-3009, Permit2) is in
+[`@xochi/signer`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme); proving
+is in [`@xochi/sdk`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/sdk#readme) (see
+[signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md)).
+Nothing here moves funds.
 
 ## Install
 
@@ -14,11 +18,13 @@ What this package is **not**:
 npm install @xochi/provider @aztec/bb.js viem
 ```
 
-`viem@^2` is a peer dependency. `@aztec/bb.js` is a dependency; install it directly when you construct the `Barretenberg` instance the signers take for Pedersen hashing. ESM-only, with a `default` condition, so `require("@xochi/provider")` works on Node 22.12+.
+`viem@^2` is a peer dependency; `@aztec/bb.js` provides the `Barretenberg` instance used for
+Pedersen hashing. ESM-only (`require()` works on Node 22.12+).
 
-Keys load through a `KeyLoader`. `RawKeyLoader` and `HexKeyLoader` are for tests and the reference daemon. In production, implement `KeyLoader` over a KMS or HSM.
+Keys load through a `KeyLoader`. `RawKeyLoader`/`HexKeyLoader` are for tests; in production,
+implement `KeyLoader` over a KMS or HSM.
 
-## Signed signals (0x07 / 0x08): `signSignals`
+## Signed signals (0x07 / 0x08)
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
@@ -40,17 +46,16 @@ const signed = await signSignals(api, signerKey, {
 // signed: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as Uint8Array
 ```
 
-Pass `signed` as `signedBundle` to `@xochi/sdk`'s `proveComplianceSigned` / `proveRiskScoreSigned` (or `buildComplianceSignedInputs` / `buildRiskScoreSignedInputs`). The prover's `chainId`, `oracleAddress`, signals, weights, timestamp and submitter must equal what was signed, because the circuit recomputes the digest. `formatSignSignalsResult` renders the bundle as `0x` hex.
+Pass `signed` as `signedBundle` to `@xochi/sdk`'s `proveComplianceSigned` / `proveRiskScoreSigned`
+with the same `chainId`, `oracleAddress`, signals, weights, timestamp and submitter.
+`formatSignSignalsResult` renders it as `0x` hex.
 
-## M-of-N slots (0x09): `signSlotPayload`
+## M-of-N slots (0x09)
 
-`COMPLIANCE_MULTI_SIGNED` has up to 5 slots (`MAX_PROVIDERS_MULTI`). Each active signer signs a digest for **its own slot**:
+Each active signer (up to `MAX_PROVIDERS_MULTI` = 5) signs a digest for its own slot:
 
 ```typescript
-import { RawKeyLoader, loadSignerKey, signSlotPayload } from "@xochi/provider";
-
-const keyA = await loadSignerKey(new RawKeyLoader(privKeyA, "provider-A"));
-const keyB = await loadSignerKey(new RawKeyLoader(privKeyB, "provider-B"));
+import { signSlotPayload } from "@xochi/provider";
 
 const shared = {
   chainId: 1n,
@@ -64,14 +69,14 @@ const shared = {
   submitter: BigInt(account.address),
 };
 
-// Slot indices are NOT interchangeable.
 const slotA = await signSlotPayload(api, keyA, { ...shared, slotIndex: 0 });
 const slotB = await signSlotPayload(api, keyB, { ...shared, slotIndex: 1 });
 ```
 
-Each result goes into the `slots` array of `@xochi/sdk`'s `proveComplianceMultiSigned` at the index it was signed for, with its `signals` / `weights` as numbers. Pass `null` for inactive slots and the builder pads them. The proof needs at least `thresholdM` active slots with distinct signers and providers, and M may not sit below the jurisdiction's floor (`MIN_MULTI_PROVIDER_THRESHOLDS`: EU 1, UK 1, US 2, SG 2, UAE 2); the full slot semantics are in [signed proofs](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md#m-of-n-multi-provider-proofs-0x09).
+Put each result in `proveComplianceMultiSigned`'s `slots` at the index it was signed for (`null` for
+inactive). M must meet `MIN_MULTI_PROVIDER_THRESHOLDS` (EU 1, UK 1, US 2, SG 2, UAE 2).
 
-## Credential roots: `signCredentialRoot`
+## Credential roots
 
 ```typescript
 import { signCredentialRoot } from "@xochi/provider";
@@ -85,53 +90,36 @@ const { signature, signer } = signCredentialRoot(signerKey, {
   notBefore: 1790000000n,
   notAfter: 1790003600n,
 });
-// signature: 65 bytes r || s || v. signer: the Ethereum address to register
-// via setCredentialSigner(providerId, signer).
+// Register `signer` via setCredentialSigner(providerId, signer); a separate publisher EOA submits:
 await oracle.publishCredentialRoot(1n, root, cid, notBefore, notAfter, signature);
 ```
 
-The digest is EIP-712 `CredentialRootPublication(uint256 providerId,bytes32 root,bytes32 cidHash,uint64 notBefore,uint64 notAfter)` under domain `{ name: "ERC8262Oracle", version: "1", chainId, verifyingContract: oracle }`. It is pinned byte-for-byte to ERC-8262's `EIP712CredentialRoot.sol` by a parity vector. `credentialRootDigest`, `hashPublication`, `buildDomainSeparator` and `cidHash` are exported for verification. The publisher EOA that submits the root is a separate account from the signing key, so a compromised publisher cannot mint roots on its own.
+`credentialRootDigest`, `hashPublication`, `buildDomainSeparator` and `cidHash` are exported for
+verification.
 
-## Domain separation
+## Rules
 
-Each signature is valid for one proof type, one Oracle deployment and, for 0x09, one slot. The rules:
-
-- **Per-proof-type domain tags.** The Pedersen signed-signals digest starts with a domain tag: `DOMAIN_SIGNED_SIGNALS` for 0x07, `DOMAIN_RISK_SIGNED_SIGNALS` for 0x08, `DOMAIN_MULTI_SIGNED_SIGNALS` for 0x09 slots. `proofType` is required, and any value other than 0x07 or 0x08 is refused. A bundle signed for 0x07 therefore fails in 0x08, and the reverse. `DOMAIN_SIGNER_PUBKEY` separates `signer_pubkey_hash` from all three.
-- **Chain and Oracle binding (audit F-6).** `chain_id` and `oracle_address` are in every digest, and the Oracle asserts that they equal `block.chainid` and `address(this)`. A signature cannot mint attestations on another chain or another Oracle. A signer/prover mismatch fails with `invalid provider signature on signals`. A signer/Oracle mismatch fails with `PublicInputMismatch`.
-- **Slot binding.** The 0x09 slot digest includes `slot_index`, `jurisdiction_id` and `config_hash`. A slot-`i` signature does not verify in slot `j`, and a slot digest never equals a single-signer digest.
-- **Submitter binding.** `submitter` is in every digest and is a public input. The Oracle enforces `submitter == msg.sender`, so another account cannot submit a proof built from someone else's bundle.
-
-Signing is deterministic (RFC 6979, low-S). For a ledger that answers an identical retry with the identical signature, use `signSignalsWithReplayProtection` / `signSlotPayloadWithReplayProtection` over a `ReplayDb`. `MemoryReplayDb` is the in-process reference. On-chain, `_usedProofs` stops proof replay.
+- A signature is valid for one proof type: `proofType` must be 0x07 or 0x08, and each type (and 0x09
+  slots) has its own domain tag.
+- `chainId` and `oracleAddress` are signed; they must equal the consuming Oracle's, or the proof
+  fails.
+- A 0x09 signature is bound to its `slotIndex`; it does not verify in another slot.
+- `submitter` is signed and must be the account that submits the proof.
+- The signed `timestamp` must be under 1 hour old when the proof reaches the Oracle.
+- Signing is deterministic (RFC 6979); `signSignalsWithReplayProtection` /
+  `signSlotPayloadWithReplayProtection` over a `ReplayDb` answer identical retries identically.
 
 ## Registering the signer
 
-`computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY)` gives the `signer_pubkey_hash`. Register it once through `ERC8262Oracle.registerSignerPubkeyHash(hash, providerId)`, available as `oracle.registerSignerPubkeyHash` in `@xochi/sdk`. The same registry covers 0x07, 0x08 and 0x09, so a key (or daemon) registered for 0x07 can sign 0x09 slots, subject to jurisdiction policy.
+`computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY)` gives the `signer_pubkey_hash`.
+Register it once with `oracle.registerSignerPubkeyHash(hash, providerId)` (`@xochi/sdk`); one
+registration covers 0x07, 0x08 and 0x09.
 
-## Daemon
+## Signing daemon
 
-[`daemon/`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md) is a reference HTTP daemon around these signers: `POST /sign`, `/sign-multi` (one slot per call), `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`. It keeps the key out of the proving process, pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window, scopes credentials per route group, and writes an audit record before it returns a signature. Responses carry the same fields as the in-process signers, as `0x` hex, and an identical retry returns the identical signature. It ships as TypeScript source and is **not** in the npm tarball. From the repo root:
-
-```bash
-SIGNER_PRIVATE_KEY_HEX=0x... SIGNER_API_KEY=dev-key \
-SIGNER_CHAIN_ID=8453 SIGNER_ORACLE_ADDRESS=0x... \
-npm run daemon -w @xochi/provider
-```
-
-Endpoints, request bodies, status and policy codes, mTLS, the audit log, and production hardening are covered in [daemon/README.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md).
-
-## Development
-
-```bash
-npm ci                   # at the repo root (npm workspaces), then:
-cd packages/provider
-npm test                 # unit tests: Noir parity vectors, signer, EIP-712 parity, daemon
-npm run typecheck        # tsc --noEmit (sources + tests) and the daemon
-npm run format:check     # prettier --check (run in CI / prepublishOnly)
-npm run build            # compile to dist/
-npm run daemon           # build, then run the reference daemon (logs as [xochi-provider])
-```
-
-The Pedersen digests are pinned to ERC-8262's Noir parity tests (`circuits/shared/src/{sig,multi_sig}.nr`, `nargo test parity`). The end-to-end path (daemon, proof, on-chain `submitCompliance`) runs in `@xochi/sdk`'s integration suite (`packages/sdk/test/integration-signed-onchain.test.ts`, `npm run test:integration` from the repo root).
+A reference HTTP daemon that keeps the key out of the proving process ships as source in the repo,
+not in this tarball: see
+[daemon/README.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/provider/daemon/README.md).
 
 ## License
 

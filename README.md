@@ -1,6 +1,6 @@
 # xochi-sdk
 
-TypeScript packages for building on Xochi: ERC-8262 zero-knowledge compliance proofs and the provider attestations they consume, the Xochi trade API client and embeddable widget, network-free intent signing, and the protocol's wire contract with byte-equality conformance vectors. The repo root is a private npm workspace root (`xochi-sdk-workspace`) and publishes nothing; every package lives under `packages/`.
+TypeScript packages for building on Xochi: ERC-8262 ZK compliance proofs, provider attestations, the trade API client and widget, intent signing, and the wire contract. The root is a private workspace and publishes nothing.
 
 ## Packages
 
@@ -20,35 +20,13 @@ Tags publish through `.github/workflows/release.yml`, one package per tag. Each 
 
 ## Three kinds of signing
 
-Three things here sign bytes, and they are not interchangeable:
-
 - **`@xochi/signer`: the taker's signer. It moves funds.** EIP-712 Xochi intents, ERC-3009 and Permit2 pull authorizations, plus the pre-sign checks that hold a server quote to the request. A bug here loses money.
 - **`@xochi/provider`: a compliance-data provider's attestations. It moves no funds.** Secp256k1 signatures over risk signals that the ERC-8262 signed circuits (0x07, 0x08, 0x09) verify in-circuit, and EIP-712 credential-root publications. `@xochi/sdk` turns them into proofs.
 - **`sdks/*` (`xochi-conformance`; Python `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/signer` conformance vector byte-for-byte and reject non-canonical input rather than normalize it.
 
 ## Development
 
-Node 22.12+. Install once at the root; every workspace shares the root lockfile.
-
-```bash
-npm ci
-npm run build          # every workspace, @xochi/signer first (= build:workspaces)
-npm run typecheck      # every workspace (= typecheck:workspaces)
-npm test               # every workspace's unit tests (= test:workspaces)
-npm run format:check   # root json/md; each workspace has its own format:check
-```
-
-One package: `npm test -w @xochi/sdk`, `npm run build -w @xochi/client`, and so on (shortcuts: `test:sdk`, `test:provider`, `test:signer`, ...). Proof integration tests need foundry and a compiled [ERC-8262](https://github.com/xochi-fi/ERC-8262) checkout beside this repo (or `ERC_8262_PATH`): `npm run test:integration`. The provider's reference daemon: `npm run daemon -w @xochi/provider`.
-
-Wire artifacts are checked-in contract state; regenerating them is a wire change that lands with the server, never a refresh to make CI pass:
-
-```bash
-npm run generate:conformance && npm run generate:fee && git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/
-npm run generate:solver-bid-v2 && npm run generate:escrow && git diff --exit-code packages/spec/conformance/
-(cd packages/spec/wire && shasum -a 256 -c <(echo "$(cat openapi.sha256)  openapi.json"))
-```
-
-`scripts/` holds the scheduled producer-drift probes (`npm run verify:openapi`, `verify:spec-version`, `verify:version`, `verify:vectors`); they need `RIDDLER_URL_PROD` (or `RIDDLER_SERVER` naming another `RIDDLER_URL_<NAME>`).
+Node 22.12+. From the root: `npm ci`, then `npm run build`, `npm run typecheck`, `npm test` (all workspaces, `@xochi/signer` built first); one package with `-w @xochi/<name>`. Proof integration tests (`npm run test:integration`) need foundry and a compiled [ERC-8262](https://github.com/xochi-fi/ERC-8262) checkout beside this repo (or `ERC_8262_PATH`). Checked-in wire artifacts are contract state; regenerate them only in lockstep with the server.
 
 ## More
 

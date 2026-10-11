@@ -1,25 +1,16 @@
-# On-chain submission and verification
+# On-chain clients and settlement
 
-Part of the [`@xochi/sdk`](../README.md) reference. The viem clients (`ERC8262Oracle`, `ERC8262Verifier`, `SettlementRegistryClient`) take a wallet client with a bound account for writes; `OracleLite` needs no viem.
+Part of the [`@xochi/sdk`](../README.md) reference. `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistryClient` use viem and need a wallet client with a bound account for writes; `OracleLite` needs no viem. Specs for XIP-1/2: [XIPs](https://github.com/xochi-fi/XIPs).
 
-## On-chain submission
-
-`ERC8262Oracle`:
+## Oracle
 
 ```typescript
 import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
-import { createPublicClient, createWalletClient, http } from "viem";
-import { mainnet } from "viem/chains";
 
-const oracle = new ERC8262Oracle(
-  "0x...", // oracle contract address
-  createPublicClient({ chain: mainnet, transport: http() }),
-  createWalletClient({ chain: mainnet, transport: http(), account }),
-  mainnet,
-);
+const oracle = new ERC8262Oracle("0x...", publicClient, walletClient, mainnet);
 
-// Submit a single proof (timestamp in publicInputs must be within 1 hour of block.timestamp)
-const txHash = await oracle.submitCompliance({
+// The publicInputs timestamp must be within 1 hour of block.timestamp.
+await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
   proof: result.proofHex,
@@ -27,131 +18,98 @@ const txHash = await oracle.submitCompliance({
   providerSetHash: "0x...",
 });
 
-// Compliance status: the Oracle's compliance slot, limited to
-// COMPLIANCE_PROOF_TYPES = [0x01, 0x07, 0x09].
 const { valid, attestation } = await oracle.checkCompliance("0x...", 0);
-// attestation: { subject, jurisdictionId, proofType, meetsThreshold, timestamp,
-//   expiresAt, proofHash, providerSetHash, publicInputsHash, verifierUsed }
-
-// Accept a different set deliberately (an empty list throws):
-await oracle.checkCompliance("0x...", 0, { acceptedProofTypes: [PROOF_TYPES.COMPLIANCE_SIGNED] });
-
-// Filter by proof type (e.g., require an attestation backed by a PATTERN proof)
-const patternStatus = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.PATTERN);
-
-// Retrieve historical proofs
+const byType = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.PATTERN);
 const history = await oracle.getAttestationHistory("0x...", 0);
-const proof = await oracle.getHistoricalProof(history[0]);
 ```
 
-### Batch submission
+`checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately.
 
-One atomic `submitComplianceBatch` transaction for a `proveBatch`/`provePlan` result ([settlement-xip.md](settlement-xip.md)). Max 10 proofs (`MAX_BATCH_SIZE`, audit F-3; `BatchTooLarge`).
+`oracle.submitBatch({ batch, jurisdictionId, proofType, providerSetHash })` submits a `proveBatch`/`provePlan` result in one atomic transaction, max 10 proofs (`MAX_BATCH_SIZE`); `submissions[i].proofHash` feeds `SettlementRegistryClient`.
 
-```typescript
-const batchResult = await oracle.submitBatch({
-  batch, // from proveBatch() or provePlan()
-  jurisdictionId: 0,
-  proofType: PROOF_TYPES.COMPLIANCE,
-  providerSetHash: "0x...",
-});
-
-// batchResult.submissions[i].proofHash -> pass to SettlementRegistryClient
-```
-
-## On-chain verification
+## Verifier
 
 ```typescript
 import { ERC8262Verifier, PROOF_TYPES } from "@xochi/sdk";
 
 const verifier = new ERC8262Verifier("0x...", publicClient);
-
-// Single proof
-const valid = await verifier.verifyProof(PROOF_TYPES.COMPLIANCE, proofHex, publicInputsHex);
-
-// Batch (atomic all-or-nothing)
-const batchValid = await verifier.verifyProofBatch(
-  [PROOF_TYPES.COMPLIANCE, PROOF_TYPES.MEMBERSHIP],
-  [proof1Hex, proof2Hex],
-  [pi1Hex, pi2Hex],
-);
-
-// Historical verification at a specific verifier version
-const historicalValid = await verifier.verifyProofAtVersion(
-  PROOF_TYPES.COMPLIANCE,
-  1n,
-  proofHex,
-  publicInputsHex,
-);
-
-// Emergency revocation (owner-only, requires WalletClient)
-const adminVerifier = new ERC8262Verifier("0x...", publicClient, walletClient, mainnet);
-const revoked = await adminVerifier.isVersionRevoked(PROOF_TYPES.COMPLIANCE, 1n);
-await adminVerifier.revokeVerifierVersion(PROOF_TYPES.COMPLIANCE, 1n);
+await verifier.verifyProof(PROOF_TYPES.COMPLIANCE, proofHex, publicInputsHex);
+await verifier.verifyProofBatch(types, proofs, publicInputs); // all-or-nothing
+await verifier.verifyProofAtVersion(PROOF_TYPES.COMPLIANCE, 1n, proofHex, publicInputsHex);
 ```
 
-## Lightweight oracle client
+Owner-only (with a wallet client): `revokeVerifierVersion`; `isVersionRevoked` reads.
 
-Without viem (Cloudflare Workers, edge functions):
+## OracleLite (no viem)
 
 ```typescript
 import { OracleLite, PROOF_TYPES, decodeTierProofClaim } from "@xochi/sdk";
 
-const oracle = new OracleLite({
-  address: "0x...",
-  rpcUrl: "https://rpc.example.com",
-  timeoutMs: 15_000, // default; applies to every eth_call
-});
+const oracle = new OracleLite({ address: "0x...", rpcUrl: "https://rpc.example.com" });
+const status = await oracle.checkCompliance("0x...", 0); // same proof-type policy
 
-// Same proof-type policy as ERC8262Oracle.checkCompliance.
-const status = await oracle.checkCompliance("0x...", 0);
-const byType = await oracle.checkComplianceByType("0x...", 0, PROOF_TYPES.COMPLIANCE_SIGNED);
-
-// Simulates submitCompliance. `valid` means the verifier accepted the proof for
-// this subject / jurisdiction / proof type -- it is NOT a compliance verdict.
-// Read the claim from the verified public inputs.
-const result = await oracle.verifyProof(
-  "0x...", // wallet (used as msg.sender in simulation)
-  PROOF_TYPES.RISK_SCORE,
-  proofHex,
-  publicInputsHex,
-);
+const result = await oracle.verifyProof("0x...", PROOF_TYPES.RISK_SCORE, proofHex, publicInputsHex);
 if (result.valid && result.publicInputs) {
-  const tier = decodeTierProofClaim(result.publicInputs, { submitter: "0x..." }); // 25 | 50 | 75 | 100
+  decodeTierProofClaim(result.publicInputs, { submitter: "0x..." }); // 25 | 50 | 75 | 100
 }
 ```
 
-Bad `wallet` (not 20-byte `0x`) or `jurisdictionId`/`proofType` outside 0-255 throws before any request.
+`verifyProof`'s `valid` means the verifier accepted the proof, **not** a compliance verdict; read the claim from the verified public inputs. Each call times out after `timeoutMs` (default 15 s).
 
 ## Typed contract errors
 
-Reverts from `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistry` decode to named error classes.
+Reverts decode to `ERC8262ContractError` subclasses (`SubmitterMismatchError`, `ProofAlreadyUsedError`, `BatchTooLargeError`, `VersionRevokedError`, `SettlementRootMismatchError`, ...; full list in `src/errors.ts`). Undeclared ones are a plain `ERC8262ContractError` with `errorName` and `args`.
+
+## Settlement splitting (XIP-1)
 
 ```typescript
-import {
-  SubmitterMismatchError,
-  ProofAlreadyUsedError,
-  BatchTooLargeError,
-  VersionRevokedError,
-  ERC8262ContractError,
-} from "@xochi/sdk";
+import { planSplit, proveBatch, SettlementRegistryClient, PROOF_TYPES } from "@xochi/sdk";
 
-try {
-  await oracle.submitCompliance(params);
-} catch (err) {
-  if (err instanceof SubmitterMismatchError) {
-    // proof was bound to a different address -- regenerate with the right submitter
-  } else if (err instanceof ProofAlreadyUsedError) {
-    console.log(`Replay rejected, proof already used: ${err.proofHash}`);
-  } else if (err instanceof ERC8262ContractError) {
-    // any other decoded contract revert -- err.errorName + err.args available
-    console.error(`Contract reverted with ${err.errorName}`, err.args);
-  } else {
-    throw err; // network error, gas estimation failure, etc.
-  }
-}
+const plan = planSplit(500n * 10n ** 18n, 0, account.address, {
+  splitThreshold: 100n * 10n ** 18n,
+  maxSubTrades: 10,
+  minSubTradeSize: 1n * 10n ** 18n,
+});
+const batch = await proveBatch(prover, plan, complianceInput);
+const { submissions } = await oracle.submitBatch({
+  batch,
+  jurisdictionId: 0,
+  proofType: PROOF_TYPES.COMPLIANCE,
+  providerSetHash: "0x...",
+});
+
+const registry = new SettlementRegistryClient(registryAddr, publicClient, walletClient, chain);
+await registry.registerTrade(plan.tradeId, 0, plan.subTrades.length);
+for (const s of submissions) await registry.recordSubSettlement(plan.tradeId, s.index, s.proofHash);
+
+// After recording every sub-settlement, BEFORE proving the PATTERN proof:
+const settlementRoot = await registry.computeSettlementRoot(plan.tradeId);
+const pattern = await prover.provePattern({
+  ...patternInputs,
+  analysisType: 1,
+  submitter: account.address,
+  settlementRoot,
+});
+// submit it via oracle.submitCompliance, then:
+await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
 
-Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`, `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`, `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SettlementRootMismatchError`. Other ABI errors decode to `ERC8262ContractError` (`errorName`, `args`).
+Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`.
 
-Lower level: `decodeContractError(err, abi)` returns the typed error or `null`; `withDecodedErrors(abi, fn)` wraps an async call.
+## Execution planning (XIP-2)
+
+```typescript
+import { planExecution, provePlan } from "@xochi/sdk";
+
+const plan = planExecution(
+  500n * 10n ** 18n,
+  0,
+  account.address,
+  { trustScore: 60, gasEstimates: { public: 65_000n, stealth: 150_000n, shielded: 400_000n } },
+  { diffusionWindow: 300 },
+);
+// plan.subTrades[i].venue: "public" | "stealth" | "shielded"; targetTimestamp: seconds from T0
+const batch = await provePlan(prover, plan, complianceInput);
+```
+
+Shielded needs score 50+. Submissions are spaced at least 12 s apart.

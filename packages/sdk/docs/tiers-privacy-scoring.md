@@ -1,11 +1,8 @@
-# Trust tiers, privacy levels and attestation scoring
+# Trust tiers, privacy levels, scoring and tier proofs
 
-Part of the [`@xochi/sdk`](../README.md) reference. All three are on light subpaths (`@xochi/sdk/tiers`, `@xochi/sdk/scoring`) or the root entry.
+Part of the [`@xochi/sdk`](../README.md) reference. Tiers and scoring are also on the light subpaths `@xochi/sdk/tiers` and `@xochi/sdk/scoring`.
 
 ## Trust tiers
-
-Fee = solver spread (Riddler) + venue (Xochi) + routing (Raxol). Trust discounts
-only venue + routing, so every tier stays cash-positive.
 
 ```typescript
 import { getTierFromScore, getFeeRate, getFeeSchedule } from "@xochi/sdk/tiers";
@@ -24,12 +21,7 @@ getFeeSchedule(60); // { solverBps: 8, venueBps: 3, routingBps: 4 }
 | Premium       | 75-99 | 0.12% / 0.25%           |
 | Institutional | 100+  | 0.10% / 0.22%           |
 
-Plus 15% of intent surplus; the user keeps 85%.
-
-`getFeeRate` defaults to stable, which under-charges a volatile route by about
-half; pass `"volatile"`.
-
-MEV rebates were retired; `MEV_REBATES` and `getMevRebate` are gone.
+Plus 15% of intent surplus. `getFeeRate` defaults to stable, which under-charges a volatile route; pass `"volatile"`.
 
 ## Privacy levels
 
@@ -38,7 +30,6 @@ import { getMaxPrivacyLevel, isPrivacyLevelAllowed } from "@xochi/sdk";
 
 getMaxPrivacyLevel(60); // "private"
 isPrivacyLevelAllowed("sovereign", 60); // false (needs 75+)
-isPrivacyLevelAllowed("stealth", 0); // true -- stealth is ungated
 ```
 
 | Level                    | Min Score | Settlement |
@@ -48,24 +39,32 @@ isPrivacyLevelAllowed("stealth", 0); // true -- stealth is ungated
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
 
-L1 stealth is ungated and never separately priced.
-
 ## Attestation scoring
-
-Diminishing returns per category:
 
 ```typescript
 import { calculateScoreFromAttestations } from "@xochi/sdk";
 
-const result = calculateScoreFromAttestations([
+calculateScoreFromAttestations([
   { category: "humanity", points: 20 },
   { category: "identity", points: 30 },
-  { category: "reputation", points: 8 },
-  { category: "compliance", points: 25 },
 ]);
-// { total: 83, byCategory: { humanity: 20, identity: 30, reputation: 8, compliance: 25 } }
+// { total: 50, byCategory: { humanity: 20, identity: 30, ... } }
 ```
 
-1st provider 100%, 2nd 25%, 3rd+ 10%. Caps: humanity (25), identity (35), reputation (20), compliance (40).
+Per category: 1st provider 100%, 2nd 25%, 3rd+ 10%. Caps: humanity 25, identity 35, reputation 20, compliance 40.
 
-To prove a tier from a score, see [tier-proofs.md](tier-proofs.md).
+## Tier proofs
+
+Prove "score >= threshold" for 25, 50, 75 or 100.
+
+```typescript
+import { generateTierProof, generateHighestTierProof, verifyTierProof } from "@xochi/sdk";
+
+const proof = await generateTierProof(loader, 60, 25, account.address);
+await verifyTierProof(loader, proof, { submitter: account.address });
+// { valid: true, threshold: 25, tierName: "Trusted" } -- read from the public inputs
+
+await generateHighestTierProof(loader, 60, account.address); // score >= 50; null below 25
+```
+
+**Tier proofs are self-attested** (unsigned private signals): anyone can prove any tier. Never grant fees or privacy from one.
