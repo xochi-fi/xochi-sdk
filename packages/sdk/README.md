@@ -2,7 +2,7 @@
 
 Client-side [ERC-8262](https://github.com/xochi-fi/ERC-8262) ZK compliance proofs (Noir, Barretenberg UltraHonk), EVM-verifiable, plus trust tiers, privacy levels, attestation scoring, settlement splitting (XIP-1), execution planning (XIP-2).
 
-Not sure this is the package you need? See the [package chooser](https://github.com/xochi-fi/xochi-sdk#packages). `@xochi/client` does not install `@aztec/bb.js` or `noir_js`. Architecture: [docs/ARCHITECTURE.md](https://github.com/xochi-fi/xochi-sdk/blob/main/docs/ARCHITECTURE.md). Security reports: [SECURITY.md](https://github.com/xochi-fi/xochi-sdk/blob/main/SECURITY.md).
+Not sure this is the package you need? See the [package chooser](https://github.com/xochi-fi/xochi-sdk#packages). `@xochi/client` does not install `@aztec/bb.js` or `noir_js`. Security reports: [SECURITY.md](https://github.com/xochi-fi/xochi-sdk/blob/main/SECURITY.md).
 
 ## Install
 

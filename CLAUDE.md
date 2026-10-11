@@ -8,6 +8,8 @@ Also provides the trust tier system, privacy levels, attestation scoring and tie
 
 Three things here sign bytes; never conflate them: **`@xochi/signer`** (taker EIP-712 intent / ERC-3009 / Permit2 signing; moves funds), **`@xochi/provider`** (compliance-data provider attestations for the signed circuits and credential roots; moves no funds), **`sdks/*` `xochi-conformance`** (CI byte-parity runners, not production).
 
+Scope: this repo owns what a counterparty must reproduce (signing, vectors, the prose contract, client guards), so the venue is verifiable without running it. The venue itself (quoting, routing, settlement, escrow contracts) is the private Riddler server and its harness `packages/e2e-signer`. EIP-712 domain and contract names stay `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond` (intent domain `Xochi`): they are signed bytes and deployed contracts. In `ESCROW-RFC.md` / `SOLVER-RFC.md`, `[RESERVED]` means fixed shape, inert code (typed, never populated); never read `[PROPOSED]` as live.
+
 ## Architecture
 
 ### Repo layout
@@ -122,7 +124,7 @@ npm run format:check -w @xochi/widget-lib
 
 ## Protocol packages (absorbed from riddler-sdk)
 
-Snapshot-copied from the archived private `axol-io/riddler-sdk` (branch `stack-adr`, 4ad9450; no history, see `docs/adr/0001-consolidate-into-xochi-sdk.md`). `#NN` / `riddler-sdk#NN` refs point into that archive. These packages sign and verify bytes that move real USDC/USDT/USDG/WETH across chains: signature bugs or wrong addresses lose money. The `riddler` taker CLI and its flows (`xochi.ts`, the deposit wrapper, ACP buyer-auth, the quote sweep) are **not** here; they are Riddler's private `packages/e2e-signer` harness.
+Snapshot-copied from the archived private `axol-io/riddler-sdk` (branch `stack-adr`, 4ad9450; no history; consolidated 2026-10-09, scope renamed `@riddler/*` -> `@xochi/*`, signed names kept). `#NN` / `riddler-sdk#NN` refs point into that archive. These packages sign and verify bytes that move real USDC/USDT/USDG/WETH across chains: signature bugs or wrong addresses lose money. The `riddler` taker CLI and its flows (`xochi.ts`, the deposit wrapper, ACP buyer-auth, the quote sweep) are **not** here; they are Riddler's private `packages/e2e-signer` harness.
 
 - **Xochi**: off-chain EIP-712 intent (`XochiIntent`) verified server-side via ecrecover; no on-chain verifier. `public` / `stealth` (ERC-5564 + ERC-4337 claim) / `shielded` (Aztec) settlement.
 - **ERC-3009**: USDC-only `receiveWithAuthorization` signing.
@@ -394,7 +396,7 @@ npm run daemon -w @xochi/provider     # build, then run the reference signing da
 packages/sdk/scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
 ```
 
-Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); the root's cover only root `*.{json,md}`; `@xochi/sdk`, `@xochi/provider`, `@xochi/client` and `@xochi/widget-lib` include their top-level `*.md` (not `packages/sdk/docs/` or `packages/provider/daemon/README.md`); for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (`SPEC.md` is parsed by the spec-version probe). Run `git config blame.ignoreRevsFile .git-blame-ignore-revs` to skip formatting sweeps in blame.
+Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); the root's cover only root `*.{json,md}`; `@xochi/sdk`, `@xochi/provider`, `@xochi/client` and `@xochi/widget-lib` include their top-level `*.md` (not `packages/sdk/docs/` or `packages/provider/daemon/README.md`); for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (`SPEC.md` is parsed by the spec-version probe).
 
 Integration tests deploy ERC8262Verifier, ERC8262Oracle and SettlementRegistry on anvil. Requires foundry and compiled ERC-8262 artifacts (`out/` of the ERC-8262 checkout beside the repo, or `ERC_8262_PATH`).
 
@@ -538,4 +540,4 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **raxol** (`raxol_payments`): reads `packages/spec/conformance/conformance.json` byte-for-byte in ExUnit (`Raxol.Payments.Test.ConformanceFixture`).
 
-**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `sdks/` and the probes; see `docs/adr/0001-consolidate-into-xochi-sdk.md`.
+**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `sdks/` and the probes.

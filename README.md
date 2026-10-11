@@ -54,5 +54,5 @@ npm run generate:solver-bid-v2 && npm run generate:escrow && git diff --exit-cod
 
 - [CHANGELOG.md](CHANGELOG.md)
 - [SECURITY.md](SECURITY.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [CLAUDE.md](CLAUDE.md): repo rules and invariants (fund-safety, wire contract, parity state)
 - [LICENSE](LICENSE) (MIT)
