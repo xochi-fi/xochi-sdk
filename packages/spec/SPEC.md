@@ -88,8 +88,8 @@
   change to every consumer of `spec_version`. Recorded here because the RFC
   version is the only versioned signal for the break: the announcement is a
   `/solver/*` field, and a maker's migration checklist is
-  `SOLVER-RFC.md` "Changes in `0.3.0-draft`" plus
-  `packages/solver-sdk/README.md`'s **Breaking changes** section.
+  `SOLVER-RFC.md` "Changes in `0.3.0-draft`" plus the `0.2.0` entry of
+  `packages/solver-sdk/CHANGELOG.md`.
 - **Documentation corrections, no version bump and no wire change:** §3.4 and
   §3.5 recorded facts the server never served. §3.4 listed a terminal
   `refunded` (absent from `IntentLifecycleStatus`) and omitted the served
@@ -131,10 +131,15 @@
   which such a client never requested. The one client-visible hazard is §3.3's: a
   party id is case-sensitive and may begin `0x`, so folding case on every
   `0x`-prefixed value names a different party.
-- `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that no commit
-  older than the second adversarial review declares an unpublished version a
-  `spec-v*` tag could publish (a tag runs that commit's own `release.yml`), and
-  so the tarball's `wire/compare.mjs` carries the unresolvable-`$ref` fix. The
+- `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that the
+  version string is new: `0.8.1` is declared only by commits that carry the
+  second adversarial review's fixes, and the tarball's `wire/compare.mjs`
+  carries the unresolvable-`$ref` fix. It does not retire older versions:
+  `0.8.0` was never published, and an older commit declaring it runs its own
+  `release.yml` (a tag runs the tagged commit's workflow), which publishes with
+  `--tag latest`. Such a version stays publishable from a `spec-v*` tag unless
+  the npm trusted publisher requires the `npm-publish` environment, which those
+  commits' workflows never enter. The
   server MUST advertise `spec_version: "0.8.1"` (Riddler `Xochi.Config
   @spec_version`, riddler #1285) in lockstep; until it does the `spec_version`
   probe reports DRIFT, which is correct.
