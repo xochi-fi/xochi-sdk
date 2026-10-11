@@ -660,3 +660,23 @@ describe("stealth claim calls (single attempt)", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("a reason phrase the Response constructor rejects", () => {
+  // undici's fetch passes through reason phrases (non-ASCII, control bytes)
+  // that `new Response` refuses; the transport must still read the reply.
+  const withReason = (response: Response, reason: string): Response =>
+    Object.defineProperty(response, "statusText", { value: reason });
+
+  it("parses a 200 quote whose reason phrase is not a ByteString", async () => {
+    const { c } = client(() => withReason(okQuote(), "OK ✓"));
+    await expect(c.getQuote(req)).resolves.toMatchObject({ intentId: "xi_test" });
+  });
+
+  it("classifies an error status whose reason phrase carries a control byte", async () => {
+    const { c } = client(() => withReason(new Response("", { status: 400 }), "Bad\nRequest"));
+    const err = await rejection(c.execute(execRequest));
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe(400);
+    expect((err as ApiError).message).toBe("HTTP 400: Bad\nRequest");
+  });
+});

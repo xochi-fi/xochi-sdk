@@ -453,6 +453,27 @@ describe("refusals the server cannot switch off", () => {
     expect(s.intent.status).toBe("awaiting_deposit");
   });
 
+  it("refuses a new allocation on a settled deposit, never reopening its route", async () => {
+    const fields = signedFields();
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    allocate(s, depositQuote(fields, await attest(fields)));
+    s.send({ type: "SignRequested" });
+    s.send({
+      type: "StreamStatus",
+      message: { type: "intent_status", intentId: "xi_dep1", status: "completed", timestamp: "t" },
+    });
+    expect(s.intent.status).toBe("completed");
+
+    const fx = s.send({ type: "AllocateRequested", key: "k2", ref: "r2" });
+    expect(allocations(fx)).toEqual([{ kind: "allocation", ref: "r2", ok: false }]);
+    expect(walletCalls(fx, "ensureSession")).toEqual([]);
+    expect(s.model.flights).toEqual([]);
+    expect(s.intent.status).toBe("completed");
+    expect(s.receipt.signing).not.toEqual({ kind: "deposit" });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+    expect(s.intent.status).toBe("completed");
+  });
+
   it("drops an allocation waiting on sign-in when a stored deposit is resumed", () => {
     const s = new Session(depositCtx(), DEPOSIT_CONFIG);
     s.send({ type: "QuoteRequested", amount: AMOUNT });

@@ -601,6 +601,20 @@ describe("update properties", () => {
             expect(t.next.awaitingPull).toBe(false);
             expect(t.next.isSigningPull).toBe(false);
           }
+          // Once executing, only the machine's own execute step is live: a
+          // status update that skipped `signing -> executing` ends the ceremony.
+          if (status === "executing") {
+            expect(t.next.sign?.stage ?? "execute").toBe("execute");
+            expect(t.next.awaitingPull).toBe(false);
+          }
+          // The pull leg (approval, signature 2) runs only inside `signing`.
+          for (const e of t.effects) {
+            const pullLeg =
+              e.type === "Wallet" &&
+              (e.call.op === "ensureApproval" ||
+                (e.call.op === "signTypedData" && e.call.purpose === "pull"));
+            if (pullLeg) expect(t.prev.intent.status).toBe("signing");
+          }
           // A trade past quoting has no quote in the air, and a reply to one
           // asked before it got there never touches it (executing -> failed).
           if (QUOTE_BUSY_STATES.includes(status)) expect(t.next.flights).toEqual([]);

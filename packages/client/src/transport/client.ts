@@ -339,17 +339,15 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       if (fetched.body) {
         const reader = fetched.body.getReader();
         source = reader;
-        response = new Response(
-          new ReadableStream<Uint8Array>({
-            async pull(sink) {
-              const chunk = await reader.read();
-              if (chunk.done) sink.close();
-              else sink.enqueue(chunk.value);
-            },
-            cancel: (reason) => reader.cancel(reason),
-          }),
-          { status: fetched.status, statusText: fetched.statusText, headers: fetched.headers },
-        );
+        const body = new ReadableStream<Uint8Array>({
+          async pull(sink) {
+            const chunk = await reader.read();
+            if (chunk.done) sink.close();
+            else sink.enqueue(chunk.value);
+          },
+          cancel: (reason) => reader.cancel(reason),
+        });
+        response = rewrapResponse(fetched, body);
       }
 
       if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
@@ -727,6 +725,23 @@ async function readOkJson(response: Response): Promise<{ response: Response; bod
     return { response, body: undefined };
   }
   return { response, body: (await response.json()) as unknown };
+}
+
+/**
+ * `fetched` with its body replaced by `body`. The Response constructor rejects
+ * reason phrases fetch itself accepts (non-ASCII, control bytes), so an
+ * invalid one is dropped from the constructor and served off `fetched`
+ * instead: re-wrapping must never turn a readable reply into a throw.
+ */
+function rewrapResponse(fetched: Response, body: ReadableStream<Uint8Array>): Response {
+  const { status, statusText, headers } = fetched;
+  // RFC 9110 reason-phrase: HTAB / SP / VCHAR / obs-text.
+  if (/^[\t\x20-\x7e\x80-\xff]*$/.test(statusText)) {
+    return new Response(body, { status, statusText, headers });
+  }
+  const response = new Response(body, { status, headers });
+  Object.defineProperty(response, "statusText", { value: statusText });
+  return response;
 }
 
 /** Cancel a response body that will not be read, ignoring any failure. */

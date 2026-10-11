@@ -39,11 +39,14 @@ import {
   mergeSameStatusReceipt,
   notFoundDriftWarning,
   pollCeilingAttempts,
+  normalizeTradeFields,
   quoteAccessDecision,
   shouldRefreshOnReturn,
   shouldRefreshQuote,
   shouldUpgradePreviewQuote,
   POLL_INFLIGHT_STATES,
+  ALLOCATABLE_STATES,
+  ENDED_STATES,
   QUOTE_BUSY_STATES,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
@@ -422,14 +425,15 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     }
 
     case "AllocateRequested": {
-      // Past quoting (a prompt open, a deposit awaited, a swap in flight) a new
-      // quote has nothing to land on: its reply would move a trade it never
-      // described.
+      // Only before execution: past quoting (a prompt open, a deposit awaited,
+      // a swap in flight) or once the trade has ended (completed, refunded,
+      // failed) a new quote has nothing to land on, and its failure would
+      // patch the finished trade back to `quoted` over its consumed route.
       if (
         !m.amount ||
         isChainId(m.ctx.fromChainId) ||
         !m.ctx.wallet.address ||
-        QUOTE_BUSY_STATES.includes(m.intent.status)
+        !ALLOCATABLE_STATES.includes(m.intent.status)
       ) {
         emit(fx, { kind: "allocation", ref: msg.ref, ok: false });
         return m;
@@ -617,7 +621,11 @@ function transition(
   if (QUOTE_BUSY_STATES.includes(to) && !QUOTE_BUSY_STATES.includes(from)) {
     next = supersedeFlights(next, fx);
   }
-  const leftCeremony = from === "executing" || (from === "signing" && to !== "executing");
+  // `signing -> executing` keeps the ceremony only as the machine's own
+  // execute step (runExecute stages the flow first); a status update making
+  // the same move must not leave a pull prompt or "Sign 2 of 2" live.
+  const ownExecute = to === "executing" && next.sign?.stage === "execute";
+  const leftCeremony = from === "executing" || (from === "signing" && !ownExecute);
   return leftCeremony ? abandonSign(next, fx) : next;
 }
 
@@ -716,7 +724,7 @@ function onSession(
   if (flight.silent) return next;
   const error = "Wallet sign-in is required to allocate a Tron deposit route";
   return flight.allocate
-    ? patch(next, { status: "quoted", error })
+    ? allocationFailed(next, error)
     : patch(next, { status: "failed", error, quote: null });
 }
 
@@ -802,8 +810,19 @@ function quoteThrew(m: Model, fx: Effect[], flight: QuoteFlight, report: ErrorRe
   if (flight.silent) return m;
   const error = report.value ?? "Quote request failed";
   return flight.allocate
-    ? patch(m, { status: "quoted", error })
+    ? allocationFailed(m, error)
     : patch(m, { status: "failed", error, quote: null });
+}
+
+/**
+ * An allocation that did not land leaves the indicative price on screen. Only
+ * a trade still before execution returns to `quoted`; any other status is
+ * kept, so a failure never revives an ended trade over its consumed quote.
+ */
+function allocationFailed(m: Model, error: IntentState["error"]): Model {
+  return ALLOCATABLE_STATES.includes(m.intent.status)
+    ? patch(m, { status: "quoted", error })
+    : patch(m, { error });
 }
 
 function onQuote(
@@ -820,7 +839,7 @@ function onQuote(
   // trade went on without this answer, which may then neither fail it nor
   // replace its quote.
   const status = model.intent.status;
-  if (QUOTE_BUSY_STATES.includes(status) || status === "completed" || status === "refunded") {
+  if (QUOTE_BUSY_STATES.includes(status) || ENDED_STATES.includes(status)) {
     return dropStaleFlight(model, fx, flight);
   }
   const m = withoutFlight(model, id);
@@ -1319,6 +1338,9 @@ function onSigned(
 ): Model {
   const flow = m.sign;
   if (!flow || flow.id !== flowId || flow.stage !== purpose) return m;
+  // A status update can carry the intent past `signing` while a prompt is
+  // open; its signature then belongs to no ceremony.
+  if (m.intent.status !== "signing") return abandonSign(m, fx);
   if (purpose === "pull") clearTimer(fx, "signPrompt");
   if (!result.ok) return signFlowFailed(m, fx, result.error);
 
@@ -1364,15 +1386,13 @@ function runExecute(
     log(fx, "warn", `${LOG} Dropping signature: intent is ${m.intent.status}, not signing`);
     return abandonSign(m, fx);
   }
-  const executing = transition(m, fx, "executing");
+  // The flow is marked `execute` before the move, so `transition` can tell
+  // this step from a status update that skipped the ceremony.
+  const staged: Model = { ...m, sign: { ...flow, stage: "execute" } };
+  const executing = transition(staged, fx, "executing");
   if (executing.intent.status !== "executing") return abandonSign(m, fx);
   // Fill clock starts here: the signed intent is now with the solver.
-  const next: Model = {
-    ...executing,
-    submittedAt: now,
-    clientFillMs: null,
-    sign: { ...flow, stage: "execute" },
-  };
+  const next: Model = { ...executing, submittedAt: now, clientFillMs: null };
   fx.push({
     type: "Api",
     call: {
@@ -1589,10 +1609,12 @@ function onStatus(
 
 /**
  * Every context field the quote request is built from, in a fixed order (a
- * host may rebuild the context with its keys in any order). `paused` and
- * `stepwise` shape the ceremony, not the trade.
+ * host may rebuild the context with its keys in any order), read through the
+ * request's own normalisation so two forms that send one request are one
+ * trade. `paused` and `stepwise` shape the ceremony, not the trade.
  */
 function tradeKey(c: Context): string {
+  const { recipientAddress, refundAddress, stealthMetaAddress } = normalizeTradeFields(c);
   return JSON.stringify([
     c.fromChainId,
     c.toChainId,
@@ -1601,11 +1623,11 @@ function tradeKey(c: Context): string {
     c.settlementPreference,
     c.trustScore,
     c.slippageBps,
-    c.recipientAddress,
-    c.refundAddress,
-    c.stealthMetaAddress?.spendingPubKey ?? null,
-    c.stealthMetaAddress?.viewingPubKey ?? null,
-    c.stealthMetaAddress?.chainId ?? null,
+    recipientAddress ?? null,
+    refundAddress ?? null,
+    stealthMetaAddress?.spendingPubKey ?? null,
+    stealthMetaAddress?.viewingPubKey ?? null,
+    stealthMetaAddress?.chainId ?? null,
     c.wallet.address,
     c.wallet.chainId,
   ]);

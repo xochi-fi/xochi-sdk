@@ -987,3 +987,71 @@ describe("superseded and mismatched answers", () => {
     expect(s.intent.status).toBe("quoted");
   });
 });
+
+describe("a status update that skips the sign ceremony", () => {
+  const executingFrame = {
+    type: "StreamStatus",
+    message: { type: "intent_status", intentId: "xi_1", status: "executing", timestamp: "t" },
+  } as const;
+
+  it("ends the ceremony, so the intent signature starts no pull leg", () => {
+    const s = new Session();
+    s.quoteWith(quote({ pullAuthorization: erc3009Pull() }));
+    const prompt = signIntent(s);
+    s.send(executingFrame);
+    expect(s.intent.status).toBe("executing");
+    expect(s.model.sign).toBeNull();
+
+    const fx = s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    expect(walletCalls(fx, "ensureApproval")).toEqual([]);
+    expect(walletCalls(fx, "signTypedData")).toEqual([]);
+    expect(s.model.pendingIntentSig).toBeNull();
+  });
+
+  it("drops a held 'Sign 2 of 2' on a deep-link wallet", () => {
+    const s = new Session(ctx({}, { stepwise: true }));
+    s.quoteWith(quote({ pullAuthorization: erc3009Pull() }));
+    const prompt = signIntent(s);
+    s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    expect(s.model.awaitingPull).toBe(true);
+
+    s.send(executingFrame);
+    expect(s.intent.status).toBe("executing");
+    expect(s.model.awaitingPull).toBe(false);
+    expect(s.model.pendingIntentSig).toBeNull();
+    expect(s.receipt.signing).not.toEqual({ kind: "awaiting_second" });
+    expect(s.send({ type: "PullSignRequested" })).toEqual([]);
+  });
+});
+
+describe("the held quote's trade, as the request normalises it", () => {
+  it("keeps the quote signable across edits that send the same request", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    s.send({ type: "ContextChanged", ctx: ctx({ recipientAddress: "", refundAddress: "  " }) });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // Stealth keys arriving under a public settlement are never sent.
+    const stealthMetaAddress = {
+      spendingPubKey: `0x02${"11".repeat(32)}`,
+      viewingPubKey: `0x03${"22".repeat(32)}`,
+      chainId: 8453,
+    } as const;
+    s.send({ type: "ContextChanged", ctx: ctx({ stealthMetaAddress }) });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // A real change still lets go of it.
+    s.send({ type: "ContextChanged", ctx: ctx({ recipientAddress: ATTACKER }) });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+  });
+});
