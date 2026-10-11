@@ -134,6 +134,7 @@ jobs:
         run: |
           npm install -g npm@11.21.0
           v="$(npm --version)"
+          # shellcheck disable=SC2016 # a single-quoted node program; ${} is a JS template literal
           node -e '
             const [a, b, c] = process.argv[1].split(".").map(Number);
             if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) {
@@ -188,6 +189,7 @@ jobs:
             if [ -n "$latest" ]; then
               # Exit 0 only when $1 > $2 (semver precedence, prerelease below
               # its release; build metadata ignored).
+              # shellcheck disable=SC2016 # a single-quoted node program; ${} is a JS template literal
               node -e '
                 const parse = (v) => {
                   const m = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(v);
