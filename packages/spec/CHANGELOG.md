@@ -16,6 +16,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 - **Version 0.8.1** (PATCH, no wire/vector change; SPEC.md §0.3), past every pre-fix commit (which declare the never-published 0.8.0). Riddler must advertise `spec_version: "0.8.1"` in lockstep, or the nightly `spec_version` probe reports DRIFT.
 - `package.json` gains description, keywords and homepage.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `spec-v*` tag.
+- `engines.node` is `>=22`. `prepublishOnly` runs `format:check`, `typecheck` and `test` before every publish. The tarball ships this `CHANGELOG.md`.
 
 ### Fixed
 

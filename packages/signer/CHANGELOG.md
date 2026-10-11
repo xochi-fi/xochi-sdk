@@ -15,7 +15,12 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 - **Version 0.5.1**, past every pre-fix commit (which declare the never-published 0.5.0).
 - `engines.node` is `>=22`; `package.json` gains description, keywords and homepage. Built with TypeScript 6.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `signer-v*` tag.
-- Sources and tests are Prettier-formatted and gated by `format:check` in CI.
+- Sources and tests are Prettier-formatted; `format:check` gates CI and `prepublishOnly` (with typecheck, test and build).
+- The tarball ships this `CHANGELOG.md`.
+
+### Removed
+
+- Source maps (`dist/*.map`) from the tarball.
 
 ### Fixed
 

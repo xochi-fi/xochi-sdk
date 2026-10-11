@@ -13,11 +13,13 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 - Built with TypeScript 6 (was `~5.6`).
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `sdk-v*` tag.
 - The reference signing daemon moved to `@xochi/provider` (`packages/provider/daemon`); see its changelog.
+- The tarball ships this `CHANGELOG.md`; the repo-root changelog is gone.
 
 ### Removed
 
 - **BREAKING: the `@xochi/sdk/provider` subpath export is removed.** Import the same names from `@xochi/provider` instead (`import { signSignals, loadSignerKey } from "@xochi/provider"`). Proof generation is unaffected: the signed builders and `prove*Signed` take the same byte bundles, and the two byte helpers they borrowed from the provider module are now the sdk's own copies (`packages/sdk/src/inputs/field-bytes.ts`), so the sdk has no dependency on `@xochi/provider`.
 - **The `@noble/curves` dependency** (only the provider signer used it; `@xochi/provider` depends on it now). The sdk's `npm run daemon` script and its daemon typecheck are gone.
+- The `prepare` script (a build on `npm install`). `npm install github:xochi-fi/xochi-sdk#<ref>` no longer yields a usable package: install from npm, or build the workspace (`npm run build -w @xochi/sdk`) and pack it.
 
 ## [0.4.0] - 2026-09-30
 

@@ -20,8 +20,13 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 - `package.json` declares `repository` with its `directory` and gains
   description, keywords and homepage; per-condition `exports` types.
-- Built with TypeScript 6; sources, tests and examples are Prettier-formatted
-  and gated by `format:check` in CI.
+- Built with TypeScript 6; sources, tests and examples are Prettier-formatted,
+  and `format:check` gates CI and `prepublishOnly` (with typecheck, test and
+  build). `engines.node` is `>=22`.
+
+### Removed
+
+- Source maps (`dist/*.map`) from the tarball.
 
 ### Fixed
 

@@ -14,6 +14,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 - **Version 0.1.1**, past every pre-fix commit (which declare the never-published 0.1.0).
 - Takes `Promise.withResolvers` from `ES2024.Promise`; built with TypeScript 6. `package.json` gains description, keywords and homepage.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `client-v*` tag.
+- The tarball ships this `CHANGELOG.md`.
 
 ### Removed
 
