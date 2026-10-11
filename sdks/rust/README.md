@@ -1,6 +1,7 @@
-# xochi-signer (Rust)
+# xochi-conformance (Rust)
 
-Riddler protocol conformance signer. Reproduces every vector in
+Riddler protocol conformance runner. Reproduces `@xochi/signer`'s
+signatures for every vector in
 `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md 2/8) via
 alloy + k256. Network-free.
 

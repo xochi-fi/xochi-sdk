@@ -1,9 +1,9 @@
-// Package signer is the Go conformance signer for the Riddler protocol. It
+// Package conformance is the Go conformance runner for the Riddler protocol. It
 // reproduces the digest, signature, and signed_object of every vector in
 // @xochi/spec conformance/conformance.json byte-for-byte (SPEC.md §2/§8),
-// mirroring the TypeScript reference signer (@xochi/signer) and the Python
-// signer (sdks/python). Network-free.
-package signer
+// reproducing the signatures of @xochi/signer for the vectors, like the
+// Python runner (sdks/python). Network-free.
+package conformance
 
 import (
 	"fmt"

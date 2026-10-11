@@ -211,7 +211,7 @@ jobs:
       - name: Install uv
         run: pip install uv==0.11.6
 
-      - name: Python signer conformance (byte-equality over the shared fixture)
+      - name: Python conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/python
         run: |
           uv sync --locked
@@ -226,7 +226,7 @@ jobs:
         with:
           go-version-file: sdks/go/go.mod
 
-      - name: Go signer conformance (byte-equality over the shared fixture)
+      - name: Go conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/go
         run: go test ./...
 
@@ -235,7 +235,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Rust signer conformance (byte-equality over the shared fixture)
+      - name: Rust conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/rust
         run: cargo test --locked
 

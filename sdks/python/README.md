@@ -1,6 +1,7 @@
-# xochi-signer (Python)
+# xochi-conformance (Python)
 
-Riddler protocol conformance signer. Reproduces every vector in
+Riddler protocol conformance runner. Reproduces `@xochi/signer`'s
+signatures for every vector in
 `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8).
 
 ```bash

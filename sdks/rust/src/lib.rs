@@ -1,9 +1,9 @@
-//! Rust conformance signer for the Riddler protocol.
+//! Rust conformance runner for the Riddler protocol.
 //!
 //! Reproduces the `digest`, `signature`, and `signed_object` of every vector in
 //! `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8),
-//! mirroring the TypeScript reference signer (`@xochi/signer`) and the Python /
-//! Go signers. Network-free.
+//! reproducing the signatures of `@xochi/signer` for the vectors, like the
+//! Python / Go runners. Network-free.
 
 use alloy_dyn_abi::{DynSolValue, TypedData};
 use alloy_primitives::{Address, FixedBytes, U256, keccak256};

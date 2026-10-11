@@ -1,8 +1,8 @@
-"""Python conformance signer for the Riddler protocol.
+"""Python conformance runner for the Riddler protocol.
 
 Reproduces the `digest`, `signature`, and `signed_object` of every vector in
 `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8).
-Mirrors the TypeScript reference signer in `@xochi/signer`. Network-free.
+Reproduces the signatures of `@xochi/signer` for the vectors. Network-free.
 """
 
 from __future__ import annotations
