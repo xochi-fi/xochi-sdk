@@ -24,7 +24,7 @@ const STOP_SIGNALS = { SIGINT: 2, SIGTERM: 15, SIGHUP: 1 } as const;
 
 // The process seam `installStopSignals` registers on; `process` itself in the
 // script, a stand-in in tests.
-export interface SignalTarget {
+interface SignalTarget {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
   exit(code: number): unknown;
 }
@@ -149,7 +149,7 @@ export class BackgroundTasks {
   }
 }
 
-export interface SuperviseOptions {
+interface SuperviseOptions {
   signal: AbortSignal;
   log: (msg: string) => void;
   initialBackoffMs?: number; // default 1_000

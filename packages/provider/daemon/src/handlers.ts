@@ -64,7 +64,7 @@ export function signingPolicy(
   };
 }
 
-export interface SignRequestBody {
+interface SignRequestBody {
   /**
    * Proof type the bundle is signed for: 7 (COMPLIANCE_SIGNED) or 8
    * (RISK_SCORE_SIGNED). Selects the digest's domain tag; the signature
@@ -93,7 +93,7 @@ export interface SignRequestBody {
   submitter: string;
 }
 
-export interface SignResponseBody {
+interface SignResponseBody {
   signature: `0x${string}`;
   pubkeyX: `0x${string}`;
   pubkeyY: `0x${string}`;
@@ -402,7 +402,7 @@ export function handleHealthz(): HandlerResult<{ status: "ok" }> {
 // Multi-signed slot signing (COMPLIANCE_MULTI_SIGNED / proof type 0x09)
 // ---------------------------------------------------------------------------
 
-export interface SignMultiRequestBody extends Omit<SignRequestBody, "proofType"> {
+interface SignMultiRequestBody extends Omit<SignRequestBody, "proofType"> {
   /** Slot position in the proof's signer array. MUST be in [0, MAX_PROVIDERS_MULTI). */
   slotIndex: string | number;
   /** Jurisdiction ID (0=EU, 1=US, 2=UK, 3=SG, 4=UAE). */
@@ -411,7 +411,7 @@ export interface SignMultiRequestBody extends Omit<SignRequestBody, "proofType">
   configHash: string;
 }
 
-export type SignMultiResponseBody = SignResponseBody;
+type SignMultiResponseBody = SignResponseBody;
 
 function parseSignMultiBody(raw: unknown): SignSlotRequest {
   const fields = parseSignalFields(raw, false);
@@ -455,7 +455,7 @@ export function handleSignMulti(
 // Credential-root signing
 // ---------------------------------------------------------------------------
 
-export interface SignCredentialRootBody {
+interface SignCredentialRootBody {
   /** EVM chain ID where the Oracle lives. Must equal SIGNER_CHAIN_ID. */
   chainId: string | number;
   /** ERC8262Oracle deployment address (0x-prefixed hex). Must equal SIGNER_ORACLE_ADDRESS. */
@@ -472,7 +472,7 @@ export interface SignCredentialRootBody {
   notAfter: string | number;
 }
 
-export interface SignCredentialRootResponseBody {
+interface SignCredentialRootResponseBody {
   signature: `0x${string}`;
   digest: `0x${string}`;
   signer: `0x${string}`;
