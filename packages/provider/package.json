@@ -12,10 +12,16 @@
     "xochi"
   ],
   "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/provider#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/provider"
+  },
+  "license": "MIT",
+  "type": "module",
   "engines": {
     "node": ">=22.12"
   },
-  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,28 +32,20 @@
     }
   },
   "sideEffects": false,
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
-    "directory": "packages/provider"
-  },
   "files": [
     "dist"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc -p daemon/tsconfig.json",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"daemon/src/**/*.ts\" \"*.{json,md,ts}\"",
     "daemon": "npm run build && node --experimental-strip-types daemon/src/index.ts",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
@@ -57,10 +55,6 @@
     "viem": "^2.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2",
-    "prettier": "^3.3.3",
-    "typescript": "^6.0.3",
-    "viem": "^2.21.0",
-    "vitest": "^4.0.0"
+    "viem": "^2.21.0"
   }
 }

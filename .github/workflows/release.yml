@@ -35,9 +35,9 @@
 # @xochi/widget-lib and @xochi/provider cannot make their first publish here.
 # The conservative procedure, once per package: an npm owner with 2FA checks
 # out the reviewed release tag's commit (on main), runs the same gates this job
-# runs for that package, and runs `npm publish -w <name> --provenance=false` by
-# hand (spec, signer and provider set `publishConfig.provenance`, which fails
-# outside CI; the real reviewed version, never a placeholder). @xochi/signer
+# runs for that package, and runs `npm publish -w <name>` by hand (the real
+# reviewed version, never a placeholder; provenance comes only from this job's
+# `--provenance` flag, never `publishConfig`). @xochi/signer
 # goes before @xochi/client, which depends on it. Then attach the config above
 # (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
 # --env npm-publish --allow-publish`) and set Settings -> Publishing access ->

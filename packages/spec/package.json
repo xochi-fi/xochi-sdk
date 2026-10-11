@@ -9,20 +9,17 @@
     "eip-712",
     "openapi"
   ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/spec#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/spec"
+  },
+  "license": "MIT",
   "type": "module",
-  "files": [
-    "SPEC.md",
-    "SOLVER-RFC.md",
-    "ESCROW-RFC.md",
-    "conformance",
-    "fee",
-    "wire",
-    "!wire/*.tmp",
-    "!wire/generate.mjs",
-    "!wire/format.mjs",
-    "!conformance/*.ts",
-    "!fee/*.ts"
-  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "exports": {
     "./conformance/conformance.json": "./conformance/conformance.json",
     "./conformance/schema.json": "./conformance/schema.json",
@@ -56,8 +53,27 @@
     "./conformance/xsp.json": "./conformance/xsp.json",
     "./conformance/xsp.schema.json": "./conformance/xsp.schema.json"
   },
+  "files": [
+    "SPEC.md",
+    "SOLVER-RFC.md",
+    "ESCROW-RFC.md",
+    "conformance",
+    "fee",
+    "wire",
+    "!wire/*.tmp",
+    "!wire/generate.mjs",
+    "!wire/format.mjs",
+    "!conformance/*.ts",
+    "!fee/*.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "generate": "tsx conformance/generate.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
+    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
     "generate:fee": "tsx fee/generate.ts",
     "generate:order-id": "tsx conformance/generate-order-id.ts",
     "generate:open-auth": "tsx conformance/generate-open-auth.ts",
@@ -67,34 +83,19 @@
     "generate:slash-attestation": "tsx conformance/generate-slash-attestation.ts",
     "generate:dest-blinding": "tsx conformance/generate-dest-blinding.ts",
     "generate:escrow": "npm run generate:order-id && npm run generate:open-auth && npm run generate:dest-blinding && npm run generate:fill-salt && npm run generate:fill-auth && npm run generate:fill-attestation && npm run generate:slash-attestation && npm run generate:fill-acceptance && npm run generate:xsp",
-    "typecheck": "tsc --noEmit",
     "generate:wire": "node wire/generate.mjs",
     "generate:solver-bid-v2": "tsx conformance/generate-solver-bid-v2.ts",
     "generate:fill-acceptance": "tsx conformance/generate-fill-acceptance.ts",
     "generate:xsp": "tsx conformance/generate-xsp.ts",
-    "test": "vitest run",
-    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\"",
-    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"package.json\" \"tsconfig.json\""
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
-    "directory": "packages/spec"
-  },
-  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/spec#readme",
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "generate:conformance": "tsx conformance/generate.ts",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test"
   },
   "devDependencies": {
     "@xochi/client": "0.1.1",
-    "@xochi/signer": "0.5.1",
-    "ethers": "^6.17.0",
-    "tsx": "^4.23.13",
-    "typescript": "^6.0.3",
-    "@xochi/solver-sdk": "0.4.1",
     "@xochi/reference": "0.0.0",
-    "vitest": "^4.1.11"
+    "@xochi/signer": "0.5.1",
+    "@xochi/solver-sdk": "0.4.1",
+    "ethers": "^6.17.0",
+    "tsx": "^4.23.13"
   }
 }

@@ -1,9 +1,13 @@
 {
   "name": "@xochi/reference",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "description": "Unpublished reference fixtures for the spec generators and vector suites: the chain/token registry and the ERC-3009/Permit2 sign-only composition (the layered fee reference is published in @xochi/client). Never published.",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "exports": {
     "./config": "./src/config.ts",
     "./sign-only": "./src/sign-only.ts"
@@ -14,21 +18,15 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "test:conformance": "vitest run test/conformance.test.ts",
-    "test:fee": "vitest run test/fee.test.ts",
-    "test:wire": "vitest run test/wire-contract.test.ts"
+    "test:fee": "vitest run test/fee.test.ts"
   },
-  "license": "MIT",
   "dependencies": {
     "@xochi/signer": "0.5.1",
     "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "@noble/curves": "^1.2.0",
-    "@types/node": "^26.4.1",
     "@xochi/client": "0.1.1",
     "@xochi/spec": "0.8.1",
-    "fast-check": "^4.9.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "fast-check": "^4.9.0"
   }
 }

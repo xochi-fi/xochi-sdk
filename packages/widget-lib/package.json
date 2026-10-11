@@ -10,15 +10,15 @@
     "eip-1193"
   ],
   "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/widget-lib#readme",
-  "license": "MIT",
-  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
     "directory": "packages/widget-lib"
   },
-  "publishConfig": {
-    "access": "public"
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
   },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -40,13 +40,16 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.esm.json && tsc -p tsconfig.build.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.esm.json --noEmit",
     "test": "vitest run",
     "format": "prettier --write \"src/**/*.ts\" \"*.{json,md,ts}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,ts}\"",
-    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "jsdom": "^29.1.1"

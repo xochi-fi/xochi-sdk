@@ -10,17 +10,20 @@
     "erc-5564",
     "erc-4337"
   ],
-  "engines": {
-    "node": ">=22"
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/signer"
   },
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.cts",
-  "sideEffects": false,
-  "files": [
-    "dist"
-  ],
   "exports": {
     ".": {
       "import": {
@@ -33,34 +36,27 @@
       }
     }
   },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
-    "directory": "packages/signer"
-  },
-  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/signer#readme",
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@noble/curves": "^1.2.0",
     "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
-    "tsup": "^8.3.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.11",
-    "fast-check": "^4.9.0"
+    "fast-check": "^4.9.0",
+    "tsup": "^8.3.0"
   }
 }

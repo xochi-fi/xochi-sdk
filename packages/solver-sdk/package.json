@@ -2,15 +2,28 @@
   "name": "@xochi/solver-sdk",
   "version": "0.4.1",
   "description": "Solver SDK for Xochi's sealed-bid RFQ: discovery, bid, award, fill.",
+  "keywords": [
+    "xochi",
+    "solver",
+    "rfq",
+    "sealed-bid",
+    "dark-pool",
+    "cross-chain"
+  ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/solver-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/solver-sdk"
+  },
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "sideEffects": false,
-  "files": [
-    "dist",
-    "CHANGELOG.md"
-  ],
   "exports": {
     ".": {
       "import": {
@@ -23,6 +36,13 @@
       }
     }
   },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
@@ -30,22 +50,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
     "example:solver": "tsx examples/reference-solver.ts",
-    "example:escrow": "tsx examples/escrow-solver.ts"
-  },
-  "keywords": [
-    "xochi",
-    "solver",
-    "rfq",
-    "sealed-bid",
-    "dark-pool",
-    "cross-chain"
-  ],
-  "author": "Axol (https://axol.io)",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
-    "directory": "packages/solver-sdk"
+    "example:escrow": "tsx examples/escrow-solver.ts",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@xochi/signer": "^0.5.1",
@@ -53,12 +59,8 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
     "fast-check": "^4.9.0",
     "tsup": "^8.3.0",
-    "tsx": "^4.23.13",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
-  },
-  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/solver-sdk#readme"
+    "tsx": "^4.23.13"
+  }
 }

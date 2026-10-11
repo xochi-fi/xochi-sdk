@@ -22,23 +22,11 @@
     "test:integration": "npm run test:integration -w @xochi/sdk",
     "test:provider": "npm test -w @xochi/provider",
     "test:signer": "npm test -w @xochi/signer",
-    "test:solver": "npm test -w @xochi/solver-sdk",
-    "test:reference": "npm test -w @xochi/reference",
-    "test:spec": "npm test -w @xochi/spec",
     "test:conformance": "npm run test:conformance -w @xochi/reference",
     "test:fee": "npm run test:fee -w @xochi/reference",
-    "generate:conformance": "npm run generate -w @xochi/spec",
+    "generate:conformance": "npm run generate:conformance -w @xochi/spec",
     "generate:fee": "npm run generate:fee -w @xochi/spec",
     "generate:solver-bid-v2": "npm run generate:solver-bid-v2 -w @xochi/spec",
-    "generate:order-id": "npm run generate:order-id -w @xochi/spec",
-    "generate:open-auth": "npm run generate:open-auth -w @xochi/spec",
-    "generate:dest-blinding": "npm run generate:dest-blinding -w @xochi/spec",
-    "generate:fill-salt": "npm run generate:fill-salt -w @xochi/spec",
-    "generate:fill-auth": "npm run generate:fill-auth -w @xochi/spec",
-    "generate:fill-attestation": "npm run generate:fill-attestation -w @xochi/spec",
-    "generate:slash-attestation": "npm run generate:slash-attestation -w @xochi/spec",
-    "generate:fill-acceptance": "npm run generate:fill-acceptance -w @xochi/spec",
-    "generate:xsp": "npm run generate:xsp -w @xochi/spec",
     "generate:escrow": "npm run generate:escrow -w @xochi/spec",
     "generate:wire": "npm run generate:wire -w @xochi/spec --",
     "verify:version": "node scripts/verify-attestation-version.mjs",
@@ -47,9 +35,9 @@
     "verify:openapi": "node scripts/verify-openapi.mjs"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2",
+    "@types/node": "^26.4.1",
     "prettier": "^3.3.3",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.11"
   }
 }
