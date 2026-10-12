@@ -39,7 +39,10 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   concurrent accepts cannot both pass on inventory covering one fill (a
   SolverBond no-show slash). `accept(..., { resume: true })` takes no slot.
 - `examples/escrow-solver.ts` shape-checks `SOLVER_KEY` / `CLAIM_KEY`, rejects
-  empty or non-integer numeric env knobs, and prunes its bid and award maps.
+  empty or non-integer numeric env knobs, refuses an unparseable
+  `RIDDLER_SOLVER_URL` by name (warning on loopback `http:`), and prunes its bid
+  and award maps. The startup checks both examples share live in
+  `examples/env.ts`.
 
 ## `0.4.1` — the version gate re-runs under a running solver
 

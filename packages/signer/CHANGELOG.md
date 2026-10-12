@@ -25,10 +25,9 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ### Fixed
 
-None of these was published with the old behavior (two adversarial review rounds of #21).
+None of these was published with the old behavior.
 
 - `assertEscrowBinding` and the pull guard read `expectedEscrows` through one resolver. A key is a positive chain id in decimal or `0x` hex, trimmed, so `{"0x2105": E}`, `{"08453": E}` and `" 8453"` pin chain 8453 in both guards (the pull guard skipped them; `assertEscrowBinding` refused them as "no pinned escrow"). Any other key (`""`, `"0"`, `"-8453"`, `"+8453"`, `"1e3"`, `"0b10"`, `"0x"`, `"__proto__"`; the pull guard read `"0b10"` as chain 2), two keys for one chain with different escrows, a pin that is not a non-zero EVM address after trimming, or a missing `fromChainId` while pins are set refuses to sign.
 - `deriveFillSalt` rejects an empty key, like `deriveDestBlinding`.
 - `DEBUG` is read without assuming a `process` global, so the bundle loads in browsers without a shim.
 - `exports` gives each condition its own types (`require` -> `index.d.cts`), fixing TS1479 for CommonJS TypeScript consumers, directly or via `@xochi/client`'s CJS declarations.
-- The riddler-sdk#150 escrow-envelope and Canton case guards now have tests.

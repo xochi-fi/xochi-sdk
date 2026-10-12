@@ -22,7 +22,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Fixed
 
-None of these was published with the old behavior (two adversarial review rounds of #21).
+None of these was published with the old behavior.
 
 - **Machine**:
   - A new amount, trade/wallet context change, Reset or `ResumeRequested` drops in-flight quotes (a late reply overwrote the corrected quote; a Tron allocation waiting on sign-in re-quoted over the resumed deposit intent). Entering signing, awaiting-deposit or in-flight drops every quote in flight, and a reply arriving after quoting is logged and dropped.

@@ -13,7 +13,7 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ### Fixed
 
-None of these was published with the old behavior (two adversarial review rounds of #21).
+None of these was published with the old behavior.
 
 - Provider events reach the frame only after it connects in the current load (`autoConnect`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts).
 - `MAX_PENDING_RPC` counts wallet requests until they settle, across frame reloads; there is deliberately no per-request deadline, so a never-settled request holds its slot.
