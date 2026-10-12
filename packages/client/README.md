@@ -28,6 +28,7 @@ const quote = await xochi.getQuote(request);
 - `getIntentStatus` returns the status, `{ notFound: true }` on 404, or `null` on a transient failure.
 - 429/503 raise `ApiError` with `retryAfter`.
 - Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated). Each attempt's timeout stays armed until the body is read and cancels the body when it fires. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs` (15 s).
+- The exported `QuoteResponseSchema` / `ExecuteResponseSchema` are `.strict()` (the declared wire shape); the transport validates with a `.passthrough()` copy so undeclared served fields (e.g. `escrow`) reach the signer checks. A consumer running the exported schema directly is stricter than the transport.
 
 ## State machine
 
