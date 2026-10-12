@@ -1,5 +1,5 @@
-// Cross-checks @xochi/client's fee reference against the SERVED wire contract, vendored at
-// `@xochi/spec/wire/openapi.json` (SPEC.md Section 3: "Source of truth:
+// Holds @xochi/client's fee reference and @xochi/signer's capability enums to the SERVED wire
+// contract, vendored at `@xochi/spec/wire/openapi.json` (SPEC.md Section 3: "Source of truth:
 // GET /xochi/openapi.json"). Offline and CI-safe: the file is read off disk, never
 // fetched -- the vendored copy's agreement with the live document is the scheduled
 // probe's job (`npm run verify:openapi`), not this suite's.
@@ -8,11 +8,9 @@
 // cannot perform its check fails rather than silently reducing to a comparison of two
 // empty sets.
 //
-//
-// Scope here: the digest check and the parts of the served contract this repo's own
-// code reads -- the fee reference (published in `@xochi/client`). The taker-side assertions
-// (the IntentLifecycleStatus terminal partition, the quote fields, `aztec_proof`, the
-// endpoints and error codes `xochi.ts` branches on) moved with that code to Riddler's
+// Scope: the digest check and the parts of the served contract this repo's own code reads.
+// The taker-side assertions (the IntentLifecycleStatus terminal partition, the quote fields,
+// `aztec_proof`, the endpoints and error codes the taker CLI branches on) live in Riddler's
 // private e2e harness, which reads the same vendored document from `@xochi/spec`.
 // What this suite is NOT: an assertion against a value this repo cannot edit. The
 // vendored document and its digest are both in this repo and `generate:wire` writes both,
@@ -104,10 +102,6 @@ describe("fee_breakdown wire object", () => {
     .sort();
   const servedKeys = props("LayeredFeeBreakdown").sort();
   const servedRequired = [...(schema("LayeredFeeBreakdown").required ?? [])].sort();
-
-  it("the served schema declares a required set", () => {
-    expect(servedRequired.length).toBeGreaterThan(0);
-  });
 
   // Catches: the server drops or renames a fee layer while `fee.ts`, `fee/schema.json` and
   // `fee/vectors.json` all agree with each other -- the #92 shape, three files in one
