@@ -6,7 +6,7 @@
  * the artifact the solver publishes, which is the authoritative side.
  * `probe-lib.mjs` states the three rules all four probes share.
  *
- * The vendored copy stays (#96). Reading the served set directly would make
+ * The vendored copy stays. Reading the served set directly would make
  * `deposit.test.ts`, the byte-equality contract for a signing path, depend on
  * network reachability, and a skipped conformance test is the stale-copy bug
  * with extra steps. The suite verifies the encoder against the vendored bytes
@@ -38,38 +38,36 @@
  *   3  MISCONFIGURED: no server URL to ask, a non-https or unparseable one, an
  *      unusable PROBE_TIMEOUT_MS, or an unreadable vendored copy
  */
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
-
 import {
   drift,
+  fetchJson,
   inconclusive,
   installCrashHandlers,
   misconfigured,
   orInconclusive,
   parseJsonBody,
   probeGet,
+  readRepoFile,
   readTimeoutMs,
+  repoPath,
   resolveServer,
+  sha256Hex,
 } from "./probe-lib.mjs";
 
 installCrashHandlers();
 
 const TIMEOUT_MS = readTimeoutMs();
-const VENDORED = fileURLToPath(
-  new URL("../packages/reference/test/vectors/deposit_attestation.json", import.meta.url),
-);
+const VENDORED = "packages/reference/test/vectors/deposit_attestation.json";
 
 const { serverKey, baseUrl, parsedBase } = resolveServer();
 
 /**
- * One GET under the configured base URL. The artifact path is SERVER-supplied,
- * so it is resolved against the base and required to stay on the same origin.
- * Off-origin is INCONCLUSIVE for the redirect reason: an artifact from a host
- * nobody configured is not the value this repo cannot edit.
+ * Resolve a path under the configured base URL. The artifact path is
+ * SERVER-supplied, so it is resolved against the base and required to stay on
+ * the same origin. Off-origin is INCONCLUSIVE for the redirect reason: an
+ * artifact from a host nobody configured is not the value this repo cannot edit.
  */
-const get = async (path, accept) => {
+const sameOriginUrl = (path) => {
   let target;
   try {
     target = new URL(path, `${baseUrl}/`);
@@ -84,26 +82,26 @@ const get = async (path, accept) => {
         "  and comparing the vendored set against it would attribute its bytes to the producer.",
     );
   }
-  const got = orInconclusive(
-    await probeGet({ url: target.href, accept, timeoutMs: TIMEOUT_MS }),
-  );
-  return { res: got.response, body: got.text, url: target.href };
+  return target.href;
 };
 
 console.log(`server     ${serverKey} (${baseUrl})`);
 
 // 1. What does the solver say its vector bytes hash to?
-const caps = await get("/xochi/capabilities", "application/json");
 const capsJson = orInconclusive(
-  parseJsonBody({ response: caps.res, text: caps.body }, { url: caps.url }),
+  await fetchJson({ url: sameOriginUrl("/xochi/capabilities"), timeoutMs: TIMEOUT_MS }),
 ).value;
 const advertisedSha = capsJson?.deposit_attestation_vectors_sha256;
-const publishedPath = capsJson?.deposit_attestation_vectors_url ?? "/xochi/vectors/deposit-attestation.json";
+const publishedPath =
+  capsJson?.deposit_attestation_vectors_url ?? "/xochi/vectors/deposit-attestation.json";
 
 // 2. Fetch the artifact and prove it is the one that hash describes.
-const artifact = await get(publishedPath, "application/json");
-const servedSha = createHash("sha256").update(artifact.body).digest("hex");
-console.log(`artifact   ${publishedPath} (${artifact.body.length} bytes, sha256 ${servedSha.slice(0, 16)}...)`);
+const artifactUrl = sameOriginUrl(publishedPath);
+const artifact = orInconclusive(await probeGet({ url: artifactUrl, timeoutMs: TIMEOUT_MS }));
+const servedSha = sha256Hex(artifact.text);
+console.log(
+  `artifact   ${publishedPath} (${artifact.text.length} bytes, sha256 ${servedSha.slice(0, 16)}...)`,
+);
 
 if (typeof advertisedSha === "string" && advertisedSha.length > 0) {
   if (advertisedSha.toLowerCase() !== servedSha) {
@@ -121,18 +119,16 @@ if (typeof advertisedSha === "string" && advertisedSha.length > 0) {
   console.log(`           (capabilities advertised no sha256 to cross-check against)`);
 }
 
-const served = orInconclusive(
-  parseJsonBody({ response: artifact.res, text: artifact.body }, { url: artifact.url }),
-).value;
+const served = orInconclusive(parseJsonBody(artifact, { url: artifactUrl })).value;
 
 // An unreadable or malformed vendored copy is this repo's state, not evidence
 // about the producer. Letting readFileSync throw would report it as drift.
 let vendored;
 try {
-  vendored = JSON.parse(readFileSync(VENDORED, "utf-8"));
+  vendored = JSON.parse(readRepoFile(VENDORED));
 } catch (e) {
   misconfigured(
-    `could not read the vendored vector set at ${VENDORED}: ${e.message}\n` +
+    `could not read the vendored vector set at ${repoPath(VENDORED)}: ${e.message}\n` +
       "  Nothing was compared. This is local state, not a statement about the producer.",
   );
 }
@@ -165,7 +161,8 @@ for (const name of servedVectors.keys()) {
   if (!vendoredVectors.has(name)) problems.push(`vector "${name}" is published but not vendored`);
 }
 for (const name of vendoredVectors.keys()) {
-  if (!servedVectors.has(name)) problems.push(`vector "${name}" is vendored but no longer published`);
+  if (!servedVectors.has(name))
+    problems.push(`vector "${name}" is vendored but no longer published`);
 }
 for (const [name, s] of servedVectors) {
   const v = vendoredVectors.get(name);

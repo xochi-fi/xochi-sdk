@@ -12,31 +12,30 @@
  *    deploy, and a check that reddens honest PRs eventually gets disabled.
  *
  * Here: the exit-code helpers, the `PROBE_*` env readers, the server/base-URL
- * resolution, and the one `fetch` shape (no-cache, unfollowed redirects,
- * body-free error reporting). Per-probe copies had diverged:
- * `PROBE_TIMEOUT_MS=60s` exited 3 in one and 2 in the others, and two echoed
- * upstream error bodies into a public Actions log. No verdict lives here; each
- * probe owns its own.
+ * resolution, repo-relative paths for each probe's local side, and the one
+ * `fetch` shape (no-cache, unfollowed redirects, body-free error reporting).
+ * No verdict lives here; each probe owns its own.
  *
- * `probeGet`/`parseJsonBody` return `{ ok: false, reason }` rather than exiting,
- * since the spec probe re-samples after a failure; `orInconclusive` is for
- * callers that want the exit. Node builtins only, so nothing in the trust path
- * can fail and be misread as a producer problem.
+ * `probeGet`/`parseJsonBody`/`fetchJson` return `{ ok: false, reason }` rather
+ * than exiting, since the spec probe re-samples after a failure; `orInconclusive`
+ * is for callers that want the exit. Node builtins only, so nothing in the trust
+ * path can fail and be misread as a producer problem.
  */
 
-import { writeSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * Print and exit. Every exit in every probe goes through here.
  *
  * `writeSync`, not `console.error`, because `process.exit()` runs in the same
- * tick and Node's stderr is ASYNCHRONOUS on a pipe -- which is exactly what the
- * Actions runner and any `| tee` give it. Everything still queued is discarded
- * at the exit, and the openapi probe's DRIFT body is the longest thing any
- * probe prints: measured, a 4.09 MB report came out of a pipe as 66,637 bytes,
+ * tick and Node's stderr is ASYNCHRONOUS on a pipe, which is what the Actions
+ * runner and any `| tee` give it. Everything still queued is discarded at the
+ * exit: a 4.09 MB openapi DRIFT report came out of a pipe as 66,637 bytes,
  * losing the tail of the finding list and the whole remediation paragraph.
- * STALE and BREAKING share exit 1 here on purpose, so the body is the ONLY
- * discriminator and truncating it silently is worse than the exit code alone.
+ * STALE and BREAKING share exit 1, so the body is the ONLY discriminator and
+ * truncating it silently is worse than the exit code alone.
  */
 export const fail = (code, kind, msg) => {
   writeSync(2, `\n${kind}: ${msg}\n`);
@@ -70,6 +69,24 @@ export const installCrashHandlers = () => {
   process.on("uncaughtException", crashed);
   process.on("unhandledRejection", crashed);
 };
+
+/**
+ * A local-side problem that must not stop the producer from being sampled.
+ * Printed now, exited on (3) by the caller at the END of the run, so a
+ * half-landed local change cannot switch the producer check off.
+ */
+export const noteLocalProblem = (problem, note) => {
+  console.error(`MISCONFIGURED (local side): ${problem}`);
+  console.error(note);
+};
+
+/** A path under the repo root, for the local side of a comparison. */
+export const repoPath = (relative) => fileURLToPath(new URL(`../${relative}`, import.meta.url));
+
+/** Read a repo file as UTF-8; the caller decides what an unreadable one means. */
+export const readRepoFile = (relative) => readFileSync(repoPath(relative), "utf-8");
+
+export const sha256Hex = (data) => createHash("sha256").update(data).digest("hex");
 
 /**
  * A `PROBE_*` duration is validated, not coerced. An unusable one is
@@ -182,7 +199,10 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
  * forges a workflow annotation at column 0 in a public log.
  */
 const oneLine = (value, max = 120) => {
-  const clean = String(value).replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, "0")}`);
+  const clean = String(value).replace(
+    /[\u0000-\u001f\u007f-\u009f]/g,
+    (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, "0")}`,
+  );
   return clean.length > max ? `${clean.slice(0, max - 3)}...` : clean;
 };
 
@@ -191,7 +211,7 @@ const oneLine = (value, max = 120) => {
  * host that was asked, which is the whole content of the line it appears in,
  * and a media type never needs that much room.
  */
-const MAX_URL_CHARS = 200;
+export const MAX_URL_CHARS = 200;
 const MAX_CONTENT_TYPE_CHARS = 80;
 
 /**
@@ -199,12 +219,10 @@ const MAX_CONTENT_TYPE_CHARS = 80;
  * reporting a broken TRANSFER as its own outcome: `{ ok: true, text }`,
  * `{ ok: false, oversize, size }` or `{ ok: false, size, error }`.
  *
- * The caller used to wrap this in `.catch(() => ({ ok: true, text: "" }))`,
- * which asserted the read had SUCCEEDED and the producer had sent nothing. A
- * connection reset, a TLS teardown or a truncated chunked body therefore came
- * out of `parseJsonBody` as `did not return JSON: 200 (application/json, 0
- * bytes)` -- a finding about the producer's CONTENT for a failure of the wire,
- * pointed at the wrong team, and a swallowed error besides.
+ * A connection reset, a TLS teardown or a truncated chunked body is a failure of
+ * the wire. Reported as an empty successful read it would reach `parseJsonBody`
+ * as `did not return JSON: 200 (application/json, 0 bytes)`, a finding about the
+ * producer's CONTENT pointed at the wrong team.
  */
 const readCapped = async (response) => {
   if (!response.body) return { ok: true, text: "" };
@@ -254,7 +272,10 @@ export const probeGet = async ({ url, accept = "application/json", timeoutMs, la
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    return { ok: false, reason: `${at}GET ${target} failed: ${oneLine(e?.cause?.message ?? e.message)}` };
+    return {
+      ok: false,
+      reason: `${at}GET ${target} failed: ${oneLine(e?.cause?.message ?? e.message)}`,
+    };
   }
 
   // `type` covers the spec's opaque-redirect filtered response (status 0); Node
@@ -320,6 +341,19 @@ export const parseJsonBody = ({ response, text }, { url, label } = {}) => {
       reason: `${at}GET ${oneLine(url ?? response.url, MAX_URL_CHARS)} did not return JSON: ${describe(response, text)}`,
     };
   }
+};
+
+/**
+ * One GET parsed as JSON: `{ ok: true, value, text, response }` or
+ * `{ ok: false, reason }`. `text` is kept for callers that hash or lex the raw
+ * bytes as well.
+ */
+export const fetchJson = async ({ url, label, timeoutMs }) => {
+  const got = await probeGet({ url, label, timeoutMs });
+  if (!got.ok) return got;
+  const parsed = parseJsonBody(got, { url, label });
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: parsed.value, text: got.text, response: got.response };
 };
 
 /** For probes whose first non-answer ends the run: exit 2 with the reason. */

@@ -7,13 +7,13 @@
  * authoritative, and it is the server's own code constant (Riddler#877) rather
  * than its artifact, so this compares code to code across the trust boundary.
  * `deposit.test.ts`'s own version assertion cannot: it holds a vendored fixture
- * to a source constant, both in this repo, and it was green for the entire
- * window this SDK verified v2 while the solver signed v3 (#92). `probe-lib.mjs`
- * states the three rules all four probes share.
+ * to a source constant, both in this repo, and stayed green while this SDK
+ * verified v2 and the solver signed v3 (riddler-sdk#92). `probe-lib.mjs` states
+ * the three rules all four probes share.
  *
  * A drift means every deposit-route quote fails closed, surfacing as "signer is
  * not the pinned solver", which reads as a key rotation rather than a client
- * that needs upgrading. That misreading cost a day in #92.
+ * that needs upgrading.
  *
  * One unauthenticated GET, and no quote: obtaining a real attestation
  * permanently consumes a Tron deposit address. The sibling probe
@@ -31,17 +31,15 @@
  *   3  MISCONFIGURED: no server URL to ask, a non-https or unparseable one, an
  *      unusable PROBE_TIMEOUT_MS, or unreadable local state
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   drift,
+  fetchJson,
   inconclusive,
   installCrashHandlers,
   misconfigured,
   orInconclusive,
-  parseJsonBody,
-  probeGet,
+  readRepoFile,
+  repoPath,
   readTimeoutMs,
   resolveServer,
 } from "./probe-lib.mjs";
@@ -50,27 +48,27 @@ installCrashHandlers();
 
 const TIMEOUT_MS = readTimeoutMs();
 
+const PINNED_SOURCE = "packages/signer/src/deposit-verify.ts";
+
 /**
  * The version this SDK verifies, read from source rather than from
  * `packages/signer/dist/index.js`: a build output puts the build and its
- * preconditions (npm ci, build order) in the trust path, so a developer who
- * bumped the constant without rebuilding got a confident "OK" against a value no
- * longer in the source tree. The regex fails loudly, exactly one match or
- * MISCONFIGURED, since silently matching zero is "checked nothing, reported
- * success" again.
+ * preconditions (npm ci, build order) in the trust path, and a constant bumped
+ * without a rebuild reads as a confident "OK" against a value no longer in the
+ * source tree. The regex fails loudly, exactly one match or MISCONFIGURED, since
+ * silently matching zero is "checked nothing, reported success" again.
  */
 const readPinnedVersion = () => {
-  const src = fileURLToPath(new URL("../packages/signer/src/deposit-verify.ts", import.meta.url));
   let text;
   try {
-    text = readFileSync(src, "utf-8");
+    text = readRepoFile(PINNED_SOURCE);
   } catch (e) {
-    misconfigured(`could not read ${src}: ${e.message}`);
+    misconfigured(`could not read ${repoPath(PINNED_SOURCE)}: ${e.message}`);
   }
   const matches = [...text.matchAll(/export const DEPOSIT_ATTESTATION_VERSION\s*=\s*"([^"]+)"/g)];
   if (matches.length !== 1) {
     misconfigured(
-      `expected exactly one DEPOSIT_ATTESTATION_VERSION declaration in packages/signer/src/deposit-verify.ts, found ` +
+      `expected exactly one DEPOSIT_ATTESTATION_VERSION declaration in ${PINNED_SOURCE}, found ` +
         `${matches.length}.\n  The probe reads it from source rather than from a build output; if the\n` +
         "  declaration was reformatted, update this pattern in the same change.",
     );
@@ -87,8 +85,7 @@ console.log(`verifies   ${DEPOSIT_ATTESTATION_VERSION}\n`);
 
 const url = `${baseUrl}/xochi/capabilities`;
 
-const got = orInconclusive(await probeGet({ url, timeoutMs: TIMEOUT_MS }));
-const caps = orInconclusive(parseJsonBody(got, { url })).value;
+const caps = orInconclusive(await fetchJson({ url, timeoutMs: TIMEOUT_MS })).value;
 
 const served = caps?.deposit_attestation_version;
 
@@ -108,7 +105,7 @@ if (served !== DEPOSIT_ATTESTATION_VERSION) {
   drift(
     `the solver signs ${served}, this SDK verifies ${DEPOSIT_ATTESTATION_VERSION}.\n\n` +
       "  Every deposit-route quote will fail closed, and it will surface as\n" +
-      "  \"signer is not the pinned solver\" -- which reads as a key rotation or an outage\n" +
+      '  "signer is not the pinned solver" -- which reads as a key rotation or an outage\n' +
       "  rather than a client that needs upgrading. That misreading cost a day in #92.\n\n" +
       "  Fix: bump DEPOSIT_ATTESTATION_VERSION in packages/signer/src/deposit-verify.ts, update\n" +
       "  the field order to match Riddler's deposit_attestation.ex, and re-sync the vectors\n" +
