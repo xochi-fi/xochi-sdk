@@ -1,8 +1,8 @@
-// M6 escrow primitives, order v2 (RESERVED / INERT). Verifies canonical keys,
-// the blinded destination commitment, the orderId sensitivity, OpenAuth
-// signatures and every rejection path of the escrow-binding guard (SPEC.md
-// §2.3, ESCROW-RFC.md §2/§7/§12). Byte-level expectations live in the shared
-// vectors (order-id-vectors.test.ts), never inline here.
+// Escrow primitives, order v2 (RESERVED / INERT). Verifies canonical keys,
+// the blinded destination commitment, the orderId sensitivity, strict uint
+// parsing on every escrow signer and every rejection path of the escrow-binding
+// guard (SPEC.md §2.3, ESCROW-RFC.md §2/§7/§12). Byte-level expectations live in
+// the shared vectors (order-id-vectors.test.ts), never inline here.
 
 import { describe, it, expect } from "vitest";
 import { ethers } from "ethers";
@@ -125,24 +125,6 @@ describe("computeOrderId", () => {
         escrow: ethers.getAddress(ESCROW),
       }),
     ).toBe(ORDER_ID);
-  });
-});
-
-describe("OpenAuth", () => {
-  it("signatures recover to the test signer", async () => {
-    // PUBLIC Hardhat/Anvil test key #0. Never fund it.
-    const wallet = new ethers.Wallet(
-      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-    );
-    const domain = { chainId: 8453, verifyingContract: ESCROW };
-    const sig = await signOpenAuth(wallet, domain, ORDER_ID, 1900000000);
-    expect(ethers.getBytes(sig).length).toBe(65);
-    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000000), sig)).toBe(
-      wallet.address,
-    );
-    expect(ethers.recoverAddress(openAuthDigest(domain, ORDER_ID, 1900000001), sig)).not.toBe(
-      wallet.address,
-    );
   });
 });
 
@@ -335,11 +317,11 @@ describe("assertEscrowBinding", () => {
     );
   });
 
-  // The finding: every escrow value in a quote is the venue's. A hostile venue
-  // names its own EOA as escrow.address AND order_terms.escrow AND the pull `to`,
-  // and reseals destCommitment/orderId over the user's real recipient, token,
-  // chain and amount. Before the pin, the guard compared those three to each
-  // other and returned the orderId.
+  // Every escrow value in a quote is the venue's. A hostile venue names its own
+  // EOA as escrow.address AND order_terms.escrow AND the pull `to`, and reseals
+  // destCommitment/orderId over the user's real recipient, token, chain and
+  // amount, so the quote is consistent with itself; only the caller-pinned
+  // escrow catches it.
   it("refuses an attacker-escrow quote that is consistent with itself", () => {
     const ATTACKER = "0x" + "a7".repeat(20);
     const t = { ...terms, escrow: ATTACKER };

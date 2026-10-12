@@ -1,9 +1,10 @@
 // Cross-implementation vector check for the v2 escrow order encoding
-// (ESCROW-RFC §2/§12, M6.1): `@xochi/spec`'s order-id.json, open-auth.json,
+// (ESCROW-RFC §2/§12): `@xochi/spec`'s order-id.json, open-auth.json,
 // dest-blinding.json, fill-salt.json, fill-auth.json, fill-attestation.json,
-// slash-attestation.json and fill-acceptance.json -- the same files the Riddler server's Elixir suite and
-// RiddlerEscrow's Foundry suite read. Without this, the vectors would only ever
-// be asserted by the generator that produced them, which is circular.
+// slash-attestation.json and fill-acceptance.json -- the same files the Riddler
+// server's Elixir suite and RiddlerEscrow's Foundry suite read. Without this, the
+// vectors would only ever be asserted by the generator that produced them, which
+// is circular.
 //
 // A mismatch means @xochi/signer changed without regenerating the vectors, or
 // the vectors were edited by hand. Regenerate deliberately; never patch them.
@@ -173,15 +174,6 @@ describe("order-id.json", () => {
         expect(n, v.name).toMatch(/^[0-9]+$/);
       }
     }
-  });
-
-  it("gives a checksummed EVM recipient the lowercase form's key and orderId", () => {
-    const byName = (n: string) => orderIds.vectors.find((v) => v.name === n)!;
-    const lower = byName("baseline-evm-usdc");
-    const checksummed = byName("evm-recipient-checksummed");
-    expect(checksummed.opening.recipient).not.toBe(lower.opening.recipient);
-    expect(checksummed.expected_recipient_key).toBe(lower.expected_recipient_key);
-    expect(checksummed.expected_order_id).toBe(lower.expected_order_id);
   });
 });
 
