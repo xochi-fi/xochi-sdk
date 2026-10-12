@@ -1,4 +1,4 @@
-// Startup checks shared by examples/reference-solver.ts and
+// Startup checks shared by examples/offline-solver.ts and
 // examples/escrow-solver.ts: required variables, the venue URL, the key shape
 // and numeric knobs, every one refused before the first request, plus the log
 // sanitizer for strings a venue or an operator controls. Nothing here is

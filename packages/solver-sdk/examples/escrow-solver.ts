@@ -118,7 +118,7 @@ import { assertKeyShape, assertVenueUrl, envInt, requireEnv } from "./env";
 import { errorText, type FillStateFile, type PersistedFill } from "./fill-state-file";
 import {
   BackgroundTasks,
-  describe,
+  describeOutcome,
   openStateFile,
   runAgainstVenue,
   solverStop,
@@ -437,7 +437,7 @@ export class EscrowSolver implements Solver {
     let outcome: TxOutcome | undefined;
     try {
       outcome = await this.gateway.fill(prepared);
-      say(`fill  ${prepared.orderId}: ${describe(outcome)}`);
+      say(`fill  ${prepared.orderId}: ${describeOutcome(outcome)}`);
     } catch (err) {
       // Two refusals are answers, not failures: `already_filled` (this
       // gateway's own fill, whose claim is already running, or anyone's) and
@@ -465,7 +465,7 @@ export class EscrowSolver implements Solver {
         outcome?.status === "in_doubt" || outcome?.status === "cancelled" ? outcome : "unsent",
       );
       throw new Error(
-        `fill ${prepared.orderId} not confirmed (${outcome ? describe(outcome) : "the fill call threw"}); ` +
+        `fill ${prepared.orderId} not confirmed (${outcome ? describeOutcome(outcome) : "the fill call threw"}); ` +
           `re-driving it until it lands or the FillAuth deadline passes, then claiming`,
       );
     }
@@ -756,7 +756,7 @@ export class EscrowSolver implements Solver {
         }
         if (!expired) {
           const outcome = await this.gateway.fill(prepared);
-          say(`fill  ${prepared.orderId}: re-driven: ${describe(outcome)}`);
+          say(`fill  ${prepared.orderId}: re-driven: ${describeOutcome(outcome)}`);
           if (outcome.status === "confirmed") return true;
           if (outcome.status === "in_doubt" || outcome.status === "cancelled") {
             last = outcome;
@@ -962,19 +962,21 @@ async function runBond(args: string[]): Promise<void> {
       const bondSigner = new ethers.Wallet(cfg.solverKey, rpcProvider(bond.rpc));
       const { token } = await gateway.bondStatus();
       const approval = await gateway.ensureAllowance(bondSigner, token, bond.address, amount);
-      if (approval) say(`approve: ${describe(approval)}`);
+      if (approval) say(`approve: ${describeOutcome(approval)}`);
       if (approval && approval.status !== "confirmed") return;
-      say(`deposit: ${describe(await gateway.bondDeposit(amount))}`);
+      say(`deposit: ${describeOutcome(await gateway.bondDeposit(amount))}`);
       return;
     }
     case "request-withdrawal":
-      say(`requestWithdrawal: ${describe(await gateway.bondRequestWithdrawal(BigInt(arg ?? "")))}`);
+      say(
+        `requestWithdrawal: ${describeOutcome(await gateway.bondRequestWithdrawal(BigInt(arg ?? "")))}`,
+      );
       return;
     case "cancel-withdrawal":
-      say(`cancelWithdrawal: ${describe(await gateway.bondCancelWithdrawal())}`);
+      say(`cancelWithdrawal: ${describeOutcome(await gateway.bondCancelWithdrawal())}`);
       return;
     case "complete-withdrawal":
-      say(`completeWithdrawal: ${describe(await gateway.bondCompleteWithdrawal(arg))}`);
+      say(`completeWithdrawal: ${describeOutcome(await gateway.bondCompleteWithdrawal(arg))}`);
       return;
     default:
       throw new Error(

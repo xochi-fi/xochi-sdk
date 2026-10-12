@@ -50,7 +50,7 @@
     "test": "vitest run",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
-    "example:solver": "tsx examples/reference-solver.ts",
+    "example:solver": "tsx examples/offline-solver.ts",
     "example:escrow": "tsx examples/escrow-solver.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },

@@ -14,7 +14,7 @@ import {
 import type { EscrowSolver } from "./escrow-solver";
 import { errorText, FillStateFile, LeaseHeldError } from "./fill-state-file";
 
-export function describe(outcome: TxOutcome): string {
+export function describeOutcome(outcome: TxOutcome): string {
   return "blockNumber" in outcome
     ? `${outcome.status} ${outcome.txHash} in block ${outcome.blockNumber}`
     : `${outcome.status} ${outcome.txHash}: ${outcome.reason}`;
@@ -352,7 +352,7 @@ export async function startSolver(o: {
         let delayMs = o.retryMs ?? 5_000;
         for (;;) {
           const result = await pending.then(
-            (outcome) => (outcome ? describe(outcome) : "none sent"),
+            (outcome) => (outcome ? describeOutcome(outcome) : "none sent"),
             errorText,
           );
           if (stands) {
@@ -384,7 +384,7 @@ export async function startSolver(o: {
       }
       if (approval && approval.status !== "confirmed") {
         throw new FatalSolverStop(
-          `standing allowance not confirmed: ${describe(approval)}; not bidding`,
+          `standing allowance not confirmed: ${describeOutcome(approval)}; not bidding`,
         );
       }
       await Promise.all(sent);
@@ -405,11 +405,11 @@ export async function startSolver(o: {
           retryUntilStanding(Promise.resolve(topUp), () => unsettled, "are still being driven");
         }
         throw new FatalSolverStop(
-          `allowance top-up for bidding not confirmed: ${describe(topUp)}; not bidding`,
+          `allowance top-up for bidding not confirmed: ${describeOutcome(topUp)}; not bidding`,
         );
       }
       o.log(
-        `allowance ${topUp ? describe(topUp) : approval ? describe(approval) : "already standing"}`,
+        `allowance ${topUp ? describeOutcome(topUp) : approval ? describeOutcome(approval) : "already standing"}`,
       );
       bidding = true;
     }
