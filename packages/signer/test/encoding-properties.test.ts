@@ -34,14 +34,11 @@ const CFG = { seed: pbtSeed(), numRuns: pbtRuns(200) };
 // the attestation cases). At 200 rounds they sit close enough to vitest's
 // default 5s per-test ceiling to fail on a loaded runner -- a timeout, not a
 // wrong answer. 60 rounds keeps the boundary bias fast-check front-loads and
-// leaves ~35x headroom; PBT_RUNS still overrides for a deeper local sweep.
+// leaves ~35x headroom; PBT_RUNS overrides for a deeper local sweep.
 const HEAVY = { seed: CFG.seed, numRuns: pbtRuns(60) };
 
-// The run-count cut alone left these three cases on vitest's 5s DEFAULT, which
-// is the ceiling they were flaking against -- so `PBT_RUNS=200`, the documented
-// way to restore coverage, also restored the flake (measured at 1804ms of a
-// 5000ms budget on a loaded box). They carry the same explicit ceiling the
-// stealth properties do, derived from the budget it guards.
+// An explicit ceiling derived from the budget it guards, as the stealth
+// properties carry, so a raised PBT_RUNS raises the ceiling with it.
 const PBT_TIMEOUT_MS = pbtTimeoutMs(HEAVY.numRuns);
 
 // Awkward on purpose: delimiters, quotes, backslashes and separators are what

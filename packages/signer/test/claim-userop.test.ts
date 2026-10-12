@@ -1,8 +1,7 @@
 // The stealth claim's UserOperation check (axol-io/riddler-sdk#86).
 //
-// `xochiClaim` raw-ECDSA-signs a digest from `/xochi/claim/prepare`. Until
-// Riddler#851 there was nothing behind that digest to look at, so the client
-// signed on the venue's word; these tests cover the checks that replaced it.
+// `xochiClaim` raw-ECDSA-signs a digest from `/xochi/claim/prepare`; these tests
+// cover the checks that stand between the served op and that signature.
 //
 // Two things this suite is deliberately built around:
 //
@@ -32,10 +31,9 @@ import { assertPreparedClaimMatchesRequest, XochiClaimMismatchError } from "@xoc
 //   sponsored = Map.merge(op, %{"paymaster" => ..., <rewritten gas>})
 //   {:ok, hash} = UserOperation.compute_hash(sponsored, chain_id)
 //
-// The callData below is the server's own construction, not hand-typed hex. That
-// distinction earned itself: the first pass at this fixture typed the callData by
-// hand, landed an odd-length hex string, and produced a "server" hash over bytes
-// no server would ever build.
+// The callData below is the server's own construction, not hand-typed hex: a
+// hand-typed odd-length string would produce a "server" hash over bytes no server
+// would ever build.
 //
 // SPONSORED: chain 10, factory + paymaster present (the shape a real claim has --
 // a claim always deploys the counterfactual account and is always sponsored).

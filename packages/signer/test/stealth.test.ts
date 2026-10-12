@@ -26,21 +26,17 @@ const noPrefix = (h: string) => h.replace(/^0x/, "");
 const CFG = { seed: pbtSeed(), numRuns: pbtRuns(200) };
 
 // The three point-math properties below each do an ECDH plus two scalar
-// multiplications per round, measured at ~13ms/round against ~3ms for the
-// signing ones. At 200 rounds they were the file's whole cost (2.7s + 2.3s +
-// 1.7s of a 7.5s idle total) and the file took 52s of test time on a loaded
-// box, which is how a green suite goes red without anything being wrong.
+// multiplications per round (~13ms against ~3ms for the signing ones), enough
+// at 200 rounds for a loaded runner to time the file out with nothing wrong.
 //
 // 60 rounds: fast-check front-loads the domain boundaries (`arbPriv` spans
-// [1, n-1] inclusive), so the rounds being dropped were repetition rather than
+// [1, n-1] inclusive), so the dropped rounds are repetition rather than
 // coverage, and these properties are cross-checks against an independent
 // oracle -- a break shows up in the first handful of rounds, not the 137th.
-// PBT_RUNS still overrides for a deeper local sweep, and can only raise it.
+// PBT_RUNS overrides for a deeper local sweep, and can only raise it.
 const HEAVY = { seed: CFG.seed, numRuns: pbtRuns(60) };
 
-// Derived from the budget it guards, which is HEAVY's: every `it` carrying this
-// ceiling runs HEAVY, so scaling it off CFG left the ceiling keyed to a run
-// count these tests no longer use.
+// Derived from the budget it guards: every `it` carrying this ceiling runs HEAVY.
 const PBT_TIMEOUT_MS = pbtTimeoutMs(HEAVY.numRuns);
 
 // Custom generators: the domain is constrained, so plain random bytes won't do.

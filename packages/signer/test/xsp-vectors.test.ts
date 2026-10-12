@@ -1,6 +1,5 @@
-// XSP (Xochi Settlement Protocol) vectors, riddler #1223: `@xochi/spec`'s
-// conformance/xsp.json -- the file the Riddler server vendors as
-// test/support/vectors/xochi_xsp.json.
+// XSP (Xochi Settlement Protocol) vectors: `@xochi/spec`'s conformance/xsp.json
+// -- the file the Riddler server vendors as test/support/vectors/xochi_xsp.json.
 //
 // Two layers. (1) Every value in xsp.json is recomputed from @xochi/signer.
 // (2) An INDEPENDENT cross-check: @xochi/signer hand-rolls each hash from
