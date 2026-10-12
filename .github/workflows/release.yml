@@ -1,10 +1,11 @@
 # Publish one package to npm from a tag.
 #
-#   sdk-v<version>         -> npm publish            (@xochi/sdk, the repo root)
+#   sdk-v<version>         -> npm publish -w @xochi/sdk
 #   spec-v<version>        -> npm publish -w @xochi/spec
 #   signer-v<version>      -> npm publish -w @xochi/signer
 #   client-v<version>      -> npm publish -w @xochi/client
 #   widget-lib-v<version>  -> npm publish -w @xochi/widget-lib
+#   provider-v<version>    -> npm publish -w @xochi/provider
 #
 # Not published from here: @xochi/reference (private) and @xochi/solver-sdk,
 # which ships once the solver panel opens. Its mapping is deliberately absent
@@ -21,7 +22,8 @@
 #     the ONLY thing stopping a tag on a pre-fix commit, whose own release.yml
 #     publishes with `--tag latest` and no environment, from publishing the
 #     never-published @xochi/spec 0.8.0, @xochi/signer 0.5.0, @xochi/client
-#     0.1.0 or @xochi/widget-lib 0.1.0 (see "Why the environment" below);
+#     0.1.0, @xochi/widget-lib 0.1.0 or @xochi/provider 0.1.0 (see "Why the
+#     environment" below);
 #   - Allowed actions: `npm publish`. A config created after 2026-09-03 allows
 #     only `npm stage publish` by default, and this job runs `npm publish`.
 # A new config expires unless its first publish succeeds within 2 days, so
@@ -29,14 +31,14 @@
 # repository to be public.
 #
 # First publish. A trusted publisher can only be attached to a package that
-# already exists, so @xochi/spec, @xochi/signer, @xochi/client and
-# @xochi/widget-lib cannot make their first publish here. The conservative
-# procedure, once per package: an npm owner with 2FA checks out the reviewed
-# release tag's commit (on main), runs the same gates this job runs for that
-# package, and runs `npm publish -w <name> --provenance=false` by hand (spec
-# and signer set `publishConfig.provenance`, which fails outside CI; the real
-# reviewed version, never a placeholder). @xochi/signer goes before
-# @xochi/client, which depends on it. Then attach the config above
+# already exists, so @xochi/spec, @xochi/signer, @xochi/client,
+# @xochi/widget-lib and @xochi/provider cannot make their first publish here.
+# The conservative procedure, once per package: an npm owner with 2FA checks
+# out the reviewed release tag's commit (on main), runs the same gates this job
+# runs for that package, and runs `npm publish -w <name> --provenance=false` by
+# hand (spec, signer and provider set `publishConfig.provenance`, which fails
+# outside CI; the real reviewed version, never a placeholder). @xochi/signer
+# goes before @xochi/client, which depends on it. Then attach the config above
 # (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
 # --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
 # "Require two-factor authentication and disallow tokens", so every later
@@ -53,13 +55,13 @@
 #   - npmjs.com trusted publisher requires environment `npm-publish`, so a
 #     workflow without it (every commit before this one) gets no credential;
 #   - GitHub environment `npm-publish` accepts deployments only from tags
-#     matching the five patterns below;
+#     matching the six patterns below;
 #   - GitHub tag ruleset "release tags" lets only repository admins create,
 #     move or delete those tags.
 #
-# @xochi/sdk used to be published by hand (`npm publish` at the root, gated by
-# its prepublishOnly). That still works and still runs the same gates; this
-# workflow runs them too, in CI, with provenance.
+# @xochi/sdk used to be published by hand (`npm publish`, gated by its
+# prepublishOnly; now `npm publish -w @xochi/sdk`). That still works and still
+# runs the same gates; this workflow runs them too, in CI, with provenance.
 #
 # The publish runs only after the gates ci.yml runs for that package, and only
 # when the tag's version is the version in that package's package.json: a tag
@@ -76,6 +78,7 @@ on:
       - "signer-v*"
       - "client-v*"
       - "widget-lib-v*"
+      - "provider-v*"
 
 permissions:
   contents: read
@@ -134,6 +137,7 @@ jobs:
         run: |
           npm install -g npm@11.21.0
           v="$(npm --version)"
+          # shellcheck disable=SC2016 # a single-quoted node program; ${} is a JS template literal
           node -e '
             const [a, b, c] = process.argv[1].split(".").map(Number);
             if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) {
@@ -148,11 +152,12 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           case "$TAG" in
-            sdk-v*)        name='@xochi/sdk';        dir='.';                   version="${TAG#sdk-v}" ;;
+            sdk-v*)        name='@xochi/sdk';        dir='packages/sdk';        version="${TAG#sdk-v}" ;;
             spec-v*)       name='@xochi/spec';       dir='packages/spec';       version="${TAG#spec-v}" ;;
             signer-v*)     name='@xochi/signer';     dir='packages/signer';     version="${TAG#signer-v}" ;;
             client-v*)     name='@xochi/client';     dir='packages/client';     version="${TAG#client-v}" ;;
             widget-lib-v*) name='@xochi/widget-lib'; dir='packages/widget-lib'; version="${TAG#widget-lib-v}" ;;
+            provider-v*)   name='@xochi/provider';   dir='packages/provider';   version="${TAG#provider-v}" ;;
             *) echo "tag $TAG names no publishable package" >&2; exit 1 ;;
           esac
           manifest_name="$(node -p "require('./$dir/package.json').name")"
@@ -188,6 +193,7 @@ jobs:
             if [ -n "$latest" ]; then
               # Exit 0 only when $1 > $2 (semver precedence, prerelease below
               # its release; build metadata ignored).
+              # shellcheck disable=SC2016 # a single-quoted node program; ${} is a JS template literal
               node -e '
                 const parse = (v) => {
                   const m = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(v);
@@ -216,10 +222,7 @@ jobs:
               }
             fi
           fi
-          # The root package is published without -w; a workspace with it.
-          if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "ws=$ws" >> "$GITHUB_OUTPUT"
           echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
           echo "publishing $name@$version (dist-tag ${dist_tag:-latest, if highest})"
 
@@ -268,8 +271,9 @@ jobs:
           cd packages/spec/wire
           printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
 
-      # @xochi/sdk, @xochi/client and @xochi/widget-lib carry their full gate
-      # (format, typecheck, test, build) in prepublishOnly, which npm publish
-      # runs; @xochi/signer's build runs in its prepublishOnly too.
+      # @xochi/sdk, @xochi/client, @xochi/widget-lib and @xochi/provider carry
+      # their full gate (format, typecheck, test, build; @xochi/provider's
+      # typecheck covers its daemon) in prepublishOnly, which npm publish runs;
+      # @xochi/signer's build runs in its prepublishOnly too.
       - name: Publish
-        run: npm publish ${{ steps.pkg.outputs.ws }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public
+        run: npm publish -w ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public

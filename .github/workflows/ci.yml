@@ -8,11 +8,12 @@ on:
 
 env:
   # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
-  # with scripts/sync-circuits.sh output.
+  # with packages/sdk/scripts/sync-circuits.sh output.
   ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
+  # @xochi/sdk (packages/sdk). The job key stays `check`.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -43,19 +44,22 @@ jobs:
       # Same gates as prepublishOnly, so a green CI means `npm publish` passes.
       # Drift tests run against the pinned ERC-8262 and fail (not skip) when it is missing.
       - name: Format
+        run: npm run format:check -w @xochi/sdk
+
+      - name: Format (repo root json/md)
         run: npm run format:check
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck -w @xochi/sdk
 
       - name: Unit tests
-        run: npm test
+        run: npm test -w @xochi/sdk
 
       - name: Build
-        run: npm run build
+        run: npm run build -w @xochi/sdk
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: npm pack --dry-run -w @xochi/sdk
 
   # @xochi/client (packages/client): the same prepublishOnly gates, run from the
   # workspace root so the root lockfile resolves it. Needs no foundry.
@@ -117,6 +121,37 @@ jobs:
 
       - name: Verify package contents
         run: npm pack --dry-run -w @xochi/widget-lib
+
+  # @xochi/provider (packages/provider): the same prepublishOnly gates. Its
+  # typecheck covers the reference daemon, which is not in the tarball; the
+  # pack step shows that. Needs no foundry: the parity vectors are pinned in
+  # the tests, and the daemon -> proof -> on-chain path runs in `integration`.
+  provider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check -w @xochi/provider
+
+      - name: Typecheck (sources, tests and daemon)
+        run: npm run typecheck -w @xochi/provider
+
+      - name: Unit tests
+        run: npm test -w @xochi/provider
+
+      - name: Build
+        run: npm run build -w @xochi/provider
+
+      - name: Verify package contents
+        run: npm pack --dry-run -w @xochi/provider
 
   # The protocol packages (packages/{signer,spec,solver-sdk,reference}). The
   # build order is not optional: @xochi/signer first, since every other
@@ -207,7 +242,7 @@ jobs:
       - name: Install uv
         run: pip install uv==0.11.6
 
-      - name: Python signer conformance (byte-equality over the shared fixture)
+      - name: Python conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/python
         run: |
           uv sync --locked
@@ -222,7 +257,7 @@ jobs:
         with:
           go-version-file: sdks/go/go.mod
 
-      - name: Go signer conformance (byte-equality over the shared fixture)
+      - name: Go conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/go
         run: go test ./...
 
@@ -231,7 +266,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Rust signer conformance (byte-equality over the shared fixture)
+      - name: Rust conformance runner (byte-equality over the shared fixture)
         working-directory: sdks/rust
         run: cargo test --locked
 
@@ -264,4 +299,4 @@ jobs:
         run: forge build
 
       - name: Integration tests
-        run: npm run test:integration
+        run: npm run test:integration -w @xochi/sdk

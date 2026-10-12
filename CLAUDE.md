@@ -2,13 +2,25 @@
 
 ## Project Overview
 
-`@xochi/sdk`: TypeScript SDK for generating and verifying ERC-8262 ZK compliance proofs. Client-side proof generation with Noir circuits and the Barretenberg UltraHonk backend. Proofs are EVM-compatible for on-chain verification via the ERC8262Oracle and ERC8262Verifier contracts in [ERC-8262](https://github.com/xochi-fi/ERC-8262).
+npm workspace monorepo: the root (`xochi-sdk-workspace`, `private`, `workspaces: ["packages/*"]`) publishes nothing; the package chooser is `README.md`. Its anchor is `@xochi/sdk` (`packages/sdk`): TypeScript SDK for generating and verifying ERC-8262 ZK compliance proofs. Client-side proof generation with Noir circuits and the Barretenberg UltraHonk backend. Proofs are EVM-compatible for on-chain verification via the ERC8262Oracle and ERC8262Verifier contracts in [ERC-8262](https://github.com/xochi-fi/ERC-8262).
 
 Also provides the trust tier system, privacy levels, attestation scoring and tier proof generation: the shared business logic the xochi frontend and backend consume.
 
+Three things here sign bytes; never conflate them: **`@xochi/signer`** (taker EIP-712 intent / ERC-3009 / Permit2 signing; moves funds), **`@xochi/provider`** (compliance-data provider attestations for the signed circuits and credential roots; moves no funds), **`sdks/*` `xochi-conformance`** (CI byte-parity runners, not production).
+
+Scope: this repo owns what a counterparty must reproduce (signing, vectors, the prose contract, client guards), so the venue is verifiable without running it. The venue itself (quoting, routing, settlement, escrow contracts) is the private Riddler server and its harness `packages/e2e-signer`. EIP-712 domain and contract names stay `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond` (intent domain `Xochi`): they are signed bytes and deployed contracts. In `ESCROW-RFC.md` / `SOLVER-RFC.md`, `[RESERVED]` means fixed shape, inert code (typed, never populated); never read `[PROPOSED]` as live.
+
 ## Architecture
 
-### Core Proof System
+### Repo layout
+
+Root `npm run build` / `typecheck` / `test` span every workspace (`build:workspaces` builds `@xochi/signer` first); one workspace is `-w @xochi/<pkg>` (root shortcuts `test:sdk`, `test:integration`, `test:provider`, `test:signer`, ...). Root `format` / `format:check` cover only root `*.{json,md}`. Each tarball is its package's `files` (`@xochi/sdk`: `dist` + `circuits`; `@xochi/provider`: `dist`, so its daemon is not shipped). `.github/workflows/release.yml` publishes one package per tag: `sdk-v*`, `provider-v*`, `spec-v*`, `signer-v*`, `client-v*`, `widget-lib-v*`. An ERC-8262 checkout beside the repo is the default for circuit sync, drift and integration tests; `ERC_8262_PATH` overrides it for the tests.
+
+### `packages/sdk` (`@xochi/sdk`)
+
+Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, build, pack) and `integration`.
+
+#### Core Proof System
 
 - **src/prover.ts**: `ERC8262Prover`, proof generation for all 9 circuit types
 - **src/oracle.ts**: `ERC8262Oracle`, typed viem client for the on-chain Oracle
@@ -18,17 +30,18 @@ Also provides the trust tier system, privacy levels, attestation scoring and tie
 - **src/circuits-browser.ts**: BrowserCircuitLoader, no node:fs dependency
 - **src/inputs/**: per-circuit input builders that validate constraints and construct witness inputs
 - **src/inputs/validate.ts**: shared validation (signal range, weights, timestamps, credential types, submitter non-zero)
-- **src/abis.ts**: full Solidity ABIs for Oracle, Verifier and SettlementRegistry (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when `../ERC-8262/out` or `ERC_8262_PATH` exists)
+- **src/inputs/field-bytes.ts**: the sdk's own `fieldToBytes` / `bytesToHexField`, so the signed builders take `@xochi/provider`'s byte bundles without depending on it (`@xochi/provider` is a devDependency for tests only)
+- **src/abis.ts**: full Solidity ABIs for Oracle, Verifier and SettlementRegistry (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when the sibling ERC-8262 `out/` or `ERC_8262_PATH` exists)
 - **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 21 subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: pinned `EXPECTED_NOIR_VERSION` + `assertCompatibleNoirVersion` (used by both loaders)
 
-### Trust & Compliance
+#### Trust & Compliance
 
 - **src/tiers.ts**: trust tiers (5), privacy levels (6), fee rates (two-rate, three-layer `FEE_SCHEDULE`), category caps
 - **src/scoring.ts**: attestation score with diminishing returns (whitepaper I.8)
 - **src/tier-proofs.ts**: tier proofs, "score >= threshold" via the risk_score circuit
 
-### Settlement Splitting (XIP-1)
+#### Settlement Splitting (XIP-1)
 
 - **src/split.ts**: `planSplit`, split a large trade into sub-trades
 - **src/batch-prover.ts**: `proveBatch` / `provePlan`, compliance proofs for all sub-trades
@@ -36,30 +49,35 @@ Also provides the trust tier system, privacy levels, attestation scoring and tie
 
 `ERC8262Oracle.submitBatch()` calls on-chain `submitComplianceBatch` (single atomic tx, max 10 proofs per `MAX_BATCH_SIZE`, audit F-3), parses one `ComplianceVerified` event per sub-trade and returns proofHashes for settlement recording.
 
-### Execution Planning (XIP-2)
+#### Execution Planning (XIP-2)
 
 - **src/venue-router.ts**: `assignVenues`, route sub-trades to venues
 - **src/diffusion-scheduler.ts**: `scheduleDiffusion`, schedule sub-trades over time
 - **src/execution-orchestrator.ts**: `planExecution`, split -> route -> schedule
 
-### Bridge Integration
+#### Bridge Integration
 
 - **src/pxe-bridge-client.ts**: `PxeBridgeClient`, JSON-RPC client for pxe-bridge. Requires `https:` (plain `http:` only for loopback) and aborts each call after `timeoutMs` (default 15 s).
 
-### Encoding & Constants
+#### Encoding & Constants
 
 - **src/encoding.ts**: public input/proof encoding for EVM submission, `normalizeInputs()` for Noir
 - **src/constants.ts**: proof type IDs, jurisdiction codes, proof type <-> circuit name mappings, public input counts
 - **src/types.ts**: core types
 
-### Artifacts
+#### Artifacts and docs
 
 - **circuits/**: pre-compiled Noir circuit JSON (synced from ERC-8262, debug data stripped)
 - **scripts/sync-circuits.sh**: copies artifacts from ERC-8262, strips `file_map` / `debug_symbols`, and exits 1 (leaving `circuits/` untouched) if any artifact is missing or its `noir_version` != `EXPECTED_NOIR_VERSION`
+- **README.md** is the npm page (links to topic docs are absolute GitHub URLs, since npm ships no `docs/`); `docs/{tiers-privacy-scoring,signed-proofs,onchain}.md` hold the reference sections (tiers + tier proofs; signed proofs + loaders/builders; on-chain + XIP-1/2)
 
-### Workspace: `packages/client` (`@xochi/client`)
+### `packages/provider` (`@xochi/provider`)
 
-The root is an npm workspace root (`workspaces: ["packages/*"]`); `@xochi/sdk`'s tarball is unaffected (`files` is `dist` + `circuits`). `@xochi/client` is the client for the Xochi Worker API (`api.xochi.fi/api/*`, the only taker API): the public subset of xochi's `@xochi/shared` (`src/shared/`), the widget's pure trade state machine (`src/machine/`), a transport with injected fetch/auth (`src/transport/`), the `@xochi/signer` fund-safety checks run at quote ingest, and the layered fee reference (`src/fee.ts`, SPEC.md §4, projected into `@xochi/spec` by `generate:fee`). ESM + CJS + d.ts via two `tsc` passes. See `packages/client/README.md`.
+Compliance-data provider signing, extracted from the sdk's former `./provider` export: `signSignals` (0x07/0x08), `signSlotPayload` (one 0x09 slot), `signCredentialRoot` (EIP-712 `CredentialRootPublication`, parity-pinned to ERC-8262 `EIP712CredentialRoot.sol`), `KeyLoader` (`RawKeyLoader`/`HexKeyLoader` for tests and the daemon; KMS/HSM in production), `ReplayDb`/`MemoryReplayDb` and the `*WithReplayProtection` wrappers. Pedersen digests are pinned to ERC-8262's Noir parity tests. Depends on `@aztec/bb.js` and `@noble/curves`; `viem` peer. It moves no funds; `@xochi/sdk` never imports it at runtime. The reference daemon lives in `daemon/` ([Reference Signing Daemon](#reference-signing-daemon)). CI job `provider`; `npm run typecheck -w @xochi/provider` also typechecks the daemon. See `packages/provider/README.md`.
+
+### `packages/client` (`@xochi/client`)
+
+`@xochi/client` is the client for the Xochi Worker API (`api.xochi.fi/api/*`, the only taker API): the public subset of xochi's `@xochi/shared` (`src/shared/`), the widget's pure trade state machine (`src/machine/`), a transport with injected fetch/auth (`src/transport/`), the `@xochi/signer` fund-safety checks run at quote ingest, and the layered fee reference (`src/fee.ts`, SPEC.md §4, projected into `@xochi/spec` by `generate:fee`). ESM + CJS + d.ts via two `tsc` passes. See `packages/client/README.md`.
 
 ```bash
 npm run build -w @xochi/client       # dist/esm + dist/cjs
@@ -82,7 +100,7 @@ Machine fund-safety rules beyond the signer checks:
 
 The transport validates quote/execute bodies against `QuoteResponseSchema`/`ExecuteResponseSchema` (undeclared top-level keys tolerated), keeps each attempt's timeout armed until the body is read, and cancels the body when it fires. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs` (15 s).
 
-### Workspace: `packages/widget-lib` (`@xochi/widget-lib`)
+### `packages/widget-lib` (`@xochi/widget-lib`)
 
 Host-side embed library modeled on `@cowprotocol/widget-lib`, zero runtime deps. `createXochiWidget(container, { params, provider?, origin?, autoConnect?, listeners? })` mounts `<origin>/embed?<params>` (default `https://widget.xochi.fi`) and bridges the host's EIP-1193 provider over postMessage (`xochi:rpc` -> `xochi:rpc:result`; provider events as `xochi:provider:event`), plus `xochi:resize` and `xochi:event` lifecycle events. `autoConnect` (default `false`) travels in `xochi:provider`; without it the frame lists the host wallet and connects only on the user's click. `src/params.ts` is the single definition of the frame URL params (moved from xochi-widget `src/pages/trade/embedParams.ts`); `src/protocol.ts` holds message types and the RPC allowlist.
 
@@ -106,7 +124,7 @@ npm run format:check -w @xochi/widget-lib
 
 ## Protocol packages (absorbed from riddler-sdk)
 
-Snapshot-copied from the archived private `axol-io/riddler-sdk` (branch `stack-adr`, 4ad9450; no history, see `docs/adr/0001-consolidate-into-xochi-sdk.md`). `#NN` / `riddler-sdk#NN` refs point into that archive. These packages sign and verify bytes that move real USDC/USDT/USDG/WETH across chains: signature bugs or wrong addresses lose money. The `riddler` taker CLI and its flows (`xochi.ts`, the deposit wrapper, ACP buyer-auth, the quote sweep) are **not** here; they are Riddler's private `packages/e2e-signer` harness.
+Snapshot-copied from the archived private `axol-io/riddler-sdk` (branch `stack-adr`, 4ad9450; no history; consolidated 2026-10-09, scope renamed `@riddler/*` -> `@xochi/*`, signed names kept). `#NN` / `riddler-sdk#NN` refs point into that archive. These packages sign and verify bytes that move real USDC/USDT/USDG/WETH across chains: signature bugs or wrong addresses lose money. The `riddler` taker CLI and its flows (`xochi.ts`, the deposit wrapper, ACP buyer-auth, the quote sweep) are **not** here; they are Riddler's private `packages/e2e-signer` harness.
 
 - **Xochi**: off-chain EIP-712 intent (`XochiIntent`) verified server-side via ecrecover; no on-chain verifier. `public` / `stealth` (ERC-5564 + ERC-4337 claim) / `shielded` (Aztec) settlement.
 - **ERC-3009**: USDC-only `receiveWithAuthorization` signing.
@@ -114,7 +132,7 @@ Snapshot-copied from the archived private `axol-io/riddler-sdk` (branch `stack-a
 
 ### Verifying a change
 
-Run what CI runs, in this order. `@xochi/signer` must be built before the workspaces that consume its `.d.ts`.
+Run what CI runs, in this order. `@xochi/signer` must be built before the workspaces that consume its `.d.ts`. Root `npm run build` / `typecheck` / `test` are the same three `:workspaces` scripts.
 
 ```bash
 npm ci
@@ -126,7 +144,7 @@ npm run generate:solver-bid-v2 && npm run generate:escrow && git diff --exit-cod
 (cd packages/spec/wire && shasum -a 256 -c <(echo "$(cat openapi.sha256)  openapi.json"))
 ```
 
-The generate lines are the gate (CI runs exactly these). Those bytes are a contract other implementations are held to: regenerating is a deliberate wire change that lands with the server, never a refresh to make CI pass. `sdks/{python,go,rust}` have their own CI jobs (`uv run pytest`, `go test ./...`, `cargo test`).
+The generate lines are the gate (CI runs exactly these). Those bytes are a contract other implementations are held to: regenerating is a deliberate wire change that lands with the server, never a refresh to make CI pass. `sdks/{python,go,rust}` have their own CI jobs (`uv run pytest`, `go test ./...`, `cargo test`). `@xochi/sdk`'s anvil suite is CI job `integration` (`npm run test:integration`; foundry + a compiled ERC-8262).
 
 ### Packages
 
@@ -134,7 +152,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
 
 - **`packages/spec`** (`@xochi/spec`): the wire contract at `0.8.1` (additive MINORs), published by `.github/workflows/release.yml` on a `spec-v*` tag (consumers pin exactly; `packages/spec/README.md` "Consuming the spec"). The tarball ships the data, the three RFC/spec docs and `wire/compare.mjs`; the `*.ts` generators and `wire/{generate,format}.mjs` stay in the repo (`files` negations) since they import workspace siblings and `scripts/`. Contents: `SPEC.md`; `conformance/{conformance.json,generate.ts,schema.json}`; solver-bid parity `conformance/{solver-bid-v2.json,solver-bid-v2.schema.json,generate-solver-bid-v2.ts}` (SOLVER-RFC §5.1, `npm run generate:solver-bid-v2`); escrow parity sets incl. `conformance/fill-acceptance.json` (`npm run generate:fill-acceptance`, also run by `generate:escrow`); normative fee artifacts `fee/{vectors,schedule,schema}.json` + `fee/generate.ts` (SPEC.md §4); `SOLVER-RFC.md` (sealed-bid RFQ, SPEC §7; versions independently, `0.5.0-draft`, exported as `SOLVER_RFC_VERSION`); `ESCROW-RFC.md` (`0.5.0-draft`: v2 `orderId`/`destCommitment` preimage, `OpenAuth`, `FillAcceptance`, proof-of-fill tiers, escrow activation; SPEC §2.3/§5.2).
 
-- **`packages/spec/wire/`**: the served `/xochi/*` OpenAPI (SPEC.md §3's source of truth), vendored **reformatted** to sorted-key 2-space JSON: structurally identical but **not byte-verbatim**; every numeric literal keeps the served spelling because `wire/format.mjs` emits each number from its source token, never through `JSON.parse`. `openapi.json` (exported as `./wire/openapi.json`) with its digest in `openapi.sha256` (of the formatted file), refreshed by `npm run generate:wire`. Full rationale and history: `packages/spec/wire/README.md`. Rules:
+- **`packages/spec/wire/`**: the served `/xochi/*` OpenAPI (SPEC.md §3's source of truth), vendored **reformatted** to sorted-key 2-space JSON: structurally identical but **not byte-verbatim**; every numeric literal keeps the served spelling because `wire/format.mjs` emits each number from its source token, never through `JSON.parse`. `openapi.json` (exported as `./wire/openapi.json`) with its digest in `openapi.sha256` (of the formatted file), refreshed by `npm run generate:wire`. Compared axes and refusals: `packages/spec/wire/README.md`. Rules:
   - SPEC.md matches the served enums (`IntentLifecycleStatus` incl. `bridging`, `refunded` and non-terminal `refund_pending`; `ErrorCode` has no `quote_expired`).
   - `TERMINAL_STATUSES` equals the served terminal set. Riddler's harness `wire-contract.test.ts` pins it as a **partition** of the served enum (served terminal / served non-terminal lists covering it exactly, no unreviewed extras), so a new server state fails loudly. Never add a mid-flight state (`refund_pending` included) to `TERMINAL_STATUSES`.
   - `packages/reference/test/wire-contract.test.ts` holds the fee reference (and Riddler's harness copy the taker constants) to the vendored copy **offline**, after verifying `openapi.sha256` over the bytes it parses; `verify:openapi` holds the copy to the producer.
@@ -149,7 +167,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
 
 - **What belongs in `packages/spec`**: the served `/xochi/*` contract as **language-neutral** artifacts (`sdks/{python,go,rust}` consume them), not TS validators; every current dependency is dev-only. #93's row moving xochi's `packages/shared/src/schemas.ts` here is mis-scoped: that file validates the Worker's own `/api/*` and treats `/xochi/*` as opaque (`CapabilitiesResponseSchema` is `capabilities: z.unknown()`), so it stays in xochi.
 
-- **`packages/solver-sdk`** (`@xochi/solver-sdk`): maker-side sealed-bid RFQ SDK (ethers + zod + `@xochi/signer`); unpublished until the panel opens, but not `private`. `SolverClient.run(solver)` drives discovery -> bid -> award -> fill; a solver implements `capabilities`/`quote`/`fill`. Mechanics (nonce handling, accept/fill/claim outcomes, restart, the example's state-file lease and allowance top-ups): `packages/solver-sdk/README.md` and the TSDoc. Rules:
+- **`packages/solver-sdk`** (`@xochi/solver-sdk`): maker-side sealed-bid RFQ SDK (ethers + zod + `@xochi/signer`); unpublished until the panel opens, but not `private`. `SolverClient.run(solver)` drives discovery -> bid -> award -> fill; a solver implements `capabilities`/`quote`/`fill`. Mechanics (nonce handling, accept/fill/claim outcomes, restart, state-file lease, allowance top-ups): the TSDoc and `examples/{escrow-solver,fill-state-file,supervise}.ts`. Rules:
   - `run()` refuses unless `/solver/capabilities` `rfcVersion` equals `SOLVER_RFC_VERSION` (SOLVER-RFC §12; digests do not change across an RFC MINOR). Read before the first feed event, after a feed `reset` (`HttpSolverTransport` or any transport with `addFeedGapListener`) and before each own award reaches `solver.fill`, never per announcement; a skew there throws `VenueVersionSkewError` past `onError`.
   - Live vs gated: bids are really signed and `OnchainEscrowGateway` **broadcasts** when a caller drives it, but `/solver/*` is behind `SOLVER_RFQ_ENABLED` (off on prod) and Riddler awards a third party only with an escrow binding (`escrow_binding_available?`, false everywhere, ESCROW-RFC §7), so today the reserve wins every auction.
   - `StubEscrowGateway` is inert; `OnchainEscrowGateway` (`escrow-gateway.ts` + network-free `escrow-verify.ts`, SOLVER-RFC §7.1) sends approve, `RiddlerFiller.fill`, `RiddlerEscrow.claim` and SolverBond txs, simulated first, only when a caller builds one (`SolverClient` never does).
@@ -164,7 +182,7 @@ The generate lines are the gate (CI runs exactly these). Those bytes are a contr
   - `run()` subscribes `addFeedGapListener` for its own duration and unsubscribes when it ends.
   - `HttpSolverTransport` bounds `getCapabilities`/`getAttestation` with `readTimeoutMs` and `submitBid`/`submitFill` with `postTimeoutMs` (both default 10 s). Key parse errors never echo the key (`walletFromKey`).
 
-- **`sdks/{python,go,rust}`** (`xochi-signer`; Python import `xochi_signer`): conformance signers reproducing all 45 `conformance.json` vectors byte-for-byte, each in its own CI job (`python-conformance`/`go-conformance`/`rust-conformance`; Python runs a pinned `uv` with `uv sync --locked`). **Not production signers**: they reject non-canonical input rather than normalize it (see each `sdks/*/README`). `@xochi/signer` also holds the inert `computeOrderId`/`assertEscrowBinding` (`escrow.ts`).
+- **`sdks/{python,go,rust}`** (`xochi-conformance`; Python import `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): conformance runners reproducing all 45 `conformance.json` vectors byte-for-byte, each in its own CI job (`python-conformance`/`go-conformance`/`rust-conformance`; Python runs a pinned `uv` with `uv sync --locked`). **Not production signers**: they reject non-canonical input rather than normalize it (see each `sdks/*/README`). `@xochi/signer` also holds the inert `computeOrderId`/`assertEscrowBinding` (`escrow.ts`).
 
 ### Modules
 
@@ -363,19 +381,24 @@ The vectors' `signer` is the all-`abandon` **test key** (`signer_is_test_key: tr
 ## Key Commands
 
 ```bash
-npm run build          # tsc -p tsconfig.build.json (output to dist/)
-npm test               # vitest run (unit + drift tests incl. fee-schedule-drift vs the workspace @xochi/spec; integration excluded via vitest.config.ts)
-npm run test:integration  # proof generation + anvil contract tests (uses vitest.integration.config.ts)
-npm run typecheck      # tsc --noEmit (SDK + tests) and tsc -p daemon/tsconfig.json
-npm run format         # prettier --write src/ test/ daemon/src/ and root json/md
-npm run format:check   # prettier --check (runs in prepublishOnly + CI)
-npm run daemon         # build, then run the reference signing daemon under Node type stripping
-./scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
+npm run build          # every workspace, @xochi/signer first (build:workspaces)
+npm test               # every workspace's unit tests (test:workspaces); integration excluded
+npm run typecheck      # every workspace (typecheck:workspaces)
+npm run format         # prettier --write root *.{json,md} only (each workspace has its own format)
+npm run format:check   # prettier --check root *.{json,md} (CI)
+npm run test:sdk       # = npm test -w @xochi/sdk: vitest run (unit + drift tests incl. fee-schedule-drift vs the workspace @xochi/spec; integration excluded via vitest.config.ts)
+npm run test:integration           # @xochi/sdk proof generation + anvil contract tests (vitest.integration.config.ts)
+npm run typecheck -w @xochi/sdk    # tsc --noEmit (sources + tests)
+npm run build -w @xochi/sdk        # tsc -p tsconfig.build.json (output to packages/sdk/dist/)
+npm run format:check -w @xochi/sdk # prettier --check src/ test/ and the package's json/md (prepublishOnly + CI)
+npm run typecheck -w @xochi/provider  # tsc --noEmit and tsc -p daemon/tsconfig.json
+npm run daemon -w @xochi/provider     # build, then run the reference signing daemon under Node type stripping
+packages/sdk/scripts/sync-circuits.sh [path-to-ERC-8262]  # sync circuit artifacts
 ```
 
-Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (`SPEC.md` is parsed by the spec-version probe). Run `git config blame.ignoreRevsFile .git-blame-ignore-revs` to skip formatting sweeps in blame.
+Formatting: Prettier, `printWidth: 100`, `singleQuote: false`, `trailingComma: "all"` (`.prettierrc.json`); `dist/` and `circuits/` excluded. Every workspace has `format` / `format:check` (`npm run format:check -w @xochi/<pkg>`); the root's cover only root `*.{json,md}`; `@xochi/sdk`, `@xochi/provider`, `@xochi/client` and `@xochi/widget-lib` include their top-level `*.md` (not `packages/sdk/docs/` or `packages/provider/daemon/README.md`); for protocol packages they cover sources, tests, examples and `wire/*.mjs`, never generated vectors/schemas, `openapi.json` (digest-pinned) or Markdown (`SPEC.md` is parsed by the spec-version probe).
 
-Integration tests deploy ERC8262Verifier, ERC8262Oracle and SettlementRegistry on anvil. Requires foundry and compiled ERC-8262 artifacts (`../ERC-8262/out/`).
+Integration tests deploy ERC8262Verifier, ERC8262Oracle and SettlementRegistry on anvil. Requires foundry and compiled ERC-8262 artifacts (`out/` of the ERC-8262 checkout beside the repo, or `ERC_8262_PATH`).
 
 ## Proof Types
 
@@ -393,17 +416,17 @@ Circuit names match the ERC standard and Solidity ProofTypes constants 1:1. Use 
 | 0x08 | RISK_SCORE_SIGNED       | risk_score_signed       | 12            | Risk score + provider-signed signals        |
 | 0x09 | COMPLIANCE_MULTI_SIGNED | compliance_multi_signed | 14            | M-of-N (up to 5) provider-signed compliance |
 
-All 9 circuits include `submitter` as a public input; the Oracle enforces `submitter == msg.sender` for every proof type (anti-front-running). Circuit and on-chain public input counts match exactly; `PUBLIC_INPUT_COUNTS` in `constants.ts` is the single source of truth.
+All 9 circuits include `submitter` as a public input; the Oracle enforces `submitter == msg.sender` for every proof type (anti-front-running). Circuit and on-chain public input counts match exactly; `PUBLIC_INPUT_COUNTS` in `packages/sdk/src/constants.ts` is the single source of truth.
 
 PATTERN's 7th public input is `settlement_root` (audit H-1). The Oracle does not validate it, but `SettlementRegistry.finalizeTrade` enforces equality with `computeSettlementRoot(tradeId)`. Provers that will finalize a trade MUST call `SettlementRegistryClient.computeSettlementRoot(tradeId)` before generating the PATTERN proof; others pass `bytes32(0)`.
 
-The signed variants (0x07, 0x08) bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs (audit F-6); the Oracle asserts they match `block.chainid` and `address(this)`, so one signature cannot mint attestations on other Oracles or chains. Each signs under its own domain tag (`DOMAIN_SIGNED_SIGNALS` for 0x07, `DOMAIN_RISK_SIGNED_SIGNALS` for 0x08; `signSignals` / `POST /sign` take a required `proofType`), so a bundle signed for one type fails in the other. Both expose the signed timestamp as a public input (0x08's is input 7), held by the Oracle to `MAX_PROOF_AGE` (1 hour) and used as the proof time (review #5, ERC-8262#20).
+The signed variants (0x07, 0x08) bind `chain_id` and `oracle_address` into the in-circuit Pedersen digest the provider signs (audit F-6); the Oracle asserts they match `block.chainid` and `address(this)`, so one signature cannot mint attestations on other Oracles or chains. Each signs under its own domain tag (`DOMAIN_SIGNED_SIGNALS` for 0x07, `DOMAIN_RISK_SIGNED_SIGNALS` for 0x08; `@xochi/provider`'s `signSignals` and the daemon's `POST /sign` take a required `proofType`), so a bundle signed for one type fails in the other. Both expose the signed timestamp as a public input (0x08's is input 7), held by the Oracle to `MAX_PROOF_AGE` (1 hour) and used as the proof time (review #5, ERC-8262#20).
 
 The multi-signed variant (0x09) has up to `MAX_PROVIDERS_MULTI = 5` signer slots; M must each produce a valid secp256k1 signature over a slot-specific Pedersen digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields, embeds `slot_index` so a slot-`i` signature cannot sit in slot `j`) AND each must attest the subject is below the jurisdiction's high-risk floor. Floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU=1, UK=1, US=2, SG=2, UAE=2. Inactive slots use `weight_sum=1, weights=[1, 0..0], signals=[0; 8]`. Proof type `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
 
 ## Trust Tiers
 
-Source of truth: `docs/planning/economics.md` Part 1 in the xochi repo. In-code mirrors: xochi's `packages/shared/src/tiers.ts` and Riddler's `fee_policy.ex`; the normalized wire form is `@xochi/spec`'s `fee/schedule.json` (`packages/spec`), which Riddler asserts against. `src/tiers.ts` conforms to it via `test/fee-schedule-drift.test.ts` (part of `npm test`, reading the workspace `@xochi/spec`; moving the vector means `npm run generate:fee`, a lockstep wire change with Riddler). It is a test, not a runtime read, so `@xochi/spec` is not a runtime dependency of `@xochi/sdk`. Do not hand-edit the numbers below without moving the vector.
+Source of truth: `docs/planning/economics.md` Part 1 in the xochi repo. In-code mirrors: xochi's `packages/shared/src/tiers.ts` and Riddler's `fee_policy.ex`; the normalized wire form is `@xochi/spec`'s `fee/schedule.json` (`packages/spec`), which Riddler asserts against. `packages/sdk/src/tiers.ts` conforms to it via `packages/sdk/test/fee-schedule-drift.test.ts` (part of `npm test`, reading the workspace `@xochi/spec`; moving the vector means `npm run generate:fee`, a lockstep wire change with Riddler). It is a test, not a runtime read, so `@xochi/spec` is not a runtime dependency of `@xochi/sdk`. Do not hand-edit the numbers below without moving the vector.
 
 | Tier          | Score | Fee (stable / volatile) |
 | ------------- | ----- | ----------------------- |
@@ -451,24 +474,24 @@ All 9 builders require `submitter` (the on-chain submitting address).
 
 The signed builders (`buildComplianceSignedInputs`, `buildRiskScoreSignedInputs`, `buildComplianceMultiSignedInputs`) also require `chainId` and `oracleAddress`, which MUST equal the provider's signing values (committed in the in-circuit Pedersen digest; the Oracle asserts `block.chainid` / `address(this)`, audit F-6).
 
-`buildComplianceMultiSignedInputs` takes `slots: (MultiSignedSlot | null)[]` of length exactly `MAX_PROVIDERS_MULTI = 5`. Each non-null slot is one signer's output from `signSlotPayload` / `POST /sign-multi` (`signals`, `weights`, `pubkeyX`, `pubkeyY`, `signature`, `signerPubkeyHash`). `null` slots get inactive padding; the active count MUST be `>= thresholdM`, and `thresholdM` MUST satisfy the jurisdiction floor.
+`buildComplianceMultiSignedInputs` takes `slots: (MultiSignedSlot | null)[]` of length exactly `MAX_PROVIDERS_MULTI = 5`. Each non-null slot is one signer's output from `@xochi/provider`'s `signSlotPayload` or the daemon's `POST /sign-multi` (`signals`, `weights`, `pubkeyX`, `pubkeyY`, `signature`, `signerPubkeyHash`). `null` slots get inactive padding; the active count MUST be `>= thresholdM`, and `thresholdM` MUST satisfy the jurisdiction floor.
 
 ## Circuit Binaries
 
-Pre-compiled Noir 1.0.0-beta.20 artifacts in `circuits/`, synced from ERC-8262. `@noir-lang/noir_js` stays pinned at the latest stable (beta.19), forward-compatible with beta.20 circuits. To update:
+Pre-compiled Noir 1.0.0-beta.20 artifacts in `packages/sdk/circuits/`, synced from ERC-8262. `@noir-lang/noir_js` stays pinned at the latest stable (beta.19), forward-compatible with beta.20 circuits. To update, from the repo root:
 
 ```bash
 cd ../ERC-8262/circuits && nargo compile --workspace
-cd - && ./scripts/sync-circuits.sh ../ERC-8262
+cd - && packages/sdk/scripts/sync-circuits.sh ../ERC-8262
 ```
 
-Use the script, not a manual copy: it strips `file_map` / `debug_symbols` (Noir sources with absolute build paths; noir_js needs only `abi` + `bytecode`), checks every `noir_version` against `EXPECTED_NOIR_VERSION`, and writes `circuits/` only when all nine pass. Then run `npm test`: `test/verifier-vk-drift.test.ts` requires each circuit's EVM VK hash to equal the `VK_HASH` in ERC-8262's `src/generated/<circuit>_verifier.sol`, so a checkout with stale verifiers fails.
+Use the script, not a manual copy: it strips `file_map` / `debug_symbols` (Noir sources with absolute build paths; noir_js needs only `abi` + `bytecode`), checks every `noir_version` against `EXPECTED_NOIR_VERSION`, and writes `packages/sdk/circuits/` only when all nine pass. Then run `npm run test:sdk`: `packages/sdk/test/verifier-vk-drift.test.ts` requires each circuit's EVM VK hash to equal the `VK_HASH` in ERC-8262's `src/generated/<circuit>_verifier.sol`, so a checkout with stale verifiers fails.
 
 BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 ## Reference Signing Daemon
 
-`daemon/` is a reference HTTP daemon around `@xochi/sdk/provider` (`POST /sign`, `/sign-multi`, `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`). It ships as TS source (not in the npm tarball) and runs under Node type stripping via `npm run daemon`, so relative imports carry `.ts` extensions and the SDK is imported as `@xochi/sdk/provider` (self-reference to `dist/` at runtime; mapped to source by the root tsconfig `paths` and the vitest alias). It pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window and circuit range checks, scopes credentials per route group (signals vs credential-root), refuses non-loopback plain-HTTP binds, and writes each audit record before releasing a signature. See `daemon/README.md`.
+`packages/provider/daemon/` is a reference HTTP daemon around `@xochi/provider` (`POST /sign`, `/sign-multi`, `/sign-credential-root`, `GET /pubkey-hash`, `/healthz`). It ships as TS source (not in the npm tarball) and runs under Node type stripping via `npm run daemon -w @xochi/provider` (builds first), so relative imports carry `.ts` extensions and the signers are imported as `@xochi/provider` (self-reference to `dist/` at runtime; mapped to source by the package tsconfig `paths` and the vitest alias). It pins one Oracle deployment (`SIGNER_CHAIN_ID`, `SIGNER_ORACLE_ADDRESS`), enforces a timestamp freshness window and circuit range checks, scopes credentials per route group (signals vs credential-root), refuses non-loopback plain-HTTP binds, and writes each audit record before releasing a signature. Logs carry `[xochi-provider]`; `SIGNER_*` env vars. `@xochi/sdk`'s `test/integration-signed-onchain.test.ts` runs it in-process. See `packages/provider/daemon/README.md`.
 
 ## On-Chain Clients
 
@@ -486,7 +509,7 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **Submitter typing**: input builders and `generateTierProof` take `submitter: Address` (viem). `validateSubmitter` rejects the zero address (mirrors the circuit's `assert(submitter != 0)`).
 
-## Dependencies
+## Dependencies (`@xochi/sdk`)
 
 - `@aztec/bb.js`: Barretenberg proving backend (UltraHonk, EVM verifier target)
 - `@noir-lang/noir_js`: Noir runtime (witness generation, circuit execution)
@@ -501,7 +524,7 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 - Merkle depth is always 20
 - Pedersen hash for all circuit commitments
 - Sequential test execution (Barretenberg is not concurrency-safe)
-- Contract reverts surface as typed `ERC8262ContractError` subclasses (`instanceof`-able; see `src/errors.ts`)
+- Contract reverts surface as typed `ERC8262ContractError` subclasses (`instanceof`-able; see `packages/sdk/src/errors.ts`)
 
 ## Relationship to Other Repos
 
@@ -517,4 +540,4 @@ BundledCircuitLoader validates noir_version on load and throws on mismatch.
 
 **raxol** (`raxol_payments`): reads `packages/spec/conformance/conformance.json` byte-for-byte in ExUnit (`Raxol.Payments.Test.ConformanceFixture`).
 
-**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `sdks/` and the probes; see `docs/adr/0001-consolidate-into-xochi-sdk.md`.
+**axol-io/riddler-sdk** (archived, private): origin of `packages/{spec,signer,solver-sdk}`, `sdks/` and the probes.

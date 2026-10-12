@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Typecheck only. The daemon ships as TS source and runs under Node's type
+    // stripping (`npm run daemon`; Node 22.6+). Building to JS is intentionally
+    // not supported -- the daemon's canonical install path is "copy the
+    // source". Relative imports therefore carry `.ts` extensions (what Node
+    // resolves at runtime), and the signers are imported as `@xochi/provider`,
+    // mapped by the package `paths` to source for typechecking.
+    "noEmit": true
+  },
+  "include": ["src", "../src"]
+}

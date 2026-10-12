@@ -2,7 +2,7 @@
 // @xochi/spec fixture and asserts digest, signature, and signed_object match
 // byte-for-byte, plus signer recovery -- the Go side of the same contract the TS,
 // Python, and Elixir suites enforce against the SAME frozen file.
-package signer
+package conformance
 
 import (
 	"path/filepath"

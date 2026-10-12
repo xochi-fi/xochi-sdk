@@ -33,7 +33,6 @@ Also in this release:
 ## `0.4.0` — RFC `0.4.0-draft` → `0.5.0-draft`: decline instead of skip, and claim until repaid
 
 No digest moves; solver obligations and `OnchainEscrowGateway`'s API do.
-Recipe: `MAKER-ONBOARDING.md`, "If you are migrating from `0.4.0-draft`".
 
 - **`accept()` refuses `claims_paused` and `insufficient_claim_gas`** (origin
   claim signer balance vs `claimGasBudget` × `maxFeePerGas`, default
@@ -124,11 +123,10 @@ Recipe: `MAKER-ONBOARDING.md`, "If you are migrating from `0.4.0-draft`".
 
 ## `0.3.0` — RFC `0.3.0-draft` → `0.4.0-draft`: SolverBid v2 and `FillAcceptance`
 
-Every digest moved and the award path gained a step. Recipe:
-`MAKER-ONBOARDING.md`, "If you are migrating from `0.3.0-draft`".
+Every digest moved and the award path gained a step.
 
-- **Bid sealing is SolverBid v2** (domain `version: "2"`, struct in README
-  **Bid sealing**). `BidDraft` is `{ output, validUntilMs, minExclusiveMs }`;
+- **Bid sealing is SolverBid v2** (domain `version: "2"`, struct in
+  SOLVER-RFC §5.1). `BidDraft` is `{ output, validUntilMs, minExclusiveMs }`;
   `expiryMs`, `hasExpiry`, `bidExpiryMs`, `MAX_BID_EXPIRY_MS` removed.
   `validUntilMs` is absolute. The wire `Bid` is
   `{ auctionId, intentId, solverId, orderId, output, validUntilMs, minExclusiveMs, signature }`.
@@ -166,7 +164,7 @@ keeps its `0.1.0` signer has every bid rejected as a bad signature.
   tier to the panel. Delete every read.
 - **The venue has not withdrawn either key yet**; Riddler still serves both.
   This SDK deletes them from the parsed announcement so `.passthrough()` doesn't
-  hand them to `solver.quote()`, but that is defence in depth in *your*
+  hand them to `solver.quote()`, but that is defence in depth in _your_
   process: `curl`, a one-line fork, or `onInvalidEvent`'s `raw` still show them,
   and no probe covers `/solver/*`, so nothing reports when they stop (RFC,
   "Migrating from `0.2.0-draft`" step 2). A venue serving either key is
@@ -181,5 +179,4 @@ keeps its `0.1.0` signer has every bid rejected as a bad signature.
 Baseline: `SOLVER-RFC.md` at `- **RFC version:** 0.1.0-draft`, bids sealed by
 `wallet.signMessage` over a JSON string (`"scheme": "eip191_personal_sign"` in
 the since-deleted `bid.json`), announcing `reserveOutput` and `trustScore`. If
-installed, every `0.2.0` and `0.3.0` bullet applies; recipes in
-`MAKER-ONBOARDING.md`.
+installed, every `0.2.0` and `0.3.0` bullet applies.

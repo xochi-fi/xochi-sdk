@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from xochi_signer import recover, sign
+from xochi_conformance import recover, sign
 
 FIXTURE = Path(__file__).resolve().parents[3] / "packages" / "spec" / "conformance" / "conformance.json"
 
