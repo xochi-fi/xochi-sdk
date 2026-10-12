@@ -2,25 +2,21 @@
 // binding fields so the auctioneer can attribute an award to the recovered
 // signer, and the solver cannot later repudiate a winning price.
 //
-// This replaced an EIP-191 `personal_sign` over
-// `JSON.stringify({auctionId, intentId, output, expiryMs})`. Two reasons, and
-// neither is fashion:
+// EIP-712, not a `personal_sign` over a JSON string, for two reasons:
 //
-//   1. That scheme had NO domain separation. The signed bytes were a bare JSON
-//      string, so a signature over them is valid for any other protocol that
-//      asks the same key to personal_sign the same shape. EIP-712 binds the
-//      digest to (name, version) and to the struct's own type hash.
-//   2. Parity rested on two independent JSON encoders agreeing on ESCAPING.
-//      Riddler cannot reuse `JSON.stringify` (Elixir map order is not JS
-//      insertion order), so it concatenated the fields and leaned on `Jason` to
-//      escape quotes, backslashes, control characters and astral-plane
-//      codepoints identically. Under EIP-712 a string member is
+//   1. Domain separation. A signature over bare JSON is valid for any other
+//      protocol that asks the same key to personal_sign the same shape;
+//      EIP-712 binds the digest to (name, version) and the struct's type hash.
+//   2. Parity without ESCAPING. Riddler cannot reuse `JSON.stringify` (Elixir
+//      map order is not JS insertion order), so JSON parity would rest on two
+//      encoders escaping quotes, backslashes, control characters and
+//      astral-plane codepoints identically. Under EIP-712 a string member is
 //      `keccak256(utf8_bytes)` -- there is no escaping to disagree about.
 //
 // Drift still does not fail loudly: it surfaces as every honest bid being
 // rejected, because the recovered signer stops matching the claimed one. The
-// digests are pinned by `@xochi/spec`'s `conformance/solver-bid-v2.json`, which both
-// sides are held to, so a change here fails there rather than in production.
+// digests are pinned by `@xochi/spec`'s `conformance/solver-bid-v2.json`, which
+// both sides are held to, so a change here fails there rather than in production.
 
 import { ethers } from "ethers";
 import type { IntentAnnouncement, BidDraft, Bid } from "./types";
@@ -111,21 +107,17 @@ const SERVER_UINT = /^\d+$/;
 
 // The one signature encoding this protocol defines: `0x` followed by 130
 // LOWERCASE hex digits, i.e. 65 bytes of `r || s || v`. SOLVER-RFC.md §5.1
-// states it and `conformance/bid.schema.json`'s `$defs.vector.signature`
+// states it and `conformance/solver-bid-v2.schema.json`'s vector `signature`
 // declares this exact pattern; exported so `schema.ts` derives its check from
 // it rather than retyping the regex, because a second copy is how two
 // artifacts that must agree stop agreeing.
 //
-// A seal must have exactly ONE admissible spelling, and before this nothing on
-// the read path said so. Measured against vector `expiry-absent` with this
-// repo's ethers 6, all three of these recovered
-// 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf and returned
-// `{ok: true, reason: "verified"}`: the shipped 132-char form, its 130-char
-// EIP-2098 `compactSerialized` twin, and the same bytes uppercased. Only the
-// high-s twin was refused, and it is the same hazard -- an auctioneer keying
-// per-solver-per-window idempotency or attribution on the signature bytes (the
-// only per-bid unique value it has) saw one seal as three distinct admissible
-// bids.
+// A seal must have exactly ONE admissible spelling. ethers 6 recovers the
+// same signer from the 132-char form, its 130-char EIP-2098 `compactSerialized`
+// twin and the same bytes uppercased (only the high-s twin is refused), so
+// without this an auctioneer keying per-solver-per-window idempotency or
+// attribution on the signature bytes (the only per-bid unique value it has)
+// sees one seal as three distinct admissible bids.
 export const CANONICAL_BID_SIGNATURE = /^0x[0-9a-f]{130}$/;
 
 // An unpaired UTF-16 surrogate: a JS-only string that has no UTF-8 encoding.
@@ -263,9 +255,8 @@ export type BidVerification =
 //
 // Verification is against the bid AS RECEIVED, with `output` coerced to its
 // canonical decimal before hashing -- not against the subset of bids this SDK
-// would agree to SIGN. Those are different questions, and answering the second
-// one under the first one's name is what let a server-admitted `007` bid be
-// reported as an unsigned bid.
+// would agree to SIGN. Those are different questions: answering the second
+// under the first's name reports a server-admitted `007` bid as unsigned.
 export function verifyBidDetailed(bid: Bid): BidVerification {
   if (typeof bid.output !== "string" || !SERVER_UINT.test(bid.output)) {
     return {
@@ -289,30 +280,25 @@ export function verifyBidDetailed(bid: Bid): BidVerification {
     };
   }
 
-  // Refuse a re-spelled signature BEFORE recovery. Two encodings ethers reads
-  // happily are not the one this protocol defines: the 64-byte EIP-2098
-  // compact form and non-lowercase hex (both measured verifying against vector
-  // `expiry-absent` -- see CANONICAL_BID_SIGNATURE).
+  // Refuse a re-spelled signature BEFORE recovery: the 64-byte EIP-2098
+  // compact form and non-lowercase hex both recover fine in ethers and are not
+  // the encoding this protocol defines (see CANONICAL_BID_SIGNATURE).
   //
-  // `bad_signature`, not `non_canonical`, because the two are not the same
-  // class. `non_canonical` asserts the signature is genuine and the recovered
-  // signer IS the claimed one, and it carries that signer -- which this check
-  // cannot produce without first recovering through the encoding it is
-  // refusing. It is a 400 precisely because `007` and `7` are one uint256: the
-  // bid was admitted, the solver IS bound to that price, and calling it
-  // unsigned would hand a winner a repudiation lever. Neither half holds here.
-  // This bid is refused, so there is no award to repudiate, and the protocol
-  // defines attribution over 65-byte lowercase `r || s || v`, so bytes in
-  // another spelling are not a signature it can attribute to anyone. Grading
-  // it a body defect would also invite the auctioneer to correct the body and
-  // admit it, which is the second admissible bid this refusal exists to
-  // remove. The malleated high-s twin already lands on `bad_signature` one
-  // branch down and is the same hazard, so one hazard keeps one reason.
+  // `bad_signature`, not `non_canonical`: `non_canonical` asserts the
+  // signature is genuine and the recovered signer IS the claimed one (which
+  // this check cannot produce without recovering through the encoding it
+  // refuses), and is a 400 because `007` and `7` are one uint256 -- the bid
+  // was admitted and the solver IS bound. Neither holds here: this bid is
+  // refused, so there is no award to repudiate, and attribution is defined
+  // over 65-byte lowercase `r || s || v`, so bytes in another spelling are not
+  // a signature it can attribute to anyone. Grading it a body defect would
+  // also invite the auctioneer to correct the body and admit it, the second
+  // admissible bid this refusal exists to remove. The malleated high-s twin
+  // lands on `bad_signature` one branch down and is the same hazard.
   //
-  // Refused, never normalized. `bidTypedData` validates without rewriting
-  // because a signer that rewrites its input signs something the caller did not
-  // ask for; lowercasing a signature or expanding a compact one here would make
-  // this SDK the thing that manufactures the second admissible spelling.
+  // Refused, never normalized: lowercasing a signature or expanding a compact
+  // one here would make this SDK the thing that manufactures the second
+  // admissible spelling.
   if (typeof bid.signature !== "string" || !CANONICAL_BID_SIGNATURE.test(bid.signature)) {
     // The bytes themselves are never echoed -- an auctioneer routes this into a
     // response body and a log. The shape is what tells a solver what to fix.

@@ -223,15 +223,9 @@ export class SolverClient {
   // answered something this SDK cannot read, or never answered at all. The
   // first is a lockstep-deploy problem, the second is the venue's contract, the
   // third is reachability/routing, and they are fixed by different people.
-  //
-  // The middle one used to collapse into the third. `VenueCapabilitiesSchema`
-  // required `phase`, which RFC §12 only SHOULDs, so a conformant venue serving
-  // `200 {"rfcVersion":"0.3.0-draft"}` threw a zod error inside
-  // `HttpSolverTransport.getCapabilities`, landed in the same `catch` as a
-  // connection refusal, and was reported as "the venue never answered -- check
-  // reachability, routing and the base URL". It answered, correctly. `phase` is
-  // optional now, and a body that still fails validation says so in its own
-  // words rather than borrowing the reachability one.
+  // `VenueCapabilitiesSchema` requires only `rfcVersion` (`phase` is a RFC §12
+  // SHOULD): a conformant `200 {"rfcVersion":...}` must not fail validation
+  // and be reported as "the venue never answered".
   private async assertVenueRfcVersion(signal?: AbortSignal): Promise<void> {
     const silent = (why: string): Error =>
       new Error(
@@ -248,11 +242,8 @@ export class SolverClient {
     try {
       capabilities = await this.transport.getCapabilities(signal);
     } catch (err) {
-      // Two different faults arrive here, and the remedies have no overlap. A
-      // transport that never completed is a reachability problem; a body that
-      // completed and then failed validation is the venue's contract, and
-      // telling its operator to check routing is how a correct venue gets
-      // debugged as an unreachable one.
+      // Two different faults arrive here, and the remedies have no overlap (see
+      // `isValidationFailure`).
       const why = err instanceof Error ? err.message : String(err);
       throw silent(
         isValidationFailure(err)
@@ -295,9 +286,8 @@ export interface HttpSolverTransportOptions {
   // Resumable feed cursor to start from (RFC section 4.1). Defaults to "0".
   since?: string;
   // Called when a batch reports `dropped` or `reset` -- i.e. this reader missed
-  // announcements. Omitting it preserves the previous behaviour (the gap is not
-  // acted on), but the batch is now parsed rather than destructured, so the
-  // fields can never be silently lost again.
+  // announcements. Omitted, the gap is not acted on; the batch is parsed, not
+  // destructured, so the fields are never silently lost.
   onFeedGap?: (gap: FeedGap) => void;
   // Called when a single feed ENTRY fails validation. Supplying it skips that
   // entry and continues; omitting it rethrows, which ends `SolverClient.run`.

@@ -581,8 +581,8 @@ export class OnchainEscrowGateway {
   // `${chainId}:${address}`, kept until the node's own pending count passes
   // its nonce. The queue orders nonce assignment but cannot make the read
   // fresh: a default ethers provider answers an identical
-  // `eth_getTransactionCount` inside 250ms from its request cache, which handed
-  // the second of two back-to-back sends the nonce the first had just taken.
+  // `eth_getTransactionCount` inside 250ms from its request cache, handing the
+  // second of two back-to-back sends the nonce the first just took.
   // The hash and bytes are kept so a record is only trusted while the node
   // still holds that transaction: one it evicted would otherwise put every
   // later send behind a nonce nobody holds (`assignNonce`).
