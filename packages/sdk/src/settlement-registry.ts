@@ -347,8 +347,8 @@ export class SettlementRegistryClient {
   /**
    * Finalize a trade after all sub-settlements are recorded.
    *
-   * Per audit fix H-2, the registry no longer accepts an arbitrary PATTERN proof:
-   * the caller must supply the same `publicInputs` bytes that were used at
+   * The registry does not accept an arbitrary PATTERN proof (audit H-2): the
+   * caller must supply the same `publicInputs` bytes that were used at
    * `submitCompliance` time, and the registry verifies (a) hash equality with the
    * stored `publicInputsHash` and (b) `analysis_type == 1` (anti-structuring).
    * VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected.

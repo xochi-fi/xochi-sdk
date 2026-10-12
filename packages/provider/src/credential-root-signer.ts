@@ -4,8 +4,8 @@
  * The provider's signing key (held in HSM/KMS, distinct from the publisher EOA)
  * signs an EIP-712 `CredentialRootPublication` struct. The Oracle verifies the
  * signature on-chain via `ecrecover` at `publishCredentialRoot` time. A
- * compromised publisher EOA alone can no longer mint credential roots, since
- * they do not hold the signing key.
+ * compromised publisher EOA alone cannot mint credential roots, since it does
+ * not hold the signing key.
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1";

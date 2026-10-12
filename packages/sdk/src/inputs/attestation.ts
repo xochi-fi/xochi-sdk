@@ -4,9 +4,8 @@ import { validateCredentialType, validateSubmitter, validateTimestamp } from "./
 /**
  * ATTESTATION proof inputs.
  *
- * The circuit no longer takes a "providers tree" path. Instead it proves
- * inclusion of `leaf_hash_value(credential_hash)` in the provider's per-provider
- * credentials Merkle tree, where:
+ * The circuit proves inclusion of `leaf_hash_value(credential_hash)` in the
+ * provider's per-provider credentials Merkle tree, where:
  *
  *   credential_hash = H(DOMAIN_CREDENTIAL,
  *                       provider_id,
