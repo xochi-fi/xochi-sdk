@@ -90,9 +90,10 @@
 //                       survives a restart.
 //
 // SOLVER_STATE_FILE and its lease live in ./fill-state-file.ts, the feed
-// supervisor, stop signals and startup order in ./supervise.ts. Copying the
-// three out of the repo: change their `../src/index` imports to
-// "@xochi/solver-sdk". Nothing else here is repo-local.
+// supervisor, stop signals and startup order in ./supervise.ts, the startup
+// checks in ./env.ts. Copying the four out of the repo: change their
+// `../src/index` imports to "@xochi/solver-sdk". Nothing else here is
+// repo-local.
 
 import { realpathSync } from "fs";
 import { pathToFileURL } from "url";
@@ -113,6 +114,7 @@ import {
   type SolverCapabilities,
   type TxOutcome,
 } from "../src/index";
+import { assertKeyShape, assertVenueUrl, envInt, requireEnv } from "./env";
 import { errorText, type FillStateFile, type PersistedFill } from "./fill-state-file";
 import {
   BackgroundTasks,
@@ -135,44 +137,14 @@ const ACCEPT_BUDGET_SEC = 15; // the gateway's default `acceptBudgetSec`
 
 const say = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required (see the header of examples/escrow-solver.ts)`);
-  return value;
-}
+const ENV_HINT = "(see the header of examples/escrow-solver.ts)";
 
-// A malformed key must never reach `new ethers.Wallet`: ethers' error quotes
-// the value. Name the VARIABLE and the reason, never the value.
-const KEY_SHAPE = /^0x[0-9a-fA-F]{64}$/;
-function assertKeyShape(name: string, key: string): void {
-  if (!KEY_SHAPE.test(key)) {
-    throw new Error(
-      `${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`,
-    );
-  }
-}
-
-// A numeric knob: unset takes the default; set, it must be a non-negative
-// integer. An empty value is unset, as `requireEnv` treats it; `Number("")`
-// would read it as 0 and `Number("x")` as NaN.
-function envInt(name: string, fallback: bigint): bigint {
-  const raw = process.env[name];
-  if (raw === undefined || raw === "") return fallback;
-  if (!/^\d+$/.test(raw.trim())) {
-    throw new Error(`${name} must be a non-negative integer; got ${JSON.stringify(raw)}`);
-  }
-  return BigInt(raw.trim());
-}
-
-function assertVenueUrl(raw: string): void {
-  const url = new URL(raw);
-  const loopback =
-    url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
-  if (url.protocol === "https:" || (url.protocol === "http:" && loopback)) return;
-  throw new Error(
-    `RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${url.origin}`,
-  );
-}
+// SolverBond v2 on Base, required by the loop (every fill is preceded by a
+// FillAcceptance on its domain) and by `bond ...`, not by `resolveConfig`.
+const bondEnv = () => ({
+  rpc: requireEnv("BOND_RPC_URL", ENV_HINT),
+  address: requireEnv("SOLVER_BOND", ENV_HINT),
+});
 
 export interface Config {
   baseUrl: string;
@@ -190,27 +162,28 @@ export interface Config {
 }
 
 export function resolveConfig(): Config {
-  const baseUrl = requireEnv("RIDDLER_SOLVER_URL");
-  assertVenueUrl(baseUrl);
-  const solverKey = requireEnv("SOLVER_KEY");
+  const env = (name: string) => requireEnv(name, ENV_HINT);
+  const baseUrl = env("RIDDLER_SOLVER_URL");
+  assertVenueUrl(baseUrl, say);
+  const solverKey = env("SOLVER_KEY");
   assertKeyShape("SOLVER_KEY", solverKey);
   const claimKey = process.env.CLAIM_KEY || solverKey;
   assertKeyShape("CLAIM_KEY", claimKey);
   return {
     baseUrl,
     solverKey,
-    apiKey: requireEnv("SOLVER_API_KEY"),
+    apiKey: env("SOLVER_API_KEY"),
     claimKey,
     origin: {
-      chainId: Number(requireEnv("ORIGIN_CHAIN_ID")),
-      rpc: requireEnv("ORIGIN_RPC_URL"),
-      escrow: ethers.getAddress(requireEnv("ORIGIN_ESCROW")),
+      chainId: Number(env("ORIGIN_CHAIN_ID")),
+      rpc: env("ORIGIN_RPC_URL"),
+      escrow: ethers.getAddress(env("ORIGIN_ESCROW")),
     },
     dest: {
-      chainId: Number(requireEnv("DEST_CHAIN_ID")),
-      rpc: requireEnv("DEST_RPC_URL"),
-      filler: ethers.getAddress(requireEnv("DEST_FILLER")),
-      token: ethers.getAddress(requireEnv("DEST_TOKEN")),
+      chainId: Number(env("DEST_CHAIN_ID")),
+      rpc: env("DEST_RPC_URL"),
+      filler: ethers.getAddress(env("DEST_FILLER")),
+      token: ethers.getAddress(env("DEST_TOKEN")),
     },
     bidBps: envInt("BID_BPS_OVER_MIN", 10n),
     fillInclusionSec: Number(envInt("FILL_INCLUSION_SEC", 60n)),
@@ -934,10 +907,7 @@ async function runSolver(noShow: boolean): Promise<void> {
   try {
     const solverId = new ethers.Wallet(cfg.solverKey).address;
     const transport = venueTransport(cfg);
-    const { gateway, destSigner } = buildGateway(cfg, transport, {
-      rpc: requireEnv("BOND_RPC_URL"),
-      address: requireEnv("SOLVER_BOND"),
-    });
+    const { gateway, destSigner } = buildGateway(cfg, transport, bondEnv());
     const solver = new EscrowSolver(cfg, gateway, destSigner, noShow, background, state);
     const client = new SolverClient({
       solverKey: cfg.solverKey,
@@ -974,7 +944,7 @@ async function runSolver(noShow: boolean): Promise<void> {
 async function runBond(args: string[]): Promise<void> {
   const cfg = resolveConfig();
   const transport = venueTransport(cfg);
-  const bond = { rpc: requireEnv("BOND_RPC_URL"), address: requireEnv("SOLVER_BOND") };
+  const bond = bondEnv();
   const { gateway } = buildGateway(cfg, transport, bond);
   const [command, arg] = args;
 
