@@ -10,6 +10,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Changed
 
+- **`QuoteReferralSchema` is a union** matching xochi#618: the named `{ code, name }` line (served only to a caller signed in as the quoting wallet) or the neutral `{ neutral: true, note: REFERRAL_NEUTRAL_NOTE }` line (a `ref` was applied, the caller is not the quoting wallet). New export `REFERRAL_NEUTRAL_NOTE`. Consumers that read `referral.code` must narrow on `"code" in referral` first.
 - **Depends on the workspace `@xochi/signer`** (was the unpublished `@riddler/signer`).
 - **Version 0.1.1**, past every pre-fix commit (which declare the never-published 0.1.0).
 - Takes `Promise.withResolvers` from `ES2024.Promise`; built with TypeScript 6. `package.json` gains description, keywords and homepage.

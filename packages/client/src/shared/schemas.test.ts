@@ -13,6 +13,7 @@ import {
   FeeBreakdownSchema,
   QuoteResponseSchema,
   recipientAddress,
+  REFERRAL_NEUTRAL_NOTE,
 } from "./schemas.js";
 
 const INTENT_ID = "xi_3a94fb5a37cf16d62a3799b359c20428";
@@ -107,6 +108,33 @@ const feeBreakdown = {
 describe("QuoteResponseSchema (snake_case wire contract)", () => {
   it("accepts the canonical snake_case response", () => {
     expect(QuoteResponseSchema.safeParse(canonicalQuote).success).toBe(true);
+  });
+
+  it("accepts a named referral", () => {
+    const r = QuoteResponseSchema.safeParse({
+      ...canonicalQuote,
+      referral: { code: "ALICE", name: "Alice" },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts the neutral referral line", () => {
+    const parsed = QuoteResponseSchema.parse({
+      ...canonicalQuote,
+      referral: { neutral: true, note: REFERRAL_NEUTRAL_NOTE },
+    });
+    expect(parsed.referral).toEqual({ neutral: true, note: REFERRAL_NEUTRAL_NOTE });
+  });
+
+  it("rejects a neutral referral with another note, a false flag, or mixed keys", () => {
+    for (const referral of [
+      { neutral: true, note: "Someone earns a fee." },
+      { neutral: false, note: REFERRAL_NEUTRAL_NOTE },
+      { neutral: true, note: REFERRAL_NEUTRAL_NOTE, code: "ALICE" },
+      { code: "ALICE", name: "Alice", neutral: true },
+    ]) {
+      expect(QuoteResponseSchema.safeParse({ ...canonicalQuote, referral }).success).toBe(false);
+    }
   });
 
   it("preserves eip712 standard keys verbatim (signature safety)", () => {
