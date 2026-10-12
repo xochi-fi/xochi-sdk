@@ -1,7 +1,7 @@
 /**
  * Attestation scoring with diminishing returns.
  *
- * Ported from @xochi/shared. Implements whitepaper Appendix I.8:
+ * Implements whitepaper Appendix I.8:
  * 1st attestation per category: 100% of points
  * 2nd attestation: 25% of points
  * 3rd+ attestations: 10% of points

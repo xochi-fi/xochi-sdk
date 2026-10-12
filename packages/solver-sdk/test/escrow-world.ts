@@ -46,21 +46,21 @@ export const FILL_ID: Hex = load("fill-salt.json").vectors.find(
 
 export const ORIGIN = Number(baseline.terms.fromChainId);
 export const DEST = Number(baseline.terms.toChainId);
-export const ESCROW = ethers.getAddress(baseline.terms.escrow);
+const ESCROW = ethers.getAddress(baseline.terms.escrow);
 export const TOKEN = ethers.getAddress(baseline.opening.toToken);
-export const FLOOR = BigInt(baseline.opening.toAmount);
-export const FILL_DEADLINE = BigInt(baseline.terms.fillDeadline);
+const FLOOR = BigInt(baseline.opening.toAmount);
+const FILL_DEADLINE = BigInt(baseline.terms.fillDeadline);
 export const REFUNDABLE_AT = FILL_DEADLINE + 3_600n;
 export const T0 = Number(FILL_DEADLINE) - 4_000; // chain time throughout
 export const FILLER = "0x2222222222222222222222222222222222222222";
-export const VERIFIER = "0x4444444444444444444444444444444444444444";
-export const BOND = "0x6666666666666666666666666666666666666666";
+const VERIFIER = "0x4444444444444444444444444444444444444444";
+const BOND = "0x6666666666666666666666666666666666666666";
 // Hardhat's public dev keys: never funded anywhere that matters.
 export const SOLVER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 export const VENUE_KEY = "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a";
-export const ATTESTER_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
+const ATTESTER_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
 export const SOLVER = new ethers.Wallet(SOLVER_KEY).address;
-export const BID_BPS = 10n;
+const BID_BPS = 10n;
 export const OUTPUT = (FLOOR * (10_000n + BID_BPS)) / 10_000n; // what EscrowSolver bids over minOutput = FLOOR
 
 const escrowIface = new ethers.Interface(RIDDLER_ESCROW_ABI as unknown as string[]);
@@ -117,7 +117,7 @@ export async function award(fillAuth: { amount?: bigint; deadline?: number } = {
   };
 }
 
-export class Venue implements SolverTransport {
+class Venue implements SolverTransport {
   bids: Bid[] = [];
   fills: FillReceipt[] = [];
   accepts: { auctionId: string; orderId: string; signature: string }[] = [];

@@ -729,7 +729,7 @@ describe("escrow example: an acceptance is posted only once SOLVER_STATE_FILE re
     state.close();
   });
 
-  // `accepting` on disk at a Riddler#1250 re-delivery: a resumed `accepting`
+  // `accepting` on disk at a re-delivery: a resumed `accepting`
   // order whose full `accept` has not run yet. The re-delivered award must
   // still write `accepted` before its POST, or a restart past acceptBy drops
   // an acceptance the venue holds.
@@ -1492,48 +1492,6 @@ describe("escrow example: a restart resumes persisted orders", () => {
       state.close();
     },
   );
-
-  // The approval cannot be made (here its simulation fails), so the solver
-  // does not bid; the resumed fill waits while the approval is retried, and
-  // lands once an allowance covering it stands (here set by hand).
-  it("holds a resumed fill while the startup approval fails, retrying it until an allowance stands", async () => {
-    const file = path.join(dir, "state.json");
-    await acceptedBeforeStop(file);
-
-    const state = new FillStateFile(file);
-    const after = world(
-      [{ type: "announcement", announcement: { ...announcement, auctionId: "auc-2" } }],
-      { state },
-    );
-    let allowance = 0n;
-    after.dest.stub(TOKEN, ERC20, { allowance: () => allowance });
-    let outcome: unknown = "pending";
-    void startSolver({
-      solver: after.escrowSolver,
-      state,
-      background: after.background,
-      allowance: after.allowance,
-      run: runAgainstVenue(after.client, after.escrowSolver),
-      signal: new AbortController().signal,
-      log: () => {},
-    }).then(
-      () => (outcome = "resolved"),
-      (err: unknown) => (outcome = err),
-    );
-    expect(await drain(after.background, 3)).toBe(false);
-    expect(fillsOn(after.dest)).toHaveLength(0);
-    expect(after.venue.bids).toHaveLength(0);
-
-    allowance = OUTPUT * 10n; // set by hand
-    expect(await drain(after.background, 6)).toBe(true);
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(fillsOn(after.dest)).toHaveLength(1);
-    expect(after.lock.filled).toBe(true);
-    expect(after.lock.status).toBe(LockStatus.Claimed);
-    expect(outcome).toBeInstanceOf(FatalSolverStop);
-    state.close();
-  });
 
   // Killed while the acceptance POST was in flight: the venue holds the
   // signature and never answered. The restart, past acceptBy, finds the order

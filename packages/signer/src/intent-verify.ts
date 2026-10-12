@@ -94,9 +94,8 @@ export function assertNoEscrowEnvelope(quote: Record<string, any> | null | undef
  * the pull's expiry FROM this deadline: unchecked, a quote naming the year 3000 gets a
  * pull valid until the year 3000 and both checks pass. There is no injection point for
  * "now", and do not add one: an optional `{ now }` is an unauthenticated bypass of this
- * bound in the public API (`{ now: 9e15 }` accepts any deadline) wearing a test
- * affordance's name, and it keeps the `Date.now()` default production runs out of the
- * suite entirely.
+ * bound in the public API (`{ now: 9e15 }` accepts any deadline), and it keeps the
+ * `Date.now()` default production runs out of the suite entirely.
  */
 export const MAX_INTENT_DEADLINE_AHEAD_OF_NOW_SECONDS = 3600;
 
@@ -290,10 +289,9 @@ export function assertFromAmountWithinMax(
  * is a sanity ceiling and not a parity constant. Measured FROM the intent's deadline,
  * which is why `assertPullMatchesIntent` bounds that deadline against the wall clock.
  *
- * Do NOT tighten it to a number read off a live deployment. The buffer was `1500` as
- * recently as 2026-08-12 (Riddler#789 §B) before moving to `300`, so a hardcoded 600
- * would have refused every honest quote issued that day on every chain. The real number
- * is now advertised; {@link pullExpiryBoundSeconds} uses it.
+ * Do NOT tighten it to a number read off a live deployment: the buffer was `1500` until
+ * 2026-08-12 (Riddler#789 §B), so a hardcoded 600 would have refused every honest quote.
+ * The advertised value is applied by {@link pullExpiryBoundSeconds}.
  *
  * The two ceilings compose: worst case a signed pull is live for
  * `MAX_INTENT_DEADLINE_AHEAD_OF_NOW_SECONDS` plus this, and the advertised value shrinks
@@ -304,24 +302,24 @@ export const MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS = 3600;
 
 /**
  * The bound actually enforced on a pull's expiry: the TIGHTER of the solver's advertised
- * `pull_deadline_buffer_seconds` and the local ceiling above (axol-io/riddler-sdk#101).
+ * `pull_deadline_buffer_seconds` and the local ceiling above.
  *
  * Reading a served value is sound because the operation is a MINIMUM against a local
  * constant: the server can only shrink the window it may operate in, and no advertised
  * number makes a longer-lived pull acceptable. Monotonicity is what makes the difference,
- * not provenance: the `assertMatchesPinnedRecipients` mistake was a served value compared
- * against a served value, both halves the attacker's.
+ * not provenance: a served value compared against a served value is both halves the
+ * attacker's.
  *
  * The advertised value is an availability lever, not a fund-safety one: advertise `0` and
  * every pull outliving the intent deadline is refused, which the server already achieves
  * by declining to quote.
  *
  * Anything that is not a non-negative integer falls through to the local ceiling, as
- * omitting the field does. Absent must NOT fall through to zero, and means the
- * pre-existing 3600s ceiling rather than UNBOUNDED, which is why this is defaulted where
- * `max_from_amount` is required. Opt-in, not auto-fetched: nothing on the signing path
- * reads `/xochi/capabilities`, advisory metadata that may inform a check and never relax
- * one (`capabilities.ts`).
+ * omitting the field does. Absent must NOT fall through to zero, and means the 3600s
+ * ceiling rather than UNBOUNDED, which is why this is defaulted where `max_from_amount`
+ * is required. Opt-in, not auto-fetched: nothing on the signing path reads
+ * `/xochi/capabilities`, advisory metadata that may inform a check and never relax one
+ * (`capabilities.ts`).
  */
 export function pullExpiryBoundSeconds(advertised: unknown): number {
   if (typeof advertised !== "number" || !Number.isInteger(advertised) || advertised < 0) {
@@ -348,12 +346,12 @@ export function pullKind(pull: Eip712Signable): "erc3009" | "permit2" {
  * **Must come from somewhere the server cannot reach**: a build-time constant, a config
  * file, a value a human read once and wrote down. An equality assertion is informative
  * only if at least one side is a value the other party cannot choose, and an attacker
- * holding the channel supplies both halves of a served-vs-served comparison. Same rule as
- * `xochiDepositQuote` refusing to default `attestationSigner` to a capabilities fetch,
- * and why `capabilities.ts` ships no `assert*`. `fetchPullRecipients` helps you DISCOVER
- * what to pin; pinning what it returns in the same process is trust-on-first-use, a real
- * posture but one to choose. A chain you list is pinned for BOTH methods: leaving
- * `erc3009` or `permit2` off a chain you named refuses that method ({@link pinnedFor}).
+ * holding the channel supplies both halves of a served-vs-served comparison (the same
+ * rule behind a required `attestationSigner`, and why `capabilities.ts` ships no
+ * `assert*`). `fetchPullRecipients` helps you DISCOVER what to pin; pinning what it
+ * returns in the same process is trust-on-first-use, a real posture but one to choose. A
+ * chain you list is pinned for BOTH methods: leaving `erc3009` or `permit2` off a chain
+ * you named refuses that method ({@link pinnedFor}).
  */
 export type PinnedPullRecipients = Readonly<Record<number, MethodPin>>;
 
@@ -385,17 +383,17 @@ export function requireIntentChainId(intent: Record<string, any>, what: string):
 /**
  * One entry of a pin: per chain AND per method, because prod's topology needs both.
  * `pull_recipients` is "ERC-3009 is a different solver EOA per chain, Permit2 one universal
- * proxy" (Riddler#848), so on a chain serving both methods the two recipients are different
- * addresses, and so are their destinations. Do not collapse it to one value per chain:
- * because a pinned chain that omits a method REFUSES ({@link pinnedFor}), that shape
- * refused one of the two honest routes on every fully pinned chain, and a guard whose
- * correct configuration refuses honest quotes is one operators switch off.
+ * proxy", so on a chain serving both methods the two recipients are different addresses,
+ * and so are their destinations. Do not collapse it to one value per chain: a pinned
+ * chain that omits a method REFUSES ({@link pinnedFor}), so that shape would refuse one
+ * of the two honest routes on every fully pinned chain, and a guard whose correct
+ * configuration refuses honest quotes is one operators switch off.
  *
  * A method may name **several** accepted values, and the pull matches if it equals any of
- * them (#102). That exists for one job: crossing a planned solver rollover. Riddler rotates
- * the ERC-3009 solver EOA per chain and rewrites `settlementWallet` on 11 proxies across 6
- * chains (Riddler#798/#800), and a taker holding single values sees every honest quote
- * refused the moment the cutover lands, with an error that reads like an attack.
+ * them. That exists for one job: crossing a planned solver rollover (Riddler rotates the
+ * ERC-3009 solver EOA per chain and rewrites `settlementWallet` on every proxy), where a
+ * taker holding single values sees every honest quote refused the moment the cutover
+ * lands, with an error that reads like an attack.
  *
  * **A set widens what you accept, so it is a window and not a configuration.** Two pinned
  * values means two addresses may receive your funds, and the old one keeps being accepted
@@ -552,9 +550,8 @@ export function pullRecipientWasChecked(
 export interface AssertPullOptions {
   /**
    * Caller-pinned pull recipients. When a chain and method are pinned, the pull's `to` /
-   * `spender` is held to them; otherwise that field goes unchecked, as it did before
-   * Riddler#848. Both spellings, read through `pick`: a pin forwarded out of
-   * `QuoteRequestParams` can carry either.
+   * `spender` is held to them; otherwise that field goes unchecked. Both spellings, read
+   * through `pick`: a pin forwarded out of `QuoteRequestParams` can carry either.
    */
   expectedPullRecipients?: PinnedPullRecipients;
   expected_pull_recipients?: PinnedPullRecipients;
@@ -640,12 +637,11 @@ function assertPullNotToPinnedEscrow(
  * closed on an unknown-but-legitimate chain id.
  *
  * WHO RECEIVES THE FUNDS is checked only against `opts.expectedPullRecipients`, a pin the
- * CALLER supplies (axol-io/Riddler#848); with no pin the field goes unchecked, as before
- * ({@link PinnedPullRecipients}). The two methods do not bind equally hard: an ERC-3009
- * `to` IS the payee, while a Permit2 `spender` is only AUTHORISED to pull and picks
- * `SignatureTransferDetails.to` at call time, off the signed struct (`OriginPullWitness`
- * binds an `orderId`, not a recipient). Pinning a spender bounds who may move the funds,
- * not where they land.
+ * CALLER supplies; with no pin the field goes unchecked ({@link PinnedPullRecipients}).
+ * The two methods do not bind equally hard: an ERC-3009 `to` IS the payee, while a
+ * Permit2 `spender` is only AUTHORISED to pull and picks `SignatureTransferDetails.to`
+ * at call time, off the signed struct (`OriginPullWitness` binds an `orderId`, not a
+ * recipient). Pinning a spender bounds who may move the funds, not where they land.
  */
 export function assertPullMatchesIntent(
   quote: Record<string, any>,
@@ -723,10 +719,10 @@ export function assertPullMatchesIntent(
   // run it, so such a pull is refused.
   assertPullNotToPinnedEscrow(intent, kind, m, opts);
 
-  // WHO RECEIVES THE FUNDS (Riddler#848). Checked only against a CALLER-SUPPLIED pin.
-  // Absence is safe to skip here, unlike an advertised value: the pin is the caller's own
-  // data, so "this chain is not pinned" is the caller's decision and an attacker cannot
-  // delete an entry from it.
+  // WHO RECEIVES THE FUNDS. Checked only against a CALLER-SUPPLIED pin. Absence is safe
+  // to skip here, unlike an advertised value: the pin is the caller's own data, so "this
+  // chain is not pinned" is the caller's decision and an attacker cannot delete an entry
+  // from it.
   const pinnedRecipient = pinnedFor(
     intent,
     kind,

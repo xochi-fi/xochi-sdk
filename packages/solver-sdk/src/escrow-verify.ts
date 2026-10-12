@@ -140,10 +140,10 @@ export interface AwardExpectations {
   // the most it agreed to pay out of its own inventory, and the FillAuth amount
   // ceiling. Required because it is the one bound this solver holds itself:
   // Riddler issues a `:winner` FillAuth for exactly the verified bid's output
-  // (fill_authorizer.ex; `max(fill_amount, to_amount)`, refused above the
-  // on-chain deposit since Riddler#1243, is only the `:reserve`/`:backstop`
-  // amount), but `award.output` and the FillAuth are both the venue's word, so
-  // a venue that sets them together sets its own ceiling.
+  // (fill_authorizer.ex; `max(fill_amount, to_amount)`, capped at the on-chain
+  // deposit, is only the `:reserve`/`:backstop` amount), but `award.output` and
+  // the FillAuth are both the venue's word, so a venue that sets them together
+  // sets its own ceiling.
   bidOutput: UintLike;
 }
 

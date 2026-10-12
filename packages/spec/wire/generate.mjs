@@ -1,110 +1,77 @@
 #!/usr/bin/env node
 /**
- * Refetch the vendored wire contract and its digest.
+ * Refetch the vendored wire contract and its digest (`npm run generate:wire`).
+ * Refusals, flags and the compared axes: `./README.md`.
  *
  * SPEC.md §3 names `GET /xochi/openapi.json` the source of truth, so this
  * writes what the solver serves and never edits it. The served bytes are
- * reformatted to sorted-key 2-space JSON before writing: a diff has to be
- * reviewable, and the digest has to describe a file this script can reproduce
- * byte-for-byte from the same document, whatever the producer's formatter does.
- * (Integer-like keys sort numerically first -- JS object ordering, not this
- * sort -- which is deterministic, so regeneration still is.) Reformatted, so
- * NOT byte-verbatim -- but every numeric LITERAL is verbatim by construction,
+ * reformatted to sorted-key 2-space JSON (reviewable diff; a digest this script
+ * can reproduce from the same document whatever the producer's formatter does),
+ * so NOT byte-verbatim -- but every numeric LITERAL is verbatim by construction,
  * because `./format.mjs` serializes each number from its source token and never
  * through `JSON.parse`. A re-spelled bound is a different contract; a re-ordered
  * key is not.
  *
- * The recorded digest is of the FORMATTED file, because that is the artifact
- * `scripts/verify-openapi.mjs` and the SDKs read. The served bytes' own digest
- * is printed in the provenance block, which is where a fact this repo cannot
- * re-verify locally belongs.
+ * The recorded digest is of the FORMATTED file, the artifact
+ * `scripts/verify-openapi.mjs` and the SDKs read; the served bytes' own digest
+ * is printed in the provenance block.
  *
- * This is the only writer of the artifact, so it is also the only place a
- * refresh can be refused, and it refuses six things:
+ * This is the only writer of the artifact, so it is the only place a refresh
+ * can be refused:
  *
- *   - A BREAKING delta against the copy COMMITTED at `HEAD` (read through
- *     git, never the working tree), computed by the SAME differ the nightly
- *     probe runs (`./compare.mjs`). It used to refuse only a dropped path,
- *     operation or schema NAME -- a strictly narrower rule than
- *     the probe's comparison, and everything in the gap laundered itself: a
- *     served document that keeps every name while stripping `pattern` from
- *     `EthAddress`, `oneOf` from `ChainAddress` and `pattern`/`maxLength` from
- *     `WalletSignature` was written (82366 -> 81852 bytes, `+0/-0` on all three
- *     printed axes), re-digested over this script's own output, and then
- *     compared to the same server by the probe for a pass, forever. Overriding
- *     needs `--allow-breaking`, which is a claim that the printed list was read.
- *   - A server that is not prod, graded on the HOST THAT ANSWERED and not on
- *     the `RIDDLER_SERVER` label. The label is operator-typed and the URL it
- *     selects is unvalidated past `https:`, so keying the refusal on it refused
- *     nothing in the case that matters most: `RIDDLER_SERVER` defaults to
- *     `prod`, so a `.env`, a tunnel or a poisoned CI variable holding any host
- *     under `RIDDLER_URL_PROD` took the "this is prod" branch, wrote with zero
- *     flags, and had the provenance block -- the one artifact a reviewer
- *     approves a refresh from -- assert those were prod's bytes. The origin is
- *     pinned below (`PROD_ORIGIN`). `NOTE: not prod` printed above a completed
- *     write is not a control either: stg's contract vendored as prod's passes
- *     the per-PR digest gate and the offline suite, both of which only check
- *     internal consistency. Overriding needs `--allow-non-prod`.
+ *   - A BREAKING delta against the copy COMMITTED at `HEAD` (read through git,
+ *     never the working tree), computed by the SAME differ the nightly probe
+ *     runs (`./compare.mjs`). A name-only check (paths, operations, schemas)
+ *     would let a served document that keeps every name while stripping
+ *     `pattern` from `EthAddress` or `oneOf` from `ChainAddress` be written,
+ *     re-digested over this script's own output, and then verified against
+ *     the same server forever. `--allow-breaking` claims the printed list was
+ *     read.
+ *   - A server that is not prod, graded on the HOST THAT ANSWERED
+ *     (`PROD_ORIGIN`), not on the `RIDDLER_SERVER` label: the label is
+ *     operator-typed and the URL it selects is unvalidated past `https:`, so a
+ *     `.env`, a tunnel or a poisoned CI variable under `RIDDLER_URL_PROD` would
+ *     otherwise write with zero flags and have the provenance block assert the
+ *     bytes were prod's. Another deployment's contract vendored as prod's
+ *     passes the per-PR digest gate and the offline suite, which only check
+ *     internal consistency. `--allow-non-prod`.
  *   - A committed baseline that cannot be parsed, flags or not: with no delta
  *     to review, `--allow-breaking` has nothing to consent to.
- *   - An ABSENT baseline: no git checkout, no commit, or no `openapi.json` at
- *     `HEAD`. There is nothing to diff against, so the BREAKING gate cannot run
- *     at all; `rm packages/spec/wire/openapi.json` was once a way to buy
- *     silence from it. A genuine first vendoring happens once and says so with
- *     `--first-vendoring`; everything else fails closed.
- *   - A committed baseline that is no baseline: one that is not recognisably
- *     an OpenAPI contract by the probe's own test (`unrecognisedContract`: an
- *     `openapi` string, `paths` with an operation, `components`). That takes
- *     the same consent, `--first-vendoring`, and is then not diffed against.
- *     A committed pair whose digest does not match its document is a broken
- *     commit, refused with NO flag: it is not a missing baseline, so
- *     `--first-vendoring` never skips the diff for it.
+ *   - An ABSENT baseline (no git checkout, no commit, no `openapi.json` at
+ *     `HEAD`): the BREAKING gate cannot run. `--first-vendoring`.
+ *   - A committed baseline that is not recognisably an OpenAPI contract by the
+ *     probe's own test (`unrecognisedContract`): same consent,
+ *     `--first-vendoring`, and then not diffed against. A committed pair whose
+ *     digest does not match its document is a broken commit, refused with NO
+ *     flag: it is not a missing baseline, so `--first-vendoring` never skips
+ *     the diff for it. These checks run BEFORE the fetch.
  *     Why `HEAD` and not the working tree: the working-tree pair is only held
- *     to itself, so gutting `openapi.json` to one real path and its schema
- *     closure and re-digesting it passed both checks above and graded a served
- *     BREAKING change STALE against a baseline that declared almost nothing.
- *     A commit can be gutted too, but only as a diff in the branch's history
- *     that review reads; the provenance block names the commit. These checks
- *     run BEFORE the fetch: they are decisions about local state.
- *   - Its own output disagreeing with the served bytes about a numeric literal,
- *     which is the one refusal that is not a decision about anybody's document.
+ *     to itself, so gutting `openapi.json` to one real path and re-digesting it
+ *     would grade a served BREAKING change STALE. A commit can be gutted too,
+ *     but only as a diff in the branch's history that review reads; the
+ *     provenance block names the commit.
+ *   - Its own output disagreeing with the served bytes about a numeric literal.
  *     `./format.mjs` emits every number from its source token, so
- *     `rewrittenNumbers` below is a POST-CONDITION on this script's own work and
- *     must always be empty; a non-empty one is a defect in the formatter, and
- *     the only honest thing to do with it is refuse and name the literal that
- *     moved. There is deliberately no flag. There was one -- `--allow-renumbering`,
- *     from when this script round-tripped through `JSON.parse` and could only
- *     refuse -- and what it consented to was writing the folded spelling: a
- *     served `0.0` vendored as `0`, after which `verify-openapi.mjs` lexed the
- *     two sides, found an empty structural diff, and reported RE-SPELLED -> exit
- *     1 on every nightly run, while the refresh it named as the remedy
- *     reproduced the same bytes forever, `JSON.stringify` being unable to emit
- *     `0.0`. Jason emits a decimal point on every float, so the first
- *     `default: 0.0` the solver adds reached that path. A permanently red check
- *     on the one job guarding the wire contract is one somebody switches off,
- *     and then a genuine `EthAddress.pattern: "^.*$"` lands inside a check
- *     nobody reads. The flag is gone and the cause is fixed.
+ *     `rewrittenNumbers` is a POST-CONDITION on this script's own work and must
+ *     be empty; a non-empty one is a formatter defect, refused with no flag.
+ *     Consenting to a folded spelling (a served `0.0` vendored as `0`) makes
+ *     `verify-openapi.mjs` report RE-SPELLED on every nightly run while the
+ *     refresh it names as the remedy reproduces the same bytes; a permanently
+ *     red check is one somebody switches off.
  *
- * And it prints provenance, because a refresh is reviewed as a 2000-line diff
- * otherwise and `RIDDLER_SERVER` means the bytes may not even be prod's. Every
- * server-controlled string in that block goes through `sanitize` first: it is
- * the only artifact a reviewer reads before approving a refresh, and unlike the
- * probe there is no exit code behind it, so a schema name carrying newlines
- * could inject whole fabricated axis lines into it.
+ * It prints provenance, because a refresh is otherwise reviewed as a 2000-line
+ * diff and the bytes may not be prod's. Every server-controlled string in that
+ * block goes through `sanitize`: it is the one artifact a reviewer reads before
+ * approving a refresh, with no exit code behind it, so a schema name carrying
+ * newlines could inject fabricated axis lines.
  *
  * Server resolution, timeouts and the fetch hazards come from the probes'
- * shared library so a refresh and a check disagree about nothing, and 0, 2 and
- * 3 mean there what they mean here (a generator has no DRIFT verdict). A
- * deliberate refusal is its own code, 4 REFUSED: `misconfigured()` documents 3
- * as "this machine's own state or configuration, before anyone was asked", and
- * none of the six refusals is that: each is a deliberate refusal of a target,
- * of a document or of this script's own output, four of them overridable by a
- * flag, and two -- the BREAKING gate and the literal post-condition -- are taken
- * about a document already fetched.
- * On one code, "you forgot to export RIDDLER_URL_PROD" and "the producer
- * changed the wire contract, read the delta and decide" were the same
- * `npm error code 3` to a wrapper or a scrollback tail, and they are the two
- * most different outcomes this has.
+ * shared library, and 0, 2 and 3 mean what they mean there (a generator has no
+ * DRIFT verdict). A deliberate refusal is its own code, 4 REFUSED:
+ * `misconfigured()` defines 3 as this machine's own state before anyone was
+ * asked, and none of the refusals is that. On one code, "you forgot to export
+ * RIDDLER_URL_PROD" and "the producer changed the wire contract" would be the
+ * same `npm error code 3` to a wrapper or a scrollback tail.
  */
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -210,7 +177,7 @@ if (!isProd && !ALLOW_NON_PROD) {
       "  spelled prod is not evidence a prod host answered, and this block is the only\n" +
       "  artifact review reads before approving.\n" +
       "  The vendored contract is the PRODUCTION wire contract -- `packages/spec` ships it to\n" +
-      "  sdks/{python,go,rust} and the offline suite holds this SDK to it. Another\n" +
+      "  runners/{python,go,rust} and the offline suite holds @xochi/client to it. Another\n" +
       "  deployment's document vendored here passes the per-PR digest gate and\n" +
       "  `wire-contract.test.ts` (both check only that the pair is internally consistent), so\n" +
       "  the mistake surfaces at 06:00 UTC as a nightly BREAKING report against prod, in\n" +
@@ -222,22 +189,8 @@ if (!isProd && !ALLOW_NON_PROD) {
 
 /**
  * The baseline the served document is graded against: the copy COMMITTED at
- * `HEAD`, read through git, never the working tree.
- *
- * It was the working-tree file, held to its own digest and to
- * `unrecognisedContract`, and both checks are about the pair agreeing with
- * itself. Gut `openapi.json` to one real path and that path's schema closure,
- * run `shasum` over it, and the prior was self-consistent and recognisably a
- * contract: the served document was then graded against a baseline that
- * declared almost nothing, so a served BREAKING change -- every path but one
- * gone, `EthAddress.pattern` loosened -- graded STALE and installed with no
- * flag. Neither file is a value the operator cannot rewrite locally. A commit
- * is not either, but it is one review reads: to move the baseline, the gutting
- * has to land in the branch's history as its own diff, where every removed path
- * shows. That is the residual, and the provenance block prints the commit so a
- * reviewer can check it against the base branch.
- *
- * The working-tree pair is not consulted at all, which is also what makes an
+ * `HEAD`, read through git, never the working tree (why: the header). The
+ * working-tree pair is not consulted at all, which is also what makes an
  * interrupted refresh harmless: whatever two files a crash left behind, the
  * next run diffs against `HEAD`.
  */
@@ -333,14 +286,9 @@ if (unrecognisedPrior !== null && !FIRST_VENDORING) {
 const noBaseline = prior.absent !== undefined || unrecognisedPrior !== null;
 
 // A committed pair that disagrees with itself fails the per-PR digest gate, so
-// the commit is wrong: it is fixed, and no flag consents to it. In particular
-// it is NOT a missing baseline, and --first-vendoring -- which stands in only
-// for an absent or unrecognisable one -- neither overrides this nor skips the
-// diff. It used to do both: a digest that merely did not match took the
-// "untrusted prior" branch, the refusal steered the operator to
-// --first-vendoring, and that dropped the BREAKING comparison for a document
-// that was intact. An interrupted run of this script produced exactly that
-// state in the working tree, which is no longer read.
+// the commit is wrong: it is fixed, and no flag consents to it. It is NOT a
+// missing baseline, and --first-vendoring (which stands in only for an absent
+// or unrecognisable one) neither overrides this nor skips the diff.
 const digestMismatch =
   noBaseline || prior.recorded === prior.actual
     ? null
@@ -370,15 +318,12 @@ if (unrecognisedServed !== null) {
   );
 }
 
-// The reformat that produces the vendored artifact, and the reason the literals
-// below are a post-condition rather than a gate: `./format.mjs` builds the tree
-// from the served TEXT and emits every number from its source token, so no
-// spelling is up for consent. It carries the differ's depth bound for the reason
-// the `sortKeys` it replaces did -- a `const` or `default` payload nested a few
-// hundred thousand deep exhausted the stack here and exited on a `RangeError`,
-// not the clean INCONCLUSIVE a document nobody walked deserves -- and it refuses
-// rather than falling back to `JSON.parse`, which would be the folding path
-// arriving silently on exactly the inputs it could not handle.
+// The reformat that produces the vendored artifact. `./format.mjs` builds the
+// tree from the served TEXT and emits every number from its source token, so no
+// spelling is up for consent. It carries the differ's depth bound (a `const` or
+// `default` payload nested a few hundred thousand deep exhausts the stack with
+// a `RangeError`, not the clean INCONCLUSIVE a document nobody walked deserves)
+// and refuses rather than falling back to `JSON.parse`, the folding path.
 const reformat = () => {
   try {
     return formatDocument(got.text);
@@ -542,13 +487,10 @@ if (noBaseline) {
 }
 console.log("--- end provenance ---\n");
 
-// Before the BREAKING gate, and unlike it this is not about anything the
-// producer did: `./format.mjs` emits each number from its source token, so a
-// finding here means this script broke its own invariant on bytes it was given.
-// Nothing consents to it. `--allow-renumbering` used to, and what it authorized
-// was writing the double-folded spelling -- a served `0.0` vendored as `0` --
-// after which verify-openapi.mjs reported RE-SPELLED at 06:00 UTC on every run
-// and the refresh it named as the remedy reproduced the same bytes forever.
+// Before the BREAKING gate, and unlike it not about anything the producer did:
+// `./format.mjs` emits each number from its source token, so a finding here
+// means this script broke its own invariant. Nothing consents to it (see the
+// header: a consented fold makes the nightly RE-SPELLED permanent).
 if (rewrittenNumbers.length > 0) {
   refused(
     `${rewrittenNumbers.length} numeric literal(s) in the served document are spelled differently in\n` +
@@ -560,7 +502,7 @@ if (rewrittenNumbers.length > 0) {
       "  override: that module scans the served text and emits every number from its own\n" +
       "  source token, so this list is unreachable by construction. Report it with the\n" +
       "  literals above. It matters because `packages/spec` ships this file to\n" +
-      "  sdks/{python,go,rust}, whose parsers do not all fold numbers to a double -- Go's\n" +
+      "  runners/{python,go,rust}, whose parsers do not all fold numbers to a double -- Go's\n" +
       "  `json.Number` and serde_json's `arbitrary_precision` keep the literal -- so a\n" +
       "  re-spelled bound is this repo asserting to those consumers a value it never\n" +
       "  received.",
@@ -587,22 +529,17 @@ if (breaking.length > 0) {
   );
 }
 
-// Two writes are not one. Both temporaries land first, then the DOCUMENT is
-// moved into place before the digest. An interrupted run therefore leaves the
-// new document beside the old digest -- a pair the per-PR digest gate, the
-// offline suite and the nightly probe all fail -- and never the old, intact
-// document beside a new digest. That second state is the one the previous
-// order produced, and it read as "the prior does not match its digest": a
-// refusal that steered to --first-vendoring, which then skipped the BREAKING
-// diff for a document nothing was wrong with. Neither leftover can move the
-// baseline now, since the next run diffs against HEAD and not the working tree.
+// Both temporaries land first, then the DOCUMENT is moved into place before the
+// digest: an interrupted run leaves the new document beside the old digest (a
+// pair every gate fails), never the old document beside a new digest (which
+// reads as a digest mismatch and steers to --first-vendoring). Neither leftover
+// can move the baseline, since the next run diffs against HEAD.
 //
-// The temporaries are swept on EVERY exit, not just on a staging error. Neither
+// The temporaries are swept on EVERY exit, not just on a staging error: neither
 // `*.tmp` is gitignored and `packages/spec` publishes the whole `wire/`
 // directory, so a leaked one is a second unreviewed copy of the wire contract
-// that `git add -A` commits and `npm publish` ships to sdks/{python,go,rust}.
-// And an abort BEFORE the first rename leaves both real files consistent, so
-// nothing in CI would have reported the stray: the digest gate passes.
+// that `git add -A` commits and `npm publish` ships, and an abort BEFORE the
+// first rename leaves both real files consistent, so the digest gate passes.
 const TMP_JSON = `${OUT_JSON}.tmp`;
 const TMP_SHA = `${OUT_SHA}.tmp`;
 const sweep = () => {

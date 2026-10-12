@@ -8,8 +8,6 @@
  * proof shows only that the prover chose a score meeting the threshold. It is
  * not evidence of trust. Fees and privacy access MUST come from an
  * authoritative score, never from a tier proof.
- *
- * Ported from xochi frontend src/lib/tier-proofs.ts.
  */
 
 import { bytesToHex, encodePacked, keccak256, type Address, type Hex } from "viem";

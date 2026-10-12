@@ -1,8 +1,7 @@
 /**
  * Full-stack signed-compliance integration.
  *
- * The end-to-end happy path that proves the I-1 remediation works in
- * production shape:
+ * The end-to-end happy path in production shape:
  *
  *   provider signing daemon  →  POST /sign
  *   xochi-sdk                →  proveComplianceSigned

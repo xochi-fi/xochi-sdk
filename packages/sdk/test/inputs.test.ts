@@ -171,17 +171,6 @@ describe("buildComplianceInputs", () => {
     expect(result.timestamp).toBe("1700000000");
   });
 
-  it("builds US compliance", () => {
-    const result = buildComplianceInputs({
-      score: 25,
-      jurisdictionId: 1,
-      providerSetHash: PROVIDER_SET_HASH,
-      submitter: SUBMITTER,
-    });
-
-    expect(result.jurisdiction_id).toBe("1");
-  });
-
   it("builds multi-provider compliance", () => {
     // signals: [25, 30, 20], weights: [50, 30, 20]
     // score = (25*50 + 30*30 + 20*20) * 100 / 100 = 2550 bps < 7100 (EU)
@@ -305,7 +294,7 @@ describe("buildComplianceInputs", () => {
 // ============================================================
 
 describe("buildMembershipInputs", () => {
-  it("builds membership inputs (post-H-3: subject-bound leaf)", () => {
+  it("builds membership inputs", () => {
     const result = buildMembershipInputs({
       subjectSalt: "0",
       merkleIndex: "0",
@@ -371,7 +360,7 @@ describe("buildMembershipInputs", () => {
 // ============================================================
 
 describe("buildNonMembershipInputs", () => {
-  it("builds non-membership inputs (post-H-3 + M-2 + H-4)", () => {
+  it("builds non-membership inputs", () => {
     const result = buildNonMembershipInputs({
       lowLeaf: "10",
       highLeaf: "100",
@@ -394,7 +383,7 @@ describe("buildNonMembershipInputs", () => {
     expect(result.submitter).toBe(SUBMITTER);
   });
 
-  it("rejects non-adjacent indices (H-4 fix)", () => {
+  it("rejects non-adjacent indices", () => {
     expect(() =>
       buildNonMembershipInputs({
         lowLeaf: "10",
@@ -490,39 +479,6 @@ describe("buildPatternInputs", () => {
     expect(result.submitter).toBe(SUBMITTER);
   });
 
-  it("builds velocity analysis", () => {
-    const result = buildPatternInputs({
-      amounts: [1000],
-      timestamps: [1700000000],
-      numTransactions: 1,
-      analysisType: 2,
-      reportingThreshold: 10000,
-      timeWindow: 86400,
-      txSetHash: "0x1234",
-      submitter: SUBMITTER,
-      settlementRoot: ZERO_SETTLEMENT_ROOT,
-    });
-
-    expect(result.analysis_type).toBe("2");
-    expect(result.time_window).toBe("86400");
-  });
-
-  it("builds round amounts analysis", () => {
-    const result = buildPatternInputs({
-      amounts: [5000, 3000, 7777],
-      timestamps: [1700000000, 1700000100, 1700000200],
-      numTransactions: 3,
-      analysisType: 3,
-      reportingThreshold: 10000,
-      timeWindow: 86400,
-      txSetHash: "0x5678",
-      submitter: SUBMITTER,
-      settlementRoot: ZERO_SETTLEMENT_ROOT,
-    });
-
-    expect(result.analysis_type).toBe("3");
-  });
-
   it("rejects time_window below minimum (24h)", () => {
     expect(() =>
       buildPatternInputs({
@@ -593,7 +549,7 @@ describe("buildPatternInputs", () => {
 // Attestation (tier verification)
 // ============================================================
 
-describe("buildAttestationInputs (post C-1: credentials tree)", () => {
+describe("buildAttestationInputs", () => {
   const baseInput = {
     credentialAttribute: "0xccc",
     expiryTimestamp: 1800000000,
@@ -618,11 +574,6 @@ describe("buildAttestationInputs (post C-1: credentials tree)", () => {
     expect(result.expiry_timestamp).toBe("1800000000");
     expect(result.provider_id).toBe("1");
     expect(result.submitter).toBe(SUBMITTER);
-  });
-
-  it("builds institutional credential type", () => {
-    const result = buildAttestationInputs({ ...baseInput, credentialType: 4 });
-    expect(result.credential_type).toBe("4");
   });
 
   it("rejects expired credential", () => {

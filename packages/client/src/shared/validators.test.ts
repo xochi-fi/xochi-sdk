@@ -3,25 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  ETH_ADDRESS_REGEX,
-  TRON_ADDRESS_REGEX,
-  isValidAddress,
-  isValidTronAddress,
-} from "./validators.js";
-
-describe("ETH_ADDRESS_REGEX", () => {
-  it("matches valid addresses", () => {
-    expect(ETH_ADDRESS_REGEX.test("0x1234567890abcdef1234567890abcdef12345678")).toBe(true);
-    expect(ETH_ADDRESS_REGEX.test("0xABCDEF1234567890ABCDEF1234567890ABCDEF12")).toBe(true);
-  });
-
-  it("rejects invalid addresses", () => {
-    expect(ETH_ADDRESS_REGEX.test("1234567890abcdef1234567890abcdef12345678")).toBe(false);
-    expect(ETH_ADDRESS_REGEX.test("0x1234")).toBe(false);
-    expect(ETH_ADDRESS_REGEX.test("0xGGGG567890abcdef1234567890abcdef12345678")).toBe(false);
-  });
-});
+import { TRON_ADDRESS_REGEX, isValidAddress, isValidTronAddress } from "./validators.js";
 
 describe("isValidAddress", () => {
   it("returns true for valid addresses", () => {

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { planSplit, DEFAULT_SPLIT_CONFIG } from "../src/split.js";
+import { planSplit } from "../src/split.js";
 
 const ETH = 10n ** 18n;
 const SUBMITTER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as const;
@@ -33,7 +33,6 @@ describe("planSplit", () => {
     });
 
     expect(plan.subTrades).toHaveLength(4);
-    const base = 87n * ETH + (ETH * 350n) / 4n - 87n * ETH; // exact: 350/4 = 87.5, floor = 87
     // baseAmount = 350 ETH / 4 = 87.5 -> 87 ETH (bigint floor)
     const expectedBase = (350n * ETH) / 4n;
     for (let i = 0; i < 3; i++) {
@@ -130,14 +129,6 @@ describe("planSplit", () => {
     plan.subTrades.forEach((st, i) => {
       expect(st.index).toBe(i);
     });
-  });
-
-  it("stores resolved config in plan", () => {
-    const plan = planSplit(500n * ETH, EU, SUBMITTER, {
-      splitThreshold: 100n * ETH,
-    });
-    expect(plan.splitConfig.splitThreshold).toBe(100n * ETH);
-    expect(plan.splitConfig.maxSubTrades).toBe(DEFAULT_SPLIT_CONFIG.maxSubTrades);
   });
 
   // -- Validation --

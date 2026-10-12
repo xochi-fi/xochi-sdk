@@ -243,7 +243,7 @@ jobs:
         run: pip install uv==0.11.6
 
       - name: Python conformance runner (byte-equality over the shared fixture)
-        working-directory: sdks/python
+        working-directory: runners/python
         run: |
           uv sync --locked
           uv run pytest -q
@@ -255,10 +255,10 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: sdks/go/go.mod
+          go-version-file: runners/go/go.mod
 
       - name: Go conformance runner (byte-equality over the shared fixture)
-        working-directory: sdks/go
+        working-directory: runners/go
         run: go test ./...
 
   rust-conformance:
@@ -267,7 +267,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Rust conformance runner (byte-equality over the shared fixture)
-        working-directory: sdks/rust
+        working-directory: runners/rust
         run: cargo test --locked
 
   integration:

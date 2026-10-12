@@ -8,20 +8,18 @@
  *
  * **Not a trust anchor.** Capabilities arrive over the same channel as the quote,
  * so whoever can substitute a quote can substitute the matrix that "validates"
- * it -- the mistake `xochiDepositQuote` refuses by no longer defaulting
- * `attestationSigner` to a capabilities fetch. Every accessor answers *what did
- * the server say*, which is safe for anything that fails closed on its own:
- * picking a pull method, sizing an order, rendering a route list.
+ * it. Every accessor answers *what did the server say*, which is safe for
+ * anything that fails closed on its own: picking a pull method, sizing an order,
+ * rendering a route list.
  *
- * So nothing here is named `assert*`, `verify*` or `check*`. A removed
- * `assertMatchesPinnedRecipients` is why, and do not re-introduce it: it compared
- * a caller's pin against the *advertisement*, which is not an input to any
- * signing path (`assertPullMatchesIntent` is where a pull's `to`/`spender` is
- * held to something), and it skipped when the advertised side was absent, so
- * omitting the field passed silently. Riddler legitimately omits a chain whose
- * solver address does not resolve, so honest-absent and hostile-absent are the
- * same bytes and only the caller can decide. `pullRecipients` is still parsed as
- * discovery data.
+ * So nothing here is named `assert*`, `verify*` or `check*`, and nothing may be.
+ * A check that compares a caller's pin against the *advertisement* compares
+ * nothing on any signing path (`assertPullMatchesIntent` is where a pull's
+ * `to`/`spender` is held to something), and one that skips when the advertised
+ * side is absent passes silently on an omitted field. Riddler legitimately omits
+ * a chain whose solver address does not resolve, so honest-absent and
+ * hostile-absent are the same bytes and only the caller can decide.
+ * `pullRecipients` is parsed as discovery data only.
  *
  * Parsing is tolerant (unknown keys dropped, absent optionals conservative, an
  * unusable payload `null` rather than a throw) because a client that hard-failed
@@ -103,9 +101,9 @@ export interface SolverCapabilities {
   /** Pinned signer for deposit-route attestations. Discovery only -- see the module header. */
   depositAttestationSigner: string | null;
   /**
-   * The attestation message version the server SIGNS, from its code constant
-   * (Riddler#877). `null` on a server that predates the field. Compare it against
-   * the client's own constant with {@link depositAttestationVersionSkew}.
+   * The attestation message version the server SIGNS, from its code constant.
+   * `null` on a server that predates the field. Compare it against the client's
+   * own constant with {@link depositAttestationVersionSkew}.
    */
   depositAttestationVersion: string | null;
   /** Where the server publishes its conformance vectors, and the SHA-256 of those exact bytes. */
@@ -114,16 +112,16 @@ export interface SolverCapabilities {
 
   /**
    * chainId -> {erc3009, permit2}: who the solver SAYS receives an origin pull,
-   * the part of a pull authorization that moves the money (Riddler#848).
-   * Advertised is not verified and this module ships no helper that pretends
-   * otherwise. A chain is legitimately absent when its solver address does not
-   * resolve, so absence is not evidence.
+   * the part of a pull authorization that moves the money. Advertised is not
+   * verified and this module ships no helper that pretends otherwise. A chain
+   * is legitimately absent when its solver address does not resolve, so absence
+   * is not evidence.
    */
   pullRecipients: Readonly<Record<number, PullRecipients>>;
   /**
    * How far the on-chain pull expiry may outlive the signed intent deadline.
-   * Operator-tunable server-side (`1500` before `300`, Riddler#789 §B), which is
-   * why the SDK's own `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` is a loose sanity
+   * Operator-tunable server-side (it has been `1500` and `300`), which is why
+   * the SDK's own `MAX_PULL_EXPIRY_AFTER_INTENT_SECONDS` is a loose sanity
    * ceiling and not a parity constant. Fed to `pullExpiryBoundSeconds` (or
    * `advertisedPullDeadlineBufferSeconds` on the quote params) the enforced bound
    * is the tighter of the two, so the server can shrink its own window and never
@@ -139,8 +137,8 @@ export interface SolverCapabilities {
    * Mover-backed corridors with per-corridor bounds. **Not a routability gate:**
    * the quote path gates on the advertised chain set, never on this list, and a
    * deposit-address route is quotable and fills without appearing here, so
-   * pre-declining an absent pair turns away routes the solver serves
-   * (Riddler#834). Use it to size a move, not to decide whether one is possible.
+   * pre-declining an absent pair turns away routes the solver serves. Use it to
+   * size a move, not to decide whether one is possible.
    */
   corridors: readonly Record<string, unknown>[];
   /** Allowlisted cross-token fill pairs. Empty when conversion is off. */
@@ -198,9 +196,9 @@ function asNonNegativeInteger(value: unknown): number | null {
 }
 
 /**
- * A chain id, from a value or an object key. One predicate for both: while they
- * differed, `"0x2105"` became chain 8453 in `chains[]` and was dropped from
- * `addresses`, one spelling with two verdicts.
+ * A chain id, from a value or an object key. One predicate for both, so one
+ * spelling (`"0x2105"`) cannot be chain 8453 in `chains[]` and dropped from
+ * `addresses`.
  *
  * Canonical decimal only. `/^\d+$/` alone accepts `"08453"`, which `Number()`
  * collapses onto `8453`; JS iterates integer-like keys first and string keys
@@ -232,10 +230,10 @@ function asVmType(value: unknown): VmType | null {
   // Absent means EVM: `vm_type` postdates the endpoint and every chain that
   // existed before it was EVM, so treating absent as unknown would strand them.
   if (value === undefined || value === null) return "evm";
-  // PRESENT but unrecognised is not absent. It used to read as "evm" too, so the
-  // first served `cvm` (Canton, spec 0.8.0) parsed as an EVM chain with format
-  // `hex20`, and a Canton party id was one caller away from an EVM address helper.
-  // A VM this parser does not know is a chain it cannot address.
+  // PRESENT but unrecognised is not absent. Read as "evm", a served `cvm` chain
+  // (Canton, spec 0.8.0) parses as an EVM chain with format `hex20`, and a
+  // Canton party id is one caller away from an EVM address helper. A VM this
+  // parser does not know is a chain it cannot address.
   const s = asString(value);
   return s !== null && VM_TYPES.includes(s) ? (s as VmType) : null;
 }
@@ -266,9 +264,9 @@ function parseChain(raw: unknown): ChainCapability | null {
   const minStealthNotionalUsd = asNumber(r.min_stealth_notional_usd);
   const vmType = asVmType(r.vm_type);
   if (vmType === null) {
-    // Kept, not dropped: dropping it before `chainCapability`'s duplicate check let
-    // `[{id, evm}, {id, tvm2}]` read as a lone EVM chain, the shadowing that check
-    // exists to refuse. Unaddressable all the same; see asVmType.
+    // Kept, not dropped: dropped before `chainCapability`'s duplicate check,
+    // `[{id, evm}, {id, tvm2}]` reads as a lone EVM chain, the shadowing that
+    // check exists to refuse. Unaddressable all the same; see asVmType.
     const served = r.vm_type;
     return {
       chainId,
@@ -284,7 +282,7 @@ function parseChain(raw: unknown): ChainCapability | null {
     chainName,
     vmType,
     // Prefer the served format, falling back to the VM's own rather than hex20.
-    // Whitelisted, not cast: an unchecked `as` let a server label a TVM chain
+    // Whitelisted, not cast: an unchecked `as` lets a server label a TVM chain
     // `hex20`, or emit a format that type-checks as `AddressFormat` and matches
     // no branch of an exhaustive switch. Either ends with a base58 address in an
     // EVM address helper.
@@ -381,10 +379,10 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
   const boundsMax = asNumber(bounds.max);
 
   return {
-    // Restrictive on absence. `=== true` made a blank response mean "same-chain
-    // fills are allowed", a caller-visible relaxation handed over by an empty body.
-    // Riddler types the field as the literal `true`, so absence means "did not
-    // say", and "did not say" must not widen.
+    // Restrictive on absence. `=== true` would make a blank response mean
+    // "same-chain fills are allowed", a caller-visible relaxation handed over by
+    // an empty body. Riddler types the field as the literal `true`, so absence
+    // means "did not say", and "did not say" must not widen.
     crossChainOnly: r.cross_chain_only !== false,
     specVersion: asString(r.spec_version),
     orderBoundsUsd: {
@@ -501,9 +499,9 @@ export function advertisedTokenAddress(
  * Reports a deposit-attestation version skew, or `null` when there is none. A
  * client one version behind fails closed on every deposit quote as `signer is not
  * the pinned solver`, which reads as an outage or a key rotation rather than a
- * client that needs upgrading (riddler-sdk#92). A server that does not publish
- * the field yields `null`: absence is not a skew, and this must not turn an old
- * deployment into an error.
+ * client that needs upgrading. A server that does not publish the field yields
+ * `null`: absence is not a skew, and this must not turn an old deployment into
+ * an error.
  */
 export function depositAttestationVersionSkew(
   caps: SolverCapabilities,
@@ -561,8 +559,7 @@ export function stealthNotionalFloor(caps: SolverCapabilities, chainId: number):
  * `@flag_gated_chain_ids`: Tron behind `ENABLE_TRON`, Arc behind `ENABLE_ARC`)
  * and vanish from `/chains`, `/routes` and `/capabilities` while their flag is
  * off. A client that reads the table alone offers a route the venue answers
- * `route_unsupported` for; that drift has already produced two wrong chain
- * lists in this SDK (dead Tron testnets, missing Arc).
+ * `route_unsupported` for.
  *
  * So: the table supplies HOW to address a chain, the matrix supplies WHETHER.
  * Intersect them here rather than at each call site.
@@ -575,9 +572,9 @@ export function servedChainKeys(
   caps: SolverCapabilities,
   chains: Record<string, { chainId: number }>,
 ): string[] {
-  // Through `chainCapability`, so a duplicated id is unserved whatever VM its rows name:
-  // a per-row filter kept `[{id, evm}, {id, <unknown VM>}]` as served. An unrecognised-VM
-  // row is advertised but not addressable by this client.
+  // Through `chainCapability`, so a duplicated id is unserved whatever VM its rows name
+  // (a per-row filter would keep `[{id, evm}, {id, <unknown VM>}]` as served). An
+  // unrecognised-VM row is advertised but not addressable by this client.
   return Object.entries(chains)
     .filter(([, chain]) => chainCapability(caps, chain.chainId)?.vmType != null)
     .map(([key]) => key);

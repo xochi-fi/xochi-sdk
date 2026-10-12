@@ -33,7 +33,26 @@ Every file is exported by path, e.g. `@xochi/spec/conformance/conformance.json`.
 - `solver-bid-v2.json` and the escrow sets: parity with Riddler; digests must match on both sides.
 - `wire/openapi.json`: the server. Nothing here edits it.
 
-A changed vector is a wire change. Never regenerate one to make a check pass.
+A changed vector is a wire change. Never regenerate one to make a check pass. Per set:
+
+- **`conformance.json`** is the byte-equality contract with `raxol_payments` (ExUnit reads it
+  verbatim). Any change to `@xochi/signer`'s `signing.ts` / `xochi-signing.ts` or to
+  `packages/reference/src/config.ts` regenerates it (`npm run generate:conformance`) in the same
+  PR; a stale fixture silently breaks `raxol_payments`. Tron is never in the generator's chain
+  lists: the client signs on the EVM source only.
+- **`solver-bid-v2.json`** pins SolverBid v2 (SOLVER-RFC §5.1: struct, `RiddlerSolver`/`2`
+  domain with no `chainId` and no `verifyingContract`, typehash, domain separator, canonical
+  decimal `output`, absolute `validUntilMs`). Drift silently rejects every honest bid, and the
+  domain `version` versions the sealing scheme, not the RFC: an `rfcVersion` skew leaves every
+  digest identical, so the only guard is `@xochi/solver-sdk`'s pre-bid check of
+  `capabilities.rfcVersion` against `SOLVER_RFC_VERSION`, the one place that literal lives.
+  `npm run generate:solver-bid-v2` lands in lockstep with the server.
+- **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
+  discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
+  of independently floored layers). A schedule change lands on both sides and regenerates the
+  vectors (`npm run generate:fee`, from `@xochi/client`'s built `FEE_SCHEDULE`). Layered fees are
+  default-on server-side (`XOCHI_LAYERED_FEES=false` rolls back); a quote without
+  `fee_breakdown` is legacy (SPEC §4.6).
 
 ## Consuming the spec
 
@@ -70,6 +89,8 @@ Wire: check `openapi.json` against `openapi.sha256`; compare a served document w
 
 Reference runners live in the repo:
 [`packages/reference/test`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/reference/test).
+
+Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/CHANGELOG.md).
 
 ## License
 

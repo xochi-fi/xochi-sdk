@@ -12,17 +12,13 @@
 # control byte MUST spell it as an escape (`"\u0000"`, not the raw byte), and
 # this file is the backstop for the case where one arrives anyway: the diff stays
 # readable instead of the change going dark.
-*.ts    diff
-*.mts   diff
-*.cts   diff
-*.tsx   diff
-*.js    diff
-*.mjs   diff
-*.cjs   diff
-*.json  diff
-*.md    diff
-*.yml   diff
-*.yaml  diff
-*.nr    diff
-*.toml  diff
+*.ts     diff
+*.mjs    diff
+*.json   diff
+*.md     diff
+*.yml    diff
+*.toml   diff
+*.go     diff
+*.rs     diff
+*.py     diff
 *.sha256 diff

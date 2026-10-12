@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   PROOF_TYPES,
   JURISDICTIONS,
-  BPS_DENOMINATOR,
   PROOF_TYPE_NAMES,
   CIRCUIT_TO_PROOF_TYPE,
   PUBLIC_INPUT_COUNTS,
@@ -30,12 +29,6 @@ describe("JURISDICTIONS", () => {
     expect(JURISDICTIONS.US).toBe(1);
     expect(JURISDICTIONS.UK).toBe(2);
     expect(JURISDICTIONS.SG).toBe(3);
-  });
-});
-
-describe("BPS_DENOMINATOR", () => {
-  it("is 10000", () => {
-    expect(BPS_DENOMINATOR).toBe(10_000);
   });
 });
 

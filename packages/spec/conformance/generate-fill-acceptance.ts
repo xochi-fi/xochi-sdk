@@ -25,8 +25,8 @@ import { fileURLToPath } from "url";
 import { ethers } from "ethers";
 
 import {
-  FILL_ACCEPTANCE_DOMAIN_NAME,
-  FILL_ACCEPTANCE_DOMAIN_VERSION,
+  SOLVER_BOND_DOMAIN_NAME,
+  SOLVER_BOND_DOMAIN_VERSION,
   FILL_ACCEPTANCE_TYPE,
   FILL_ACCEPTANCE_TYPEHASH,
   FILL_AUTH_DOMAIN_NAME,
@@ -173,7 +173,7 @@ const out = {
     `EIP-712 ${FILL_ACCEPTANCE_TYPE} vectors for SolverBond v2, where fillAuth is the RiddlerFiller ` +
     "EIP-712 digest of the issued FillAuth (fill_auth + fill_auth_domain -> expected_fill_auth_digest). " +
     "Signed by the filler (the solver's one key). signer_private_key values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
-  domain: { name: FILL_ACCEPTANCE_DOMAIN_NAME, version: FILL_ACCEPTANCE_DOMAIN_VERSION },
+  domain: { name: SOLVER_BOND_DOMAIN_NAME, version: SOLVER_BOND_DOMAIN_VERSION },
   type: FILL_ACCEPTANCE_TYPE,
   typehash: FILL_ACCEPTANCE_TYPEHASH,
   fill_auth_domain: { name: FILL_AUTH_DOMAIN_NAME, version: FILL_AUTH_DOMAIN_VERSION },

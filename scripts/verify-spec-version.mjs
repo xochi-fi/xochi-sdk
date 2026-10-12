@@ -9,15 +9,15 @@
  * value is still the side this repo cannot edit; `probe-lib.mjs` states the
  * three rules all four probes share.
  *
- * Why it lives here (riddler#876 / riddler#969): the fee schedule drifted for
- * nine days while both sides passed their own hand-written tests (riddler#753),
- * and the spec_version label drifted for four (0.4.1 served against a 0.5.0
- * spec, fixed by riddler#877). The Elixir-side guards that would catch it are
- * `:integration` tagged and need this repo checked out next to Riddler's.
+ * Why it lives here: the fee schedule drifted for nine days while both sides
+ * passed their own hand-written tests (riddler#753), and the spec_version label
+ * drifted for four (0.4.1 served against a 0.5.0 spec). The Elixir-side guards
+ * that would catch it are `:integration` tagged and need this repo checked out
+ * next to Riddler's.
  *
  * The local side is TWO files: `packages/spec/package.json`'s `version` and
  * `packages/spec/SPEC.md`'s `- **Spec version:** \`x.y.z\`` line. Two copies of
- * one fact in one commit graph is the #92 shape, so both are read and held to
+ * one fact in one commit graph is the riddler-sdk#92 shape, so both are read and held to
  * each other; a disagreement is MISCONFIGURED, not DRIFT, and it does not stop
  * the run (the problem is printed, the producer is sampled anyway, and exit 3
  * carries both facts). The SPEC.md line must match EXACTLY once: taking the
@@ -27,7 +27,7 @@
  * SPEC §5.1 makes `spec_version` a SHOULD and this probe refuses to pass
  * without it, which is only defensible for the deployment it is pointed at:
  * axol.io's own (`RIDDLER_SERVER=prod` / `stg`), in lockstep with this repo and
- * serving the field from its own code constant since Riddler#877. Elsewhere the
+ * serving the field from its own code constant (Riddler#877). Elsewhere the
  * INCONCLUSIVE is about this probe's assumption rather than that server.
  *
  * One sample is not a verdict in either direction: `/xochi/capabilities` is
@@ -40,7 +40,7 @@
  *   RIDDLER_URL_PROD=https://host node scripts/verify-spec-version.mjs
  *   RIDDLER_SERVER=stg node scripts/verify-spec-version.mjs
  *
- * Exit codes, matching verify-attestation-version.mjs:
+ * Exit codes, matching verify-deposit-attestation-version.mjs:
  *   0  the solver advertises the version this spec package is, twice
  *   1  DRIFT: two samples agree on a different one
  *   2  INCONCLUSIVE: a sample obtained no answer (unreachable, redirected,
@@ -50,18 +50,17 @@
  *      the comparison could not be established (the server is still sampled and
  *      reported)
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   drift,
+  fetchJson,
   inconclusive,
   installCrashHandlers,
   misconfigured,
-  parseJsonBody,
-  probeGet,
+  noteLocalProblem,
   readPositiveMs,
+  readRepoFile,
   readTimeoutMs,
+  repoPath,
   resolveServer,
 } from "./probe-lib.mjs";
 
@@ -99,12 +98,12 @@ const SPEC_VERSION_LINE = /^-[ \t]*\*\*Spec version:\*\*[ \t]*`([^`]+)`[ \t\r]*$
  * reports the problem, samples the producer anyway, and exits 3 with both facts.
  */
 const readLocalSpecVersion = () => {
-  const pkgPath = fileURLToPath(new URL("../packages/spec/package.json", import.meta.url));
-  const specPath = fileURLToPath(new URL("../packages/spec/SPEC.md", import.meta.url));
+  const pkgPath = repoPath("packages/spec/package.json");
+  const specPath = repoPath("packages/spec/SPEC.md");
 
   let pkgVersion;
   try {
-    pkgVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version;
+    pkgVersion = JSON.parse(readRepoFile("packages/spec/package.json")).version;
   } catch (e) {
     return { version: null, problem: `could not read a version from ${pkgPath}: ${e.message}` };
   }
@@ -114,7 +113,7 @@ const readLocalSpecVersion = () => {
 
   let specText;
   try {
-    specText = readFileSync(specPath, "utf-8");
+    specText = readRepoFile("packages/spec/SPEC.md");
   } catch (e) {
     return {
       version: null,
@@ -171,8 +170,8 @@ const local = readLocalSpecVersion();
 // Printed here, exited on at the END, so a local half-bump cannot stop the
 // producer from being asked.
 if (local.problem) {
-  console.error(`MISCONFIGURED (local side): ${local.problem}`);
-  console.error(
+  noteLocalProblem(
+    local.problem,
     "\n  Not exited on yet. The producer is being sampled anyway and both facts are\n" +
       "  reported below: a repo that cannot state its own version must not thereby stop\n" +
       "  asking the one party whose answer it cannot edit.\n",
@@ -196,7 +195,9 @@ if (RESAMPLE_DELAY_MS <= EDGE_CACHE_TTL_MS) {
       `           so both reads may be one stored answer and agreement proves less than usual`,
   );
 } else {
-  console.log(`samples    2, ${RESAMPLE_DELAY_MS}ms apart (outlives the ~${EDGE_CACHE_TTL_MS}ms cache TTL)`);
+  console.log(
+    `samples    2, ${RESAMPLE_DELAY_MS}ms apart (outlives the ~${EDGE_CACHE_TTL_MS}ms cache TTL)`,
+  );
 }
 console.log("");
 
@@ -205,13 +206,10 @@ console.log("");
  * `{ ok: false, reason }`, never a verdict: that is the caller's, after a second.
  */
 const sample = async (label) => {
-  const got = await probeGet({ url, label, timeoutMs: TIMEOUT_MS });
+  const got = await fetchJson({ url, label, timeoutMs: TIMEOUT_MS });
   if (!got.ok) return got;
 
-  const parsed = parseJsonBody(got, { url, label });
-  if (!parsed.ok) return parsed;
-
-  const advertised = parsed.value?.spec_version;
+  const advertised = got.value?.spec_version;
 
   // Absent is INCONCLUSIVE, not a pass: SPEC §5.1 only SHOULDs this field, so a
   // deployment omitting it is un-probeable rather than conformance-broken, and
@@ -249,7 +247,9 @@ const serverFinding = () => {
   if (first.ok && second.ok) {
     return `disagreed with itself: "${first.value}" then "${second.value}" (mid-deploy or split cache)`;
   }
-  const reasons = [first, second].filter((s) => !s.ok).map((s) => `      ${s.reason.split("\n")[0]}`);
+  const reasons = [first, second]
+    .filter((s) => !s.ok)
+    .map((s) => `      ${s.reason.split("\n")[0]}`);
   return `gave no usable answer:\n${reasons.join("\n")}`;
 };
 
@@ -261,8 +261,8 @@ if (local.problem) {
     `${local.problem}\n\n` +
       `  The producer was asked anyway: ${serverKey} (${url}) ${serverFinding()}.\n` +
       "  No verdict is published against it, because there is no established local value to\n" +
-      "  compare with -- but this exit means \"could not establish the local side\", NOT \"did\n" +
-      "  not ask the producer\", and those two must never share a silent path.",
+      '  compare with -- but this exit means "could not establish the local side", NOT "did\n' +
+      '  not ask the producer", and those two must never share a silent path.',
   );
 }
 
@@ -305,5 +305,5 @@ console.log(`\nOK: ${serverKey} conforms to @xochi/spec ${local.version} (two ag
 // bytes without bumping the version passes here and fails the vector suites.
 console.log(
   "    (Version label only -- bytes are covered by conformance.json, fee/vectors.json\n" +
-    "     and verify-attestation-vectors.mjs.)",
+    "     and verify-deposit-attestation-vectors.mjs.)",
 );

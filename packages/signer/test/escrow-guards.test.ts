@@ -1,6 +1,8 @@
-// The riddler-sdk#150 guards: this SDK does not run the escrow binding (SPEC.md §2.3) on
-// the pull or deposit paths, so it refuses anything escrow-bearing there, and it does not
-// fold the case of a `0x`-prefixed value that is not hex (a Canton party id).
+// @xochi/signer does not run the escrow binding (SPEC.md §2.3) on the pull or deposit
+// paths, so it refuses anything escrow-bearing there, and it does not fold the case of a
+// `0x`-prefixed value that is not hex (a Canton party id). How the `expectedEscrows` pin
+// itself is read (key spellings, padding, duplicate keys) is pinned once, in
+// escrow.test.ts, since one resolver serves both guards.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -59,58 +61,9 @@ describe("expectedEscrows pull guard", () => {
     ).toThrow(XochiIntentMismatchError);
   });
 
-  it.each(["0x2105", "0X2105", "08453", " 8453", "8453\n"])(
-    "honors a non-canonical pin key %j",
-    (key) => {
-      const opts = { expectedEscrows: { [key]: ESCROW } as Record<string, string> };
-      expect(() => assertPullMatchesIntent(erc3009Quote(8453, ESCROW), opts)).toThrow(
-        XochiIntentMismatchError,
-      );
-      expect(() => assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts)).not.toThrow();
-    },
-  );
-
-  // Same key set `assertEscrowBinding` refuses: one reader for both guards.
-  it.each(["1e3", "__proto__", "-8453", "", "  ", "0", "0x", "0b10", "+8453", "8453.0"])(
-    "refuses a pin carrying the non-chain key %j",
-    (key) => {
-      const pin = JSON.parse(`{"8453": "${ESCROW}", ${JSON.stringify(key)}: "${ESCROW}"}`);
-      expect(() =>
-        assertPullMatchesIntent(erc3009Quote(8453, OTHER), { expectedEscrows: pin }),
-      ).toThrow(/is not a positive chain id/);
-    },
-  );
-
-  it("refuses two keys naming the chain with different escrows", () => {
-    const opts = (second: string) => ({
-      expectedEscrows: { 8453: ESCROW, ["0x2105"]: second } as Record<string, string>,
-    });
-    expect(() => assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts(OTHER))).toThrow(
-      /under 2 keys with different escrows/,
-    );
-    expect(() => assertPullMatchesIntent(erc3009Quote(8453, ESCROW), opts(` ${ESCROW}`))).toThrow(
-      XochiIntentMismatchError,
-    );
+  it("refuses an unusable pin rather than skipping the check", () => {
     expect(() =>
-      assertPullMatchesIntent(erc3009Quote(8453, OTHER), opts(` ${ESCROW}`)),
-    ).not.toThrow();
-  });
-
-  it.each([` ${ESCROW}`, `${ESCROW} `, ESCROW.toUpperCase().replace("0X", "0x")])(
-    "matches a pin spelled %j",
-    (pin) => {
-      expect(() =>
-        assertPullMatchesIntent(erc3009Quote(8453, ESCROW), { expectedEscrows: { 8453: pin } }),
-      ).toThrow(XochiIntentMismatchError);
-      expect(() =>
-        assertPullMatchesIntent(erc3009Quote(8453, OTHER), { expectedEscrows: { 8453: pin } }),
-      ).not.toThrow();
-    },
-  );
-
-  it.each(["", "  ", "0xnope", "0x" + "0".repeat(40)])("refuses an unusable pin %j", (pin) => {
-    expect(() =>
-      assertPullMatchesIntent(erc3009Quote(8453, OTHER), { expectedEscrows: { 8453: pin } }),
+      assertPullMatchesIntent(erc3009Quote(8453, OTHER), { expectedEscrows: { 8453: "" } }),
     ).toThrow(XochiIntentMismatchError);
   });
 

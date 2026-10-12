@@ -2,7 +2,6 @@
  * OracleLite -- lightweight oracle client using raw fetch + ABI encoding.
  *
  * Runs anywhere (Cloudflare Workers, Node.js, browser) without viem.
- * Ported from xochi/workers/counter/src/oracle.ts.
  */
 
 import type { ProofType, JurisdictionId } from "./constants.js";

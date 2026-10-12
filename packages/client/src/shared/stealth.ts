@@ -13,10 +13,8 @@ import { CHAIN_IDS } from "./chains.js";
  * SimpleAccountFactory (v0.8) for the counterfactual stealth destination.
  * Salt is 0: one account per stealth EOA.
  *
- * Canonical home for a value the client and the worker both need. It used to be
- * declared separately in `src/lib/stealth.ts` and
- * `packages/worker-lib/src/stealth-account.ts`, two copies of one
- * security-critical address that had to be edited together.
+ * Canonical home for a security-critical address the client and the worker
+ * both need; never declare a second copy.
  */
 export const SIMPLE_ACCOUNT_FACTORY = "0x13E9ed32155810FDbd067D4522C492D6f68E5944";
 
@@ -31,11 +29,11 @@ export const STEALTH_ACCOUNT_SALT = 0;
  * addresses and the recipient cannot find their money. That is the right call
  * for parity, and it is why this list exists rather than a hard pin.
  *
- * Nothing, however, constrained WHAT could be advertised. The factory decides
- * who owns the account the payout lands in, so an advertised factory that
- * deploys an account owned by someone else is theft, and both sides would have
- * agreed on it. This is the trust anchor the advertised value is checked
- * against: follow the solver, but only into a factory this build already knows.
+ * Nothing else constrains WHAT may be advertised. The factory decides who owns
+ * the account the payout lands in, so an advertised factory that deploys an
+ * account owned by someone else is theft, and both sides would have agreed on
+ * it. This is the trust anchor the advertised value is checked against: follow
+ * the solver, but only into a factory this build already knows.
  *
  * Keyed by chain rather than a flat list because the capability matrix is
  * expected to go per-chain, and a flat list would then accept a factory

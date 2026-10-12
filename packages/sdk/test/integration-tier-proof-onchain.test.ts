@@ -5,8 +5,8 @@
  * (`_validateRiskBounds` rejects bound_lower 0 and >= 10000) accept the
  * T*100 - 1 encoding at the tier boundaries, including Institutional; and a
  * RISK_SCORE attestation, which ERC-8262's `checkCompliance` reports as valid,
- * does not read as compliance through the SDK clients (review #2, with a real
- * proof instead of a stub verifier).
+ * does not read as compliance through the SDK clients (with a real proof
+ * instead of a stub verifier).
  *
  * Requires anvil and `forge build` output in ../ERC-8262/out.
  */

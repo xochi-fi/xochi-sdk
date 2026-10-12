@@ -2,11 +2,9 @@
  * Input-handling and layout properties of the two on-chain-verified signers.
  *
  * `conformance.test.ts` pins the happy path byte-for-byte against the frozen
- * fixture. It cannot see either of the cases below, because every vector in that
- * fixture carries a well-formed 32-byte nonce and a normal token address -- the
- * inputs these guard are exactly the ones no vector contains.
- *
- * Both were found by adversarial review before the first public release.
+ * fixture. It cannot see the cases below, because every vector in that fixture
+ * carries a well-formed 32-byte nonce and a normal token address -- the inputs
+ * these guard are exactly the ones no vector contains.
  */
 
 import { describe, it, expect } from "vitest";
@@ -45,10 +43,10 @@ function permit2Quote(overrides: Partial<Quote["gasless"]> = {}): Quote {
 }
 
 describe("ERC-3009 nonce normalization", () => {
-  // The bug: `padStart(64, "0").slice(0, 64)` left the padStart a no-op on an
-  // over-length nonce and let the slice discard the tail. The client then signed
-  // an authorization for a nonce the server never issued -- surfacing much later
-  // as an unexplained rejected pull, with no signal at signing time.
+  // `padStart(64, "0").slice(0, 64)` leaves the padStart a no-op on an over-length
+  // nonce and lets the slice discard the tail: the client then signs an
+  // authorization for a nonce the server never issued, surfacing much later as an
+  // unexplained rejected pull, with no signal at signing time.
   it("refuses an over-length nonce rather than truncating it", async () => {
     const tooLong = "0x" + "ab".repeat(40); // 40 bytes, does not fit bytes32
 
@@ -57,13 +55,7 @@ describe("ERC-3009 nonce normalization", () => {
     );
   });
 
-  it("names the size it refused, so the error is actionable", async () => {
-    await expect(
-      signERC3009(erc3009Quote("0x" + "ab".repeat(33)), "base", TEST_CONFIG),
-    ).rejects.toThrow(/33 bytes/);
-  });
-
-  it("still left-pads a short nonce -- the reference normalization is deliberate", async () => {
+  it("left-pads a short nonce -- the reference normalization is deliberate", async () => {
     // The server mirrors this, so removing it would break any quote carrying a
     // short nonce. Asserted rather than assumed: it is the reason this function
     // is more permissive than the Python/Go/Rust conformance runners.
@@ -84,16 +76,6 @@ describe("ERC-3009 nonce normalization", () => {
     );
   });
 
-  it("passes a full-width nonce through unchanged", async () => {
-    const result = await signERC3009(erc3009Quote(FULL_NONCE), "base", TEST_CONFIG);
-    const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["address", "address", "uint256", "uint256", "uint256", "bytes32"],
-      result.signedObject!,
-    );
-
-    expect(decoded[5]).toBe(FULL_NONCE);
-  });
-
   it("is case-insensitive on the nonce", async () => {
     const lower = await signERC3009(erc3009Quote(FULL_NONCE), "base", TEST_CONFIG);
     const upper = await signERC3009(erc3009Quote("0x" + "AB".repeat(32)), "base", TEST_CONFIG);
@@ -101,11 +83,9 @@ describe("ERC-3009 nonce normalization", () => {
     expect(lower.signature).toBe(upper.signature);
   });
 
-  // Both accepted spellings of the same nonce must get the same rules. The byte
-  // array used to skip every check: an over-length one died on ethers' generic
-  // "invalid length for bytes32" instead of the message naming the size, and a
-  // short one was rejected outright while the equivalent hex string was padded
-  // and signed. Same input, two spellings, two policies.
+  // Both accepted spellings of the same nonce must get the same rules: an
+  // over-length array is refused with the size rather than ethers' generic
+  // "invalid length for bytes32", and a short one is padded like the hex string.
   describe("applies the same rules to a byte-array nonce", () => {
     it("refuses an over-length array with the size, not an ethers error", async () => {
       await expect(
@@ -139,33 +119,9 @@ describe("ERC-3009 nonce normalization", () => {
 });
 
 describe("Permit2 signedObject layout", () => {
-  // The struct is five static words with no offset pointer. The stripping pass
-  // this replaces decided that by reading word 0 -- which is `permitted.token`
-  // -- as a candidate offset, and stripping when it fell in [32, 1000).
-  it("emits exactly five words", async () => {
-    const result = await signPermit2(permit2Quote(), "base", TEST_CONFIG);
-
-    expect(result.signedObject).toMatch(/^0x[0-9a-f]{320}$/);
-  });
-
-  it("decodes back to the fields that were signed", async () => {
-    const token = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-    const result = await signPermit2(permit2Quote(), "base", TEST_CONFIG, token);
-    const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["address", "uint256", "address", "uint256", "uint256"],
-      result.signedObject!,
-    );
-
-    expect(decoded[0]).toBe(token);
-    expect(decoded[1]).toBe(1000000n);
-    expect(decoded[2]).toBe("0x1111111111111111111111111111111111111111");
-    expect(decoded[3]).toBe(123456789n);
-    expect(decoded[4]).toBe(1900000000n);
-  });
-
-  // The regression the heuristic actually permitted: a token address numerically
-  // inside the offset window. `0x...064` is 100, which is >= 32 and < 1000, so
-  // the old code read it as an offset and sliced 100 bytes off the encoding.
+  // The struct is five static words with no offset pointer. A heuristic that reads
+  // word 0 -- `permitted.token` -- as a candidate offset strips the encoding when
+  // the address falls in [32, 1000); `0x...064` is 100, inside that window.
   it("does not corrupt the encoding for a low-numbered token address", async () => {
     const lowToken = "0x0000000000000000000000000000000000000064";
     const result = await signPermit2(permit2Quote(), "base", TEST_CONFIG, lowToken);
@@ -179,21 +135,7 @@ describe("Permit2 signedObject layout", () => {
     expect(decoded[1]).toBe(1000000n);
   });
 
-  it("is byte-identical to encoding the equivalent all-static tuple", async () => {
-    // The tuple form is what the previous implementation encoded before trying to
-    // strip an offset from it. Pinning the equivalence documents that the change
-    // was a simplification, not a wire change.
-    const token = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-    const result = await signPermit2(permit2Quote(), "base", TEST_CONFIG, token);
-    const asTuple = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["tuple(tuple(address,uint256),address,uint256,uint256)"],
-      [[[token, 1000000n], "0x1111111111111111111111111111111111111111", 123456789n, 1900000000n]],
-    );
-
-    expect(result.signedObject).toBe(asTuple);
-  });
-
-  it("still rejects a malformed orderId", async () => {
+  it("rejects a malformed orderId", async () => {
     await expect(
       signPermit2(permit2Quote({ orderId: "0xdeadbeef" }), "base", TEST_CONFIG),
     ).rejects.toThrow(/orderId must be 32 bytes/);

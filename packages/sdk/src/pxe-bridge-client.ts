@@ -46,7 +46,7 @@ interface JsonRpcResponse<T> {
   };
 }
 
-export interface PxeBridgeClientOptions {
+interface PxeBridgeClientOptions {
   /** Per-request timeout in milliseconds. Default 15000. */
   timeoutMs?: number;
 }

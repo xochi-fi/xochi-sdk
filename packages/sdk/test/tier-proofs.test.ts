@@ -72,7 +72,7 @@ describe("tier proof generation", () => {
 
 describe("verifyTierProof reads the claim from the public inputs", () => {
   it("rejects a proof relabelled to a higher tier", async () => {
-    // Review #3 PoC: a genuine low-tier proof dressed up as Institutional.
+    // A genuine low-tier proof dressed up as Institutional.
     const relabelled: TierProof = {
       ...trusted,
       threshold: 100,
@@ -123,7 +123,7 @@ describe("decodeTierProofClaim", () => {
   it.each<[string, number, bigint]>([
     ["proof_type", 0, 2n],
     ["direction", 1, 2n],
-    ["bound_lower", 2, 2500n], // the pre-0.3.0 encoding: "score > 25" misses the boundary
+    ["bound_lower", 2, 2500n], // "score > 25" misses the boundary
     ["bound_upper", 3, 10000n],
     ["result", 4, 0n],
   ])("rejects a changed %s", (name, index, value) => {
@@ -150,7 +150,6 @@ describe("createScoreCommitment", () => {
   });
 
   it("does not embed the score or the blinding factor", () => {
-    // Review #8: the commitment used to be the plaintext concatenation.
     const { commitment, blindingFactor } = createScoreCommitment(37);
     expect(commitment).toMatch(/^0x[0-9a-f]{64}$/);
     expect(commitment).not.toContain(blindingFactor.slice(2));

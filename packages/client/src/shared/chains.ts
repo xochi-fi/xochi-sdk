@@ -4,15 +4,11 @@
  * Supported chains and their configuration.
  *
  * `CHAIN_REGISTRY` is the ONE literal in this file: the `ChainId` union, every
- * display/lookup map and `SUPPORTED_CHAIN_IDS` are derived from it (DEBT-019).
- * Adding a chain used to mean editing seven parallel lists here, and the most
- * dangerous of them was not compiler-enforced: `SUPPORTED_CHAIN_IDS` is typed
- * `readonly ChainId[]`, so OMITTING a new id compiled cleanly and silently
- * excluded the chain from `isChainId`, `SETTLEABLE_CHAIN_IDS`, `rpcUrlForChain`
- * (worker-lib, which then degrades that chain to EOA-only verification, #364)
- * and `FALLBACK_CAPABILITIES`. One registry entry now propagates to all of them,
- * and the per-chain maps that live outside this file (`tokens.ts`) fail to
- * compile until they carry the new chain.
+ * display/lookup map and `SUPPORTED_CHAIN_IDS` are derived from it. `SUPPORTED_CHAIN_IDS`
+ * is typed `readonly ChainId[]`, so a hand-maintained copy that omitted a chain compiled
+ * cleanly and silently excluded it from `isChainId`, `SETTLEABLE_CHAIN_IDS` and the
+ * capabilities fallback; the per-chain maps outside this file (`tokens.ts`) fail to
+ * compile until they carry a new registry entry.
  */
 
 /**
@@ -42,8 +38,8 @@ export interface ChainDefinition {
  * constants. EVM-only code (viem/wagmi/RPC) must never receive those ids.
  *
  * Short names are the compact UI labels; explorers are the origins the link
- * helpers below build on (per-component explorer maps used to drift, and one
- * hardcoded Arbiscan for every chain).
+ * helpers below build on (one map, so per-component explorer maps cannot
+ * drift).
  */
 export const CHAIN_REGISTRY = {
   ethereum: { id: 1, name: "Ethereum", shortName: "ETH", explorer: "https://etherscan.io" },
@@ -157,12 +153,12 @@ export function isSelectableChainId(value: unknown): value is SelectableChainId 
  * Robinhood Chain (4663): an Arbitrum Orbit L2 whose native stablecoin is USDG
  * (Global Dollar, Paxos). It has no USDC. The solver settles USDC<->USDG (and
  * other stablecoin) cross-asset corridors to and from it. It is fully EVM (0x
- * addresses, EIP-712 signing, Permit2 pull on USDG). It is now a first-class
- * member of `ChainId`: the trade UI lists Robinhood + USDG, so the per-chain
- * token maps carry it. USDG is a first-class token (see USDG_ADDRESSES in
+ * addresses, EIP-712 signing, Permit2 pull on USDG) and a first-class member
+ * of `ChainId`: the trade UI lists Robinhood + USDG, so the per-chain token
+ * maps carry it. USDG is a first-class token (see USDG_ADDRESSES in
  * tokens.ts), never shoehorned into USDC_ADDRESSES (that map is Permit2-free
  * ERC-3009 USDC only, and USDG supports neither ERC-3009 nor EIP-2612).
- * `ROBINHOOD_CHAIN_ID` is retained for readable references and the settleable
+ * `ROBINHOOD_CHAIN_ID` is kept for readable references and the settleable
  * guards below.
  */
 export const ROBINHOOD_CHAIN_ID = 4663;
@@ -294,18 +290,17 @@ export function isChainId(value: unknown): value is ChainId {
 }
 
 /**
- * A chain id the solver can settle. Robinhood is now a first-class `ChainId`, so
- * this equals `ChainId`. The name is kept for the intent-API call sites (schema
- * validation) that document the settleable surface explicitly.
+ * A chain id the solver can settle; equals `ChainId` (Robinhood is a first-class chain). The
+ * name is kept for the intent-API call sites (schema validation) that document the settleable
+ * surface explicitly, mirroring xochi's `@xochi/shared`.
  */
 export type SettleableChainId = ChainId | RobinhoodChainId;
 
 /**
- * Chain ids the solver can settle to or from. Now that Robinhood is a first-class
- * supported chain this is exactly `SUPPORTED_CHAIN_IDS`. The intent API
- * (`/api/intent/quote` and `/api/intent/execute`) validates request chain ids
- * against this set. Token addresses ride in the request body, so the API needs no
- * per-chain token config to accept a corridor; the solver decides feasibility.
+ * Chain ids the solver can settle to or from; exactly `SUPPORTED_CHAIN_IDS`. The intent API
+ * (`/api/intent/quote` and `/api/intent/execute`) validates request chain ids against this set.
+ * Token addresses ride in the request body, so the API needs no per-chain token config to
+ * accept a corridor; the solver decides feasibility.
  */
 export const SETTLEABLE_CHAIN_IDS: readonly SettleableChainId[] = SUPPORTED_CHAIN_IDS;
 

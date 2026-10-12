@@ -1,6 +1,48 @@
 # Changelog
 
+All notable changes to `@xochi/solver-sdk` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
+
 Package version and RFC version are separate axes: the protocol version is `SOLVER-RFC.md`'s `- **RFC version:**` line, exported as `SOLVER_RFC_VERSION`.
+
+## [Unreleased]
+
+### Added
+
+- Moved in from the archived `axol-io/riddler-sdk` (snapshot, no history) as
+  `@xochi/solver-sdk` (was `@riddler/solver-sdk`, unpublished). Bid digests,
+  typehashes and domain separators are byte-identical; the EIP-712 names
+  (`RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are
+  unchanged.
+- `walletFromKey`, so a malformed key never appears in an error.
+- The tarball ships a LICENSE.
+
+### Changed
+
+- `package.json` declares `repository` with its `directory` and gains
+  description, keywords and homepage; per-condition `exports` types.
+- Built with TypeScript 6; sources, tests and examples are Prettier-formatted,
+  and `format:check` gates CI and `prepublishOnly` (with typecheck, test and
+  build). `engines.node` is `>=22`.
+
+### Removed
+
+- Source maps (`dist/*.map`) from the tarball.
+
+### Fixed
+
+- After acceptance, an unreadable origin clock is a warning and the fill is
+  still sent (it threw, leaving an owed fill unsent).
+- `OnchainEscrowGateway.accept` holds back inventory owed to other accepted,
+  unlanded fills of the same token. The check runs one call at a time per
+  destination chain and token, holding the slot until the acceptance is counted
+  as owed and releasing it before `onSigned` and the venue POST, so two
+  concurrent accepts cannot both pass on inventory covering one fill (a
+  SolverBond no-show slash). `accept(..., { resume: true })` takes no slot.
+- `examples/escrow-solver.ts` shape-checks `SOLVER_KEY` / `CLAIM_KEY`, rejects
+  empty or non-integer numeric env knobs, refuses an unparseable
+  `RIDDLER_SOLVER_URL` by name (warning on loopback `http:`), and prunes its bid
+  and award maps. The startup checks both examples share live in
+  `examples/env.ts`.
 
 ## `0.4.1` — the version gate re-runs under a running solver
 

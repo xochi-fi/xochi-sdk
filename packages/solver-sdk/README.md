@@ -73,18 +73,20 @@ const client = new SolverClient({
 await client.run(solver);
 ```
 
-Reference solvers:
+Reference solvers, from a repo checkout (the examples are not in the tarball):
 
 ```bash
-npm run example:solver              # offline: full loop incl. award + fill
-npm run example:solver -- --live    # against a venue's /solver/* surface
-npm run example:escrow              # escrowed award: prepare -> accept -> fill -> claim
+npm run example:solver -w @xochi/solver-sdk             # offline: full loop incl. award + fill
+npm run example:solver -w @xochi/solver-sdk -- --live   # against a venue's /solver/* surface
+npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepare -> accept -> fill -> claim
 ```
 
 ## Rules you must follow
 
 - **Version gate.** `run` refuses (`VenueVersionSkewError`, nothing signed) unless
-  `capabilities.rfcVersion === SOLVER_RFC_VERSION`; import the constant, never retype it.
+  `capabilities.rfcVersion === SOLVER_RFC_VERSION`; import the constant, never retype it. It
+  re-checks after a feed `reset` and before each of your awards reaches `fill` (never per
+  announcement), and a skew there throws out of `run`, past `onError`.
 - **Bids are SolverBid v2** (RFC §5.1), pinned by `@xochi/spec`'s
   `conformance/solver-bid-v2.json`; sign the announcement's `orderId` verbatim, `validUntilMs` is
   absolute unix ms, `output` is canonical decimal.
@@ -94,18 +96,21 @@ npm run example:escrow              # escrowed award: prepare -> accept -> fill 
 - **Escrow flow is `prepare(award, { bid, announcement })` -> `accept` -> `fill`.** Your own
   `bid.output` is the only FillAuth amount ceiling; `award.output` is the venue's word.
 - **Persist in `accept`'s `onSigned`.** It is awaited after signing and before the POST; a throw
-  stops the POST. The obligation starts when the acceptance is sent; an accepted no-show is
-  slashed, so decline rather than skip.
+  stops the POST. `accept` refuses (`claims_paused`, `insufficient_claim_gas`,
+  `accept_window_closed`, `insufficient_inventory`) only before signing; after it, only
+  `onSigned`'s error is thrown and later problems go to `onWarning`. The obligation starts when the
+  acceptance is sent; an accepted no-show is slashed, so decline rather than skip.
 - **One acceptance per `orderId`.** On restart call `restoreAcceptance(prepared)` for every
   persisted order before any award; use `accept(prepared, { resume: true })` only if this process
   may have sent the acceptance before crashing.
 - **Drive an accepted fill until it lands.** Call `fill(prepared)` until `confirmed` or
   `already_filled`; retry `not_sent`, thrown reads, `in_doubt` and `reverted` before the deadline;
   stop on `auth_expired`, `fill_auth_mismatch`, `not_accepted`. Then run `claimUntilRefundable`
-  regardless.
+  regardless; it reports `claimed` only when the `Claimed` event names the payee.
 - **Never resend at a new nonce.** An `in_doubt` or `cancelled` send is resolved with
   `resolveTx(chainId, outcome.hashes ?? outcome.txHash, outcome, effect)`; `cancelled` is not
-  final, and a fill is a no-show only on `not_sent`.
+  final, and a fill is a no-show only on `not_sent`. `resolveTx` and `isFilled` never broadcast;
+  free a stuck nonce with a same-nonce zero-value self-transfer.
 - **Send only through the gateway.** It assigns nonces in one queue per `chainId:address`; sends
   from the same key elsewhere can collide. Signers must be local keys (`ethers.Wallet`).
 - **One key per solver:** bid signer = FillAuth filler = RiddlerFiller `msg.sender` = bonded
@@ -128,4 +133,4 @@ npm run example:escrow              # escrowed award: prepare -> accept -> fill 
 - Escrow: `OnchainEscrowGateway`, `StubEscrowGateway`, `verifyAward`, `requireFillableEscrow`,
   `checkFillWindow`, `verifyAttestation`, `EscrowRefusalError`
 
-Breaking changes: [CHANGELOG.md](CHANGELOG.md).
+Breaking changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/solver-sdk/CHANGELOG.md).

@@ -13,7 +13,7 @@ npm run example:solver              # offline: full loop incl. award + fill
 npm run example:solver -- --live    # against a venue
 ```
 
-Offline, `examples/reference-solver.ts` runs against a stub auctioneer enforcing the RFC §5.1
+Offline, `examples/offline-solver.ts` runs against a stub auctioneer enforcing the RFC §5.1
 acceptance rules: the only way to exercise `fill` at P0. Live needs `RIDDLER_SOLVER_URL` (`https:`,
 loopback exempt), `SOLVER_KEY` and `SOLVER_API_KEY`; the offline demo key is refused live.
 

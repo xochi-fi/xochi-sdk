@@ -3,7 +3,7 @@
  * Matches ERC-8262 src/interfaces/IERC8262Oracle.sol and IERC8262Verifier.sol.
  */
 
-export const COMPLIANCE_ATTESTATION_COMPONENTS = [
+const COMPLIANCE_ATTESTATION_COMPONENTS = [
   { name: "subject", type: "address" },
   { name: "jurisdictionId", type: "uint8" },
   { name: "proofType", type: "uint8" },

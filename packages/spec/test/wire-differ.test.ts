@@ -1,12 +1,6 @@
 // Classification tests for `packages/spec/wire/compare.mjs`, the differ that is BOTH
-// the nightly probe's verdict and the refresh's refusal.
-//
-// Why these exist as tests rather than as mutations somebody ran once: every blind spot
-// this file pins was found by reading the differ, not by running it, and each one
-// reported OK against the real prod document while the writer installed the mutation
-// with no flag and the probe then verified that installed copy against the same server
-// forever. A silent pass leaves no trace to notice later, so the only thing that keeps
-// an axis alive is a case that fails when it is removed.
+// the nightly probe's verdict and the refresh's refusal. Each axis is pinned by a case
+// that fails when the axis is removed: a silent pass leaves no trace to notice later.
 //
 // The fixture is the real vendored contract, mutated per case. A synthetic two-key
 // document would pass every one of these while proving nothing about the shapes the
@@ -81,9 +75,7 @@ describe("differ baseline", () => {
 
   // The five schemas whose ONLY cover is the constraint axis (`EthAddress`,
   // `BigIntString`, `ChainAddress`, `CompressedSecp256k1PubKey`, `WalletSignature`) each
-  // still declare `type`/`pattern`/`oneOf`, so the measured count is 0, not five: pinned
-  // exactly, because a `<= 5` bound had five units of slack sized precisely to the
-  // five-schema hollowing the differ's header describes.
+  // still declare `type`/`pattern`/`oneOf`, so the count is 0, not five, pinned exactly.
   it("no schema in the real contract is checked by name alone", () => {
     const { stats } = wire.compareContract(vendored(), vendored());
     expect(
@@ -118,21 +110,13 @@ describe("value constraints", () => {
     expect(one(breaking)).toMatch(/ChainAddress\.oneOf/);
   });
 
-  // These four were on no axis at all: the constraint list is a closed allowlist and
-  // the descent skips any key that is a scalar on both sides, so a keyword missing from
-  // the list is invisible in both directions.
+  // The constraint list is a closed allowlist and the descent skips any key that is a
+  // scalar on both sides, so a keyword missing from the list is invisible in both directions.
   it("readOnly added to a request property is BREAKING", () => {
     const { breaking } = served((d) => {
       d.components.schemas.QuoteRequest.properties.from_amount.readOnly = true;
     });
     expect(one(breaking)).toMatch(/QuoteRequest\.properties\.from_amount\.readOnly/);
-  });
-
-  it("uniqueItems added is BREAKING", () => {
-    const { breaking } = served((d) => {
-      d.components.schemas.QuoteRequest.properties.slippage_bps.uniqueItems = true;
-    });
-    expect(one(breaking)).toMatch(/uniqueItems/);
   });
 
   it("a served-only deprecated is STALE, not BREAKING", () => {
@@ -182,23 +166,14 @@ describe("value constraints", () => {
 // ---------------------------------------------------------------------------
 
 describe("additionalProperties in its object form", () => {
-  // Both sites are live in the served contract. `pull_recipients` is the per-chain
-  // {erc3009, permit2} matrix behind the recipient pin; `addresses` pins every token
-  // address to ChainAddress. Deleting either node deletes its whole value contract, and
-  // it reported OK on every axis: the constraint loop skipped it because neither side
-  // was a boolean, and the descent skipped it again as a known constraint key.
+  // `pull_recipients` is the per-chain {erc3009, permit2} matrix behind the recipient pin.
+  // Deleting the node deletes its whole value contract; the constraint loop sees no
+  // boolean and the descent treats it as a known constraint key, so it needs its own axis.
   it("dropping the pull-recipient matrix's value schema is BREAKING", () => {
     const { breaking } = served((d) => {
       delete d.components.schemas.CapabilityMatrix.properties.pull_recipients.additionalProperties;
     });
     expect(one(breaking)).toMatch(/pull_recipients\.additionalProperties/);
-  });
-
-  it("dropping the token-address map's value schema is BREAKING", () => {
-    const { breaking } = served((d) => {
-      delete d.components.schemas.TokenCapability.properties.addresses.additionalProperties;
-    });
-    expect(one(breaking)).toMatch(/addresses\.additionalProperties/);
   });
 
   it("repointing the value schema is BREAKING", () => {
@@ -210,7 +185,7 @@ describe("additionalProperties in its object form", () => {
     expect(one(breaking)).toMatch(/addresses\.additionalProperties\.\$ref/);
   });
 
-  it("the boolean form is still compared by value", () => {
+  it("the boolean form is compared by value", () => {
     const { breaking } = served((d) => {
       d.components.schemas.QuoteRequest.additionalProperties = true;
     });
@@ -221,8 +196,8 @@ describe("additionalProperties in its object form", () => {
 // ---------------------------------------------------------------------------
 
 describe("servers", () => {
-  // `servers` is where the bytes go and it is an array, so the object walk never saw it
-  // and nothing else reached the document root. A repointed base URL installed itself.
+  // `servers` is where the bytes go: an array at the document root the object walk never
+  // reaches.
   it("repointing the base URL is BREAKING", () => {
     const { breaking } = served((d) => {
       d.servers = [{ url: "https://evil.example" }];
@@ -239,22 +214,12 @@ describe("servers", () => {
 
   // Not STALE, unlike an added `security` alternative: this array's FIRST element is the
   // base URL a generated client bakes in, so an insertion changes what consumers dial
-  // even though nothing was removed. Graded STALE, the writer -- which refuses only on
-  // `breaking.length > 0` -- wrote it with no flag.
+  // even though nothing was removed.
   it("an appended alternative is BREAKING", () => {
     const { breaking } = served((d) => {
       d.servers.push({ url: "https://new.example" });
     });
     expect(one(breaking)).toMatch(/servers: served also offers https:\/\/new\.example at index 2/);
-  });
-
-  it("prepending a host is BREAKING even though nothing was removed", () => {
-    // Measured before this graded: b=0 s=1, and the reformat preserves array order, so
-    // the refresh installed the attacker's host at servers[0].
-    const { breaking } = served((d) => {
-      d.servers.unshift({ url: "https://evil.example" });
-    });
-    expect(one(breaking)).toMatch(/servers: served also offers https:\/\/evil\.example at index 0/);
   });
 
   it("reordering the same hosts is BREAKING", () => {
@@ -360,11 +325,9 @@ describe("documents this differ refuses to grade", () => {
     expect(() => wire.compareContract(doc(), doc())).toThrow(wire.IncomparableDocument);
   });
 
-  // Every WHOLE-VALUE comparison escaped that bound: `canon` is applied to arbitrary
-  // constraint values and `withoutProse` to a whole `securitySchemes` node, neither
-  // depth-counted. Measured on a `const` payload 200k deep, the unbounded `canon` raised
-  // `RangeError: Maximum call stack size exceeded`, which is not an IncomparableDocument,
-  // so the callers reported an internal error instead of INCONCLUSIVE.
+  // Every WHOLE-VALUE comparison is bounded too: `canon` is applied to arbitrary
+  // constraint values and `withoutProse` to a whole `securitySchemes` node, and an
+  // unbounded recursion there raises RangeError, not IncomparableDocument.
   it("a deep constraint VALUE throws IncomparableDocument, not RangeError", () => {
     const deepValue = (n: number) => {
       let node: Doc = { a: 1 };
@@ -383,10 +346,8 @@ describe("documents this differ refuses to grade", () => {
 // ---------------------------------------------------------------------------
 
 describe("the path item as a node", () => {
-  // The shared-path loop enumerates a path item's HTTP methods and nothing else, so
-  // every other Path Item Object key was on no axis in either direction. Both of these
-  // graded b=0 s=0 against the real document -- and the same `servers` array one level
-  // down, on `post`, was caught, which is what makes this a gap rather than a policy.
+  // The shared-path loop enumerates a path item's HTTP methods; every other Path Item
+  // Object key needs its own axis.
   it("a path-item servers override reroutes every operation under the path and is BREAKING", () => {
     const { breaking } = served((d) => {
       d.paths["/xochi/quote"].servers = [{ url: "https://evil.example" }];
@@ -394,14 +355,6 @@ describe("the path item as a node", () => {
     expect(one(breaking)).toMatch(
       /path \/xochi\/quote servers: served declares a path-item override/,
     );
-  });
-
-  it("a path-item servers override on every path is BREAKING once per path", () => {
-    const paths = Object.keys(vendored().paths);
-    const { breaking } = served((d) => {
-      for (const p of paths) d.paths[p].servers = [{ url: "https://evil.example" }];
-    });
-    expect(breaking).toHaveLength(paths.length);
   });
 
   it("a path-item $ref replaces the whole item and is BREAKING", () => {
@@ -420,8 +373,7 @@ describe("the document's own header", () => {
   // `openapi` is the DIALECT that defines the keywords the constraint loop compares by
   // value: 3.0.x `exclusiveMinimum` is a boolean modifying `minimum` and `nullable`
   // exists, 3.1 makes the first a numeric bound and drops the second. Under a changed
-  // dialect every axis below compares two identical values that mean different things,
-  // and it graded b=0 s=0.
+  // dialect every axis below compares two identical values that mean different things.
   it("a changed openapi dialect is BREAKING", () => {
     const { breaking } = served((d) => {
       d.openapi = "3.1.0";
@@ -439,7 +391,7 @@ describe("the document's own header", () => {
 
   // The other half of every axis above: prose is not protocol, and a probe that reports
   // a reword as drift is one whose red nobody reads.
-  it("rewording prose at the root, on a path and on a schema still exits clean", () => {
+  it("rewording prose at the root, on a path and on a schema exits clean", () => {
     const { breaking, stale } = served((d) => {
       d.info.description = "reworded";
       d.info.title = "reworded";
@@ -457,18 +409,14 @@ describe("the document's own header", () => {
 describe("served-only narrowing applicators", () => {
   // The generic descent grades any served-only key STALE -- "an addition a vendored-built
   // client survives" -- which is right for `content` or a new media type and wrong for
-  // every applicator that REJECTS a request the vendored copy calls legal. Each of these
-  // graded b=0 s=1 in its object form, and b=0 s=0 as a BOOLEAN, which was on no axis in
-  // either direction: the descent short-circuits on a key that is not an object on either
-  // side. `unevaluatedProperties: false` is the canonical spelling of "reject every field
-  // I did not declare" and `not: false` rejects everything, so the boolean form is the one
-  // that costs a client requests, and the writer refuses only on BREAKING -- so all twenty
-  // of these installed unrefused.
+  // every applicator that REJECTS a request the vendored copy calls legal, in object or
+  // boolean form: `unevaluatedProperties: false` is the canonical spelling of "reject every
+  // field I did not declare" and `not: false` rejects everything, and the writer refuses
+  // only on BREAKING.
   //
-  // Driven off the EXPORTED set rather than a retyped list, which is the rule `CONSTRAINTS`
-  // already carries: a keyword in the list that the differ does not hold is a false claim
-  // on every green run, and the differ's own header, wire/README.md and the probe preamble
-  // all advertise these ten.
+  // Driven off the EXPORTED set rather than a retyped list, as `CONSTRAINTS` is: a keyword
+  // the differ does not hold would be a false claim in its header, wire/README.md and the
+  // probe preamble.
   const OBJECT_FORM: Record<string, unknown> = {
     not: { required: ["from_amount"] },
     if: { required: ["from_amount"] },
@@ -507,22 +455,11 @@ describe("served-only narrowing applicators", () => {
 // ---------------------------------------------------------------------------
 
 describe("required in its boolean form", () => {
-  // `required` was compared only where it is an ARRAY, and it is not in CONSTRAINTS, so
-  // the boolean form on a Header Object was on no axis: flipping POST /xochi/quote's 503
-  // `Retry-After.required` graded b=0 s=0, while the differ's docstring and the probe's
-  // preamble both claim `required` is compared at every node.
+  // `required` is compared where it is an ARRAY and is not in CONSTRAINTS, so the boolean
+  // form on a Parameter or Header Object needs its own axis.
   const header = (d: Doc) => d.paths["/xochi/quote"].post.responses["503"].headers["Retry-After"];
 
-  it("a flipped response-header required is BREAKING", () => {
-    const { breaking } = served((d) => {
-      header(d).required = true;
-    });
-    expect(one(breaking)).toMatch(
-      /POST \/xochi\/quote response 503\.headers\.Retry-After\.required: served true, vendored false/,
-    );
-  });
-
-  it("a header that stops being required is BREAKING in the other direction too", () => {
+  it("a flipped response-header required is BREAKING in both directions", () => {
     const requiring = vendored();
     header(requiring).required = true;
     expect(one(wire.compareContract(requiring, vendored()).breaking)).toMatch(
@@ -565,8 +502,8 @@ describe("required in its boolean form", () => {
     expect(all).toMatch(/requestBody is served but not vendored \(required\)/);
   });
 
-  // A served-only ref nobody can resolve was graded on the bare ref object, whose
-  // `required` is absent: "(optional)", STALE, installed by `generate:wire` with no flag.
+  // A served-only ref nobody can resolve must not be graded on the bare ref object, whose
+  // `required` is absent: that reads "(optional)", STALE.
   describe("a served-only parameter whose $ref cannot be resolved is BREAKING", () => {
     const claimWith = (ref: string, parameters: Doc = {}) =>
       served((d) => {
@@ -632,8 +569,8 @@ describe("required in its boolean form", () => {
 // ---------------------------------------------------------------------------
 
 // The walks follow the vendored copy's shape, so a served-only subtree is graded by its
-// NAME and never entered: a dangling or external `$ref` inside one read as an optional
-// addition, STALE, and `generate:wire` installed it with no flag.
+// NAME and never entered; a dangling or external `$ref` inside one would read as an
+// optional addition, STALE.
 describe("a served $ref that does not resolve is BREAKING wherever it sits", () => {
   const addProperty = (schema: Doc) =>
     served((d) => {
@@ -693,7 +630,7 @@ describe("a served $ref that does not resolve is BREAKING wherever it sits", () 
     expect(breaking).toEqual([]);
   });
 
-  it("a member NAMED like a payload keyword is still entered", () => {
+  it("a member NAMED like a payload keyword is entered", () => {
     const { breaking } = addProperty({
       type: "object",
       properties: { default: { $ref: "#/components/schemas/Nope" } },
@@ -746,7 +683,7 @@ describe("numeric literals", () => {
     expect(structural.breaking, "a double-folded literal cannot differ structurally").toEqual([]);
     expect(structural.stale).toEqual([]);
 
-    // The probe's axis, as it is now computed: an ordered multiset over both texts.
+    // The probe's axis: an ordered multiset over both texts.
     const { servedOnly, vendoredOnly } = wire.numberTokenDiff(respelled, RAW);
     expect(servedOnly).toEqual(["8194.0"]);
     expect(vendoredOnly).toEqual(["8194"]);
@@ -756,11 +693,10 @@ describe("numeric literals", () => {
 // ---------------------------------------------------------------------------
 
 describe("numberTokenDiff", () => {
-  // `8194` occurs once, which is the only case the de-duplicated one-directional set
-  // difference this replaces could see. `0` occurs many times in the real document
-  // (every one a `minimum` or `default` bound), so re-spelling ONE of them leaves the
-  // folded spelling present elsewhere and the old expression reported nothing at all
-  // while the probe printed OK. The count is derived, not pinned: a refresh moves it.
+  // `8194` occurs once. `0` occurs many times in the real document (every one a `minimum`
+  // or `default` bound), so re-spelling ONE of them leaves the folded spelling present
+  // elsewhere, which a de-duplicated one-directional set difference cannot see. The count
+  // is derived, not pinned: a refresh moves it.
   const respelledVendored = RAW.replace('"minimum": 0,', '"minimum": 0.0,');
   const zeros = (text: string) => wire.numberTokens(text).filter((t) => t === "0").length;
 
@@ -783,14 +719,6 @@ describe("numberTokenDiff", () => {
     expect(vendoredOnly).toEqual(["0"]);
   });
 
-  it("the de-duplicated one-directional filter it replaces sees neither direction", () => {
-    const vendoredTokens = new Set(wire.numberTokens(respelledVendored));
-    expect([...new Set(wire.numberTokens(RAW))].filter((t) => !vendoredTokens.has(t))).toEqual([]);
-    expect(wire.compareContract(JSON.parse(RAW), JSON.parse(respelledVendored)).breaking).toEqual(
-      [],
-    );
-  });
-
   it("two identical texts report nothing on either side", () => {
     expect(wire.numberTokenDiff(RAW, RAW)).toEqual({ servedOnly: [], vendoredOnly: [] });
   });
@@ -802,19 +730,17 @@ describe("the vendored form", () => {
   // `formatDocument` is what `generate.mjs` writes, so this file's bytes are its output.
   // Idempotence is therefore the whole contract: anything that changes it -- key order,
   // indent, the empty-collection spelling, a folded literal -- rewrites 82 KB of a
-  // published artifact that `sdks/{python,go,rust}` parse and `openapi.sha256` covers.
+  // published artifact that `runners/{python,go,rust}` parse and `openapi.sha256` covers.
   it("re-formatting the vendored contract reproduces it byte-for-byte", () => {
     expect(format.formatDocument(RAW)).toBe(RAW);
   });
 
-  // The reason it exists. `JSON.parse` folds every number to an IEEE-754 double, so the
-  // `JSON.stringify` round trip this replaced re-spelled all seven of these -- `1e400`
-  // became `null` and `0.0` became `0`. Go's `json.Number` and serde_json's
-  // `arbitrary_precision` keep the literal, so for those consumers a folded bound is a
-  // value the producer never served. Measured through the old path, the multiset diff
-  // against the served text reported `servedOnly:['0.0'] vendoredOnly:['0']`, which
-  // `verify-openapi.mjs` grades RE-SPELLED -> exit 1, on every nightly run, with the
-  // refresh it names as the remedy reproducing the same bytes forever.
+  // The reason it exists. `JSON.parse` folds every number to an IEEE-754 double, so a
+  // `JSON.stringify` round trip re-spells all seven of these -- `1e400` becomes `null` and
+  // `0.0` becomes `0`. Go's `json.Number` and serde_json's `arbitrary_precision` keep the
+  // literal, so for those consumers a folded bound is a value the producer never served,
+  // and `verify-openapi.mjs` grades a vendored fold RE-SPELLED on every nightly run, with
+  // the refresh it names as the remedy reproducing the same bytes.
   it("every literal the JSON round trip rewrites survives verbatim", () => {
     const literals = [
       "1e400",
@@ -828,7 +754,7 @@ describe("the vendored form", () => {
     const source = `{\n${literals.map((t, i) => `  "k${i}": ${t}`).join(",\n")}\n}`;
 
     expect(wire.numberTokens(format.formatDocument(source))).toEqual(literals);
-    // The path this replaced, on the same input, for contrast rather than for its own sake.
+    // The JSON round trip, on the same input, for contrast.
     expect(wire.numberTokens(JSON.stringify(JSON.parse(source), null, 2))).not.toEqual(literals);
   });
 

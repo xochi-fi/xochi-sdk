@@ -2,7 +2,7 @@
 
 `openapi.json` is the OpenAPI 3.0.3 document the Riddler solver serves at `GET /xochi/openapi.json`,
 the source of truth for the `/xochi/*` wire (SPEC.md §3). **The solver is authoritative**; this copy
-changes only by refresh. It is vendored so `sdks/{python,go,rust}` and offline checks never depend
+changes only by refresh. It is vendored so `runners/{python,go,rust}` and offline checks never depend
 on the network.
 
 The copy is reformatted to sorted-key 2-space JSON: structurally the served document, not
@@ -34,6 +34,21 @@ the PR and refuses (exit 4, nothing written):
 - an unparseable committed copy, a committed pair failing its digest, or a re-spelled numeric
   literal (no override).
 
+The accepted flags are exactly those three; none is inferred from a near-miss. An intact baseline is
+always diffed, `--first-vendoring` included. A missing `git` binary exits 3.
+
+`generate.mjs` is the only writer and runs the probe's own differ (`compare.mjs`, Node builtins
+only), so it never installs what the checker would fail. The baseline is read with `git show` at
+`HEAD`, never the working tree, so gutting and re-digesting the local copy cannot launder a BREAKING
+change. The document is renamed into place before the digest, so an interrupted refresh leaves a
+mismatched pair that fails a gate.
+
+`format.mjs` never parses a number: it carries numeric tokens verbatim and throws rather than fall
+back to `JSON.parse`. Its lexical check is a post-condition nothing consents to: a consented fold
+(`0.0` vendored as `0`) makes RE-SPELLED permanent, since a refresh reproduces the same bytes.
+`verify:openapi` re-runs the same scan (`numberTokens`, exported from `compare.mjs`) on the served
+bytes.
+
 Env comes from the process, never `.env`. Pass flags after `--`.
 
 ## Compared axes
@@ -64,16 +79,30 @@ Env comes from the process, never `.env`. Pass flags after `--`.
   cyclic) breaks generated clients. Refs inside data keywords and `x-*` are not resolved.
 - Numeric literal spelling, as an ordered multiset both ways: catches a local re-spelling.
 
+Maintaining `compare.mjs`:
+
+- Never delete the constraint axis: it is the only one covering the property-less schemas above.
+- `STALE_IF_SERVED_ONLY` is read only inside the `CONSTRAINTS` loop; adding a keyword there alone
+  does nothing.
+- The preamble and OK-footer keyword lists are derived from `CONSTRAINTS` and `NARROWING`; never
+  retype them.
+- Vendored bytes are checked against `openapi.sha256` first, without stopping the server sample.
+  The probe is single-sample.
+
 ## Finding classes
 
 All exit 1, told apart only in the log body.
 
 - **STALE**: an addition old clients survive (new path, method, optional property or parameter,
-  appended `enum` member, served-only `default`/`deprecated`, added `security` alternative, changed
-  `info.version`).
-- **BREAKING**: a removal, a served `required` or narrowing addition, a changed constraint or dialect,
-  a dropped `security` requirement, any `servers` change, a type mismatch.
-- **RE-SPELLED**: numeric spelling differs with no other finding; always a local fault, cleared by
-  `npm run generate:wire`.
+  appended `enum` member (`ErrorCode` is append-only, so expected), served-only
+  `default`/`deprecated`, added `security` alternative, changed `info.version`).
+- **BREAKING**: a removal (path, method, schema, property, `enum` member, `required` entry), a
+  served `required` or narrowing addition, a changed constraint or dialect, a dropped `security`
+  requirement, any `servers` change (addition and reorder included, at any level, or a one-sided
+  override), a changed path-item `$ref`, a type mismatch, or a served `$ref` (outside
+  example/default/const/enum/`x-*` data) that is external, malformed, dangling or cyclic, unless
+  the copy fails the same ref at the same place. Fragments decode in RFC 6901 §6 order.
+- **RE-SPELLED**: numeric spelling differs (ordered multiset, both directions) with no other
+  finding; always a local fault, cleared by `npm run generate:wire`.
 - **INCONCLUSIVE** (exit 2): served document malformed, not this API, nested past depth 100, or over
   the 4 MB body cap.

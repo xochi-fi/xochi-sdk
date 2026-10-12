@@ -38,7 +38,8 @@ store, and `makeAuditSink` with a tamper-evident log, and run behind mTLS.
   `notBefore`, `notAfter` and returns `{ signature, digest, signer }`.
 
 Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal or
-`ROUTE_NOT_PERMITTED`; `413` body over 32 KB; `500` `SIGN_FAILED` / `AUDIT_FAILED` (no signature).
+`ROUTE_NOT_PERMITTED`; `404` unknown route; `413` body over 32 KB; `500` `SIGN_FAILED` /
+`AUDIT_FAILED` / `INTERNAL` (no signature).
 
 | 403 code                  | Refused when                                                               |
 | ------------------------- | -------------------------------------------------------------------------- |
@@ -59,34 +60,37 @@ Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal
 - Each signing request writes a JSONL audit line (`signed` / `replayed` / `rejected`) before the
   signature is returned; a failed write returns `500 AUDIT_FAILED`.
 - An identical retry returns the identical signature (deterministic signing, audited `replayed`).
+- Process log lines on stderr carry the `[xochi-provider]` prefix; the audit log is separate
+  (`SIGNER_AUDIT_LOG`, stdout by default).
 
 ## Configuration
 
-| Env var                                       | Required  | Default          | Description                                               |
-| --------------------------------------------- | --------- | ---------------- | --------------------------------------------------------- |
-| `SIGNER_PRIVATE_KEY_HEX`                      | yes       | --               | 32-byte secp256k1 key (hex, `0x` optional)                |
-| `SIGNER_CHAIN_ID`                             | yes       | --               | Chain ID of the pinned Oracle (decimal)                   |
-| `SIGNER_ORACLE_ADDRESS`                       | yes       | --               | Address of the pinned Oracle                              |
-| `SIGNER_API_KEY`                              | one of    | --               | Bearer token for the signal routes                        |
-| `SIGNER_CLIENT_CA`                            | one of    | --               | PEM CA for client certs; enables mTLS                     |
-| `SIGNER_TLS_CERT`                             | with mTLS | --               | Server cert                                               |
-| `SIGNER_TLS_KEY`                              | with mTLS | --               | Server key                                                |
-| `SIGNER_CREDENTIAL_ROOT_API_KEY`              | no        | --               | Bearer token for `/sign-credential-root` (must differ)    |
-| `SIGNER_CREDENTIAL_ROOT_CLIENT_CNS`           | no        | --               | Client-cert CNs for `/sign-credential-root` (mTLS)        |
-| `SIGNER_SIGNALS_CLIENT_CNS`                   | no        | --               | Client-cert CN allowlist for the signal routes (mTLS)     |
-| `SIGNER_PROVIDER_ID`                          | no        | --               | Pin `/sign-credential-root` to one provider ID            |
-| `SIGNER_MAX_TIMESTAMP_AGE_SECONDS`            | no        | `300`            | Oldest accepted signal timestamp (max 86400)              |
-| `SIGNER_MAX_TIMESTAMP_SKEW_SECONDS`           | no        | `30`             | Furthest-future accepted signal timestamp (max 3600)      |
-| `SIGNER_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS` | no        | `3600`           | Longest accepted `notAfter - now` (max 172800)            |
-| `SIGNER_HTTP_HOST`                            | no        | `127.0.0.1`      | Bind address; non-loopback requires TLS                   |
-| `SIGNER_ALLOW_INSECURE_BIND`                  | no        | `0`              | `1` allows non-loopback plain HTTP (behind a TLS sidecar) |
-| `SIGNER_HTTP_PORT`                            | no        | `8548`           | Listen port                                               |
-| `SIGNER_AUDIT_LOG`                            | no        | stdout           | JSONL audit log path                                      |
-| `SIGNER_PROVIDER_LABEL`                       | no        | `xochi-provider` | Key label                                                 |
+| Env var                                       | Required  | Default          | Description                                                                                               |
+| --------------------------------------------- | --------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `SIGNER_PRIVATE_KEY_HEX`                      | yes       | --               | 32-byte secp256k1 key (hex, `0x` optional)                                                                |
+| `SIGNER_CHAIN_ID`                             | yes       | --               | Chain ID of the pinned Oracle (decimal)                                                                   |
+| `SIGNER_ORACLE_ADDRESS`                       | yes       | --               | Address of the pinned Oracle                                                                              |
+| `SIGNER_API_KEY`                              | one of    | --               | Bearer token for the signal routes                                                                        |
+| `SIGNER_CLIENT_CA`                            | one of    | --               | PEM CA for client certs; enables mTLS                                                                     |
+| `SIGNER_TLS_CERT`                             | with mTLS | --               | Server cert                                                                                               |
+| `SIGNER_TLS_KEY`                              | with mTLS | --               | Server key                                                                                                |
+| `SIGNER_CREDENTIAL_ROOT_API_KEY`              | no        | --               | Bearer token for `/sign-credential-root` (must differ; bearer mode only, refused with `SIGNER_CLIENT_CA`) |
+| `SIGNER_CREDENTIAL_ROOT_CLIENT_CNS`           | no        | --               | Client-cert CNs for `/sign-credential-root` (mTLS)                                                        |
+| `SIGNER_SIGNALS_CLIENT_CNS`                   | no        | --               | Client-cert CN allowlist for the signal routes (mTLS)                                                     |
+| `SIGNER_PROVIDER_ID`                          | no        | --               | Pin `/sign-credential-root` to one provider ID                                                            |
+| `SIGNER_MAX_TIMESTAMP_AGE_SECONDS`            | no        | `300`            | Oldest accepted signal timestamp (max 86400)                                                              |
+| `SIGNER_MAX_TIMESTAMP_SKEW_SECONDS`           | no        | `30`             | Furthest-future accepted signal timestamp (max 3600)                                                      |
+| `SIGNER_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS` | no        | `3600`           | Longest accepted `notAfter - now` (max 172800)                                                            |
+| `SIGNER_HTTP_HOST`                            | no        | `127.0.0.1`      | Bind address; non-loopback requires TLS                                                                   |
+| `SIGNER_ALLOW_INSECURE_BIND`                  | no        | `0`              | `1` allows non-loopback plain HTTP (behind a TLS sidecar)                                                 |
+| `SIGNER_HTTP_PORT`                            | no        | `8548`           | Listen port                                                                                               |
+| `SIGNER_AUDIT_LOG`                            | no        | stdout           | JSONL audit log path                                                                                      |
+| `SIGNER_PROVIDER_LABEL`                       | no        | `xochi-provider` | Key label                                                                                                 |
 
 ## Running
 
-Runs under Node type stripping (22.6+). From the repo root (builds `@xochi/provider` first):
+Runs under Node type stripping (Node 22.12+, the package's `engines` floor). From the repo root
+(builds `@xochi/provider` first):
 
 ```bash
 SIGNER_PRIVATE_KEY_HEX=0x... SIGNER_API_KEY=dev-key \

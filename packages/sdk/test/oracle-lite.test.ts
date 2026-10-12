@@ -107,7 +107,7 @@ function checkResult(valid: boolean, a: AttestationFields): Reply {
 
 describe("OracleLite query validation", () => {
   it("rejects a wallet carrying extra ABI words instead of re-targeting the query", async () => {
-    // Review PoC: "0x" + word(0x2222...) + word(0) decodes on-chain as
+    // "0x" + word(0x2222...) + word(0) decodes on-chain as
     // checkCompliance(0x2222..., EU) and Solidity ignores the trailing US word.
     const rpc = await startRpc(() => ({ result: "0x" }));
     const lite = new OracleLite({ address: ORACLE, rpcUrl: rpc.url });
@@ -164,7 +164,7 @@ describe("OracleLite query validation", () => {
 
 describe("OracleLite.checkCompliance", () => {
   it("does not report a live non-compliance attestation as valid", async () => {
-    // Review #2: ERC-8262 answers valid=true for a RISK_SCORE_SIGNED "score > 10%" proof.
+    // ERC-8262 answers valid=true for a RISK_SCORE_SIGNED "score > 10%" proof.
     const rpc = await startRpc(() =>
       checkResult(true, {
         subject: WALLET,

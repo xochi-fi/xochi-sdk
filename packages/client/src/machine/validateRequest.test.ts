@@ -3,7 +3,7 @@
  *
  * Focus: the destination leg can be non-EVM (Tron), so `validateToChain` and
  * `validateToToken` must accept a Tron chain id and a base58 TRC-20 token, while
- * the origin leg stays EVM. Pins the widening added for the Tron destination flow.
+ * the origin leg stays EVM.
  */
 
 import { describe, it, expect } from "vitest";

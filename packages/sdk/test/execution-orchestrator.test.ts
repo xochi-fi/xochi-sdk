@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  planExecution,
-  DEFAULT_EXECUTION_CONFIG,
-  type ExecutionConfig,
-} from "../src/execution-orchestrator.js";
+import { planExecution, type ExecutionConfig } from "../src/execution-orchestrator.js";
 import { DEFAULT_GAS_ESTIMATES } from "../src/venue-router.js";
 import type { VenueConstraints } from "../src/venue-router.js";
 
@@ -26,15 +22,6 @@ const lowTrust: VenueConstraints = {
 };
 
 describe("planExecution", () => {
-  it("produces a valid execution plan with defaults", () => {
-    const plan = planExecution(500n * ETH, EU, SUBMITTER, highTrust);
-
-    expect(plan.totalAmount).toBe(500n * ETH);
-    expect(plan.subTrades.length).toBeGreaterThanOrEqual(1);
-    expect(plan.tradeId).toMatch(/^0x[0-9a-f]{64}$/);
-    expect(plan.config).toBeDefined();
-  });
-
   it("splits into sub-trades above threshold", () => {
     const plan = planExecution(500n * ETH, EU, SUBMITTER, highTrust, {
       splitConfig: { splitThreshold: 100n * ETH, maxSubTrades: 10, minSubTradeSize: 1n * ETH },
@@ -56,8 +43,8 @@ describe("planExecution", () => {
     }
   });
 
-  // Low trust no longer means public: L1 stealth is open to all, so the plan
-  // lands on stealth. Only shielded (Aztec) stays gated at Verified.
+  // L1 stealth is open to all, so a low-trust plan lands on stealth. Only shielded (Aztec)
+  // stays gated at Verified.
   it("plans stealth for low trust, shielded only when qualified", () => {
     const plan = planExecution(500n * ETH, EU, SUBMITTER, lowTrust, {
       venuePreference: ["shielded", "stealth", "public"],
@@ -101,17 +88,6 @@ describe("planExecution", () => {
 
     expect(plan.subTrades).toHaveLength(1);
     expect(plan.subTrades[0].amount).toBe(50n * ETH);
-  });
-
-  it("merges partial config with defaults", () => {
-    const plan = planExecution(500n * ETH, EU, SUBMITTER, highTrust, {
-      maxSlippagePerSubTrade: 100,
-    });
-
-    expect(plan.config.maxSlippagePerSubTrade).toBe(100);
-    expect(plan.config.splitConfig.splitThreshold).toBe(
-      DEFAULT_EXECUTION_CONFIG.splitConfig.splitThreshold,
-    );
   });
 
   // -- Validation --

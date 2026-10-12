@@ -48,13 +48,13 @@ export const settlementType = z
  * It is in this enum because it is what belongs in this FIELD, which answers
  * "how does the origin leg get funded".
  *
- * It was added because the wire was lying. A live Tron-origin quote returned
- * `payment_method: "permit2"` next to `gasless: false` and a `deposit_address`,
- * describing a Permit2 pull on a chain that has no Permit2. The browser papered
- * over it (`resolvePaymentMethod` overrides to `deposit` whenever a deposit
- * address is present), so a human never saw the wrong label. Every non-browser
- * consumer did: the MCP server, the OpenAPI contract, and any agent branching
- * on this field to decide whether to prepare a signature.
+ * Without it the wire lies: a Tron-origin quote reports `payment_method:
+ * "permit2"` next to `gasless: false` and a `deposit_address`, describing a
+ * Permit2 pull on a chain that has no Permit2. The browser papers over it
+ * (`resolvePaymentMethod` overrides to `deposit` whenever a deposit address is
+ * present), so a human never sees the wrong label; every non-browser consumer
+ * does: the MCP server, the OpenAPI contract, and any agent branching on this
+ * field to decide whether to prepare a signature.
  */
 export const paymentMethod = z.enum([
   "erc3009",
@@ -208,15 +208,15 @@ export const ClaimInfoSchema = z.object({
  * A fee layer AMOUNT in token base units: digits only, no sign, no decimal
  * point, no exponent, no `0x`.
  *
- * Typed as a plain `z.string()` until now, which made `""`, `"0.5"`, `"1.2e3"`
- * and `"-5"` all valid layers. Every consumer immediately does `BigInt()` on
- * these to reconcile the layers against `total_fee`, and `BigInt` throws on
- * three of those four and silently returns `0n` on the empty string -- so the
- * loose type turned an upstream formatting change into a 500 on every quote for
- * the route (nothing wraps the reconciliation in a try/catch). The producer
- * (Riddler `fee_policy.ex`, `calculate_layered_fee`) emits `Integer.to_string`
- * of a non-negative integer for all five, so this narrowing describes what is
- * actually served rather than restricting it.
+ * A plain `z.string()` would admit `""`, `"0.5"`, `"1.2e3"` and `"-5"`. Every
+ * consumer immediately does `BigInt()` on these to reconcile the layers against
+ * `total_fee`, and `BigInt` throws on three of those four and silently returns
+ * `0n` on the empty string -- so the loose type turns an upstream formatting
+ * change into a 500 on every quote for the route (nothing wraps the
+ * reconciliation in a try/catch). The producer (Riddler `fee_policy.ex`,
+ * `calculate_layered_fee`) emits `Integer.to_string` of a non-negative integer
+ * for all five, so this narrowing describes what is actually served rather
+ * than restricting it.
  *
  * Deliberately NOT applied to `gas_floor.usd` or `total_usd`: those are dollar
  * figures and are legitimately decimal ("0.022663").
@@ -355,11 +355,10 @@ export const QuoteResponseSchema = z
     // Itemized layer split; optional until the worker/Riddler emit it.
     fee_breakdown: FeeBreakdownSchema.optional(),
     // Which token `fee_breakdown`'s amounts are measured in. Carried on the wire
-    // rather than inferred: the client previously read the denomination off the
-    // MERE PRESENCE of fee_breakdown, resting on an undocumented convention in
-    // another repo (Riddler's fee_policy.ex computes every layer off
-    // `input_amount`). That is the same failure class as xochi#410 -- a
-    // cross-repo fact with no runtime evidence anywhere in this one.
+    // rather than inferred from the MERE PRESENCE of fee_breakdown, which would
+    // rest on an undocumented convention in another repo (Riddler's
+    // fee_policy.ex computes every layer off `input_amount`): the xochi#410
+    // failure class, a cross-repo fact with no runtime evidence in this one.
     fee_denomination: FeeDenominationSchema.optional().describe(
       "Which token the `fee_breakdown` layer AMOUNTS are denominated in. " +
         "'origin' means `from_token` base units, 'destination' means `to_token` " +
@@ -491,9 +490,8 @@ export const QuoteResponseSchema = z
         "Smallest order in USD you should send on this route. THIS is the number to retry with; it already accounts for both the solver's floor and the fixed-cost threshold, so it is >= `min_fillable_usd`. Present on an `amount_too_small` decline. Varies with the corridor's current cost, so do not cache it.",
       ),
     // The solver's own live bounds, passed through on a bounds decline. Both
-    // were already being served here and neither was declared, so the strict
-    // schema rejected a legitimate decline and the generated spec never
-    // documented them (#754 shipped the values, not the contract).
+    // are served, so an undeclared one makes the strict schema reject a
+    // legitimate decline and leaves it out of the generated spec (#754).
     min_fillable_usd: z
       .number()
       .positive()

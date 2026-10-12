@@ -5,10 +5,10 @@
  * identical retry (network blip, orchestrator restart) gets the SAME signature
  * back instead of an error. That is safe because the signature is
  * deterministic: secp256k1 signing uses RFC 6979 nonces, so signing the same
- * digest with the same key always yields the same bytes. Refusing a repeat --
- * what this module used to do -- protected nothing (the caller already held
- * the identical signature) and turned every legitimate retry into a permanent
- * 409. On-chain replay is prevented by the Oracle's `_usedProofs`, not here.
+ * digest with the same key always yields the same bytes. Refusing a repeat
+ * would protect nothing (the caller already holds the identical signature) and
+ * turn every legitimate retry into a permanent 409. On-chain replay is
+ * prevented by the Oracle's `_usedProofs`, not here.
  *
  * Because every record is reproducible from its request, evicting one never
  * changes what a later retry receives; it only costs a re-sign. The in-memory

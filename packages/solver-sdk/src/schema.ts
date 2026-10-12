@@ -28,25 +28,21 @@ const amount = z
 const settlement = z.enum(["public", "stealth", "shielded"]);
 
 // Withdrawn in RFC 0.3.0-draft and deleted from the parsed announcement rather
-// than merely unmodelled: `reserveOutput` (the venue's reserve is no longer
+// than merely unmodelled: `reserveOutput` (the venue's reserve is not
 // announced) and `trustScore` (no solver use, and it handed the panel the
 // taker's fee tier). `.passthrough()` keeps unknown keys, so without this delete
-// the withdrawal would be type-level only -- both fields would survive onto the
-// object handed to `solver.quote()` and stay readable through a cast.
+// both fields would survive onto the object handed to `solver.quote()` and stay
+// readable through a cast.
 //
-// What the delete is NOT is the withdrawal. This SDK runs in the process of the
-// panel member the reserve is withheld FROM, so deleting a key after
-// `JSON.parse` only protects a member who chooses not to look: `curl` on the
-// feed, a one-line fork of this file, or the `raw` value handed to
-// `onInvalidEvent` all still yield `reserveOutput` and `trustScore` while the
-// producer sends them, and the Riddler side still sends both today. The
-// **enforcement point is the producer** (SOLVER-RFC.md "Migrating from
-// `0.2.0-draft`", steps 1-2), and nothing on either side observes whether it
-// has stopped: there is no producer-drift probe on `/solver/*` (prod serves no
-// solver surface at all -- CLAUDE.md, "Producer-drift probes"). Treat this as
-// defence in depth whose absence of enforcement is the point; what it does buy
-// is that neither retired key reaches `solver.quote()` through `.passthrough()`
-// by accident.
+// The delete is NOT the withdrawal. This SDK runs in the process of the panel
+// member the reserve is withheld FROM, so deleting a key after `JSON.parse`
+// only protects a member who chooses not to look: `curl` on the feed, a fork
+// of this file, or the `raw` value handed to `onInvalidEvent` all still yield
+// the keys while the producer sends them. The enforcement point is the
+// producer (SOLVER-RFC.md "Migrating from `0.2.0-draft`", steps 1-2), and
+// nothing observes whether it has stopped: there is no producer-drift probe on
+// `/solver/*`. Defence in depth only: neither retired key reaches
+// `solver.quote()` through `.passthrough()` by accident.
 const RETIRED_ANNOUNCEMENT_KEYS = ["reserveOutput", "trustScore"] as const;
 
 export const IntentAnnouncementSchema = z
@@ -209,11 +205,11 @@ export const BidSchema = z
     validUntilMs: z.number().int().nonnegative().max(MAX_BID_MS),
     minExclusiveMs: z.number().int().nonnegative().max(MAX_BID_MS),
     // The one encoding this protocol defines, derived from `bid.ts` rather than
-    // retyped: `solver-bid-v2.schema.json` declares this pattern and `verifyBidDetailed`
-    // refuses anything else, and a third copy of the regex is how the three
-    // stop agreeing. Unlike `output` this is NOT a read path widened to the
-    // server's rule -- `z.string()` alone let the EIP-2098 compact form and
-    // uppercase hex parse, and both then verified, so one seal had three
+    // retyped: `solver-bid-v2.schema.json` declares this pattern and
+    // `verifyBidDetailed` refuses anything else, and a third copy of the regex
+    // is how the three stop agreeing. Unlike `output` this is NOT a read path
+    // widened to the server's rule: a bare `z.string()` lets the EIP-2098
+    // compact form and uppercase hex parse and verify, so one seal has three
     // admissible spellings on the wire.
     signature: z
       .string()
@@ -233,12 +229,10 @@ export const FillReceiptSchema = z
 // The venue's self-description at `GET /solver/capabilities` (RFC §12). Only
 // `rfcVersion` is required, and only that one is load-bearing: §12 makes it the
 // gate ("a venue that does not advertise `rfcVersion` cannot be bid into by a
-// conformant solver"), while `phase` is a SHOULD. Requiring `phase` here made a
-// spec-conformant `200 {"rfcVersion":"0.3.0-draft"}` fail this parse inside
-// `HttpSolverTransport.getCapabilities`, which `SolverClient` then reported as
-// the venue never having answered -- sending the operator to debug routing
-// against a venue that answered correctly. The rest is advisory metadata that
-// may grow.
+// conformant solver"), while `phase` is a SHOULD. Requiring `phase` would make
+// a spec-conformant `200 {"rfcVersion":"..."}` fail this parse, which
+// `SolverClient` reports as the venue never having answered. The rest is
+// advisory metadata that may grow.
 export const VenueCapabilitiesSchema = z
   .object({
     rfcVersion: z.string(),

@@ -7,12 +7,8 @@
  * `@xochi/spec`'s `fee/schedule.json` (`packages/spec` here), which Riddler asserts itself
  * against cell-for-cell. `test/fee-schedule-drift.test.ts` here checks this
  * module against that vector, so the implementations cannot drift apart
- * silently the way the tables below previously did.
- *
- * This module used to carry a retired schedule: a single flat rate per tier
- * (0.30% down to 0.10%), `SHIELDED_MIN_SCORE = 25`, stealth gated at 25, and MEV
- * rebates. All four were superseded and none was corrected here, so the SDK
- * published fee rates that disagreed with every live implementation.
+ * silently. The flat per-tier schedule (0.30% down to 0.10%), MEV rebates and a
+ * stealth gate at 25 are retired; do not reintroduce them.
  */
 
 // ============================================================
@@ -240,11 +236,8 @@ export function getFeeBps(score: number, assetClass: AssetClass = "stable"): num
 /**
  * Headline fee as a percentage (e.g. 0.22 = 0.22%).
  *
- * `assetClass` defaults to "stable", which preserves the old one-argument call
- * shape. The returned NUMBER changed even for that shape: this used to answer
- * 0.3 at score 0 and now answers 0.22, because the old figure was a retired
- * schedule. A caller that never passes an asset class prices volatile routes as
- * stable, which under-charges by roughly half.
+ * `assetClass` defaults to "stable": a caller that never passes an asset class
+ * prices volatile routes as stable, which under-charges by roughly half.
  */
 export function getFeeRate(score: number, assetClass: AssetClass = "stable"): number {
   return getFeeBps(score, assetClass) / 100;

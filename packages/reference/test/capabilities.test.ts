@@ -2,8 +2,8 @@
  * Capability-matrix parsing (#93).
  *
  * The fixture below mirrors the shape of Riddler's
- * `Xochi.Config.capability_matrix/0` -- the producer -- rather than anything this
- * SDK generates. It is a read path with no signature over it, so unlike the
+ * `Xochi.Config.capability_matrix/0` -- the producer -- rather than anything
+ * @xochi/signer generates. It is a read path with no signature over it, so unlike the
  * deposit-attestation vectors these bytes are not a byte-equality contract;
  * what matters is that the parser survives what the server actually sends and
  * never *invents* a value it did not.
@@ -17,7 +17,6 @@ import { describe, it, expect } from "vitest";
 
 import {
   parseCapabilities,
-  addressFormatForVm,
   chainCapability,
   chainVmType,
   chainAddressFormat,
@@ -28,7 +27,6 @@ import {
   stealthNotionalFloor,
   servedChainKeys,
   chainUnservedReason,
-  CapabilitiesError,
   DEPOSIT_ATTESTATION_VERSION,
 } from "@xochi/signer";
 import { CONFIG } from "../src/config";
@@ -218,16 +216,8 @@ describe("parseCapabilities", () => {
 });
 
 describe("accessors", () => {
-  it("maps VM families to address formats", () => {
-    expect(addressFormatForVm("evm")).toBe("hex20");
-    expect(addressFormatForVm("tvm")).toBe("base58check");
-    expect(addressFormatForVm("svm")).toBe("base58");
-    expect(addressFormatForVm("cvm")).toBe("canton_party");
-  });
-
-  // Spec 0.8.0 serves Canton as `vm_type: "cvm"`. Before this parser knew it, an
-  // unrecognised vm_type read as "evm", so Canton parsed as an EVM chain with
-  // format hex20 -- a party id one caller away from an EVM address helper.
+  // Spec 0.8.0 serves Canton as `vm_type: "cvm"`. An unrecognised vm_type must not read
+  // as "evm" with format hex20: a party id one caller away from an EVM address helper.
   it("parses Canton as cvm / canton_party, never evm / hex20", () => {
     const c = parseCapabilities(
       matrix({ chains: [{ chain_id: 253340876, vm_type: "cvm", address_format: "canton_party" }] }),
@@ -251,9 +241,9 @@ describe("accessors", () => {
     expect(chainVmType(c, 8453)).toBe("evm");
   });
 
-  // A duplicated id is malformed, and an unknown-VM copy is still a copy: dropping it
-  // before the duplicate check let a stray evm row stand alone and read hex20 for
-  // what the venue also advertises as something else.
+  // A duplicated id is malformed, and an unknown-VM copy is still a copy: the row is kept
+  // so the duplicate check sees it, else a stray evm row would stand alone and read hex20
+  // for what the venue also advertises as something else.
   it("refuses a duplicated chain id even when one copy has an unknown vm_type", () => {
     const c = parseCapabilities(
       matrix({
@@ -267,7 +257,7 @@ describe("accessors", () => {
     expect(chainAddressFormat(c, 728126428)).toBeNull();
   });
 
-  it("reads a chain, defaulting an unlisted one to evm", () => {
+  it("reads an advertised chain and answers null, not evm, for an unlisted one", () => {
     const c = caps();
     expect(chainCapability(c, 8453)?.chainName).toBe("Base");
     expect(chainCapability(c, 999)).toBeNull();
@@ -301,7 +291,7 @@ describe("accessors", () => {
   });
 
   it("names no pull method or address for a chain it cannot address", () => {
-    // The token-level method is an EVM representative: falling back to it named
+    // The token-level method is an EVM representative: falling back to it would name
     // `erc3009` for an unadvertised chain, a duplicated one and an unknown VM alike.
     expect(originPullMethod(caps(), "USDC", 10)).toBeNull();
     for (const chains of [
@@ -359,17 +349,17 @@ describe("deposit attestation version skew (riddler-sdk#92)", () => {
   });
 
   it("treats a server that does not publish the field as no skew", () => {
-    // The field is not yet on Riddler master; absence must not become an error.
+    // Absence must not become an error.
     const c = parseCapabilities(matrix({ deposit_attestation_version: undefined }))!;
     expect(c.depositAttestationVersion).toBeNull();
     expect(depositAttestationVersionSkew(c, DEPOSIT_ATTESTATION_VERSION)).toBeNull();
   });
 });
 
-describe("hostile payloads (review follow-ups)", () => {
+describe("hostile payloads", () => {
   it("refuses a leading-zero chain key rather than letting it shadow the real one", () => {
-    // JS iterates integer-like keys first and string keys after, so "08453"
-    // was written LAST and deterministically won -- a server could shadow any
+    // JS iterates integer-like keys first and string keys after, so "08453" is
+    // written LAST and would deterministically win -- a server could shadow any
     // chain's token address and pull method with one padded key.
     const c = parseCapabilities(
       matrix({
@@ -416,8 +406,8 @@ describe("hostile payloads (review follow-ups)", () => {
   });
 
   it("rejects an address_format the producer cannot emit", () => {
-    // An unchecked `as` let a server label a TVM chain hex20, or emit a value
-    // that type-checks as AddressFormat and matches no switch branch.
+    // A value that matches no AddressFormat branch falls back to the VM's own format,
+    // so a server cannot label a TVM chain hex20 through an unchecked string.
     const c = parseCapabilities(
       matrix({
         chains: [{ chain_id: 728126428, vm_type: "tvm", address_format: "totally-bogus" }],
@@ -426,7 +416,7 @@ describe("hostile payloads (review follow-ups)", () => {
     expect(c.chains[0]!.addressFormat).toBe("base58check");
   });
 
-  it("still refuses to call a TVM chain hex20 when the server says so", () => {
+  it("refuses to call a TVM chain hex20 when the server says so", () => {
     const c = parseCapabilities(
       matrix({ chains: [{ chain_id: 728126428, vm_type: "tvm", address_format: "hex20" }] }),
     )!;
@@ -436,8 +426,7 @@ describe("hostile payloads (review follow-ups)", () => {
   });
 
   it("defaults crossChainOnly restrictively on absence", () => {
-    // `=== true` made a blank body mean "same-chain fills allowed" -- a
-    // relaxation handed over by an empty response.
+    // A blank body must not relax to "same-chain fills allowed".
     expect(parseCapabilities({})!.crossChainOnly).toBe(true);
     expect(parseCapabilities(matrix({ cross_chain_only: undefined }))!.crossChainOnly).toBe(true);
     expect(parseCapabilities(matrix({ cross_chain_only: false }))!.crossChainOnly).toBe(false);
@@ -464,7 +453,7 @@ describe("hostile payloads (review follow-ups)", () => {
   });
 
   it("refuses to bounds-check a non-finite notional", () => {
-    // NaN compares false against everything, so this used to report "fits".
+    // NaN compares false against everything, so it would otherwise report "fits".
     expect(orderBoundsViolation(caps(), NaN)).toMatch(/not a finite number/);
   });
 
@@ -498,8 +487,7 @@ describe("hostile payloads (review follow-ups)", () => {
  * Static table intersected with the live matrix. Two chains in `CONFIG.CHAINS`
  * are flag-gated server-side (Tron behind ENABLE_TRON, Arc behind ENABLE_ARC)
  * and vanish from the matrix while their flag is off, so the table alone
- * answers "quotable" wrong -- which is how this SDK shipped two dead Tron
- * testnets and no Arc.
+ * answers "quotable" wrong.
  */
 describe("servedChainKeys / chainUnservedReason", () => {
   it("keeps only the chains the venue advertises", () => {
@@ -545,7 +533,7 @@ describe("servedChainKeys / chainUnservedReason", () => {
   });
 
   it("does not serve a chain id advertised twice, whatever VMs its rows name", () => {
-    // A per-row filter kept the recognised row of a duplicated pair as served.
+    // Both rows of a duplicated pair are unserved, whichever VM each names.
     for (const chains of [
       [
         { chain_id: 8453, vm_type: "evm" },

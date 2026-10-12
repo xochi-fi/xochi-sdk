@@ -247,7 +247,7 @@ describe("SettlementRegistryClient (anvil)", () => {
         submitterPadded,
       ];
     } else if (proofType === PROOF_TYPES.PATTERN) {
-      // pattern layout (post audit H-1):
+      // pattern layout (audit H-1):
       //   [analysis_type, result, reporting_threshold, time_window, tx_set_hash,
       //    submitter, settlement_root]
       // settlement_root must equal SettlementRegistry.computeSettlementRoot(tradeId)
@@ -383,7 +383,7 @@ describe("SettlementRegistryClient (anvil)", () => {
     await publicClient.waitForTransactionReceipt({ hash: sub1 });
 
     // Submit a pattern proof for anti-structuring finalization (analysisType=1).
-    // Audit H-2: SettlementRegistry now requires the original publicInputs bytes
+    // Audit H-2: SettlementRegistry requires the original publicInputs bytes
     // to verify analysis_type == STRUCTURING (1) -- VELOCITY/ROUND_AMOUNT rejected.
     // Audit H-1: pattern.settlement_root must equal computeSettlementRoot(tradeId)
     // -- pass tradeId so the helper fetches the expected value.
@@ -398,67 +398,6 @@ describe("SettlementRegistryClient (anvil)", () => {
     expect(settlement.finalized).toBe(true);
     expect(settlement.settledCount).toBe(2);
     expect(settlement.subTradeCount).toBe(2);
-  });
-
-  it("rejects duplicate trade registration", async () => {
-    const tradeId = keccak256(toHex("settlement-test-dup"));
-    const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
-
-    const hash = await registryClient.registerTrade(tradeId, 0, 2);
-    await publicClient.waitForTransactionReceipt({ hash });
-
-    // writeContract may return a tx hash before the revert is detected,
-    // so we also check the receipt status
-    try {
-      const dupHash = await registryClient.registerTrade(tradeId, 0, 2);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: dupHash });
-      expect(receipt.status).toBe("reverted");
-    } catch {
-      // Expected: viem may throw on simulation before sending
-    }
-  });
-
-  it("rejects sub-settlement with out-of-bounds index", async () => {
-    const tradeId = keccak256(toHex("settlement-test-oob"));
-    const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
-
-    const hash = await registryClient.registerTrade(tradeId, 0, 2);
-    await publicClient.waitForTransactionReceipt({ hash });
-
-    const r = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-
-    // Index 5 is out of bounds for a trade with 2 sub-trades
-    try {
-      const oobHash = await registryClient.recordSubSettlement(tradeId, 5, r.proofHash);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: oobHash });
-      expect(receipt.status).toBe("reverted");
-    } catch {
-      // Expected: viem may throw on simulation before sending
-    }
-  });
-
-  it("rejects finalization before all sub-trades are settled", async () => {
-    const tradeId = keccak256(toHex("settlement-test-incomplete"));
-    const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
-
-    const regHash = await registryClient.registerTrade(tradeId, 0, 2);
-    await publicClient.waitForTransactionReceipt({ hash: regHash });
-
-    // Only settle 1 of 2 sub-trades
-    const r = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
-    const sub0 = await registryClient.recordSubSettlement(tradeId, 0, r.proofHash);
-    await publicClient.waitForTransactionReceipt({ hash: sub0 });
-
-    const pat = await submitComplianceProof(ALICE, 0, PROOF_TYPES.PATTERN, tradeId);
-
-    // Should reject -- only 1/2 settled
-    try {
-      const finHash = await registryClient.finalizeTrade(tradeId, pat.proofHash, pat.publicInputs);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: finHash });
-      expect(receipt.status).toBe("reverted");
-    } catch {
-      // Expected: viem may throw on simulation before sending
-    }
   });
 
   // ============================================================

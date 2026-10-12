@@ -19,11 +19,9 @@
 # npmjs.com: Settings -> Trusted publisher -> GitHub Actions, with
 #   - repository xochi-fi/xochi-sdk, workflow `release.yml`;
 #   - environment `npm-publish`. REQUIRED although npm calls it optional: it is
-#     the ONLY thing stopping a tag on a pre-fix commit, whose own release.yml
-#     publishes with `--tag latest` and no environment, from publishing the
-#     never-published @xochi/spec 0.8.0, @xochi/signer 0.5.0, @xochi/client
-#     0.1.0, @xochi/widget-lib 0.1.0 or @xochi/provider 0.1.0 (see "Why the
-#     environment" below);
+#     the ONLY thing stopping a tag on an older commit, whose own release.yml
+#     lacks the environment, from publishing (see "Why the environment"
+#     below);
 #   - Allowed actions: `npm publish`. A config created after 2026-09-03 allows
 #     only `npm stage publish` by default, and this job runs `npm publish`.
 # A new config expires unless its first publish succeeds within 2 days, so
@@ -35,9 +33,9 @@
 # @xochi/widget-lib and @xochi/provider cannot make their first publish here.
 # The conservative procedure, once per package: an npm owner with 2FA checks
 # out the reviewed release tag's commit (on main), runs the same gates this job
-# runs for that package, and runs `npm publish -w <name> --provenance=false` by
-# hand (spec, signer and provider set `publishConfig.provenance`, which fails
-# outside CI; the real reviewed version, never a placeholder). @xochi/signer
+# runs for that package, and runs `npm publish -w <name>` by hand (the real
+# reviewed version, never a placeholder; provenance comes only from this job's
+# `--provenance` flag, never `publishConfig`). @xochi/signer
 # goes before @xochi/client, which depends on it. Then attach the config above
 # (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
 # --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
@@ -53,21 +51,20 @@
 # protection rules. So the gate is three settings outside this file, and the
 # steps below are defence in depth on top of them:
 #   - npmjs.com trusted publisher requires environment `npm-publish`, so a
-#     workflow without it (every commit before this one) gets no credential;
+#     workflow without it gets no credential;
 #   - GitHub environment `npm-publish` accepts deployments only from tags
 #     matching the six patterns below;
 #   - GitHub tag ruleset "release tags" lets only repository admins create,
 #     move or delete those tags.
 #
-# @xochi/sdk used to be published by hand (`npm publish`, gated by its
-# prepublishOnly; now `npm publish -w @xochi/sdk`). That still works and still
-# runs the same gates; this workflow runs them too, in CI, with provenance.
+# `npm publish -w @xochi/sdk` by hand still works and runs the same gates
+# (prepublishOnly); this workflow runs them too, in CI, with provenance.
 #
 # The publish runs only after the gates ci.yml runs for that package, and only
 # when the tag's version is the version in that package's package.json: a tag
 # that disagrees would publish bytes under a name nobody reviewed. Every
-# package's own prepublishOnly (where it has one) runs again inside `npm
-# publish`.
+# package's prepublishOnly (format:check, typecheck, test and, where it has a
+# build, build) runs again inside `npm publish`.
 name: release
 
 on:
@@ -228,10 +225,13 @@ jobs:
 
       - run: npm ci
 
-      # Every workspace consumes @xochi/signer's .d.ts, the bid-vector
-      # generator imports the built @xochi/solver-sdk, and the fee generator
-      # and fee vector suite import the built @xochi/client.
+      # @xochi/client's typecheck reads @xochi/signer's built .d.ts; the protocol
+      # gate (spec, signer) also needs the built @xochi/solver-sdk (the bid-vector
+      # generator imports it) and @xochi/client (the fee generator and fee vector
+      # suite import it). @xochi/sdk, @xochi/provider and @xochi/widget-lib
+      # depend on none of them.
       - name: Build @xochi/signer, @xochi/solver-sdk and @xochi/client
+        if: steps.pkg.outputs.name == '@xochi/spec' || steps.pkg.outputs.name == '@xochi/signer' || steps.pkg.outputs.name == '@xochi/client'
         run: |
           npm run build -w @xochi/signer
           npm run build -w @xochi/solver-sdk
@@ -271,9 +271,8 @@ jobs:
           cd packages/spec/wire
           printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
 
-      # @xochi/sdk, @xochi/client, @xochi/widget-lib and @xochi/provider carry
-      # their full gate (format, typecheck, test, build; @xochi/provider's
-      # typecheck covers its daemon) in prepublishOnly, which npm publish runs;
-      # @xochi/signer's build runs in its prepublishOnly too.
+      # Every package's prepublishOnly runs its full gate again inside npm
+      # publish: format:check, typecheck, test and build (@xochi/spec has no
+      # build; @xochi/provider's typecheck covers its daemon).
       - name: Publish
         run: npm publish -w ${{ steps.pkg.outputs.name }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public

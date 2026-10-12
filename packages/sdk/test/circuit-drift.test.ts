@@ -2,9 +2,8 @@
  * Circuit sync drift check.
  *
  * The compiled circuit artifacts in `circuits/` are copied out of ERC-8262 by
- * `scripts/sync-circuits.sh`. Nothing previously verified that the committed
- * copies were current, so a circuit change in ERC-8262 would surface here only
- * as a confusing Noir witness error at proof time.
+ * `scripts/sync-circuits.sh`. Without this check a circuit change in ERC-8262
+ * would surface only as a confusing Noir witness error at proof time.
  *
  * Two tiers:
  *

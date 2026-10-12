@@ -4,25 +4,25 @@ TypeScript packages for building on Xochi: ERC-8262 ZK compliance proofs, provid
 
 ## Packages
 
-| Path                    | npm                 | Purpose                                                                    | Release tag     | Published                   |
-| ----------------------- | ------------------- | -------------------------------------------------------------------------- | --------------- | --------------------------- |
-| `packages/sdk`          | `@xochi/sdk`        | Generate and verify ERC-8262 ZK compliance proofs; tiers, scoring, XIP-1/2 | `sdk-v*`        | on npm                      |
-| `packages/provider`     | `@xochi/provider`   | Compliance-data provider attestations for the signed circuits; daemon      | `provider-v*`   | first publish due           |
-| `packages/client`       | `@xochi/client`     | Xochi trade API client: transport, trade state machine, fund-safety checks | `client-v*`     | first publish due           |
-| `packages/widget-lib`   | `@xochi/widget-lib` | Embed the Xochi swap widget with an EIP-1193 wallet bridge                 | `widget-lib-v*` | first publish due           |
-| `packages/signer`       | `@xochi/signer`     | Network-free EIP-712 signing and pre-sign checks for Xochi intents         | `signer-v*`     | first publish due           |
-| `packages/spec`         | `@xochi/spec`       | Protocol spec, wire contract and conformance vectors                       | `spec-v*`       | first publish due           |
-| `packages/solver-sdk`   | `@xochi/solver-sdk` | Maker-side sealed-bid RFQ SDK                                              | none yet        | when the solver panel opens |
-| `packages/reference`    | `@xochi/reference`  | Network-free fixtures for the spec generators and vector suites            | none            | never (private)             |
-| `sdks/{python,go,rust}` | `xochi-conformance` | Byte-parity runners over `conformance.json`, for CI                        | none            | never                       |
+| Path                       | npm                 | Purpose                                                                    | Release tag     | Published                   |
+| -------------------------- | ------------------- | -------------------------------------------------------------------------- | --------------- | --------------------------- |
+| `packages/sdk`             | `@xochi/sdk`        | Generate and verify ERC-8262 ZK compliance proofs; tiers, scoring, XIP-1/2 | `sdk-v*`        | on npm                      |
+| `packages/provider`        | `@xochi/provider`   | Compliance-data provider attestations for the signed circuits; daemon      | `provider-v*`   | first publish due           |
+| `packages/client`          | `@xochi/client`     | Xochi trade API client: transport, trade state machine, fund-safety checks | `client-v*`     | first publish due           |
+| `packages/widget-lib`      | `@xochi/widget-lib` | Embed the Xochi swap widget with an EIP-1193 wallet bridge                 | `widget-lib-v*` | first publish due           |
+| `packages/signer`          | `@xochi/signer`     | Network-free EIP-712 signing and pre-sign checks for Xochi intents         | `signer-v*`     | first publish due           |
+| `packages/spec`            | `@xochi/spec`       | Protocol spec, wire contract and conformance vectors                       | `spec-v*`       | first publish due           |
+| `packages/solver-sdk`      | `@xochi/solver-sdk` | Maker-side sealed-bid RFQ SDK                                              | none yet        | when the solver panel opens |
+| `packages/reference`       | `@xochi/reference`  | Network-free fixtures for the spec generators and vector suites            | none            | never (private)             |
+| `runners/{python,go,rust}` | `xochi-conformance` | Byte-parity runners over `conformance.json`, for CI                        | none            | never                       |
 
-Tags publish through `.github/workflows/release.yml`, one package per tag. Each package has its own README: [sdk](packages/sdk/README.md), [provider](packages/provider/README.md) ([daemon](packages/provider/daemon/README.md)), [client](packages/client/README.md), [widget-lib](packages/widget-lib/README.md), [signer](packages/signer/README.md), [spec](packages/spec/README.md), [solver-sdk](packages/solver-sdk/README.md), and [Python](sdks/python/README.md), [Go](sdks/go/README.md), [Rust](sdks/rust/README.md).
+Tags publish through `.github/workflows/release.yml`, one package per tag. Each package has its own README: [sdk](packages/sdk/README.md), [provider](packages/provider/README.md) ([daemon](packages/provider/daemon/README.md)), [client](packages/client/README.md), [widget-lib](packages/widget-lib/README.md), [signer](packages/signer/README.md), [spec](packages/spec/README.md), [solver-sdk](packages/solver-sdk/README.md), and [Python](runners/python/README.md), [Go](runners/go/README.md), [Rust](runners/rust/README.md).
 
 ## Three kinds of signing
 
 - **`@xochi/signer`: the taker's signer. It moves funds.** EIP-712 Xochi intents, ERC-3009 and Permit2 pull authorizations, plus the pre-sign checks that hold a server quote to the request. A bug here loses money.
 - **`@xochi/provider`: a compliance-data provider's attestations. It moves no funds.** Secp256k1 signatures over risk signals that the ERC-8262 signed circuits (0x07, 0x08, 0x09) verify in-circuit, and EIP-712 credential-root publications. `@xochi/sdk` turns them into proofs.
-- **`sdks/*` (`xochi-conformance`; Python `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/signer` conformance vector byte-for-byte and reject non-canonical input rather than normalize it.
+- **`runners/*` (`xochi-conformance`; Python `xochi_conformance`, Go package `conformance`, Rust crate `xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/spec` `conformance.json` vector byte-for-byte and reject non-canonical input rather than normalize it.
 
 ## Development
 
@@ -30,7 +30,7 @@ Node 22.12+. From the root: `npm ci`, then `npm run build`, `npm run typecheck`,
 
 ## More
 
-- [CHANGELOG.md](CHANGELOG.md)
+- Changelogs: each published package's own `packages/<name>/CHANGELOG.md`
 - [SECURITY.md](SECURITY.md)
 - [CLAUDE.md](CLAUDE.md): repo rules and invariants (fund-safety, wire contract, parity state)
 - [LICENSE](LICENSE) (MIT)

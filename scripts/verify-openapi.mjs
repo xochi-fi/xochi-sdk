@@ -2,12 +2,11 @@
 /**
  * Producer-drift probe: is the vendored wire contract the one the solver serves?
  *
- * SPEC.md §3 opens with "Source of truth: `GET /xochi/openapi.json`", and the
- * solver serves that document -- but nothing in this repo read it, so the wire
- * contract was unvendored and unchecked. That is riddler-sdk#92's exact shape:
- * the drift found on the first comparison was three-sided (`refunded` terminal
- * in SPEC and the SDK but absent from the served enum, `bridging` served but
- * undocumented, `quote_expired` documented but not in `ErrorCode`).
+ * SPEC.md §3's source of truth is `GET /xochi/openapi.json`; this holds the
+ * vendored copy (`packages/spec/wire/openapi.json`) to it. Left unchecked, the
+ * two had drifted three ways at once (`refunded` terminal in SPEC and the SDK
+ * but absent from the served enum, `bridging` served but undocumented,
+ * `quote_expired` documented but not in `ErrorCode`).
  *
  * The comparison itself lives in `packages/spec/wire/compare.mjs`, because the
  * refresh that WRITES the vendored copy runs the same function: a writer whose
@@ -29,9 +28,8 @@
  *               served token (`packages/spec/wire/format.mjs`), so a spelling it
  *               would not produce reached the vendored copy some other way -- a
  *               formatter, a merge, a hand edit plus a re-`shasum` -- and one
- *               refresh clears it either way. This axis is the verifier behind
- *               that invariant, which had none: a writer-side rule says nothing
- *               about a copy edited afterwards.
+ *               refresh clears it either way. A writer-side rule says nothing
+ *               about a copy edited afterwards; this axis is its verifier.
  *
  * `ErrorCode`'s own description says the codes are append-only and never
  * repurposed, so an appended enum member is the likeliest benign server change
@@ -76,18 +74,18 @@
  *      unusable PROBE_TIMEOUT_MS, or a vendored copy that does not match its
  *      recorded digest
  */
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import {
+  MAX_URL_CHARS,
   drift,
+  fetchJson,
   inconclusive,
   installCrashHandlers,
   misconfigured,
-  parseJsonBody,
-  probeGet,
+  noteLocalProblem,
+  readRepoFile,
   readTimeoutMs,
   resolveServer,
+  sha256Hex,
 } from "./probe-lib.mjs";
 import {
   CONSTRAINTS,
@@ -104,10 +102,8 @@ import {
 installCrashHandlers();
 
 const TIMEOUT_MS = readTimeoutMs();
-const VENDORED_JSON = fileURLToPath(new URL("../packages/spec/wire/openapi.json", import.meta.url));
-const VENDORED_SHA = fileURLToPath(
-  new URL("../packages/spec/wire/openapi.sha256", import.meta.url),
-);
+const VENDORED_JSON = "packages/spec/wire/openapi.json";
+const VENDORED_SHA = "packages/spec/wire/openapi.sha256";
 
 /**
  * Digest prefix printed in the preamble: 16 hex chars is 64 bits, which tells
@@ -136,26 +132,26 @@ const readVendored = () => {
   let bytes;
   let recorded;
   try {
-    bytes = readFileSync(VENDORED_JSON, "utf-8");
+    bytes = readRepoFile(VENDORED_JSON);
   } catch (e) {
-    return { problem: `packages/spec/wire/openapi.json is unreadable: ${e.message}` };
+    return { problem: `${VENDORED_JSON} is unreadable: ${e.message}` };
   }
   try {
-    recorded = readFileSync(VENDORED_SHA, "utf-8").trim();
+    recorded = readRepoFile(VENDORED_SHA).trim();
   } catch (e) {
-    return { problem: `packages/spec/wire/openapi.sha256 is unreadable: ${e.message}` };
+    return { problem: `${VENDORED_SHA} is unreadable: ${e.message}` };
   }
 
-  const actual = createHash("sha256").update(bytes).digest("hex");
+  const actual = sha256Hex(bytes);
   if (!/^[0-9a-f]{64}$/.test(recorded)) {
     return {
-      problem: `packages/spec/wire/openapi.sha256 is not a bare sha256 hex digest: "${sanitize(recorded)}"`,
+      problem: `${VENDORED_SHA} is not a bare sha256 hex digest: "${sanitize(recorded)}"`,
     };
   }
   if (actual !== recorded) {
     return {
       problem:
-        `packages/spec/wire/openapi.json does not match its recorded digest.\n` +
+        `${VENDORED_JSON} does not match its recorded digest.\n` +
         `    recorded ${recorded}\n` +
         `    actual   ${actual}\n` +
         "  Hand-edit, bad merge or partial refresh. If you did not mean to change either file,\n" +
@@ -168,7 +164,7 @@ const readVendored = () => {
   try {
     return { doc: JSON.parse(bytes), text: bytes, digest: actual, bytes: Buffer.byteLength(bytes) };
   } catch (e) {
-    return { problem: `packages/spec/wire/openapi.json is not JSON: ${e.message}` };
+    return { problem: `${VENDORED_JSON} is not JSON: ${e.message}` };
   }
 };
 
@@ -177,8 +173,8 @@ const local = readVendored();
 // Printed here, exited on at the END, so a bad vendored copy cannot switch the
 // producer check off.
 if (local.problem) {
-  console.error(`MISCONFIGURED (local side): ${local.problem}`);
-  console.error(
+  noteLocalProblem(
+    local.problem,
     "\n  Not exited on yet. The producer is sampled anyway and both facts are reported\n" +
       "  below: a repo whose own artifact is unusable must not thereby stop asking the one\n" +
       "  party whose answer it cannot edit.\n",
@@ -189,14 +185,10 @@ const { serverKey, baseUrl } = resolveServer();
 const url = `${baseUrl}/xochi/openapi.json`;
 
 /**
- * The URL is bounded higher than a finding fragment: cut to 90 chars it stops
- * naming the host that was asked, which is the one thing every line it appears
- * in is for. The differ's own messages get a sentence-sized bound for the same
- * reason -- the depth-bound message carries a node path of up to 100 segments,
- * each already sanitized on its own, and 90 chars would cut it before the prose
- * that explains it.
+ * The differ's own messages get a sentence-sized bound: the depth-bound message
+ * carries a node path of up to 100 segments, each already sanitized on its own,
+ * and a finding-fragment bound would cut it before the prose that explains it.
  */
-const MAX_URL_CHARS = 200;
 const MAX_ERROR_CHARS = 300;
 
 /**
@@ -215,13 +207,12 @@ const target = sanitize(url, MAX_URL_CHARS);
 console.log(`server     ${sanitize(serverKey)} (${target})`);
 console.log(
   local.doc
-    ? `vendored   packages/spec/wire/openapi.json (${local.bytes} bytes, sha256 ${local.digest.slice(0, DIGEST_PREFIX_CHARS)}...)`
+    ? `vendored   ${VENDORED_JSON} (${local.bytes} bytes, sha256 ${local.digest.slice(0, DIGEST_PREFIX_CHARS)}...)`
     : `vendored   (not established -- see the MISCONFIGURED note above)`,
 );
 // Derived from the differ's own list, not retyped beside it: this preamble
 // exists so a green run can be told from one that never ran, which is only true
-// while it describes what actually runs. The four earlier copies of this
-// sentence went stale independently of `CONSTRAINTS`.
+// while it describes what actually runs.
 console.log(
   "compares   paths and methods; the document servers and any operation-level override; per\n" +
     "           operation the parameters (keyed in:name, with required), requestBody, response\n" +
@@ -238,8 +229,7 @@ console.log(
 );
 console.log("");
 
-const got = await probeGet({ url, timeoutMs: TIMEOUT_MS });
-const served = got.ok ? parseJsonBody(got, { url }) : got;
+const served = await fetchJson({ url, timeoutMs: TIMEOUT_MS });
 
 /** What the producer said, in one line, for the exit-3 message. */
 const serverFinding = () => {
@@ -255,7 +245,7 @@ const serverFinding = () => {
 if (served.ok) {
   const doc = served.value;
   console.log(
-    `served     ${Buffer.byteLength(got.text)} bytes, ${sanitize(doc?.openapi ?? "(no openapi field)")}, ` +
+    `served     ${Buffer.byteLength(served.text)} bytes, ${sanitize(doc?.openapi ?? "(no openapi field)")}, ` +
       `${Object.keys(doc?.paths ?? {}).length} paths, ` +
       `${Object.keys(doc?.components?.schemas ?? {}).length} component schemas`,
   );
@@ -327,7 +317,7 @@ const { breaking, stale, stats } = compared;
  * The one axis a structural diff cannot carry. Both documents reach
  * `compareContract` through `JSON.parse`, which folds every number to an
  * IEEE-754 double, so `115792089...639935` and `1.157920892373162e+77` compare
- * EQUAL there while `packages/spec` ships the file to sdks/{python,go,rust},
+ * EQUAL there while `packages/spec` ships the file to runners/{python,go,rust},
  * where Go's `json.Number` and serde_json's `arbitrary_precision` keep the
  * literal and can tell. `generate.mjs` refuses to write a re-spelling, but that
  * is a writer-side rule with no verifier behind it: a formatter, a merge or a
@@ -336,13 +326,12 @@ const { breaking, stale, stats } = compared;
  *
  * An ORDERED MULTISET over the two raw texts, both directions, computed by the
  * differ so the writer's refusal and this verdict agree on what a re-spelling
- * is. What this replaced was a de-duplicated one-way set difference, blind to
- * the exact case the axis exists for: `0` occurs eleven times in the vendored
- * contract and `1` six, every one of them a `minimum` or `default` bound, so
- * hand-editing one `"minimum": 0` to `0.0` and re-`shasum`ming left the folded
- * token still present elsewhere in the served text and reported nothing at all.
- * A vendored-only spelling -- the LOCAL fault -- was on no axis in either
- * spelling of the check.
+ * is. A de-duplicated one-way set difference is blind to the exact case the
+ * axis exists for: `0` occurs eleven times in the vendored contract and `1`
+ * six, every one of them a `minimum` or `default` bound, so hand-editing one
+ * `"minimum": 0` to `0.0` and re-`shasum`ming leaves the folded token present
+ * elsewhere in the served text, and a vendored-only spelling, the LOCAL fault,
+ * is on no axis at all.
  *
  * Only computed when the structure agrees. A genuine server-side number change
  * (a new bound, a changed `maximum`) already surfaces above as STALE or
@@ -354,18 +343,17 @@ const { breaking, stale, stats } = compared;
  * copy that is behind, which is the same remediation, and the body says which
  * side each spelling came from.
  *
- * `numberTokenDiff` lexes each side ONCE. The expression it replaced rebuilt
- * `new Set(numberTokens(local.text))` inside a `filter` predicate, re-lexing the
- * 82 KB vendored document per distinct served literal -- on a path reachable
- * with zero findings, since `example`/`examples` are never descended: a served
- * body of structurally invisible numerics measured 14.6s at 20k distinct
- * literals and ~660s at the 4 MB `MAX_BODY_BYTES` cap, bounded by nothing
- * (`PROBE_TIMEOUT_MS` bounds the fetch, not this loop).
+ * `numberTokenDiff` lexes each side ONCE. Re-lexing the vendored document per
+ * distinct served literal is quadratic on a path reachable with zero findings
+ * (`example`/`examples` are never descended): a served body of structurally
+ * invisible numerics measured 14.6s at 20k distinct literals and ~660s at the
+ * 4 MB `MAX_BODY_BYTES` cap, bounded by nothing (`PROBE_TIMEOUT_MS` bounds the
+ * fetch, not this loop).
  */
 const vendoredTokens = numberTokens(local.text);
 const respelled =
   breaking.length === 0 && stale.length === 0
-    ? numberTokenDiff(got.text, local.text)
+    ? numberTokenDiff(served.text, local.text)
     : { servedOnly: [], vendoredOnly: [] };
 const respelledCount = respelled.servedOnly.length + respelled.vendoredOnly.length;
 

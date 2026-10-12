@@ -10,15 +10,15 @@
     "eip-712"
   ],
   "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/client#readme",
-  "license": "MIT",
-  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
     "directory": "packages/client"
   },
-  "publishConfig": {
-    "access": "public"
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
   },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -38,18 +38,19 @@
   },
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
-  "engines": {
-    "node": ">=22"
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.esm.json && tsc -p tsconfig.build.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.machine.json",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md}\"",
-    "prepublishOnly": "npm run format:check && npm run typecheck && npm run test && npm run build"
+    "format": "prettier --write \"src/**/*.ts\" \"*.{json,md,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,ts}\"",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@xochi/signer": "^0.5.1",
@@ -57,6 +58,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "fast-check": "^4.7.0"
+    "fast-check": "^4.9.0"
   }
 }

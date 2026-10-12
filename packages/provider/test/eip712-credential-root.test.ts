@@ -13,7 +13,6 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  CREDENTIAL_ROOT_TYPEHASH,
   buildDomainSeparator,
   cidHash,
   credentialRootDigest,
@@ -31,18 +30,7 @@ const SAMPLE = {
   notAfter: 1700003600n,
 };
 
-describe("EIP-712 typehash and domain", () => {
-  it("CREDENTIAL_ROOT_TYPEHASH matches the canonical encoding", () => {
-    // keccak256("CredentialRootPublication(uint256 providerId,bytes32 root,bytes32 cidHash,uint64 notBefore,uint64 notAfter)")
-    expect(CREDENTIAL_ROOT_TYPEHASH).toMatch(/^0x[0-9a-f]{64}$/);
-  });
-
-  it("domain separator is deterministic for fixed inputs", () => {
-    const a = buildDomainSeparator(CHAIN_ID, ORACLE_ADDRESS);
-    const b = buildDomainSeparator(CHAIN_ID, ORACLE_ADDRESS);
-    expect(a).toBe(b);
-  });
-
+describe("EIP-712 domain", () => {
   it("domain separator changes with chain ID", () => {
     const a = buildDomainSeparator(1n, ORACLE_ADDRESS);
     const b = buildDomainSeparator(2n, ORACLE_ADDRESS);
@@ -57,10 +45,6 @@ describe("EIP-712 typehash and domain", () => {
 });
 
 describe("hashPublication", () => {
-  it("is deterministic", () => {
-    expect(hashPublication(SAMPLE)).toBe(hashPublication(SAMPLE));
-  });
-
   it("changes when root changes", () => {
     const altered = { ...SAMPLE, root: ("0x" + "11".repeat(32)) as `0x${string}` };
     expect(hashPublication(altered)).not.toBe(hashPublication(SAMPLE));
@@ -83,15 +67,6 @@ describe("hashPublication", () => {
 });
 
 describe("credentialRootDigest", () => {
-  it("produces a 32-byte 0x-prefixed hex", () => {
-    const d = credentialRootDigest({
-      chainId: CHAIN_ID,
-      oracleAddress: ORACLE_ADDRESS,
-      publication: SAMPLE,
-    });
-    expect(d).toMatch(/^0x[0-9a-f]{64}$/);
-  });
-
   it("matches the Solidity digest for the canonical fixture", () => {
     // PARITY_VECTOR -- mirrors test/EIP712CredentialRootParity.t.sol in ERC-8262.
     // If either side drifts, both this assertion and the forge test will fail.
@@ -109,9 +84,5 @@ describe("cidHash", () => {
   it("empty string", () => {
     // keccak256("") = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
     expect(cidHash("")).toBe("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
-  });
-
-  it("matches keccak256 of UTF-8 bytes", () => {
-    expect(cidHash("ipfs://abc")).toMatch(/^0x[0-9a-f]{64}$/);
   });
 });

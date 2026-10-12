@@ -74,7 +74,7 @@ export type ClaimAction = "transfer" | "approve_permit2";
 // Conformance vectors: Riddler `priv/conformance/claim_prepare_proof.json`,
 // vendored byte-for-byte at `packages/signer/test/vectors/` and pinned by
 // `packages/signer/test/claim-proof.test.ts`. Riddler also routes it as
-// `/xochi/vectors/claim-prepare-proof.json`, which prod 404s as of 2026-10-02.
+// `/xochi/vectors/claim-prepare-proof.json`.
 export function claimPrepareChallenge(params: {
   chainId: number;
   counterfactualAddress: string;
@@ -103,8 +103,8 @@ export function claimPrepareChallenge(params: {
   return parts.join(":");
 }
 
-// Sign a claim-prepare proof of control with the derived stealth key
-// (Riddler#993): 65-byte r||s||v over keccak256(challenge).
+// Sign a claim-prepare proof of control with the derived stealth key: 65-byte
+// r||s||v over keccak256(challenge).
 //
 // RAW keccak of the string, with NO EIP-191 personal_sign wrapper -- the same
 // choice as `signUserOpHash` above, and the server recovers with

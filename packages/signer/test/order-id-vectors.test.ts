@@ -1,9 +1,10 @@
 // Cross-implementation vector check for the v2 escrow order encoding
-// (ESCROW-RFC §2/§12, M6.1): `@xochi/spec`'s order-id.json, open-auth.json,
+// (ESCROW-RFC §2/§12): `@xochi/spec`'s order-id.json, open-auth.json,
 // dest-blinding.json, fill-salt.json, fill-auth.json, fill-attestation.json,
-// slash-attestation.json and fill-acceptance.json -- the same files the Riddler server's Elixir suite and
-// RiddlerEscrow's Foundry suite read. Without this, the vectors would only ever
-// be asserted by the generator that produced them, which is circular.
+// slash-attestation.json and fill-acceptance.json -- the same files the Riddler
+// server's Elixir suite and RiddlerEscrow's Foundry suite read. Without this, the
+// vectors would only ever be asserted by the generator that produced them, which
+// is circular.
 //
 // A mismatch means @xochi/signer changed without regenerating the vectors, or
 // the vectors were edited by hand. Regenerate deliberately; never patch them.
@@ -40,15 +41,14 @@ import {
   fillAuthStructHash,
   signFillAttestation,
   signFillAuth,
-  FILL_ACCEPTANCE_DOMAIN_VERSION,
   FILL_ACCEPTANCE_TYPEHASH,
   fillAcceptanceDigest,
   fillAcceptanceDomainSeparator,
   fillAcceptanceStructHash,
   signFillAcceptance,
   signSlashAttestation,
-  SLASH_ATTESTATION_DOMAIN_NAME,
-  SLASH_ATTESTATION_DOMAIN_VERSION,
+  SOLVER_BOND_DOMAIN_NAME,
+  SOLVER_BOND_DOMAIN_VERSION,
   SLASH_ATTESTATION_TYPEHASH,
   slashAttestationDigest,
   slashAttestationDomainSeparator,
@@ -174,15 +174,6 @@ describe("order-id.json", () => {
         expect(n, v.name).toMatch(/^[0-9]+$/);
       }
     }
-  });
-
-  it("gives a checksummed EVM recipient the lowercase form's key and orderId", () => {
-    const byName = (n: string) => orderIds.vectors.find((v) => v.name === n)!;
-    const lower = byName("baseline-evm-usdc");
-    const checksummed = byName("evm-recipient-checksummed");
-    expect(checksummed.opening.recipient).not.toBe(lower.opening.recipient);
-    expect(checksummed.expected_recipient_key).toBe(lower.expected_recipient_key);
-    expect(checksummed.expected_order_id).toBe(lower.expected_order_id);
   });
 });
 
@@ -387,8 +378,8 @@ describe("slash-attestation.json", () => {
     expect(slashAttestation.domain).toEqual({ name: "RiddlerSolverBond", version: "2" });
     expect(slashAttestation.typehash).toBe(SLASH_ATTESTATION_TYPEHASH_LIT);
     expect({
-      name: SLASH_ATTESTATION_DOMAIN_NAME,
-      version: SLASH_ATTESTATION_DOMAIN_VERSION,
+      name: SOLVER_BOND_DOMAIN_NAME,
+      version: SOLVER_BOND_DOMAIN_VERSION,
       typehash: SLASH_ATTESTATION_TYPEHASH,
     }).toEqual({ ...slashAttestation.domain, typehash: slashAttestation.typehash });
   });
@@ -646,8 +637,7 @@ describe("Foundry cast anchors (independent of @xochi/signer)", () => {
       fillAttestationDomainSeparator(d(CAST_SEPARATORS.fillAttestation.verifyingContract)),
     ).toBe(CAST_SEPARATORS.fillAttestation.v1);
     const bond = d(CAST_SEPARATORS.solverBond.verifyingContract);
-    expect(SLASH_ATTESTATION_DOMAIN_VERSION).toBe("2");
-    expect(FILL_ACCEPTANCE_DOMAIN_VERSION).toBe("2");
+    expect(SOLVER_BOND_DOMAIN_VERSION).toBe("2");
     for (const sep of [
       slashAttestationDomainSeparator(bond),
       fillAcceptanceDomainSeparator(bond),

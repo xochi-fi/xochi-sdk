@@ -1,5 +1,5 @@
-// Cross-checks this SDK against the SERVED wire contract, vendored at
-// `@xochi/spec/wire/openapi.json` (SPEC.md Section 3: "Source of truth:
+// Holds @xochi/client's fee reference and @xochi/signer's capability enums to the SERVED wire
+// contract, vendored at `@xochi/spec/wire/openapi.json` (SPEC.md Section 3: "Source of truth:
 // GET /xochi/openapi.json"). Offline and CI-safe: the file is read off disk, never
 // fetched -- the vendored copy's agreement with the live document is the scheduled
 // probe's job (`npm run verify:openapi`), not this suite's.
@@ -8,11 +8,9 @@
 // cannot perform its check fails rather than silently reducing to a comparison of two
 // empty sets.
 //
-//
-// Scope here: the digest check and the parts of the served contract this repo's own
-// code reads -- the fee reference (published in `@xochi/client`). The taker-side assertions
-// (the IntentLifecycleStatus terminal partition, the quote fields, `aztec_proof`, the
-// endpoints and error codes `xochi.ts` branches on) moved with that code to Riddler's
+// Scope: the digest check and the parts of the served contract this repo's own code reads.
+// The taker-side assertions (the IntentLifecycleStatus terminal partition, the quote fields,
+// `aztec_proof`, the endpoints and error codes the taker CLI branches on) live in Riddler's
 // private e2e harness, which reads the same vendored document from `@xochi/spec`.
 // What this suite is NOT: an assertion against a value this repo cannot edit. The
 // vendored document and its digest are both in this repo and `generate:wire` writes both,
@@ -105,10 +103,6 @@ describe("fee_breakdown wire object", () => {
   const servedKeys = props("LayeredFeeBreakdown").sort();
   const servedRequired = [...(schema("LayeredFeeBreakdown").required ?? [])].sort();
 
-  it("the served schema declares a required set", () => {
-    expect(servedRequired.length).toBeGreaterThan(0);
-  });
-
   // Catches: the server drops or renames a fee layer while `fee.ts`, `fee/schema.json` and
   // `fee/vectors.json` all agree with each other -- the #92 shape, three files in one
   // commit graph. `assertFeeBreakdownInvariants` sums the layers it knows, so a renamed
@@ -119,13 +113,13 @@ describe("fee_breakdown wire object", () => {
 
   // The reverse direction is not symmetric in consequence but is symmetric in evidence:
   // `LayeredFeeBreakdownSchema` is `.passthrough()`, so an undeclared key parses fine and is then
-  // invisible to every reconciliation the SDK runs on it.
+  // invisible to every reconciliation @xochi/client runs on it.
   it("every LayeredFeeBreakdownSchema key is served", () => {
     expect(sdkKeys.filter((k) => !servedKeys.includes(k))).toEqual([]);
   });
 
   // The dangerous direction of the required axis. `parseFeeBreakdown` runs inside
-  // `xochiQuote` and THROWS, so a field the SDK requires and the server may omit makes
+  // `xochiQuote` and THROWS, so a field the schema requires and the server may omit makes
   // every fee-bearing quote unsignable.
   it("LayeredFeeBreakdownSchema requires nothing the server treats as optional", () => {
     const overStrict = sdkRequired.filter((k) => !servedRequired.includes(k));
@@ -139,7 +133,7 @@ describe("fee_breakdown wire object", () => {
   // away: the server marks `gas_floor` and `total_usd` required, `fee.ts` marks both
   // `.optional()` on purpose (price-oracle-derived, so a pre-adapter core still parses).
   // Pinned exactly, so a THIRD server-required field going optional here -- which would be
-  // a real hole, since the SDK would then accept a breakdown it cannot reconcile -- fails.
+  // a real hole, since the client would then accept a breakdown it cannot reconcile -- fails.
   it("the only fields fee.ts relaxes are the two price-oracle-derived ones", () => {
     const relaxed = servedRequired.filter((k) => !sdkRequired.includes(k));
     expect(

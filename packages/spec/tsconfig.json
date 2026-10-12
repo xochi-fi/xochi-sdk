@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["conformance/generate.ts", "fee/generate.ts"]
+  "include": ["conformance/**/*.ts", "fee/**/*.ts", "test/**/*.ts"]
 }

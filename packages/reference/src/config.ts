@@ -1,8 +1,17 @@
 // The chain/token registry the spec generators and vector suites sign against.
-// Copied from the retired taker CLI's config, minus everything only the CLI
-// read (server URLs, API keys, the signing key from env, the solver-address
-// check): a reference fixture must not change with the shell it runs in, so
-// those are fixed here and a caller that signs supplies its own PRIVATE_KEY.
+// No server URLs, API keys, env signing key or solver-address check: a reference
+// fixture must not change with the shell it runs in, so those are fixed here and
+// a caller that signs supplies its own PRIVATE_KEY.
+//
+// Token rules the registry encodes (parity with Riddler's chain_registry /
+// token_registry and xochi's SETTLEABLE_CHAIN_IDS; a changed entry regenerates
+// conformance.json, see packages/spec/README.md):
+// - ERC-3009 is USDC-only: signERC3009 hardcodes `usdc` as the domain's
+//   verifyingContract, so USDT/USDG/WETH sign via Permit2.
+// - WETH is Permit2-only, 18 decimals, mainnet-only (null on testnets and
+//   Tron), and a volatile-tier asset for fees; addresses mirror @xochi/shared
+//   WETH_ADDRESSES.
+// - USDG exists on Robinhood only; Robinhood has no public USDC/USDT.
 import { PERMIT2_ADDRESS, type ChainConfig, type SignerConfig } from "@xochi/signer";
 
 export const CONFIG: SignerConfig = {
@@ -88,8 +97,7 @@ export const CONFIG: SignerConfig = {
     // protocol level, 6-dec as an ERC-20). No ETH, no WETH -- stablecoin only.
     // Mirrors Riddler chain_registry (5042) and xochi SUPPORTED_CHAIN_IDS.
     // Flag-gated server-side: Riddler omits it from the public surface until
-    // ENABLE_ARC, and xochi dual-gates it on Riddler advertising solver support
-    // (xochi-fi/xochi#499), so quote it only when capabilities advertise it.
+    // ENABLE_ARC, so quote it only when capabilities advertise it.
     arc: {
       chainId: 5042,
       name: "Arc",
@@ -156,7 +164,7 @@ export const CONFIG: SignerConfig = {
     // destination and -- via the deposit-address path -- a first-class ORIGIN.
     // As an origin the user sends a TRC-20 to a per-intent deposit address the
     // server allocates and attests; there is nothing to sign, so `rpc: null`
-    // still holds and no Tron key ever reaches this SDK.
+    // still holds and no Tron key ever reaches @xochi/signer.
     //
     // Every T-address here is base58 and CASE-SENSITIVE. Pass them to quote
     // params verbatim: never run one through ethers.getAddress/checksum, and
@@ -177,11 +185,10 @@ export const CONFIG: SignerConfig = {
       isTron: true,
       flagGated: "enable_tron",
     },
-    // Tron Shasta (2494104990) and Nile (3448148188) were listed here and are
-    // not in Riddler's registry at all: `@testnet_chain_ids` is
-    // [84532, 11155111, 421614, 11155420] (`integrations/xochi/config.ex`).
-    // Quoting either returned `route_unsupported`, so they were a menu of
-    // failures. Re-add only alongside the server entry.
+    // No Tron testnets: Riddler's `@testnet_chain_ids` is
+    // [84532, 11155111, 421614, 11155420] (`integrations/xochi/config.ex`), and
+    // quoting Shasta or Nile returns `route_unsupported`. Add one only alongside
+    // the server entry.
   },
 
   // Permit2 address is universal across all EVM chains.
@@ -236,8 +243,8 @@ export function getChainKeyByChainId(chainId: number): string | null {
 //
 // As an ORIGIN a Tron chain routes through the deposit-address path rather than
 // an origin pull: the quote carries `deposit_address` instead of
-// `pull_authorization`, and there is no signature to produce. See
-// `xochiDepositQuote` in deposit.ts.
+// `pull_authorization`, and there is no signature to produce (`@xochi/signer`
+// `deposit-verify.ts`).
 export function isTronChain(chainKey: string): boolean {
   return !!CONFIG.CHAINS[chainKey]?.isTron;
 }

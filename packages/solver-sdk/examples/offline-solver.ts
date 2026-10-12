@@ -34,7 +34,7 @@
 // All three are resolved and checked before the first request.
 //
 // Copying this out of the repo: change the `../src/index` import to
-// "@xochi/solver-sdk". Nothing else here is repo-local.
+// "@xochi/solver-sdk" and take ./env.ts along. Nothing else here is repo-local.
 
 import { ethers } from "ethers";
 import {
@@ -56,6 +56,7 @@ import {
   type VenueCapabilities,
   ZERO_ORDER_ID,
 } from "../src/index";
+import { MAX_LOGGED_ERROR_CHARS, assertKeyShape, assertVenueUrl, requireEnv, tame } from "./env";
 
 // ---------------------------------------------------------------------------
 // Strategy configuration. Everything here is a market-maker decision, not a
@@ -116,18 +117,17 @@ const settled = new Map<string, bigint>();
 // every `output` on the wire are in). Everything it can deliver above that is
 // the taker's.
 //
-// Note what this is NOT: a markup on the venue's reserve. As of RFC
-// `0.3.0-draft` the announcement carries `minOutput` (the admissibility floor)
-// rather than the reserve, so there is no reserve field in the feed to shade
-// against and a solver has to price the corridor itself.
+// Note what this is NOT: a markup on the venue's reserve. The announcement
+// carries `minOutput` (the admissibility floor) rather than the reserve, so
+// there is no reserve field in the feed to shade against and a solver has to
+// price the corridor itself.
 //
-// Be precise about what that buys, because the docs have overclaimed it: the
-// reserve is still RECONSTRUCTIBLE. It is `fromAmount` less the published take
-// (SPEC.md §4 `FEE_SCHEDULE`, `fee/vectors.json`), and `fromAmount` is still
-// announced -- so a panel member holding @xochi/spec recovers it to the wei
-// and `reserve + ε` remains computable. Withholding it is a wire change, not a
-// claim of unpredictability; it stops being reconstructible only when the venue
-// gives the reserve a genuinely private component (D1d in Riddler's internal
+// The reserve is still RECONSTRUCTIBLE, undisclosed rather than unpredictable.
+// It is `fromAmount` less the published take (SPEC.md §4 `FEE_SCHEDULE`,
+// `fee/vectors.json`), and `fromAmount` is still announced -- so a panel member
+// holding @xochi/spec recovers it to the wei and `reserve + ε` remains
+// computable. It stops being reconstructible only when the venue gives the
+// reserve a genuinely private component (D1d in Riddler's internal
 // docs/economics/AUCTION-DISCLOSURE-MEMO.md, outstanding).
 const OWN_COST_BPS = 14n;
 
@@ -159,9 +159,8 @@ const MIN_EXCLUSIVE_MS = 30_000;
 // only place it can be bounded at all: a venue announcing a window that closes
 // an hour out otherwise gets a sealed, firm, signed offer this solver cannot
 // hedge for an hour. A venue advertises its own `auction.windowMs` (300ms on
-// the deployments this was written against, 1500ms in the SDK's own transport
-// fixture), so 10s is ~30x the largest advertised window and still inside the
-// life of a hedge quote.
+// axol.io's deployments, 1500ms in the SDK's own transport fixture), so 10s is
+// ~30x the largest advertised window and still inside the life of a hedge quote.
 const MAX_WINDOW_AHEAD_MS = 10_000;
 
 // Same argument for the obligation AFTER the award. `exclusiveWindowMs` is the
@@ -198,23 +197,6 @@ type Clock = {
 
 const say = (line: string) => console.log(line);
 
-// Every string on an announcement is VENUE-CONTROLLED and lands in a maker's
-// terminal, its log pipeline and its support tickets. An `intentId` carrying an
-// ANSI escape rewrites the line above it; one carrying a newline forges a whole
-// line; one carrying 10KB of padding buries the round. So: replace every
-// Unicode control/format codepoint, cap the length, and quote, so a
-// substitution or a truncation is visible rather than pretty.
-// A venue-supplied ID is short by nature (a UUID is 36 chars), so 64 is
-// generous. An ERROR MESSAGE is the one venue-supplied string worth reading in
-// full, so it gets its own cap: truncating a 409 or a 422 at 64 chars throws
-// away the diagnosis this is printed for.
-const MAX_LOGGED_CHARS = 64;
-const MAX_LOGGED_ERROR_CHARS = 240;
-const tame = (value: string, max = MAX_LOGGED_CHARS): string => {
-  const clean = value.replace(/\p{C}/gu, "\uFFFD");
-  return JSON.stringify(clean.length > max ? `${clean.slice(0, max)}...` : clean);
-};
-
 // Local symbol lookup ONLY. A cross-VM token value (a base58 Tron address) is
 // case-sensitive and MUST be carried verbatim everywhere else.
 const symbolOf = (token: string): string => token.toLowerCase();
@@ -239,34 +221,23 @@ const rescale = (amount: bigint, fromDecimals: number, toDecimals: number): bigi
 // RFC §4.2: `minOutput` is the lowest output the venue will settle at, so a bid
 // BELOW it is rejected outright and a bid EQUAL to it is admissible. One
 // predicate, read by both halves of this file, so the solver and the model
-// auctioneer cannot disagree about the boundary -- they did, and an off-by-one
-// on the only admissibility rule a maker has is not a style problem.
+// auctioneer cannot disagree about the boundary: an off-by-one on the only
+// admissibility rule a maker has is not a style problem.
 //
 // Admissible is not winning: an output equal to the floor cannot beat a reserve
 // at or above it. It is still worth sending, because the reserve is private.
 const isAdmissible = (output: bigint, minOutput: bigint): boolean => output >= minOutput;
 
 // ---------------------------------------------------------------------------
-// Keys. Two rules, both load-bearing.
+// Keys. The shape rule (`assertKeyShape`, ./env.ts): a private key never reaches
+// a message, a log line or an error. The demo-key rule, in two halves:
 // ---------------------------------------------------------------------------
 
-const KEY_SHAPE = /^0x[0-9a-fA-F]{64}$/;
 // A counting demo key: 24 zero bytes then a small integer. Real keys do not
 // look like this. The offline harness signs with these and nothing else.
 const DEMO_KEY = /^0x0{48}[0-9a-fA-F]{16}$/;
 
-// Rule 1: a private key never reaches a message, a log line or an error. This
-// output goes to a terminal, a CI log and a support ticket, so a caller gets
-// the VARIABLE NAME and the reason, never the value.
-function assertKeyShape(name: string, key: string): void {
-  if (!KEY_SHAPE.test(key)) {
-    throw new Error(
-      `${name} must be a 0x-prefixed 32-byte private key (0x + 64 hex digits); value not shown`,
-    );
-  }
-}
-
-// Rule 2, the offline half: the stub must not be handed a real key. It signs
+// The offline half: the stub must not be handed a real key. It signs
 // bids a live venue would accept as firm offers, so the signatures it produces
 // are real signatures. Guarding the constant means a future edit that pastes a
 // working key in here fails at startup instead of signing with it.
@@ -279,7 +250,7 @@ function assertDemoKey(name: string, key: string): void {
   }
 }
 
-// Rule 2, the live half: `--live` must not be reachable with the placeholder.
+// The live half: `--live` must not be reachable with the placeholder.
 // Its address is public, its bids are firm, and every reader of this file has
 // its private key.
 function assertLiveKey(name: string, key: string): void {
@@ -652,10 +623,9 @@ class StubAuctioneer implements SolverTransport {
     for (const round of this.script) {
       // Close only the windows that have actually ELAPSED by the time this
       // announcement is delivered, and do it before delivering it. Yielding
-      // round N's award before announcing N+1 -- what this harness used to do
-      // -- serializes the script and makes overlapping auctions unreachable,
-      // which is exactly why every concurrency defect in this file was
-      // invisible in its own demo.
+      // round N's award before announcing N+1 serializes the script and makes
+      // overlapping auctions unreachable, which hides every concurrency defect
+      // in this file from its own demo.
       for (const award of this.closeElapsed(round.clockAt)) yield { type: "award", award };
       this.advanceTo(round.clockAt);
       say(`\n${round.label}`);
@@ -832,10 +802,10 @@ const DEFAULT_NOTIONAL = "1000000000"; // 1,000 USDC
 // keeps to itself.
 //
 // These are the stub's knobs -- `round()` is their only reader, and no bid is
-// priced off them. But note what they demonstrate, because the maker-facing
-// docs have overclaimed it: `minOutput = notional * (1 - (take + slippage))` is
-// a published closed form, so a panel member holding @xochi/spec inverts the
-// announced `fromAmount` back to the reserve exactly. See the OWN_COST_BPS note.
+// priced off them. Note what they demonstrate: `minOutput = notional * (1 -
+// (take + slippage))` is a published closed form, so a panel member holding
+// @xochi/spec inverts the announced `fromAmount` back to the reserve exactly.
+// See the OWN_COST_BPS note.
 const VENUE_RESERVE_BPS = 22n;
 const TAKER_SLIPPAGE_BPS = 50n;
 
@@ -1042,46 +1012,7 @@ async function runOffline(): Promise<void> {
 // Live mode.
 // ---------------------------------------------------------------------------
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value)
-    throw new Error(
-      `${name} is required for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY, SOLVER_API_KEY)`,
-    );
-  return value;
-}
-
-// The panel secret goes to this URL on every feed poll and every bid POST, and
-// whatever answers chooses the announcements this solver signs firm offers
-// against -- offers that are NOT bound to the venue that served them, because
-// the EIP-712 domain carries no deployment binding (axol-io/Riddler#1034). So an
-// unauthenticated origin is not a downgrade, it is a credential in cleartext
-// plus a bid-signing oracle. https only, the same rule
-// `scripts/probe-lib.mjs` applies to `RIDDLER_URL_<NAME>`.
-//
-// The loopback exemption exists for a local venue -- testing the version gate
-// against one is a documented workflow -- and for nothing else: no private-range
-// hosts, no plain http to a name that resolves off-box.
-function assertVenueUrl(raw: string): void {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error(`RIDDLER_SOLVER_URL is not a URL: ${tame(raw)}`);
-  }
-  if (url.protocol === "https:") return;
-  const loopback =
-    url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
-  if (url.protocol === "http:" && loopback) {
-    say(
-      `WARNING ${tame(url.origin)} is plain http, allowed only because it is loopback: the panel secret is sent unencrypted`,
-    );
-    return;
-  }
-  throw new Error(
-    `RIDDLER_SOLVER_URL must be https (loopback http is the only exemption); got ${tame(raw)}`,
-  );
-}
+const ENV_HINT = "for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY, SOLVER_API_KEY)";
 
 interface LiveConfig {
   baseUrl: string;
@@ -1094,10 +1025,10 @@ interface LiveConfig {
 // secret otherwise surfaces as a feed 401, which reads as "you are not admitted
 // to the panel" rather than "you forgot to export a variable".
 function resolveLiveConfig(): LiveConfig {
-  const baseUrl = requireEnv("RIDDLER_SOLVER_URL");
-  const solverKey = requireEnv("SOLVER_KEY");
-  const apiKey = requireEnv("SOLVER_API_KEY");
-  assertVenueUrl(baseUrl);
+  const baseUrl = requireEnv("RIDDLER_SOLVER_URL", ENV_HINT);
+  const solverKey = requireEnv("SOLVER_KEY", ENV_HINT);
+  const apiKey = requireEnv("SOLVER_API_KEY", ENV_HINT);
+  assertVenueUrl(baseUrl, say);
   assertLiveKey("SOLVER_KEY", solverKey);
   return { baseUrl, solverKey, apiKey };
 }

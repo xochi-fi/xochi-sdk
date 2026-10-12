@@ -253,8 +253,8 @@ describe("execute: single attempt, structured backpressure errors", () => {
 
 // The quote path is idempotent, so unlike execute it does retry, but only a
 // transient GATEWAY status. A 500 is an unhandled exception in the worker, so
-// re-POSTing it just multiplies the error rate (xochi#420).
-describe("quote retries only a transient gateway status (#420)", () => {
+// re-POSTing it just multiplies the error rate.
+describe("quote retries only a transient gateway status", () => {
   it("does NOT retry a 500 from the worker (single fetch)", async () => {
     const { c, calls } = client(() => new Response("Internal Server Error", { status: 500 }));
     const err = await rejection(c.getQuote(req));
@@ -468,8 +468,8 @@ describe("getQuote cache", () => {
   });
 
   // trustScore drives the fee tier; the refund address is bound into the intent
-  // at QUOTE time (xochi#358) and base58 is case-sensitive; a preview carries no
-  // signing material. Each is part of the key.
+  // at QUOTE time and base58 is case-sensitive; a preview carries no signing
+  // material. Each is part of the key.
   it.each([
     ["trustScore", { trustScore: 0 }, { trustScore: 100 }],
     ["refund address added", {}, { refundAddress: "TWd4WrZ9wn84f5x1hZhL4DHvk738ns5jwb" }],
@@ -537,9 +537,9 @@ describe("auth injection", () => {
   });
 });
 
-// A status poll that 404s means the worker has no row for the id (#269). It is
-// logged distinctly, once per id, and returned as a discriminated notFound
-// rather than collapsed into a transient null (#271).
+// A status poll that 404s means the worker has no row for the id. It is logged
+// distinctly, once per id, and returned as a discriminated notFound rather than
+// collapsed into a transient null.
 describe("getIntentStatus", () => {
   it("returns notFound on a 404 and logs it once per id", async () => {
     const { c, logged } = client(() => new Response("Not found", { status: 404 }));

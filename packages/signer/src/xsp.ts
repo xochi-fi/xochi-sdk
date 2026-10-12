@@ -1,9 +1,9 @@
-// Xochi Settlement Protocol (XSP) hash primitives (riddler #1223, xochi #548/#551/#552).
+// Xochi Settlement Protocol (XSP) hash primitives.
 // HASH-ONLY: typehashes, EIP-712 digests and the deposit-address derivation. There is
 // deliberately no signing here -- the obligation is signed by the user's wallet and the
 // Depository messages by the Allocator, neither of which this package holds a key for.
 //
-// These are a DIFFERENT instrument from the M6 escrow order (escrow.ts): XSP's
+// These are a DIFFERENT instrument from the escrow order (escrow.ts): XSP's
 // `destAmount` is EXACT (release predicate `==`), while `DestOpening.toAmount` is a
 // FLOOR (`>=`). See @xochi/spec ESCROW-RFC.md "XSP obligation".
 //
@@ -31,7 +31,7 @@ export const OBLIGATION_DOMAIN_NAME = "Xochi Settlement";
 export const OBLIGATION_DOMAIN_VERSION = "4";
 
 // Field order is the spec struct's (xochi-spec settlement-protocol D3 §3.2); no
-// contract implements it yet (xochi #551/#552 drafts), so this is the canonical form.
+// contract implements it yet, so this is the canonical form.
 export const OBLIGATION_TYPE_STRING =
   "XochiObligation(uint256 originChainId,address originToken,uint256 originAmount,uint256 destChainId,bytes32 destToken,uint256 destAmount,bytes32 recipientCommitment,bytes32 refundCommitment,bool recoverable,address solver,uint8 settlementType,uint64 deadline,bytes32 quoteId,uint256 nonce)";
 export const OBLIGATION_TYPEHASH = ethers.id(OBLIGATION_TYPE_STRING) as Hex;
@@ -297,7 +297,7 @@ export function markConsumedDigest(msg: MarkConsumed, chainId: UintLike, deposit
 }
 
 // ---------------------------------------------------------------------------
-// Deposit address (XochiDepositAddressFactory, xochi #548)
+// Deposit address (XochiDepositAddressFactory)
 // ---------------------------------------------------------------------------
 
 export interface DepositAddressInputs {

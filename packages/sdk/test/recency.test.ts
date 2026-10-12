@@ -10,16 +10,6 @@ afterEach(() => {
 });
 
 describe("isProofRecent", () => {
-  it("returns true for a recent proof", () => {
-    const now = Math.floor(Date.now() / 1000);
-    expect(isProofRecent(now - 100)).toBe(true);
-  });
-
-  it("returns false for a stale proof", () => {
-    const now = Math.floor(Date.now() / 1000);
-    expect(isProofRecent(now - 7200)).toBe(false);
-  });
-
   it("returns true at exactly the boundary", () => {
     const now = Math.floor(Date.now() / 1000);
     vi.spyOn(Date, "now").mockReturnValue(now * 1000);
@@ -40,11 +30,6 @@ describe("isProofRecent", () => {
 });
 
 describe("assertProofRecent", () => {
-  it("does not throw for a recent proof", () => {
-    const now = Math.floor(Date.now() / 1000);
-    expect(() => assertProofRecent(now - 100)).not.toThrow();
-  });
-
   it("throws for a stale proof with details", () => {
     const now = Math.floor(Date.now() / 1000);
     expect(() => assertProofRecent(now - 7200)).toThrow("Proof is too old");

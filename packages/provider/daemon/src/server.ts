@@ -49,10 +49,10 @@ const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /** Route groups a credential can be scoped to. */
-export type Scope = "signals" | "credentialRoot";
+type Scope = "signals" | "credentialRoot";
 
 /** What the caller presented: a verified client cert, or a bearer token. */
-export type Credential =
+type Credential =
   | { kind: "mtls"; commonName: string | undefined }
   | { kind: "bearer"; token: string | undefined };
 
