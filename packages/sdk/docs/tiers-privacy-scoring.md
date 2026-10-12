@@ -21,7 +21,7 @@ getFeeSchedule(60); // { solverBps: 8, venueBps: 3, routingBps: 4 }
 | Premium       | 75-99 | 0.12% / 0.25%           |
 | Institutional | 100+  | 0.10% / 0.22%           |
 
-Plus 15% of intent surplus. `getFeeRate` defaults to stable, which under-charges a volatile route; pass `"volatile"`.
+Each cell is `solverBps + venueBps + routingBps` (`getFeeSchedule`). The solver spread (8 stable / 18 volatile) is the same at every tier and never discounted; only venue and routing taper. Plus 15% of intent surplus. `getFeeRate` defaults to stable, which under-charges a volatile route; pass `"volatile"`. The numbers are parity state with the wire schedule (`@xochi/spec` `fee/schedule.json`, pinned by `test/fee-schedule-drift.test.ts`): a change lands there first.
 
 ## Privacy levels
 
@@ -38,6 +38,8 @@ isPrivacyLevelAllowed("sovereign", 60); // false (needs 75+)
 | stealth                  | 0         | ERC-5564   |
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
+
+L1 stealth is open to all and never separately priced. `SHIELDED_MIN_SCORE` (50) is the Aztec threshold, not the stealth one; `VENUE_MIN_SCORES` (venue router) reads it rather than restating the table.
 
 ## Attestation scoring
 
