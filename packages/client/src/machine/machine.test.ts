@@ -316,9 +316,9 @@ describe("one signature (no origin pull)", () => {
     expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
   });
 
-  // Regression (xochi-widget#13 review): a second Confirm while the wallet was
-  // open used to drop the intent back to `quoted` with an error but leave the
-  // prompt live, and the late signature then executed from `quoted`.
+  // A second Confirm while the wallet is open must not drop the intent back to
+  // `quoted` with the prompt still live: the late signature would then execute
+  // from `quoted`.
   it("ignores a second Confirm while the wallet is open", () => {
     const s = new Session();
     s.quoteWith(quote());
@@ -756,8 +756,8 @@ describe("resume", () => {
 
   it("cancels the quote the form queued before the adopt", () => {
     // The panel restores the record's amount before it adopts, and that queues
-    // a debounced quote. Left armed, it fired after the arming poll reported the
-    // swap complete (not a busy state) and replaced the receipt with a signable
+    // a debounced quote. Left armed, it fires after the arming poll reports the
+    // swap complete (not a busy state) and replaces the receipt with a signable
     // confirm for the same trade.
     const s = new Session();
     s.send({ type: "QuoteRequested", amount: AMOUNT });

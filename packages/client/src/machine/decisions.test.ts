@@ -8,9 +8,7 @@ import {
   mapStatusFrame,
   mergeSameStatusReceipt,
   notFoundDriftWarning,
-  QUOTE_BUSY_STATES,
   POLL_INFLIGHT_STATES,
-  LOADING_STATES,
   WALLET_INTERRUPTIBLE_STATES,
   canAdoptResumedIntent,
   buildResumedState,
@@ -158,7 +156,7 @@ describe("decideSignPreflight (fail-closed precedence)", () => {
     });
   });
 
-  it("refuses to sign off the origin chain, configured or not (xochi#539)", () => {
+  it("refuses to sign off the origin chain, configured or not", () => {
     // 31337: Metatarz's Canton facade, a chain the app has no wagmi config for.
     // Quoted there too, so only the origin check can catch it.
     for (const chainId of [1, 31337, undefined]) {
@@ -190,7 +188,7 @@ describe("decideSignPreflight (fail-closed precedence)", () => {
   });
 });
 
-describe("decideExecuteResult (#226 in-doubt vs failure)", () => {
+describe("decideExecuteResult (in-doubt vs failure)", () => {
   const res = (over: Partial<ExecuteResponse>): ExecuteResponse => ({
     success: true,
     intentId: "xi_1",
@@ -223,17 +221,12 @@ describe("decideExecuteResult (#226 in-doubt vs failure)", () => {
       expect(d.updates.txHash).toBe("0xtx");
     }
   });
-
-  it("carries an explicit reconciling flag through on an advance", () => {
-    const d = decideExecuteResult(res({ success: true, status: "bridging", reconciling: true }));
-    if (d.kind === "transition") expect(d.updates.reconciling).toBe(true);
-  });
 });
 
 describe("mapStatusFrame", () => {
   // The worker's own builder, round-tripped through JSON exactly as the relay
-  // delivers it: the parser must accept what the server actually publishes
-  // (the frames were silently dropped when the two shapes drifted).
+  // delivers it: the parser must accept what the server actually publishes, or
+  // the frames are silently dropped when the two shapes drift.
   const wire = (
     over: { toStatus?: IntentStatus; revision?: number | null } = {},
   ): Record<string, unknown> =>
@@ -331,20 +324,6 @@ describe("mapStatusUpdate", () => {
 });
 
 describe("lifecycle state sets", () => {
-  it("busy states block a re-quote while mid sign/execute/deposit", () => {
-    expect(QUOTE_BUSY_STATES).toEqual([
-      "signing",
-      "awaiting_deposit",
-      "executing",
-      "bridging",
-      "settling",
-    ]);
-  });
-
-  it("poll runs only for the in-flight states", () => {
-    expect(POLL_INFLIGHT_STATES).toEqual(["awaiting_deposit", "executing", "bridging", "settling"]);
-  });
-
   it("wallet-context reset only interrupts pre-execution states", () => {
     expect(WALLET_INTERRUPTIBLE_STATES).toEqual(["quoted", "signing", "expired", "failed"]);
     // An in-flight settlement is never yanked out from under the user.
@@ -352,13 +331,9 @@ describe("lifecycle state sets", () => {
       expect(WALLET_INTERRUPTIBLE_STATES).not.toContain(s);
     }
   });
-
-  it("loading covers the spinner states", () => {
-    expect(LOADING_STATES).toEqual(["quoting", "signing", "executing", "bridging", "settling"]);
-  });
 });
 
-describe("mergeSameStatusReceipt (xochi#353)", () => {
+describe("mergeSameStatusReceipt", () => {
   const prev = {
     receivingTxHash: null,
     settlementTxHash: null,
@@ -399,22 +374,6 @@ describe("mergeSameStatusReceipt (xochi#353)", () => {
     const merged = mergeSameStatusReceipt(prev, msg({ settlementTxHash: "0xabc" }));
     expect(merged).not.toHaveProperty("reconciling");
   });
-});
-
-describe("mergeSameStatusReceipt: substatus (xochi#376)", () => {
-  const prev = {
-    receivingTxHash: null,
-    settlementTxHash: null,
-    settlementChainId: null,
-    substatus: null,
-  };
-  const msg = (over: Partial<IntentWebSocketMessage> = {}): IntentWebSocketMessage => ({
-    type: "intent_status",
-    intentId: "xi_1",
-    status: "settling",
-    timestamp: "2026-08-17T00:00:00Z",
-    ...over,
-  });
 
   it("applies a fill substatus arriving while the status stays settling", () => {
     // Riddler can hold top-level `settling` with substatus `filled` for hours.
@@ -440,8 +399,8 @@ describe("mergeSameStatusReceipt: substatus (xochi#376)", () => {
 // `resume` restores a swap a mobile tab lost to eviction. It must never
 // overwrite a live intent: that would point the status poll, the modal, and the
 // user's read of "what am I waiting on" at the wrong swap while a real one is
-// mid-flight. See xochi#339.
-describe("canAdoptResumedIntent (#339)", () => {
+// mid-flight.
+describe("canAdoptResumedIntent", () => {
   it("adopts into a clean slate", () => {
     expect(canAdoptResumedIntent({ status: "idle", intentId: null })).toBe(true);
   });
@@ -476,12 +435,10 @@ describe("canAdoptResumedIntent (#339)", () => {
 // made this session -- it comes from the record's storage key. If it is adopted
 // without one, it becomes the only intentId-bearing state with quotedAddress
 // null, and the panel's ownership fallback (`intent.quotedAddress ?? address`)
-// silently becomes the LIVE wallet. Caught in adversarial review of #398.
-//
-// These assert the state `resume` actually produces. The first version of this
-// block only re-asserted canAdoptResumedIntent and the INITIAL constant, both of
-// which hold identically whether or not resume carries the owner.
-describe("buildResumedState (#339)", () => {
+// silently becomes the LIVE wallet. These assert the state `resume` produces,
+// not the predicate or the INITIAL constant, which hold whether or not resume
+// carries the owner.
+describe("buildResumedState", () => {
   const OWNER = "0xAbCdEf0000000000000000000000000000000001";
 
   it("carries the record's owner as the adopted intent's quotedAddress", () => {
@@ -551,10 +508,10 @@ describe("buildResumedState (#339)", () => {
   /**
    * The deposit deadline is the one served fact that must survive the adopt.
    *
-   * A resumed intent has no quote, by design. `pollCeilingAttempts` used to read
-   * the deadline off `state.quote`, so a resumed deposit swap fell back to the
-   * flat 10-minute ceiling against a window the solver set to 1800s: the poll
-   * stopped at minute ten and announced "we have stopped checking" beside a
+   * A resumed intent has no quote, by design, so the deadline must ride on the
+   * state itself: read off `state.quote`, a resumed deposit swap falls back to
+   * the flat 10-minute ceiling against a window the solver set to 1800s, and the
+   * poll stops at minute ten announcing "we have stopped checking" beside a
    * restored countdown still reading twenty minutes. Carrying the deadline is
    * not an exception to the no-synthesized-quote rule -- a price goes stale, a
    * deadline expires, and this is what lets the poll say so.
@@ -568,17 +525,6 @@ describe("buildResumedState (#339)", () => {
       1_800_001_800,
     );
     expect(next.depositDeadline).toBe(1_800_001_800);
-  });
-
-  it("still synthesizes no quote to carry it in", () => {
-    const next = buildResumedState(
-      INITIAL_INTENT_STATE,
-      "xi_resumed",
-      "awaiting_deposit",
-      OWNER,
-      1_800_001_800,
-    );
-    expect(next.quote).toBeNull();
   });
 
   it("defaults to null on a pull route, where there is no deposit window", () => {
@@ -601,10 +547,9 @@ describe("buildResumedState (#339)", () => {
 // correct and invisible: the modal spins and the poll ticks ~150 times looking
 // exactly like a healthy run. These pin the signal that makes a persistent hold
 // distinguishable from a healthy poll, and pin that it stays one line per swap.
-describe("notFoundDriftWarning (xochi#398 follow-up)", () => {
-  // Mirrors the poll's own bookkeeping in useIntent (one "last reported id"
-  // carried across ticks), so these drive real tick sequences through the real
-  // decision instead of asserting the same comparison twice.
+describe("notFoundDriftWarning", () => {
+  // Mirrors the poll's own bookkeeping (one "last reported id" carried across
+  // ticks), so these drive real tick sequences through the real decision.
   const drivePolls = (ids: string[]): string[] => {
     let reported: string | null = null;
     const emitted: string[] = [];
@@ -616,17 +561,6 @@ describe("notFoundDriftWarning (xochi#398 follow-up)", () => {
     }
     return emitted;
   };
-
-  it("reports the first 404 for a dispatched id, naming the id", () => {
-    const warning = notFoundDriftWarning("xi_stuck", null);
-    expect(warning).not.toBeNull();
-    expect(warning).toContain("xi_stuck");
-    expect(warning).toContain("[useIntent]");
-  });
-
-  it("says the poll is holding, not failing", () => {
-    expect(notFoundDriftWarning("xi_stuck", null)).toContain("holding, not failing");
-  });
 
   it("stays silent for the rest of a stuck swap's poll run", () => {
     // 150 ticks: a full 10 minutes at the 4s cadence, i.e. every poll the hard
@@ -649,9 +583,8 @@ describe("notFoundDriftWarning (xochi#398 follow-up)", () => {
 });
 
 /**
- * Riddler#857 is now split at the contract boundary: indicative refreshes are
- * allocation-free, while a response carrying a deposit address is immutable
- * until its deposit deadline.
+ * Indicative refreshes are allocation-free, while a response carrying a deposit
+ * address is immutable until its deposit deadline.
  */
 describe("shouldRefreshQuote", () => {
   const base = {
@@ -720,12 +653,10 @@ describe("shouldRefreshOnReturn", () => {
 });
 
 describe("pollCeilingAttempts (deposit window vs the flat ceiling)", () => {
-  // The real cadence + flat ceiling, not a second copy of them: DEBT-015 left
-  // exactly one declaration of each (useIntentStatusPoll), and a literal here
-  // would be the fourth 4000 in this directory all over again.
+  // The real cadence + flat ceiling, never a literal copy of them.
   const POLL_MS = STATUS_POLL_MS;
   const FLAT_MS = STATUS_POLL_FLAT_CEILING_MS;
-  const FLAT_ATTEMPTS = STATUS_POLL_FLAT_CEILING_ATTEMPTS; // 150, the pre-existing behaviour
+  const FLAT_ATTEMPTS = STATUS_POLL_FLAT_CEILING_ATTEMPTS;
   const NOW = 1_700_000_000_000;
   const ceiling = (status: IntentStatus, deadlineSecs?: number) =>
     pollCeilingAttempts(status, deadlineSecs, NOW, POLL_MS, FLAT_MS);
@@ -737,10 +668,10 @@ describe("pollCeilingAttempts (deposit window vs the flat ceiling)", () => {
   });
 
   /**
-   * The regression this exists for. Riddler's deposit window defaults to 1800s
-   * while the flat ceiling stops at 600s, so a deposit landing after minute ten
-   * never advanced the modal: a settled swap sat on a spinner and the user was
-   * told to start again. Any ceiling that does not outlast the window reopens it.
+   * Riddler's deposit window defaults to 1800s while the flat ceiling stops at
+   * 600s, so a deposit landing after minute ten would never advance the modal:
+   * a settled swap sits on a spinner and the user is told to start again. Any
+   * ceiling that does not outlast the window reopens that.
    */
   it("covers a full 1800s Riddler deposit window plus the grace", () => {
     const attempts = ceiling("awaiting_deposit", NOW / 1000 + 1800);

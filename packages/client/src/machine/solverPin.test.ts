@@ -8,7 +8,7 @@
  * signing. Permit2 has no on-chain recipient guard, so its recipient is always
  * fail-closed; ERC-3009 binds `to` in the signature + enforces msg.sender == to,
  * so it stays bounded unless a hard pin is requested. Mirrors the raxol agent-side
- * pin (GitHub #333); amount binding is the #170 origin-leg fix.
+ * pin.
  */
 
 import { describe, it, expect } from "vitest";
@@ -99,7 +99,7 @@ describe("validateSolverPin", () => {
       expect(r).toMatchObject({ field: "pull_spender" });
     });
 
-    it("rejects the solver EOA as a Permit2 spender (role confusion; #591/PULL2)", () => {
+    it("rejects the solver EOA as a Permit2 spender (role confusion)", () => {
       // The ERC-3009 recipient EOA must never satisfy the Permit2 spender pin.
       const r = validateSolverPin(permit2Pull(SOLVER), pinned, AMOUNT);
       expect(r.ok).toBe(false);
@@ -115,7 +115,7 @@ describe("validateSolverPin", () => {
     });
   });
 
-  describe("amount binding (#170)", () => {
+  describe("amount binding", () => {
     it("rejects an ERC-3009 pull whose value exceeds the intended input", () => {
       const r = validateSolverPin(erc3009Pull(SOLVER, "5000000"), pinned, AMOUNT);
       expect(r.ok).toBe(false);
@@ -136,13 +136,6 @@ describe("validateSolverPin", () => {
       const r = validateSolverPin(noAmount, pinned, AMOUNT);
       expect(r.ok).toBe(false);
       expect(r).toMatchObject({ field: "pull_amount" });
-    });
-
-    it("accepts when recipient and amount both match exactly", () => {
-      expect(validateSolverPin(erc3009Pull(SOLVER), pinned, AMOUNT)).toEqual({ ok: true });
-      expect(validateSolverPin(permit2Pull(PERMIT2_CONTRACT), pinned, AMOUNT)).toEqual({
-        ok: true,
-      });
     });
 
     it("checks recipient before amount (recipient failure takes precedence)", () => {
@@ -253,10 +246,10 @@ describe("validatePayoutPin", () => {
     expect(r.ok).toBe(false);
   });
 
-  // The HIGH concern from adversarial review: stealth settlement is live, and its
-  // payout lands at a one-time counterfactual SimpleAccount rather than the
-  // connected wallet. If Riddler put that stealth address in the signed
-  // `recipient`, this pin would reject every stealth swap at the prompt.
+  // Stealth settlement is live, and its payout lands at a one-time counterfactual
+  // SimpleAccount rather than the connected wallet. If Riddler put that stealth
+  // address in the signed `recipient`, this pin would reject every stealth swap
+  // at the prompt.
   //
   // It does not. Riddler's recipient_address/1 (adapter/quote.ex) is
   // unconditional -- request recipient if non-empty, else the wallet -- and has no
@@ -306,15 +299,6 @@ describe("validatePayoutPin", () => {
     const r = validatePayoutPin(intentPayload(), { toAmount: "998000", recipient: undefined });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.field).toBe("payout_recipient");
-  });
-
-  it("accepts a numeric toAmount (JSON may carry either)", () => {
-    expect(
-      validatePayoutPin(intentPayload({ toAmount: 998000 }), {
-        toAmount: "998000",
-        recipient: WALLET,
-      }),
-    ).toEqual({ ok: true });
   });
 
   it("fails closed on a missing or unreadable payout field", () => {

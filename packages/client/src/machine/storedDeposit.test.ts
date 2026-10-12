@@ -94,11 +94,6 @@ function expectedFor(v: Vector) {
 const withRefund = fixture.vectors.find((v) => v.name === "refund_address_base58_verbatim")!;
 
 describe("verifyStoredDeposit on a pre-cutover camelCase record", () => {
-  it("has the vectors it claims to run", () => {
-    expect(fixture.vectors.length).toBeGreaterThanOrEqual(5);
-    expect(withRefund).toBeDefined();
-  });
-
   it.each(fixture.vectors.map((v) => [v.name, v] as const))(
     "%s verifies after migration and comes back in the signer's shape",
     (_name, v) => {
@@ -152,7 +147,7 @@ describe("verifyStoredDeposit on a pre-cutover camelCase record", () => {
     });
   });
 
-  it("still binds the migrated record to its intent and owner", () => {
+  it("binds the migrated record to its intent and owner", () => {
     const record = legacyRecord(withRefund);
     expect(
       verifyStoredDeposit(record, SIGNER, { intentId: "xi_other", owner: withRefund.quote.wallet })

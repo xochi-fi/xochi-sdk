@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { recipientEchoError } from "./recipientEcho.js";
 
-// #113: on a non-EVM destination route the solvable quote must echo exactly the
+// On a non-EVM destination route the solvable quote must echo exactly the
 // recipient the client asked for. This pins the fail-closed vs pass-through
-// boundary the useIntent quote gate relies on.
+// boundary the quote gate relies on.
 describe("recipientEchoError", () => {
   it("passes an EVM route (no recipient requested), regardless of echo", () => {
     expect(recipientEchoError(undefined, undefined)).toBeNull();
