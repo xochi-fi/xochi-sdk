@@ -9,12 +9,12 @@ function debug(...args: unknown[]): void {
 }
 
 // Must stay byte-for-byte aligned with Riddler.Integrations.Xochi.EIP712.type_definitions/0
-// (domain version "3"). v1->v2 added `recipient`; v2->v3 retyped fromToken/toToken
-// from `address` to `string` so a cross-VM (base58) token survives EIP-712 encoding.
-// There is no `nonce` in the signed struct -- per-wallet replay is enforced by
-// intent_id atomicity server-side. The live flow signs the server-returned
-// quote.eip712 (which carries the deployment-scoped domain + salt); this constant
-// is the server-parity reference used by the conformance generator.
+// (domain version "3"): `recipient` is a string, fromToken/toToken are `string` rather
+// than `address` so a cross-VM (base58) token survives EIP-712 encoding, and there is
+// no `nonce` in the signed struct -- per-wallet replay is enforced by intent_id
+// atomicity server-side. The live flow signs the server-returned quote.eip712 (which
+// carries the deployment-scoped domain + salt); this constant is the server-parity
+// reference used by the conformance generator.
 export const XOCHI_TYPES: Record<string, Eip712TypeField[]> = {
   XochiIntent: [
     { name: "intentId", type: "string" },
@@ -139,10 +139,10 @@ export interface SignXochiIntentOptions {
    * Schemas this call will sign. Defaults to the server-parity `XOCHI_TYPES`.
    *
    * Pass an explicit list when signing a deliberately different XochiIntent
-   * dialect -- the ACP buyer-auth in `acp.ts` signs `XOCHI_ACP_TYPES`, which has
-   * a `nonce`, no `recipient`, and `address`-typed tokens. The two lists stay
-   * separate on purpose; this option is how a caller declares which one it means
-   * rather than the signer accepting both from anyone.
+   * dialect -- the ACP buyer-auth (Riddler's harness) signs `XOCHI_ACP_TYPES`,
+   * which has a `nonce`, no `recipient`, and `address`-typed tokens. The two
+   * lists stay separate on purpose; this option is how a caller declares which
+   * one it means rather than the signer accepting both from anyone.
    */
   allowedTypes?: Eip712Schema[];
 }
@@ -150,17 +150,15 @@ export interface SignXochiIntentOptions {
 /**
  * Signs a XochiIntent.
  *
- * The schema is checked against `XOCHI_TYPES` unless the caller says otherwise.
- * That makes the pinned constant load-bearing at runtime rather than only in the
- * conformance generator: a server that changes the intent's field list can no
- * longer have this client sign the new shape sight-unseen. The trade is real --
- * a genuine wire change now needs a client release rather than being transparent
- * -- and it is the intended one, matching how every other wire contract in this
- * repo is versioned.
+ * The schema is checked against `XOCHI_TYPES` unless the caller says otherwise,
+ * so the pinned constant is load-bearing at runtime, not only in the conformance
+ * generator: a server that changes the intent's field list cannot have this
+ * client sign the new shape sight-unseen. A genuine wire change needs a client
+ * release, as every other wire contract in this repo does.
  *
  * Shape is all this checks. Whether the *values* are the ones you asked for is a
- * separate question, answered by `assertIntentMatchesRequest` in the taker SDK,
- * which is the layer that knows what was requested.
+ * separate question, answered by `assertIntentMatchesRequest` in `intent-verify.ts`,
+ * the layer that knows what was requested.
  */
 export async function signXochiIntent(
   eip712: Eip712Signable,
@@ -176,13 +174,11 @@ export async function signXochiIntent(
 // collecting origin funds, so /xochi/execute needs it as `pull_signature` --
 // without it the request stops at the pull-signature gate.
 //
-// Constrained to the two real pull shapes. This call previously passed no
-// expected type at all, so any typed-data struct a quote carried under
-// `pull_authorization` was signed: an ERC-20 `Permit` for max-uint to an
-// arbitrary spender is a valid EIP-712 struct, and nothing here would have told
-// it apart from a USDC receive authorization. That put every token the key holds
-// on every chain inside the blast radius of one quote response, not just the
-// corridor being quoted.
+// Constrained to the two real pull shapes. Signing any typed-data struct a quote
+// carries under `pull_authorization` puts every token the key holds on every
+// chain inside the blast radius of one quote response: an ERC-20 `Permit` for
+// max-uint to an arbitrary spender is a valid EIP-712 struct, and only the
+// schema pin tells it apart from a USDC receive authorization.
 export async function signPullAuthorization(
   pullAuthorization: Eip712Signable,
   privateKeyHex: string,

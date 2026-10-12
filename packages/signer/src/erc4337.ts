@@ -1,6 +1,6 @@
 // ERC-4337 v0.8 UserOperation hashing, for the stealth-claim flow.
 //
-// This exists so `xochiClaim` can stop raw-signing 32 opaque bytes. A digest is
+// This exists so `xochiClaim` need not raw-sign 32 opaque bytes. A digest is
 // valid over any preimage that hashes to it, so nothing about the digest alone
 // tells a client whether it authorises the claim it asked for or a drain of the
 // same account to somebody else. Recomputing the hash from an inspectable struct

@@ -1,4 +1,4 @@
-// Non-custodial escrow primitives (M6), order v2. RESERVED / INERT at this SPEC
+// Non-custodial escrow primitives, order v2. RESERVED / INERT at this SPEC
 // version: these compute the blinded destination commitment, the canonical
 // `orderId = keccak(OrderTerms)`, the venue's OpenAuth digest, and assert the
 // escrow pull-auth binding, but NOTHING here is wired into the live signing path

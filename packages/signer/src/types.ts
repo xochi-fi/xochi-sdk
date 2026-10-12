@@ -39,8 +39,7 @@ export interface ChainConfig {
 // a blob whose schema is not one they recognise (`assertKnownSchema`) and the
 // taker SDK refuses one whose values are not what was requested; neither mutates,
 // so the bytes that reach `signTypedData` are the server's either way. Sign-as-is
-// without either check is a signing oracle, which is what these types used to
-// enable.
+// without either check is a signing oracle.
 export interface Eip712Domain {
   name?: string;
   version?: string;

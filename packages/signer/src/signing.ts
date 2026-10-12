@@ -75,17 +75,13 @@ function requireChain(config: SignerConfig, chainKey: string) {
  * input class where the reference is deliberately more permissive.
  *
  * Over-length is not the same case. There is no correct way to fit 33 bytes
- * into `bytes32`, and the previous `.slice(0, 64)` silently discarded the tail
- * -- producing a signature over a nonce the server never issued, which fails
- * later as an unexplained rejected pull rather than here as a bad input. Fail
- * loud instead: nothing legitimate produces one.
+ * into `bytes32`, and truncating would sign a nonce the server never issued,
+ * which fails later as an unexplained rejected pull rather than here as a bad
+ * input. Fail loud instead: nothing legitimate produces one.
  *
- * Both accepted spellings go through the same rules. A `Uint8Array` used to skip
- * every check and hand ethers whatever it held, so a 33-byte array died on
- * ethers' generic "invalid length for bytes32" while `"0x" + 66 chars` got the
- * message naming the size, and a 16-byte array was rejected outright while
- * `"0x1234"` was left-padded and signed. Same input, two spellings, two
- * policies: the normalization is either right for both or right for neither.
+ * Both accepted spellings go through the same rules: a 16-byte array and
+ * `"0x1234"` are one input, and the normalization is either right for both or
+ * right for neither.
  */
 function normalizeErc3009Nonce(nonce: string | Uint8Array): string {
   let hex: string;
@@ -344,21 +340,10 @@ export async function signPermit2(
     }
   }
 
-  // The permit struct as Riddler expects it: five static words, flat.
-  //
-  // Encoding this as `tuple(tuple(address,uint256),address,uint256,uint256)`
-  // yields the same five words -- an all-static tuple is encoded inline, with NO
-  // offset pointer -- so the offset-stripping pass this replaces never ran. It
-  // was guarded by a value-dependent heuristic (`offset < 1000 && offset >= 32`)
-  // that read the first word, which is `permitted.token`, as a candidate offset:
-  // a token address low enough to fall in that window would have been read as an
-  // offset and the encoding silently truncated. `parseInt` over 64 hex chars also
-  // returns a lossy float, so that comparison was float arithmetic on a
-  // fund-moving encoding.
-  //
-  // Encoding the fields directly makes the layout structural rather than
-  // inferred. Byte-identical to what the heuristic produced; the bytes are pinned
-  // by `packages/spec/conformance/conformance.json`, so a drift fails CI.
+  // The permit struct as Riddler expects it: five static words, flat. An
+  // all-static tuple is encoded inline with NO offset pointer, so encoding the
+  // fields directly makes the layout structural rather than inferred. The bytes
+  // are pinned by `packages/spec/conformance/conformance.json`, so a drift fails CI.
   const abiCoder = ethers.AbiCoder.defaultAbiCoder();
   const signedObject = abiCoder.encode(
     ["address", "uint256", "address", "uint256", "uint256"],
