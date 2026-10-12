@@ -20,15 +20,15 @@ export class XochiClaimMismatchError extends Error {
   }
 }
 
-/** The `/xochi/claim/prepare` response, as of axol-io/Riddler#851. */
+/** The `/xochi/claim/prepare` response. */
 export interface PreparedClaim {
   userOpHash?: string;
   chainId?: number | string;
   stealthAddress?: string;
   counterfactualAddress?: string;
-  /** Added by Riddler#851. Absent on a deployment that predates it. */
+  /** Absent on a deployment predating the inspectable-op response (Riddler#851). */
   entryPoint?: string;
-  /** Added by Riddler#851. The SPONSORED op: the one the hash was computed over. */
+  /** The SPONSORED op: the one the hash was computed over. Absent on the same deployments. */
   userOperation?: UserOperationV08;
   [key: string]: unknown;
 }
@@ -48,10 +48,7 @@ export interface ClaimExpectation {
   settlementChainId?: number | string | null;
   expectedToken?: string | null;
   expectedAmount?: string | number | bigint | null;
-  /**
-   * Turn every gap into a refusal instead of a `{verified: false}` report. Opt-in for
-   * step 2; the default once #851 is deployed everywhere.
-   */
+  /** Turn every gap into a refusal instead of a `{verified: false}` report. Opt-in. */
   requireVerified?: boolean;
 }
 
@@ -59,8 +56,7 @@ export interface ClaimVerification {
   /**
    * True only when the served op was recomputed to the served hash AND every check ran and
    * passed, including the chain binding. A check that could not run leaves this false; it
-   * does not mean "nothing looked wrong". The staged rollout reads this to decide when
-   * refusing outright is safe.
+   * does not mean "nothing looked wrong".
    */
   verified: boolean;
   /** Why verification was skipped. Set only when `verified` is false. */
@@ -76,21 +72,20 @@ export interface ClaimVerification {
  * check: it proves the signature matches the key, which is true of any 32 bytes, and at
  * the moment `prepare` is called the counterfactual account holds the settled funds.
  *
- * axol-io/Riddler#851 makes the op inspectable, and the checks run in dependency order.
- * Recomputing the hash from `userOperation` + `entryPoint` + `chainId` is load-bearing:
- * until the struct is known to be the digest's preimage, reading fields off it says
- * nothing. Then `sender` must be the counterfactual account from `/xochi/status`, and
- * `callData` must be `execute(token, 0, transfer(recipient, amount))` with the requested
- * recipient, the field that decides where the money goes. Token and amount are compared
- * only when the caller supplied them, `/xochi/status` carrying neither.
+ * The checks run in dependency order. Recomputing the hash from `userOperation` +
+ * `entryPoint` + `chainId` is load-bearing: until the struct is known to be the digest's
+ * preimage, reading fields off it says nothing. Then `sender` must be the counterfactual
+ * account from `/xochi/status`, and `callData` must be
+ * `execute(token, 0, transfer(recipient, amount))` with the requested recipient, the
+ * field that decides where the money goes. Token and amount are compared only when the
+ * caller supplied them, `/xochi/status` carrying neither.
  *
  * Absent fields warn rather than refuse, because a server predating Riddler#851 serves
  * no `userOperation` and hard-failing breaks every client pointed at one: this returns
  * `{verified: false, reason}` and the caller warns, while `requireVerified` (CLI:
  * `--require-verified-userop`) turns every gap into a throw. So it does NOT close the gap
- * alone, a malicious server can omit the field too; it makes the hard requirement safe
- * once #851 is everywhere, at which point absence becomes a refusal (staged rollout,
- * axol-io/riddler-sdk#86 step 3).
+ * alone, a malicious server can omit the field too; once every deployment serves the op,
+ * absence becomes a refusal.
  */
 export function assertPreparedClaimMatchesRequest(
   prepared: PreparedClaim,

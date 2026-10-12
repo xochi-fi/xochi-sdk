@@ -71,7 +71,7 @@ const ATTESTED_FIELD_ORDER = [
 
 /**
  * A deposit-route quote reduced to what a caller needs to pay. Every field here
- * is attested under v2, `deadline` and `recipient` included.
+ * is attested, `deadline` and `recipient` included.
  */
 export interface DepositInstruction {
   /** ATTESTED. Base58 T-address for Tron origins. Send exactly `amount` of `token` here. */
@@ -82,10 +82,10 @@ export interface DepositInstruction {
   amount: string;
   /** ATTESTED. Chain the deposit must be made on. */
   chainId: number;
-  /** ATTESTED (v2). Unix seconds after which the deposit is no longer honoured. */
+  /** ATTESTED. Unix seconds after which the deposit is no longer honoured. */
   deadline: number | null;
   /**
-   * ATTESTED (v2). Destination payout, resolved as the server resolves it (the
+   * ATTESTED. Destination payout, resolved as the server resolves it (the
    * requested `recipient_address`, else `wallet`). On a **stealth** route this is
    * the connected wallet and NOT where the funds land; see the module header.
    */
@@ -167,17 +167,15 @@ export interface SeenDepositAddressStore {
  * Records a deposit address against its intent, or reports a repeat under a
  * different one.
  *
- * The motivating bug (axol-io/Riddler#853, and the blue/green cutover in #872)
- * is the address generator keeping its HD cursor in process memory: a restart
+ * The address generator keeps its HD cursor in process memory, so a restart
  * rewinds it and re-derives an address already assigned to a LIVE intent
- * belonging to someone else (user A gets index 3, restart, user B gets index 3).
- *
- * Both attestations are genuine, so neither signature verification nor this can
- * separate them: user B has never seen intent_A. **The cross-user case is not
- * covered** and nothing client-side can cover it; the fix is a persisted,
- * monotonic cursor plus a uniqueness constraint on the issued address, which
- * Riddler owns. This is a tripwire, not a ledger. It catches one client served
- * the same address under two different intent ids.
+ * belonging to someone else (axol-io/Riddler#853). Both attestations are
+ * genuine, so neither signature verification nor this can separate them: user B
+ * has never seen intent_A. **The cross-user case is not covered** and nothing
+ * client-side can cover it; the fix is a persisted, monotonic cursor plus a
+ * uniqueness constraint on the issued address, which Riddler owns. This is a
+ * tripwire, not a ledger: it catches one client served the same address under
+ * two different intent ids.
  *
  * A re-quote gets a fresh intent id, so a server handing the same address to a
  * re-quote reads as a collision and is refused, down the same code path as a
@@ -219,11 +217,11 @@ export function recordDepositAddress(
  * advertises in `/xochi/capabilities`.
  *
  * **Not a trust anchor.** The pin stays the sole one and
- * `verifyDepositAttestation` stays fail-closed against it; reading the
- * advertised key as authoritative is the mistake `attestationSigner` was made
- * required to prevent. This only adds a signal, so an operator who rotated one
- * half of a pair sees that instead of something that reads like tampering.
- * Absent pin or absent advertised key is not a mismatch.
+ * `verifyDepositAttestation` stays fail-closed against it; the advertised key
+ * arrives over the channel it would validate, which is why `attestationSigner`
+ * is required. This only adds a signal, so an operator who rotated one half of
+ * a pair sees that instead of something that reads like tampering. Absent pin
+ * or absent advertised key is not a mismatch.
  */
 export function attestationSignerConsistency(
   pinnedSigner: string | null | undefined,
@@ -271,9 +269,9 @@ function optional(value: string | number | null | undefined): string {
  * `\n` is the delimiter and nothing escapes it, so two field sets can sign
  * identical bytes: `intent_id: "a\nB", quote_id: "C"` and `intent_id: "a",
  * quote_id: "B\nC"` produce the same message. `wallet` and `recipient` are
- * caller-supplied under v2 and the server's request validation does NOT stop a
- * trailing newline, so the guard has a live case; the server refuses the same
- * way, and escaping instead would break parity.
+ * caller-supplied and the server's request validation does NOT stop a trailing
+ * newline, so the guard has a live case; the server refuses the same way, and
+ * escaping instead would break parity.
  */
 export function buildDepositAttestationMessage(fields: DepositAttestationFields): string {
   const parts = [
@@ -541,7 +539,7 @@ export function assertDepositQuoteMatchesRequest(
     refund_address: fields.refund_address,
   });
 
-  // v2 signs `recipient`, so a divergence between the displayed and the attested
+  // `recipient` is signed, so a divergence between the displayed and the attested
   // one means the address shown to the user is not the one the deal was signed
   // for. Worth refusing even though the signature bound the real one. Case is
   // folded here for `0x` + hex alone, every other encoding being case-sensitive;
@@ -580,8 +578,8 @@ export function assertDepositQuoteMatchesRequest(
   // an attested deposit route, so an absent one is malformed.
   //
   // No `now` injection point, for the reason `assertIntentMatchesRequest` has
-  // none: an optional clock on a security assertion is a bypass wearing a test
-  // affordance's name. Tests move the clock instead.
+  // none: an optional clock on a security assertion is a bypass. Tests move the
+  // clock instead.
   if (fields.deposit_deadline === null || fields.deposit_deadline === undefined) {
     throw new DepositQuoteMismatchError(
       "deposit quote carries no attested deadline -- Riddler always sets one on a deposit route, so " +
