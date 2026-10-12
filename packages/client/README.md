@@ -27,6 +27,7 @@ const quote = await xochi.getQuote(request);
 - `execute` makes one attempt. A failure is in doubt (funds may have moved): poll `getIntentStatus`, never re-post.
 - `getIntentStatus` returns the status, `{ notFound: true }` on 404, or `null` on a transient failure.
 - 429/503 raise `ApiError` with `retryAfter`.
+- Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated). Each attempt's timeout stays armed until the body is read and cancels the body when it fires. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs` (15 s).
 
 ## State machine
 
@@ -49,6 +50,14 @@ function dispatch(body: MsgBody) {
   render(view(next));
 }
 ```
+
+Lifecycle rules the machine enforces, beyond the signer checks under [Fund safety](#fund-safety):
+
+- A quote whose `preview` disagrees with the request is refused; any quote carrying `eip712` is checked whether or not it claims to be a preview.
+- Confirm is gated on `canSignQuote` and `holdsCurrentQuote`: a held quote is signable (and a deposit address revealable) only while its quoted amount and trade match the form. The trade key is built from the same normalised fields as the quote request (`normalizeTradeFields`), so an edit that leaves the request unchanged keeps the quote.
+- A new amount, a trade/wallet context change, Reset, a resume, or entering `signing` / `awaiting_deposit` / `executing` drops in-flight quote flights. Refresh is ignored past `quoting`, Allocate outside `ALLOCATABLE_STATES` (idle / pending / quoting / quoted), and a quote reply that finds the trade past `quoting` or ended is dropped; a failed allocation never reopens a trade as `quoted`.
+- The sign ceremony survives `signing -> executing` only for the machine's own execute step (`sign.stage === "execute"`); a status-driven move abandons it, and a signature reply outside `signing` is ignored.
+- `StreamStatus` frames for another intent are ignored.
 
 ## Fund safety
 
