@@ -1,4 +1,4 @@
-module github.com/xochi-fi/xochi-sdk/conformance/go
+module github.com/xochi-fi/xochi-sdk/runners/go
 
 go 1.26.1
 

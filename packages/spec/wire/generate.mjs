@@ -177,7 +177,7 @@ if (!isProd && !ALLOW_NON_PROD) {
       "  spelled prod is not evidence a prod host answered, and this block is the only\n" +
       "  artifact review reads before approving.\n" +
       "  The vendored contract is the PRODUCTION wire contract -- `packages/spec` ships it to\n" +
-      "  conformance/{python,go,rust} and the offline suite holds @xochi/client to it. Another\n" +
+      "  runners/{python,go,rust} and the offline suite holds @xochi/client to it. Another\n" +
       "  deployment's document vendored here passes the per-PR digest gate and\n" +
       "  `wire-contract.test.ts` (both check only that the pair is internally consistent), so\n" +
       "  the mistake surfaces at 06:00 UTC as a nightly BREAKING report against prod, in\n" +
@@ -502,7 +502,7 @@ if (rewrittenNumbers.length > 0) {
       "  override: that module scans the served text and emits every number from its own\n" +
       "  source token, so this list is unreachable by construction. Report it with the\n" +
       "  literals above. It matters because `packages/spec` ships this file to\n" +
-      "  conformance/{python,go,rust}, whose parsers do not all fold numbers to a double -- Go's\n" +
+      "  runners/{python,go,rust}, whose parsers do not all fold numbers to a double -- Go's\n" +
       "  `json.Number` and serde_json's `arbitrary_precision` keep the literal -- so a\n" +
       "  re-spelled bound is this repo asserting to those consumers a value it never\n" +
       "  received.",

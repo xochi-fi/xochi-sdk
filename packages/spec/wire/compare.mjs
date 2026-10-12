@@ -803,7 +803,7 @@ export const compareContract = (served, vendored) => {
   /**
    * `servers` is where the bytes GO. It is an array, so the object walk skips
    * it, and nothing else here reaches the document root; `packages/spec`
-   * exports this document to conformance/{python,go,rust}, where
+   * exports this document to runners/{python,go,rust}, where
    * `servers[0].url` is the base URL a generated client bakes in.
    *
    * Compared as an ORDERED list of urls, and this is where it parts company

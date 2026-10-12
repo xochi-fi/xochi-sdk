@@ -317,7 +317,7 @@ const { breaking, stale, stats } = compared;
  * The one axis a structural diff cannot carry. Both documents reach
  * `compareContract` through `JSON.parse`, which folds every number to an
  * IEEE-754 double, so `115792089...639935` and `1.157920892373162e+77` compare
- * EQUAL there while `packages/spec` ships the file to conformance/{python,go,rust},
+ * EQUAL there while `packages/spec` ships the file to runners/{python,go,rust},
  * where Go's `json.Number` and serde_json's `arbitrary_precision` keep the
  * literal and can tell. `generate.mjs` refuses to write a re-spelling, but that
  * is a writer-side rule with no verifier behind it: a formatter, a merge or a

@@ -2,7 +2,7 @@
 
 `openapi.json` is the OpenAPI 3.0.3 document the Riddler solver serves at `GET /xochi/openapi.json`,
 the source of truth for the `/xochi/*` wire (SPEC.md §3). **The solver is authoritative**; this copy
-changes only by refresh. It is vendored so `conformance/{python,go,rust}` and offline checks never depend
+changes only by refresh. It is vendored so `runners/{python,go,rust}` and offline checks never depend
 on the network.
 
 The copy is reformatted to sorted-key 2-space JSON: structurally the served document, not

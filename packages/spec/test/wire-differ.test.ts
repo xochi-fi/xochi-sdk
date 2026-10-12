@@ -730,7 +730,7 @@ describe("the vendored form", () => {
   // `formatDocument` is what `generate.mjs` writes, so this file's bytes are its output.
   // Idempotence is therefore the whole contract: anything that changes it -- key order,
   // indent, the empty-collection spelling, a folded literal -- rewrites 82 KB of a
-  // published artifact that `conformance/{python,go,rust}` parse and `openapi.sha256` covers.
+  // published artifact that `runners/{python,go,rust}` parse and `openapi.sha256` covers.
   it("re-formatting the vendored contract reproduces it byte-for-byte", () => {
     expect(format.formatDocument(RAW)).toBe(RAW);
   });
