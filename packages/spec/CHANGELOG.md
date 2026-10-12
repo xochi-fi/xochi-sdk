@@ -12,6 +12,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 ### Changed
 
 - **Wire contract refreshed to served spec 0.8.0** (from axol-io/riddler-sdk#150): `wire/openapi.{json,sha256}` replaced by the prod refresh (Canton `ChainAddress` branch, chain `253340876`, `cvm`/`canton_party`, escrow schemas, `escrow_refused`/`escrow_unavailable`); SPEC.md §3.2/§3.3/§3.5/§6 follow the served shapes.
+- **Wire contract refreshed again (2026-10-12, `0 BREAKING, 2 STALE`)**: the served `0.8.0` gained xochi#584's optional `QuoteRequest.promo_discount_bps` and `LayeredFeeBreakdown.discount { source, bps, amount }`; `wire/openapi.{json,sha256}` carry them and SPEC.md §3.3/§4.5 describe them. No vector, schedule or reconciliation rule changes; the version stays `0.8.1` (SPEC.md §0.3).
 - **SOLVER-RFC `0.5.0-draft`** (clarification, `rfcVersion` unchanged, from axol-io/riddler-sdk#151): the quote-time `minOutput` is the quote less a venue-wide announce margin (`SOLVER_ANNOUNCE_FLOOR_BPS`), never a taker-chosen value such as `slippage_bps`.
 - **Version 0.8.1** (PATCH, no wire/vector change; SPEC.md §0.3), past every pre-fix commit (which declare the never-published 0.8.0). Riddler must advertise `spec_version: "0.8.1"` in lockstep, or the nightly `spec_version` probe reports DRIFT.
 - `package.json` gains description, keywords and homepage.

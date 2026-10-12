@@ -1960,6 +1960,33 @@
             ],
             "type": "string"
           },
+          "discount": {
+            "description": "Present only when the request carried `promo_discount_bps` > 0\n(xochi#584). Which discount priced the quote and how much it took\noff the Standard venue + routing layers. Informational: venue_fee\nand routing_fee are already net of it.\n",
+            "properties": {
+              "amount": {
+                "description": "The discount in the same base units as the layers.",
+                "type": "string"
+              },
+              "bps": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "description": "max(tier, promo) -- which one won. A tie goes to the tier.",
+                "enum": [
+                  "tier",
+                  "promo"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "bps",
+              "amount"
+            ],
+            "type": "object"
+          },
           "gas_floor": {
             "description": "Dynamic gas-floor top-up = total_fee minus the bps layers: \"0\" on\nnormal orders, the floor delta (live cost-to-fill x a safety margin,\nminus the bps layers) on low-value orders where the percentage fee\nfalls below the cost to fill. Guarantees solver_fee + price_impact +\nvenue_fee + routing_fee + gas_floor.amount == total_fee. The route-real\ngas estimate is the separate `estimated_gas_cost` (wei).\n",
             "properties": {
@@ -2348,6 +2375,13 @@
             "default": false,
             "description": "Price the route without allocating anything: no quote record, no\nintent, no origin-pull authorization, no deposit address. The\nresponse carries neither `eip712` nor `deposit_address` and cannot\nbe executed. Use it for indicative pricing before an explicit\nallocation under `idempotency_key`.\n",
             "type": "boolean"
+          },
+          "promo_discount_bps": {
+            "default": 0,
+            "description": "Optional. A Xochi promo code's discount, in bps off the Standard\nvenue + routing layers (xochi#584). The Xochi worker resolves and\nlimits the code; Riddler prices discount = max(tier discount,\nmin(promo discount, Institutional discount)) against the Standard\nvenue + routing pool, so a promo never prices below the\nInstitutional tier (12 bps off stable, 18 off volatile), carved\nvenue first, never off the solver spread or gas floor. When > 0 the\nlayered `fee_breakdown` carries `discount`. Ignored by the legacy\n(non-layered) fee model.\n",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
           },
           "recipient_address": {
             "$ref": "#/components/schemas/ChainAddress",

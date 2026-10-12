@@ -7,6 +7,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 ### Added
 
 - `feeBreakdownReconcilable(feeBreakdown)` lets a `getQuote` result reach `assertFeeBreakdownInvariants` (the README example threw).
+- `LayeredFeeBreakdownSchema` declares the served optional `discount { source: "tier" | "promo", bps, amount }` (xochi#584, served only when the quote request carried `promo_discount_bps > 0`). Shape-only: `assertFeeBreakdownInvariants` neither reads nor subtracts it, since `venue_fee`/`routing_fee` are already net of it. Previously it parsed through `.passthrough()` untyped.
 
 ### Changed
 

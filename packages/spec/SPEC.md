@@ -130,6 +130,17 @@
   which such a client never requested. The one client-visible hazard is §3.3's: a
   party id is case-sensitive and may begin `0x`, so folding case on every
   `0x`-prefixed value names a different party.
+- **Wire refresh against served `0.8.0` (2026-10-12), and the SPEC version does
+  not move.** Prod shipped xochi#584 (promo codes): `QuoteRequest` gained the
+  optional `promo_discount_bps` (integer, `0..10000`, default `0`) and
+  `LayeredFeeBreakdown` the optional `discount {source, bps, amount}`, present
+  only when the request carried a positive `promo_discount_bps`. §3.3 and §4.5
+  read both. The differ graded the delta `0 BREAKING, 2 STALE`; no §2 struct,
+  §4 schedule, vector or reconciliation rule changes (`venue_fee` and
+  `routing_fee` are already net of the discount). The version stays `0.8.1`:
+  the server still advertises `0.8.0` and is moving to `0.8.1` (riddler #1285);
+  a MINOR here would move the lockstep target a second time for two optional
+  fields the served `0.8.0` already carries.
 - `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that the
   version string is new: `0.8.1` is declared only by commits that carry the
   second adversarial review's fixes, and the tarball's `wire/compare.mjs`
@@ -373,7 +384,9 @@ treat it as normative here and send it for `shielded` regardless.
 `swap_kind` (`exact_input` default | `exact_output`) with exactly one of
 `from_amount` / `output_amount`; `recipient_address` (required cross-VM);
 `origin` (`acp` | `direct`; `acp` waives the routing fee); `trust_score`,
-`attestations`; `slippage_bps` (default 50); `settlement_preference`
+`attestations`; `slippage_bps` (default 50); `promo_discount_bps` (default 0;
+a Xochi promo code's discount in bps, resolved and limited by the Xochi worker,
+never by the taker directly — see §4.5 `discount`); `settlement_preference`
 (default `public`); `stealth_spending_pub_key` / `stealth_viewing_pub_key`
 (required when `settlement=stealth`). Both snake_case and camelCase are accepted.
 
@@ -586,17 +599,28 @@ integers, amounts are base-unit integer **strings**:
 `tier`, `asset_class`, `solver_fee_bps`/`solver_fee`,
 `price_impact_bps`/`price_impact`, `venue_fee_bps`/`venue_fee`,
 `routing_fee_bps`/`routing_fee`, `total_bps`/`total_fee`, `surplus_share_pct`,
-plus the price-oracle-derived `gas_floor {amount, usd}` and `total_usd`.
+plus the price-oracle-derived `gas_floor {amount, usd}` and `total_usd`, and,
+only when the request carried `promo_discount_bps > 0`, `discount {source, bps,
+amount}` (xochi#584).
+
+`discount` is informational: `source` (`tier` | `promo`, a tie goes to `tier`)
+names which discount priced the quote, where
+`discount = max(tier discount, min(promo discount, Institutional discount))`, so
+a promo never prices below the Institutional tier (12 bps off stable, 18 off
+volatile), carved venue first, never off the solver spread or the gas floor.
+`venue_fee` and `routing_fee` are already net of it; a consumer MUST NOT
+subtract it again, and the reconciliation below is unchanged by its presence.
 
 The fields through `surplus_share_pct` are the **deterministic core**: a
 compliant fee implementation MUST reproduce them exactly for every vector in
 `fee/vectors.json` (the §4.4 algorithm over the §4.2/§4.3 schedule). `gas_floor`
 and the `*_usd` fields depend on a live price oracle and gas quote, so they are
-validated for **shape** only, not recomputed. A consumer SHOULD reject a
+validated for **shape** only, not recomputed; so is `discount`, whose promo input
+is a worker-side value no vector carries. A consumer SHOULD reject a
 `fee_breakdown` that fails reconciliation — the four layer bps MUST sum (clamped)
 to `total_bps` and the four layer amounts MUST sum to `total_fee`. The reference
-implementation and these checks ship in xochi-sdk's `packages/reference`
-(`computeFeeBreakdown`, `assertFeeBreakdownInvariants`).
+implementation and these checks ship in xochi-sdk's `@xochi/client`
+(`computeFeeBreakdown`, `assertFeeBreakdownInvariants`, `packages/client/src/fee.ts`).
 
 Positive fill slippage above the quote is split per `surplus_share_pct` (15%
 captured; the remainder returns to the taker).
