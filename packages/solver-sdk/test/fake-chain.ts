@@ -162,12 +162,11 @@ export class FakeChain extends ethers.JsonRpcProvider {
     return [...this.mempool.values()];
   }
 
-  // Drop pending transactions from the mempool without mining them (all, or
-  // the one hash): pool eviction, a node restart, a load-balanced backend that
-  // took the broadcast and never propagated it. The node no longer knows them.
-  evict(hash?: string): void {
-    for (const [slot, tx] of this.mempool)
-      if (hash === undefined || tx.hash === hash) this.mempool.delete(slot);
+  // Drop every pending transaction from the mempool without mining it: pool
+  // eviction, a node restart, a load-balanced backend that took the broadcast
+  // and never propagated it. The node no longer knows them.
+  evict(): void {
+    this.mempool.clear();
   }
 
   // Record an event in the current head block, as a mined transaction would.

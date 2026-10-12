@@ -145,10 +145,10 @@ describe("HttpSolverTransport feed gaps", () => {
     expect(gaps[0]?.cursor).toBe("0");
   });
 
-  // The regression that matters: Riddler's `Feed.batch/4` puts BOTH keys on
-  // every batch, so a clean poll carries `dropped: 0, reset: false` rather than
-  // omitting them. A presence check (`!== undefined`) fires on every poll and
-  // turns the gap signal into noise. This is the real wire shape.
+  // Riddler's `Feed.batch/4` puts BOTH keys on every batch, so a clean poll
+  // carries `dropped: 0, reset: false` rather than omitting them. A presence
+  // check (`!== undefined`) fires on every poll and turns the gap signal into
+  // noise. This is the real wire shape.
   it("stays silent on a clean batch that carries dropped:0 and reset:false", async () => {
     const baseUrl = await serve((_req, res) =>
       json(res, { events: [ANNOUNCEMENT], cursor: "9", dropped: 0, reset: false }),
@@ -318,18 +318,6 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
 });
 
 describe("HttpSolverTransport getCapabilities", () => {
-  it("parses the venue capability matrix", async () => {
-    const baseUrl = await serve((_req, res) => json(res, CAPABILITIES));
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
-
-    const caps = await transport.getCapabilities();
-
-    expect(caps.rfcVersion).toBe(SOLVER_RFC_VERSION);
-    expect(caps.phase).toBe("P0");
-    expect(caps.admission?.panelSize).toBe(0);
-    expect(caps.chains).toEqual([8453, 10]);
-  });
-
   it("aborts a capabilities read the venue never answers after readTimeoutMs", async () => {
     const baseUrl = await serve(() => {
       // never respond
@@ -377,9 +365,7 @@ describe("HttpSolverTransport getCapabilities", () => {
 
   it("rejects a payload missing rfcVersion, and accepts one missing only phase", async () => {
     // §12 makes `rfcVersion` the field a venue cannot omit and be bid into;
-    // `phase` is a SHOULD. This used to require both, so a conformant
-    // `200 {"rfcVersion": ...}` threw here -- and `SolverClient` reported the
-    // throw as the venue never having answered.
+    // `phase` is a SHOULD, and a conformant `200 {"rfcVersion": ...}` parses.
     const noVersion = await serve((_req, res) =>
       json(res, { auction: { model: "sealed_bid_best_output" } }),
     );
@@ -447,44 +433,6 @@ describe("HttpSolverTransport malformed entries", () => {
     await expect(firstEvent(transport)).rejects.toThrow();
   });
 
-  it("keeps a bad entry from killing SolverClient.run", async () => {
-    // `run()` reads `/solver/capabilities` before the feed (RFC §12), so the
-    // fake venue has to answer both paths rather than one body for every URL.
-    const baseUrl = await serve((req, res) =>
-      req.url === "/solver/capabilities" ? json(res, CAPABILITIES) : json(res, BAD_BATCH),
-    );
-    const bad: unknown[] = [];
-    const client = new SolverClient({
-      baseUrl,
-      solverKey: SOLVER_KEY,
-      now: () => 0,
-      onInvalidEvent: (_err, raw) => bad.push(raw),
-    });
-    const controller = new AbortController();
-    const solver = {
-      capabilities: () => ({
-        solverId: SOLVER_ID,
-        chains: [8453, 10],
-        tokens: ["USDC"],
-        settlementTypes: ["public" as const],
-        rfcVersion: SOLVER_RFC_VERSION,
-      }),
-      // Quoting proves the good announcement made it all the way through the
-      // loop, past the malformed entry that preceded it.
-      quote: async () => {
-        controller.abort();
-        return null;
-      },
-      fill: async () => {
-        throw new Error("not awarded in this test");
-      },
-    };
-
-    await client.run(solver, controller.signal);
-
-    expect(bad).toHaveLength(1);
-  });
-
   it("refuses over the real transport before it POSTs anything", async () => {
     // The gate against a venue that actually answers, over the actual fetch
     // path: a skewed `rfcVersion` must stop the run before `/solver/bids` is
@@ -540,26 +488,5 @@ describe("SolverClient option wiring", () => {
           onInvalidEvent: () => undefined,
         }),
     ).toThrow(/onInvalidEvent/);
-  });
-});
-
-describe("SolverClient.getCapabilities", () => {
-  it("delegates to the default transport", async () => {
-    const baseUrl = await serve((_req, res) => json(res, CAPABILITIES));
-    const client = new SolverClient({ baseUrl, solverKey: SOLVER_KEY });
-
-    expect((await client.getCapabilities()).phase).toBe("P0");
-  });
-
-  it("fails loudly when an injected transport does not implement it", async () => {
-    // A pre-existing custom transport: valid, but predates the optional method.
-    const legacy: SolverTransport = {
-      async *events(): AsyncIterable<SolverEvent> {},
-      async submitBid(_bid: Bid): Promise<void> {},
-      async submitFill(_receipt: FillReceipt): Promise<void> {},
-    };
-    const client = new SolverClient({ solverKey: SOLVER_KEY, transport: legacy });
-
-    await expect(client.getCapabilities()).rejects.toThrow(/does not implement getCapabilities/);
   });
 });

@@ -32,7 +32,7 @@ import {
   world,
 } from "./escrow-world";
 
-describe("one panel award delivered twice (Riddler#1250 re-publication)", () => {
+describe("one panel award delivered twice", () => {
   // Lagging: after the fill lands, the destination RPC still reads
   // `filled(fillId)` false and simulates a second fill clean -- a load-balanced
   // endpoint whose state backend trails. The gateway's own record must hold.

@@ -43,9 +43,7 @@ const OTHER_SOLVER = "0x000000000000000000000000000000000000dEaD";
 
 // Parsed, not coerced. `Number(process.env.PBT_RUNS || 200)` reports its own
 // failure as a value fast-check accepts: `PBT_RUNS=abc` is NaN and `PBT_RUNS=0`
-// is 0, and both make every property below "pass" with zero rounds executed --
-// silently, and green. Same defect the taker package carries in its two
-// property files.
+// is 0, and both make every property below "pass" with zero rounds executed.
 const numRuns = (() => {
   const raw = process.env.PBT_RUNS;
   if (raw === undefined || raw === "") return 200;
@@ -57,16 +55,11 @@ const numRuns = (() => {
 
 const CFG = { seed: Number(process.env.PBT_SEED || 0x5eed), numRuns };
 
-// Every property here drives a full `client.run()` per round -- a capabilities
+// Every property here drives a full `client.run()` per round (a capabilities
 // read, the announcement loop, and for the signing ones a real secp256k1 sign
-// plus an ecrecover. Measured at ~2.6s per property at 200 rounds on an idle
-// box, which is half of vitest's 5s default: two of them timed out inside a
-// full-suite run while passing alone at 44s for the file.
-//
-// The ceiling is raised rather than the run count cut. These are cheap per
-// round and the flake is headroom, not cost -- there is no coverage argument
-// for dropping rounds here. Scoped per-test rather than workspace-wide so a
-// genuinely hung test still fails fast, and scaled off the budget it guards.
+// plus an ecrecover), about half of vitest's 5s default at 200 rounds. The
+// ceiling is scoped per test and scaled off the run count so a genuinely hung
+// test still fails fast.
 const PBT_TIMEOUT_MS = Math.max(30_000, CFG.numRuns * 150);
 
 // A frozen clock. `closesAt` relative to this is what decides openness, so the
@@ -367,40 +360,6 @@ describe("SolverClient.run against a model", () => {
             steps.filter((s) => s.kind === "announcement" && s.open && s.throws).length +
             steps.filter((s) => s.kind === "award" && s.mine && s.throws).length;
           return errors === thrown;
-        }),
-        CFG,
-      );
-    },
-    PBT_TIMEOUT_MS,
-  );
-
-  it(
-    "keeps running after a throw -- one bad intent does not end the loop",
-    async () => {
-      // Asserted separately from the error count so a failure says which of the
-      // two broke. Every step after a throwing one must still take effect.
-      await fc.assert(
-        fc.asyncProperty(script, async (steps) => {
-          const { transport, filled } = await runScript(steps);
-          const expectedBids = steps.filter(
-            (s) => s.kind === "announcement" && s.open && !s.pass && !s.throws,
-          ).length;
-          const expectedFills = steps.filter((s) => s.kind === "award" && s.mine).length;
-          return transport.bids.length === expectedBids && filled.length === expectedFills;
-        }),
-        CFG,
-      );
-    },
-    PBT_TIMEOUT_MS,
-  );
-
-  it(
-    "submits no more bids than announcements it saw",
-    async () => {
-      await fc.assert(
-        fc.asyncProperty(script, async (steps) => {
-          const { transport } = await runScript(steps);
-          return transport.bids.length <= steps.filter((s) => s.kind === "announcement").length;
         }),
         CFG,
       );

@@ -31,7 +31,7 @@ const SIGNING_KEY = "0x000000000000000000000000000000000000000000000000000000000
 const SIGNER = solverIdFromKey(SIGNING_KEY);
 
 // Awkward on purpose: quotes, backslashes, control characters and astral-plane
-// codepoints are what broke the JSON scheme and what still exercises UTF-8
+// codepoints are what break a delimiter-based scheme and what exercise UTF-8
 // encoding. Plain alphanumerics prove nothing here.
 //
 // Unpaired surrogates are filtered out because they have no UTF-8 encoding at

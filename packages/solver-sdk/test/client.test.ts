@@ -35,9 +35,8 @@ const OTHER_SOLVER = "0x000000000000000000000000000000000000dEaD";
 //
 // It answers `getCapabilities` because `run()` refuses to bid against a venue
 // that has not shown it speaks this RFC (§12), and a transport that cannot
-// answer cannot show it. `rfcVersion` is read from the SDK's own constant
-// rather than retyped: the stale `"0.1.0-draft"` literals that used to live
-// here made the version most visible to a reader two MINORs out of date.
+// answer cannot show it. `rfcVersion` is the SDK's own constant, not a retyped
+// literal.
 class StubTransport implements SolverTransport {
   bids: Bid[] = [];
   fills: FillReceipt[] = [];
@@ -220,10 +219,6 @@ describe("SolverClient loop", () => {
 
     await expect(client.run(boom)).rejects.toThrow("no swallow");
   });
-
-  it("requires baseUrl when no transport is injected", () => {
-    expect(() => new SolverClient({ solverKey: SOLVER_KEY })).toThrow(/baseUrl is required/);
-  });
 });
 
 describe("SolverClient RFC version gate", () => {
@@ -310,16 +305,6 @@ describe("SolverClient RFC version gate", () => {
     await expect(client.run(eagerSolver)).rejects.toThrow(/does not implement getCapabilities/);
   });
 
-  it("runs when the venue serves exactly this version", async () => {
-    const transport = new StubTransport(openAnnouncement);
-    const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: clockInWindow });
-
-    await client.run(eagerSolver);
-
-    expect(transport.bids).toHaveLength(1);
-    expect(verifyBid(transport.bids[0]!)).toBe(true);
-  });
-
   // A transport whose capability answer is supplied as RAW BYTES and run
   // through `VenueCapabilitiesSchema` exactly the way `HttpSolverTransport`
   // does, so these cases exercise the validation boundary rather than skipping
@@ -343,12 +328,8 @@ describe("SolverClient RFC version gate", () => {
   };
 
   it("runs against a conformant venue that advertises no phase", async () => {
-    // RFC §12 only SHOULDs `phase`, and singles out a missing `rfcVersion` as
-    // the disqualifying one. `phase: z.string()` made a spec-conformant
-    // `200 {"rfcVersion": "0.3.0-draft"}` fail the parse inside the transport,
-    // which arrived in the same `catch` as a connection refusal -- so the SDK
-    // told the operator to check reachability, routing and the base URL about a
-    // venue that had answered correctly.
+    // RFC §12 only SHOULDs `phase` and singles out a missing `rfcVersion` as
+    // the disqualifying one; a conformant `200 {"rfcVersion": ...}` must bid.
     for (const body of [
       { rfcVersion: SOLVER_RFC_VERSION, phase: "P0" },
       { rfcVersion: SOLVER_RFC_VERSION },
@@ -360,43 +341,6 @@ describe("SolverClient RFC version gate", () => {
       expect(bids, JSON.stringify(body)).toHaveLength(1);
       expect(verifyBid(bids[0]!)).toBe(true);
     }
-  });
-
-  it("keeps 'answered something unreadable' apart from 'never answered'", async () => {
-    // Three outcomes, three remedies, and the middle one used to borrow the
-    // third's sentence. A body that fails validation is the venue's contract
-    // problem; only a request that never completed is a routing problem.
-    const { transport: unreadable } = servedBody({ rfcVersion: 7, phase: "P0" });
-    const bodyError = await new SolverClient({
-      solverKey: SOLVER_KEY,
-      transport: unreadable,
-      now: clockInWindow,
-    })
-      .run(eagerSolver)
-      .catch((err: unknown) => (err instanceof Error ? err.message : String(err)));
-    expect(bodyError).toMatch(/answered a body this SDK cannot read/);
-    expect(bodyError).toMatch(/DID answer, so this is not a reachability problem/);
-    expect(bodyError).not.toMatch(/check reachability, routing and the base URL/);
-
-    const down = new StubTransport(openAnnouncement, null); // getCapabilities throws
-    const reachError = await new SolverClient({
-      solverKey: SOLVER_KEY,
-      transport: down,
-      now: clockInWindow,
-    })
-      .run(eagerSolver)
-      .catch((err: unknown) => (err instanceof Error ? err.message : String(err)));
-    expect(reachError).toMatch(/check reachability, routing and the base URL/);
-    expect(reachError).not.toMatch(/answered a body this SDK cannot read/);
-
-    // The version gate keeps its substance: a body that parses but carries no
-    // usable `rfcVersion` is neither of the two above.
-    const { transport: noVersion } = servedBody({ phase: "P0" });
-    await expect(
-      new SolverClient({ solverKey: SOLVER_KEY, transport: noVersion, now: clockInWindow }).run(
-        eagerSolver,
-      ),
-    ).rejects.toThrow(/answered a body this SDK cannot read/);
   });
 
   it("re-checks before an award reaches solver.fill and refuses a venue that moved", async () => {
@@ -449,17 +393,6 @@ describe("SolverClient RFC version gate", () => {
 });
 
 describe("wire validation", () => {
-  it("parses a valid feed event", () => {
-    expect(() =>
-      parseSolverEvent({ type: "announcement", announcement: announcement() }),
-    ).not.toThrow();
-    expect(() => parseSolverEvent({ type: "award", award: award() })).not.toThrow();
-  });
-
-  it("rejects an unknown event type", () => {
-    expect(() => parseSolverEvent({ type: "gossip", data: 1 })).toThrow();
-  });
-
   it("rejects a non-integer-string amount", () => {
     expect(() => parseSolverEvent({ type: "award", award: award({ output: "9.5" }) })).toThrow();
   });

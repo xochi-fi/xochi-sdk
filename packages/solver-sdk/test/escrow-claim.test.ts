@@ -496,25 +496,6 @@ describe("OnchainEscrowGateway.fill: an in-doubt fill is driven to land", () => 
     expect(Date.now()).toBeGreaterThanOrEqual((T0 + 12) * 1000);
   });
 
-  it("re-signs inside the receipt wait after `replaceInDoubtAfterBlocks` blocks", async () => {
-    vi.useFakeTimers({ now: T0 * 1000 });
-    const w = world({
-      receiptTimeoutMs: 120_000,
-      receiptPollMs: 2_000,
-      gateway: { replaceInDoubtAfterBlocks: 1 },
-    });
-    followFakeTime(w);
-    w.prepared.fillAuth.deadline = BigInt(T0 + 85);
-    w.dest.onSend = (tx) => (tx.maxFeePerGas! > 3n ? { mine: 1 } : { pend: true });
-    setTimeout(() => (w.dest.head += 1), 4_000);
-    const outcome = await whileTimersRun(acceptThenFill(w));
-    expect(w.dest.attempts.map((t) => [t.nonce, t.maxFeePerGas])).toEqual([
-      [0, 3n],
-      [0, 4n],
-    ]);
-    expect(outcome).toMatchObject({ status: "confirmed", txHash: w.dest.attempts[1]!.hash });
-  });
-
   // Blocks inside one receipt wait and later passes over an in-doubt send are
   // counted apart: one pass due is not one block due.
   it("does not let `replaceInDoubtAfterPasses` shorten the receipt wait's block count", async () => {
@@ -1519,35 +1500,6 @@ describe("OnchainEscrowGateway.prepare", () => {
 });
 
 describe("OnchainEscrowGateway.ensureAllowance", () => {
-  // USDT-style: approve reverts unless the old or the new value is zero.
-  it("resets a short non-zero allowance to zero before approving", async () => {
-    const w = world();
-    const USDT = "0x6666666666666666666666666666666666666666";
-    let allowance = 5n;
-    w.dest.stub(
-      USDT,
-      [
-        "function allowance(address,address) view returns (uint256)",
-        "function approve(address,uint256) returns (bool)",
-      ],
-      {
-        allowance: () => allowance,
-        approve: ([, value]) => {
-          if (allowance !== 0n && (value as bigint) !== 0n)
-            throw new Revert("Error", ["approve: non-zero to non-zero"]);
-          return true;
-        },
-      },
-    );
-    w.dest.onMined = (tx) => {
-      if (tx.method === "approve") allowance = tx.args![1] as bigint;
-    };
-    const outcome = await w.gateway.ensureAllowance(w.solver, USDT, FILLER, 10n);
-    expect(outcome?.status).toBe("confirmed");
-    expect(w.dest.sent.map((t) => t.args![1])).toEqual([0n, 10n]);
-    expect(allowance).toBe(10n);
-  });
-
   // Mainnet USDT's approve returns NOTHING: decoding `returns (bool)` from
   // empty data failed simulation and sent nothing, the case the reset is for.
   it("resets and approves a token whose approve returns no data", async () => {

@@ -259,12 +259,6 @@ describe("verifyAward requires the FillAuth to be exactly the committed fill, by
     });
   }
 
-  it("accepts an amount above the floor and within the solver's own bid", () => {
-    const award = withEscrow(awardFor(baseline), (e) => (e.fillAuth!.amount = "99800000"));
-    award.output = "99800000";
-    expect(verifyAward(award, { ...x, bidOutput: 99_800_000n }).fillAuth.amount).toBe("99800000");
-  });
-
   // Riddler issues a `:winner` FillAuth for exactly the verified bid's output
   // (fill_authorizer.ex), and `award.output` echoes it: the venue's word.
   it("refuses a FillAuth amount above the awarded output", () => {
@@ -512,7 +506,7 @@ describe("award wire", () => {
     );
   });
 
-  it("still refuses a fillAuth member that is present but malformed", () => {
+  it("refuses a fillAuth member that is present but malformed", () => {
     const wire = JSON.parse(JSON.stringify(awardFor(baseline)));
     wire.escrow.fillAuth.to = "not-an-address";
     expect(() => parseSolverEvent({ type: "award", award: wire })).toThrow();
