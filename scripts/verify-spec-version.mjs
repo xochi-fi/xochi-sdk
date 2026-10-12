@@ -40,7 +40,7 @@
  *   RIDDLER_URL_PROD=https://host node scripts/verify-spec-version.mjs
  *   RIDDLER_SERVER=stg node scripts/verify-spec-version.mjs
  *
- * Exit codes, matching verify-attestation-version.mjs:
+ * Exit codes, matching verify-deposit-attestation-version.mjs:
  *   0  the solver advertises the version this spec package is, twice
  *   1  DRIFT: two samples agree on a different one
  *   2  INCONCLUSIVE: a sample obtained no answer (unreachable, redirected,
@@ -305,5 +305,5 @@ console.log(`\nOK: ${serverKey} conforms to @xochi/spec ${local.version} (two ag
 // bytes without bumping the version passes here and fails the vector suites.
 console.log(
   "    (Version label only -- bytes are covered by conformance.json, fee/vectors.json\n" +
-    "     and verify-attestation-vectors.mjs.)",
+    "     and verify-deposit-attestation-vectors.mjs.)",
 );

@@ -29,8 +29,8 @@
     "generate:solver-bid-v2": "npm run generate:solver-bid-v2 -w @xochi/spec",
     "generate:escrow": "npm run generate:escrow -w @xochi/spec",
     "generate:wire": "npm run generate:wire -w @xochi/spec --",
-    "verify:version": "node scripts/verify-attestation-version.mjs",
-    "verify:vectors": "node scripts/verify-attestation-vectors.mjs",
+    "verify:deposit-version": "node scripts/verify-deposit-attestation-version.mjs",
+    "verify:deposit-vectors": "node scripts/verify-deposit-attestation-vectors.mjs",
     "verify:spec-version": "node scripts/verify-spec-version.mjs",
     "verify:openapi": "node scripts/verify-openapi.mjs"
   },

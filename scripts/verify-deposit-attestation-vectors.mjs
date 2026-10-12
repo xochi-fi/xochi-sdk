@@ -28,7 +28,7 @@
  * the test key into a fail-closed check and every real quote is refused.
  *
  * Usage:
- *   RIDDLER_URL_PROD=https://host node scripts/verify-attestation-vectors.mjs
+ *   RIDDLER_URL_PROD=https://host node scripts/verify-deposit-attestation-vectors.mjs
  *
  * Exit codes:
  *   0  vendored set matches the published one

@@ -17,11 +17,11 @@
  *
  * One unauthenticated GET, and no quote: obtaining a real attestation
  * permanently consumes a Tron deposit address. The sibling probe
- * (`verify-attestation-vectors.mjs`) covers the encoding; this covers the label.
+ * (`verify-deposit-attestation-vectors.mjs`) covers the encoding; this covers the label.
  *
  * Usage:
- *   RIDDLER_URL_PROD=https://host node scripts/verify-attestation-version.mjs
- *   RIDDLER_SERVER=stg node scripts/verify-attestation-version.mjs
+ *   RIDDLER_URL_PROD=https://host node scripts/verify-deposit-attestation-version.mjs
+ *   RIDDLER_SERVER=stg node scripts/verify-deposit-attestation-version.mjs
  *
  * Exit codes are distinct so a CI log line says which half broke:
  *   0  the solver signs the version this SDK verifies
@@ -119,5 +119,5 @@ console.log(`\nOK: the solver signs the version this SDK verifies.`);
 // field without bumping the version passes here and fails the vectors probe.
 console.log(
   "    (Version label only -- field order and encoding are covered by\n" +
-    "     verify-attestation-vectors.mjs, which diffs the published vector set.)",
+    "     verify-deposit-attestation-vectors.mjs, which diffs the published vector set.)",
 );

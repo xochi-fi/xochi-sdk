@@ -51,8 +51,8 @@ on:
         default: all
         options:
           - all
-          - attestation-version
-          - attestation-vectors
+          - deposit-attestation-version
+          - deposit-attestation-vectors
           - spec-version
           - openapi
 
@@ -68,7 +68,7 @@ on:
 jobs:
   deposit-attestation-drift:
     # `inputs.probe` is null on the schedule, so the fallback is what runs daily.
-    if: ${{ (inputs.probe || 'all') == 'all' || startsWith(inputs.probe, 'attestation-') }}
+    if: ${{ (inputs.probe || 'all') == 'all' || startsWith(inputs.probe, 'deposit-attestation-') }}
     runs-on: ubuntu-latest
     env:
       PROBE: ${{ inputs.probe || 'all' }}
@@ -96,11 +96,11 @@ jobs:
         if: >-
           ${{ !cancelled()
           && steps.checkout.outcome == 'success'
-          && (env.PROBE == 'all' || env.PROBE == 'attestation-version') }}
+          && (env.PROBE == 'all' || env.PROBE == 'deposit-attestation-version') }}
         env:
           RIDDLER_SERVER: prod
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
-        run: node scripts/verify-attestation-version.mjs
+        run: node scripts/verify-deposit-attestation-version.mjs
 
       # Runs even when the version probe fails -- they answer different questions
       # and "which of the two broke" is the first thing anyone reading this log
@@ -110,11 +110,11 @@ jobs:
         if: >-
           ${{ !cancelled()
           && steps.checkout.outcome == 'success'
-          && (env.PROBE == 'all' || env.PROBE == 'attestation-vectors') }}
+          && (env.PROBE == 'all' || env.PROBE == 'deposit-attestation-vectors') }}
         env:
           RIDDLER_SERVER: prod
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
-        run: node scripts/verify-attestation-vectors.mjs
+        run: node scripts/verify-deposit-attestation-vectors.mjs
 
       # This job's status covers BOTH attestation probes, and the checks list
       # shows the job, not the steps, so a dispatch that ran one of them must not
