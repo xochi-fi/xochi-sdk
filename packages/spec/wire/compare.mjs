@@ -1,146 +1,93 @@
 /**
  * The structural comparison behind BOTH the nightly wire probe and the refresh
- * that writes the vendored copy. Node builtins only -- in fact no imports at
- * all, because it sits in the trust path of a file this repo signs against.
+ * that writes the vendored copy. No imports at all: it sits in the trust path
+ * of a file this repo signs against. Axes and finding classes: `./README.md`.
  *
  * ONE differ, TWO callers, and that is the point. `scripts/verify-openapi.mjs`
- * holds the served document to the vendored one; `packages/spec/wire/generate.mjs`
- * holds the served document to the copy it is about to REPLACE and refuses a
- * BREAKING result without `--allow-breaking`. While those two disagreed -- the
- * writer refusing only a dropped path/operation/schema NAME, the checker
- * comparing properties, constraints, enums and branches -- everything in the gap
- * installed itself unrefused, was re-digested over the writer's own output, and
- * was then compared to the same server by the probe for a pass. Measured against
- * the real prod document: a served copy that keeps every name and strips
- * `pattern` from `EthAddress`, `oneOf` from `ChainAddress` and `pattern`/
- * `maxLength` from `WalletSignature` was written (82366 -> 81852 bytes, `+0/-0`
- * on all three printed axes) and then verified OK, forever. A writer whose
- * refusal is narrower than its checker's comparison is a laundering path for
- * exactly the drift the checker exists to find. Keep the refusal and the
- * comparison the same function.
+ * holds the served document to the vendored one; `./generate.mjs` holds the
+ * served document to the copy it is about to REPLACE and refuses a BREAKING
+ * result without `--allow-breaking`. A writer whose refusal is narrower than
+ * its checker's comparison is a laundering path for exactly the drift the
+ * checker exists to find (a served copy keeping every name while stripping
+ * `pattern` from `EthAddress` would be written, re-digested, then verified OK
+ * against the same server forever). Keep the refusal and the comparison the
+ * same function.
  *
- * Structural, never byte-for-byte, for the reason `verify-attestation-vectors`
- * gives: a reformat or a description edit is not protocol drift, and a probe
- * that reports it as drift is one whose red nobody reads. Compared:
- *
- *   - the document's `openapi` dialect and its `info.version`
- *   - paths, and the methods under each path
- *   - per path item: its `servers` (which outrank the document's for every
- *     operation under the path) and its `$ref` (which replaces the item whole)
- *   - the document's `servers` as an ORDERED list, and any path-item or
- *     operation-level override of them
- *   - per operation: `parameters` (keyed `in:name`, `required` flips included),
- *     `requestBody`, the response status-code set, and the EFFECTIVE `security`
- *     requirement set (operation-level, falling back to the document root)
- *   - the `components` section names, then per shared section its member names:
- *     `schemas` and `responses` node-compared, `securitySchemes` compared whole
- *     with prose excluded (its contract is scalar -- `type`, `scheme`, `in`,
- *     `name` -- which the node walk does not cover), any other section likewise
- *     so that a section added upstream is not silently unchecked
- *   - at every node reachable in EITHER copy: the property names, `required`
- *     (its array form and the Parameter/Header/Request Body boolean),
- *     `enum`, the value-constraint keywords (`$ref`, `type`, `format`,
- *     `pattern`, the numeric, length and property-count bounds, `uniqueItems`,
- *     `nullable`, `readOnly`/`writeOnly`, `const`, `additionalProperties`,
- *     `default`, `deprecated`) and the branches of `oneOf`/`anyOf`/`allOf`/
- *     `prefixItems`
- *   - every string `$ref` in the served document, wherever it sits (served-only
- *     subtrees included): one that does not resolve -- external, malformed,
- *     dangling or cyclic -- is BREAKING, unless the vendored copy fails to
- *     resolve the same ref at the same location
- *
- * Not compared: descriptions, summaries, titles and examples. They are prose.
+ * Structural, never byte-for-byte: a reformat or a description edit is not
+ * protocol drift, and a probe that reports it as drift is one whose red nobody
+ * reads. Not compared: descriptions, summaries, titles and examples.
  *
  * The constraint keywords are not decoration. Five component schemas
  * (`EthAddress`, `BigIntString`, `ChainAddress`, `CompressedSecp256k1PubKey`,
- * `WalletSignature`) declare no `properties`, `required` or `enum` at all, so on
- * those axes only their NAME is checked -- and they are the value encodings every
- * signing path depends on. `ChainAddress`'s two-branch `oneOf` is what lets a
- * Tron `recipient_address` survive verbatim; dropping a branch, loosening
- * `EthAddress.pattern` to `^.*$` or retyping `BigIntString` from string to
- * integer is each a silent re-encoding of signed bytes. Nothing else in this
- * repo reads those five schemas -- `wire-contract.test.ts` names six others --
- * so this axis is their only cover.
+ * `WalletSignature`) declare no `properties`, `required` or `enum` at all, so
+ * on those axes only their NAME is checked -- and they are the value encodings
+ * every signing path depends on. `ChainAddress`'s two-branch `oneOf` is what
+ * lets a Tron `recipient_address` survive verbatim; dropping a branch,
+ * loosening `EthAddress.pattern` to `^.*$` or retyping `BigIntString` from
+ * string to integer is each a silent re-encoding of signed bytes. Nothing else
+ * in this repo reads those five schemas, so this axis is their only cover.
  *
- * Two verdict classes:
- *   STALE     an addition a vendored-built client survives: a new path, method,
- *             OPTIONAL property or parameter, an appended `enum` member, a
- *             served-only `default`, an added `security` alternative. The
- *             vendored copy is behind; refresh it.
- *   BREAKING  a removal, a served addition that is REQUIRED, a changed value
- *             constraint, a dropped `security` requirement, a node whose JSON
- *             type disagrees, or a served `$ref` that does not resolve. A client
- *             built against the vendored copy can now be wrong at runtime.
+ * Verdicts: STALE is an addition a vendored-built client survives (new path,
+ * method, OPTIONAL property or parameter, appended `enum` member, served-only
+ * `default`, added `security` alternative); BREAKING is a removal, a REQUIRED
+ * served addition, a changed value constraint, a dropped `security`
+ * requirement, a node whose JSON type disagrees, or a served `$ref` that does
+ * not resolve.
  *
- * Eight rules here are easy to undo and each cost a silent pass:
+ * Eight rules here are easy to undo and each would be a silent pass:
  *
  *   1. The generic descent walks the UNION of both sides' keys. Walking the
- *      served side only made every vendored-side subtree removal invisible:
+ *      served side only makes every vendored-side subtree removal invisible:
  *      `content`, `schema`, `items` and `headers` are on no other axis, so
- *      deleting the 200 body schema of POST /xochi/quote, renaming its media
- *      type (with the `$ref` repointed from `QuoteResponse` to `ErrorResponse`),
- *      dropping `requestBody.content`, dropping an array's `items` and dropping
- *      `components.responses.ValidationError.content` -- the envelope every
- *      operation `$ref`s -- each reported OK.
+ *      deleting the 200 body schema of POST /xochi/quote, repointing its media
+ *      type's `$ref`, dropping `requestBody.content`, an array's `items` or
+ *      `components.responses.ValidationError.content` would each report OK.
  *   2. A node that is not a plain object on both sides is REPORTED, not skipped.
  *      A JSON Schema subschema may legally be a boolean, so a served
  *      `QuoteResponse.properties.to_amount: true` deletes `$ref`, `type` and
- *      `pattern` in one edit while the property name still matches on both
- *      sides. Bailing on it graded that OK.
+ *      `pattern` in one edit while the property name still matches.
  *   3. A served-only `default` is STALE, not BREAKING. It is the most ordinary
- *      annotation a generator emits and breaks no vendored-built client; grading
- *      it BREAKING put it in the same list as `EthAddress.pattern` loosening and
- *      taught the on-call to stop reading the body. A `default` that DISAPPEARS
- *      or CHANGES is still BREAKING -- it is what the server does with an
+ *      annotation a generator emits and breaks no vendored-built client;
+ *      grading it BREAKING puts it beside `EthAddress.pattern` loosening and
+ *      teaches the on-call to stop reading the body. A `default` that
+ *      DISAPPEARS or CHANGES is BREAKING -- it is what the server does with an
  *      omitted field.
- *   4. `security` is on an axis at all. It is an array, so the object walk skips
- *      it, and `components.securitySchemes` was enumerated nowhere: dropping
- *      auth from POST /xochi/quote and renaming the API-key header from
- *      `X-API-Key` both reported OK, on the one axis this repo hardcodes per
- *      server key.
+ *   4. `security` is on an axis at all. It is an array, so the object walk
+ *      skips it; without this axis dropping auth from POST /xochi/quote and
+ *      renaming the API-key header from `X-API-Key` both report OK, on the one
+ *      axis this repo hardcodes per server key.
  *   5. `additionalProperties` is compared for PRESENCE even in its object form.
- *      The constraint loop only compares its BOOLEAN form by value, and the
- *      first spelling of that skip fired whenever neither side was a boolean --
- *      which "served object vs vendored absent" satisfies. The generic descent
- *      then skipped it a second time as a known constraint key, on the premise
- *      that the constraint loop had already reported it. Deleting the
- *      object-form `additionalProperties` of `CapabilityMatrix.pull_recipients`
- *      (the per-chain `{erc3009, permit2}` matrix behind the recipient pin) or
- *      of `TokenCapability.addresses` (every token address, pinned to the
- *      hex-or-base58 `ChainAddress`) reported OK on every axis. The skip now
- *      requires BOTH sides to declare the object form, which is the only case
- *      the descent below actually covers.
- *   6. The constraint list is a CLOSED allowlist, so a keyword absent from it is
- *      invisible in both directions -- the descent skips any key that is a
- *      scalar on both sides. `readOnly: true` added to a request property means
- *      a client must stop sending it, and it graded OK; so did `uniqueItems`,
- *      `minProperties`/`maxProperties` and `const`. Adding a keyword to
- *      `CONSTRAINTS` is the whole cost of covering it. Two are annotations
- *      rather than contracts when they appear on the served side only
- *      (`default`, `deprecated`); those are in `STALE_IF_SERVED_ONLY`.
+ *      The constraint loop compares its BOOLEAN form by value, and the descent
+ *      skips it as a known constraint key, so "served object vs vendored
+ *      absent" is covered only here: deleting the object-form
+ *      `additionalProperties` of `CapabilityMatrix.pull_recipients` (the
+ *      per-chain matrix behind the recipient pin) or of
+ *      `TokenCapability.addresses` would otherwise report OK on every axis.
+ *      The skip requires BOTH sides to declare the object form, the only case
+ *      the descent actually covers.
+ *   6. The constraint list is a CLOSED allowlist, so a keyword absent from it
+ *      is invisible in both directions -- the descent skips any key that is a
+ *      scalar on both sides. `readOnly: true` added to a request property
+ *      means a client must stop sending it. Adding a keyword to `CONSTRAINTS`
+ *      is the whole cost of covering it. Two are annotations rather than
+ *      contracts when served-only (`default`, `deprecated`): those are in
+ *      `STALE_IF_SERVED_ONLY`.
  *   7. `servers` is compared as an ORDERED list and ANY addition is BREAKING.
  *      That is where it parts company with `security`, whose entries are
- *      alternatives an addition leaves every existing client working under.
- *      Here the FIRST element is the base URL a generated client bakes in, so
- *      a prepend removes nothing, graded STALE against a sorted set, and the
- *      writer -- which refuses only on `breaking.length > 0` -- wrote another
- *      host into `servers[0]` with no flag.
+ *      alternatives. Here the FIRST element is the base URL a generated client
+ *      bakes in, so a prepend removes nothing, grades STALE against a sorted
+ *      set, and the writer -- which refuses only on `breaking.length > 0` --
+ *      would write another host into `servers[0]` with no flag.
  *   8. Served-only is not automatically additive, and a narrowing applicator is
  *      graded on PRESENCE whatever its JSON type. The generic descent grades an
- *      object-valued served-only key STALE, which is right for `content`,
- *      `headers` or a new media type and wrong for every keyword in
- *      `NARROWING`: those REJECT requests the vendored copy says are legal. The
- *      object form was graded and the BOOLEAN form was on no axis in either
- *      direction, because the descent short-circuits on a key that is a scalar
- *      on both sides -- and that is the form that matters most:
- *      `unevaluatedProperties: false` is the canonical spelling of "reject every
- *      field I did not declare" and `not: false` rejects everything, so the
- *      object form is the rare one. Measured against the real document, a
- *      served-only `not: {required:[...]}` reported BREAKING=1 while served-only
- *      `unevaluatedProperties`, `unevaluatedItems`, `contains`, `propertyNames`
- *      and `not` at `false` each reported b=0 s=0, and `generate.mjs` refuses
- *      only on `breaking.length > 0`, so each installed with no flag and nothing
- *      in the provenance delta.
+ *      object-valued served-only key STALE, right for `content`, `headers` or
+ *      a new media type and wrong for every keyword in `NARROWING`: those
+ *      REJECT requests the vendored copy says are legal. The BOOLEAN form
+ *      matters most (`unevaluatedProperties: false` is the canonical "reject
+ *      every field I did not declare"; `not: false` rejects everything) and
+ *      the descent short-circuits on a key that is a scalar on both sides, so
+ *      without this rule each installs with no flag and nothing in the
+ *      provenance delta.
  *
  * Every server-controlled fragment of every finding goes through `sanitize`.
  */
@@ -267,21 +214,16 @@ export const numberTokens = (text) => {
  * literal SPELLING whose occurrence count differs, listed once per surplus
  * occurrence, in each text's own first-occurrence order.
  *
- * Both directions and per-occurrence, because the first spelling of this axis
- * was a de-duplicated one-directional set difference (served \ vendored), and
- * that is blind whenever the re-spelled literal's spelling still occurs
- * somewhere else in the file. The real vendored document has 29 numeric tokens
- * over 14 distinct spellings, of which `0` occurs 11 times and `1` six times,
- * and every one of those 17 occurrences is a `minimum` or `default` bound.
- * Editing a single `"minimum": 0` in the VENDORED copy to `0.0` therefore left
- * `0` present elsewhere, the set difference empty, and the probe printing
- * "OK: the vendored wire contract matches the served one". A vendored-only
+ * Both directions and per-occurrence: a de-duplicated one-directional set
+ * difference (served \ vendored) is blind whenever the re-spelled literal's
+ * spelling still occurs somewhere else in the file. The real vendored document
+ * has `0` eleven times and `1` six times, every one a `minimum` or `default`
+ * bound, so editing a single `"minimum": 0` in the VENDORED copy to `0.0`
+ * leaves `0` present elsewhere and the set difference empty. A vendored-only
  * literal is the local fault this axis exists to catch, so it is reported too.
  *
- * Two lexes total. The expression this replaces rebuilt
- * `new Set(numberTokens(vendored))` inside the filter callback, once per
- * distinct served token, which is quadratic in the served body `probe-lib`
- * permits (4 MB).
+ * Two lexes total, not one per distinct served token: the served body
+ * `probe-lib` permits is 4 MB.
  */
 export const numberTokenDiff = (servedText, vendoredText) => {
   const counts = (text) => {
@@ -359,16 +301,10 @@ const CONSTRAINT_SET = new Set(CONSTRAINTS);
  *
  * The generic descent grades a served-only key STALE, "an addition a
  * vendored-built client survives", which each of these is the opposite of: they
- * REJECT requests the vendored copy says are legal. Measured against the real
- * document, adding `not: {required:["from_amount"]}` to `QuoteRequest` graded
- * b=0 s=1, `if` plus `then` b=0 s=2, `propertyNames: {pattern:"^x_"}` b=0 s=1,
- * and `dependentRequired` and `contains` b=0 s=1 each.
- *
- * In their BOOLEAN form all ten graded b=0 s=0 -- on no axis, in either
- * direction -- because the descent skips a key that is not an object on either
- * side and the constraint loop never reads these keywords. That is the form that
- * matters most, and `generate.mjs` refuses only on `breaking.length > 0`, so
- * each installed with no flag and nothing in the provenance delta.
+ * REJECT requests the vendored copy says are legal. The BOOLEAN form is on no
+ * other axis in either direction (the descent skips a key that is not an
+ * object on either side and the constraint loop never reads these keywords),
+ * and it is the form that matters most.
  *
  * Exported, and `wire-differ.test.ts` drives BOTH forms of every member: a
  * keyword in this list the descent does not actually hold is a false claim on
@@ -416,14 +352,14 @@ const METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "tr
 const PROSE = new Set(["description", "summary", "title", "example", "examples", "externalDocs"]);
 
 /**
- * `compareNode` refuses a document it cannot walk, but every WHOLE-VALUE
- * comparison escaped that bound: `canon` is applied to arbitrary constraint
+ * `compareNode` refuses a document it cannot walk, and every WHOLE-VALUE
+ * comparison must share that bound: `canon` is applied to arbitrary constraint
  * values (`const`, `default`, the object form of `additionalProperties`), to
  * each `security` requirement and to a non-object `servers` entry, and
  * `withoutProse` to a whole `securitySchemes` node. A served `const` nested a
- * few hundred thousand deep raised `RangeError: Maximum call stack size
- * exceeded`, which is not an `IncomparableDocument`, so the callers reported an
- * internal error rather than INCONCLUSIVE. One bound, one class, every walk.
+ * few hundred thousand deep would otherwise raise `RangeError`, which is not
+ * an `IncomparableDocument`, so the callers would report an internal error
+ * rather than INCONCLUSIVE. One bound, one class, every walk.
  */
 const tooDeep = (where) =>
   new IncomparableDocument(
@@ -630,7 +566,7 @@ const unresolvedRefs = (doc, side) => {
  * Returns `{ breaking, stale, stats }`, both lists of already-sanitized
  * human-readable lines. `stats.checks` and `stats.nodes` are reported by the
  * callers because "agreed" and "never looked" are otherwise the same output
- * (probe-lib rule 2), and this comparison's first cut compared three keywords.
+ * (probe-lib rule 2).
  */
 export const compareContract = (served, vendored) => {
   const breaking = [];
@@ -671,8 +607,7 @@ export const compareContract = (served, vendored) => {
       // Rule 5 above. Only the BOOLEAN form is a constraint by value (false ->
       // true is an open object with no contract) and only the object form is
       // walked below -- so the skip needs BOTH sides to be walking. Object
-      // against absent is a constraint that appeared or vanished, and skipping
-      // it here left it on no axis at all.
+      // against absent is a constraint that appeared or vanished.
       if (
         k === "additionalProperties" &&
         sHas &&
@@ -727,10 +662,9 @@ export const compareContract = (served, vendored) => {
       const vList = Array.isArray(v[key]) ? v[key].map(String) : null;
       if (sList === null && vList === null) {
         // `required` has a second, non-array form: the BOOLEAN on a Parameter,
-        // Header or Request Body Object. It is not in `CONSTRAINTS` and this
-        // returned early, so at every node the operation walk does not check by
-        // hand it was on no axis -- flipping POST /xochi/quote's 503
-        // `headers.Retry-After.required` graded b=0 s=0. Compared as the
+        // Header or Request Body Object. It is not in `CONSTRAINTS`, so this is
+        // its only axis (flipping POST /xochi/quote's 503
+        // `headers.Retry-After.required` is a contract change). Compared as the
         // EFFECTIVE flag, since OpenAPI 3.0.3 defaults it to false: absent and
         // `false` are the same contract, and reporting that pair as drift
         // reddens an honest reformat.
@@ -796,13 +730,12 @@ export const compareContract = (served, vendored) => {
         compareNode(sc, vc, at(path, k), depth + 1);
         continue;
       }
-      // Rule 8 above, and BEFORE the both-scalar short-circuit below, which is
-      // what left the boolean form of these keywords uncompared in both
-      // directions. Graded on presence, so `unevaluatedProperties: false` --
-      // "reject every field I did not declare" -- lands where
-      // `unevaluatedProperties: {...}` already did. A vendored-only one is the
-      // server dropping a restriction and keeps whatever the rules below give
-      // it.
+      // Rule 8 above, and BEFORE the both-scalar short-circuit below, which
+      // would otherwise leave the boolean form of these keywords uncompared in
+      // both directions. Graded on presence, so `unevaluatedProperties: false`
+      // lands where `unevaluatedProperties: {...}` already does. A
+      // vendored-only one is the server dropping a restriction and keeps
+      // whatever the rules below give it.
       if (NARROWING.has(k) && Object.hasOwn(s, k) && !Object.hasOwn(v, k)) {
         checks += 1;
         breaking.push(
@@ -840,9 +773,7 @@ export const compareContract = (served, vendored) => {
   // `minimum`/`maximum` and `nullable` exists, while in 3.1 they are numeric
   // bounds and `nullable` is gone -- so under a changed dialect this differ
   // compares two identical keyword values that mean different things, on every
-  // axis below. Neither key was read at all: `3.0.3` -> `3.1.0` and
-  // `info.version` `1.0.0` -> `9.9.9` both graded b=0 s=0 against the real
-  // document. The version is the producer's own label for the surface, so a
+  // axis below. The version is the producer's own label for the surface, so a
   // change is STALE (refresh and look at what moved); the dialect is BREAKING.
   checks += 1;
   if (canon(served?.openapi) !== canon(vendored?.openapi)) {
@@ -870,27 +801,21 @@ export const compareContract = (served, vendored) => {
   }
 
   /**
-   * `servers` is where the bytes GO, and it was on no axis at all: it is an
-   * array, so the object walk skips it, and nothing else here reaches the
-   * document root. A served copy that rewrites `servers[0].url` to another host
-   * graded OK on every axis, was written by the refresh with no flag, and was
-   * then verified against that same server forever. `packages/spec` exports
-   * this document to conformance/{python,go,rust}, where `servers[0].url` is the base
-   * URL a generated client bakes in.
+   * `servers` is where the bytes GO. It is an array, so the object walk skips
+   * it, and nothing else here reaches the document root; `packages/spec`
+   * exports this document to conformance/{python,go,rust}, where
+   * `servers[0].url` is the base URL a generated client bakes in.
    *
    * Compared as an ORDERED list of urls, and this is where it parts company
    * with `security`. There every entry is an alternative, so an added one
    * leaves every existing client working and is STALE. Here the FIRST element
    * is the base URL a generator bakes in, so position is the contract:
-   * `d.servers.unshift({url:"https://evil.example"})` removes nothing, so the
-   * sorted set diff was empty and it graded b=0 s=1 -- and the writer refuses
-   * only on `breaking.length > 0`, so the refresh wrote the attacker's host
-   * into `servers[0]` with no flag (the reformat preserves array order) and the
-   * probe then verified that copy against that same server forever. A REPLACE
-   * was caught only because it also removed a url. So an addition and a pure
-   * reorder are BREAKING here, as is a removal (a client built against the
-   * vendored copy is pointed at a host the producer disowns). `description` is
-   * prose and is not read.
+   * `d.servers.unshift({url:"https://evil.example"})` removes nothing, so a
+   * sorted set diff is empty, and the writer refuses only on
+   * `breaking.length > 0` (the reformat preserves array order). So an addition
+   * and a pure reorder are BREAKING here, as is a removal (a client built
+   * against the vendored copy is pointed at a host the producer disowns).
+   * `description` is prose and is not read.
    */
   const serverUrls = (list) =>
     (Array.isArray(list) ? list : []).map((e) =>
@@ -959,12 +884,12 @@ export const compareContract = (served, vendored) => {
   /**
    * A served-only parameter or requestBody given as a local `$ref` carries its
    * `required` on the target, so it is graded on that: read off the bare ref
-   * object, a newly served required `$ref` parameter graded STALE. Chains are
-   * followed by `resolveRef` (RFC 6901 §6 decoding order).
+   * object, a newly served required `$ref` parameter would grade STALE. Chains
+   * are followed by `resolveRef` (RFC 6901 §6 decoding order).
    *
    * An unresolved ref is graded BREAKING here, never on the bare ref object:
-   * `isRequired({$ref})` is false, so it read "(optional)", graded STALE, and
-   * `generate:wire` installed with no flag a parameter whose requirements
+   * `isRequired({$ref})` is false, so it would read "(optional)" and
+   * `generate:wire` would install with no flag a parameter whose requirements
    * nobody can read -- and an external ref is the producer pointing the
    * contract at bytes this repo never vendored. The node is remembered so the
    * document-wide `$ref` scan below does not report it a second time.
@@ -999,8 +924,8 @@ export const compareContract = (served, vendored) => {
         continue;
       }
       // No `required` comparison here: `compareNode` compares the boolean form
-      // at every node under this same label, so a check here reported every
-      // flip twice.
+      // at every node under this same label, so a check here would report
+      // every flip twice.
       compareNode(sp, vp, `${label} parameter ${sanitize(k)}`);
     }
     for (const k of [...vParams.keys()].filter((k) => !sParams.has(k))) {
@@ -1047,7 +972,7 @@ export const compareContract = (served, vendored) => {
         breaking.push(`${label} requestBody is vendored but no longer served`);
       } else {
         // `requestBody.required` is compared by `compareNode` under this same
-        // label, for the same reason the parameter loop no longer checks it.
+        // label, as for parameters above.
         compareNode(sBody, vBody, `${label} requestBody`);
       }
     }
@@ -1075,14 +1000,11 @@ export const compareContract = (served, vendored) => {
     const pathLabel = `path ${sanitize(p)}`;
 
     // A path item is a NODE, not a bag of methods, and the loop below
-    // enumerates only its verbs -- so every other Path Item Object key was on
-    // no axis in either direction. OpenAPI 3.0.3 gives a path-item `servers`
-    // array precedence over the document's for every operation under the path,
-    // so one appearing reroutes the WHOLE path; measured on the real document,
-    // `d.paths["/xochi/quote"].servers = [{url:"https://evil.example"}]` graded
-    // b=0 s=0, as did the same edit on all 13 paths, while the control one
-    // level down at `post.servers` was caught. Presence asymmetry is BREAKING
-    // on its own, exactly as the operation-level override is graded.
+    // enumerates only its verbs, so every other Path Item Object key needs its
+    // own axis. OpenAPI 3.0.3 gives a path-item `servers` array precedence over
+    // the document's for every operation under the path, so one appearing
+    // reroutes the WHOLE path. Presence asymmetry is BREAKING on its own,
+    // exactly as the operation-level override is graded.
     const sPathServers = Array.isArray(sItem?.servers);
     const vPathServers = Array.isArray(vItem?.servers);
     if (sPathServers || vPathServers) {
@@ -1099,7 +1021,7 @@ export const compareContract = (served, vendored) => {
     }
 
     // A path-item `$ref` REPLACES the whole item, so the methods compared below
-    // are not the ones a client is held to. Adding one graded b=0 s=0.
+    // are not the ones a client is held to.
     const sPathRef = sItem?.$ref;
     const vPathRef = vItem?.$ref;
     if (sPathRef !== undefined || vPathRef !== undefined) {
@@ -1129,9 +1051,9 @@ export const compareContract = (served, vendored) => {
 
   // 2. The `components` sections, by name, then each shared section's members.
   // The section set is diffed rather than three names being hardcoded, so a
-  // section the server adds is reported instead of going unchecked -- which is
-  // how `securitySchemes` sat uncompared while carrying the only description of
-  // how a client authenticates.
+  // section the server adds is reported instead of going unchecked
+  // (`securitySchemes` carries the only description of how a client
+  // authenticates).
   const sections = (doc) => (isObj(doc?.components) ? Object.keys(doc.components) : []);
   const servedSections = sections(served);
   const vendoredSections = sections(vendored);
@@ -1147,7 +1069,7 @@ export const compareContract = (served, vendored) => {
   // Everything else -- `securitySchemes` today -- has a SCALAR contract (`type`,
   // `scheme`, `in`, `name`) that the node walk does not compare, so it is
   // compared whole with prose stripped: renaming the API-key header from
-  // `X-API-Key` is a client break and reported OK before this existed.
+  // `X-API-Key` is a client break.
   const NODE_SECTIONS = new Set(["schemas", "responses"]);
   const counts = {};
   for (const section of servedSections.filter((n) => vendoredSections.includes(n))) {
@@ -1187,16 +1109,16 @@ export const compareContract = (served, vendored) => {
   }
 
   // 3. Every `$ref` the served document carries, wherever it sits. The walks
-  // above follow the vendored document's shape, so a served-only subtree --
-  // a new property, path, response, component or nested `items`/`allOf` -- is
-  // graded STALE by its NAME and never entered: a served-only property
-  // `{$ref: "#/components/schemas/DoesNotExist"}` or an external ref read as an
-  // optional addition and `generate:wire` installed it with no flag. A ref that
-  // does not resolve (external, malformed, dangling or cyclic; `resolveRef`) is
-  // BREAKING: the contract at that node is unreadable, or is bytes this repo
-  // never vendored. A ref the vendored copy already fails to resolve at the
-  // SAME location is not a change and is not reported, or one accepted
-  // `--allow-breaking` would turn the nightly probe permanently red.
+  // above follow the vendored document's shape, so a served-only subtree (a
+  // new property, path, response, component or nested `items`/`allOf`) is
+  // graded STALE by its NAME and never entered, which would let a served-only
+  // `{$ref: "#/components/schemas/DoesNotExist"}` or an external ref install
+  // as an optional addition. A ref that does not resolve (external, malformed,
+  // dangling or cyclic; `resolveRef`) is BREAKING: the contract at that node
+  // is unreadable, or is bytes this repo never vendored. A ref the vendored
+  // copy already fails to resolve at the SAME location is not a change and is
+  // not reported, or one accepted `--allow-breaking` would turn the nightly
+  // probe permanently red.
   const vendoredUnresolved = unresolvedRefs(vendored, "vendored");
   for (const [ref, { reason, hits }] of unresolvedRefs(served, "served")) {
     const known = new Set((vendoredUnresolved.get(ref)?.hits ?? []).map((h) => h.loc));

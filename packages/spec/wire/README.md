@@ -44,9 +44,10 @@ change. The document is renamed into place before the digest, so an interrupted 
 mismatched pair that fails a gate.
 
 `format.mjs` never parses a number: it carries numeric tokens verbatim and throws rather than fall
-back to `JSON.parse`. Its lexical check is a post-condition nothing consents to (the old
-`--allow-renumbering` caused permanent RE-SPELLED). `verify:openapi` re-runs the same scan
-(`numberTokens`, exported from `compare.mjs`) on the served bytes.
+back to `JSON.parse`. Its lexical check is a post-condition nothing consents to: a consented fold
+(`0.0` vendored as `0`) makes RE-SPELLED permanent, since a refresh reproduces the same bytes.
+`verify:openapi` re-runs the same scan (`numberTokens`, exported from `compare.mjs`) on the served
+bytes.
 
 Env comes from the process, never `.env`. Pass flags after `--`.
 
