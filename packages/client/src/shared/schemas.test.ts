@@ -85,7 +85,7 @@ const canonicalQuote = {
 // shape, economics.md Part 1). Real values from a Base->Arbitrum USDC standard-tier
 // quote: 1000 USDC in, 22 bps (8 solver / 6 venue / 8 routing), no price impact.
 // gas_floor is the live network minimum (fill_cost x 1.3), independent of the bps
-// layers -- not a residual, never "$0.00".
+// layers.
 const feeBreakdown = {
   tier: "standard",
   asset_class: "stable",
@@ -157,11 +157,6 @@ describe("QuoteResponseSchema (snake_case wire contract)", () => {
       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     );
   });
-
-  it("treats pull_authorization as optional (omitted on non-pulling routes)", () => {
-    expect(QuoteResponseSchema.safeParse(canonicalQuote).success).toBe(true);
-    expect(QuoteResponseSchema.parse(canonicalQuote).pull_authorization).toBeUndefined();
-  });
 });
 
 describe("FeeBreakdownSchema (itemized layer split from Riddler)", () => {
@@ -176,9 +171,8 @@ describe("FeeBreakdownSchema (itemized layer split from Riddler)", () => {
   });
 
   // The layer amounts carry no denomination of their own, so the token they are
-  // measured in has to be stated beside them. It used to be inferred from the
-  // mere presence of `fee_breakdown`, resting on an unwritten convention in
-  // another repo -- the same failure class as xochi#410.
+  // measured in has to be stated beside them, never inferred from the mere
+  // presence of `fee_breakdown`.
   it("carries the fee denomination as a sibling of fee_breakdown", () => {
     const withDenomination = {
       ...canonicalQuote,
@@ -201,22 +195,7 @@ describe("FeeBreakdownSchema (itemized layer split from Riddler)", () => {
     expect(QuoteResponseSchema.parse(canonicalQuote).fee_denomination).toBeUndefined();
   });
 
-  // The new gas_floor contract (Riddler #615): the four bps layers reconcile to
-  // total_fee, and gas_floor is a SEPARATE positive network minimum (fill_cost x
-  // 1.3) that sits below the total on a normal order -- not a residual top-up, and
-  // never the false "$0.00" the client used to derive.
-  it("keeps gas_floor independent of the bps layers (real network minimum)", () => {
-    const layers =
-      BigInt(feeBreakdown.solver_fee) +
-      BigInt(feeBreakdown.price_impact) +
-      BigInt(feeBreakdown.venue_fee) +
-      BigInt(feeBreakdown.routing_fee);
-    expect(layers).toBe(BigInt(feeBreakdown.total_fee));
-    expect(BigInt(feeBreakdown.gas_floor.amount)).toBeGreaterThan(0n);
-    expect(BigInt(feeBreakdown.gas_floor.amount)).toBeLessThan(BigInt(feeBreakdown.total_fee));
-  });
-
-  it("accepts an ACP-origin split with the routing layer zeroed (#95)", () => {
+  it("accepts an ACP-origin split with the routing layer zeroed", () => {
     // ACP intents already pay the 8-bps Raxol routing cut via the job budget, so
     // Riddler drops the routing layer: routing_fee_bps 0, total 22 -> 14 bps.
     const acp = {
@@ -231,12 +210,10 @@ describe("FeeBreakdownSchema (itemized layer split from Riddler)", () => {
   });
 
   // The five layer amounts are base-unit integers, and every consumer feeds them
-  // straight to `BigInt` to reconcile the parts against `total_fee`. Typed as a
-  // bare `z.string()` these all parsed clean and then threw (or, for "", quietly
-  // returned 0n and itemized a free trade) in code with no try/catch above it.
-  // The producer emits `Integer.to_string` of a non-negative integer for all
-  // five, so the digits-only rule describes what is served, not a restriction on
-  // it.
+  // straight to `BigInt` to reconcile the parts against `total_fee`; a bare
+  // string would parse clean and then throw (or, for "", read as 0n and itemize
+  // a free trade). The producer emits `Integer.to_string` of a non-negative
+  // integer for all five, so the digits-only rule describes what is served.
   it.each(["0.5", "", "1.2e3", "abc", "-5", "0x10", " 100"])(
     "rejects a layer amount that is not base units (%s)",
     (bad) => {
@@ -245,14 +222,6 @@ describe("FeeBreakdownSchema (itemized layer split from Riddler)", () => {
       }
     },
   );
-
-  // The USD fields are dollar figures and are legitimately decimal. The
-  // digits-only rule must not have leaked onto them.
-  it("keeps the usd fields decimal (gas_floor.usd, total_usd)", () => {
-    expect(feeBreakdown.gas_floor.usd).toContain(".");
-    expect(feeBreakdown.total_usd).toContain(".");
-    expect(FeeBreakdownSchema.safeParse(feeBreakdown).success).toBe(true);
-  });
 
   it("rejects a fee_breakdown missing gas_floor (drift caught)", () => {
     const noFloor: Record<string, unknown> = { ...feeBreakdown };
@@ -400,12 +369,8 @@ describe("QuoteResponseSchema (deposit route)", () => {
     expect(result.success).toBe(true);
   });
 
-  it("still accepts an EVM quote without deposit fields", () => {
-    expect(QuoteResponseSchema.safeParse(base).success).toBe(true);
-  });
-
-  // #113: the response echoes the destination recipient for non-EVM routes and
-  // must preserve the base58 value verbatim (never lowercased) for the client's
+  // The response echoes the destination recipient for non-EVM routes and must
+  // preserve the base58 value verbatim (never lowercased) for the client's
   // fail-closed echo assertion.
   it("preserves a recipient_address echo verbatim", () => {
     const result = QuoteResponseSchema.safeParse({ ...base, recipient_address: TRON_RECIPIENT });

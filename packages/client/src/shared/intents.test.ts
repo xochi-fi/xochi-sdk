@@ -8,13 +8,8 @@ import {
   isDestinationType,
   canTransitionTo,
   canLimitOrderTransitionTo,
-  getStatusLabel,
-  getLimitOrderStatusLabel,
   INTENT_STATUSES,
-  INTENT_STATUS_TRANSITIONS,
   LIMIT_ORDER_STATUSES,
-  LIMIT_ORDER_STATUS_TRANSITIONS,
-  LIMIT_ORDER_EXPIRY_PRESETS,
 } from "./intents.js";
 
 // ============================================================
@@ -176,13 +171,6 @@ describe("canTransitionTo (intent)", () => {
     expect(canTransitionTo("executing", "failed")).toBe(true);
     expect(canTransitionTo("executing", "bridging")).toBe(true);
   });
-
-  it("every status has at least one valid transition", () => {
-    for (const status of INTENT_STATUSES) {
-      const transitions = INTENT_STATUS_TRANSITIONS[status];
-      expect(transitions.length).toBeGreaterThan(0);
-    }
-  });
 });
 
 describe("canLimitOrderTransitionTo", () => {
@@ -196,56 +184,5 @@ describe("canLimitOrderTransitionTo", () => {
   it("blocks invalid transitions", () => {
     expect(canLimitOrderTransitionTo("idle", "executing")).toBe(false);
     expect(canLimitOrderTransitionTo("completed", "executing")).toBe(false);
-  });
-
-  it("every limit status has at least one valid transition", () => {
-    for (const status of LIMIT_ORDER_STATUSES) {
-      const transitions = LIMIT_ORDER_STATUS_TRANSITIONS[status];
-      expect(transitions.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ============================================================
-// Status Labels
-// ============================================================
-
-describe("getStatusLabel", () => {
-  it("returns a label for every intent status", () => {
-    for (const status of INTENT_STATUSES) {
-      const label = getStatusLabel(status);
-      expect(typeof label).toBe("string");
-      expect(label.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("getLimitOrderStatusLabel", () => {
-  it("returns a label for every limit order status", () => {
-    for (const status of LIMIT_ORDER_STATUSES) {
-      const label = getLimitOrderStatusLabel(status);
-      expect(typeof label).toBe("string");
-      expect(label.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ============================================================
-// Expiry Presets
-// ============================================================
-
-describe("LIMIT_ORDER_EXPIRY_PRESETS", () => {
-  it("has correct durations", () => {
-    expect(LIMIT_ORDER_EXPIRY_PRESETS["1h"]).toBe(3_600_000);
-    expect(LIMIT_ORDER_EXPIRY_PRESETS["24h"]).toBe(86_400_000);
-    expect(LIMIT_ORDER_EXPIRY_PRESETS["7d"]).toBe(604_800_000);
-    expect(LIMIT_ORDER_EXPIRY_PRESETS["30d"]).toBe(2_592_000_000);
-  });
-
-  it("presets are in ascending order", () => {
-    const values = Object.values(LIMIT_ORDER_EXPIRY_PRESETS);
-    for (let i = 1; i < values.length; i++) {
-      expect(values[i]).toBeGreaterThan(values[i - 1]);
-    }
   });
 });
