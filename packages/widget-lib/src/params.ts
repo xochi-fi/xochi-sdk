@@ -2,10 +2,8 @@
  * Frame URL parameters: the defaults a host sets on `/embed`.
  *
  * The ONE definition of their names, syntax and encoding, shared by this
- * library (which writes them) and the widget frame (which reads them at load).
- * Moved here from xochi-widget `src/pages/trade/embedParams.ts`; the widget
- * importing it from this package instead of keeping its own copy is part of
- * its migration onto `@xochi/widget-lib`.
+ * library (which writes them) and the widget frame (which reads them at load
+ * by importing this package, never a copy of its own).
  *
  *   fromChain   origin chain, decimal chain id           fromChain=1
  *   toChain     destination chain, decimal chain id      toChain=8453
