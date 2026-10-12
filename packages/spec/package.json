@@ -1,7 +1,14 @@
 {
   "name": "@xochi/spec",
-  "version": "0.8.0",
-  "description": "Xochi protocol spec, served wire contract and byte-equality conformance vectors (Xochi intent, ERC-3009, Permit2, escrow, solver bids, fees)",
+  "version": "0.8.1",
+  "description": "Xochi protocol spec, wire contract and byte-equality conformance vectors.",
+  "keywords": [
+    "xochi",
+    "specification",
+    "conformance",
+    "eip-712",
+    "openapi"
+  ],
   "type": "module",
   "files": [
     "SPEC.md",
@@ -82,7 +89,7 @@
   },
   "devDependencies": {
     "@xochi/client": "0.1.1",
-    "@xochi/signer": "0.5.0",
+    "@xochi/signer": "0.5.1",
     "ethers": "^6.17.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",

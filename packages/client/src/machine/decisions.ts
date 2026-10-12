@@ -34,6 +34,16 @@ export const QUOTE_BUSY_STATES: IntentStatus[] = [
   "settling",
 ];
 
+/**
+ * States an explicit deposit-route allocation may start from: before any
+ * signature or deposit. Past them the trade has a ceremony, a swap or an
+ * outcome a fresh route would land on.
+ */
+export const ALLOCATABLE_STATES: IntentStatus[] = ["idle", "pending", "quoting", "quoted"];
+
+/** A delivered or returned trade: a late quote reply may not reopen it. */
+export const ENDED_STATES: IntentStatus[] = ["completed", "refunded"];
+
 /** A pre-execution quote is reset when the wallet context changes in these states. */
 export const WALLET_INTERRUPTIBLE_STATES: IntentStatus[] = [
   "quoted",
@@ -225,11 +235,35 @@ export interface BuildQuoteRequestInput {
 }
 
 /**
- * Build the quote request body. The stealth meta-address is sent ONLY on a
- * stealth settlement (otherwise omitted), and an empty `recipientAddress` or
- * `refundAddress` normalizes to undefined (EVM routes settle to, and refund to,
- * the connected wallet).
+ * The request fields the server reads through a normalisation: an empty
+ * `recipientAddress` or `refundAddress` is undefined (EVM routes settle to, and
+ * refund to, the connected wallet) and the stealth meta-address is sent ONLY
+ * on a stealth settlement. The machine's trade key reads the same values, so
+ * two forms that build one request are one trade.
  */
+export function normalizeTradeFields(
+  input: Pick<BuildQuoteRequestInput, "settlementPreference"> & {
+    recipientAddress?: string | null;
+    refundAddress?: string | null;
+    stealthMetaAddress?: BuildQuoteRequestInput["stealthMetaAddress"] | null;
+  },
+): Pick<QuoteRequest, "recipientAddress" | "refundAddress" | "stealthMetaAddress"> {
+  return {
+    // Trimmed HERE, at the single point the request is built, because the
+    // deposit attestation rebuilds both of these from the same panel state and
+    // compares bytes. Sending " 0xabc" while rebuilding "0xabc" is a message
+    // that cannot recover, reported to the user as a route being unavailable.
+    // One deal, one encoding.
+    recipientAddress: input.recipientAddress?.trim() || undefined,
+    refundAddress: input.refundAddress?.trim() || undefined,
+    stealthMetaAddress:
+      input.settlementPreference === "stealth"
+        ? (input.stealthMetaAddress ?? undefined)
+        : undefined,
+  };
+}
+
+/** Build the quote request body, with the trade fields normalised. */
 export function buildQuoteRequest(input: BuildQuoteRequestInput): QuoteRequest {
   return {
     wallet: input.wallet,
@@ -244,15 +278,7 @@ export function buildQuoteRequest(input: BuildQuoteRequestInput): QuoteRequest {
     slippageBps: input.slippageBps,
     trustScore: input.trustScore,
     settlementPreference: input.settlementPreference,
-    // Trimmed HERE, at the single point the request is built, because the
-    // deposit attestation rebuilds both of these from the same panel state and
-    // compares bytes. Sending " 0xabc" while rebuilding "0xabc" is a message
-    // that cannot recover, reported to the user as a route being unavailable.
-    // One deal, one encoding.
-    recipientAddress: input.recipientAddress?.trim() || undefined,
-    refundAddress: input.refundAddress?.trim() || undefined,
-    stealthMetaAddress:
-      input.settlementPreference === "stealth" ? input.stealthMetaAddress : undefined,
+    ...normalizeTradeFields(input),
   };
 }
 

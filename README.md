@@ -1,49 +1,20 @@
 # @xochi/sdk
 
-TypeScript SDK for generating and verifying [ERC-8262](https://github.com/xochi-fi/ERC-8262) compliance proofs. Produce EVM-compatible zero-knowledge proofs client-side using Noir circuits and Barretenberg UltraHonk.
+Client-side [ERC-8262](https://github.com/xochi-fi/ERC-8262) ZK compliance proofs (Noir, Barretenberg UltraHonk), EVM-verifiable, plus trust tiers, privacy levels, attestation scoring, settlement splitting (XIP-1), execution planning (XIP-2).
 
-Also provides trust tier system, privacy level modeling, attestation scoring, settlement splitting (XIP-1), and execution planning (XIP-2).
+## Which package?
 
-## Position in the stack
+| To…                                 | Use                 | Path                    |
+| ----------------------------------- | ------------------- | ----------------------- |
+| Trade via the Xochi API             | `@xochi/client`     | `packages/client`       |
+| Embed the swap widget               | `@xochi/widget-lib` | `packages/widget-lib`   |
+| Sign or verify intents offline      | `@xochi/signer`     | `packages/signer`       |
+| Generate ERC-8262 proofs            | `@xochi/sdk`        | repo root (this README) |
+| Implement or test the protocol      | `@xochi/spec`       | `packages/spec`         |
+| Run a solver (not yet published)    | `@xochi/solver-sdk` | `packages/solver-sdk`   |
+| Port the signer to Python, Go, Rust | conformance ports   | `sdks/{python,go,rust}` |
 
-This package (the repo root, `@xochi/sdk`) is the **ERC-8262 prover**: proofs, verification, tiers and scoring. It is not a trading client and never talks to the Xochi API. Circuits and ABIs come from [`xochi-fi/ERC-8262`](https://github.com/xochi-fi/ERC-8262) via `scripts/sync-circuits.sh`; the fee schedule is checked against `@xochi/spec` in `packages/spec`.
-
-To trade (quote, sign, execute against `api.xochi.fi/api/*`), use **`@xochi/client`**, the trading client in `packages/client` of this repo (in progress). It carries no prover dependency, so integrators who only trade do not install `@aztec/bb.js` or `noir_js`. `@xochi/widget-lib` (`packages/widget-lib`) is the host-side iframe embed.
-
-The protocol contract and its signers live here too:
-
-| Package             | Path                    | What                                                                                                                                                                                                                     |
-| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@xochi/spec`       | `packages/spec`         | `SPEC.md`, `SOLVER-RFC.md`, `ESCROW-RFC.md`, the byte-equality conformance vectors (Xochi intent, ERC-3009, Permit2, escrow, solver bids, XSP), the fee schedule and vectors, and the vendored served `/xochi/*` OpenAPI |
-| `@xochi/signer`     | `packages/signer`       | network-free EIP-712 / ERC-5564 stealth / ERC-4337 signing and the pre-sign value checks (intent, pull, deposit attestation, claim UserOp)                                                                               |
-| `@xochi/solver-sdk` | `packages/solver-sdk`   | maker-side sealed-bid RFQ SDK (SOLVER-RFC); not published yet                                                                                                                                                            |
-| `@xochi/reference`  | `packages/reference`    | private: chain/token registry and sign-only composition the generators and vector suites use (the fee reference is published in `@xochi/client`)                                                                         |
-| conformance ports   | `sdks/{python,go,rust}` | reproduce every `conformance.json` vector byte-for-byte; not production signers                                                                                                                                          |
-
-These came from the archived `axol-io/riddler-sdk` ([ADR 0001](docs/adr/0001-consolidate-into-xochi-sdk.md), [architecture](docs/ARCHITECTURE.md)).
-
-## Consuming the spec
-
-Anything outside this repo that checks itself against these artifacts (the conformance vectors, the fee schedule and vectors, the escrow and solver-bid sets, the wire contract) takes them from a **published, exactly pinned** `@xochi/spec`, never from a sibling checkout of this repo. A checkout moves under you; a pinned version only moves when you bump it, so a byte change arrives as a reviewed diff rather than as a red build. If the artifact is missing, fail: a skipped conformance check is the stale-copy bug.
-
-JS/TS: pin it exactly, no range.
-
-```bash
-npm install --save-dev --save-exact @xochi/spec@0.8.0
-```
-
-```ts
-import conformance from "@xochi/spec/conformance/conformance.json" with { type: "json" };
-```
-
-Any other CI (Elixir, Python, Go, Rust): fetch the tarball through npm and read the files from it.
-
-```bash
-npm pack @xochi/spec@0.8.0            # -> xochi-spec-0.8.0.tgz
-tar -xzf xochi-spec-0.8.0.tgz         # -> package/conformance/conformance.json, package/fee/{schedule,vectors}.json, ...
-```
-
-The tarball carries the data, `SPEC.md`, `SOLVER-RFC.md`, `ESCROW-RFC.md` and `wire/compare.mjs`; the generators stay in this repo. Releases are tag-triggered with npm provenance (`.github/workflows/release.yml`): `sdk-v*` (`@xochi/sdk`), `spec-v*`, `signer-v*`, `client-v*`, `widget-lib-v*`.
+`@xochi/client` does not install `@aztec/bb.js` or `noir_js`. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Security reports: [SECURITY.md](SECURITY.md).
 
 ## Install
 
@@ -51,23 +22,13 @@ The tarball carries the data, `SPEC.md`, `SOLVER-RFC.md`, `ESCROW-RFC.md` and `w
 npm install @xochi/sdk
 ```
 
-Latest published on npm: `0.2.0`. Current source: `0.3.0` (unpublished -- see [CHANGELOG](CHANGELOG.md) for the breaking changes and migration notes). Peer dependency: `viem@^2.0.0` (required for Oracle/Verifier/SettlementRegistry clients).
+Peer dependency: `viem@^2.0.0` (on-chain clients).
 
-The package is ESM-only (`"type": "module"`); there is no separate CommonJS build. Every export carries `types`, `import` and `default` conditions, so `require("@xochi/sdk/tiers")` works on Node versions with `require(esm)` (20.19+, 22.12+, 24). TypeScript resolves all entry points under `bundler`, `node16`/`nodenext` (ESM files) and legacy `node10` resolution (via `main`/`types`/`typesVersions`). A TypeScript _CommonJS_ file needs `--module nodenext` on TypeScript 5.8+ to import an ES module; older compilers and `--module node16` report TS1479.
+ESM-only; `require("@xochi/sdk/tiers")` works on Node 22.12+ (every export has a `default` condition). TypeScript CommonJS needs `--module nodenext` on TS 5.8+; older compilers and `--module node16` report TS1479.
 
-### Import from the narrow subpaths when you only need data
+### Light subpaths
 
-The root barrel statically re-exports `ERC8262Prover`, which imports
-`@noir-lang/noir_js` and `@aztec/bb.js`. Any root import therefore pulls a
-proving stack into your module graph. Bundlers that emit WASM and worker assets
-during transform (Vite) emit them _before_ tree-shaking runs, so the dead
-JavaScript gets stripped correctly and the assets ship anyway. A consumer wanting
-three plain constants shipped 3.1 MB of WASM that nothing ever loaded
-(xochi-fi/xochi#409).
-
-These entry points reach no proving stack. `constants` and `oracle-lite` reach
-only `viem`, which consumers already have; `tiers`, `scoring` and `abis` have no
-runtime dependencies at all.
+The root entry pulls `@noir-lang/noir_js` and `@aztec/bb.js`, whose WASM bundlers like Vite emit even after tree-shaking (3.1 MB, xochi-fi/xochi#409). These subpaths don't:
 
 | Subpath                  | Contents                                            |
 | ------------------------ | --------------------------------------------------- |
@@ -82,13 +43,7 @@ import { JURISDICTIONS, PROOF_TYPES } from "@xochi/sdk/constants";
 import { ORACLE_ABI } from "@xochi/sdk/abis";
 ```
 
-`test/light-subpaths.test.ts` walks the real import graph of each entry above and
-fails if one ever reaches `@noir-lang` or `@aztec`, so "light" stays a checked
-property rather than a claim in a README.
-
-Note that `package.json` cannot carry comments: a `"//"` key inside `exports`
-makes the map invalid to Node (`ERR_INVALID_PACKAGE_CONFIG`) and breaks _every_
-subpath at once, root included. That is why this explanation lives here.
+`test/light-subpaths.test.ts` fails if any reaches `@noir-lang` or `@aztec`.
 
 ## Quick start
 
@@ -129,7 +84,7 @@ await prover.destroy();
 
 ## Multi-provider support
 
-Both compliance and risk score accept multiple screening providers:
+Compliance and risk score take multiple providers:
 
 ```typescript
 const result = await prover.proveCompliance({
@@ -155,10 +110,8 @@ const result = await prover.proveCompliance({
 
 ## Trust tiers
 
-Five tiers. A quote is three additive layers on a never-discounted cost floor:
-the solver spread (Riddler), the venue fee (Xochi), and the routing fee (Raxol).
-The trust discount carves only venue + routing, never the solver floor, so every
-tier stays cash-positive. Stablecoin routes are cheaper than volatile ones.
+Fee = solver spread (Riddler) + venue (Xochi) + routing (Raxol). Trust discounts
+only venue + routing, so every tier stays cash-positive.
 
 ```typescript
 import { getTierFromScore, getFeeRate, getFeeSchedule } from "@xochi/sdk/tiers";
@@ -177,18 +130,14 @@ getFeeSchedule(60); // { solverBps: 8, venueBps: 3, routingBps: 4 }
 | Premium       | 75-99 | 0.12% / 0.25%           |
 | Institutional | 100+  | 0.10% / 0.22%           |
 
-Plus 15% of intent surplus (price improvement); the user keeps 85%.
+Plus 15% of intent surplus; the user keeps 85%.
 
-`getFeeRate` defaults to the stable column, so the one-argument call still works
-— but a volatile route priced as stable under-charges by roughly half. Pass the
-asset class when the route is not a stablecoin pair.
+`getFeeRate` defaults to stable, which under-charges a volatile route by about
+half; pass `"volatile"`.
 
-There are no MEV rebates. They were retired from the protocol; `MEV_REBATES` and
-`getMevRebate` are gone.
+MEV rebates were retired; `MEV_REBATES` and `getMevRebate` are gone.
 
 ## Privacy levels
-
-Six levels gated by trust score:
 
 ```typescript
 import { getMaxPrivacyLevel, isPrivacyLevelAllowed } from "@xochi/sdk";
@@ -205,13 +154,11 @@ isPrivacyLevelAllowed("stealth", 0); // true -- stealth is ungated
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
 
-L1 stealth is **open to all** — base-level privacy is not a paid or earned
-upgrade, and it is never separately priced. Only the Aztec tiers are trust-gated.
-Higher trust earns both deeper privacy and a lower fee.
+L1 stealth is ungated and never separately priced.
 
 ## Attestation scoring
 
-Calculate trust scores from attestations with diminishing returns:
+Diminishing returns per category:
 
 ```typescript
 import { calculateScoreFromAttestations } from "@xochi/sdk";
@@ -225,11 +172,11 @@ const result = calculateScoreFromAttestations([
 // { total: 83, byCategory: { humanity: 20, identity: 30, reputation: 8, compliance: 25 } }
 ```
 
-Within each category, the 1st provider contributes at 100%, 2nd at 25%, 3rd+ at 10%. Category caps: humanity (25), identity (35), reputation (20), compliance (40).
+1st provider 100%, 2nd 25%, 3rd+ 10%. Caps: humanity (25), identity (35), reputation (20), compliance (40).
 
 ## Tier proofs
 
-Prove "score >= threshold" without revealing exact score. Provable thresholds are 25 (Trusted), 50 (Verified), 75 (Premium) and 100 (Institutional); Standard needs no proof. A score exactly at a boundary proves that tier, and scores of 100 and above prove Institutional.
+Prove "score >= threshold" for 25, 50, 75 or 100 (Standard needs none). A boundary score proves that tier.
 
 ```typescript
 import { generateTierProof, verifyTierProof } from "@xochi/sdk";
@@ -243,7 +190,7 @@ const result = await verifyTierProof(loader, proof, { submitter: account.address
 // { valid: true, threshold: 25, tierName: "Trusted" }
 ```
 
-`generateHighestTierProof` picks the best tier automatically (and returns `null` below 25):
+`generateHighestTierProof` picks the best tier (`null` below 25):
 
 ```typescript
 import { generateHighestTierProof } from "@xochi/sdk";
@@ -252,11 +199,11 @@ const highest = await generateHighestTierProof(loader, 60, account.address);
 // Proves score >= 50 (Verified tier)
 ```
 
-Tier proofs are **self-attested**: the risk-score signals are private and unsigned, so anyone can prove any tier. Do not grant fees or privacy access from a tier proof; use an authoritative score.
+Tier proofs are **self-attested** (signals private and unsigned): anyone can prove any tier, so never grant fees or privacy from one.
 
 ## Provider-signed proofs
 
-The signed-variant proofs (`COMPLIANCE_SIGNED`, `RISK_SCORE_SIGNED`) cryptographically anchor the screening signals to a registered provider's secp256k1 signature, closing audit finding I-1 (signal honesty). The Oracle authenticates the signer via its on-chain `_validSignerPubkeyHashes` registry -- only proofs whose `signer_pubkey_hash` public input was previously registered are accepted.
+`COMPLIANCE_SIGNED` and `RISK_SCORE_SIGNED` bind signals to a provider's secp256k1 signature (audit I-1); the Oracle accepts only `signer_pubkey_hash` values in `_validSignerPubkeyHashes`.
 
 ### Direct (server-side) via `signSignals`
 
@@ -301,7 +248,7 @@ const result = await prover.proveComplianceSigned({
 
 ### Via the signing daemon
 
-The repo also ships a reference daemon (`daemon/`, run with `npm run daemon`) that holds the signing key and exposes `POST /sign`, `POST /sign-multi` and `POST /sign-credential-root`. Useful when the signing key shouldn't live in the proof-generating process. Configuration, auth scoping and the full endpoint table are in [`daemon/README.md`](daemon/README.md).
+`daemon/` (`npm run daemon`) keeps the key out of the proving process; see [`daemon/README.md`](daemon/README.md).
 
 ```typescript
 const res = await fetch(`${daemonUrl}/sign`, {
@@ -324,15 +271,15 @@ const res = await fetch(`${daemonUrl}/sign`, {
 //      Oracle, timestamp window) or credential not scoped for this route
 ```
 
-`GET /pubkey-hash` returns the daemon's `signerPubkeyHash` for one-time on-chain registration via `oracle.registerSignerPubkeyHash(hash, providerId)`, binding the key to its provider. The daemon records every bundle it signs; signing is deterministic (RFC 6979), so a retry returns the same signature, and the Oracle's `_usedProofs` stops on-chain replay.
+Register `GET /pubkey-hash` once via `oracle.registerSignerPubkeyHash(hash, providerId)`. Signing is deterministic (RFC 6979) and logged; `_usedProofs` stops replay.
 
-> **Binding (audit F-6)**: the `chainId` + `oracleAddress` you pass to the signer and the prover MUST be the values you submit against. The on-chain Oracle asserts they match `block.chainid` and `address(this)`; mismatches revert with `PublicInputMismatch`. A mismatch between signer-side and prover-side fails witness generation with `invalid provider signature on signals`.
+> **Binding (audit F-6)**: signer and prover `chainId` + `oracleAddress` MUST equal `block.chainid` and `address(this)` of the target Oracle (else `PublicInputMismatch`); a signer/prover mismatch fails with `invalid provider signature on signals`.
 
 ## M-of-N multi-provider proofs
 
-`COMPLIANCE_MULTI_SIGNED` (`0x09`) bundles up to **5 parallel signer slots** in a single proof. M of them must each produce a valid secp256k1 signature over a slot-specific Pedersen digest AND each must individually attest the subject is below the jurisdiction's high-risk floor. Trust upgrade over `0x07`: one signer says "compliant" vs. M independent signers each saying "compliant", AND-aggregated.
+`COMPLIANCE_MULTI_SIGNED` (`0x09`): up to 5 slots, M of which each sign a slot-specific Pedersen digest and attest the subject is below the jurisdiction's high-risk floor.
 
-Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `JurisdictionConfig.minMultiProviderThreshold` on the Oracle):
+Floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS` = Oracle `JurisdictionConfig.minMultiProviderThreshold`):
 
 | Jurisdiction | Floor on M |
 | ------------ | ---------- |
@@ -344,10 +291,10 @@ Jurisdiction floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`, mirrors `Jurisdiction
 
 ### Slot semantics
 
-- Each slot has a position (0..4). The slot index is embedded in the signed digest -- a signature minted for slot `i` will **not** verify if placed in slot `j`.
-- A slot is **active** iff its `signer_pubkey_hash` is non-zero. Inactive slots are passed as `null` in `opts.slots`; the input builder fills the inactive-slot witness convention (`weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]`, padding pubkey/sig below) automatically -- callers never have to know it. Any layout works: `[A, B, null, null, null]`, `[A, null, B, null, null]`, ...
-- Active count must be `>= thresholdM`. Active slots need distinct signers **and providers** (else `DuplicateSignerProvider`).
-- All active slots' `signer_pubkey_hash` must be registered with `oracle.registerSignerPubkeyHash(hash, providerId)`. The same registry that `0x07` uses; a daemon authorized for `0x07` is automatically a valid slot-signer for `0x09` (subject to jurisdiction policy).
+- Slots 0..4; a slot `i` signature fails in slot `j`.
+- Active iff `signer_pubkey_hash` is non-zero. Pass inactive slots as `null` in any position; the builder pads them (below).
+- Active count `>= thresholdM`, with distinct signers and providers (else `DuplicateSignerProvider`).
+- Signers use the `0x07` registry, so a `0x07` daemon can sign `0x09` slots (subject to jurisdiction policy).
 
 ### Direct (server-side) via `signSlotPayload`
 
@@ -399,7 +346,7 @@ const result = await prover.proveComplianceMultiSigned({
 
 ### Via the signing daemon
 
-`POST /sign-multi` signs ONE slot per call. Orchestrating M daemons across N slots is the caller's job:
+`POST /sign-multi` signs one slot per call:
 
 ```typescript
 const res = await fetch(`${daemonAUrl}/sign-multi`, {
@@ -423,17 +370,17 @@ const res = await fetch(`${daemonAUrl}/sign-multi`, {
 // 400: validation error   401: unauthorized   403: policy refusal / route not permitted
 ```
 
-> **Inactive-slot padding.** If you build the witness yourself instead of using `buildComplianceMultiSignedInputs`, inactive slots MUST use `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]` (all-zero weights make `compute_risk_score` divide by zero) and an ECDSA-solvable pubkey/signature. The circuit discards an inactive slot's verify result but still evaluates the secp256k1 blackbox: acvm_js aborts witness generation on a zero `r`/`s` or an off-curve key, and bb additionally constrains `0 < r < n`, `0 < s < (n+1)/2`, and a non-infinity key and `u1*G + u2*P`. The builder pads with pubkey `2G` and `r = s = 1` (so `u1*G + u2*P = (z + 2)*G`, never infinity for a BN254 digest `z`):
+> **Inactive-slot padding** (done by `buildComplianceMultiSignedInputs`): `weight_sum = 1`, `weights = [1, 0..0]`, `signals = [0; 8]` (zero weights divide by zero in `compute_risk_score`), and an ECDSA-solvable pubkey/signature, since the secp256k1 blackbox still runs: acvm_js aborts on zero `r`/`s` or an off-curve key; bb requires `0 < r < n`, `0 < s < (n+1)/2`, non-infinity key and `u1*G + u2*P`. Pubkey `2G`, `r = s = 1` gives `(z + 2)*G`, never infinity for BN254 `z`:
 >
 > - `pubkey_x = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5`
 > - `pubkey_y = 0x1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a`
 > - `signature = 0x00..01 || 0x00..01` (32-byte big-endian `r`, then `s`)
 
-> **New typed errors.** Reverts from the Oracle decode to `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError` via `decodeContractError` / `withDecodedErrors`.
+> Reverts: `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`.
 
 ## On-chain submission
 
-`ERC8262Oracle` submits proofs and queries attestations:
+`ERC8262Oracle`:
 
 ```typescript
 import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
@@ -475,7 +422,7 @@ const proof = await oracle.getHistoricalProof(history[0]);
 
 ### Batch submission
 
-Submit all proofs from a `proveBatch` or `provePlan` result atomically in a single transaction via the on-chain `submitComplianceBatch`. Reverts atomically if any sub-trade fails. Max 10 proofs per batch (`MAX_BATCH_SIZE`, audit F-3); larger batches are rejected client-side and on-chain (`BatchTooLarge`).
+One atomic `submitComplianceBatch` transaction for a `proveBatch`/`provePlan` result. Max 10 proofs (`MAX_BATCH_SIZE`, audit F-3; `BatchTooLarge`).
 
 ```typescript
 const batchResult = await oracle.submitBatch({
@@ -489,8 +436,6 @@ const batchResult = await oracle.submitBatch({
 ```
 
 ## On-chain verification
-
-`ERC8262Verifier` verifies proofs directly against the on-chain verifier contracts:
 
 ```typescript
 import { ERC8262Verifier, PROOF_TYPES } from "@xochi/sdk";
@@ -523,7 +468,7 @@ await adminVerifier.revokeVerifierVersion(PROOF_TYPES.COMPLIANCE, 1n);
 
 ## Lightweight oracle client
 
-For environments without viem (Cloudflare Workers, edge functions):
+Without viem (Cloudflare Workers, edge functions):
 
 ```typescript
 import { OracleLite, PROOF_TYPES, decodeTierProofClaim } from "@xochi/sdk";
@@ -552,11 +497,9 @@ if (result.valid && result.publicInputs) {
 }
 ```
 
-`wallet` must be a `0x`-prefixed 20-byte address and `jurisdictionId` / `proofType` integers in 0-255; anything else throws before a request is made.
+Bad `wallet` (not 20-byte `0x`) or `jurisdictionId`/`proofType` outside 0-255 throws before any request.
 
 ## Settlement splitting (XIP-1)
-
-Split large trades into sub-trades, generate compliance proofs for each, submit them, and settle on-chain. The full pipeline:
 
 ```typescript
 import {
@@ -626,11 +569,11 @@ await oracle.submitCompliance({
 await registry.finalizeTrade(splitPlan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
 
-`patternProofHash` is the `proofHash` of the PATTERN attestation (from the `ComplianceVerified` event or `getAttestationHistory`). A PATTERN proof generated with any other settlement root, including `bytes32(0)`, is valid for general Oracle submission but reverts `finalizeTrade` with `SettlementRootMismatch`.
+`patternProofHash` comes from `ComplianceVerified` or `getAttestationHistory`. Any other settlement root, `bytes32(0)` included, passes the Oracle but reverts `finalizeTrade` (`SettlementRootMismatch`).
 
 ## Execution planning (XIP-2)
 
-`planExecution` composes split planning, venue routing, and diffusion scheduling into a single call:
+`planExecution` = split + venue routing + diffusion scheduling:
 
 ```typescript
 import { planExecution, provePlan } from "@xochi/sdk";
@@ -651,11 +594,9 @@ const plan = planExecution(
 const batch = await provePlan(prover, plan, complianceInput);
 ```
 
-Venue assignment respects trust score thresholds: public (0+), stealth (0+; L1 stealth is ungated), shielded (50+). Scores above 100 (Institutional) are valid; a non-finite or negative score throws. The diffusion scheduler enforces a minimum 12-second gap between consecutive submissions and always succeeds for any window of at least `(n - 1) * 12` seconds.
+Shielded needs score 50+; public and stealth 0+. Scores above 100 are valid; non-finite or negative throws. Submissions are at least 12 s apart (jittered spacing), and any window of at least `(n - 1) * 12` seconds always schedules.
 
 ## Circuit loaders
-
-Three loaders for different environments:
 
 ```typescript
 // Node.js: bundled circuit artifacts
@@ -672,7 +613,7 @@ const loader = new BrowserCircuitLoader("https://cdn.example.com/circuits");
 
 ## Input builders
 
-If you need to construct circuit inputs manually (outside of `ERC8262Prover`):
+To build circuit inputs outside `ERC8262Prover`:
 
 ```typescript
 import {
@@ -687,13 +628,13 @@ import {
 } from "@xochi/sdk";
 ```
 
-Each builder validates constraints (signal range, weight bounds, timestamp limits, Merkle depth) and throws before you waste time on an invalid proof.
+Builders validate signals, weights, timestamps and Merkle depth before proving.
 
-> **Submitter binding**: All 9 circuits include `submitter` as a public input. The Oracle contract enforces `submitter == msg.sender` for every proof type, so the SDK no longer post-processes `publicInputsHex` -- pass the submitter address to the input builder and the prover handles the rest.
+> **Submitter**: a public input of all 9 circuits; the Oracle enforces `submitter == msg.sender`.
 >
-> **Signed-variant binding (audit F-6)**: `buildComplianceSignedInputs` and `buildRiskScoreSignedInputs` additionally require `chainId` and `oracleAddress`. These MUST equal the values the provider used when signing -- they're committed in the in-circuit Pedersen digest the ECDSA signature is checked against. The on-chain Oracle asserts they also match `block.chainid` and `address(this)`, so a single provider signature cannot mint attestations on multiple Oracle instances or chains.
+> **Signed variants**: `buildComplianceSignedInputs` and `buildRiskScoreSignedInputs` also need the signed `chainId` and `oracleAddress` (audit F-6, above).
 >
-> **Signed-variant proof type and freshness (review #5)**: the `signedBundle` must come from `signSignals` with the matching `proofType` (`0x07` for `buildComplianceSignedInputs`, `0x08` for `buildRiskScoreSignedInputs`); the other type's signature fails in-circuit verification. Both circuits expose the signed timestamp as a public input (`timestamp`, or `signedTimestamp` for the 0x08 builder), and the Oracle rejects it once it is more than `MAX_PROOF_AGE` (1 hour) old.
+> **Proof type and freshness (review #5)**: `signedBundle` must be signed for the matching `proofType` (`0x07`/`0x08`). The signed timestamp (`timestamp`, or `signedTimestamp` for 0x08) is public and expires after `MAX_PROOF_AGE` (1 hour).
 
 ## Proof type mappings
 
@@ -718,7 +659,7 @@ PUBLIC_INPUT_COUNTS[0x01]; // 6 -- compliance: 6, risk_score: 8, pattern: 7, att
 
 ## Typed contract errors
 
-Solidity reverts from `ERC8262Oracle`, `ERC8262Verifier`, and `SettlementRegistry` are decoded into named JS error classes so you can branch on them in `try/catch` instead of regex-matching messages.
+Reverts from `ERC8262Oracle`, `ERC8262Verifier` and `SettlementRegistry` decode to named error classes.
 
 ```typescript
 import {
@@ -745,9 +686,9 @@ try {
 }
 ```
 
-Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`, `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`, `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SettlementRootMismatchError`. Any other Solidity custom error in the SDK ABIs (which `test/abi-drift.test.ts` keeps in step with ERC-8262) decodes to a base `ERC8262ContractError` with `errorName` + `args` populated.
+Available error classes: `SubmitterMismatchError`, `ProofAlreadyUsedError`, `ProofTimestampStaleError`, `TimeWindowTooSmallError`, `EmptyBatchError`, `BatchTooLargeError`, `BatchLengthMismatchError`, `SignedSignalsRequiredError`, `InvalidSignerPubkeyHashError`, `InsufficientSignersError`, `BelowJurisdictionMinProvidersError`, `DuplicateSignerError`, `InvalidThresholdMError`, `InvalidPublicInputLengthError`, `UnalignedPublicInputsError`, `VersionRevokedError`, `TimelockNotElapsedError`, `TradeAlreadyExistsError`, `TradeNotFoundError`, `AttestationNotFoundError`, `SettlementRootMismatchError`. Other ABI errors decode to `ERC8262ContractError` (`errorName`, `args`).
 
-For lower-level use, `decodeContractError(err, abi)` returns the typed error or `null`, and `withDecodedErrors(abi, fn)` wraps any async call.
+Lower level: `decodeContractError(err, abi)` returns the typed error or `null`; `withDecodedErrors(abi, fn)` wraps an async call.
 
 ## Known limitations
 
@@ -772,9 +713,9 @@ npm run daemon           # build, then run the reference signing daemon (see dae
 ./scripts/sync-circuits.sh ../ERC-8262
 ```
 
-Integration tests deploy the full contract stack (ERC8262Verifier, ERC8262Oracle, SettlementRegistry) on a local anvil node. Requires [foundry](https://book.getfoundry.sh/getting-started/installation) and a local clone of [ERC-8262](https://github.com/xochi-fi/ERC-8262) with compiled artifacts.
+Integration tests run on anvil and need [foundry](https://book.getfoundry.sh/getting-started/installation) and a compiled [ERC-8262](https://github.com/xochi-fi/ERC-8262) clone.
 
-The protocol workspaces build in order (`@xochi/signer` first) and their generated artifacts are CI gates:
+Protocol workspaces build `@xochi/signer` first; their generated artifacts are CI gates:
 
 ```bash
 npm run build:workspaces && npm run typecheck:workspaces && npm run test:workspaces
@@ -785,9 +726,9 @@ npm run verify:openapi                # producer-drift probes (also verify:versi
 
 ## Related
 
-- [ERC-8262](https://github.com/xochi-fi/ERC-8262) -- On-chain contracts and Noir circuit source
-- [XIPs](https://github.com/xochi-fi/XIPs) -- Protocol improvement proposals (XIP-1: settlement splitting, XIP-2: adaptive settlement)
-- [xochi](https://github.com/xochi-fi/xochi) -- Protocol frontend
+- [ERC-8262](https://github.com/xochi-fi/ERC-8262): contracts and Noir circuits
+- [XIPs](https://github.com/xochi-fi/XIPs): XIP-1 settlement splitting, XIP-2 adaptive settlement
+- [xochi](https://github.com/xochi-fi/xochi): frontend
 
 ## License
 

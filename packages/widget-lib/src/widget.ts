@@ -142,18 +142,29 @@ function asJson(data: unknown): unknown | null {
   return JSON.parse(text) as unknown;
 }
 
-/** A provider rejection as an EIP-1193 error object the frame can receive. */
+/**
+ * A provider rejection as an EIP-1193 error object the frame can receive.
+ * Total: a throwing accessor or a revoked Proxy yields the generic error.
+ */
 function toRpcError(err: unknown): RpcErrorObject {
-  if (!isRecord(err)) return { code: RPC_ERROR.internal, message: "Internal error" };
-  const code =
-    typeof err.code === "number" && Number.isSafeInteger(err.code) ? err.code : RPC_ERROR.internal;
-  const message =
-    typeof err.message === "string" && err.message !== ""
-      ? truncate(err.message, MAX_ERROR_MESSAGE_LENGTH)
-      : "Internal error";
-  // Error `data` (revert details, ...) only as JSON within the size cap.
-  const data = err.data === undefined ? null : asJson(err.data);
-  return data === null ? { code, message } : { code, message, data };
+  const internal = { code: RPC_ERROR.internal, message: "Internal error" };
+  try {
+    if (!isRecord(err)) return internal;
+    const rawCode = err.code;
+    const rawMessage = err.message;
+    const code =
+      typeof rawCode === "number" && Number.isSafeInteger(rawCode) ? rawCode : RPC_ERROR.internal;
+    const message =
+      typeof rawMessage === "string" && rawMessage !== ""
+        ? truncate(rawMessage, MAX_ERROR_MESSAGE_LENGTH)
+        : "Internal error";
+    // Error `data` (revert details, ...) only as JSON within the size cap.
+    const rawData = err.data;
+    const data = rawData === undefined ? null : asJson(rawData);
+    return data === null ? { code, message } : { code, message, data };
+  } catch {
+    return internal;
+  }
 }
 
 /** The frame's event, rebuilt from validated fields only, or null when malformed. */
@@ -323,20 +334,27 @@ export function createXochiWidget(
     Promise.resolve()
       .then(() => wallet.request(args))
       .then(
-        (result) => ({ result }),
+        (result): { result: unknown } | { error: RpcErrorObject } => ({ result }),
         (err: unknown) => ({ error: toRpcError(err) }),
       )
+      .catch((): { error: RpcErrorObject } => ({
+        error: { code: RPC_ERROR.internal, message: "Internal error" },
+      }))
       .then((outcome) => {
         inFlight -= 1;
         if (destroyed || requestSession !== session) return;
         pending.delete(id);
-        if (
-          (method === "eth_requestAccounts" || method === "eth_accounts") &&
-          "result" in outcome &&
-          Array.isArray(outcome.result) &&
-          outcome.result.length > 0
-        ) {
-          connected = true;
+        try {
+          if (
+            (method === "eth_requestAccounts" || method === "eth_accounts") &&
+            "result" in outcome &&
+            Array.isArray(outcome.result) &&
+            outcome.result.length > 0
+          ) {
+            connected = true;
+          }
+        } catch {
+          // A revoked Proxy result: not a connect signal.
         }
         reply(id, outcome);
       });

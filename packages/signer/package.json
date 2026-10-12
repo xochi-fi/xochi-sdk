@@ -1,20 +1,36 @@
 {
   "name": "@xochi/signer",
-  "version": "0.5.0",
-  "description": "Network-free EIP-712 / stealth signing primitives for Xochi intents (ERC-3009, Permit2, Xochi, ERC-5564 stealth, escrow)",
+  "version": "0.5.1",
+  "description": "Network-free EIP-712 signing and pre-sign checks for Xochi intents: ERC-3009, Permit2, ERC-5564, ERC-4337, escrow.",
+  "keywords": [
+    "xochi",
+    "eip-712",
+    "erc-3009",
+    "permit2",
+    "erc-5564",
+    "erc-4337"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "sideEffects": false,
   "files": [
     "dist"
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "scripts": {

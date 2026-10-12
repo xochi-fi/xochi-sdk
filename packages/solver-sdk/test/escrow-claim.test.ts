@@ -994,6 +994,42 @@ describe("OnchainEscrowGateway.accept: one inventory reservation at a time per t
     await first;
     expect(w.posts.count).toBe(1);
   });
+
+  // A fill landing between the balance read and the owed-set read must not
+  // drop out of both: still owed when the set is resolved, and out of the
+  // balance by the time it is read, so the next accept refuses.
+  it("refuses insufficient_inventory when an earlier fill lands between the owed and balance reads", async () => {
+    const w = world();
+    const a = orderOf(w, "e1");
+    let balance = (AMOUNT * 3n) / 2n;
+    const filled = new Set<string>();
+    let armed = false;
+    const landA = () => {
+      if (!armed) return;
+      armed = false;
+      filled.add(a.fillId.toLowerCase());
+      balance -= AMOUNT;
+    };
+    w.dest.stub(TOKEN, [], {
+      balanceOf: () => {
+        const out = balance;
+        landA();
+        return out;
+      },
+    });
+    w.dest.stub(FILLER, [], {
+      filled: ([fillId]) => {
+        const id = (fillId as string).toLowerCase();
+        const out = filled.has(id);
+        if (id === a.fillId.toLowerCase()) landA();
+        return out;
+      },
+    });
+    await w.gateway.accept(a);
+    armed = true;
+    expect(await refusalOf(w.gateway.accept(orderOf(w, "e2")))).toBe("insufficient_inventory");
+    expect(armed).toBe(false);
+  });
 });
 
 describe("OnchainEscrowGateway.resolveTx", () => {

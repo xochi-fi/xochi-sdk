@@ -438,4 +438,61 @@ describe("refusals the server cannot switch off", () => {
     expect(s.intent.status).toBe("expired");
     expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
+
+  it("refuses a new allocation once the deposit address is revealed", async () => {
+    const fields = signedFields();
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    allocate(s, depositQuote(fields, await attest(fields)));
+    s.send({ type: "SignRequested" });
+    expect(s.intent.status).toBe("awaiting_deposit");
+
+    const fx = s.send({ type: "AllocateRequested", key: "k2", ref: "r2" });
+    expect(allocations(fx)).toEqual([{ kind: "allocation", ref: "r2", ok: false }]);
+    expect(walletCalls(fx, "ensureSession")).toEqual([]);
+    expect(s.model.flights).toEqual([]);
+    expect(s.intent.status).toBe("awaiting_deposit");
+  });
+
+  it("refuses a new allocation on a settled deposit, never reopening its route", async () => {
+    const fields = signedFields();
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    allocate(s, depositQuote(fields, await attest(fields)));
+    s.send({ type: "SignRequested" });
+    s.send({
+      type: "StreamStatus",
+      message: { type: "intent_status", intentId: "xi_dep1", status: "completed", timestamp: "t" },
+    });
+    expect(s.intent.status).toBe("completed");
+
+    const fx = s.send({ type: "AllocateRequested", key: "k2", ref: "r2" });
+    expect(allocations(fx)).toEqual([{ kind: "allocation", ref: "r2", ok: false }]);
+    expect(walletCalls(fx, "ensureSession")).toEqual([]);
+    expect(s.model.flights).toEqual([]);
+    expect(s.intent.status).toBe("completed");
+    expect(s.receipt.signing).not.toEqual({ kind: "deposit" });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+    expect(s.intent.status).toBe("completed");
+  });
+
+  it("drops an allocation waiting on sign-in when a stored deposit is resumed", () => {
+    const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const session = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+    );
+    const resumed = s.send({
+      type: "ResumeRequested",
+      intentId: "xi_resumed",
+      status: "awaiting_deposit",
+      owner: WALLET,
+      depositDeadline: Math.floor(Date.now() / 1000) + 1800,
+    });
+    expect(allocations(resumed)).toEqual([{ kind: "allocation", ref: "r1", ok: false }]);
+
+    // The sign-in completing afterwards must not re-quote over the resumed intent.
+    const fx = s.send({ type: "SessionReplied", flight: session.flight, result: "ok" });
+    expect(apiCalls(fx, "quote")).toEqual([]);
+    expect(s.intent.status).toBe("awaiting_deposit");
+    expect(s.intent.intentId).toBe("xi_resumed");
+  });
 });

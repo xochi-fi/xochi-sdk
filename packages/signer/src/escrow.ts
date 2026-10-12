@@ -10,6 +10,7 @@
 
 import { ethers } from "ethers";
 import type { Hex } from "./types";
+import { resolvePinnedEscrow } from "./escrow-pin";
 
 type UintLike = bigint | number | string;
 
@@ -230,12 +231,15 @@ export type EscrowPullAuth =
   | { kind: "erc3009"; to: string; token: string; amount: UintLike; nonce: string }
   | { kind: "permit2"; spender: string; token: string; amount: UintLike; witnessOrderId: string };
 
-// The caller's pinned RiddlerEscrow per ORIGIN chain id (canonical decimal key).
-// MUST come from outside the venue channel -- a deployment manifest the
-// integrator reviewed, not `escrow.address`, `order_terms.escrow` or the
-// `escrow_address` /xochi/capabilities advertises, all of which the venue
-// writes (ESCROW-RFC §7). A key such as "08453" never matches: lookup is by the
-// canonical spelling of `terms.fromChainId`, so it refuses rather than guesses.
+// The caller's pinned RiddlerEscrow per ORIGIN chain id. MUST come from outside
+// the venue channel -- a deployment manifest the integrator reviewed, not
+// `escrow.address`, `order_terms.escrow` or the `escrow_address`
+// /xochi/capabilities advertises, all of which the venue writes (ESCROW-RFC §7).
+// A key is a positive chain id in decimal or `0x` hex, whitespace-trimmed, so
+// `8453`, `"08453"`, `"0x2105"` and `" 8453 "` all pin chain 8453; any other key
+// refuses the whole pin, as do two keys naming one chain with different
+// escrows. Values are trimmed and must be non-zero EVM addresses. One reading
+// for `assertEscrowBinding` and the pull guard (`assertPullMatchesIntent`).
 export type PinnedEscrows = Readonly<Record<number, string>>;
 
 export interface EscrowBinding {
@@ -256,7 +260,6 @@ export interface EscrowBinding {
 }
 
 const eqAddr = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-const ZERO_ADDRESS = /^0x0{40}$/;
 
 // Absent pin, uncovered chain, and a blank, malformed or zero entry all refuse:
 // every value the guard compares the escrow to would otherwise be the venue's.
@@ -266,19 +269,12 @@ function pinnedEscrowFor(pin: PinnedEscrows | undefined, fromChainId: UintLike):
       "expectedEscrows is required: the escrow must be a caller-pinned value, never the quote's",
     );
   }
-  const chain = toUint("terms.fromChainId", fromChainId).toString();
-  const entry: unknown = Object.prototype.hasOwnProperty.call(pin, chain)
-    ? (pin as Record<string, unknown>)[chain]
-    : undefined;
-  if (entry === undefined) {
+  const chain = toUint("terms.fromChainId", fromChainId);
+  const escrow = resolvePinnedEscrow(pin, chain, (message) => new Error(message));
+  if (escrow === undefined) {
     throw new Error(`no pinned escrow for origin chain ${chain}; refusing to sign`);
   }
-  if (typeof entry !== "string" || !EVM_ADDRESS.test(entry) || ZERO_ADDRESS.test(entry)) {
-    throw new Error(
-      `pinned escrow for origin chain ${chain} is not a non-zero EVM address: ${JSON.stringify(entry)}`,
-    );
-  }
-  return entry;
+  return escrow;
 }
 
 // The escrow-activation guard (SPEC.md §2.3, ESCROW-RFC.md §7). Recomputes every

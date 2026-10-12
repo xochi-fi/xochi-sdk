@@ -7,6 +7,7 @@ Mirrors the TypeScript reference signer in `@xochi/signer`. Network-free.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from eth_abi import encode as abi_encode
@@ -48,9 +49,25 @@ class SignResult(dict):
     """{'digest': str, 'signature': str, 'signed_object': str | None}."""
 
 
+# ASCII decimal only: this port accepts canonical input and nothing else.
+# Python's int() also takes "1_000", surrounding whitespace and non-ASCII
+# Unicode digits. The TS reference (ethers' getBigInt, i.e. BigInt()) is not a
+# guide here: it rejects "1_000", "1e3" and Unicode digits but signs " 1000",
+# "1000\n" and "0x3e8" as 1000. All of them are refused, not normalized.
+_DECIMAL = re.compile(r"-?[0-9]+", re.ASCII)
+
+
+def _coerce_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and _DECIMAL.fullmatch(value):
+        return int(value)
+    raise ValueError(f"non-canonical integer {value!r}: expected an int or an ASCII decimal string")
+
+
 def _coerce_scalar(value: Any, abi_type: str) -> Any:
     if abi_type.startswith(("uint", "int")):
-        return int(value)
+        return _coerce_int(value)
     if abi_type.startswith("bytes"):
         return to_bytes(hexstr=value) if isinstance(value, str) else value
     return value  # address / string pass through as str
@@ -74,10 +91,19 @@ def _primary_type(types: dict[str, list[dict[str, str]]]) -> str:
     return roots[0]
 
 
+def _coerce_domain(domain: dict[str, Any]) -> dict[str, Any]:
+    # `chainId` is the domain's one integer member (uint256). eth_account parses
+    # a string chainId leniently, so " 1", "0x1" and Arabic-Indic "1" all signed
+    # as 1; it gets the same canonical-only check as the message's integers.
+    if "chainId" not in domain:
+        return domain
+    return {**domain, "chainId": _coerce_int(domain["chainId"])}
+
+
 def _sign_typed(private_key: str, domain: dict[str, Any], types: dict[str, list[dict[str, str]]], message: dict[str, Any]) -> tuple[str, str]:
     primary = _primary_type(types)
     coerced = _coerce_message(message, types, primary)
-    signable = encode_typed_data(domain, types, coerced)
+    signable = encode_typed_data(_coerce_domain(domain), types, coerced)
     signed = Account.sign_message(signable, private_key)
     return signed.message_hash.to_0x_hex(), signed.signature.to_0x_hex()
 

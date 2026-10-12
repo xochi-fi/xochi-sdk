@@ -13,10 +13,49 @@
 #
 # npm trusted publishing (OIDC), so there is no NPM_TOKEN anywhere: npm
 # exchanges this job's id-token for a short-lived publish credential, and only
-# for the package/repo/workflow pair configured on npmjs.com. SETUP, once per
-# package on npmjs.com: Settings -> Trusted publisher -> GitHub Actions,
-# repository xochi-fi/xochi-sdk, workflow `release.yml`. `--provenance` needs
-# the repository to be public.
+# for the package/repo/workflow/environment configured on npmjs.com
+# (https://docs.npmjs.com/trusted-publishers). SETUP, once per package on
+# npmjs.com: Settings -> Trusted publisher -> GitHub Actions, with
+#   - repository xochi-fi/xochi-sdk, workflow `release.yml`;
+#   - environment `npm-publish`. REQUIRED although npm calls it optional: it is
+#     the ONLY thing stopping a tag on a pre-fix commit, whose own release.yml
+#     publishes with `--tag latest` and no environment, from publishing the
+#     never-published @xochi/spec 0.8.0, @xochi/signer 0.5.0, @xochi/client
+#     0.1.0 or @xochi/widget-lib 0.1.0 (see "Why the environment" below);
+#   - Allowed actions: `npm publish`. A config created after 2026-09-03 allows
+#     only `npm stage publish` by default, and this job runs `npm publish`.
+# A new config expires unless its first publish succeeds within 2 days, so
+# create it only when the tag is ready to push. `--provenance` needs the
+# repository to be public.
+#
+# First publish. A trusted publisher can only be attached to a package that
+# already exists, so @xochi/spec, @xochi/signer, @xochi/client and
+# @xochi/widget-lib cannot make their first publish here. The conservative
+# procedure, once per package: an npm owner with 2FA checks out the reviewed
+# release tag's commit (on main), runs the same gates this job runs for that
+# package, and runs `npm publish -w <name> --provenance=false` by hand (spec
+# and signer set `publishConfig.provenance`, which fails outside CI; the real
+# reviewed version, never a placeholder). @xochi/signer goes before
+# @xochi/client, which depends on it. Then attach the config above
+# (`npm trust github <name> --file release.yml --repo xochi-fi/xochi-sdk
+# --env npm-publish --allow-publish`) and set Settings -> Publishing access ->
+# "Require two-factor authentication and disallow tokens", so every later
+# version publishes only from this workflow.
+#
+# Why the environment. A tag push runs the release.yml of the TAGGED commit,
+# not main's, so no step in this file can guard a tag on a commit that does not
+# carry this file: every older main commit runs its own older workflow, and a
+# commit on any branch can carry a release.yml with the checks deleted. What
+# such a workflow cannot change is the OIDC token's `environment` claim, which
+# GitHub sets only for a job that enters the environment and passes its
+# protection rules. So the gate is three settings outside this file, and the
+# steps below are defence in depth on top of them:
+#   - npmjs.com trusted publisher requires environment `npm-publish`, so a
+#     workflow without it (every commit before this one) gets no credential;
+#   - GitHub environment `npm-publish` accepts deployments only from tags
+#     matching the five patterns below;
+#   - GitHub tag ruleset "release tags" lets only repository admins create,
+#     move or delete those tags.
 #
 # @xochi/sdk used to be published by hand (`npm publish` at the root, gated by
 # its prepublishOnly). That still works and still runs the same gates; this
@@ -54,6 +93,10 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The gate this file cannot enforce on itself (header, "Why the
+    # environment"): npm issues a credential only to a job in this environment,
+    # and the environment admits only release tags.
+    environment: npm-publish
     permissions:
       contents: read
       id-token: write
@@ -78,8 +121,11 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
-          cache: npm
           registry-url: "https://registry.npmjs.org"
+          # No dependency cache: this job holds id-token: write, and a cache
+          # entry written by another workflow run would be installed here
+          # (npm's trusted-publishing guide: never cache in release builds).
+          package-manager-cache: false
 
       # Trusted publishing needs npm >= 11.5.1; refuse rather than fall back to
       # a token-less publish that fails late with an opaque 404. Pinned exactly,
@@ -119,17 +165,63 @@ jobs:
             echo "tag $TAG says $version but $dir/package.json is $manifest; refusing to publish" >&2
             exit 1
           fi
-          # A prerelease must not become `latest`.
+          # A prerelease goes to `next`. A stable version passes no --tag at all
+          # (an explicit `--tag latest` would let a backport roll `latest`
+          # back), and is refused below unless it sorts above the current
+          # `latest`. npm's own refusal is not relied on: it reads registry
+          # versions through a path that swallows errors and then sees none.
+          # Publish a backport by hand under a maintenance tag.
           case "$version" in
             *-*) dist_tag='next' ;;
-            *)   dist_tag='latest' ;;
+            *)   dist_tag='' ;;
           esac
+          if [ -z "$dist_tag" ]; then
+            if latest="$(npm view "$name" dist-tags.latest 2>"$RUNNER_TEMP/npm-view.err")"; then
+              :
+            elif grep -q E404 "$RUNNER_TEMP/npm-view.err"; then
+              latest=''
+            else
+              cat "$RUNNER_TEMP/npm-view.err" >&2
+              echo "cannot read $name's latest dist-tag; refusing to publish" >&2
+              exit 1
+            fi
+            if [ -n "$latest" ]; then
+              # Exit 0 only when $1 > $2 (semver precedence, prerelease below
+              # its release; build metadata ignored).
+              node -e '
+                const parse = (v) => {
+                  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(v);
+                  if (!m) { console.error(`not a semver version: ${v}`); process.exit(2); }
+                  return { core: m.slice(1, 4).map(BigInt), pre: m[4] ? m[4].split(".") : [] };
+                };
+                const cmpId = (x, y) => {
+                  const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+                  if (nx && ny) return BigInt(x) < BigInt(y) ? -1 : BigInt(x) > BigInt(y) ? 1 : 0;
+                  if (nx !== ny) return nx ? -1 : 1;
+                  return x < y ? -1 : x > y ? 1 : 0;
+                };
+                const cmp = (a, b) => {
+                  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] < b.core[i] ? -1 : 1;
+                  if (!a.pre.length || !b.pre.length) return b.pre.length - a.pre.length;
+                  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
+                    const c = cmpId(a.pre[i], b.pre[i]);
+                    if (c) return c;
+                  }
+                  return a.pre.length - b.pre.length;
+                };
+                process.exit(cmp(parse(process.argv[1]), parse(process.argv[2])) > 0 ? 0 : 1);
+              ' "$version" "$latest" || {
+                echo "$name@$version does not sort above latest $latest; refusing to publish" >&2
+                exit 1
+              }
+            fi
+          fi
           # The root package is published without -w; a workspace with it.
           if [ "$dir" = "." ]; then ws=''; else ws="-w $name"; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "ws=$ws" >> "$GITHUB_OUTPUT"
           echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
-          echo "publishing $name@$version (dist-tag $dist_tag)"
+          echo "publishing $name@$version (dist-tag ${dist_tag:-latest, if highest})"
 
       - run: npm ci
 
@@ -164,6 +256,7 @@ jobs:
         if: steps.pkg.outputs.name == '@xochi/spec' || steps.pkg.outputs.name == '@xochi/signer'
         run: |
           for w in @xochi/signer @xochi/solver-sdk @xochi/reference @xochi/spec; do
+            npm run format:check -w "$w"
             npm run typecheck -w "$w"
             npm test -w "$w"
           done
@@ -179,4 +272,4 @@ jobs:
       # (format, typecheck, test, build) in prepublishOnly, which npm publish
       # runs; @xochi/signer's build runs in its prepublishOnly too.
       - name: Publish
-        run: npm publish ${{ steps.pkg.outputs.ws }} --tag "${{ steps.pkg.outputs.dist_tag }}" --provenance --access public
+        run: npm publish ${{ steps.pkg.outputs.ws }} ${{ steps.pkg.outputs.dist_tag && format('--tag {0}', steps.pkg.outputs.dist_tag) || '' }} --provenance --access public

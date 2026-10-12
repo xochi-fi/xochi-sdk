@@ -176,7 +176,8 @@ describe("light subpaths", () => {
    *
    * This is not hypothetical. A `"//"` key was added here to document the light
    * subpaths and did exactly that. package.json has no comments, and the attempt
-   * to fake one is what broke it, so the rationale lives in README.md instead.
+   * to fake one is what broke it, so the rationale lives here, next to the test
+   * that pins it: never document the exports map inside the exports map.
    */
   it("exports map is a valid subpath map, so it resolves at all", () => {
     const keys = Object.keys(readPkg().exports);

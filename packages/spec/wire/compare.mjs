@@ -44,6 +44,10 @@
  *     `nullable`, `readOnly`/`writeOnly`, `const`, `additionalProperties`,
  *     `default`, `deprecated`) and the branches of `oneOf`/`anyOf`/`allOf`/
  *     `prefixItems`
+ *   - every string `$ref` in the served document, wherever it sits (served-only
+ *     subtrees included): one that does not resolve -- external, malformed,
+ *     dangling or cyclic -- is BREAKING, unless the vendored copy fails to
+ *     resolve the same ref at the same location
  *
  * Not compared: descriptions, summaries, titles and examples. They are prose.
  *
@@ -64,9 +68,9 @@
  *             served-only `default`, an added `security` alternative. The
  *             vendored copy is behind; refresh it.
  *   BREAKING  a removal, a served addition that is REQUIRED, a changed value
- *             constraint, a dropped `security` requirement, or a node whose JSON
- *             type disagrees. A client built against the vendored copy can now be
- *             wrong at runtime.
+ *             constraint, a dropped `security` requirement, a node whose JSON
+ *             type disagrees, or a served `$ref` that does not resolve. A client
+ *             built against the vendored copy can now be wrong at runtime.
  *
  * Eight rules here are easy to undo and each cost a silent pass:
  *
@@ -143,6 +147,28 @@
 
 /** Plain object. An array satisfies `typeof x === "object"` and is not a map. */
 export const isObj = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+
+const OPERATION_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
+
+/**
+ * Why `doc` is not recognisably an OpenAPI contract of this shape, or `null` if
+ * it is: an `openapi` string, a `paths` object declaring at least one
+ * operation, and a `components` object. The probe reads a served document
+ * failing it as INCONCLUSIVE (not the producer disagreeing about the protocol);
+ * the writer refuses a PRIOR copy failing it, because a gutted prior leaves the
+ * BREAKING gate nothing to compare against -- the absent-prior case again.
+ */
+export const unrecognisedContract = (doc) => {
+  if (!isObj(doc)) return "not a JSON object";
+  if (typeof doc.openapi !== "string") return 'no "openapi" string';
+  if (!isObj(doc.paths)) return 'no "paths" object';
+  const hasOperation = Object.values(doc.paths).some(
+    (item) => isObj(item) && OPERATION_METHODS.some((m) => isObj(item[m])),
+  );
+  if (!hasOperation) return '"paths" declares no operation';
+  if (!isObj(doc.components)) return 'no "components" object';
+  return null;
+};
 
 /**
  * The comparison ran out of depth. Not a finding: a document this differ cannot
@@ -442,6 +468,158 @@ const keysOf = (node) => (isObj(node) ? Object.keys(node) : []);
 const setDiff = (a, b) => a.filter((k) => !b.includes(k));
 const methodsOf = (item) => METHODS.filter((m) => keysOf(item).includes(m));
 const isRequired = (node) => isObj(node) && node.required === true;
+
+/**
+ * Follow a local `$ref` chain in `doc` from `node` to the first node that is
+ * not itself a reference. Returns `{ node }`, or `{ unresolved }` naming why
+ * not: an external ref, a malformed fragment or escape, a dangling pointer or
+ * a cycle.
+ *
+ * RFC 6901 §6 fixes the order for a pointer carried in a URI fragment: the
+ * WHOLE fragment is percent-decoded first, then split on `/`, then each token
+ * unescaped (`~1` -> `/`, then `~0` -> `~`). So `#/a%2Fb` is the path `a` ->
+ * `b`, and the key `a/b` is spelled `#/a~1b`. Decoding per segment after the
+ * split read `%2F` as part of a key and resolved `#/a%2Fb` to `a/b`.
+ *
+ * A cycle is detected on the TARGET object, not the ref string, so two
+ * spellings of one pointer (`#/A` and `#/%41`) cannot hide a loop.
+ */
+const resolveRef = (doc, node) => {
+  const seen = new Set();
+  let cur = node;
+  while (isObj(cur) && typeof cur.$ref === "string") {
+    const ref = cur.$ref;
+    if (!ref.startsWith("#")) return { unresolved: "not a local ref" };
+    let pointer;
+    try {
+      pointer = decodeURIComponent(ref.slice(1));
+    } catch {
+      return { unresolved: "malformed percent-encoding" };
+    }
+    if (pointer !== "" && !pointer.startsWith("/")) {
+      return { unresolved: "malformed: the fragment is not a JSON pointer" };
+    }
+    let target = doc;
+    for (const token of pointer === "" ? [] : pointer.slice(1).split("/")) {
+      if (/~(?![01])/.test(token)) return { unresolved: "malformed ~ escape" };
+      const key = token.replace(/~1/g, "/").replace(/~0/g, "~");
+      target =
+        target !== null && typeof target === "object" && Object.hasOwn(target, key)
+          ? target[key]
+          : undefined;
+    }
+    if (!isObj(target)) return { unresolved: "dangling" };
+    if (seen.has(target)) return { unresolved: "cyclic" };
+    seen.add(target);
+    cur = target;
+  }
+  return { node: cur };
+};
+
+/**
+ * Keys whose value is a PAYLOAD rather than a schema or an OpenAPI object, so a
+ * `$ref` string inside one is data and not a reference: `example`/`examples`
+ * (and an Example Object's `value`), the constraint payloads `default`,
+ * `const` and `enum`, and `x-*` extensions. Not applied inside a NAME MAP,
+ * where a key is a name chosen by the producer -- a property called `default`
+ * is a schema, and `responses.default` is a response.
+ */
+const PAYLOAD_KEYS = new Set([
+  "example",
+  "examples",
+  "value",
+  "default",
+  "const",
+  "enum",
+  "externalDocs",
+]);
+
+/**
+ * Keys whose value is a map from producer-chosen NAMES to objects (OpenAPI's
+ * paths, component sections, status codes, media types, header names; JSON
+ * Schema's property maps). A member of one is an object of keywords, so the
+ * flag holds for exactly one level.
+ */
+const NAME_MAPS = new Set([
+  "paths",
+  "webhooks",
+  "components",
+  "schemas",
+  "responses",
+  "parameters",
+  "requestBodies",
+  "headers",
+  "securitySchemes",
+  "links",
+  "callbacks",
+  "pathItems",
+  "content",
+  "encoding",
+  "variables",
+  "scopes",
+  "mapping",
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+]);
+
+/**
+ * Every string `$ref` in `doc` that does not resolve, as a map from the ref to
+ * `{ reason, hits: [{ node, loc }] }`. Walked with an explicit stack, so a deep
+ * document costs heap rather than the call stack, and bounded by `MAX_DEPTH`
+ * like every other walk here. Each stack entry links to its parent instead of
+ * carrying its path, so a location is spelled only for a ref that failed.
+ * `resolveRef` depends only on the ref string, so each distinct one is
+ * resolved once.
+ */
+const unresolvedRefs = (doc, side) => {
+  const locOf = (entry) => {
+    const parts = [];
+    for (let e = entry; e.up !== null; e = e.up) {
+      parts.push(typeof e.key === "number" ? `[${e.key}]` : `.${e.key}`);
+    }
+    return parts.reverse().join("").replace(/^\./, "") || "(document root)";
+  };
+  const verdicts = new Map();
+  const out = new Map();
+  const stack = [{ node: doc, up: null, key: null, depth: 0, nameMap: false }];
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    const { node, depth, nameMap } = entry;
+    if (depth > MAX_DEPTH) throw tooDeep(`the ${side} document's $ref scan`);
+    if (Array.isArray(node)) {
+      for (let i = node.length - 1; i >= 0; i -= 1) {
+        stack.push({ node: node[i], up: entry, key: i, depth: depth + 1, nameMap: false });
+      }
+      continue;
+    }
+    if (!isObj(node)) continue;
+    if (!nameMap && typeof node.$ref === "string") {
+      const ref = node.$ref;
+      if (!verdicts.has(ref)) verdicts.set(ref, resolveRef(doc, node).unresolved ?? null);
+      const reason = verdicts.get(ref);
+      if (reason !== null) {
+        if (!out.has(ref)) out.set(ref, { reason, hits: [] });
+        out.get(ref).hits.push({ node, loc: locOf(entry) });
+      }
+    }
+    const keys = Object.keys(node);
+    for (let i = keys.length - 1; i >= 0; i -= 1) {
+      const k = keys[i];
+      if (!nameMap && (PAYLOAD_KEYS.has(k) || k.startsWith("x-"))) continue;
+      stack.push({
+        node: node[k],
+        up: entry,
+        key: k,
+        depth: depth + 1,
+        nameMap: !nameMap && NAME_MAPS.has(k),
+      });
+    }
+  }
+  return out;
+};
 
 /**
  * Compare a served OpenAPI document against a vendored one.
@@ -782,26 +960,30 @@ export const compareContract = (served, vendored) => {
    * A served-only parameter or requestBody given as a local `$ref` carries its
    * `required` on the target, so it is graded on that: read off the bare ref
    * object, a newly served required `$ref` parameter graded STALE. Chains are
-   * followed; an unresolvable or cyclic ref yields the ref object itself.
+   * followed by `resolveRef` (RFC 6901 §6 decoding order).
+   *
+   * An unresolved ref is graded BREAKING here, never on the bare ref object:
+   * `isRequired({$ref})` is false, so it read "(optional)", graded STALE, and
+   * `generate:wire` installed with no flag a parameter whose requirements
+   * nobody can read -- and an external ref is the producer pointing the
+   * contract at bytes this repo never vendored. The node is remembered so the
+   * document-wide `$ref` scan below does not report it a second time.
    */
-  const resolveServed = (node) => {
-    const seen = new Set();
-    let cur = node;
-    while (
-      isObj(cur) &&
-      typeof cur.$ref === "string" &&
-      cur.$ref.startsWith("#/") &&
-      !seen.has(cur.$ref)
-    ) {
-      seen.add(cur.$ref);
-      let target = served;
-      for (const raw of cur.$ref.slice(2).split("/")) {
-        target = isObj(target) ? target[raw.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined;
-      }
-      if (!isObj(target)) return cur;
-      cur = target;
+  const reportedRefNodes = new Set();
+  const servedOnly = (what, node) => {
+    const r = resolveRef(served, node);
+    if (r.unresolved) {
+      reportedRefNodes.add(node);
+      breaking.push(
+        `${what} is served but not vendored, and its $ref ${sanitize(node.$ref)} cannot be ` +
+          `resolved (${r.unresolved})`,
+      );
+      return;
     }
-    return cur;
+    const required = isRequired(r.node);
+    (required ? breaking : stale).push(
+      `${what} is served but not vendored (${required ? "required" : "optional"})`,
+    );
   };
 
   const compareOperation = (label, sItem, vItem, sOp, vOp) => {
@@ -813,10 +995,7 @@ export const compareContract = (served, vendored) => {
       checks += 1;
       const vp = vParams.get(k);
       if (vp === undefined) {
-        const required = isRequired(resolveServed(sp));
-        (required ? breaking : stale).push(
-          `${label} parameter ${sanitize(k)} is served but not vendored (${required ? "required" : "optional"})`,
-        );
+        servedOnly(`${label} parameter ${sanitize(k)}`, sp);
         continue;
       }
       // No `required` comparison here: `compareNode` compares the boolean form
@@ -863,10 +1042,7 @@ export const compareContract = (served, vendored) => {
     if (isObj(sBody) || isObj(vBody)) {
       checks += 1;
       if (!isObj(vBody)) {
-        const required = isRequired(resolveServed(sBody));
-        (required ? breaking : stale).push(
-          `${label} requestBody is served but not vendored (${required ? "required" : "optional"})`,
-        );
+        servedOnly(`${label} requestBody`, sBody);
       } else if (!isObj(sBody)) {
         breaking.push(`${label} requestBody is vendored but no longer served`);
       } else {
@@ -1008,6 +1184,29 @@ export const compareContract = (served, vendored) => {
         );
       }
     }
+  }
+
+  // 3. Every `$ref` the served document carries, wherever it sits. The walks
+  // above follow the vendored document's shape, so a served-only subtree --
+  // a new property, path, response, component or nested `items`/`allOf` -- is
+  // graded STALE by its NAME and never entered: a served-only property
+  // `{$ref: "#/components/schemas/DoesNotExist"}` or an external ref read as an
+  // optional addition and `generate:wire` installed it with no flag. A ref that
+  // does not resolve (external, malformed, dangling or cyclic; `resolveRef`) is
+  // BREAKING: the contract at that node is unreadable, or is bytes this repo
+  // never vendored. A ref the vendored copy already fails to resolve at the
+  // SAME location is not a change and is not reported, or one accepted
+  // `--allow-breaking` would turn the nightly probe permanently red.
+  const vendoredUnresolved = unresolvedRefs(vendored, "vendored");
+  for (const [ref, { reason, hits }] of unresolvedRefs(served, "served")) {
+    const known = new Set((vendoredUnresolved.get(ref)?.hits ?? []).map((h) => h.loc));
+    const fresh = hits.filter((h) => !reportedRefNodes.has(h.node) && !known.has(h.loc));
+    if (fresh.length === 0) continue;
+    breaking.push(
+      `$ref ${sanitize(ref)} cannot be resolved in the served document (${reason}), at ` +
+        `${sanitize(fresh[0].loc, 2 * MAX_FRAGMENT_CHARS)}` +
+        (fresh.length > 1 ? ` and ${fresh.length - 1} other place(s)` : ""),
+    );
   }
 
   return {

@@ -39,11 +39,14 @@ import {
   mergeSameStatusReceipt,
   notFoundDriftWarning,
   pollCeilingAttempts,
+  normalizeTradeFields,
   quoteAccessDecision,
   shouldRefreshOnReturn,
   shouldRefreshQuote,
   shouldUpgradePreviewQuote,
   POLL_INFLIGHT_STATES,
+  ALLOCATABLE_STATES,
+  ENDED_STATES,
   QUOTE_BUSY_STATES,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
@@ -339,6 +342,12 @@ export interface Model {
   poll: PollState | null;
   refresh: { amount: string; hasAllocatedDeposit: boolean } | null;
   /**
+   * The trade (`tradeKey`) the held quote was requested for. With
+   * `intent.quotedFromAmount` it decides whether the quote on screen still
+   * describes the form (`holdsCurrentQuote`); null until a quote lands.
+   */
+  quotedTrade: string | null;
+  /**
    * Deposit address -> the intent it was attested for, for every deposit route
    * verified this session (keyed as `@xochi/signer`'s `recordDepositAddress`
    * keys it). A per-session tripwire, not a ledger: a fresh `init` clears it.
@@ -368,6 +377,7 @@ export function init(config: MachineConfig, ctx: Context, hidden = false): Model
     sign: null,
     poll: null,
     refresh: null,
+    quotedTrade: null,
     seenDepositAddresses: {},
     watched: { wallet: "", upgrade: "", expiry: null },
   };
@@ -388,7 +398,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
   switch (msg.type) {
     case "ContextChanged": {
       const next = { ...m, ctx: msg.ctx };
-      if (m.flights.length === 0 || quoteContextKey(next) === quoteContextKey(m)) return next;
+      if (m.flights.length === 0 || tradeKey(next.ctx) === tradeKey(m.ctx)) return next;
       // The quotes in the air were built from the old trade; their answers
       // describe a deal no longer on the form, so none of them may land.
       if (m.intent.status === "quoting" && m.amount) {
@@ -415,7 +425,16 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     }
 
     case "AllocateRequested": {
-      if (!m.amount || isChainId(m.ctx.fromChainId) || !m.ctx.wallet.address) {
+      // Only before execution: past quoting (a prompt open, a deposit awaited,
+      // a swap in flight) or once the trade has ended (completed, refunded,
+      // failed) a new quote has nothing to land on, and its failure would
+      // patch the finished trade back to `quoted` over its consumed route.
+      if (
+        !m.amount ||
+        isChainId(m.ctx.fromChainId) ||
+        !m.ctx.wallet.address ||
+        !ALLOCATABLE_STATES.includes(m.intent.status)
+      ) {
         emit(fx, { kind: "allocation", ref: msg.ref, ok: false });
         return m;
       }
@@ -429,6 +448,10 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     }
 
     case "RefreshRequested":
+      if (QUOTE_BUSY_STATES.includes(m.intent.status)) {
+        log(fx, "debug", `${LOG} Ignoring quote request during`, m.intent.status);
+        return m;
+      }
       return m.amount ? startQuote(m, fx, msg.now, quoteOpts(m.amount)) : m;
 
     case "SignRequested":
@@ -453,6 +476,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
         pendingIntentSig: null,
         allocationKey: null,
         refresh: null,
+        quotedTrade: null,
         sign: null,
       };
 
@@ -471,8 +495,10 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       // Left armed, it fires once the arming poll has moved the intent to a
       // terminal status, which QUOTE_BUSY_STATES does not cover, and the fresh
       // quote replaces the receipt with a signable confirm for the same trade.
+      // A quote already in the air (a Tron allocation waiting on sign-in) would
+      // land over the resumed intent the same way, so it goes too.
       clearTimer(fx, "debounce");
-      return { ...m, intent };
+      return { ...supersedeFlights(m, fx), intent };
     }
 
     case "VisibilityChanged": {
@@ -568,9 +594,11 @@ function patch(m: Model, updates: Partial<IntentState>): Model {
 
 /**
  * A validated status move; an invalid one is logged and leaves the intent as
- * it was. Leaving `signing` for anything but `executing` (a rejection, a
- * refusal, a quote that landed over the open prompt) ends the sign ceremony,
- * so a late wallet reply has nothing to execute.
+ * it was. Leaving the ceremony (`signing`, or `executing` with its /execute
+ * reply outstanding) for anything but `signing -> executing` (a rejection, a
+ * refusal, a status update that got there first) ends it, so a late wallet or
+ * execute reply has nothing to act on. Entering a state past quoting drops
+ * every quote still in the air: its answer describes a trade that has moved on.
  */
 function transition(
   m: Model,
@@ -588,8 +616,17 @@ function transition(
     log(fx, "warn", `${LOG} Invalid transition: ${m.intent.status} -> ${to}`);
     return m;
   }
-  const next = { ...m, intent };
-  return m.intent.status === "signing" && to !== "executing" ? abandonSign(next, fx) : next;
+  const from = m.intent.status;
+  let next: Model = { ...m, intent };
+  if (QUOTE_BUSY_STATES.includes(to) && !QUOTE_BUSY_STATES.includes(from)) {
+    next = supersedeFlights(next, fx);
+  }
+  // `signing -> executing` keeps the ceremony only as the machine's own
+  // execute step (runExecute stages the flow first); a status update making
+  // the same move must not leave a pull prompt or "Sign 2 of 2" live.
+  const ownExecute = to === "executing" && next.sign?.stage === "execute";
+  const leftCeremony = from === "executing" || (from === "signing" && !ownExecute);
+  return leftCeremony ? abandonSign(next, fx) : next;
 }
 
 // ============================================================
@@ -678,14 +715,27 @@ function onSession(
 ): Model {
   const flight = m.flights.find((f) => f.id === id && f.stage === "session");
   if (!flight) return m;
+  // A session flight may start on a finished trade (a new Tron quote after a
+  // completed one), so only a ceremony or a swap in flight makes it stale.
+  if (QUOTE_BUSY_STATES.includes(m.intent.status)) return dropStaleFlight(m, fx, flight);
   if (result === "ok") return sendQuote(m, fx, flight, now);
   const next = withoutFlight(m, id);
   endAllocation(fx, flight, false);
   if (flight.silent) return next;
   const error = "Wallet sign-in is required to allocate a Tron deposit route";
   return flight.allocate
-    ? patch(next, { status: "quoted", error })
+    ? allocationFailed(next, error)
     : patch(next, { status: "failed", error, quote: null });
+}
+
+/**
+ * A quote reply that finds the trade past quoting: the intent it would patch
+ * is no longer the one it was asked for. Logged and dropped, never applied.
+ */
+function dropStaleFlight(m: Model, fx: Effect[], flight: QuoteFlight): Model {
+  log(fx, "warn", `${LOG} Dropping a quote reply: intent is ${m.intent.status}`, flight.id);
+  endAllocation(fx, flight, false);
+  return withoutFlight(m, flight.id);
 }
 
 function sendQuote(m: Model, fx: Effect[], flight: QuoteFlight, now: number): Model {
@@ -760,8 +810,19 @@ function quoteThrew(m: Model, fx: Effect[], flight: QuoteFlight, report: ErrorRe
   if (flight.silent) return m;
   const error = report.value ?? "Quote request failed";
   return flight.allocate
-    ? patch(m, { status: "quoted", error })
+    ? allocationFailed(m, error)
     : patch(m, { status: "failed", error, quote: null });
+}
+
+/**
+ * An allocation that did not land leaves the indicative price on screen. Only
+ * a trade still before execution returns to `quoted`; any other status is
+ * kept, so a failure never revives an ended trade over its consumed quote.
+ */
+function allocationFailed(m: Model, error: IntentState["error"]): Model {
+  return ALLOCATABLE_STATES.includes(m.intent.status)
+    ? patch(m, { status: "quoted", error })
+    : patch(m, { error });
 }
 
 function onQuote(
@@ -773,6 +834,14 @@ function onQuote(
 ): Model {
   const flight = model.flights.find((f) => f.id === id && f.stage === "api");
   if (!flight) return model;
+  // The request moved the intent to `quoting` (or was silent over `quoted`):
+  // finding it at a prompt, a swap in flight, delivered or refunded means the
+  // trade went on without this answer, which may then neither fail it nor
+  // replace its quote.
+  const status = model.intent.status;
+  if (QUOTE_BUSY_STATES.includes(status) || ENDED_STATES.includes(status)) {
+    return dropStaleFlight(model, fx, flight);
+  }
   const m = withoutFlight(model, id);
   if (!result.ok) return quoteThrew(m, fx, flight, result.error);
 
@@ -989,6 +1058,8 @@ function acceptQuote(
     // A fresh quote is a fresh poll budget.
     next = transition(m, fx, "quoted", { ...quoteState, pollExhausted: false });
   }
+  // Only if it landed: a refused move leaves the old quote, and its trade, held.
+  if (next.intent.quote === quote) next = { ...next, quotedTrade: tradeKey(flight.ctx) };
 
   const refreshMs = computeRefreshDelayMs(quote.expiry, now, QUOTE_REFRESH_BUFFER_MS);
   if (refreshMs > 0) {
@@ -1096,6 +1167,17 @@ function beginSign(m: Model, fx: Effect[], now: number): Model {
   // never signable, whatever it carries.
   if (!quote || !canSignQuote(m.intent.status, quote))
     return patch(m, { error: "No quote to sign" });
+  // Nor a quote for another trade: after an edit the held quote stays on
+  // screen (priced at its own amount) until its replacement lands, but the
+  // wallet must never be asked to sign, or a deposit address revealed, for a
+  // trade the form no longer describes.
+  if (!holdsCurrentQuote(m)) {
+    log(fx, "warn", `${LOG} Not signing a quote for a trade no longer on the form`, {
+      quotedFromAmount: m.intent.quotedFromAmount,
+      amount: m.amount,
+    });
+    return m;
+  }
   // Deposit route: no signature, no /execute. Revealing the address drives
   // the poll to a terminal state once the solver detects the deposit.
   if (quote.depositAddress) {
@@ -1182,7 +1264,9 @@ function completePull(m: Model, fx: Effect[], flow: SignFlow): Model {
   const pull = m.intent.quote?.pullAuthorization;
   const eip712 = m.intent.quote?.eip712Data;
   if (!pull || !eip712) return endSignFlow(m, flow);
-  const amount = readAmount((eip712.message?.fromAmount as string) || m.amount || "0");
+  const amount = readAmount(
+    (eip712.message?.fromAmount as string) || m.intent.quotedFromAmount || "0",
+  );
   if (typeof amount !== "bigint") return signFlowFailed({ ...m, sign: flow }, fx, amount);
   fx.push({
     type: "Wallet",
@@ -1213,8 +1297,11 @@ function onApproval(
 
   // Fail-closed solver pin (#333, #170): never sign a pull whose recipient is
   // not the pinned solver, nor whose amount exceeds the intended input. The
-  // amount is anchored to the user's own quoted input, not a served field.
-  const expected = readAmount(m.amount || (eip712.message?.fromAmount as string) || "0");
+  // amount is anchored to the user's own quoted input (what the intent was
+  // requested and signed at), not a served field and not the live form.
+  const expected = readAmount(
+    m.intent.quotedFromAmount || (eip712.message?.fromAmount as string) || "0",
+  );
   if (typeof expected !== "bigint") return signFlowFailed(m, fx, expected);
   const pin = validateSolverPin(pull, m.config.solverPin, expected);
   if (!pin.ok) {
@@ -1251,6 +1338,9 @@ function onSigned(
 ): Model {
   const flow = m.sign;
   if (!flow || flow.id !== flowId || flow.stage !== purpose) return m;
+  // A status update can carry the intent past `signing` while a prompt is
+  // open; its signature then belongs to no ceremony.
+  if (m.intent.status !== "signing") return abandonSign(m, fx);
   if (purpose === "pull") clearTimer(fx, "signPrompt");
   if (!result.ok) return signFlowFailed(m, fx, result.error);
 
@@ -1296,15 +1386,13 @@ function runExecute(
     log(fx, "warn", `${LOG} Dropping signature: intent is ${m.intent.status}, not signing`);
     return abandonSign(m, fx);
   }
-  const executing = transition(m, fx, "executing");
+  // The flow is marked `execute` before the move, so `transition` can tell
+  // this step from a status update that skipped the ceremony.
+  const staged: Model = { ...m, sign: { ...flow, stage: "execute" } };
+  const executing = transition(staged, fx, "executing");
   if (executing.intent.status !== "executing") return abandonSign(m, fx);
   // Fill clock starts here: the signed intent is now with the solver.
-  const next: Model = {
-    ...executing,
-    submittedAt: now,
-    clientFillMs: null,
-    sign: { ...flow, stage: "execute" },
-  };
+  const next: Model = { ...executing, submittedAt: now, clientFillMs: null };
   fx.push({
     type: "Api",
     call: {
@@ -1519,9 +1607,39 @@ function onStatus(
 // Reactive rules (run after every step, until stable)
 // ============================================================
 
-function quoteContextKey(m: Model): string {
-  const { paused: _paused, wallet, ...trade } = m.ctx;
-  return JSON.stringify([trade, wallet.address, wallet.chainId]);
+/**
+ * Every context field the quote request is built from, in a fixed order (a
+ * host may rebuild the context with its keys in any order), read through the
+ * request's own normalisation so two forms that send one request are one
+ * trade. `paused` and `stepwise` shape the ceremony, not the trade.
+ */
+function tradeKey(c: Context): string {
+  const { recipientAddress, refundAddress, stealthMetaAddress } = normalizeTradeFields(c);
+  return JSON.stringify([
+    c.fromChainId,
+    c.toChainId,
+    c.fromToken,
+    c.toToken,
+    c.settlementPreference,
+    c.trustScore,
+    c.slippageBps,
+    recipientAddress ?? null,
+    refundAddress ?? null,
+    stealthMetaAddress?.spendingPubKey ?? null,
+    stealthMetaAddress?.viewingPubKey ?? null,
+    stealthMetaAddress?.chainId ?? null,
+    c.wallet.address,
+    c.wallet.chainId,
+  ]);
+}
+
+/**
+ * The held quote still describes the trade on the form: the amount and every
+ * request field it was quoted for. Confirm and the receipt's signing slot both
+ * read it, so neither offers to sign a quote for a trade the user has edited.
+ */
+export function holdsCurrentQuote(m: Model): boolean {
+  return m.intent.quotedFromAmount === m.amount && m.quotedTrade === tradeKey(m.ctx);
 }
 
 function settle(model: Model, now: number, fx: Effect[]): Model {
@@ -1579,7 +1697,7 @@ function watchWallet(m: Model, fx: Effect[]): Model {
  */
 function upgradePreview(m: Model, fx: Effect[], now: number): Model {
   const isPreview = m.intent.quote?.preview === true;
-  const key = JSON.stringify([quoteContextKey(m), m.amount, isPreview, m.intent.status]);
+  const key = JSON.stringify([tradeKey(m.ctx), m.amount, isPreview, m.intent.status]);
   if (key === m.watched.upgrade) return m;
   const next = { ...m, watched: { ...m.watched, upgrade: key } };
   const upgrade = shouldUpgradePreviewQuote({

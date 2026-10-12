@@ -345,10 +345,12 @@ describe("one signature (no origin pull)", () => {
     const s = new Session();
     s.quoteWith(quote());
     const prompt = signIntent(s);
-    // A quote landing over the open prompt returns to the confirm surface.
-    const call = only(apiCalls(s.send({ type: "RefreshRequested" }), "quote"));
-    s.send({ type: "QuoteReplied", flight: call.flight, result: { ok: true, quote: quote() } });
-    expect(s.intent.status).toBe("quoted");
+    // A refresh asked over the open prompt is not a way out of it: ignored.
+    expect(apiCalls(s.send({ type: "RefreshRequested" }), "quote")).toEqual([]);
+    expect(s.intent.status).toBe("signing");
+    // Starting over is.
+    s.send({ type: "ResetRequested" });
+    s.quoteWith(quote());
     expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
 
     const fx = s.send({
@@ -608,6 +610,30 @@ describe("two signatures (origin pull)", () => {
     expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 2 });
     expect(s.send({ type: "PullSignRequested" })).toEqual([]);
   });
+
+  it("pins the pull to the quoted input, not an amount typed mid-ceremony", () => {
+    // The intent was signed at AMOUNT; an edit behind the "Sign 2 of 2" step
+    // does not make the matching pull an unpinned one.
+    const s = new Session(ctx({}, { stepwise: true }));
+    s.quoteWith(pulled());
+    const prompt = signIntent(s);
+    s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    s.send({ type: "QuoteRequested", amount: "500000" });
+    const approval = only(walletCalls(s.send({ type: "PullSignRequested" }), "ensureApproval"));
+    expect(approval.amount).toBe(AMOUNT);
+    const fx = s.send({
+      type: "ApprovalReplied",
+      flow: approval.flow,
+      result: { ok: true, approved: true },
+    });
+    expect(only(walletCalls(fx, "signTypedData")).purpose).toBe("pull");
+    expect(s.intent.refusal).toBeNull();
+  });
 });
 
 describe("status", () => {
@@ -757,6 +783,112 @@ describe("resume", () => {
   });
 });
 
+describe("a quote for a trade that has moved on", () => {
+  const answer = (variant: "threw" | "declined" | "preview") =>
+    variant === "threw"
+      ? ({ ok: false, error: { rejected: false, value: null, detail: "boom" } } as const)
+      : ({
+          ok: true,
+          quote:
+            variant === "declined"
+              ? quote({ canSolve: false, error: "unprofitable" })
+              : quote({ preview: true, eip712Data: undefined }),
+        } as const);
+
+  for (const variant of ["threw", "declined", "preview"] as const) {
+    it(`a refresh asked mid-ceremony never fails the swap (${variant})`, () => {
+      const s = new Session();
+      s.quoteWith(quote());
+      const prompt = signIntent(s);
+      const refresh = apiCalls(s.send({ type: "RefreshRequested" }), "quote");
+      expect(refresh).toEqual([]);
+      expect(s.model.flights).toEqual([]);
+
+      const execute = only(
+        apiCalls(
+          s.send({
+            type: "SignReplied",
+            flow: prompt.flow,
+            purpose: "intent",
+            result: { ok: true, signature: "0xintent" },
+          }),
+          "execute",
+        ),
+      );
+      s.send({ type: "QuoteReplied", flight: refresh[0]?.flight ?? "q1", result: answer(variant) });
+      expect(s.intent.status).toBe("executing");
+      s.send({
+        type: "ExecuteReplied",
+        flow: execute.flow,
+        result: {
+          ok: true,
+          response: { success: true, intentId: "xi_1", status: "completed" },
+        },
+      });
+      expect(s.intent.status).toBe("completed");
+    });
+
+    it(`a quote reply that finds the swap in flight is dropped (${variant})`, () => {
+      // However the flight got there, its answer describes a trade that is gone.
+      const other = new Session();
+      const call = other.requestQuote();
+      const s = new Session();
+      s.quoteWith(quote());
+      const prompt = signIntent(s);
+      s.send({
+        type: "SignReplied",
+        flow: prompt.flow,
+        purpose: "intent",
+        result: { ok: true, signature: "0xintent" },
+      });
+      s.model = { ...s.model, flights: other.model.flights };
+      const before = s.intent;
+      const fx = s.send({ type: "QuoteReplied", flight: call.flight, result: answer(variant) });
+      expect(s.intent).toBe(before);
+      expect(s.model.flights).toEqual([]);
+      expect(logs(fx, "warn")).toContain("[useIntent] Dropping a quote reply: intent is executing");
+    });
+  }
+
+  it("stops offering the held quote once the amount changes", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    s.send({ type: "QuoteRequested", amount: "2500000" });
+    expect(s.receipt.quote).toMatchObject({ kind: "ready" });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+    expect(s.intent.status).toBe("quoted");
+
+    // Its replacement is signable again.
+    const call = only(apiCalls(s.send({ type: "TimerFired", timer: "debounce" }, 500), "quote"));
+    s.send({
+      type: "QuoteReplied",
+      flight: call.flight,
+      result: {
+        ok: true,
+        quote: quote({ eip712Data: intentTypedData({ fromAmount: "2500000" }) }),
+      },
+    });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+    expect(only(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).purpose).toBe(
+      "intent",
+    );
+  });
+
+  it("stops offering the held quote once the trade on the form changes", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    s.send({ type: "ContextChanged", ctx: ctx({ slippageBps: 100 }) });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+
+    // Back to the quoted trade, its keys in another order: signable again.
+    const reordered = Object.fromEntries(Object.entries(ctx()).reverse()) as typeof s.model.ctx;
+    s.send({ type: "ContextChanged", ctx: reordered });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+  });
+});
+
 describe("transitions", () => {
   it("logs a move the transition table refuses instead of applying it", () => {
     const s = new Session();
@@ -853,5 +985,73 @@ describe("superseded and mismatched answers", () => {
     });
     expect(logs(fx, "warn").join(" ")).toMatch(/another intent/);
     expect(s.intent.status).toBe("quoted");
+  });
+});
+
+describe("a status update that skips the sign ceremony", () => {
+  const executingFrame = {
+    type: "StreamStatus",
+    message: { type: "intent_status", intentId: "xi_1", status: "executing", timestamp: "t" },
+  } as const;
+
+  it("ends the ceremony, so the intent signature starts no pull leg", () => {
+    const s = new Session();
+    s.quoteWith(quote({ pullAuthorization: erc3009Pull() }));
+    const prompt = signIntent(s);
+    s.send(executingFrame);
+    expect(s.intent.status).toBe("executing");
+    expect(s.model.sign).toBeNull();
+
+    const fx = s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    expect(walletCalls(fx, "ensureApproval")).toEqual([]);
+    expect(walletCalls(fx, "signTypedData")).toEqual([]);
+    expect(s.model.pendingIntentSig).toBeNull();
+  });
+
+  it("drops a held 'Sign 2 of 2' on a deep-link wallet", () => {
+    const s = new Session(ctx({}, { stepwise: true }));
+    s.quoteWith(quote({ pullAuthorization: erc3009Pull() }));
+    const prompt = signIntent(s);
+    s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    expect(s.model.awaitingPull).toBe(true);
+
+    s.send(executingFrame);
+    expect(s.intent.status).toBe("executing");
+    expect(s.model.awaitingPull).toBe(false);
+    expect(s.model.pendingIntentSig).toBeNull();
+    expect(s.receipt.signing).not.toEqual({ kind: "awaiting_second" });
+    expect(s.send({ type: "PullSignRequested" })).toEqual([]);
+  });
+});
+
+describe("the held quote's trade, as the request normalises it", () => {
+  it("keeps the quote signable across edits that send the same request", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    s.send({ type: "ContextChanged", ctx: ctx({ recipientAddress: "", refundAddress: "  " }) });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // Stealth keys arriving under a public settlement are never sent.
+    const stealthMetaAddress = {
+      spendingPubKey: `0x02${"11".repeat(32)}`,
+      viewingPubKey: `0x03${"22".repeat(32)}`,
+      chainId: 8453,
+    } as const;
+    s.send({ type: "ContextChanged", ctx: ctx({ stealthMetaAddress }) });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // A real change still lets go of it.
+    s.send({ type: "ContextChanged", ctx: ctx({ recipientAddress: ATTACKER }) });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
 });

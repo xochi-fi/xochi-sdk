@@ -15,8 +15,9 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import type { IntentStatus } from "../shared/index.js";
-import { POLL_INFLIGHT_STATES } from "./decisions.js";
+import { POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
 import {
+  holdsCurrentQuote,
   init,
   update,
   type Context,
@@ -545,10 +546,13 @@ describe("update properties", () => {
           } else {
             expect(t.next.intent.status).toBe("quoted");
             expect(view(t.next).quote).toMatchObject({ kind: "ready" });
-            expect(view(t.next).signing).toEqual({
-              kind: "refused",
-              refusal: t.next.intent.refusal,
-            });
+            // Unless the form was edited mid-ceremony: a quote for another
+            // trade is shown, never offered, refusal or not.
+            expect(view(t.next).signing).toEqual(
+              holdsCurrentQuote(t.next)
+                ? { kind: "refused", refusal: t.next.intent.refusal }
+                : { kind: "unavailable" },
+            );
           }
           // Nothing signed so far survives the refusal to be executed later.
           expect(t.next.sign).toBeNull();
@@ -579,6 +583,43 @@ describe("update properties", () => {
           }
           if (t.prev.intent.status === "signing" && t.next.intent.status === "quoted") {
             landedQuoted = true;
+          }
+        }
+      }),
+      FC_SETTINGS,
+    );
+  });
+
+  it("leaves no signing residue outside a ceremony, and no stale quote moves a swap", () => {
+    fc.assert(
+      fc.property(fc.oneof(scripts, ceremonies), (actions) => {
+        for (const t of run(actions)) {
+          const status = t.next.intent.status;
+          if (status !== "signing" && status !== "executing") {
+            expect(t.next.sign).toBeNull();
+            expect(t.next.pendingIntentSig).toBeNull();
+            expect(t.next.awaitingPull).toBe(false);
+            expect(t.next.isSigningPull).toBe(false);
+          }
+          // Once executing, only the machine's own execute step is live: a
+          // status update that skipped `signing -> executing` ends the ceremony.
+          if (status === "executing") {
+            expect(t.next.sign?.stage ?? "execute").toBe("execute");
+            expect(t.next.awaitingPull).toBe(false);
+          }
+          // The pull leg (approval, signature 2) runs only inside `signing`.
+          for (const e of t.effects) {
+            const pullLeg =
+              e.type === "Wallet" &&
+              (e.call.op === "ensureApproval" ||
+                (e.call.op === "signTypedData" && e.call.purpose === "pull"));
+            if (pullLeg) expect(t.prev.intent.status).toBe("signing");
+          }
+          // A trade past quoting has no quote in the air, and a reply to one
+          // asked before it got there never touches it (executing -> failed).
+          if (QUOTE_BUSY_STATES.includes(status)) expect(t.next.flights).toEqual([]);
+          if (t.msg.type === "QuoteReplied" && QUOTE_BUSY_STATES.includes(t.prev.intent.status)) {
+            expect(t.next.intent).toBe(t.prev.intent);
           }
         }
       }),

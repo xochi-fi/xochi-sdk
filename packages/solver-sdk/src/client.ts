@@ -118,8 +118,6 @@ export class SolverClient {
   private readonly transport: SolverTransport;
   private readonly now: () => number;
   private readonly onError?: (err: unknown, event: SolverEvent) => void;
-  // Set by a feed `reset`; consumed by `run` before the next event.
-  private versionRecheckPending = false;
 
   constructor(opts: SolverClientOptions) {
     this.wallet = walletFromKey(opts.solverKey);
@@ -152,13 +150,6 @@ export class SolverClient {
         onInvalidEvent: opts.onInvalidEvent,
       });
     }
-    // A `reset` re-arms the version gate (see `run`), whoever built the
-    // transport: an injected one keeps its own `onFeedGap`, and this listener
-    // rides alongside it. A custom transport without `addFeedGapListener`
-    // cannot report resets, so its feed is re-gated only on own awards.
-    this.transport.addFeedGapListener?.((gap) => {
-      if (gap.reset) this.versionRecheckPending = true;
-    });
   }
 
   // The venue's advertised RFC version and permissioning phase (RFC §12). A
@@ -191,25 +182,39 @@ export class SolverClient {
   // re-check ends `run` with nothing signed, whatever `onError` is: the error
   // is about the venue, not the event.
   async run(solver: Solver, signal?: AbortSignal): Promise<void> {
-    await this.assertVenueRfcVersion(signal);
-    this.versionRecheckPending = false;
-    for await (const event of this.transport.events(signal)) {
-      const ownAward = event.type === "award" && this.isForThisSolver(event.award.solverId);
-      if (this.versionRecheckPending || ownAward) {
-        await this.assertVenueRfcVersion(signal);
-        this.versionRecheckPending = false;
-      }
-      try {
-        if (event.type === "announcement") {
-          await this.handleAnnouncement(solver, event);
-        } else if (ownAward) {
-          const receipt = await solver.fill(event.award);
-          await this.transport.submitFill(receipt);
+    // A `reset` re-arms the version gate, whoever built the transport: an
+    // injected one keeps its own `onFeedGap`, and this listener rides alongside
+    // it. Subscribed for this run only, so clients rebuilt over one transport
+    // do not accumulate listeners. A custom transport without
+    // `addFeedGapListener` cannot report resets, so its feed is re-gated only
+    // on own awards.
+    let versionRecheckPending = false;
+    const unsubscribe = this.transport.addFeedGapListener?.((gap) => {
+      if (gap.reset) versionRecheckPending = true;
+    });
+    try {
+      await this.assertVenueRfcVersion(signal);
+      versionRecheckPending = false;
+      for await (const event of this.transport.events(signal)) {
+        const ownAward = event.type === "award" && this.isForThisSolver(event.award.solverId);
+        if (versionRecheckPending || ownAward) {
+          await this.assertVenueRfcVersion(signal);
+          versionRecheckPending = false;
         }
-      } catch (err) {
-        if (this.onError) this.onError(err, event);
-        else throw err;
+        try {
+          if (event.type === "announcement") {
+            await this.handleAnnouncement(solver, event);
+          } else if (ownAward) {
+            const receipt = await solver.fill(event.award);
+            await this.transport.submitFill(receipt);
+          }
+        } catch (err) {
+          if (this.onError) this.onError(err, event);
+          else throw err;
+        }
       }
+    } finally {
+      unsubscribe?.();
     }
   }
 
@@ -310,6 +315,10 @@ export interface HttpSolverTransportOptions {
   // before acting on its own award, so a venue that never answers must not
   // freeze the loop.
   readTimeoutMs?: number;
+  // Upper bound on `submitBid` and `submitFill` (default 10_000 ms). Both run
+  // inside `SolverClient.run`'s loop, so a venue that never answers a POST must
+  // not stall every announcement behind it.
+  postTimeoutMs?: number;
 }
 
 // Transport over the `/solver/*` HTTP surface: a resumable long-poll feed
@@ -327,6 +336,7 @@ export class HttpSolverTransport implements SolverTransport {
   private readonly onInvalidEvent?: (err: unknown, raw: unknown) => void;
   private readonly acceptTimeoutMs: number;
   private readonly readTimeoutMs: number;
+  private readonly postTimeoutMs: number;
   private readonly feedGapListeners = new Set<(gap: FeedGap) => void>();
   private cursor: string;
 
@@ -337,6 +347,7 @@ export class HttpSolverTransport implements SolverTransport {
     this.onInvalidEvent = opts.onInvalidEvent;
     this.acceptTimeoutMs = opts.acceptTimeoutMs ?? 10_000;
     this.readTimeoutMs = opts.readTimeoutMs ?? 10_000;
+    this.postTimeoutMs = opts.postTimeoutMs ?? 10_000;
     this.headers = {
       "Content-Type": "application/json",
       "X-Solver-Id": opts.solverId,
@@ -458,6 +469,7 @@ export class HttpSolverTransport implements SolverTransport {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.postTimeoutMs),
     });
     if (!res.ok) throw new Error(`POST ${path} ${res.status}: ${await res.text()}`);
   }

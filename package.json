@@ -1,6 +1,19 @@
 {
   "name": "@xochi/sdk",
   "version": "0.4.0",
+  "description": "Generate and verify ERC-8262 zero-knowledge compliance proofs, EVM-verifiable.",
+  "keywords": [
+    "erc-8262",
+    "zero-knowledge",
+    "zk-proof",
+    "noir",
+    "compliance",
+    "xochi"
+  ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk#readme",
+  "engines": {
+    "node": ">=22.12"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -145,6 +158,6 @@
     "typescript": "^6.0.3",
     "viem": "^2.21.0",
     "vitest": "^4.0.0",
-    "@xochi/spec": "0.8.0"
+    "@xochi/spec": "0.8.1"
   }
 }

@@ -458,6 +458,37 @@ describe("wallet bridge", () => {
     expect(wallet.calls).toHaveLength(MAX_PENDING_RPC + 1);
   });
 
+  it("answers a rejection with a hostile error object -32603 and frees its slot", async () => {
+    const throwing = {
+      get code(): never {
+        throw new Error("accessor");
+      },
+    };
+    const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+    revoke();
+    const wallet = new TestWallet((method, params) => {
+      if (method === "eth_accounts") return [ACCOUNT];
+      throw (params as unknown[])[0] === 0 ? throwing : revoked;
+    });
+    const { frame } = mount({ provider: wallet });
+    const inbox = new Inbox(frame());
+    for (let i = 0; i < MAX_PENDING_RPC; i++) {
+      fromFrame(frame(), rpc(i, "eth_sendTransaction", [i % 2]));
+    }
+    const replies = [];
+    for (let i = 0; i < MAX_PENDING_RPC; i++) replies.push(await inbox.next());
+    expect(replies).toHaveLength(MAX_PENDING_RPC);
+    for (const reply of replies) {
+      expect(reply).toMatchObject({ error: { code: -32603, message: "Internal error" } });
+    }
+    fromFrame(frame(), rpc("healthy", "eth_accounts"));
+    expect(await inbox.next()).toEqual({
+      type: "xochi:rpc:result",
+      id: "healthy",
+      result: [ACCOUNT],
+    });
+  });
+
   it("ignores a request reusing an id still in flight", async () => {
     const pending = gate();
     const wallet = new TestWallet((method) =>
