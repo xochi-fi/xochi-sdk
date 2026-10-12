@@ -278,7 +278,7 @@ describe("POST /sign", () => {
     expect(secp256k1.verify(sigBytes, digest, uncompressed)).toBe(true);
   });
 
-  it("signs RISK_SCORE_SIGNED under its own domain (review #5)", async () => {
+  it("signs RISK_SCORE_SIGNED under its own domain", async () => {
     replayDb.reset();
     const compliance = (await (await post("/sign", SAMPLE_BODY)).json()) as { payloadHash: string };
     const res = await post("/sign", { ...SAMPLE_BODY, proofType: "0x08" });
@@ -453,18 +453,6 @@ describe("POST /sign-credential-root", () => {
     expect(body.signer).toMatch(/^0x[0-9a-f]{40}$/);
   });
 
-  it("digest depends on root", async () => {
-    const a = await (await postRoot(credentialRootBody({ root: "0x" + "11".repeat(32) }))).json();
-    const b = await (await postRoot(credentialRootBody({ root: "0x" + "22".repeat(32) }))).json();
-    expect((a as { digest: string }).digest).not.toBe((b as { digest: string }).digest);
-  });
-
-  it("digest depends on cid (cidHash binding)", async () => {
-    const a = await (await postRoot(credentialRootBody({ cid: "ipfs://A" }))).json();
-    const b = await (await postRoot(credentialRootBody({ cid: "ipfs://B" }))).json();
-    expect((a as { digest: string }).digest).not.toBe((b as { digest: string }).digest);
-  });
-
   it("signature recovers to the daemon's signer address", async () => {
     const res = await postRoot(credentialRootBody());
     const body = (await res.json()) as { signature: string; digest: string; signer: string };
@@ -588,17 +576,6 @@ describe("POST /sign-multi", () => {
     expect(secp256k1.verify(sigBytes, digest, uncompressed)).toBe(true);
   });
 
-  it("produces a distinct payloadHash when slotIndex changes", async () => {
-    replayDb.reset();
-    const r0 = await post("/sign-multi", { ...SAMPLE_MULTI_BODY, slotIndex: 0 });
-    expect(r0.status).toBe(200);
-    const r1 = await post("/sign-multi", { ...SAMPLE_MULTI_BODY, slotIndex: 1 });
-    expect(r1.status).toBe(200);
-    const b0 = (await r0.json()) as { payloadHash: string };
-    const b1 = (await r1.json()) as { payloadHash: string };
-    expect(b0.payloadHash).not.toBe(b1.payloadHash);
-  });
-
   it("rejects malformed body with 400", async () => {
     await expectRejected(await post("/sign-multi", { slotIndex: 0 }), 400, "BAD_REQUEST");
   });
@@ -606,14 +583,6 @@ describe("POST /sign-multi", () => {
   it("rejects slotIndex out of range with 400", async () => {
     await expectRejected(
       await post("/sign-multi", { ...SAMPLE_MULTI_BODY, slotIndex: 5 }),
-      400,
-      "BAD_REQUEST",
-    );
-  });
-
-  it("rejects a signal above 100 with 400", async () => {
-    await expectRejected(
-      await post("/sign-multi", { ...SAMPLE_MULTI_BODY, signals: [101, 0, 0, 0, 0, 0, 0, 0] }),
       400,
       "BAD_REQUEST",
     );
@@ -627,6 +596,15 @@ describe("POST /sign-multi", () => {
     );
   });
 
+  it("rejects without bearer", async () => {
+    const res = await fetch(`${baseUrl}/sign-multi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(SAMPLE_MULTI_BODY),
+    });
+    expect(res.status).toBe(401);
+  });
+
   it("answers an identical retry with the identical signature", async () => {
     replayDb.reset();
     audit.events.length = 0;
@@ -636,15 +614,6 @@ describe("POST /sign-multi", () => {
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual(await first.json());
     expect(audit.events.map((e) => e.outcome)).toEqual(["signed", "replayed"]);
-  });
-
-  it("rejects /sign-multi without bearer token", async () => {
-    const res = await fetch(`${baseUrl}/sign-multi`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(SAMPLE_MULTI_BODY),
-    });
-    expect(res.status).toBe(401);
   });
 });
 

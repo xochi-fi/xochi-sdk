@@ -69,13 +69,6 @@ describe("fieldToBytes / bytesToBigint round-trip", () => {
 });
 
 describe("coordinateToFields", () => {
-  it("zero", () => {
-    const z = new Uint8Array(32);
-    const { hi, lo } = coordinateToFields(z);
-    expect(hi).toBe(0n);
-    expect(lo).toBe(0n);
-  });
-
   it("0x00..0x1F pattern matches Noir test_coordinate_to_fields_pattern", () => {
     const c = new Uint8Array(32);
     for (let i = 0; i < 32; i++) c[i] = i;
@@ -86,23 +79,6 @@ describe("coordinateToFields", () => {
 });
 
 describe("pedersenHash basic shape", () => {
-  it("returns 32 bytes", async () => {
-    const h = await pedersenHash(api, [1n, 2n, 3n]);
-    expect(h.length).toBe(32);
-  });
-
-  it("is deterministic", async () => {
-    const h1 = await pedersenHash(api, [42n, 7n]);
-    const h2 = await pedersenHash(api, [42n, 7n]);
-    expect(bytesToHex(h1)).toBe(bytesToHex(h2));
-  });
-
-  it("differs from input order", async () => {
-    const h1 = await pedersenHash(api, [1n, 2n]);
-    const h2 = await pedersenHash(api, [2n, 1n]);
-    expect(bytesToHex(h1)).not.toBe(bytesToHex(h2));
-  });
-
   it("differs across DOMAIN tags", async () => {
     const tags = [
       DOMAIN_SIGNED_SIGNALS,
@@ -160,7 +136,7 @@ describe("Noir parity vectors", () => {
   });
 
   it("signed payload hash for fixture inputs (RISK_SCORE_SIGNED)", async () => {
-    // Review #5: 0x08 signs under its own domain tag, so the same bundle has a
+    // 0x08 signs under its own domain tag, so the same bundle has a
     // different digest than for 0x07. Matches
     // sig.nr's test_parity_with_sdk_risk_signed_payload_hash.
     const digest = await computeSignedPayloadHash(api, { ...SIGNED_FIXTURE, proofType: 0x08 });

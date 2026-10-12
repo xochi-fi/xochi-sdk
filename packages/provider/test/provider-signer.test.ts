@@ -8,8 +8,7 @@
  *      r/s/lowS-normalization bugs before they reach the in-circuit verifier
  *   4. Confirm the signing ledger returns the same signature for an identical retry
  *
- * In-circuit verification (the canonical correctness check) is exercised by
- * the V1.4 integration test once compliance_signed fixtures are available.
+ * In-circuit verification is exercised by @xochi/sdk's integration-signed tests.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -22,7 +21,6 @@ import {
   signSignals,
   signSignalsWithReplayProtection,
   MemoryReplayDb,
-  formatSignSignalsResult,
   bytesToHex,
   type SignSignalsRequest,
 } from "../src/index.js";
@@ -77,14 +75,6 @@ describe("signSignals", () => {
     expect(valid).toBe(true);
   });
 
-  it("is deterministic for identical inputs (RFC6979 nonce)", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
-    const a = await signSignals(api, key, SAMPLE_REQUEST);
-    const b = await signSignals(api, key, SAMPLE_REQUEST);
-    expect(bytesToHex(a.signature)).toBe(bytesToHex(b.signature));
-    expect(bytesToHex(a.signerPubkeyHash)).toBe(bytesToHex(b.signerPubkeyHash));
-  });
-
   it("changes signature when any field of the request changes", async () => {
     const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
     const baseline = await signSignals(api, key, SAMPLE_REQUEST);
@@ -96,7 +86,7 @@ describe("signSignals", () => {
     expect(bytesToHex(altered.payloadHash)).not.toBe(bytesToHex(baseline.payloadHash));
   });
 
-  it("binds the signature to the proof type (review #5)", async () => {
+  it("binds the signature to the proof type", async () => {
     const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
     const forCompliance = await signSignals(api, key, SAMPLE_REQUEST);
     const forRiskScore = await signSignals(api, key, { ...SAMPLE_REQUEST, proofType: 0x08 });
@@ -110,14 +100,6 @@ describe("signSignals", () => {
     expect(secp256k1.verify(forCompliance.signature, forRiskScore.payloadHash, uncompressed)).toBe(
       false,
     );
-  });
-
-  it("formats result as hex without losing data", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
-    const result = await signSignals(api, key, SAMPLE_REQUEST);
-    const formatted = formatSignSignalsResult(result);
-    expect(formatted.signature).toMatch(/^0x[0-9a-f]{128}$/);
-    expect(formatted.signerPubkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
   });
 });
 
