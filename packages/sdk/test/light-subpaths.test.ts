@@ -9,11 +9,10 @@
  * three plain constants shipped 3.1 MB of WASM that nothing ever loaded
  * (xochi-fi/xochi#409).
  *
- * The `exports` map now offers dependency-light entry points. That is only true
- * as long as nobody adds a heavy import to one of these modules, or to anything
- * they reach. A subpath that has quietly become heavy looks exactly like one
- * that is still light from the outside -- the consumer's bundle just grows --
- * so the property is asserted here rather than left to reviewer memory.
+ * The `exports` map offers dependency-light entry points. That is only true as long as nobody
+ * adds a heavy import to one of these modules, or to anything they reach, and a subpath that
+ * has quietly become heavy looks exactly like one that is light from the outside, so the
+ * property is asserted here.
  *
  * Static walk over the real source, not a runtime probe: importing the modules
  * to measure them would prove nothing about what a bundler puts in the graph.
@@ -136,11 +135,9 @@ describe("light subpaths", () => {
     });
   }
 
-  // The control's own precondition. If the root barrel ever stopped reaching a
-  // prover, these assertions would pass for a reason that has nothing to do with
-  // the subpaths, and the suite would go quiet exactly when it stopped meaning
-  // anything. Pin the thing the fix exists to route around.
-  it("root barrel still reaches the proving stack, so the split is doing work", () => {
+  // The control's own precondition: if the root barrel stopped reaching a prover, the
+  // subpath assertions would pass for a reason unrelated to the subpaths.
+  it("root barrel reaches the proving stack, so the split is doing work", () => {
     const { packages } = walk("index.ts");
     const heavy = [...packages].filter((p) => HEAVY.some((h) => p.startsWith(h)));
     expect(heavy.length).toBeGreaterThan(0);
@@ -173,10 +170,9 @@ describe("light subpaths", () => {
    * the offending key: Node rejects the WHOLE map, so every subpath including
    * the root stops resolving and every consumer breaks at once.
    *
-   * This is not hypothetical. A `"//"` key was added here to document the light
-   * subpaths and did exactly that. package.json has no comments, and the attempt
-   * to fake one is what broke it, so the rationale lives here, next to the test
-   * that pins it: never document the exports map inside the exports map.
+   * A `"//"` key added to document the light subpaths did exactly that. package.json has no
+   * comments, so the rationale lives here, next to the test that pins it: never document the
+   * exports map inside the exports map.
    */
   it("exports map is a valid subpath map, so it resolves at all", () => {
     const keys = Object.keys(readPkg().exports);

@@ -3,10 +3,9 @@
  * jurisdiction tables drifting from JurisdictionConfig.sol and the ERC's
  * Jurisdiction Configuration / Jurisdiction Policy tables.
  *
- * UAE (id 4) was ratified in the ERC and implemented on-chain but never added
- * here, so the SDK could not build UAE inputs at all. The block at the bottom
- * executes every jurisdiction through the bundled compliance circuit, so the
- * tables here and the circuit the SDK ships cannot disagree again.
+ * The block at the bottom executes every jurisdiction through the bundled
+ * compliance circuit, so the tables here and the circuit the SDK ships cannot
+ * disagree (UAE, id 4, was once ratified on-chain but absent here).
  */
 
 import { describe, it, expect } from "vitest";

@@ -118,8 +118,7 @@ describe("scheduleDiffusion", () => {
   });
 
   // -- Exact boundary: every window the validation accepts must schedule --
-  // The sampler is random, so each case is drawn many times. The previous
-  // sampler threw for about half of the draws at n=2 / 12s.
+  // The sampler is random, so each case is drawn many times.
   it.each([
     [2, 12],
     [4, 36],

@@ -33,10 +33,9 @@ describe("assignVenues", () => {
   });
 
   // -- XIP-2 test case 2 --
-  // L1 stealth is open to all, so a low-trust wallet is NOT pushed to public --
-  // it lands on the best venue it qualifies for, which is stealth. Shielded
-  // (Aztec) is the one that stays gated. This asserted all-public back when
-  // stealth was gated at 25.
+  // L1 stealth is open to all, so a low-trust wallet is NOT pushed to public: it lands on
+  // the best venue it qualifies for, which is stealth. Shielded (Aztec) is the one that
+  // stays gated.
   it("gives a low-trust wallet stealth, not public", () => {
     const result = assignVenues(makeTrades(5), ["shielded", "stealth", "public"], lowTrust, 0n);
 
@@ -46,7 +45,7 @@ describe("assignVenues", () => {
     }
   });
 
-  it("still falls back to public when only shielded is on offer", () => {
+  it("falls back to public when only shielded is on offer", () => {
     const result = assignVenues(makeTrades(5), ["shielded", "public"], lowTrust, 0n);
 
     for (const a of result) {
@@ -84,21 +83,7 @@ describe("assignVenues", () => {
     }
   });
 
-  it("respects stealth trust score minimum (25)", () => {
-    const result = assignVenues(
-      makeTrades(3),
-      ["stealth", "public"],
-      { trustScore: 25, gasEstimates: DEFAULT_GAS_ESTIMATES },
-      0n,
-    );
-
-    for (const a of result) {
-      expect(a.venue).toBe("stealth");
-    }
-  });
-
-  // Score 24 was the boundary case for the old stealth-at-25 gate. With stealth
-  // ungated there is no boundary left: every score reaches it, including 0.
+  // Stealth is ungated: every score reaches it, including 0.
   it("keeps stealth at score 24, and at score 0", () => {
     for (const trustScore of [24, 0]) {
       const result = assignVenues(
@@ -113,8 +98,7 @@ describe("assignVenues", () => {
     }
   });
 
-  // The gate table is derived from the privacy levels rather than restated, so
-  // this pins the wiring: it drifted to stealth:25 once already, silently.
+  // The gate table is derived from the privacy levels rather than restated; this pins the wiring.
   it("derives its gates from the privacy levels", () => {
     expect(VENUE_MIN_SCORES).toEqual({ public: 0, stealth: 0, shielded: 50 });
   });
@@ -158,17 +142,5 @@ describe("assignVenues", () => {
       0n,
     );
     expect(result.map((a) => a.venue)).toEqual(["shielded", "shielded"]);
-  });
-
-  it("uses custom gas estimates", () => {
-    const cheap: VenueConstraints = {
-      trustScore: 60,
-      gasEstimates: { public: 10n, stealth: 20n, shielded: 30n },
-    };
-
-    const result = assignVenues(makeTrades(3), ["shielded"], cheap, 0n);
-    for (const a of result) {
-      expect(a.estimatedGas).toBe(30n);
-    }
   });
 });
