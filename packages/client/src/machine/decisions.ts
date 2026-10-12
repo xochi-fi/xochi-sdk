@@ -75,14 +75,13 @@ export const STATUS_POLL_MS = 4000;
  * Hard ceiling on in-flight polling, counted in elapsed POLL INTERVALS -- the
  * only ticks that are wall clock. The arming poll happens at elapsed zero and a
  * foreground snap-forward is off-interval, so neither spends this. Counting
- * every poll instead let a user backgrounding and foregrounding through a wallet
+ * every poll would let a user backgrounding and foregrounding through a wallet
  * deep-link burn the whole budget in seconds, while the give-up warning
- * asserted an elapsed ten minutes that never happened.
+ * asserts an elapsed ten minutes that never happened.
  *
  * It is a budget for NOTHING HAPPENING, not for polling: a poll reporting
- * progress refills it. A stuck solver used to poll /status every 4s forever
- * while the modal stayed mounted; past this cap the client stops and leaves
- * resolution to reconciliation/webhooks.
+ * progress refills it. Past this cap the client stops polling a stuck solver
+ * and leaves resolution to reconciliation/webhooks.
  *
  * This is the ceiling for a phase whose duration WE control. `awaiting_deposit`
  * is not one: the solver sets that window (Riddler defaults to 1800s), so its
@@ -91,10 +90,9 @@ export const STATUS_POLL_MS = 4000;
 export const STATUS_POLL_FLAT_CEILING_ATTEMPTS = 150;
 
 /**
- * The flat ceiling as wall clock (10 min), which it now genuinely is -- see
- * above for why the attempt count is the primary form and this is derived from
- * it. `pollCeilingAttempts` takes the duration, because the deposit window it
- * competes with is a duration too.
+ * The flat ceiling as wall clock (10 min); see above for why the attempt count
+ * is the primary form and this is derived from it. `pollCeilingAttempts` takes
+ * the duration, because the deposit window it competes with is a duration too.
  */
 export const STATUS_POLL_FLAT_CEILING_MS = STATUS_POLL_FLAT_CEILING_ATTEMPTS * STATUS_POLL_MS;
 

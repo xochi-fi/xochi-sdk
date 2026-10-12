@@ -109,12 +109,11 @@ export const MAX_QUOTE_DEADLINE_FUTURE_SEC = 24 * 3600;
  * seconds. Pure clock-skew tolerance: no correct client asks for a deadline that
  * has already passed, but one whose clock is behind might.
  *
- * A past-dated deadline used to be inert data. It stopped being inert when the
- * abandoned-deposit sweep started reading `deadline` to decide when a deposit
- * route had died, at which point `deadline: 1` meant "terminalise this live route
- * on the next cron tick". The sweep no longer trusts that field on its own
- * (it gates on the server-set `created_at` too), and this is the other half:
- * the value never gets stored in the first place.
+ * A past-dated deadline is not inert data: the abandoned-deposit sweep reads
+ * `deadline` to decide when a deposit route has died, so `deadline: 1` would
+ * mean "terminalise this live route on the next cron tick". The sweep gates on
+ * the server-set `created_at` too; this is the other half: the value never
+ * gets stored in the first place.
  */
 export const MAX_QUOTE_DEADLINE_PAST_SEC = 3600;
 
@@ -122,21 +121,20 @@ export const MAX_QUOTE_DEADLINE_PAST_SEC = 3600;
  * Sanity bound on the SOLVER-supplied `deposit_deadline`, in seconds from the
  * quote, applied only when Xochi persists it.
  *
- * The client already treats this field as untrusted -- `POLL_CEILING_MAX_MS`
- * exists because "a malformed or hostile `deposit_deadline` far in the future
- * must not turn the poll into a permanent background request loop"
- * (src/hooks/intentDecisions.ts). Persisting it made the server trust it more
- * than the browser does, and it is now the PRIMARY gate on the abandoned-deposit
- * sweep (`COALESCE(deposit_deadline, deadline)`), so one bad value -- a
- * misparsed `XOCHI_DEPOSIT_DEADLINE_SECONDS`, a solver bug -- would make every
- * deposit row permanently unsweepable and silently.
+ * The client treats this field as untrusted: `POLL_CEILING_MAX_MS` exists
+ * because a malformed or hostile `deposit_deadline` far in the future must not
+ * turn the poll into a permanent background request loop. Persisting it makes
+ * the server trust it more than the browser does, and it is the PRIMARY gate
+ * on the abandoned-deposit sweep (`COALESCE(deposit_deadline, deadline)`), so
+ * one bad value -- a misparsed `XOCHI_DEPOSIT_DEADLINE_SECONDS`, a solver bug
+ * -- would make every deposit row permanently and silently unsweepable.
  *
  * Riddler's default is 1800s, so this is two orders of magnitude of headroom: it
  * rejects nothing a correctly configured solver can mint. A value outside it is
- * stored as NULL, which degrades the sweep to the quote `deadline` (the
- * pre-migration-0006 behaviour) rather than to no gate at all. The value SERVED
- * to the client is never altered -- it is covered by the deposit attestation
- * signature, so changing it would break client-side verification.
+ * stored as NULL, which degrades the sweep to the quote `deadline` rather than
+ * to no gate at all. The value SERVED to the client is never altered -- it is
+ * covered by the deposit attestation signature, so changing it would break
+ * client-side verification.
  */
 export const MAX_DEPOSIT_WINDOW_SEC = 24 * 3600;
 

@@ -76,8 +76,8 @@ function coercePullAmount(value: unknown): bigint | null {
  *
  * The pulled amount is what the user's signature authorizes on-chain (ERC-3009
  * moves exactly `value`; Permit2 caps at `permitted.amount`), so binding it to
- * the intended input amount is the origin leg's value guard. See solverPin and
- * the #170 origin-leg discussion.
+ * the intended input amount is the origin leg's value guard (#170; see
+ * solverPin).
  */
 export function extractPullAmount(pull: Eip712TypedData): bigint | null {
   const message = pull.message as Record<string, unknown> | undefined;
