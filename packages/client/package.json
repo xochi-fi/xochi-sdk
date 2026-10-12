@@ -58,6 +58,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "fast-check": "^4.7.0"
+    "fast-check": "^4.9.0"
   }
 }
