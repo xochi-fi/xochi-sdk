@@ -240,15 +240,15 @@ const amountField = z
 // newer server may send.
 //
 // Deliberately NOT the Worker's `FeeBreakdownSchema` (`shared/schemas.ts`),
-// though both carry the same fifteen layer fields. They are two contracts on
-// two surfaces and neither accepts a superset of the other: the Worker's
-// `/api/*` re-emission REQUIRES `gas_floor`/`total_usd`, closes `tier` to the
-// five-tier enum, adds the Xochi-owned `discount` and strips unknown keys,
-// while this one validates the solver's own object (and the network-free
-// core, which has no oracle envelope), pins every bps to a non-negative
-// integer and `gas_floor.amount` to base units, and passes unknown keys
-// through. Merging them would either make every pre-adapter core unparseable
-// or relax the Worker contract the frontend renders against.
+// though both carry the same fifteen layer fields and the same optional
+// `discount`. They are two contracts on two surfaces and neither accepts a
+// superset of the other: the Worker's `/api/*` re-emission REQUIRES
+// `gas_floor`/`total_usd`, closes `tier` to the five-tier enum and strips
+// unknown keys, while this one validates the solver's own object (and the
+// network-free core, which has no oracle envelope), pins every bps to a
+// non-negative integer and `gas_floor.amount` to base units, and passes
+// unknown keys through. Merging them would either make every pre-adapter core
+// unparseable or relax the Worker contract the frontend renders against.
 export const LayeredFeeBreakdownSchema = z
   .object({
     tier: z.string(),
@@ -266,6 +266,15 @@ export const LayeredFeeBreakdownSchema = z
     total_fee: amountField,
     total_usd: z.string().optional(),
     surplus_share_pct: bpsField,
+    // Served only when the request carried `promo_discount_bps > 0` (xochi#584):
+    // which discount priced the quote and how much it took off the Standard
+    // venue + routing layers. Informational -- `venue_fee`/`routing_fee` are
+    // already net of it, so the reconciliation in `assertFeeBreakdownInvariants`
+    // neither reads nor subtracts it. Shape-only, like `gas_floor`: the promo
+    // input is worker-side and no fee vector carries it.
+    discount: z
+      .object({ source: z.enum(["tier", "promo"]), bps: bpsField, amount: amountField })
+      .optional(),
   })
   .passthrough();
 
