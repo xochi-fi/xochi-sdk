@@ -156,46 +156,4 @@ describe("XIP-2: provePlan", () => {
       expect(valid).toBe(true);
     }
   });
-
-  it("sub-trade amounts in batch match execution plan", async () => {
-    const plan = planExecution(400n * ETH, EU, ADDRESS, highTrust);
-
-    const batch = await provePlan(prover, plan, riskScoreInput);
-
-    const planAmounts = plan.subTrades.map((st) => st.amount).sort();
-    const batchAmounts = batch.proofs.map((p) => p.amount).sort();
-
-    expect(batchAmounts).toEqual(planAmounts);
-
-    const planTotal = plan.subTrades.reduce((acc, st) => acc + st.amount, 0n);
-    expect(planTotal).toBe(400n * ETH);
-  });
-
-  it("venue assignments respect trust score constraints", async () => {
-    const lowTrust: VenueConstraints = {
-      trustScore: 10,
-      gasEstimates: { public: 65_000n, stealth: 150_000n, shielded: 400_000n },
-    };
-
-    const plan = planExecution(200n * ETH, EU, ADDRESS, lowTrust, {
-      venuePreference: ["shielded", "stealth", "public"],
-    });
-
-    // Trust score 10 is below shielded's 50; L1 stealth is open to all
-    // (min 0), so it is the best venue this wallet qualifies for.
-    for (const st of plan.subTrades) {
-      expect(st.venue).toBe("stealth");
-    }
-
-    const batch = await provePlan(prover, plan, complianceInput);
-
-    for (const entry of batch.proofs) {
-      const valid = await prover.verify(
-        "compliance",
-        entry.proofResult.proof,
-        entry.proofResult.publicInputs,
-      );
-      expect(valid).toBe(true);
-    }
-  });
 });

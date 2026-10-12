@@ -157,7 +157,7 @@ describe("risk_score_signed end-to-end", () => {
     expect(valid).toBe(true);
   }, 180_000);
 
-  it("rejects a bundle signed for COMPLIANCE_SIGNED (review #5)", async () => {
+  it("rejects a bundle signed for COMPLIANCE_SIGNED", async () => {
     // Same key and bundle, signed under the 0x07 domain: not a 0x08 signature.
     await expect(proveGt5000(await signRiskBundle(PROOF_TYPES.COMPLIANCE_SIGNED))).rejects.toThrow(
       /invalid provider signature on signals/,

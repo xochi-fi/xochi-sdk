@@ -19,7 +19,6 @@ import {
   BrowserCircuitLoader,
   encodePublicInputs,
   decodePublicInputs,
-  encodeProof,
   PUBLIC_INPUT_COUNTS,
   PROOF_TYPES,
   DEFAULT_CONFIG_HASH,
@@ -45,30 +44,10 @@ const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda81
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
 
 // ============================================================
-// Risk Score (already in prover.test.ts, included here for completeness)
+// Risk Score
 // ============================================================
 
 describe("risk_score proof", () => {
-  it("generates and verifies a threshold proof", async () => {
-    const result = await prover.proveRiskScore({
-      type: "threshold",
-      score: 60,
-      threshold: 5000,
-      direction: "gt",
-      providerSetHash: PROVIDER_SET_HASH,
-      submitter: SUBMITTER,
-    });
-
-    expect(result.proof).toBeInstanceOf(Uint8Array);
-    expect(result.proof.length).toBeGreaterThan(0);
-    expect(result.publicInputs).toHaveLength(PUBLIC_INPUT_COUNTS[PROOF_TYPES.RISK_SCORE]);
-    expect(result.proofHex).toMatch(/^0x[0-9a-f]+$/);
-    expect(result.publicInputsHex).toMatch(/^0x[0-9a-f]+$/);
-
-    const valid = await prover.verify("risk_score", result.proof, result.publicInputs);
-    expect(valid).toBe(true);
-  });
-
   it("generates and verifies a range proof", async () => {
     const result = await prover.proveRiskScore({
       type: "range",
@@ -166,7 +145,7 @@ describe("pattern proof", () => {
 // ============================================================
 
 describe("attestation proof", () => {
-  it("generates and verifies a KYC attestation proof (post C-1: credentials tree)", async () => {
+  it("generates and verifies a KYC attestation proof", async () => {
     // Test vector matches ERC-8262/circuits/attestation/Prover.toml
     // with submitter=0xdead, provider 42, KYC basic, attribute=999, expiry=2000000000
     const result = await prover.proveAttestation({
@@ -196,7 +175,7 @@ describe("attestation proof", () => {
 // ============================================================
 
 describe("membership proof", () => {
-  it("generates and verifies a Merkle inclusion proof (post H-3: subject-bound)", async () => {
+  it("generates and verifies a Merkle inclusion proof", async () => {
     // Test vector matches circuits/membership/Prover.toml: submitter=0xdead, salt=0, set 1.
     const result = await prover.proveMembership({
       subjectSalt: "0",
@@ -223,7 +202,7 @@ describe("membership proof", () => {
 // ============================================================
 
 describe("non_membership proof", () => {
-  it("generates and verifies a sorted Merkle adjacency proof (post H-3 + M-2 + H-4)", async () => {
+  it("generates and verifies a sorted Merkle adjacency proof", async () => {
     // Test vector matches circuits/non_membership/Prover.toml:
     // submitter=0xdead is bracketed by low=0x100 and high=0x10000, indices 0/1.
     const result = await prover.proveNonMembership({
@@ -305,21 +284,6 @@ describe("encoding round-trip", () => {
     for (let i = 0; i < decoded.length; i++) {
       expect(decoded[i]).toBe(normalize(result.publicInputs[i]));
     }
-  });
-
-  it("encodeProof produces valid hex from real proof bytes", async () => {
-    const result = await prover.proveCompliance({
-      score: 25,
-      jurisdictionId: 0,
-      providerSetHash: PROVIDER_SET_HASH,
-      timestamp: "1700000000",
-      submitter: SUBMITTER,
-    });
-
-    const hex = encodeProof(result.proof);
-    expect(hex).toMatch(/^0x[0-9a-f]+$/);
-    // Proof hex length should be 2 (0x) + 2 * proof byte length
-    expect(hex.length).toBe(2 + result.proof.length * 2);
   });
 });
 

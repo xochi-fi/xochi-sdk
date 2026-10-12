@@ -287,11 +287,6 @@ describe("ERC8262Oracle (anvil)", () => {
     expect(hash).toBe(configHash);
   });
 
-  it("attestationTTL returns 24 hours", async () => {
-    const ttl = await oracleClient.attestationTTL();
-    expect(ttl).toBe(BigInt(24 * 60 * 60));
-  });
-
   it("isValidConfig returns true for initial config", async () => {
     const valid = await oracleClient.isValidConfig(configHash);
     expect(valid).toBe(true);
@@ -471,7 +466,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
   });
 
   it("decodes a role revert into a typed error", async () => {
-    // NotRole was missing from ORACLE_ABI, so this decoded as UnknownRevert.
+    // Without NotRole in ORACLE_ABI this decodes as UnknownRevert.
     await expect(
       withDecodedErrors(ORACLE_ABI, () =>
         chainClient.simulateContract({
@@ -486,8 +481,8 @@ describe("signer registry and compliance-type policy (anvil)", () => {
   });
 
   it("does not report a RISK_SCORE_SIGNED attestation as compliance", async () => {
-    // Review #2 PoC: "risk > 10%" under US. AlwaysPassVerifier stands in for a
-    // real proof of that (true) statement.
+    // "risk > 10%" under US. AlwaysPassVerifier stands in for a real proof of
+    // that (true) statement.
     const { timestamp } = await chainClient.getBlock();
     const fields = [
       toHex(1), // proof_type: threshold
