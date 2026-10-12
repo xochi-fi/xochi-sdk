@@ -213,10 +213,10 @@ describe("generate.mjs grades against the pair committed at HEAD", () => {
 });
 
 describe("the working tree cannot move the baseline", () => {
-  // Gut the working-tree copy to a recognisable sliver and re-digest it: the pair agreed
-  // with itself and with `unrecognisedContract`, so a served BREAKING change graded
-  // STALE against it and installed with no flag.
-  it("a gutted, re-digested working tree: a served BREAKING change is still refused", () => {
+  // Gut the working-tree copy to a recognisable sliver and re-digest it: the pair agrees
+  // with itself and with `unrecognisedContract`, and a served BREAKING change would grade
+  // STALE against it. The diff runs against HEAD.
+  it("a gutted, re-digested working tree: a served BREAKING change is refused", () => {
     commit(REAL_DOC);
     const sliver = gutted();
     place(sliver);
@@ -228,10 +228,10 @@ describe("the working tree cannot move the baseline", () => {
     unchanged(sliver);
   });
 
-  // The state an interrupted refresh used to leave: the intact document beside a digest
-  // that is not its own. That read as "untrusted prior", the refusal steered to
-  // --first-vendoring, and the flag then dropped the BREAKING diff.
-  it("a stale working-tree digest under --first-vendoring still reports BREAKING", () => {
+  // The intact document beside a digest that is not its own, the state an interrupted
+  // refresh leaves: not a missing baseline, so --first-vendoring neither consents to it nor
+  // skips the diff against HEAD.
+  it("--first-vendoring diffs an intact committed baseline whatever the working-tree digest says", () => {
     commit(REAL_DOC);
     const stale = "f".repeat(64);
     place(REAL_DOC, stale);
@@ -241,14 +241,6 @@ describe("the working tree cannot move the baseline", () => {
     expect(out).toMatch(/1 BREAKING/);
     expect(out).toMatch(/path \/xochi\/quote is vendored but no longer served/);
     unchanged(REAL_DOC, stale);
-  });
-
-  it("--first-vendoring does not skip the diff against an intact committed baseline", () => {
-    commit(REAL_DOC);
-    serve(withoutQuote());
-    const { status, out } = generate("--first-vendoring");
-    expect(status, out).toBe(4);
-    expect(out).toContain("breaks the copy committed at HEAD");
   });
 
   it("a served copy equal to HEAD replaces a gutted working tree", () => {
