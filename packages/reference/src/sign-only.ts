@@ -1,8 +1,7 @@
 // ERC-3009 / Permit2 sign-only composition: the signature from @xochi/signer
 // plus the locally rebuilt domain, types, message and digest, which is the shape
-// `conformance/conformance.json` pins. Lifted verbatim from the retired taker
-// CLI's `acp.ts` (`signOnly`); the ACP buyer-auth and the CLI stayed with the
-// CLI (now Riddler's private e2e harness).
+// `conformance/conformance.json` pins. The ACP buyer-auth lives in Riddler's
+// private e2e harness.
 import { ethers } from "ethers";
 import {
   signERC3009,
@@ -27,7 +26,7 @@ interface LocalDomain {
   verifyingContract?: string | null;
 }
 
-// Domain/message helpers mirror signing.js; conformance harness gates the drift.
+// Domain/message helpers mirror the signer's signing.ts; the conformance suite gates drift.
 function erc3009Domain(chainConfig: ChainConfig): LocalDomain {
   return {
     name: chainConfig.usdcName || "USD Coin",
