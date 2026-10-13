@@ -72,8 +72,8 @@ widget's private `embedParams.ts`, so integrators cannot use any of it and
 
 ## Order
 
-1. Merge this repo's #23 -> #24 -> #25, rebase #22 onto it (no extra version
-   bump), and publish the first versions (spec, signer, client, widget-lib).
+1. Publish the first versions from main (spec 0.8.1, signer 0.5.1, client
+   0.1.1 with the neutral referral line, widget-lib 0.1.1).
 2. Merge xochi-widget#53 and xochi#611 against the published versions.
 3. widget-lib 0.2 (prerelease on `next`): the configurator parameters except
    locks and allow-lists (Decision 6), and the `height` option. Rebase the
