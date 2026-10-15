@@ -87,7 +87,7 @@ interface SignRequestBody {
   providerSetHash: string;
   /** 8 integers in [0, 100]; inactive slots 0. */
   signals: Array<string | number>;
-  /** 8 u32 weights; active slots first and positive, inactive slots 0. */
+  /** 8 weights in [0, 10000]; active slots first and positive, inactive slots 0. */
   weights: Array<string | number>;
   /** Seconds since epoch; must be within the daemon's freshness window. */
   timestamp: string | number;
@@ -129,7 +129,7 @@ class RequestRejected extends Error {
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-const U32_MAX = 0xffffffff;
+const MAX_WEIGHT = 10_000;
 const U64_MAX = 0xffffffffffffffffn;
 
 function asBigint(value: unknown, label: string): bigint {
@@ -176,9 +176,9 @@ interface SignalFields {
 
 /**
  * Parse and range-check the screening data. Mirrors the circuits'
- * `validate_provider_slots`: signals in [0, 100], weights u32, at least one
- * active slot, and an inactive (zero-weight) slot carries no signal. With
- * `contiguous`, active slots must also form a prefix (the single-signed
+ * `validate_provider_slots`: signals in [0, 100], weights in [0, 10000], at
+ * least one active slot, and an inactive (zero-weight) slot carries no signal.
+ * With `contiguous`, active slots must also form a prefix (the single-signed
  * circuits count them with `num_providers`).
  */
 function parseSignalFields(raw: unknown, contiguous: boolean): SignalFields {
@@ -198,7 +198,9 @@ function parseSignalFields(raw: unknown, contiguous: boolean): SignalFields {
   if (body.chainId === undefined) throw new Error("chainId required (string or number)");
 
   const signals = body.signals.map((s, i) => BigInt(asNumber(s, `signals[${String(i)}]`, 100)));
-  const weights = body.weights.map((w, i) => BigInt(asNumber(w, `weights[${String(i)}]`, U32_MAX)));
+  const weights = body.weights.map((w, i) =>
+    BigInt(asNumber(w, `weights[${String(i)}]`, MAX_WEIGHT)),
+  );
   const active = weights.map((w) => w > 0n);
   if (!active.some(Boolean)) throw new Error("at least one weight must be positive");
   signals.forEach((s, i) => {
@@ -450,7 +452,7 @@ function parseSignMultiBody(raw: unknown): SignSlotRequest {
   return {
     ...fields,
     slotIndex: asNumber(body.slotIndex, "slotIndex", MAX_PROVIDERS_MULTI - 1),
-    jurisdictionId: asNumber(body.jurisdictionId, "jurisdictionId", 255),
+    jurisdictionId: asNumber(body.jurisdictionId, "jurisdictionId", 4),
     configHash: asBigint(body.configHash, "configHash"),
   };
 }

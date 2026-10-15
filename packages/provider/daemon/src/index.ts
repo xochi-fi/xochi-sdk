@@ -89,13 +89,13 @@ async function main(): Promise<void> {
     shutdownStarted = true;
     process.stderr.write(`[xochi-provider] received ${signal}, shutting down\n`);
 
-    const cleanup = await Promise.allSettled([
-      server.close(),
+    const serverCleanup = await Promise.allSettled([server.close()]);
+    const dependencyCleanup = await Promise.allSettled([
       audit.close(),
       Promise.resolve().then(() => signer.destroy()),
       api.destroy(),
     ]);
-    const failures = cleanup
+    const failures = [...serverCleanup, ...dependencyCleanup]
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => formatUnknownError(result.reason));
     if (failures.length > 0) {

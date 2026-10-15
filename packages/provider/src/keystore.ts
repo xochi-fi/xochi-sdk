@@ -60,21 +60,42 @@ export interface PrivateKeyLoader {
   readonly label: string;
 }
 
+function isByteArray(value: unknown): value is Uint8Array {
+  if (!ArrayBuffer.isView(value) || value instanceof DataView) return false;
+  const view = value as ArrayBufferView & { readonly BYTES_PER_ELEMENT?: unknown };
+  return view.BYTES_PER_ELEMENT === 1;
+}
+
+function copyExactBytes(value: unknown, expectedLength: number, message: string): Uint8Array {
+  if (!isByteArray(value) || value.byteLength !== expectedLength) {
+    throw new Error(message);
+  }
+  const copy = new Uint8Array(expectedLength);
+  for (let index = 0; index < expectedLength; index += 1) {
+    copy[index] = value[index];
+  }
+  return copy;
+}
+
+function wipeBytes(value: unknown): void {
+  if (!isByteArray(value)) return;
+  for (let index = 0; index < value.byteLength; index += 1) {
+    value[index] = 0;
+  }
+}
+
 /** Test/development loader for an extractable key held as bytes. */
 export class RawPrivateKeyLoader implements PrivateKeyLoader {
   readonly label: string;
   readonly #key: Uint8Array;
 
   constructor(key: Uint8Array, label = "raw") {
-    if (key.length !== 32) {
-      throw new Error(`secp256k1 private key must be 32 bytes; got ${String(key.length)}`);
-    }
-    this.#key = key.slice();
+    this.#key = copyExactBytes(key, 32, "secp256k1 private key must be 32 bytes");
     this.label = label;
   }
 
   async loadPrivateKey(): Promise<Uint8Array> {
-    return this.#key.slice();
+    return copyExactBytes(this.#key, 32, "stored secp256k1 private key must be 32 bytes");
   }
 }
 
@@ -109,10 +130,16 @@ class LocalDigestSigner implements DestroyableDigestSigner {
   #destroyed = false;
 
   constructor(privateKey: Uint8Array, label: string) {
-    if (!secp256k1.utils.isValidPrivateKey(privateKey)) {
+    const ownedPrivateKey = copyExactBytes(
+      privateKey,
+      32,
+      `loader ${label} must produce a 32-byte private key`,
+    );
+    if (!secp256k1.utils.isValidPrivateKey(ownedPrivateKey)) {
+      wipeBytes(ownedPrivateKey);
       throw new Error(`loader ${label} produced an invalid secp256k1 key`);
     }
-    this.#privateKey = privateKey.slice();
+    this.#privateKey = ownedPrivateKey;
     const uncompressed = secp256k1.getPublicKey(this.#privateKey, false);
     this.#publicKeyX = uncompressed.slice(1, 33);
     this.#publicKeyY = uncompressed.slice(33, 65);
@@ -120,11 +147,11 @@ class LocalDigestSigner implements DestroyableDigestSigner {
   }
 
   get publicKeyX(): Uint8Array {
-    return this.#publicKeyX.slice();
+    return copyExactBytes(this.#publicKeyX, 32, "stored public key X must be 32 bytes");
   }
 
   get publicKeyY(): Uint8Array {
-    return this.#publicKeyY.slice();
+    return copyExactBytes(this.#publicKeyY, 32, "stored public key Y must be 32 bytes");
   }
 
   async signDigest(digest: Uint8Array): Promise<Uint8Array> {
@@ -138,7 +165,7 @@ class LocalDigestSigner implements DestroyableDigestSigner {
   }
 
   destroy(): void {
-    this.#privateKey.fill(0);
+    wipeBytes(this.#privateKey);
     this.#destroyed = true;
   }
 }
@@ -153,21 +180,10 @@ class LocalDigestSigner implements DestroyableDigestSigner {
 export async function loadLocalSigner(loader: PrivateKeyLoader): Promise<DestroyableDigestSigner> {
   const privateKey = await loader.loadPrivateKey();
   try {
-    if (privateKey.length !== 32) {
-      throw new Error(`expected 32-byte key from loader ${loader.label}`);
-    }
     return new LocalDigestSigner(privateKey, loader.label);
   } finally {
-    privateKey.fill(0);
+    wipeBytes(privateKey);
   }
-}
-
-function copyBytes(value: Uint8Array): Uint8Array {
-  const copy = new Uint8Array(value.length);
-  for (let index = 0; index < value.length; index += 1) {
-    copy[index] = value[index];
-  }
-  return copy;
 }
 
 export interface DigestSignerIdentitySnapshot {
@@ -182,12 +198,10 @@ export interface DigestSignerIdentitySnapshot {
  * Internal package helper: intentionally not re-exported from `index.ts`.
  */
 export function snapshotDigestSignerIdentity(signer: DigestSigner): DigestSignerIdentitySnapshot {
-  const publicKeyX = copyBytes(signer.publicKeyX);
-  const publicKeyY = copyBytes(signer.publicKeyY);
   const label = signer.label;
-  if (publicKeyX.length !== 32 || publicKeyY.length !== 32) {
-    throw new Error(`digest signer ${label} must expose 32-byte public-key coordinates`);
-  }
+  const message = `digest signer ${label} must expose 32-byte public-key coordinates`;
+  const publicKeyX = copyExactBytes(signer.publicKeyX, 32, message);
+  const publicKeyY = copyExactBytes(signer.publicKeyY, 32, message);
   const publicKey = new Uint8Array(65);
   publicKey[0] = 0x04;
   publicKey.set(publicKeyX, 1);
@@ -229,12 +243,11 @@ export async function validatedSignDigest(
   const identity = snapshotDigestSignerIdentity(signer);
   const publicKey = uncompressedPublicKey(identity);
   const adapterSignature = await signer.signDigest(digest.slice());
-  const compact = copyBytes(adapterSignature);
-  if (compact.length !== 64) {
-    throw new Error(
-      `digest signer ${identity.label} returned ${String(compact.length)} signature bytes; expected 64-byte r || s`,
-    );
-  }
+  const compact = copyExactBytes(
+    adapterSignature,
+    64,
+    `digest signer ${identity.label} returned an invalid signature; expected 64-byte r || s`,
+  );
 
   let signature;
   try {

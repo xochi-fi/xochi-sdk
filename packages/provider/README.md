@@ -34,10 +34,10 @@ it.
 
 `PrivateKeyLoader`, `RawPrivateKeyLoader`, `HexPrivateKeyLoader` and `loadLocalSigner` are the
 explicitly extractable-key path for tests, development and the reference daemon, not production
-custody. `loadPrivateKey()` returns a fresh caller-owned 32-byte buffer; ownership transfers to
-`loadLocalSigner`, which may overwrite it immediately and keeps a separate owned copy.
-`destroy()` wipes the local signer's owned copy. It cannot wipe immutable strings or copies
-retained by callers or loaders.
+custody. `loadPrivateKey()` returns a fresh caller-owned 32-byte byte array; ownership transfers to
+`loadLocalSigner`, which overwrites it without dispatching overridable typed-array methods and
+keeps a separate native `Uint8Array` copy. `destroy()` wipes the local signer's owned copy. It
+cannot wipe immutable strings or copies retained by callers or loaders.
 
 ## Signed signals (0x07 / 0x08)
 
@@ -136,11 +136,13 @@ verification.
   and retain records for the full proof-validity window; eviction or loss can produce another valid
   signature.
 
-Replay rows cross a storage trust boundary. Before releasing a lookup or canonical winner, the
-package copies and validates every fixed-length field, the compact low-S signature against the
-captured signer and payload, and the signer commitment. Corrupt rows fail closed. The store remains
-responsible for durable atomicity and retention; a storage failure after custody signing returns no
-bundle, but a later attempt may invoke custody again.
+Replay rows cross a storage trust boundary. The package keeps the locally computed digest private
+and gives storage independent copies of lookup keys and candidate bundles. Before releasing a
+lookup or canonical winner, it copies and validates every fixed-length field, the compact low-S
+signature against the captured signer and payload, the signer commitment, and an `inserted`
+winner's equality to the submitted candidate. Corrupt rows or metadata fail closed. The store
+remains responsible for durable atomicity and retention; a storage failure after custody signing
+returns no bundle, but a later attempt may invoke custody again.
 
 Retrying the same digest is cryptographically safe. A generic adapter may produce different valid
 low-S bytes on each attempt, so byte-identical retry output depends on the matching replay record

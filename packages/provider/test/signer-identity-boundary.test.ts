@@ -3,6 +3,7 @@ import { bytesToHex as viemBytesToHex, recoverAddress } from "viem";
 import { describe, expect, it } from "vitest";
 
 import {
+  RawPrivateKeyLoader,
   loadLocalSigner,
   signCredentialRoot,
   type DigestSigner,
@@ -180,6 +181,31 @@ describe("DigestSigner identity boundary", () => {
     expect(called).toBe(false);
   });
 
+  it("refuses misleading coordinate objects without reading attacker-controlled length", async () => {
+    let lengthRead = false;
+    let called = false;
+    const misleading = {
+      get length() {
+        lengthRead = true;
+        throw new Error("length getter ran");
+      },
+    } as unknown as Uint8Array;
+    const signer: DigestSigner = {
+      label: "misleading-coordinate",
+      publicKeyX: misleading,
+      publicKeyY: PUBLIC_KEY.slice(33, 65),
+      async signDigest() {
+        called = true;
+        return new Uint8Array(64);
+      },
+    };
+
+    await expect(signCredentialRoot(signer, REQUEST)).rejects.toThrow(
+      /must expose 32-byte public-key coordinates/,
+    );
+    expect(lengthRead).toBe(false);
+    expect(called).toBe(false);
+  });
   it("refuses signing after a local signer is destroyed", async () => {
     const signer = await loadLocalSigner({
       label: "destroyed-local",
@@ -209,5 +235,30 @@ describe("DigestSigner identity boundary", () => {
     first.signature.fill(0);
     const second = await signCredentialRoot(signer, REQUEST);
     expect(second.signature.every((byte) => byte === 0)).toBe(false);
+  });
+
+  it("copies Buffer keys and wipes hostile loader outputs without dispatching methods", async () => {
+    const original = Buffer.from(PRIVATE_KEY);
+    const fromRawLoader = await loadLocalSigner(new RawPrivateKeyLoader(original, "buffer-key"));
+    expect(original).toEqual(Buffer.from(PRIVATE_KEY));
+    await expect(signCredentialRoot(fromRawLoader, REQUEST)).resolves.toBeDefined();
+
+    class HostileKey extends Uint8Array {
+      override slice(): Uint8Array<ArrayBuffer> {
+        return this;
+      }
+      override fill(): this {
+        return this;
+      }
+    }
+    const transferred = new HostileKey(PRIVATE_KEY);
+    const signer = await loadLocalSigner({
+      label: "hostile-key",
+      async loadPrivateKey() {
+        return transferred;
+      },
+    });
+    expect(transferred.every((byte) => byte === 0)).toBe(true);
+    await expect(signCredentialRoot(signer, REQUEST)).resolves.toBeDefined();
   });
 });

@@ -36,7 +36,7 @@ import {
 
 /** Ledger of signed bundles, keyed by `(submitter, payloadHash)`. */
 export interface ReplayDb {
-  /** The recorded bundle for this key, or `undefined` if none is retained. */
+  /** The recorded bundle for this key, or `undefined` if none is retained. Inputs are owned copies. */
   lookup(submitter: bigint, payloadHash: Uint8Array): Promise<SignSignalsResult | undefined>;
 
   /**
@@ -48,7 +48,7 @@ export interface ReplayDb {
    * replaced atomically.
    *
    * `inserted` is true only when this call retained or replaced the row with
-   * its candidate. It is false when an existing canonical row won.
+   * its byte-identical candidate. It is false when an existing canonical row won.
    */
   recordCanonical(
     submitter: bigint,
@@ -160,12 +160,18 @@ function keyFor(submitter: bigint, payloadHash: Uint8Array): string {
   return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
 }
 
+function isByteArray(value: unknown): value is Uint8Array {
+  if (!ArrayBuffer.isView(value) || value instanceof DataView) return false;
+  const view = value as ArrayBufferView & { readonly BYTES_PER_ELEMENT?: unknown };
+  return view.BYTES_PER_ELEMENT === 1;
+}
+
 function copyBytes(value: unknown, label: string): Uint8Array {
-  if (!(value instanceof Uint8Array)) {
-    throw new Error(`replay DB returned ${label} that is not a Uint8Array`);
+  if (!isByteArray(value)) {
+    throw new Error(`replay DB returned ${label} that is not a byte array`);
   }
-  const copy = new Uint8Array(value.length);
-  for (let index = 0; index < value.length; index += 1) {
+  const copy = new Uint8Array(value.byteLength);
+  for (let index = 0; index < value.byteLength; index += 1) {
     copy[index] = value[index];
   }
   return copy;
@@ -179,6 +185,16 @@ function copySignSignalsResult(result: SignSignalsResult): SignSignalsResult {
     signerPubkeyHash: copyBytes(result.signerPubkeyHash, "signerPubkeyHash"),
     payloadHash: copyBytes(result.payloadHash, "payloadHash"),
   };
+}
+
+function resultsEqual(left: SignSignalsResult, right: SignSignalsResult): boolean {
+  return (
+    bytesEqual(left.signature, right.signature) &&
+    bytesEqual(left.pubkeyX, right.pubkeyX) &&
+    bytesEqual(left.pubkeyY, right.pubkeyY) &&
+    bytesEqual(left.signerPubkeyHash, right.signerPubkeyHash) &&
+    bytesEqual(left.payloadHash, right.payloadHash)
+  );
 }
 
 function resultMatchesIdentity(
@@ -267,6 +283,7 @@ async function signThroughLedger(
   payloadHash: Uint8Array,
   sign: (capturedSigner: DigestSigner) => Promise<SignSignalsResult>,
 ): Promise<LedgeredSignResult> {
+  const authoritativePayloadHash = copyBytes(payloadHash, "locally computed payloadHash");
   const identity = snapshotDigestSignerIdentity(signer);
   const capturedSigner: DigestSigner = {
     label: identity.label,
@@ -275,16 +292,37 @@ async function signThroughLedger(
     signDigest: signer.signDigest.bind(signer),
   };
 
-  const recorded = await db.lookup(submitter, payloadHash);
+  const recorded = await db.lookup(
+    submitter,
+    copyBytes(authoritativePayloadHash, "lookup payloadHash"),
+  );
   if (recorded && resultMatchesIdentity(recorded, identity.publicKeyX, identity.publicKeyY)) {
-    const validated = await validateReplayResult(api, recorded, identity, payloadHash);
+    const validated = await validateReplayResult(api, recorded, identity, authoritativePayloadHash);
     return { ...validated, replayed: true };
   }
 
   const candidate = await sign(capturedSigner);
-  const canonical = await db.recordCanonical(submitter, payloadHash, timestamp, candidate);
-  const validated = await validateReplayResult(api, canonical.result, identity, payloadHash);
-  return { ...validated, replayed: !canonical.inserted };
+  const canonical = await db.recordCanonical(
+    submitter,
+    copyBytes(authoritativePayloadHash, "record payloadHash"),
+    timestamp,
+    copySignSignalsResult(candidate),
+  );
+  const canonicalResult = canonical.result;
+  const inserted = canonical.inserted;
+  if (typeof inserted !== "boolean") {
+    throw new Error("replay DB returned invalid inserted metadata");
+  }
+  const validated = await validateReplayResult(
+    api,
+    canonicalResult,
+    identity,
+    authoritativePayloadHash,
+  );
+  if (inserted && !resultsEqual(validated, candidate)) {
+    throw new Error("replay DB claimed to retain the candidate but returned a different bundle");
+  }
+  return { ...validated, replayed: !inserted };
 }
 
 /**
@@ -297,6 +335,8 @@ export async function signSignalsWithReplayProtection(
   db: ReplayDb,
   req: SignSignalsRequest,
 ): Promise<LedgeredSignResult> {
+  const submitter = req.submitter;
+  const timestamp = req.timestamp;
   const payloadHash = await computeSignedPayloadHash(api, {
     proofType: req.proofType,
     chainId: req.chainId,
@@ -304,17 +344,11 @@ export async function signSignalsWithReplayProtection(
     providerSetHash: req.providerSetHash,
     signals: req.signals,
     weights: req.weights,
-    timestamp: req.timestamp,
-    submitter: req.submitter,
+    timestamp,
+    submitter,
   });
-  return signThroughLedger(
-    api,
-    db,
-    signer,
-    req.submitter,
-    req.timestamp,
-    payloadHash,
-    (capturedSigner) => signPayloadHash(api, capturedSigner, payloadHash),
+  return signThroughLedger(api, db, signer, submitter, timestamp, payloadHash, (capturedSigner) =>
+    signPayloadHash(api, capturedSigner, payloadHash),
   );
 }
 
@@ -330,6 +364,8 @@ export async function signSlotPayloadWithReplayProtection(
   db: ReplayDb,
   req: SignSlotRequest,
 ): Promise<LedgeredSignResult> {
+  const submitter = req.submitter;
+  const timestamp = req.timestamp;
   const payloadHash = await computeSlotPayloadHash(api, {
     slotIndex: req.slotIndex,
     chainId: req.chainId,
@@ -339,16 +375,10 @@ export async function signSlotPayloadWithReplayProtection(
     configHash: req.configHash,
     signals: req.signals,
     weights: req.weights,
-    timestamp: req.timestamp,
-    submitter: req.submitter,
+    timestamp,
+    submitter,
   });
-  return signThroughLedger(
-    api,
-    db,
-    signer,
-    req.submitter,
-    req.timestamp,
-    payloadHash,
-    (capturedSigner) => signPayloadHash(api, capturedSigner, payloadHash),
+  return signThroughLedger(api, db, signer, submitter, timestamp, payloadHash, (capturedSigner) =>
+    signPayloadHash(api, capturedSigner, payloadHash),
   );
 }

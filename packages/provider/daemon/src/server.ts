@@ -39,7 +39,7 @@ import {
 } from "./handlers.ts";
 import type { AuditRoute } from "./audit.ts";
 import { formatUnknownError } from "./error-format.ts";
-import { assertSafeBind, type DaemonConfig } from "./config.ts";
+import { assertCredentialSeparation, assertSafeBind, type DaemonConfig } from "./config.ts";
 
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB; sign body is ~1 KB
 const MAX_PENDING_BARRETENBERG_REQUESTS = 64;
@@ -210,7 +210,7 @@ const POST_ROUTES: Record<
 export interface DaemonServer {
   /** Start listening. Resolves when the server is bound. */
   listen(): Promise<{ host: string; port: number }>;
-  /** Close all open sockets and stop listening. */
+  /** Stop accepting connections and drain every admitted request. Idempotent. */
   close(): Promise<void>;
 }
 
@@ -218,11 +218,12 @@ export function createDaemonServer(
   ctx: HandlerContext,
   config: DaemonConfig,
   policy: SigningPolicy = signingPolicy(config),
+  barretenbergQueue = new BoundedSerialQueue(MAX_PENDING_BARRETENBERG_REQUESTS),
 ): DaemonServer {
   assertSafeBind(config);
+  assertCredentialSeparation(config);
   const useTls = Boolean(config.tlsCertPath && config.tlsKeyPath);
   const useMtls = Boolean(config.clientCaPath);
-  const barretenbergQueue = new BoundedSerialQueue(MAX_PENDING_BARRETENBERG_REQUESTS);
 
   const auditRejection = async (
     res: ServerResponse,
@@ -260,7 +261,15 @@ export function createDaemonServer(
       }
 
       if (req.method === "GET" && req.url === "/pubkey-hash") {
-        sendResult(res, await barretenbergQueue.run(() => handlePubkeyHash(ctx)));
+        try {
+          sendResult(res, await barretenbergQueue.run(() => handlePubkeyHash(ctx)));
+        } catch (err) {
+          if (!(err instanceof QueueFullError)) throw err;
+          sendJson(res, 503, {
+            error: "signing service overloaded",
+            code: "OVERLOADED",
+          });
+        }
         return;
       }
 
@@ -342,6 +351,21 @@ export function createDaemonServer(
     }
   };
 
+  const activeRequests = new Set<Promise<void>>();
+  const dispatch = (req: IncomingMessage, res: ServerResponse): void => {
+    const request = handler(req, res);
+    activeRequests.add(request);
+    void request.then(
+      () => activeRequests.delete(request),
+      (error: unknown) => {
+        activeRequests.delete(request);
+        process.stderr.write(
+          `[xochi-provider] request handler failed: ${formatUnknownError(error)}\n`,
+        );
+      },
+    );
+  };
+
   let server: HttpServer | HttpsServer;
   if (useTls) {
     if (!config.tlsCertPath || !config.tlsKeyPath) throw new Error("TLS configured incompletely");
@@ -356,11 +380,22 @@ export function createDaemonServer(
         requestCert: useMtls,
         rejectUnauthorized: useMtls,
       },
-      handler,
+      dispatch,
     );
   } else {
-    server = createHttpServer(handler);
+    server = createHttpServer(dispatch);
   }
+
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    closePromise ??= (async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+      await Promise.allSettled([...activeRequests]);
+    })();
+    return closePromise;
+  };
 
   return {
     listen: () =>
@@ -376,9 +411,6 @@ export function createDaemonServer(
           }
         });
       }),
-    close: () =>
-      new Promise((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close,
   };
 }

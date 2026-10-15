@@ -6,14 +6,15 @@
  * trail for "did we sign that?" -- pair with the on-chain `getHistoricalProof`
  * lookup to prove a specific provider authorization timeline.
  *
- * A signature is released only after its audit record has been written: the
- * handlers await `record()` and answer 500 AUDIT_FAILED instead of returning a
- * signature the log never saw. A failing file stream therefore stops signing
- * rather than crashing the process or signing silently.
+ * A signature is released only after its audit record has been accepted by the
+ * stream write callback: the handlers await `record()` and answer 500
+ * AUDIT_FAILED instead of returning a signature the stream rejected. This is
+ * not an `fsync` or power-loss durability guarantee. A failing file stream
+ * stops signing rather than crashing the process or signing silently.
  *
  * Reference impl uses a local file or stdout. Production deployments wire
- * this to a tamper-evident store (write-once cloud bucket, append-only log
- * service, etc.) by reimplementing the AuditSink interface.
+ * this to a tamper-evident, suitably durable store (write-once cloud bucket,
+ * append-only log service, etc.) by reimplementing the AuditSink interface.
  */
 
 import { createWriteStream, type WriteStream } from "node:fs";
@@ -55,7 +56,7 @@ export interface AuditEvent {
 }
 
 export interface AuditSink {
-  /** Resolves once the line is written; rejects if it could not be. */
+  /** Resolves on sink acceptance; rejects on failure. Durability is sink-specific. */
   record(event: AuditEvent): Promise<void>;
   close(): Promise<void>;
 }
@@ -79,8 +80,9 @@ export class FileAuditSink implements AuditSink {
   private readonly stream: WriteStream;
   private failure: Error | undefined;
 
+  /** New files are owner-only; existing file permissions remain operator-controlled. */
   constructor(path: string) {
-    this.stream = createWriteStream(path, { flags: "a", encoding: "utf-8" });
+    this.stream = createWriteStream(path, { flags: "a", encoding: "utf-8", mode: 0o600 });
     // Without a listener, a stream error (unwritable path, disk full) is an
     // unhandled 'error' event and kills the process. Latch it instead: every
     // later record() rejects, so signing stops with AUDIT_FAILED.

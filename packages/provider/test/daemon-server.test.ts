@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Barretenberg } from "@aztec/bb.js";
@@ -123,6 +123,7 @@ async function startServer(
   auditSink: AuditSink,
   config: DaemonConfig = testConfig(),
   signerOverride: DigestSigner = signer,
+  queue?: BoundedSerialQueue,
 ): Promise<{ server: DaemonServer; url: string }> {
   const s = createDaemonServer(
     {
@@ -133,6 +134,7 @@ async function startServer(
     },
     config,
     signingPolicy(config, () => NOW),
+    queue,
   );
   const { host, port } = await s.listen();
   return { server: s, url: `http://${host}:${String(port)}` };
@@ -363,6 +365,59 @@ describe("GET /pubkey-hash", () => {
       await s.close();
     }
   });
+
+  it("returns OVERLOADED when registration cannot enter the Barretenberg queue", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    let markSigningEntered!: () => void;
+    let releaseSigning!: () => void;
+    const signingEntered = new Promise<void>((resolve) => {
+      markSigningEntered = resolve;
+    });
+    const signingGate = new Promise<void>((resolve) => {
+      releaseSigning = resolve;
+    });
+    const gatedSigner: DigestSigner = {
+      label: "registration-overload",
+      publicKeyX: publicKey.slice(1, 33),
+      publicKeyY: publicKey.slice(33, 65),
+      async signDigest(digest) {
+        markSigningEntered();
+        await signingGate;
+        return secp256k1.sign(digest, TEST_PRIVATE_KEY, { lowS: true }).toCompactRawBytes();
+      },
+    };
+    const { server: overloadedServer, url } = await startServer(
+      new MemoryAuditSink(),
+      testConfig(),
+      gatedSigner,
+      new BoundedSerialQueue(1),
+    );
+    let signingRequest: Promise<Response> | undefined;
+    try {
+      signingRequest = fetch(`${url}/sign`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(SAMPLE_BODY),
+      });
+      await Promise.race([
+        signingEntered,
+        signingRequest.then(() => {
+          throw new Error("signing request completed before entering custody");
+        }),
+      ]);
+
+      const response = await fetch(`${url}/pubkey-hash`, { headers: authHeaders() });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "signing service overloaded",
+        code: "OVERLOADED",
+      });
+    } finally {
+      releaseSigning();
+      await signingRequest;
+      await overloadedServer.close();
+    }
+  });
 });
 
 describe("POST /sign", () => {
@@ -518,7 +573,7 @@ describe("POST /sign", () => {
     const cases: Array<[string, Record<string, unknown>]> = [
       ["signal above 100", { signals: [101, 0, 0, 0, 0, 0, 0, 0] }],
       ["fractional signal", { signals: [25.5, 0, 0, 0, 0, 0, 0, 0] }],
-      ["weight above u32", { weights: [2 ** 32, 0, 0, 0, 0, 0, 0, 0] }],
+      ["weight above circuit maximum", { weights: [10_001, 0, 0, 0, 0, 0, 0, 0] }],
       ["negative weight", { weights: [-1, 0, 0, 0, 0, 0, 0, 0] }],
       [
         "no positive weight",
@@ -713,6 +768,14 @@ describe("POST /sign-multi", () => {
     );
   });
 
+  it("rejects an unsupported jurisdiction with 400", async () => {
+    await expectRejected(
+      await post("/sign-multi", { ...SAMPLE_MULTI_BODY, jurisdictionId: 5 }),
+      400,
+      "BAD_REQUEST",
+    );
+  });
+
   it("refuses an Oracle other than the pinned one", async () => {
     await expectRejected(
       await post("/sign-multi", { ...SAMPLE_MULTI_BODY, oracleAddress: "0x" + "99".repeat(20) }),
@@ -739,6 +802,78 @@ describe("POST /sign-multi", () => {
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual(await first.json());
     expect(audit.events.map((e) => e.outcome)).toEqual(["signed", "replayed"]);
+  });
+});
+
+describe("server shutdown", () => {
+  it("drains a disconnected admitted request before close resolves", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    let markSigningEntered!: () => void;
+    let releaseSigning!: () => void;
+    const signingEntered = new Promise<void>((resolve) => {
+      markSigningEntered = resolve;
+    });
+    const signingGate = new Promise<void>((resolve) => {
+      releaseSigning = resolve;
+    });
+    const gatedSigner: DigestSigner = {
+      label: "shutdown-gate",
+      publicKeyX: publicKey.slice(1, 33),
+      publicKeyY: publicKey.slice(33, 65),
+      async signDigest(digest) {
+        markSigningEntered();
+        await signingGate;
+        return secp256k1.sign(digest, TEST_PRIVATE_KEY, { lowS: true }).toCompactRawBytes();
+      },
+    };
+    const { server: drainingServer, url } = await startServer(
+      new MemoryAuditSink(),
+      testConfig(),
+      gatedSigner,
+    );
+    const controller = new AbortController();
+    let request: Promise<Response | undefined> | undefined;
+    try {
+      request = fetch(`${url}/sign-credential-root`, {
+        method: "POST",
+        headers: authHeaders(CREDENTIAL_ROOT_KEY),
+        body: JSON.stringify({
+          chainId: CHAIN_ID,
+          oracleAddress: ORACLE,
+          providerId: PROVIDER_ID,
+          root: "0x" + "ab".repeat(32),
+          cid: "ipfs://shutdown-test",
+          notBefore: NOW - 60,
+          notAfter: NOW + 3600,
+        }),
+        signal: controller.signal,
+      }).catch(() => undefined);
+
+      await Promise.race([
+        signingEntered,
+        request.then(() => {
+          throw new Error("request completed before entering custody");
+        }),
+      ]);
+      controller.abort();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      let closed = false;
+      const closing = drainingServer.close().then(() => {
+        closed = true;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(closed).toBe(false);
+
+      releaseSigning();
+      await closing;
+      await request;
+      await expect(drainingServer.close()).resolves.toBeUndefined();
+    } finally {
+      controller.abort();
+      releaseSigning();
+      await request;
+      await drainingServer.close();
+    }
   });
 });
 
@@ -893,6 +1028,20 @@ describe("audit log", () => {
     }
   });
 
+  it("creates private audit files", async () => {
+    const path = join(scratch, "private-audit.jsonl");
+    const sink = new FileAuditSink(path);
+    await sink.record({
+      ts: 0,
+      route: "/sign",
+      outcome: "rejected",
+      source: "permission-test",
+    });
+    await sink.close();
+
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
   it("withholds the signature and stays up when the log cannot be written", async () => {
     // A path under a missing directory: the stream errors asynchronously.
     // Unhandled, that 'error' event would crash the process.
@@ -989,6 +1138,15 @@ describe("config validation", () => {
     expect(() =>
       createDaemonServer({ api, signer, replayDb, audit }, testConfig({ host: "0.0.0.0" })),
     ).toThrow(/Refusing to bind/);
+  });
+
+  it("enforces credential separation on hand-built configs too", () => {
+    expect(() =>
+      createDaemonServer(
+        { api, signer, replayDb, audit },
+        testConfig({ apiKey: "same", credentialRootApiKey: "same" }),
+      ),
+    ).toThrow(/must differ/);
   });
 
   it("keeps the credential-root credential separate", () => {

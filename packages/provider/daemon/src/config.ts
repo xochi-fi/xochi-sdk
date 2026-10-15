@@ -109,6 +109,31 @@ export function assertSafeBind(config: DaemonConfig): void {
   }
 }
 
+/**
+ * Enforce route-role separation for parsed and programmatically constructed configs.
+ */
+export function assertCredentialSeparation(config: DaemonConfig): void {
+  if (
+    config.apiKey !== undefined &&
+    config.credentialRootApiKey !== undefined &&
+    config.apiKey === config.credentialRootApiKey
+  ) {
+    throw new Error("credentialRootApiKey must differ from apiKey");
+  }
+  if (config.clientCaPath) {
+    if (config.credentialRootApiKey !== undefined) {
+      throw new Error("credentialRootApiKey is ignored under mTLS");
+    }
+  } else if (config.signalsClientCns || config.credentialRootClientCns) {
+    throw new Error("client CN scope lists require clientCaPath");
+  }
+  const overlap =
+    config.signalsClientCns?.filter((cn) => config.credentialRootClientCns?.includes(cn)) ?? [];
+  if (overlap.length > 0) {
+    throw new Error(`A client CN may not hold both route scopes; got ${overlap.join(", ")}`);
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): DaemonConfig {
   const signerKeyHex = env.SIGNER_PRIVATE_KEY_HEX;
   if (!signerKeyHex) {
@@ -221,5 +246,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): DaemonConfig {
     allowInsecureBind: insecure === "1",
   };
   assertSafeBind(config);
+  assertCredentialSeparation(config);
   return config;
 }

@@ -32,9 +32,10 @@ tamper-evident log, and run behind mTLS.
 ```
 
 - `proofType`: `7` or `8` (number, decimal or `0x` string).
-- Range checks mirror the circuits: 8 signals in `[0, 100]`, 8 `u32` weights, at least one positive,
-  zero-weight slots carry signal `0`; for `/sign`, active slots are contiguous from index 0.
-- `/sign-multi` adds `slotIndex` (`[0, 4]`), `jurisdictionId` and `configHash`.
+- Range checks mirror the circuits: 8 signals in `[0, 100]`, 8 weights in `[0, 10000]`, at least
+  one positive, and zero-weight slots carry signal `0`; for `/sign`, active slots are contiguous
+  from index 0.
+- `/sign-multi` adds `slotIndex` (`[0, 4]`), `jurisdictionId` (`[0, 4]`) and `configHash`.
 - `/sign-credential-root` takes `chainId`, `oracleAddress`, `providerId`, `root`, `cid`,
   `notBefore`, `notAfter` and returns `{ signature, digest, signer }`.
 
@@ -60,9 +61,13 @@ failures, filesystem paths and backend details remain only in the private audit 
 - Refuses a non-loopback plain-HTTP bind unless `SIGNER_ALLOW_INSECURE_BIND=1`.
 - Signal and credential-root roles use separate credentials (distinct bearer keys, or disjoint mTLS
   CN lists); neither opens the other's routes. No credential-root credential disables that route.
-- Every authenticated request to a known signing route writes a JSONL audit line (`signed` /
+- Every authenticated request to a known signing route attempts one JSONL audit line (`signed` /
   `replayed` / `rejected`) before the response, including scope, JSON, body-size, overload and
-  unexpected-handler refusals. A failed write returns generic `500 AUDIT_FAILED`.
+  unexpected-handler refusals. A failed write returns generic `500 AUDIT_FAILED`. If replay
+  storage commits before that failure, a later retry can be the first durable event and is marked
+  `replayed`. The reference file sink creates new logs as owner-only (`0600`) and waits for the
+  stream write callback, not `fsync`; operators must secure existing files and parent directories,
+  and production durability is the replacement `AuditSink`'s contract.
 - An identical `/sign` or `/sign-multi` retry returns the retained bundle's byte-identical
   signature (audited `replayed`), including concurrent attempts. Production `ReplayDb`
   implementations must atomically retain one canonical winner across all processes sharing the
@@ -75,7 +80,11 @@ failures, filesystem paths and backend details remain only in the private audit 
 - `/pubkey-hash` validates and hashes one copied identity snapshot, then returns coordinates from
   that same snapshot.
 - All Barretenberg work is serialized once through one bounded FIFO queue because one instance is
-  not concurrency-safe. Credential-root signing performs no Barretenberg work and bypasses it.
+  not concurrency-safe. Its 64-request bound counts the active operation. Credential-root signing
+  performs no Barretenberg work and bypasses it; custody adapters own their concurrency limits and
+  timeouts.
+- Shutdown stops intake, drains admitted handlers (including disconnected clients), then closes
+  audit and custody resources. Repeated `close()` calls share the same drain.
 - Process log lines on stderr carry the `[xochi-provider]` prefix; the audit log is separate
   (`SIGNER_AUDIT_LOG`, stdout by default).
 

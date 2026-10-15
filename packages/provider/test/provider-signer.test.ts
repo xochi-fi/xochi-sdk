@@ -11,6 +11,8 @@
  * In-circuit verification is exercised by @xochi/sdk's integration-signed tests.
  */
 
+import vm from "node:vm";
+
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Barretenberg } from "@aztec/bb.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -295,6 +297,140 @@ describe("signSignalsWithReplayProtection", () => {
 
     expect(bytesToHex(result.payloadHash)).toBe(bytesToHex(expected));
     expectValidLowSSignature(result);
+  });
+
+  it("uses one submitter and timestamp snapshot for hashing and replay metadata", async () => {
+    const signer = makeCounterEntropySigner();
+    let submitterReads = 0;
+    let timestampReads = 0;
+    let lookupSubmitter: bigint | undefined;
+    let recordedSubmitter: bigint | undefined;
+    let recordedTimestamp: bigint | undefined;
+    const req: SignSignalsRequest = {
+      ...SAMPLE_REQUEST,
+      get submitter() {
+        submitterReads += 1;
+        return submitterReads === 1 ? SAMPLE_REQUEST.submitter : SAMPLE_REQUEST.submitter + 1n;
+      },
+      get timestamp() {
+        timestampReads += 1;
+        return timestampReads === 1 ? SAMPLE_REQUEST.timestamp : 0n;
+      },
+    };
+    const db: ReplayDb = {
+      async lookup(submitter) {
+        lookupSubmitter = submitter;
+        return undefined;
+      },
+      async recordCanonical(submitter, _payloadHash, timestamp, result) {
+        recordedSubmitter = submitter;
+        recordedTimestamp = timestamp;
+        return { result, inserted: true };
+      },
+      async size() {
+        return 0;
+      },
+    };
+
+    await signSignalsWithReplayProtection(api, signer, db, req);
+
+    expect(submitterReads).toBe(1);
+    expect(timestampReads).toBe(1);
+    expect(lookupSubmitter).toBe(SAMPLE_REQUEST.submitter);
+    expect(recordedSubmitter).toBe(SAMPLE_REQUEST.submitter);
+    expect(recordedTimestamp).toBe(SAMPLE_REQUEST.timestamp);
+  });
+
+  it("keeps the authoritative digest private from replay storage", async () => {
+    const signer = makeCounterEntropySigner();
+    const expected = await computeSignedPayloadHash(api, SAMPLE_REQUEST);
+    const db: ReplayDb = {
+      async lookup(_submitter, payloadHash) {
+        payloadHash.fill(0);
+        return undefined;
+      },
+      async recordCanonical(_submitter, payloadHash, _timestamp, result) {
+        payloadHash.fill(0xff);
+        return { result, inserted: true };
+      },
+      async size() {
+        return 0;
+      },
+    };
+
+    const result = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+
+    expect(bytesToHex(result.payloadHash)).toBe(bytesToHex(expected));
+    expectValidLowSSignature(result);
+  });
+
+  it("accepts valid replay byte arrays from another JavaScript realm", async () => {
+    const signer = makeCounterEntropySigner();
+    const valid = await signSignals(api, signer, SAMPLE_REQUEST);
+    const fromOtherRealm = (bytes: Uint8Array): Uint8Array =>
+      vm.runInNewContext("Uint8Array.from(bytes)", { bytes: [...bytes] }) as Uint8Array;
+    const retained: SignSignalsResult = {
+      signature: fromOtherRealm(valid.signature),
+      pubkeyX: fromOtherRealm(valid.pubkeyX),
+      pubkeyY: fromOtherRealm(valid.pubkeyY),
+      signerPubkeyHash: fromOtherRealm(valid.signerPubkeyHash),
+      payloadHash: fromOtherRealm(valid.payloadHash),
+    };
+    const db: ReplayDb = {
+      async lookup() {
+        return retained;
+      },
+      async recordCanonical() {
+        throw new Error("valid replay row must be returned");
+      },
+      async size() {
+        return 1;
+      },
+    };
+
+    const result = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+
+    expect(result.replayed).toBe(true);
+    expect(bytesToHex(result.signature)).toBe(bytesToHex(valid.signature));
+  });
+
+  it("refuses a canonical store that claims it retained a different candidate", async () => {
+    const signer = makeCounterEntropySigner();
+    const otherValid = await signSignals(api, signer, SAMPLE_REQUEST);
+    const db: ReplayDb = {
+      async lookup() {
+        return undefined;
+      },
+      async recordCanonical() {
+        return { result: otherValid, inserted: true };
+      },
+      async size() {
+        return 0;
+      },
+    };
+
+    await expect(signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST)).rejects.toThrow(
+      /claimed to retain the candidate/,
+    );
+  });
+
+  it("refuses non-boolean canonical insertion metadata", async () => {
+    const signer = makeCounterEntropySigner();
+    const db: ReplayDb = {
+      async lookup() {
+        return undefined;
+      },
+      async recordCanonical(_submitter, _payloadHash, _timestamp, result) {
+        return { result, inserted: undefined as unknown as boolean };
+      },
+      async size() {
+        return 0;
+      },
+    };
+
+    await expect(signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST)).rejects.toThrow(
+      /invalid inserted metadata/,
+    );
   });
 
   it("fails closed on corrupt retained replay bundles", async () => {
