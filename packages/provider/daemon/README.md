@@ -65,9 +65,10 @@ failures, filesystem paths and backend details remain only in the private audit 
   `replayed` / `rejected`) before the response, including scope, JSON, body-size, overload and
   unexpected-handler refusals. A failed write returns generic `500 AUDIT_FAILED`. If replay
   storage commits before that failure, a later retry can be the first durable event and is marked
-  `replayed`. The reference file sink creates new logs as owner-only (`0600`) and waits for the
-  stream write callback, not `fsync`; operators must secure existing files and parent directories,
-  and production durability is the replacement `AuditSink`'s contract.
+  `replayed`. The reference file sink accepts only a regular file without following the final
+  symbolic link, sets new and existing files to owner-only (`0600`), and fails startup if it cannot
+  secure the path. It waits for the stream write callback, not `fsync`; operators must secure the
+  parent directory, and production durability is the replacement `AuditSink`'s contract.
 - An identical `/sign` or `/sign-multi` retry returns the retained bundle's byte-identical
   signature (audited `replayed`), including concurrent attempts. Production `ReplayDb`
   implementations must atomically retain one canonical winner across all processes sharing the
@@ -83,10 +84,11 @@ failures, filesystem paths and backend details remain only in the private audit 
   not concurrency-safe. Its 64-request bound counts the active operation. Credential-root signing
   performs no Barretenberg work and bypasses it; custody adapters own their concurrency limits and
   timeouts.
-- Shutdown stops intake, drains admitted handlers (including disconnected clients), then closes
-  audit and custody resources. Repeated `close()` calls share the same drain.
-- Process log lines on stderr carry the `[xochi-provider]` prefix; the audit log is separate
-  (`SIGNER_AUDIT_LOG`, stdout by default).
+- Shutdown is safe before listen, stops intake, drains admitted handlers (including disconnected
+  clients), then closes audit and custody resources. Repeated `listen()` calls share one bind and
+  repeated `close()` calls share one drain; listening after close is refused.
+- Process log lines on stderr carry the `[xochi-provider]` prefix and escape control characters to
+  remain one line; the audit log is separate (`SIGNER_AUDIT_LOG`, stdout by default).
 
 ## Configuration
 

@@ -17,8 +17,18 @@
  * append-only log service, etc.) by reimplementing the AuditSink interface.
  */
 
-import { createWriteStream, type WriteStream } from "node:fs";
+import {
+  closeSync,
+  constants,
+  createWriteStream,
+  fchmodSync,
+  fstatSync,
+  openSync,
+  type WriteStream,
+} from "node:fs";
 import type { Writable } from "node:stream";
+
+import { formatUnknownError } from "./error-format.ts";
 
 export type AuditRoute = "/sign" | "/sign-multi" | "/sign-credential-root";
 
@@ -67,6 +77,37 @@ function writeLine(stream: Writable, event: AuditEvent): Promise<void> {
   });
 }
 
+function openAuditStream(path: string): WriteStream {
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      path,
+      constants.O_APPEND |
+        constants.O_CREAT |
+        constants.O_WRONLY |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK,
+      0o600,
+    );
+    if (!fstatSync(fd).isFile()) {
+      throw new Error("audit log must be a regular file");
+    }
+    fchmodSync(fd, 0o600);
+    const stream = createWriteStream(path, {
+      fd,
+      autoClose: true,
+      encoding: "utf-8",
+    });
+    fd = undefined;
+    return stream;
+  } catch (cause) {
+    if (fd !== undefined) closeSync(fd);
+    throw new Error(`failed to securely open audit log ${path}: ${formatUnknownError(cause)}`, {
+      cause,
+    });
+  }
+}
+
 class StdoutAuditSink implements AuditSink {
   record(event: AuditEvent): Promise<void> {
     return writeLine(process.stdout, event);
@@ -79,16 +120,17 @@ class StdoutAuditSink implements AuditSink {
 export class FileAuditSink implements AuditSink {
   private readonly stream: WriteStream;
   private failure: Error | undefined;
+  private closePromise: Promise<void> | undefined;
 
-  /** New files are owner-only; existing file permissions remain operator-controlled. */
+  /** Open one owner-only regular file without following a final symbolic link. */
   constructor(path: string) {
-    this.stream = createWriteStream(path, { flags: "a", encoding: "utf-8", mode: 0o600 });
-    // Without a listener, a stream error (unwritable path, disk full) is an
+    this.stream = openAuditStream(path);
+    // Without a listener, a later stream error (for example, disk full) is an
     // unhandled 'error' event and kills the process. Latch it instead: every
     // later record() rejects, so signing stops with AUDIT_FAILED.
     this.stream.on("error", (err) => {
       this.failure = err;
-      process.stderr.write(`[xochi-provider] audit log error: ${err.message}\n`);
+      process.stderr.write(`[xochi-provider] audit log error: ${formatUnknownError(err)}\n`);
     });
   }
 
@@ -96,18 +138,30 @@ export class FileAuditSink implements AuditSink {
     if (this.failure) {
       throw new Error(`audit log unavailable: ${this.failure.message}`);
     }
+    if (this.closePromise) {
+      throw new Error("audit log is closed");
+    }
     // A failed write rejects through the write callback.
     await writeLine(this.stream, event);
   }
 
   close(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.failure) {
-        reject(new Error(`audit log unavailable: ${this.failure.message}`));
+    this.closePromise ??= new Promise((resolve, reject) => {
+      const settle = (): void => {
+        if (this.failure) {
+          reject(new Error(`audit log unavailable: ${this.failure.message}`));
+        } else {
+          resolve();
+        }
+      };
+      if (this.stream.closed) {
+        settle();
         return;
       }
-      this.stream.end(() => resolve());
+      this.stream.once("close", settle);
+      this.stream.end();
     });
+    return this.closePromise;
   }
 }
 

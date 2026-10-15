@@ -208,9 +208,9 @@ const POST_ROUTES: Record<
 };
 
 export interface DaemonServer {
-  /** Start listening. Resolves when the server is bound. */
+  /** Start listening. Repeated calls share one bind; calls after `close` reject. */
   listen(): Promise<{ host: string; port: number }>;
-  /** Stop accepting connections and drain every admitted request. Idempotent. */
+  /** Stop intake and drain admitted requests. Safe before `listen` and idempotent. */
   close(): Promise<void>;
 }
 
@@ -386,31 +386,49 @@ export function createDaemonServer(
     server = createHttpServer(dispatch);
   }
 
+  let listenPromise: Promise<{ host: string; port: number }> | undefined;
   let closePromise: Promise<void> | undefined;
+  const listen = (): Promise<{ host: string; port: number }> => {
+    if (closePromise) {
+      return Promise.reject(new Error("daemon server is closing or closed"));
+    }
+    listenPromise ??= new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(config.port, config.host, () => {
+        server.removeListener("error", reject);
+        const addr = server.address();
+        if (typeof addr === "object" && addr) {
+          resolve({ host: addr.address, port: addr.port });
+        } else {
+          resolve({ host: config.host, port: config.port });
+        }
+      });
+    });
+    return listenPromise;
+  };
   const close = (): Promise<void> => {
     closePromise ??= (async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      });
+      if (listenPromise) {
+        // `listen()` owns reporting a failed bind. Shutdown still proceeds in
+        // case Node opened resources before rejecting it.
+        await Promise.allSettled([listenPromise]);
+      }
+      let listenerCloseError: unknown;
+      if (server.listening) {
+        const [closeResult] = await Promise.allSettled([
+          new Promise<void>((resolve, reject) => {
+            server.close((err) => (err ? reject(err) : resolve()));
+          }),
+        ]);
+        if (closeResult.status === "rejected") listenerCloseError = closeResult.reason;
+      }
       await Promise.allSettled([...activeRequests]);
+      if (listenerCloseError !== undefined) {
+        throw new Error("failed to close daemon listener", { cause: listenerCloseError });
+      }
     })();
     return closePromise;
   };
 
-  return {
-    listen: () =>
-      new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(config.port, config.host, () => {
-          server.removeListener("error", reject);
-          const addr = server.address();
-          if (typeof addr === "object" && addr) {
-            resolve({ host: addr.address, port: addr.port });
-          } else {
-            resolve({ host: config.host, port: config.port });
-          }
-        });
-      }),
-    close,
-  };
+  return { listen, close };
 }

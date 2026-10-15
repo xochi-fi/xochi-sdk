@@ -20,6 +20,10 @@ All notable changes to `@xochi/provider` are documented here. Format follows [Ke
   metadata, and keep the same values across digest, lookup and retention. New file audit logs use
   mode `0600`; hand-built daemon configs enforce credential separation; daemon range checks match
   circuit weight and jurisdiction bounds; `/pubkey-hash` reports queue saturation as `OVERLOADED`.
+- The daemon now opens audit paths without following final symbolic links, requires regular files,
+  repairs existing audit files to mode `0600`, and cleans up custody if secure startup fails.
+  Operational diagnostics escape control characters, and server listen/close calls now have
+  deterministic single-bind, pre-listen-close and post-close behavior.
 - **Reference signing daemon** moved from `@xochi/sdk`'s `daemon/` to `packages/provider/daemon` and imports `@xochi/provider`; it ships as source, not in the tarball. Run it with `npm run daemon -w @xochi/provider`. Log lines are prefixed `[xochi-provider]` (was `[xochi-signer]`). Environment variables (`SIGNER_*`), endpoints and signing policy are unchanged.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `provider-v*` tag.
 - `engines.node` is `>=22.12` (ESM-only; Node 22.0–22.11 throws `ERR_REQUIRE_ESM` on `require('@xochi/provider')`). The tarball ships this `CHANGELOG.md`.

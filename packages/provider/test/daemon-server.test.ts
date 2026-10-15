@@ -9,7 +9,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Barretenberg } from "@aztec/bb.js";
@@ -31,6 +39,7 @@ import {
 import { FileAuditSink, MemoryAuditSink, type AuditSink } from "../daemon/src/audit.js";
 import { loadConfig, type DaemonConfig } from "../daemon/src/config.js";
 import { signingPolicy } from "../daemon/src/handlers.js";
+import { formatUnknownError } from "../daemon/src/error-format.js";
 
 const TEST_PRIVATE_KEY = new Uint8Array(32);
 for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
@@ -806,6 +815,47 @@ describe("POST /sign-multi", () => {
 });
 
 describe("server shutdown", () => {
+  it("shares repeated listen and close calls and rejects reopening", async () => {
+    const lifecycleServer = createDaemonServer(
+      {
+        api,
+        signer,
+        replayDb: new MemoryReplayDb({ now: () => NOW }),
+        audit: new MemoryAuditSink(),
+      },
+      testConfig(),
+      signingPolicy(testConfig(), () => NOW),
+    );
+
+    const firstListen = lifecycleServer.listen();
+    expect(lifecycleServer.listen()).toBe(firstListen);
+    const address = await firstListen;
+    await expect(lifecycleServer.listen()).resolves.toEqual(address);
+
+    const firstClose = lifecycleServer.close();
+    expect(lifecycleServer.close()).toBe(firstClose);
+    await firstClose;
+    await expect(lifecycleServer.listen()).rejects.toThrow(/closing or closed/);
+  });
+
+  it("closes safely before listen", async () => {
+    const lifecycleServer = createDaemonServer(
+      {
+        api,
+        signer,
+        replayDb: new MemoryReplayDb({ now: () => NOW }),
+        audit: new MemoryAuditSink(),
+      },
+      testConfig(),
+      signingPolicy(testConfig(), () => NOW),
+    );
+
+    const firstClose = lifecycleServer.close();
+    expect(lifecycleServer.close()).toBe(firstClose);
+    await expect(firstClose).resolves.toBeUndefined();
+    await expect(lifecycleServer.listen()).rejects.toThrow(/closing or closed/);
+  });
+
   it("drains a disconnected admitted request before close resolves", async () => {
     const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
     let markSigningEntered!: () => void;
@@ -874,6 +924,14 @@ describe("server shutdown", () => {
       await request;
       await drainingServer.close();
     }
+  });
+});
+
+describe("private error formatting", () => {
+  it("escapes control characters into one operational log line", () => {
+    expect(formatUnknownError(new Error("backend failed\nforged\r\u0000line\u2028next"))).toBe(
+      "backend failed\\u000aforged\\u000d\\u0000line\\u2028next",
+    );
   });
 });
 
@@ -1028,24 +1086,42 @@ describe("audit log", () => {
     }
   });
 
-  it("creates private audit files", async () => {
-    const path = join(scratch, "private-audit.jsonl");
-    const sink = new FileAuditSink(path);
-    await sink.record({
+  it("creates and repairs owner-only audit files", async () => {
+    const freshPath = join(scratch, "private-audit.jsonl");
+    const fresh = new FileAuditSink(freshPath);
+    await fresh.record({
       ts: 0,
       route: "/sign",
       outcome: "rejected",
       source: "permission-test",
     });
-    await sink.close();
+    await fresh.close();
+    expect(statSync(freshPath).mode & 0o777).toBe(0o600);
 
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    const existingPath = join(scratch, "existing-audit.jsonl");
+    writeFileSync(existingPath, "", { mode: 0o644 });
+    chmodSync(existingPath, 0o644);
+    const existing = new FileAuditSink(existingPath);
+    await existing.close();
+    expect(statSync(existingPath).mode & 0o777).toBe(0o600);
   });
 
-  it("withholds the signature and stays up when the log cannot be written", async () => {
-    // A path under a missing directory: the stream errors asynchronously.
-    // Unhandled, that 'error' event would crash the process.
-    const sink = new FileAuditSink(join(scratch, "missing-dir", "audit.jsonl"));
+  it("refuses symbolic links and non-openable paths at startup", () => {
+    const target = join(scratch, "audit-target.jsonl");
+    const link = join(scratch, "audit-link.jsonl");
+    writeFileSync(target, "unchanged\n", { mode: 0o600 });
+    symlinkSync(target, link);
+
+    expect(() => new FileAuditSink(link)).toThrow(/failed to securely open audit log/);
+    expect(readFileSync(target, "utf-8")).toBe("unchanged\n");
+    expect(() => new FileAuditSink(join(scratch, "missing-dir", "audit.jsonl"))).toThrow(
+      /failed to securely open audit log/,
+    );
+  });
+
+  it("withholds the signature and stays up after the audit sink closes", async () => {
+    const sink = new FileAuditSink(join(scratch, "closed-audit.jsonl"));
+    await sink.close();
     const { server: s, url } = await startServer(sink);
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -1060,6 +1136,7 @@ describe("audit log", () => {
       expect(health.status).toBe(200);
     } finally {
       await s.close();
+      await sink.close();
     }
   });
 });

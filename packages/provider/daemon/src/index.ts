@@ -60,28 +60,33 @@ async function main(): Promise<void> {
   const replayDb = new MemoryReplayDb({
     retentionSeconds: config.maxTimestampAgeSeconds + config.maxTimestampSkewSeconds,
   });
-  const audit = makeAuditSink(config.auditLogPath);
-  const server = createDaemonServer({ api, signer, replayDb, audit }, config);
-
-  try {
-    const { host, port } = await server.listen();
-    process.stderr.write(`[xochi-provider] listening on ${host}:${String(port)}\n`);
-  } catch (cause) {
-    const cleanup = await Promise.allSettled([
-      audit.close(),
-      Promise.resolve().then(() => signer.destroy()),
-      api.destroy(),
-    ]);
-    const cleanupFailures = cleanup
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) => formatUnknownError(result.reason));
-    if (cleanupFailures.length > 0) {
-      process.stderr.write(
-        `[xochi-provider] startup cleanup failed: ${cleanupFailures.join("; ")}\n`,
-      );
+  const { audit, server } = await (async () => {
+    let audit: ReturnType<typeof makeAuditSink> | undefined;
+    let server: ReturnType<typeof createDaemonServer> | undefined;
+    try {
+      audit = makeAuditSink(config.auditLogPath);
+      server = createDaemonServer({ api, signer, replayDb, audit }, config);
+      const { host, port } = await server.listen();
+      process.stderr.write(`[xochi-provider] listening on ${host}:${String(port)}\n`);
+      return { audit, server };
+    } catch (cause) {
+      const cleanup = await Promise.allSettled([
+        ...(server ? [server.close()] : []),
+        ...(audit ? [audit.close()] : []),
+        Promise.resolve().then(() => signer.destroy()),
+        api.destroy(),
+      ]);
+      const cleanupFailures = cleanup
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => formatUnknownError(result.reason));
+      if (cleanupFailures.length > 0) {
+        process.stderr.write(
+          `[xochi-provider] startup cleanup failed: ${cleanupFailures.join("; ")}\n`,
+        );
+      }
+      throw cause;
     }
-    throw cause;
-  }
+  })();
 
   let shutdownStarted = false;
   const shutdown = async (signal: string): Promise<void> => {
