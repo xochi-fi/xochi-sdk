@@ -35,7 +35,7 @@ import { ERC8262Verifier } from "../src/verifier.js";
 import { OracleLite } from "../src/oracle-lite.js";
 import { ORACLE_ABI } from "../src/abis.js";
 import { PROOF_TYPES, type ProofType } from "../src/constants.js";
-import { loadSignerKey, RawKeyLoader, signCredentialRoot } from "@xochi/provider";
+import { loadLocalSigner, RawPrivateKeyLoader, signCredentialRoot } from "@xochi/provider";
 import { withDecodedErrors } from "../src/errors.js";
 
 // ============================================================
@@ -550,7 +550,9 @@ describe("publishCredentialRoot (anvil)", () => {
     const providerId = 7n;
     const root = keccak256(toHex("credential-tree-root"));
     const cid = "bafybeigdyrztxample";
-    const key = await loadSignerKey(new RawKeyLoader(new Uint8Array(32).fill(7), "credential"));
+    const key = await loadLocalSigner(
+      new RawPrivateKeyLoader(new Uint8Array(32).fill(7), "credential"),
+    );
 
     const ownerOracle = new ERC8262Oracle(
       oracleAddress,
@@ -561,7 +563,7 @@ describe("publishCredentialRoot (anvil)", () => {
     const { timestamp } = await chainClient.getBlock();
     const notBefore = timestamp - 60n;
     const notAfter = timestamp + 3600n;
-    const { signature, signer } = signCredentialRoot(key, {
+    const { signature, signer } = await signCredentialRoot(key, {
       chainId: BigInt(foundry.id),
       oracleAddress,
       providerId,
@@ -592,5 +594,6 @@ describe("publishCredentialRoot (anvil)", () => {
     });
     expect(await oracleClient.isValidCredentialRoot(root)).toBe(true);
     expect((await oracleClient.getCredentialRoot(root)).providerId).toBe(providerId);
+    key.destroy();
   });
 });

@@ -1,9 +1,10 @@
 # ERC-8262 provider signing daemon (reference)
 
-An HTTP daemon around [`@xochi/provider`](../README.md)'s signers, so a provider can keep its
-secp256k1 key behind an authenticated API. Reference implementation, shipped as source only. For
-production, replace `HexKeyLoader` with a KMS/HSM `KeyLoader`, `MemoryReplayDb` with a persistent
-store, and `makeAuditSink` with a tamper-evident log, and run behind mTLS.
+An HTTP daemon around [`@xochi/provider`](../README.md)'s signers. This reference implementation
+ships as source only and deliberately uses `HexPrivateKeyLoader`; it is not the production
+KMS/HSM adapter. Production services implement `DigestSigner` so only 32-byte digests reach the
+custody device, replace `MemoryReplayDb` with a persistent store and `makeAuditSink` with a
+tamper-evident log, and run behind mTLS.
 
 ## Endpoints
 
@@ -37,9 +38,11 @@ store, and `makeAuditSink` with a tamper-evident log, and run behind mTLS.
 - `/sign-credential-root` takes `chainId`, `oracleAddress`, `providerId`, `root`, `cid`,
   `notBefore`, `notAfter` and returns `{ signature, digest, signer }`.
 
-Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal or
-`ROUTE_NOT_PERMITTED`; `404` unknown route; `413` body over 32 KB; `500` `SIGN_FAILED` /
-`AUDIT_FAILED` / `INTERNAL` (no signature).
+Status: `200` signed; `400` malformed or `BODY_READ_FAILED`; `401` no credential; `403` policy
+refusal or `ROUTE_NOT_PERMITTED`; `404` unknown route; `413` body over 32 KB; `500`
+`SIGN_FAILED` / `AUDIT_FAILED` / `INTERNAL`; `503` `OVERLOADED` when the bounded Barretenberg queue
+is full (no signature). Public 500 responses are intentionally generic. Signer labels, adapter
+failures, filesystem paths and backend details remain only in the private audit or operational log.
 
 | 403 code                  | Refused when                                                               |
 | ------------------------- | -------------------------------------------------------------------------- |
@@ -57,9 +60,22 @@ Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal
 - Refuses a non-loopback plain-HTTP bind unless `SIGNER_ALLOW_INSECURE_BIND=1`.
 - Signal and credential-root roles use separate credentials (distinct bearer keys, or disjoint mTLS
   CN lists); neither opens the other's routes. No credential-root credential disables that route.
-- Each signing request writes a JSONL audit line (`signed` / `replayed` / `rejected`) before the
-  signature is returned; a failed write returns `500 AUDIT_FAILED`.
-- An identical retry returns the identical signature (deterministic signing, audited `replayed`).
+- Every authenticated request to a known signing route writes a JSONL audit line (`signed` /
+  `replayed` / `rejected`) before the response, including scope, JSON, body-size, overload and
+  unexpected-handler refusals. A failed write returns generic `500 AUDIT_FAILED`.
+- An identical `/sign` or `/sign-multi` retry returns the retained bundle's byte-identical
+  signature (audited `replayed`), including concurrent attempts. Production `ReplayDb`
+  implementations must atomically retain one canonical winner across all processes sharing the
+  store, persist across restarts and retain each record for the full proof-validity window. Retained
+  rows are copied and cryptographically validated before release; corruption fails closed. A store
+  failure after custody signing releases no response, but a retry may sign again. KMS/HSM
+  signatures need not be deterministic, so eviction or record loss may yield another valid
+  signature. `/sign-credential-root` has no replay ledger and may return different valid signature
+  bytes on retry.
+- `/pubkey-hash` validates and hashes one copied identity snapshot, then returns coordinates from
+  that same snapshot.
+- All Barretenberg work is serialized once through one bounded FIFO queue because one instance is
+  not concurrency-safe. Credential-root signing performs no Barretenberg work and bypasses it.
 - Process log lines on stderr carry the `[xochi-provider]` prefix; the audit log is separate
   (`SIGNER_AUDIT_LOG`, stdout by default).
 
@@ -85,7 +101,7 @@ Status: `200` signed; `400` malformed; `401` no credential; `403` policy refusal
 | `SIGNER_ALLOW_INSECURE_BIND`                  | no        | `0`              | `1` allows non-loopback plain HTTP (behind a TLS sidecar)                                                 |
 | `SIGNER_HTTP_PORT`                            | no        | `8548`           | Listen port                                                                                               |
 | `SIGNER_AUDIT_LOG`                            | no        | stdout           | JSONL audit log path                                                                                      |
-| `SIGNER_PROVIDER_LABEL`                       | no        | `xochi-provider` | Key label                                                                                                 |
+| `SIGNER_PROVIDER_LABEL`                       | no        | `xochi-provider` | Non-secret signer diagnostic identifier for private audit context                                         |
 
 ## Running
 

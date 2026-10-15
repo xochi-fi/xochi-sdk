@@ -21,12 +21,13 @@ import { DEFAULT_CONFIG_HASH, MAX_PROVIDERS_MULTI } from "../src/constants.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import { ERC8262Prover } from "../src/prover.js";
 import {
-  RawKeyLoader,
+  RawPrivateKeyLoader,
   bytesToHexField,
   computeSignerPubkeyHash,
-  loadSignerKey,
+  loadLocalSigner,
   signSlotPayload,
-  type SignerKey,
+  type DestroyableDigestSigner,
+  type DigestSigner,
 } from "@xochi/provider";
 
 const SIGNALS = [10, 20, 30, 0, 0, 0, 0, 0];
@@ -223,21 +224,23 @@ describe("compliance_multi_signed with inactive slots", () => {
   const loader = new BundledCircuitLoader();
   const prover = new ERC8262Prover(loader);
   let api: Barretenberg;
-  let keyA: SignerKey;
-  let keyB: SignerKey;
+  let keyA: DestroyableDigestSigner;
+  let keyB: DestroyableDigestSigner;
 
   beforeAll(async () => {
     api = await Barretenberg.new();
-    keyA = await loadSignerKey(new RawKeyLoader(fixedBytes(32, 0x0a), "slot-test-a"));
-    keyB = await loadSignerKey(new RawKeyLoader(fixedBytes(32, 0x0b), "slot-test-b"));
+    keyA = await loadLocalSigner(new RawPrivateKeyLoader(fixedBytes(32, 0x0a), "slot-test-a"));
+    keyB = await loadLocalSigner(new RawPrivateKeyLoader(fixedBytes(32, 0x0b), "slot-test-b"));
   });
 
   afterAll(async () => {
     await prover.destroy();
+    keyA.destroy();
+    keyB.destroy();
     await api.destroy();
   });
 
-  async function signedSlot(key: SignerKey, slotIndex: number): Promise<MultiSignedSlot> {
+  async function signedSlot(key: DigestSigner, slotIndex: number): Promise<MultiSignedSlot> {
     const signed = await signSlotPayload(api, key, {
       slotIndex,
       chainId: CHAIN_ID,

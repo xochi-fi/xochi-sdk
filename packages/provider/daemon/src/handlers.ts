@@ -13,6 +13,7 @@
  */
 
 import type { Barretenberg } from "@aztec/bb.js";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import {
   bytesToHex,
   computeSignerPubkeyHash,
@@ -20,19 +21,20 @@ import {
   signSignalsWithReplayProtection,
   signSlotPayloadWithReplayProtection,
   MAX_PROVIDERS_MULTI,
+  type DigestSigner,
   type LedgeredSignResult,
   type ReplayDb,
   type SignCredentialRootRequest,
-  type SignerKey,
   type SignSignalsRequest,
   type SignSlotRequest,
 } from "@xochi/provider";
 import type { AuditEvent, AuditRoute, AuditSink } from "./audit.ts";
 import type { DaemonConfig } from "./config.ts";
+import { formatUnknownError } from "./error-format.ts";
 
 export interface HandlerContext {
   api: Barretenberg;
-  signerKey: SignerKey;
+  signer: DigestSigner;
   replayDb: ReplayDb;
   audit: AuditSink;
 }
@@ -253,9 +255,21 @@ function failure(status: number, code: string, error: string): HandlerResult<nev
   return { ok: false, error: { status, body: { error, code } } };
 }
 
+const SIGN_FAILED_MESSAGE = "signing failed";
+
+function signingFailureReason(signer: DigestSigner, err: unknown): string {
+  let label = "unreadable-label";
+  try {
+    label = String(signer.label);
+  } catch {
+    // Keep formatting the original failure without trusting a hostile label getter.
+  }
+  return `digest signer ${label}: ${formatUnknownError(err)}`;
+}
+
 function rejection(err: unknown): HandlerResult<never> {
   if (err instanceof RequestRejected) return failure(err.status, err.code, err.message);
-  return failure(400, "BAD_REQUEST", (err as Error).message);
+  return failure(400, "BAD_REQUEST", formatUnknownError(err));
 }
 
 /**
@@ -271,7 +285,8 @@ async function audited<T>(
   try {
     await ctx.audit.record({ ts: Date.now(), ...event });
   } catch (err) {
-    return failure(500, "AUDIT_FAILED", `audit log write failed: ${(err as Error).message}`);
+    process.stderr.write(`[xochi-provider] audit record failed: ${formatUnknownError(err)}\n`);
+    return failure(500, "AUDIT_FAILED", "audit record failed");
   }
   return result;
 }
@@ -301,7 +316,7 @@ async function handleSignalRoute<R extends SignalFields>(
           typeof raw === "string" && ADDRESS_RE.test(raw)
             ? (raw.toLowerCase() as `0x${string}`)
             : undefined,
-        reason: (err as Error).message,
+        reason: formatUnknownError(err),
       },
       rejection(err),
     );
@@ -314,8 +329,14 @@ async function handleSignalRoute<R extends SignalFields>(
   } catch (err) {
     return audited(
       ctx,
-      { route, outcome: "rejected", source, submitter, reason: (err as Error).message },
-      failure(500, "SIGN_FAILED", (err as Error).message),
+      {
+        route,
+        outcome: "rejected",
+        source,
+        submitter,
+        reason: signingFailureReason(ctx.signer, err),
+      },
+      failure(500, "SIGN_FAILED", SIGN_FAILED_MESSAGE),
     );
   }
 
@@ -358,9 +379,9 @@ function parseSignBody(raw: unknown): SignSignalsRequest {
 
 /**
  * POST /sign. The signature is for the requested `proofType` only (its digest
- * carries that type's domain tag). An identical retry returns the identical
- * signature (the signing ledger serves it; signing is deterministic), audited
- * as `replayed`.
+ * carries that type's domain tag). While its ledger record is retained, an
+ * identical retry returns the byte-identical signature and is audited as
+ * `replayed`.
  */
 export function handleSign(
   ctx: HandlerContext,
@@ -369,7 +390,7 @@ export function handleSign(
   source: string,
 ): Promise<HandlerResult<SignResponseBody>> {
   return handleSignalRoute(ctx, policy, "/sign", body, source, parseSignBody, (req) =>
-    signSignalsWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req),
+    signSignalsWithReplayProtection(ctx.api, ctx.signer, ctx.replayDb, req),
   );
 }
 
@@ -378,18 +399,25 @@ export async function handlePubkeyHash(
 ): Promise<
   HandlerResult<{ signerPubkeyHash: `0x${string}`; pubkeyX: `0x${string}`; pubkeyY: `0x${string}` }>
 > {
-  const hash = await computeSignerPubkeyHash(
-    ctx.api,
-    ctx.signerKey.publicKeyX,
-    ctx.signerKey.publicKeyY,
-  );
+  const publicKeyX = copyBytes(ctx.signer.publicKeyX);
+  const publicKeyY = copyBytes(ctx.signer.publicKeyY);
+  const publicKey = new Uint8Array(65);
+  publicKey[0] = 0x04;
+  publicKey.set(publicKeyX, 1);
+  publicKey.set(publicKeyY, 33);
+  try {
+    secp256k1.ProjectivePoint.fromHex(publicKey);
+  } catch (cause) {
+    throw new Error("digest signer exposed an invalid secp256k1 public key", { cause });
+  }
+  const hash = await computeSignerPubkeyHash(ctx.api, publicKeyX, publicKeyY);
   return {
     ok: true,
     status: 200,
     body: {
       signerPubkeyHash: bytesToHex(hash),
-      pubkeyX: bytesToHex(ctx.signerKey.publicKeyX),
-      pubkeyY: bytesToHex(ctx.signerKey.publicKeyY),
+      pubkeyX: bytesToHex(publicKeyX),
+      pubkeyY: bytesToHex(publicKeyY),
     },
   };
 }
@@ -447,7 +475,7 @@ export function handleSignMulti(
   source: string,
 ): Promise<HandlerResult<SignMultiResponseBody>> {
   return handleSignalRoute(ctx, policy, "/sign-multi", body, source, parseSignMultiBody, (req) =>
-    signSlotPayloadWithReplayProtection(ctx.api, ctx.signerKey, ctx.replayDb, req),
+    signSlotPayloadWithReplayProtection(ctx.api, ctx.signer, ctx.replayDb, req),
   );
 }
 
@@ -544,7 +572,7 @@ export async function handleSignCredentialRoot(
   } catch (err) {
     return audited(
       ctx,
-      { route, outcome: "rejected", source, reason: (err as Error).message },
+      { route, outcome: "rejected", source, reason: formatUnknownError(err) },
       rejection(err),
     );
   }
@@ -562,12 +590,27 @@ export async function handleSignCredentialRoot(
   } catch (err) {
     return audited(
       ctx,
-      { route, outcome: "rejected", source, credentialRoot, reason: (err as Error).message },
+      { route, outcome: "rejected", source, credentialRoot, reason: formatUnknownError(err) },
       rejection(err),
     );
   }
 
-  const result = signCredentialRoot(ctx.signerKey, req);
+  let result;
+  try {
+    result = await signCredentialRoot(ctx.signer, req);
+  } catch (err) {
+    return audited(
+      ctx,
+      {
+        route,
+        outcome: "rejected",
+        source,
+        credentialRoot,
+        reason: signingFailureReason(ctx.signer, err),
+      },
+      failure(500, "SIGN_FAILED", SIGN_FAILED_MESSAGE),
+    );
+  }
   const response: SignCredentialRootResponseBody = {
     signature: bytesToHex(result.signature),
     digest: bytesToHex(result.digest),
@@ -585,4 +628,12 @@ export async function handleSignCredentialRoot(
     },
     { ok: true, status: 200, body: response },
   );
+}
+
+function copyBytes(value: Uint8Array): Uint8Array {
+  const copy = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    copy[index] = value[index];
+  }
+  return copy;
 }

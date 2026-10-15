@@ -37,9 +37,40 @@ import {
   type HandlerResult,
   type SigningPolicy,
 } from "./handlers.ts";
+import type { AuditRoute } from "./audit.ts";
+import { formatUnknownError } from "./error-format.ts";
 import { assertSafeBind, type DaemonConfig } from "./config.ts";
 
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB; sign body is ~1 KB
+const MAX_PENDING_BARRETENBERG_REQUESTS = 64;
+
+class QueueFullError extends Error {}
+class BodyTooLargeError extends Error {}
+
+export class BoundedSerialQueue {
+  readonly #maxPending: number;
+  #pending = 0;
+  #tail: Promise<void> = Promise.resolve();
+
+  constructor(maxPending: number) {
+    this.#maxPending = maxPending;
+  }
+
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.#pending >= this.#maxPending) {
+      return Promise.reject(new QueueFullError("Barretenberg request queue is full"));
+    }
+    this.#pending += 1;
+    const result = this.#tail.then(operation, operation);
+    this.#tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result.finally(() => {
+      this.#pending -= 1;
+    });
+  }
+}
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -102,7 +133,7 @@ function readBody(req: IncomingMessage): Promise<string> {
       if (size > MAX_BODY_BYTES) {
         rejected = true;
         req.resume();
-        reject(new Error("body too large"));
+        reject(new BodyTooLargeError("body exceeds 32 KB limit"));
         return;
       }
       chunks.push(chunk);
@@ -163,10 +194,17 @@ type PostHandler = (
   source: string,
 ) => Promise<HandlerResult<unknown>>;
 
-const POST_ROUTES: Record<string, { scope: Scope; handle: PostHandler }> = {
-  "/sign": { scope: "signals", handle: handleSign },
-  "/sign-multi": { scope: "signals", handle: handleSignMulti },
-  "/sign-credential-root": { scope: "credentialRoot", handle: handleSignCredentialRoot },
+const POST_ROUTES: Record<
+  string,
+  { scope: Scope; usesBarretenberg: boolean; handle: PostHandler }
+> = {
+  "/sign": { scope: "signals", usesBarretenberg: true, handle: handleSign },
+  "/sign-multi": { scope: "signals", usesBarretenberg: true, handle: handleSignMulti },
+  "/sign-credential-root": {
+    scope: "credentialRoot",
+    usesBarretenberg: false,
+    handle: handleSignCredentialRoot,
+  },
 };
 
 export interface DaemonServer {
@@ -184,16 +222,36 @@ export function createDaemonServer(
   assertSafeBind(config);
   const useTls = Boolean(config.tlsCertPath && config.tlsKeyPath);
   const useMtls = Boolean(config.clientCaPath);
+  const barretenbergQueue = new BoundedSerialQueue(MAX_PENDING_BARRETENBERG_REQUESTS);
+
+  const auditRejection = async (
+    res: ServerResponse,
+    route: AuditRoute,
+    source: string,
+    reason: string,
+    status: number,
+    code: string,
+    error: string,
+  ): Promise<void> => {
+    try {
+      await ctx.audit.record({ ts: Date.now(), route, outcome: "rejected", source, reason });
+    } catch (auditError) {
+      process.stderr.write(
+        `[xochi-provider] audit record failed: ${formatUnknownError(auditError)}\n`,
+      );
+      sendJson(res, 500, { error: "audit record failed", code: "AUDIT_FAILED" });
+      return;
+    }
+    sendJson(res, status, { error, code });
+  };
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
-      // Health check is unauthenticated (typical for liveness probes).
       if (req.method === "GET" && req.url === "/healthz") {
         sendResult(res, handleHealthz());
         return;
       }
 
-      // Authenticate before routing or reading the body.
       const credential = presentedCredential(req, config);
       const scopes = credential ? scopesFor(credential, config) : [];
       if (!credential || scopes.length === 0) {
@@ -202,12 +260,10 @@ export function createDaemonServer(
       }
 
       if (req.method === "GET" && req.url === "/pubkey-hash") {
-        sendResult(res, await handlePubkeyHash(ctx));
+        sendResult(res, await barretenbergQueue.run(() => handlePubkeyHash(ctx)));
         return;
       }
 
-      // Own-property check: the URL is caller input and must not resolve to an
-      // inherited Object property (a request target of "constructor", say).
       const route =
         req.method === "POST" && req.url && Object.hasOwn(POST_ROUTES, req.url)
           ? POST_ROUTES[req.url]
@@ -216,11 +272,19 @@ export function createDaemonServer(
         sendJson(res, 404, { error: "not found", code: "NOT_FOUND" });
         return;
       }
+
+      const routeName = req.url as AuditRoute;
+      const source = sourceLabel(credential, route.scope);
       if (!scopes.includes(route.scope)) {
-        sendJson(res, 403, {
-          error: "credential not permitted on this route",
-          code: "ROUTE_NOT_PERMITTED",
-        });
+        await auditRejection(
+          res,
+          routeName,
+          source,
+          "credential not permitted on this route",
+          403,
+          "ROUTE_NOT_PERMITTED",
+          "credential not permitted on this route",
+        );
         return;
       }
 
@@ -228,19 +292,53 @@ export function createDaemonServer(
       try {
         raw = await readBody(req);
       } catch (err) {
-        sendJson(res, 413, { error: (err as Error).message, code: "BODY_TOO_LARGE" });
+        const tooLarge = err instanceof BodyTooLargeError;
+        await auditRejection(
+          res,
+          routeName,
+          source,
+          formatUnknownError(err),
+          tooLarge ? 413 : 400,
+          tooLarge ? "BODY_TOO_LARGE" : "BODY_READ_FAILED",
+          tooLarge ? "request body too large" : "request body read failed",
+        );
         return;
       }
+
       let body: unknown;
       try {
         body = JSON.parse(raw);
-      } catch {
-        sendJson(res, 400, { error: "invalid JSON", code: "BAD_JSON" });
+      } catch (err) {
+        await auditRejection(
+          res,
+          routeName,
+          source,
+          `invalid JSON: ${formatUnknownError(err)}`,
+          400,
+          "BAD_JSON",
+          "invalid JSON",
+        );
         return;
       }
-      sendResult(res, await route.handle(ctx, policy, body, sourceLabel(credential, route.scope)));
+
+      const invoke = (): Promise<HandlerResult<unknown>> => route.handle(ctx, policy, body, source);
+      try {
+        sendResult(res, await (route.usesBarretenberg ? barretenbergQueue.run(invoke) : invoke()));
+      } catch (err) {
+        const overloaded = err instanceof QueueFullError;
+        await auditRejection(
+          res,
+          routeName,
+          source,
+          formatUnknownError(err),
+          overloaded ? 503 : 500,
+          overloaded ? "OVERLOADED" : "INTERNAL",
+          overloaded ? "signing service overloaded" : "internal error",
+        );
+      }
     } catch (err) {
-      sendJson(res, 500, { error: (err as Error).message ?? "internal error", code: "INTERNAL" });
+      process.stderr.write(`[xochi-provider] request failed: ${formatUnknownError(err)}\n`);
+      sendJson(res, 500, { error: "internal error", code: "INTERNAL" });
     }
   };
 

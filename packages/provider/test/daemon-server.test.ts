@@ -15,8 +15,19 @@ import { join } from "node:path";
 import { Barretenberg } from "@aztec/bb.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
 
-import { RawKeyLoader, loadSignerKey, MemoryReplayDb, type SignerKey } from "../src/index.js";
-import { createDaemonServer, scopesFor, type DaemonServer } from "../daemon/src/server.js";
+import {
+  RawPrivateKeyLoader,
+  loadLocalSigner,
+  MemoryReplayDb,
+  type DestroyableDigestSigner,
+  type DigestSigner,
+} from "../src/index.js";
+import {
+  BoundedSerialQueue,
+  createDaemonServer,
+  scopesFor,
+  type DaemonServer,
+} from "../daemon/src/server.js";
 import { FileAuditSink, MemoryAuditSink, type AuditSink } from "../daemon/src/audit.js";
 import { loadConfig, type DaemonConfig } from "../daemon/src/config.js";
 import { signingPolicy } from "../daemon/src/handlers.js";
@@ -57,8 +68,52 @@ function testConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig {
   };
 }
 
+describe("BoundedSerialQueue", () => {
+  it("serializes work and rejects requests beyond its bound", async () => {
+    const queue = new BoundedSerialQueue(2);
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst!: () => void;
+    let markFirstEntered!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve;
+    });
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const operation = async (gate?: Promise<void>): Promise<void> => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (gate) {
+        markFirstEntered();
+        await gate;
+      }
+      active -= 1;
+    };
+
+    const first = queue.run(() => operation(firstGate));
+    await firstEntered;
+    const second = queue.run(() => operation());
+    await expect(queue.run(() => operation())).rejects.toThrow(/queue is full/);
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(maxActive).toBe(1);
+  });
+
+  it("continues after an operation rejects", async () => {
+    const queue = new BoundedSerialQueue(1);
+    await expect(
+      queue.run(async () => {
+        throw new Error("operation failed");
+      }),
+    ).rejects.toThrow("operation failed");
+    await expect(queue.run(async () => "next")).resolves.toBe("next");
+  });
+});
+
 let api: Barretenberg;
-let signerKey: SignerKey;
+let signer: DestroyableDigestSigner;
 let replayDb: MemoryReplayDb;
 let audit: MemoryAuditSink;
 let server: DaemonServer;
@@ -67,9 +122,15 @@ let baseUrl: string;
 async function startServer(
   auditSink: AuditSink,
   config: DaemonConfig = testConfig(),
+  signerOverride: DigestSigner = signer,
 ): Promise<{ server: DaemonServer; url: string }> {
   const s = createDaemonServer(
-    { api, signerKey, replayDb: new MemoryReplayDb({ now: () => NOW }), audit: auditSink },
+    {
+      api,
+      signer: signerOverride,
+      replayDb: new MemoryReplayDb({ now: () => NOW }),
+      audit: auditSink,
+    },
     config,
     signingPolicy(config, () => NOW),
   );
@@ -79,12 +140,12 @@ async function startServer(
 
 beforeAll(async () => {
   api = await Barretenberg.new();
-  signerKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "daemon-test"));
+  signer = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "daemon-test"));
   replayDb = new MemoryReplayDb({ now: () => NOW });
   audit = new MemoryAuditSink();
   const config = testConfig();
   server = createDaemonServer(
-    { api, signerKey, replayDb, audit },
+    { api, signer, replayDb, audit },
     config,
     signingPolicy(config, () => NOW),
   );
@@ -94,6 +155,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server.close();
+  signer.destroy();
   await api.destroy();
 });
 
@@ -249,8 +311,57 @@ describe("GET /pubkey-hash", () => {
       pubkeyY: string;
     };
     expect(body.signerPubkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
-    expect(body.pubkeyX).toBe("0x" + Buffer.from(signerKey.publicKeyX).toString("hex"));
-    expect(body.pubkeyY).toBe("0x" + Buffer.from(signerKey.publicKeyY).toString("hex"));
+    expect(body.pubkeyX).toBe("0x" + Buffer.from(signer.publicKeyX).toString("hex"));
+    expect(body.pubkeyY).toBe("0x" + Buffer.from(signer.publicKeyY).toString("hex"));
+  });
+
+  it("uses one validated identity snapshot for hash and coordinates", async () => {
+    const expectedX = signer.publicKeyX;
+    let xReads = 0;
+    const mutableSigner: DigestSigner = {
+      label: "mutable-registration",
+      get publicKeyX() {
+        xReads += 1;
+        return xReads === 1 ? expectedX : new Uint8Array(32);
+      },
+      publicKeyY: signer.publicKeyY,
+      async signDigest() {
+        throw new Error("unused");
+      },
+    };
+    const { server: s, url } = await startServer(
+      new MemoryAuditSink(),
+      testConfig(),
+      mutableSigner,
+    );
+    try {
+      const res = await fetch(`${url}/pubkey-hash`, { headers: authHeaders() });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { pubkeyX: string };
+      expect(body.pubkeyX).toBe(`0x${Buffer.from(expectedX).toString("hex")}`);
+      expect(xReads).toBe(1);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("returns a generic internal error for a malformed identity", async () => {
+    const malformed: DigestSigner = {
+      label: "filesystem/or/backend/detail",
+      publicKeyX: new Uint8Array(32),
+      publicKeyY: new Uint8Array(32),
+      async signDigest() {
+        throw new Error("unused");
+      },
+    };
+    const { server: s, url } = await startServer(new MemoryAuditSink(), testConfig(), malformed);
+    try {
+      const res = await fetch(`${url}/pubkey-hash`, { headers: authHeaders() });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal error", code: "INTERNAL" });
+    } finally {
+      await s.close();
+    }
   });
 });
 
@@ -296,12 +407,19 @@ describe("POST /sign", () => {
   });
 
   it("rejects invalid JSON with 400", async () => {
+    audit.events.length = 0;
     const res = await fetch(`${baseUrl}/sign`, {
       method: "POST",
       headers: authHeaders(),
       body: "not-json",
     });
     expect(res.status).toBe(400);
+    expect(audit.events).toHaveLength(1);
+    expect(audit.events[0]).toMatchObject({
+      route: "/sign",
+      outcome: "rejected",
+      source: "bearer:signals",
+    });
   });
 
   it("answers an identical retry with the identical signature", async () => {
@@ -333,6 +451,7 @@ describe("POST /sign", () => {
   });
 
   it("rejects oversized body with 413", async () => {
+    audit.events.length = 0;
     const huge = "x".repeat(64 * 1024); // > 32 KB limit
     const res = await fetch(`${baseUrl}/sign`, {
       method: "POST",
@@ -340,6 +459,12 @@ describe("POST /sign", () => {
       body: huge,
     });
     expect(res.status).toBe(413);
+    expect(audit.events).toHaveLength(1);
+    expect(audit.events[0]).toMatchObject({
+      route: "/sign",
+      outcome: "rejected",
+      source: "bearer:signals",
+    });
   });
 
   describe("signing policy", () => {
@@ -461,8 +586,8 @@ describe("POST /sign-credential-root", () => {
     // Reconstruct uncompressed pubkey for noble; verify the signature.
     const uncompressed = new Uint8Array(65);
     uncompressed[0] = 0x04;
-    uncompressed.set(signerKey.publicKeyX, 1);
-    uncompressed.set(signerKey.publicKeyY, 33);
+    uncompressed.set(signer.publicKeyX, 1);
+    uncompressed.set(signer.publicKeyY, 33);
     expect(secp256k1.verify(sigBytes.subarray(0, 64), digestBytes, uncompressed)).toBe(true);
   });
 
@@ -617,6 +742,125 @@ describe("POST /sign-multi", () => {
   });
 });
 
+describe("signing failure redaction", () => {
+  const sensitiveLabel = "kms://sensitive-provider-key";
+  const sensitiveMessage = "custody backend slot 8675309 is unavailable";
+
+  it("redacts custody details from every signing route while preserving the audit reason", async () => {
+    const rejectingSigner: DigestSigner = {
+      publicKeyX: signer.publicKeyX.slice(),
+      publicKeyY: signer.publicKeyY.slice(),
+      label: sensitiveLabel,
+      signDigest: async () => {
+        throw new Error(sensitiveMessage);
+      },
+    };
+    const privateAudit = new MemoryAuditSink();
+    const { server: rejectingServer, url } = await startServer(
+      privateAudit,
+      testConfig(),
+      rejectingSigner,
+    );
+    const requests = [
+      { route: "/sign", body: SAMPLE_BODY, key: TEST_API_KEY },
+      {
+        route: "/sign-multi",
+        body: {
+          slotIndex: 0,
+          chainId: CHAIN_ID,
+          oracleAddress: ORACLE,
+          jurisdictionId: 0,
+          providerSetHash: PROVIDER_SET_HASH,
+          configHash: "0xbeef",
+          signals: [25, 0, 0, 0, 0, 0, 0, 0],
+          weights: [100, 0, 0, 0, 0, 0, 0, 0],
+          timestamp: String(NOW),
+          submitter: SUBMITTER,
+        },
+        key: TEST_API_KEY,
+      },
+      {
+        route: "/sign-credential-root",
+        body: {
+          chainId: CHAIN_ID,
+          oracleAddress: ORACLE,
+          providerId: PROVIDER_ID,
+          root: "0x" + "ab".repeat(32),
+          cid: "ipfs://Qm-test",
+          notBefore: NOW - 60,
+          notAfter: NOW + 3600,
+        },
+        key: CREDENTIAL_ROOT_KEY,
+      },
+    ] as const;
+
+    try {
+      for (const request of requests) {
+        const response = await fetch(`${url}${request.route}`, {
+          method: "POST",
+          headers: authHeaders(request.key),
+          body: JSON.stringify(request.body),
+        });
+        expect(response.status).toBe(500);
+        const responseBody = await response.json();
+        expect(responseBody).toEqual({ error: "signing failed", code: "SIGN_FAILED" });
+        const serializedBody = JSON.stringify(responseBody);
+        expect(serializedBody).not.toContain(sensitiveLabel);
+        expect(serializedBody).not.toContain(sensitiveMessage);
+      }
+
+      expect(privateAudit.events).toHaveLength(3);
+      expect(privateAudit.events.map((event) => event.route)).toEqual(
+        requests.map((request) => request.route),
+      );
+      for (const event of privateAudit.events) {
+        expect(event).toMatchObject({ outcome: "rejected" });
+        expect(event.reason).toContain(sensitiveLabel);
+        expect(event.reason).toContain(sensitiveMessage);
+      }
+    } finally {
+      await rejectingServer.close();
+    }
+  });
+
+  it.each([null, "custody string rejection", { backend: "private-topology" }])(
+    "handles a hostile thrown value without changing the public response",
+    async (thrown) => {
+      const rejectingSigner: DigestSigner = {
+        publicKeyX: signer.publicKeyX,
+        publicKeyY: signer.publicKeyY,
+        label: "private-label",
+        async signDigest() {
+          throw thrown;
+        },
+      };
+      const privateAudit = new MemoryAuditSink();
+      const { server: s, url } = await startServer(privateAudit, testConfig(), rejectingSigner);
+      try {
+        const response = await fetch(`${url}/sign-credential-root`, {
+          method: "POST",
+          headers: authHeaders(CREDENTIAL_ROOT_KEY),
+          body: JSON.stringify({
+            chainId: CHAIN_ID,
+            oracleAddress: ORACLE,
+            providerId: PROVIDER_ID,
+            root: "0x" + "ab".repeat(32),
+            cid: "ipfs://Qm-test",
+            notBefore: NOW - 60,
+            notAfter: NOW + 3600,
+          }),
+        });
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({ error: "signing failed", code: "SIGN_FAILED" });
+        expect(privateAudit.events).toHaveLength(1);
+        expect(privateAudit.events[0].reason).toBeTypeOf("string");
+      } finally {
+        await s.close();
+      }
+    },
+  );
+});
+
 describe("404", () => {
   it("returns 404 for unknown routes", async () => {
     const res = await fetch(`${baseUrl}/nope`, { headers: authHeaders() });
@@ -743,7 +987,7 @@ describe("config validation", () => {
 
   it("enforces the bind rule on hand-built configs too", () => {
     expect(() =>
-      createDaemonServer({ api, signerKey, replayDb, audit }, testConfig({ host: "0.0.0.0" })),
+      createDaemonServer({ api, signer, replayDb, audit }, testConfig({ host: "0.0.0.0" })),
     ).toThrow(/Refusing to bind/);
   });
 

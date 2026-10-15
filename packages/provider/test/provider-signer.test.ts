@@ -6,7 +6,7 @@
  *   2. Compute a signed-signals bundle for a known payload
  *   3. Verify the signature *off-circuit* via @noble/curves to catch any
  *      r/s/lowS-normalization bugs before they reach the in-circuit verifier
- *   4. Confirm the signing ledger returns the same signature for an identical retry
+ *   4. Confirm the signing ledger returns the same retained bytes for an identical retry
  *
  * In-circuit verification is exercised by @xochi/sdk's integration-signed tests.
  */
@@ -16,13 +16,17 @@ import { Barretenberg } from "@aztec/bb.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
 
 import {
-  RawKeyLoader,
-  loadSignerKey,
+  RawPrivateKeyLoader,
+  loadLocalSigner,
   signSignals,
   signSignalsWithReplayProtection,
   MemoryReplayDb,
   bytesToHex,
+  computeSignedPayloadHash,
+  type DigestSigner,
+  type ReplayDb,
   type SignSignalsRequest,
+  type SignSignalsResult,
 } from "../src/index.js";
 
 let api: Barretenberg;
@@ -45,6 +49,33 @@ const SAMPLE_REQUEST: SignSignalsRequest = {
   submitter: 0x70997970c51812dc3a010c7d01b50e0d17dc79c8n,
 };
 
+function makeCounterEntropySigner(): DigestSigner {
+  const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+  let counter = 0;
+  return {
+    label: "counter-entropy-test-key",
+    publicKeyX: publicKey.slice(1, 33),
+    publicKeyY: publicKey.slice(33, 65),
+    async signDigest(digest) {
+      counter += 1;
+      const extraEntropy = new Uint8Array(32);
+      new DataView(extraEntropy.buffer).setUint32(28, counter, false);
+      return secp256k1
+        .sign(digest, TEST_PRIVATE_KEY, { lowS: true, extraEntropy })
+        .toCompactRawBytes();
+    },
+  };
+}
+
+function expectValidLowSSignature(result: SignSignalsResult): void {
+  const publicKey = new Uint8Array(65);
+  publicKey[0] = 0x04;
+  publicKey.set(result.pubkeyX, 1);
+  publicKey.set(result.pubkeyY, 33);
+  expect(secp256k1.Signature.fromCompact(result.signature).hasHighS()).toBe(false);
+  expect(secp256k1.verify(result.signature, result.payloadHash, publicKey)).toBe(true);
+}
+
 beforeAll(async () => {
   api = await Barretenberg.new();
 }, 30_000);
@@ -55,7 +86,7 @@ afterAll(async () => {
 
 describe("signSignals", () => {
   it("produces a signature that ECDSA-verifies off-chain", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test-fixed"));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "test-fixed"));
     const result = await signSignals(api, key, SAMPLE_REQUEST);
 
     expect(result.signature.length).toBe(64);
@@ -75,8 +106,56 @@ describe("signSignals", () => {
     expect(valid).toBe(true);
   });
 
+  it("signs through a non-exportable digest signer contract", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    let signedDigest: Uint8Array | undefined;
+    const signer: DigestSigner = {
+      label: "kms-test-key",
+      publicKeyX: publicKey.slice(1, 33),
+      publicKeyY: publicKey.slice(33, 65),
+      async signDigest(digest) {
+        signedDigest = digest.slice();
+        return secp256k1.sign(digest, TEST_PRIVATE_KEY, { lowS: true }).toCompactRawBytes();
+      },
+    };
+
+    expect("privateKey" in signer).toBe(false);
+    const result = await signSignals(api, signer, SAMPLE_REQUEST);
+    if (signedDigest === undefined) throw new Error("digest signer was not called");
+    expect(bytesToHex(signedDigest)).toBe(bytesToHex(result.payloadHash));
+    expect(secp256k1.verify(result.signature, result.payloadHash, publicKey)).toBe(true);
+  });
+
+  it("refuses a digest signer whose signature belongs to another key", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    const otherKey = new Uint8Array(32).fill(7);
+    const signer: DigestSigner = {
+      label: "misconfigured-kms-key",
+      publicKeyX: publicKey.slice(1, 33),
+      publicKeyY: publicKey.slice(33, 65),
+      async signDigest(digest) {
+        return secp256k1.sign(digest, otherKey, { lowS: true }).toCompactRawBytes();
+      },
+    };
+
+    await expect(signSignals(api, signer, SAMPLE_REQUEST)).rejects.toThrow(
+      /signature for a different key/,
+    );
+  });
+
+  it("accepts distinct valid low-S signatures for repeated direct signing", async () => {
+    const signer = makeCounterEntropySigner();
+    const first = await signSignals(api, signer, SAMPLE_REQUEST);
+    const second = await signSignals(api, signer, SAMPLE_REQUEST);
+
+    expect(bytesToHex(second.payloadHash)).toBe(bytesToHex(first.payloadHash));
+    expect(bytesToHex(second.signature)).not.toBe(bytesToHex(first.signature));
+    expectValidLowSSignature(first);
+    expectValidLowSSignature(second);
+  });
+
   it("changes signature when any field of the request changes", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "test"));
     const baseline = await signSignals(api, key, SAMPLE_REQUEST);
     const altered = await signSignals(api, key, {
       ...SAMPLE_REQUEST,
@@ -87,7 +166,7 @@ describe("signSignals", () => {
   });
 
   it("binds the signature to the proof type", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "test"));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "test"));
     const forCompliance = await signSignals(api, key, SAMPLE_REQUEST);
     const forRiskScore = await signSignals(api, key, { ...SAMPLE_REQUEST, proofType: 0x08 });
     expect(bytesToHex(forRiskScore.payloadHash)).not.toBe(bytesToHex(forCompliance.payloadHash));
@@ -107,22 +186,196 @@ describe("signSignalsWithReplayProtection", () => {
   // The ledger evicts by the signed timestamp, so pin its clock to the fixture's.
   const atSampleTime = (): number => Number(SAMPLE_REQUEST.timestamp);
 
-  it("returns the identical signature for an identical retry", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+  it("replays retained bytes and may re-sign differently after removal", async () => {
+    const signer = makeCounterEntropySigner();
     const db = new MemoryReplayDb({ now: atSampleTime });
 
-    const first = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    const first = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
     expect(first.replayed).toBe(false);
 
-    const retry = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
+    const retry = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
     expect(retry.replayed).toBe(true);
     expect(bytesToHex(retry.signature)).toBe(bytesToHex(first.signature));
+    expect(bytesToHex(retry.pubkeyX)).toBe(bytesToHex(first.pubkeyX));
+    expect(bytesToHex(retry.pubkeyY)).toBe(bytesToHex(first.pubkeyY));
+    expect(bytesToHex(retry.signerPubkeyHash)).toBe(bytesToHex(first.signerPubkeyHash));
     expect(bytesToHex(retry.payloadHash)).toBe(bytesToHex(first.payloadHash));
     expect(await db.size()).toBe(1);
+
+    db.reset();
+    const afterRemoval = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+    expect(afterRemoval.replayed).toBe(false);
+    expect(bytesToHex(afterRemoval.signature)).not.toBe(bytesToHex(first.signature));
+    expect(bytesToHex(afterRemoval.payloadHash)).toBe(bytesToHex(first.payloadHash));
+    expectValidLowSSignature(first);
+    expectValidLowSSignature(afterRemoval);
+  });
+
+  it("publishes one canonical bundle for concurrent nondeterministic attempts", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    let calls = 0;
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    let markFirstEntered!: () => void;
+    let markSecondEntered!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve;
+    });
+    const secondEntered = new Promise<void>((resolve) => {
+      markSecondEntered = resolve;
+    });
+    const signer: DigestSigner = {
+      label: "concurrent-counter-entropy",
+      publicKeyX: publicKey.slice(1, 33),
+      publicKeyY: publicKey.slice(33, 65),
+      async signDigest(digest) {
+        calls += 1;
+        const call = calls;
+        const gate = new Promise<void>((resolve) => {
+          if (call === 1) {
+            releaseFirst = resolve;
+            markFirstEntered();
+          } else {
+            releaseSecond = resolve;
+            markSecondEntered();
+          }
+        });
+        await gate;
+        const extraEntropy = new Uint8Array(32);
+        new DataView(extraEntropy.buffer).setUint32(28, call, false);
+        return secp256k1
+          .sign(digest, TEST_PRIVATE_KEY, { lowS: true, extraEntropy })
+          .toCompactRawBytes();
+      },
+    };
+    const db = new MemoryReplayDb({ now: atSampleTime });
+
+    const firstPromise = signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+    await firstEntered;
+    const secondPromise = signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+    await secondEntered;
+    releaseFirst();
+    const first = await firstPromise;
+    releaseSecond();
+    const second = await secondPromise;
+
+    expect(first.replayed).toBe(false);
+    expect(second.replayed).toBe(true);
+    expect(bytesToHex(second.signature)).toBe(bytesToHex(first.signature));
+    expect(bytesToHex(second.payloadHash)).toBe(bytesToHex(first.payloadHash));
+    expect(calls).toBe(2);
+  });
+
+  it("signs the digest used for lookup even if the request mutates while awaiting the DB", async () => {
+    const signer = makeCounterEntropySigner();
+    const req: SignSignalsRequest = {
+      ...SAMPLE_REQUEST,
+      signals: [...SAMPLE_REQUEST.signals],
+      weights: [...SAMPLE_REQUEST.weights],
+    };
+    const expected = await computeSignedPayloadHash(api, {
+      ...req,
+      signals: [...req.signals],
+      weights: [...req.weights],
+    });
+    const db: ReplayDb = {
+      async lookup() {
+        req.signals[0] = 26n;
+        return undefined;
+      },
+      async recordCanonical(_submitter, _payloadHash, _timestamp, result) {
+        return { result, inserted: true };
+      },
+      async size() {
+        return 0;
+      },
+    };
+
+    const result = await signSignalsWithReplayProtection(api, signer, db, req);
+
+    expect(bytesToHex(result.payloadHash)).toBe(bytesToHex(expected));
+    expectValidLowSSignature(result);
+  });
+
+  it("fails closed on corrupt retained replay bundles", async () => {
+    const signer = makeCounterEntropySigner();
+    const valid = await signSignals(api, signer, SAMPLE_REQUEST);
+    const corruptions: Array<[string, (result: SignSignalsResult) => void]> = [
+      ["field lengths", (result) => (result.signature = new Uint8Array(63))],
+      ["signature", (result) => result.signature.fill(0)],
+      ["payload hash", (result) => result.payloadHash.fill(0)],
+      ["signer commitment", (result) => result.signerPubkeyHash.fill(0)],
+    ];
+
+    for (const [label, corrupt] of corruptions) {
+      const retained: SignSignalsResult = {
+        signature: valid.signature.slice(),
+        pubkeyX: valid.pubkeyX.slice(),
+        pubkeyY: valid.pubkeyY.slice(),
+        signerPubkeyHash: valid.signerPubkeyHash.slice(),
+        payloadHash: valid.payloadHash.slice(),
+      };
+      corrupt(retained);
+      const db: ReplayDb = {
+        async lookup() {
+          return retained;
+        },
+        async recordCanonical() {
+          throw new Error("corrupt matching record must not be replaced");
+        },
+        async size() {
+          return 1;
+        },
+      };
+
+      await expect(
+        signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST),
+        label,
+      ).rejects.toThrow(/replay DB returned/);
+    }
+  });
+
+  it("uses one copied signer identity throughout a signing attempt", async () => {
+    const publicKey = secp256k1.getPublicKey(TEST_PRIVATE_KEY, false);
+    const sourceX = publicKey.slice(1, 33);
+    const sourceY = publicKey.slice(33, 65);
+    const expectedX = sourceX.slice();
+    const expectedY = sourceY.slice();
+    let publicKeyXReads = 0;
+    let publicKeyYReads = 0;
+    const signer: DigestSigner = {
+      label: "mutable-identity-test-key",
+      get publicKeyX() {
+        publicKeyXReads += 1;
+        return sourceX;
+      },
+      get publicKeyY() {
+        publicKeyYReads += 1;
+        return sourceY;
+      },
+      async signDigest(digest) {
+        return secp256k1.sign(digest, TEST_PRIVATE_KEY, { lowS: true }).toCompactRawBytes();
+      },
+    };
+    const db = new MemoryReplayDb({
+      now: () => {
+        sourceX.fill(0);
+        sourceY.fill(0);
+        return Number(SAMPLE_REQUEST.timestamp);
+      },
+    });
+
+    const result = await signSignalsWithReplayProtection(api, signer, db, SAMPLE_REQUEST);
+
+    expect(publicKeyXReads).toBe(1);
+    expect(publicKeyYReads).toBe(1);
+    expect(bytesToHex(result.pubkeyX)).toBe(bytesToHex(expectedX));
+    expect(bytesToHex(result.pubkeyY)).toBe(bytesToHex(expectedY));
+    expectValidLowSSignature(result);
   });
 
   it("records a different submitter with otherwise-identical inputs separately", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY));
     const db = new MemoryReplayDb({ now: atSampleTime });
 
     const base = await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
@@ -136,7 +389,7 @@ describe("signSignalsWithReplayProtection", () => {
   });
 
   it("records the same submitter with a different timestamp separately", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY));
     const db = new MemoryReplayDb({ now: atSampleTime });
 
     await signSignalsWithReplayProtection(api, key, db, SAMPLE_REQUEST);
@@ -148,8 +401,8 @@ describe("signSignalsWithReplayProtection", () => {
     expect(await db.size()).toBe(2);
   });
 
-  it("evicts records past retention, and a retry after eviction re-signs identically", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+  it("keeps local RFC 6979 signatures stable after eviction", async () => {
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY));
     let now = Number(SAMPLE_REQUEST.timestamp);
     const db = new MemoryReplayDb({ retentionSeconds: 600, now: () => now });
 
@@ -165,7 +418,7 @@ describe("signSignalsWithReplayProtection", () => {
   });
 
   it("caps retained records, dropping the oldest first", async () => {
-    const key = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const key = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY));
     const db = new MemoryReplayDb({ maxEntries: 1, now: atSampleTime });
     const later = { ...SAMPLE_REQUEST, timestamp: SAMPLE_REQUEST.timestamp + 1n };
 
@@ -177,9 +430,9 @@ describe("signSignalsWithReplayProtection", () => {
   });
 
   it("does not serve a record signed by a different key", async () => {
-    const oldKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY));
+    const oldKey = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY));
     const rotatedBytes = new Uint8Array(32).fill(7);
-    const newKey = await loadSignerKey(new RawKeyLoader(rotatedBytes));
+    const newKey = await loadLocalSigner(new RawPrivateKeyLoader(rotatedBytes));
     const db = new MemoryReplayDb({ now: atSampleTime });
 
     await signSignalsWithReplayProtection(api, oldKey, db, SAMPLE_REQUEST);
@@ -195,15 +448,15 @@ describe("signSignalsWithReplayProtection", () => {
   });
 });
 
-describe("RawKeyLoader validation", () => {
+describe("RawPrivateKeyLoader validation", () => {
   it("rejects key of wrong length", async () => {
-    expect(() => new RawKeyLoader(new Uint8Array(31))).toThrow();
+    expect(() => new RawPrivateKeyLoader(new Uint8Array(31))).toThrow();
   });
 
   it("rejects an out-of-range private key", async () => {
     // n - 0 == 0; key of all zeros is invalid.
     const zero = new Uint8Array(32);
-    await expect(loadSignerKey(new RawKeyLoader(zero, "zero-key"))).rejects.toThrow(
+    await expect(loadLocalSigner(new RawPrivateKeyLoader(zero, "zero-key"))).rejects.toThrow(
       /invalid secp256k1 key/,
     );
   });

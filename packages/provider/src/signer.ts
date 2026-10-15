@@ -12,7 +12,6 @@
  * signer itself is stateless beyond the loaded key.
  */
 
-import { secp256k1 } from "@noble/curves/secp256k1";
 import type { Barretenberg } from "@aztec/bb.js";
 
 import {
@@ -23,7 +22,7 @@ import {
   MAX_PROVIDERS_MULTI,
   type SignedSignalsProofType,
 } from "./pedersen.js";
-import type { SignerKey } from "./keystore.js";
+import { validatedSignDigest, type DigestSigner } from "./keystore.js";
 
 /** What the provider knows / produces about a screening result. */
 export interface SignSignalsRequest {
@@ -76,13 +75,18 @@ export interface SignSignalsResult {
 }
 
 /**
- * Sign the screening bundle. Pure compute -- no I/O, no replay-DB, no
- * networking. The caller is responsible for replay-protection and audit
- * logging around this call.
+ * Sign the screening bundle.
+ *
+ * Digest construction and validation are local. `DigestSigner.signDigest` may
+ * perform remote I/O; its adapter owns authentication, timeout, cancellation,
+ * retry, DER decoding and low-S normalization. Adapter failures propagate.
+ * Retrying the digest is safe, but byte-identical output requires retained
+ * replay state when the adapter is nondeterministic. The caller is responsible
+ * for replay protection and audit logging around this call.
  */
 export async function signSignals(
   api: Barretenberg,
-  key: SignerKey,
+  signer: DigestSigner,
   req: SignSignalsRequest,
 ): Promise<SignSignalsResult> {
   const payloadHash = await computeSignedPayloadHash(api, {
@@ -96,20 +100,24 @@ export async function signSignals(
     submitter: req.submitter,
   });
 
-  // secp256k1 ECDSA over the 32-byte payload digest. Low-S normalized so the
-  // signature is canonical -- matches Ethereum's EIP-2 convention and removes
-  // the malleability factor.
-  const sig = secp256k1.sign(payloadHash, key.privateKey, { lowS: true });
-  const signature = sig.toCompactRawBytes(); // 64 bytes: r || s
+  return signPayloadHash(api, signer, payloadHash);
+}
 
-  const signerPubkeyHash = await computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY);
+/** Internal shared path for callers that already computed an immutable digest. */
+export async function signPayloadHash(
+  api: Barretenberg,
+  signer: DigestSigner,
+  payloadHash: Uint8Array,
+): Promise<SignSignalsResult> {
+  const signed = await validatedSignDigest(signer, payloadHash);
+  const signerPubkeyHash = await computeSignerPubkeyHash(api, signed.publicKeyX, signed.publicKeyY);
 
   return {
-    signature,
-    pubkeyX: key.publicKeyX,
-    pubkeyY: key.publicKeyY,
-    signerPubkeyHash,
-    payloadHash,
+    signature: signed.signature.slice(),
+    pubkeyX: signed.publicKeyX.slice(),
+    pubkeyY: signed.publicKeyY.slice(),
+    signerPubkeyHash: signerPubkeyHash.slice(),
+    payloadHash: payloadHash.slice(),
   };
 }
 
@@ -148,12 +156,14 @@ export interface SignSlotRequest {
  * Sign a single slot of a COMPLIANCE_MULTI_SIGNED bundle. Output matches the
  * shape `proveComplianceMultiSigned` expects for the corresponding slot.
  *
- * `slotIndex` is part of the signed digest -- copying the signature to a
- * different slot at proof-generation time will fail the in-circuit verifier.
+ * Digest construction and validation are local; `DigestSigner.signDigest` may
+ * perform remote I/O and adapter failures propagate. `slotIndex` is part of
+ * the signed digest, so copying the signature to a different slot at
+ * proof-generation time will fail the in-circuit verifier.
  */
 export async function signSlotPayload(
   api: Barretenberg,
-  key: SignerKey,
+  signer: DigestSigner,
   req: SignSlotRequest,
 ): Promise<SignSignalsResult> {
   if (
@@ -179,18 +189,7 @@ export async function signSlotPayload(
     submitter: req.submitter,
   });
 
-  const sig = secp256k1.sign(payloadHash, key.privateKey, { lowS: true });
-  const signature = sig.toCompactRawBytes();
-
-  const signerPubkeyHash = await computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY);
-
-  return {
-    signature,
-    pubkeyX: key.publicKeyX,
-    pubkeyY: key.publicKeyY,
-    signerPubkeyHash,
-    payloadHash,
-  };
+  return signPayloadHash(api, signer, payloadHash);
 }
 
 /**

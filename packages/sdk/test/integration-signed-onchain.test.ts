@@ -45,12 +45,12 @@ import { Barretenberg } from "@aztec/bb.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import { ERC8262Prover, PROOF_TYPES } from "../src/index.js";
 import {
-  RawKeyLoader,
-  loadSignerKey,
+  RawPrivateKeyLoader,
+  loadLocalSigner,
   MemoryReplayDb,
   bytesToHex,
   computeSignerPubkeyHash,
-  type SignerKey,
+  type DestroyableDigestSigner,
 } from "@xochi/provider";
 import { createDaemonServer, type DaemonServer } from "../../provider/daemon/src/server.js";
 import { MemoryAuditSink } from "../../provider/daemon/src/audit.js";
@@ -157,7 +157,7 @@ let signedComplianceVerifier: Address;
 let configHash: Hex;
 
 let api: Barretenberg;
-let signerKey: SignerKey;
+let signer: DestroyableDigestSigner;
 let daemonServer: DaemonServer;
 let daemonUrl: string;
 let prover: ERC8262Prover;
@@ -257,7 +257,7 @@ beforeAll(async () => {
 
   // Start the signing daemon in-process.
   api = await Barretenberg.new();
-  signerKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "onchain-integration"));
+  signer = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "onchain-integration"));
   // Ledger clock = wall clock, like anvil's block time and the daemon policy.
   const replayDb = new MemoryReplayDb();
   const audit = new MemoryAuditSink();
@@ -283,7 +283,7 @@ beforeAll(async () => {
     credentialRootMaxValiditySeconds: 3600,
     allowInsecureBind: false,
   };
-  daemonServer = createDaemonServer({ api, signerKey, replayDb, audit }, config);
+  daemonServer = createDaemonServer({ api, signer, replayDb, audit }, config);
   const { host, port } = await daemonServer.listen();
   daemonUrl = `http://${host}:${String(port)}`;
 
@@ -293,6 +293,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (daemonServer) await daemonServer.close();
   if (prover) await prover.destroy();
+  if (signer) signer.destroy();
   if (api) await api.destroy();
   if (anvil) anvil.kill("SIGTERM");
 });
@@ -319,14 +320,9 @@ describe("daemon -> proveComplianceSigned -> on-chain submitCompliance", () => {
     const { signerPubkeyHash } = (await pubkeyRes.json()) as { signerPubkeyHash: Hex };
     expect(signerPubkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
 
-    // Cross-check: the daemon's hash must equal what `loadSignerKey` would
-    // produce -- otherwise the on-chain registry would not authenticate
-    // the signer this test uses.
-    const expectedHash = await computeSignerPubkeyHash(
-      api,
-      signerKey.publicKeyX,
-      signerKey.publicKeyY,
-    );
+    // Cross-check: the daemon's hash must equal what `loadLocalSigner` produced
+    // or the on-chain registry would not authenticate this signer.
+    const expectedHash = await computeSignerPubkeyHash(api, signer.publicKeyX, signer.publicKeyY);
     expect(signerPubkeyHash).toBe(bytesToHex(expectedHash));
 
     // 2. Register the signer on-chain.

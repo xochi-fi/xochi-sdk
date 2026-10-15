@@ -21,19 +21,34 @@ npm install @xochi/provider @aztec/bb.js viem
 `viem@^2` is a peer dependency; `@aztec/bb.js` provides the `Barretenberg` instance used for
 Pedersen hashing. ESM-only (`require()` works on Node 22.12+).
 
-Keys load through a `KeyLoader`. `RawKeyLoader`/`HexKeyLoader` are for tests; in production,
-implement `KeyLoader` over a KMS or HSM.
+Production key custody uses `DigestSigner`: the package constructs and validates each 32-byte
+protocol digest locally and passes only that digest to `signDigest`. One `DigestSigner` object
+represents one stable key identity; rotation creates a new object. The adapter exposes copied
+32-byte secp256k1 `publicKeyX` / `publicKeyY` coordinates and returns canonical 64-byte `r || s`
+with low S. `signDigest` may perform remote I/O; the adapter owns custody authentication, timeout,
+cancellation, retry, DER decoding and low-S normalization. Adapter failures propagate to the
+caller. The package validates the signature against one copied identity snapshot and derives the
+Ethereum recovery bit before returning it. No private-key bytes cross this interface. `label` is a
+non-secret diagnostic identifier recorded in private daemon audit failures; do not put secrets in
+it.
+
+`PrivateKeyLoader`, `RawPrivateKeyLoader`, `HexPrivateKeyLoader` and `loadLocalSigner` are the
+explicitly extractable-key path for tests, development and the reference daemon, not production
+custody. `loadPrivateKey()` returns a fresh caller-owned 32-byte buffer; ownership transfers to
+`loadLocalSigner`, which may overwrite it immediately and keeps a separate owned copy.
+`destroy()` wipes the local signer's owned copy. It cannot wipe immutable strings or copies
+retained by callers or loaders.
 
 ## Signed signals (0x07 / 0x08)
 
 ```typescript
 import { Barretenberg } from "@aztec/bb.js";
-import { RawKeyLoader, loadSignerKey, signSignals } from "@xochi/provider";
+import { RawPrivateKeyLoader, loadLocalSigner, signSignals } from "@xochi/provider";
 
 const api = await Barretenberg.new();
-const signerKey = await loadSignerKey(new RawKeyLoader(privateKeyBytes, "provider-1"));
+const signer = await loadLocalSigner(new RawPrivateKeyLoader(privateKeyBytes, "provider-1"));
 
-const signed = await signSignals(api, signerKey, {
+const signed = await signSignals(api, signer, {
   proofType: 0x07, // 0x07 COMPLIANCE_SIGNED or 0x08 RISK_SCORE_SIGNED
   chainId: 1n, // EVM chain ID of the consuming Oracle
   oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
@@ -44,6 +59,8 @@ const signed = await signSignals(api, signerKey, {
   submitter: BigInt(account.address),
 });
 // signed: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as Uint8Array
+signer.destroy();
+await api.destroy();
 ```
 
 Pass `signed` as `signedBundle` to `@xochi/sdk`'s `proveComplianceSigned` / `proveRiskScoreSigned`
@@ -81,7 +98,7 @@ inactive). M must meet `MIN_MULTI_PROVIDER_THRESHOLDS` (EU 1, UK 1, US 2, SG 2, 
 ```typescript
 import { signCredentialRoot } from "@xochi/provider";
 
-const { signature, signer } = signCredentialRoot(signerKey, {
+const { signature, signer: signerAddress } = await signCredentialRoot(signer, {
   chainId: 8453n,
   oracleAddress: "0x...",
   providerId: 1n,
@@ -90,12 +107,15 @@ const { signature, signer } = signCredentialRoot(signerKey, {
   notBefore: 1790000000n,
   notAfter: 1790003600n,
 });
-// Register `signer` via setCredentialSigner(providerId, signer); a separate publisher EOA submits:
+// Register `signerAddress` via setCredentialSigner(providerId, signerAddress);
+// a separate publisher EOA submits:
 await oracle.publishCredentialRoot(1n, root, cid, notBefore, notAfter, signature);
 ```
 
 `credentialRootDigest`, `hashPublication`, `buildDomainSeparator` and `cidHash` are exported for
 verification.
+
+`signCredentialRoot` is asynchronous because `DigestSigner.signDigest` may call remote custody.
 
 ## Rules
 
@@ -106,12 +126,31 @@ verification.
 - A 0x09 signature is bound to its `slotIndex`; it does not verify in another slot.
 - `submitter` is signed and must be the account that submits the proof.
 - The signed `timestamp` must be under 1 hour old when the proof reaches the Oracle.
-- Signing is deterministic (RFC 6979); `signSignalsWithReplayProtection` /
-  `signSlotPayloadWithReplayProtection` over a `ReplayDb` answer identical retries identically.
+- The local signer uses deterministic RFC 6979 signing, but generic KMS/HSM `DigestSigner`
+  adapters may return different valid low-S signatures for the same digest.
+- `signSignalsWithReplayProtection` / `signSlotPayloadWithReplayProtection` return byte-identical
+  bundles while a matching `ReplayDb` record is retained, including concurrent attempts.
+  `ReplayDb.recordCanonical` must atomically retain and return one winner across every process
+  sharing persistent storage; a process-local lock is insufficient. `inserted` is true only when
+  that call's candidate became the retained row. Production storage must persist across restarts
+  and retain records for the full proof-validity window; eviction or loss can produce another valid
+  signature.
+
+Replay rows cross a storage trust boundary. Before releasing a lookup or canonical winner, the
+package copies and validates every fixed-length field, the compact low-S signature against the
+captured signer and payload, and the signer commitment. Corrupt rows fail closed. The store remains
+responsible for durable atomicity and retention; a storage failure after custody signing returns no
+bundle, but a later attempt may invoke custody again.
+
+Retrying the same digest is cryptographically safe. A generic adapter may produce different valid
+low-S bytes on each attempt, so byte-identical retry output depends on the matching replay record
+remaining available. `signCredentialRoot` has no built-in replay ledger; callers that require
+byte-identical credential-root retries must retain those results themselves.
 
 ## Registering the signer
 
-`computeSignerPubkeyHash(api, key.publicKeyX, key.publicKeyY)` gives the `signer_pubkey_hash`.
+`computeSignerPubkeyHash(api, signer.publicKeyX, signer.publicKeyY)` gives the
+`signer_pubkey_hash`.
 Register it once with `oracle.registerSignerPubkeyHash(hash, providerId)` (`@xochi/sdk`); one
 registration covers 0x07, 0x08 and 0x09.
 

@@ -20,7 +20,12 @@ import type { Address } from "viem";
 import { Barretenberg } from "@aztec/bb.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
 import { ERC8262Prover, PUBLIC_INPUT_COUNTS, PROOF_TYPES } from "../src/index.js";
-import { RawKeyLoader, loadSignerKey, signSignals, type SignerKey } from "@xochi/provider";
+import {
+  RawPrivateKeyLoader,
+  loadLocalSigner,
+  signSignals,
+  type DestroyableDigestSigner,
+} from "@xochi/provider";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -36,17 +41,18 @@ const TEST_PRIVATE_KEY = new Uint8Array(32);
 for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 
 let api: Barretenberg;
-let signerKey: SignerKey;
+let signer: DestroyableDigestSigner;
 const loader = new BundledCircuitLoader();
 const prover = new ERC8262Prover(loader);
 
 beforeAll(async () => {
   api = await Barretenberg.new();
-  signerKey = await loadSignerKey(new RawKeyLoader(TEST_PRIVATE_KEY, "integration-signed"));
+  signer = await loadLocalSigner(new RawPrivateKeyLoader(TEST_PRIVATE_KEY, "integration-signed"));
 }, 60_000);
 
 afterAll(async () => {
   await prover.destroy();
+  signer.destroy();
   await api.destroy();
 });
 
@@ -55,7 +61,7 @@ describe("compliance_signed end-to-end", () => {
     // The signer needs the same payload values the circuit will compute its
     // digest from. signals/weights match the single-provider Prover.toml that
     // pinned PROVIDER_SET_HASH, score=25 stays under EU's 7100 bps threshold.
-    const signed = await signSignals(api, signerKey, {
+    const signed = await signSignals(api, signer, {
       proofType: PROOF_TYPES.COMPLIANCE_SIGNED,
       chainId: TEST_CHAIN_ID,
       oracleAddress: TEST_ORACLE_ADDRESS,
@@ -91,7 +97,7 @@ describe("compliance_signed end-to-end", () => {
   it("rejects a proof when signature is over a different payload", async () => {
     // Sign payload A, then try to use that signature with payload B inputs.
     // Witness generation should fail in the in-circuit ECDSA verify.
-    const signed = await signSignals(api, signerKey, {
+    const signed = await signSignals(api, signer, {
       proofType: PROOF_TYPES.COMPLIANCE_SIGNED,
       chainId: TEST_CHAIN_ID,
       oracleAddress: TEST_ORACLE_ADDRESS,
@@ -121,7 +127,7 @@ describe("compliance_signed end-to-end", () => {
 
 describe("risk_score_signed end-to-end", () => {
   const signRiskBundle = (proofType: 0x07 | 0x08) =>
-    signSignals(api, signerKey, {
+    signSignals(api, signer, {
       proofType,
       chainId: TEST_CHAIN_ID,
       oracleAddress: TEST_ORACLE_ADDRESS,

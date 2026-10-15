@@ -30,12 +30,12 @@ export {
 } from "./pedersen.js";
 
 export {
-  type KeyLoader,
-  type SignerKey,
-  RawKeyLoader,
-  HexKeyLoader,
-  loadSignerKey,
-  wipeKey,
+  type DigestSigner,
+  type DestroyableDigestSigner,
+  type PrivateKeyLoader,
+  RawPrivateKeyLoader,
+  HexPrivateKeyLoader,
+  loadLocalSigner,
 } from "./keystore.js";
 
 export {
@@ -65,6 +65,7 @@ export {
 
 export {
   type ReplayDb,
+  type ReplayRecordResult,
   type MemoryReplayDbOptions,
   type LedgeredSignResult,
   MemoryReplayDb,

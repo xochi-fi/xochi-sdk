@@ -27,14 +27,19 @@
 
 import { Barretenberg } from "@aztec/bb.js";
 
-import { HexKeyLoader, loadSignerKey, MemoryReplayDb } from "@xochi/provider";
+import {
+  HexPrivateKeyLoader,
+  loadLocalSigner,
+  MemoryReplayDb,
+  type DestroyableDigestSigner,
+} from "@xochi/provider";
 import { loadConfig } from "./config.ts";
 import { makeAuditSink } from "./audit.ts";
 import { createDaemonServer } from "./server.ts";
+import { formatUnknownError } from "./error-format.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-
   process.stderr.write(
     `[xochi-provider] starting on ${config.host}:${String(config.port)}` +
       ` (tls=${String(Boolean(config.tlsCertPath))} mtls=${String(Boolean(config.clientCaPath))})` +
@@ -42,29 +47,59 @@ async function main(): Promise<void> {
   );
 
   const api = await Barretenberg.new();
-  const signerKey = await loadSignerKey(
-    new HexKeyLoader(config.signerKeyHex, config.providerLabel),
-  );
-  // Nothing older than the freshness window can be signed again, so records
-  // past it are dead weight.
+  let signer: DestroyableDigestSigner;
+  try {
+    signer = await loadLocalSigner(
+      new HexPrivateKeyLoader(config.signerKeyHex, config.providerLabel),
+    );
+  } catch (cause) {
+    await api.destroy();
+    throw cause;
+  }
+
   const replayDb = new MemoryReplayDb({
     retentionSeconds: config.maxTimestampAgeSeconds + config.maxTimestampSkewSeconds,
   });
   const audit = makeAuditSink(config.auditLogPath);
+  const server = createDaemonServer({ api, signer, replayDb, audit }, config);
 
-  const server = createDaemonServer({ api, signerKey, replayDb, audit }, config);
+  try {
+    const { host, port } = await server.listen();
+    process.stderr.write(`[xochi-provider] listening on ${host}:${String(port)}\n`);
+  } catch (cause) {
+    const cleanup = await Promise.allSettled([
+      audit.close(),
+      Promise.resolve().then(() => signer.destroy()),
+      api.destroy(),
+    ]);
+    const cleanupFailures = cleanup
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => formatUnknownError(result.reason));
+    if (cleanupFailures.length > 0) {
+      process.stderr.write(
+        `[xochi-provider] startup cleanup failed: ${cleanupFailures.join("; ")}\n`,
+      );
+    }
+    throw cause;
+  }
 
-  const { host, port } = await server.listen();
-  process.stderr.write(`[xochi-provider] listening on ${host}:${String(port)}\n`);
-
+  let shutdownStarted = false;
   const shutdown = async (signal: string): Promise<void> => {
+    if (shutdownStarted) return;
+    shutdownStarted = true;
     process.stderr.write(`[xochi-provider] received ${signal}, shutting down\n`);
-    try {
-      await server.close();
-      await audit.close();
-      await api.destroy();
-    } catch (err) {
-      process.stderr.write(`[xochi-provider] shutdown error: ${(err as Error).message}\n`);
+
+    const cleanup = await Promise.allSettled([
+      server.close(),
+      audit.close(),
+      Promise.resolve().then(() => signer.destroy()),
+      api.destroy(),
+    ]);
+    const failures = cleanup
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => formatUnknownError(result.reason));
+    if (failures.length > 0) {
+      process.stderr.write(`[xochi-provider] shutdown error: ${failures.join("; ")}\n`);
       process.exit(1);
     }
     process.exit(0);
@@ -74,7 +109,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-main().catch((err: Error) => {
-  process.stderr.write(`[xochi-provider] fatal: ${err.message}\n`);
+main().catch((err: unknown) => {
+  process.stderr.write(`[xochi-provider] fatal: ${formatUnknownError(err)}\n`);
   process.exit(1);
 });

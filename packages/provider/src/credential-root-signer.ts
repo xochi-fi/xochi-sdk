@@ -1,19 +1,17 @@
 /**
  * Credential-root publication signing.
  *
- * The provider's signing key (held in HSM/KMS, distinct from the publisher EOA)
- * signs an EIP-712 `CredentialRootPublication` struct. The Oracle verifies the
- * signature on-chain via `ecrecover` at `publishCredentialRoot` time. A
- * compromised publisher EOA alone cannot mint credential roots, since it does
- * not hold the signing key.
+ * A provider-controlled `DigestSigner` (normally a non-exportable KMS/HSM
+ * key, distinct from the publisher EOA) signs an EIP-712
+ * `CredentialRootPublication`. The Oracle verifies the signature on-chain via
+ * `ecrecover`; a compromised publisher EOA alone cannot mint roots.
  */
 
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak256 } from "viem";
 
 import { credentialRootDigest, cidHash } from "./eip712.js";
+import { validatedSignDigest, type DigestSigner } from "./keystore.js";
 import { fieldToBytes } from "./pedersen.js";
-import type { SignerKey } from "./keystore.js";
 
 /** Inputs to a credential-root publication signature. */
 export interface SignCredentialRootRequest {
@@ -51,11 +49,19 @@ function ethereumAddressFromPubkey(x: Uint8Array, y: Uint8Array): `0x${string}` 
   return ("0x" + digest.slice(-40)) as `0x${string}`;
 }
 
-/** Sign a CredentialRootPublication. Pure compute. */
-export function signCredentialRoot(
-  key: SignerKey,
+/**
+ * Asynchronously sign a CredentialRootPublication.
+ *
+ * Digest construction and validation are local. `DigestSigner.signDigest` may
+ * perform remote I/O; its adapter owns authentication, timeout, cancellation,
+ * retry, DER decoding and low-S normalization. Adapter failures propagate.
+ * Retrying the digest is safe. This function has no replay ledger; callers
+ * requiring byte-identical retries must retain the result themselves.
+ */
+export async function signCredentialRoot(
+  signer: DigestSigner,
   req: SignCredentialRootRequest,
-): SignCredentialRootResult {
+): Promise<SignCredentialRootResult> {
   const digestHex = credentialRootDigest({
     chainId: req.chainId,
     oracleAddress: req.oracleAddress,
@@ -68,15 +74,13 @@ export function signCredentialRoot(
     },
   });
   const digest = fieldToBytes(BigInt(digestHex));
-  const sig = secp256k1.sign(digest, key.privateKey, { lowS: true });
-  const compact = sig.toCompactRawBytes(); // 64 bytes: r || s
-  const recovery = sig.recovery; // 0 or 1
-  const out = new Uint8Array(65);
-  out.set(compact, 0);
-  out[64] = 27 + (recovery ?? 0);
+  const signed = await validatedSignDigest(signer, digest);
+  const signature = new Uint8Array(65);
+  signature.set(signed.signature, 0);
+  signature[64] = 27 + signed.recovery;
   return {
-    signature: out,
-    digest,
-    signer: ethereumAddressFromPubkey(key.publicKeyX, key.publicKeyY),
+    signature,
+    digest: digest.slice(),
+    signer: ethereumAddressFromPubkey(signed.publicKeyX, signed.publicKeyY),
   };
 }

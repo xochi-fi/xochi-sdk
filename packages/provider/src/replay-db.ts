@@ -2,29 +2,33 @@
  * Signing ledger for the provider signing daemon.
  *
  * Records every signed bundle keyed by `(submitter, payloadHash)` so an
- * identical retry (network blip, orchestrator restart) gets the SAME signature
- * back instead of an error. That is safe because the signature is
- * deterministic: secp256k1 signing uses RFC 6979 nonces, so signing the same
- * digest with the same key always yields the same bytes. Refusing a repeat
- * would protect nothing (the caller already holds the identical signature) and
- * turn every legitimate retry into a permanent 409. On-chain replay is
+ * identical retry (network blip, orchestrator restart) gets the same retained
+ * signature back instead of an error. Generic KMS/HSM `DigestSigner`
+ * implementations may produce different valid signatures for the same digest,
+ * so the retained record is what guarantees byte identity. On-chain replay is
  * prevented by the Oracle's `_usedProofs`, not here.
  *
- * Because every record is reproducible from its request, evicting one never
- * changes what a later retry receives; it only costs a re-sign. The in-memory
- * ledger therefore evicts records whose signed timestamp has aged out of the
- * retention window, and caps its size.
- *
- * Production deployments wire a persistent store (sqlite, redis, postgres)
- * via the `ReplayDb` interface without touching the signer.
+ * Eviction or loss of a record can therefore cause a later retry to receive a
+ * different valid signature. Retention must span the proof-validity window,
+ * and production deployments must use a persistent store (sqlite, redis,
+ * postgres) via the `ReplayDb` interface so records survive process restarts.
  */
 
 import type { Barretenberg } from "@aztec/bb.js";
-import type { SignerKey } from "./keystore.js";
-import { bytesToHex, computeSignedPayloadHash, computeSlotPayloadHash } from "./pedersen.js";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import {
-  signSignals,
-  signSlotPayload,
+  snapshotDigestSignerIdentity,
+  type DigestSigner,
+  type DigestSignerIdentitySnapshot,
+} from "./keystore.js";
+import {
+  bytesToHex,
+  computeSignedPayloadHash,
+  computeSignerPubkeyHash,
+  computeSlotPayloadHash,
+} from "./pedersen.js";
+import {
+  signPayloadHash,
   type SignSignalsRequest,
   type SignSignalsResult,
   type SignSlotRequest,
@@ -36,19 +40,32 @@ export interface ReplayDb {
   lookup(submitter: bigint, payloadHash: Uint8Array): Promise<SignSignalsResult | undefined>;
 
   /**
-   * Record a signed bundle. `timestamp` is the signed timestamp (seconds) and
-   * drives retention. Recording an existing key replaces it (the new bundle is
-   * identical unless the signing key rotated).
+   * Atomically retain `result` if no bundle for this key and signer identity
+   * exists, then return the canonical retained bundle. This atomicity MUST
+   * hold across every process sharing a persistent implementation; a
+   * process-local lock is insufficient. Concurrent contenders MUST all
+   * receive the same bundle. A record from another signer identity is
+   * replaced atomically.
+   *
+   * `inserted` is true only when this call retained or replaced the row with
+   * its candidate. It is false when an existing canonical row won.
    */
-  record(
+  recordCanonical(
     submitter: bigint,
     payloadHash: Uint8Array,
     timestamp: bigint,
     result: SignSignalsResult,
-  ): Promise<void>;
+  ): Promise<ReplayRecordResult>;
 
   /** Count of retained records, surfaced in metrics. */
   size(): Promise<number>;
+}
+
+/** Result of atomically publishing one candidate replay record. */
+export interface ReplayRecordResult {
+  result: SignSignalsResult;
+  /** Whether this call's candidate became the retained canonical row. */
+  inserted: boolean;
 }
 
 export interface MemoryReplayDbOptions {
@@ -92,26 +109,33 @@ export class MemoryReplayDb implements ReplayDb {
 
   async lookup(submitter: bigint, payloadHash: Uint8Array): Promise<SignSignalsResult | undefined> {
     this.evictExpired();
-    return this.entries.get(keyFor(submitter, payloadHash))?.result;
+    const result = this.entries.get(keyFor(submitter, payloadHash))?.result;
+    return result === undefined ? undefined : copySignSignalsResult(result);
   }
 
-  async record(
+  async recordCanonical(
     submitter: bigint,
     payloadHash: Uint8Array,
     timestamp: bigint,
     result: SignSignalsResult,
-  ): Promise<void> {
+  ): Promise<ReplayRecordResult> {
     this.evictExpired();
     const key = keyFor(submitter, payloadHash);
-    // delete-then-set moves a replaced key to the newest insertion position.
+    const existing = this.entries.get(key)?.result;
+    if (existing && resultMatchesIdentity(existing, result.pubkeyX, result.pubkeyY)) {
+      return { result: copySignSignalsResult(existing), inserted: false };
+    }
+
+    // No await occurs in this read/replace sequence, so it is atomic within
+    // one MemoryReplayDb instance.
     this.entries.delete(key);
-    this.entries.set(key, { timestamp, result });
-    // Map iteration order is insertion order, so the first key is the oldest.
+    this.entries.set(key, { timestamp, result: copySignSignalsResult(result) });
     while (this.entries.size > this.maxEntries) {
       const oldest = this.entries.keys().next().value;
       if (oldest === undefined) break;
       this.entries.delete(oldest);
     }
+    return { result: copySignSignalsResult(result), inserted: true };
   }
 
   async size(): Promise<number> {
@@ -136,32 +160,131 @@ function keyFor(submitter: bigint, payloadHash: Uint8Array): string {
   return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
 }
 
+function copyBytes(value: unknown, label: string): Uint8Array {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`replay DB returned ${label} that is not a Uint8Array`);
+  }
+  const copy = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    copy[index] = value[index];
+  }
+  return copy;
+}
+
+function copySignSignalsResult(result: SignSignalsResult): SignSignalsResult {
+  return {
+    signature: copyBytes(result.signature, "signature"),
+    pubkeyX: copyBytes(result.pubkeyX, "pubkeyX"),
+    pubkeyY: copyBytes(result.pubkeyY, "pubkeyY"),
+    signerPubkeyHash: copyBytes(result.signerPubkeyHash, "signerPubkeyHash"),
+    payloadHash: copyBytes(result.payloadHash, "payloadHash"),
+  };
+}
+
+function resultMatchesIdentity(
+  result: SignSignalsResult,
+  publicKeyX: Uint8Array,
+  publicKeyY: Uint8Array,
+): boolean {
+  if (result.pubkeyX.length !== publicKeyX.length || result.pubkeyY.length !== publicKeyY.length) {
+    return false;
+  }
+  for (let index = 0; index < publicKeyX.length; index += 1) {
+    if (result.pubkeyX[index] !== publicKeyX[index]) return false;
+  }
+  for (let index = 0; index < publicKeyY.length; index += 1) {
+    if (result.pubkeyY[index] !== publicKeyY[index]) return false;
+  }
+  return true;
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && left.every((byte, index) => byte === right[index]);
+}
+
+async function validateReplayResult(
+  api: Barretenberg,
+  stored: SignSignalsResult,
+  identity: DigestSignerIdentitySnapshot,
+  payloadHash: Uint8Array,
+): Promise<SignSignalsResult> {
+  const result = copySignSignalsResult(stored);
+  if (
+    result.signature.length !== 64 ||
+    result.pubkeyX.length !== 32 ||
+    result.pubkeyY.length !== 32 ||
+    result.signerPubkeyHash.length !== 32 ||
+    result.payloadHash.length !== 32
+  ) {
+    throw new Error("replay DB returned a bundle with invalid field lengths");
+  }
+  if (!resultMatchesIdentity(result, identity.publicKeyX, identity.publicKeyY)) {
+    throw new Error("replay DB returned a bundle for a different signer identity");
+  }
+  if (!bytesEqual(result.payloadHash, payloadHash)) {
+    throw new Error("replay DB returned a bundle for a different payload hash");
+  }
+
+  let signature;
+  try {
+    signature = secp256k1.Signature.fromCompact(result.signature);
+  } catch (cause) {
+    throw new Error("replay DB returned an invalid compact signature", { cause });
+  }
+  if (signature.hasHighS()) {
+    throw new Error("replay DB returned a non-canonical high-S signature");
+  }
+  const publicKey = new Uint8Array(65);
+  publicKey[0] = 0x04;
+  publicKey.set(identity.publicKeyX, 1);
+  publicKey.set(identity.publicKeyY, 33);
+  if (!secp256k1.verify(signature, payloadHash, publicKey, { lowS: true })) {
+    throw new Error("replay DB returned a signature that does not match its payload and signer");
+  }
+
+  const expectedCommitment = await computeSignerPubkeyHash(
+    api,
+    identity.publicKeyX,
+    identity.publicKeyY,
+  );
+  if (!bytesEqual(result.signerPubkeyHash, expectedCommitment)) {
+    throw new Error("replay DB returned an incorrect signer commitment");
+  }
+  return result;
+}
+
 /** A signed bundle plus whether it was served from the ledger (an identical retry). */
 export interface LedgeredSignResult extends SignSignalsResult {
   replayed: boolean;
 }
 
 async function signThroughLedger(
+  api: Barretenberg,
   db: ReplayDb,
-  key: SignerKey,
+  signer: DigestSigner,
   submitter: bigint,
   timestamp: bigint,
   payloadHash: Uint8Array,
-  sign: () => Promise<SignSignalsResult>,
+  sign: (capturedSigner: DigestSigner) => Promise<SignSignalsResult>,
 ): Promise<LedgeredSignResult> {
+  const identity = snapshotDigestSignerIdentity(signer);
+  const capturedSigner: DigestSigner = {
+    label: identity.label,
+    publicKeyX: identity.publicKeyX,
+    publicKeyY: identity.publicKeyY,
+    signDigest: signer.signDigest.bind(signer),
+  };
+
   const recorded = await db.lookup(submitter, payloadHash);
-  // A record is only reusable if the key loaded now produced it: a persistent
-  // ledger can outlive a key rotation.
-  if (
-    recorded &&
-    bytesToHex(recorded.pubkeyX) === bytesToHex(key.publicKeyX) &&
-    bytesToHex(recorded.pubkeyY) === bytesToHex(key.publicKeyY)
-  ) {
-    return { ...recorded, replayed: true };
+  if (recorded && resultMatchesIdentity(recorded, identity.publicKeyX, identity.publicKeyY)) {
+    const validated = await validateReplayResult(api, recorded, identity, payloadHash);
+    return { ...validated, replayed: true };
   }
-  const result = await sign();
-  await db.record(submitter, payloadHash, timestamp, result);
-  return { ...result, replayed: false };
+
+  const candidate = await sign(capturedSigner);
+  const canonical = await db.recordCanonical(submitter, payloadHash, timestamp, candidate);
+  const validated = await validateReplayResult(api, canonical.result, identity, payloadHash);
+  return { ...validated, replayed: !canonical.inserted };
 }
 
 /**
@@ -170,7 +293,7 @@ async function signThroughLedger(
  */
 export async function signSignalsWithReplayProtection(
   api: Barretenberg,
-  key: SignerKey,
+  signer: DigestSigner,
   db: ReplayDb,
   req: SignSignalsRequest,
 ): Promise<LedgeredSignResult> {
@@ -184,8 +307,14 @@ export async function signSignalsWithReplayProtection(
     timestamp: req.timestamp,
     submitter: req.submitter,
   });
-  return signThroughLedger(db, key, req.submitter, req.timestamp, payloadHash, () =>
-    signSignals(api, key, req),
+  return signThroughLedger(
+    api,
+    db,
+    signer,
+    req.submitter,
+    req.timestamp,
+    payloadHash,
+    (capturedSigner) => signPayloadHash(api, capturedSigner, payloadHash),
   );
 }
 
@@ -197,7 +326,7 @@ export async function signSignalsWithReplayProtection(
  */
 export async function signSlotPayloadWithReplayProtection(
   api: Barretenberg,
-  key: SignerKey,
+  signer: DigestSigner,
   db: ReplayDb,
   req: SignSlotRequest,
 ): Promise<LedgeredSignResult> {
@@ -213,7 +342,13 @@ export async function signSlotPayloadWithReplayProtection(
     timestamp: req.timestamp,
     submitter: req.submitter,
   });
-  return signThroughLedger(db, key, req.submitter, req.timestamp, payloadHash, () =>
-    signSlotPayload(api, key, req),
+  return signThroughLedger(
+    api,
+    db,
+    signer,
+    req.submitter,
+    req.timestamp,
+    payloadHash,
+    (capturedSigner) => signPayloadHash(api, capturedSigner, payloadHash),
   );
 }
