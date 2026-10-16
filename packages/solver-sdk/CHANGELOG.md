@@ -26,7 +26,9 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   venue that has not landed Riddler #1200) is a malformed entry:
   `HttpSolverTransport` reports it to `onInvalidEvent` and delivers the next
   entry, or throws without a handler (ending `SolverClient.run`), as for any
-  malformed entry. It never reaches `solver.quote()`. `SettlementType` and
+  malformed entry. Through `HttpSolverTransport` it never reaches
+  `solver.quote()`; an injected `SolverTransport` is not parsed and must
+  validate with `parseSolverEvent` itself. `SettlementType` and
   both capabilities' `settlementTypes` are unchanged. A comparison against
   `"stealth"` or `"shielded"` no longer compiles; delete the branch.
 - **Version 0.5.0** (MINOR: a breaking type narrowing, pre-1.0).
