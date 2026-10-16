@@ -1391,6 +1391,7 @@ types are the contract.
 | SSE push feed | `[PROPOSED]` | — (long poll is served; SSE is additive) |
 | `GET /solver/awards?since=` | `[PROPOSED]` | — (awards are feed-delivered) |
 | Exact-output RFQ | `[PROPOSED]` | — (unwinnable under a bid with no input field; not announced) |
+| Public-only announcement, `recipientCommitment` withdrawn (`0.5.0-draft`) | `[PROPOSED]` producer; consumer narrowed in `@xochi/solver-sdk` 0.5.0 | Riddler #1200 (PR #1302 open, not deployed); §§2.2, 4.2 |
 | Sealed-bid auction, `Bid`/`Award` | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/{auction,bid,award}.ex` |
 | `SolverDirectory` (allowlist admission) | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/directory.ex` (`SOLVER_DIRECTORY_JSON`) |
 | `SolverReputation` | `[PROPOSED]` | — |
