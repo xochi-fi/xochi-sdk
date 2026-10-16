@@ -1338,14 +1338,23 @@ types are the contract.
   naming the version. Neither shape self-reports, nor does the third below,
   which is why the check is a MUST.
 - **A skew can also move no signed byte and no wire field at all.**
-  `0.4.0-draft` → `0.5.0-draft` changed only what a solver must do with an
-  escrowed award (§7.1 steps 4–7, one acceptance per order): every digest,
-  vector and schema is identical across it, so a `0.4.0-draft` solver bids,
-  wins and accepts normally. The only symptom is behavioural -- it accepts
-  awards it should decline, stops driving a fill it owes, gives up a claim
-  early -- and it surfaces later as slashed bonds and unrepaid fills, never as
-  a refusal. Nothing on the wire can catch an obligations-only MINOR, so the
-  pre-bid version check is its only guard.
+  `0.4.0-draft` → `0.5.0-draft` as first published changed only what a solver
+  must do with an escrowed award (§7.1 steps 4–7, one acceptance per order):
+  every digest, vector and schema is identical across it, so a `0.4.0-draft`
+  solver bids, wins and accepts normally. The only symptom is behavioural -- it
+  accepts awards it should decline, stops driving a fill it owes, gives up a
+  claim early -- and it surfaces later as slashed bonds and unrepaid fills,
+  never as a refusal. Nothing on the wire can catch an obligations-only MINOR,
+  so the pre-bid version check is its only guard.
+- **A withdrawal inside one `rfcVersion` is not caught by the version check
+  either.** The public-only announcement withdrawal (Changes in `0.5.0-draft`)
+  narrows `settlementPreference` and removes `recipientCommitment` without
+  moving `rfcVersion`, so old and new SDKs both advertise `0.5.0-draft`. It is
+  safe only because it narrows what a venue emits: a parser built before it
+  still accepts every announcement a withdrawn producer sends, and a parser
+  built after it refuses a non-public announcement per entry. The guard is the
+  rollout order -- producer first, then old publishers and the feed ring
+  drain -- not this check.
 - **The version lives in exactly one place.** `@xochi/solver-sdk` exports
   `SOLVER_RFC_VERSION` (importable from the package root) and `SolverClient`
   compares it to the venue's advertised `rfcVersion` by exact string equality
