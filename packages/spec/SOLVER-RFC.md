@@ -36,11 +36,13 @@ deploy announces nothing and answers nothing.
 
 ### Changes in `0.5.0-draft`
 
-**Solver obligations only; nothing signed and no wire field moves**, so
-`conformance/solver-bid-v2.json`, `fill-acceptance.json` and every escrow set
-regenerate byte-identical. The version still moves because a solver built to
-`0.4.0-draft` accepts awards this revision tells it to decline, and that skew
-surfaces as slashed bonds, not as a refusal (§12).
+**Nothing signed moves**, so `conformance/solver-bid-v2.json`,
+`fill-acceptance.json` and every escrow set regenerate byte-identical. The
+version moves because a solver built to `0.4.0-draft` accepts awards this
+revision tells it to decline, and that skew surfaces as slashed bonds, not as a
+refusal (§12). One announcement-wire change also lands inside this revision
+(the producer withdrawal below): `settlementPreference` narrows to `"public"`
+and `recipientCommitment` is removed, so an announcement parser MUST change.
 
 - **Decline, never skip** (§7.1 step 4): a solver MUST NOT accept while the
   origin escrow's `claimsPaused()` is true or while the origin claim signer
