@@ -324,7 +324,10 @@ is the dark-pool boundary. The announcement MUST NOT carry taker identity or
 a standalone recipient identifier (address, hash or commitment). An escrow
 `orderId` is still announced; it commits transitively to the destination
 through the blinded `destCommitment` (§7.1), which the panel cannot open, and
-that binding is the only recipient-derived value on the wire. A venue MUST
+that binding is the only recipient-derived value on the wire. Neither field
+is inline identity, but `orderId` is public on the origin chain once the lock
+opens: the panel can join an executed escrow RFQ to `Opened(orderId, ...)`
+and its depositor. A venue MUST
 announce only intents with `settlementPreference: "public"` (§4.2). Both
 rules are the `0.5.0-draft` producer withdrawal: `[PROPOSED]` until Riddler
 #1200 merges to `master`, and the privacy property holds only once it is
@@ -448,9 +451,11 @@ interface IntentAnnouncement {
 }
 ```
 
-The announcement carries **no taker identity, no standalone recipient
+The announcement carries **no inline taker identity, no standalone recipient
 identifier and no signature** (an escrow `orderId` commits to the destination
-only through the blinded `destCommitment`, §7.1): the signed `XochiIntent` and
+only through the blinded `destCommitment`, §7.1, and becomes linkable to its
+depositor through the public `Opened(orderId, ...)` once the lock opens, §2.2):
+the signed `XochiIntent` and
 origin-pull authorization stay with the venue, so the venue rebuilds the digest
 server-side (`SPEC.md` §2).
 
