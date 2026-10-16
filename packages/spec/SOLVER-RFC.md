@@ -320,7 +320,9 @@ the winner receives an exclusive fill window (§6).
 
 The RFQ reveals size **to the solicited panel only**, never to the public.
 Solvers need size to price, so the panel sees it and the market does not, which
-is the dark-pool boundary. The announcement MUST NOT carry taker identity or
+is the dark-pool boundary. That holds for the RFQ itself; an executed escrow
+order then publishes its origin token and amount, `toChainId` and `orderId` in
+`Opened` (ESCROW-RFC §9.1). The announcement MUST NOT carry taker identity or
 a standalone recipient identifier (address, hash or commitment). An escrow
 `orderId` is still announced; it commits transitively to the destination
 through the blinded `destCommitment` (§7.1), which the panel cannot open, and
