@@ -42,8 +42,11 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 - **BREAKING: `IntentAnnouncement.recipientCommitment`**, withdrawn by the
   producer (RFC "Changes in `0.5.0-draft`"). The schema deletes it from a
-  parsed announcement, as it does `reserveOutput` and `trustScore`, so an old
-  event carrying it still parses, without the key. Defence in depth only:
+  parsed announcement, as it does `reserveOutput` and `trustScore`, so a
+  PUBLIC event carrying it still parses, without the key. Riddler emitted it
+  only on stealth and shielded announcements, and those fail the parse as
+  malformed entries with the key intact in `raw` (see "Changed"). Defence in
+  depth only:
   `curl`, a fork, or `onInvalidEvent`'s `raw` still show it while a producer
   sends it. `examples/fill-state-file.ts` drops it from a state file an
   earlier version wrote, so it is neither resumed nor written back.
