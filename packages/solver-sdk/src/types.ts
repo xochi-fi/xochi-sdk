@@ -86,7 +86,10 @@ export interface IntentAnnouncement {
   swapKind: SwapKind;
   fromAmount?: string; // present iff exact_input (origin base units)
   outputAmount?: string; // present iff exact_output (dest base units)
-  settlementPreference: SettlementType;
+  // Public-only (RFC §4.2), narrowed from `SettlementType`: a stealth or
+  // shielded intent is not put to the panel, and the parser refuses any other
+  // value off the feed.
+  settlementPreference: "public";
   // The lowest output the venue will settle at for this intent: a bid below it
   // is rejected outright. It is NOT the venue's reserve bid, which is private
   // (RFC §2.1) -- a bid at `minOutput + 1` is ADMISSIBLE and still loses to the
@@ -95,7 +98,6 @@ export interface IntentAnnouncement {
   opensAt: number; // server clock, ms
   closesAt: number; // sealed-window close, ms
   exclusiveWindowMs: number; // winner's exclusive fill budget after award
-  recipientCommitment?: string; // keyed commitment (HMAC), not reopenable by the panel
 }
 
 // What `Solver.quote` returns: the output it commits to deliver to the taker,

@@ -67,9 +67,6 @@ import { MAX_LOGGED_ERROR_CHARS, assertKeyShape, assertVenueUrl, requireEnv, tam
 // are null on every testnet entry in the taker SDK's CONFIG.CHAINS, so there
 // is nothing else to make a market in here.
 const SUPPORTED_CHAINS = [11155111, 84532, 421614, 11155420];
-// The one settlement mode this solver can service. `stealth`/`shielded` need a
-// destination-side claim path this reference does not implement.
-const SUPPORTED_SETTLEMENT: Record<string, true> = { public: true };
 
 // Per-token limits in that token's OWN base units, and its decimals, which the
 // pricing path below actually reads: `fromAmount` is in the ORIGIN token's base
@@ -133,7 +130,7 @@ const OWN_COST_BPS = 14n;
 
 // How long this solver's pricing takes, end to end. Bids arriving after
 // `closesAt` are rejected 409, so a solver must refuse a window it cannot
-// service rather than spend the round losing to the clock -- round 7 of the
+// service rather than spend the round losing to the clock -- round 6 of the
 // offline script is that race, lost.
 //
 // 40ms is a PLACEHOLDER for the p99 of the pricing call you replace the stub
@@ -486,8 +483,6 @@ class ReferenceSolver implements Solver {
       // on). Refused rather than trusted not to arrive.
       return `swapKind ${tame(ann.swapKind)} is unwinnable under an output-only bid`;
     }
-    if (!SUPPORTED_SETTLEMENT[ann.settlementPreference])
-      return `settlement ${tame(ann.settlementPreference)}`;
     if (!SUPPORTED_CHAINS.includes(ann.fromChainId)) return `origin chain ${ann.fromChainId}`;
     if (!SUPPORTED_CHAINS.includes(ann.toChainId)) return `destination chain ${ann.toChainId}`;
 
@@ -845,7 +840,6 @@ function round(index: number, label: string, spec: RoundSpec = {}): Round {
     opensAt,
     closesAt,
     exclusiveWindowMs: EXCLUSIVE_WINDOW_MS,
-    recipientCommitment: ethers.id(`recipient-${index}`), // venue-keyed HMAC; opaque to you
     ...overrides,
   };
   return {
@@ -885,13 +879,10 @@ const SCRIPT: Round[] = [
     announcement: { fromToken: "usdt", toToken: "usdt" },
   }),
   round(4, "4. size above our cap -> pass", { announcement: { fromAmount: "250000000000" } }),
-  round(5, "5. shielded settlement -> pass", {
-    announcement: { settlementPreference: "shielded" },
-  }),
-  round(6, "6. window already closed on arrival -> client skips before quoting", { offsetMs: 350 }),
+  round(6, "5. window already closed on arrival -> client skips before quoting", { offsetMs: 350 }),
   round(
     7,
-    "7. priced in time, submitted late -> 409 from the venue (and the hold comes straight back)",
+    "6. priced in time, submitted late -> 409 from the venue (and the hold comes straight back)",
     {
       offsetMs: WINDOW_MS - (PRICING_MS + 10),
     },
@@ -899,19 +890,19 @@ const SCRIPT: Round[] = [
   // The round the published-reserve design could not produce: our bid clears
   // the floor, so it is admissible, and still loses because the venue's own
   // reserve -- which we cannot see -- is better than our cost allows.
-  round(8, "8. venue is cheaper than us -> admissible bid loses to the private reserve", {
+  round(8, "7. venue is cheaper than us -> admissible bid loses to the private reserve", {
     reserveBps: 10n,
   }),
   // The best output on the book is a rival's and it is thrown out at selection
   // because its signed validUntilMs has passed; the second rival's bid still
   // stands and is simply outbid.
-  round(9, "9. best output EXCLUDED at selection: its signed validUntilMs has passed", {
+  round(9, "8. best output EXCLUDED at selection: its signed validUntilMs has passed", {
     rivals: [
       { key: RIVAL_ZERO_LIFETIME, output: 999_000_000n, lifetimeMs: -1 },
       { key: RIVAL_UNDERBID, output: 998_000_000n, lifetimeMs: 5_000 },
     ],
   }),
-  round(10, "10. window closes an hour out -> pass (a firm offer we cannot hedge)", {
+  round(10, "9. window closes an hour out -> pass (a firm offer we cannot hedge)", {
     announcement: {
       opensAt: T0 + 10 * ROUND_SPACING_MS,
       closesAt: T0 + 10 * ROUND_SPACING_MS + 3_600_000,
@@ -921,7 +912,7 @@ const SCRIPT: Round[] = [
   // 19,972 USDC each at BID time; the third is refused because the inventory is
   // already spoken for. Reserve at fill time instead and all three bid, after
   // which one of them defaults its exclusive window.
-  round(11, "11a. three overlapping auctions, one float -> bid (holds 19,972 of 50,000)", {
+  round(11, "10a. three overlapping auctions, one float -> bid (holds 19,972 of 50,000)", {
     announcement: {
       opensAt: OVERLAP_OPENS,
       closesAt: OVERLAP_OPENS + OVERLAP_WINDOW_MS,
@@ -929,7 +920,7 @@ const SCRIPT: Round[] = [
       fromAmount: OVERLAP_NOTIONAL,
     },
   }),
-  round(12, "11b. still open, same float -> bid (holds the rest)", {
+  round(12, "10b. still open, same float -> bid (holds the rest)", {
     announcement: {
       opensAt: OVERLAP_OPENS + 100,
       closesAt: OVERLAP_OPENS + 100 + OVERLAP_WINDOW_MS,
@@ -937,7 +928,7 @@ const SCRIPT: Round[] = [
       fromAmount: OVERLAP_NOTIONAL,
     },
   }),
-  round(13, "11c. both still open -> pass (inventory already committed, not double-sold)", {
+  round(13, "10c. both still open -> pass (inventory already committed, not double-sold)", {
     announcement: {
       opensAt: OVERLAP_OPENS + 200,
       closesAt: OVERLAP_OPENS + 200 + OVERLAP_WINDOW_MS,
@@ -951,7 +942,7 @@ const SCRIPT: Round[] = [
   // and a maker reading its own logs afterwards cannot tell. Every venue string
   // in this file therefore goes through `tame`, which is why this round stays
   // one line per event.
-  round(14, "12. hostile announcement strings -> escaped in the log, never raw", {
+  round(14, "11. hostile announcement strings -> escaped in the log, never raw", {
     announcement: { intentId: "intent-\u001b[31m0014\n  202   accepted (forged)" },
   }),
 ];

@@ -264,7 +264,9 @@ export class EscrowSolver implements Solver {
     )
       return null;
     // RiddlerFiller pays a public EVM recipient only; a won stealth or shielded
-    // award would be refused after the win, which is a slashable no-show.
+    // award would be refused after the win, which is a slashable no-show. The
+    // feed parser already refuses a non-public announcement (RFC §4.2); an
+    // injected transport is not parsed, so the check stays.
     if (a.settlementPreference !== "public") return null;
     this.pruneExpired();
     const output = (BigInt(a.minOutput) * (10_000n + this.cfg.bidBps)) / 10_000n;

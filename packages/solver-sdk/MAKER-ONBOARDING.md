@@ -54,9 +54,11 @@ secret bound to that id.
   announcement index and refuse awards not in it.
 - **Awards are addressed, not broadcast.** No `GET /solver/awards`.
 - **Long poll only.** SSE is not served.
-- **Retired `trustScore`/`reserveOutput` may still be on the wire.** The SDK deletes them after
-  parse; do not price off them.
-- **`recipientCommitment`** is an opaque venue-keyed HMAC.
+- **Retired `trustScore`/`reserveOutput`/`recipientCommitment` may still be on the wire.** The SDK
+  deletes them after parse; do not price off them.
+- **Public settlement only.** `settlementPreference` is always `"public"`. The SDK refuses any other
+  value as a malformed entry (passed to `onInvalidEvent`, thrown without one); it never reaches
+  `quote`.
 
 ## Copy from the reference solver
 

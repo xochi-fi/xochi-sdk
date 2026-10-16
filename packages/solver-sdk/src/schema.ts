@@ -7,9 +7,8 @@
 // Note what that means precisely -- `.passthrough()` RETAINS the unknown keys on
 // the parsed object (zod's default `.strip()` is what removes them), so a field
 // this SDK does not model is still readable by whoever gets the parsed value.
-// Tolerated is not the same as dropped, which is why the two RETIRED
-// announcement fields below are deleted explicitly rather than left to the
-// object schema.
+// Tolerated is not the same as dropped, which is why the RETIRED announcement
+// fields below are deleted explicitly rather than left to the object schema.
 
 import { z } from "zod";
 
@@ -27,23 +26,26 @@ const amount = z
 
 const settlement = z.enum(["public", "stealth", "shielded"]);
 
-// Withdrawn in RFC 0.3.0-draft and deleted from the parsed announcement rather
-// than merely unmodelled: `reserveOutput` (the venue's reserve is not
-// announced) and `trustScore` (no solver use, and it handed the panel the
-// taker's fee tier). `.passthrough()` keeps unknown keys, so without this delete
-// both fields would survive onto the object handed to `solver.quote()` and stay
-// readable through a cast.
+// Withdrawn and deleted from the parsed announcement rather than merely
+// unmodelled: `reserveOutput` (the venue's reserve is not announced) and
+// `trustScore` (no solver use, and it handed the panel the taker's fee tier),
+// both RFC 0.3.0-draft; `recipientCommitment` (RFC 0.5.0-draft producer
+// withdrawal: the announcement is public-only and names no recipient in any
+// form). `.passthrough()` keeps unknown keys, so without this delete each field
+// would survive onto the object handed to `solver.quote()` and stay readable
+// through a cast.
 //
 // The delete is NOT the withdrawal. This SDK runs in the process of the panel
-// member the reserve is withheld FROM, so deleting a key after `JSON.parse`
+// member the fields are withheld FROM, so deleting a key after `JSON.parse`
 // only protects a member who chooses not to look: `curl` on the feed, a fork
 // of this file, or the `raw` value handed to `onInvalidEvent` all still yield
 // the keys while the producer sends them. The enforcement point is the
-// producer (SOLVER-RFC.md "Migrating from `0.2.0-draft`", steps 1-2), and
-// nothing observes whether it has stopped: there is no producer-drift probe on
-// `/solver/*`. Defence in depth only: neither retired key reaches
-// `solver.quote()` through `.passthrough()` by accident.
-const RETIRED_ANNOUNCEMENT_KEYS = ["reserveOutput", "trustScore"] as const;
+// producer (SOLVER-RFC.md "Migrating from `0.2.0-draft`", steps 1-2, and the
+// public-only announcement in "Changes in `0.5.0-draft`"), and nothing
+// observes whether it has stopped: there is no producer-drift probe on
+// `/solver/*`. Defence in depth only: no retired key reaches `solver.quote()`
+// through `.passthrough()` by accident.
+const RETIRED_ANNOUNCEMENT_KEYS = ["reserveOutput", "trustScore", "recipientCommitment"] as const;
 
 export const IntentAnnouncementSchema = z
   .object({
@@ -58,13 +60,15 @@ export const IntentAnnouncementSchema = z
     swapKind: z.enum(["exact_input", "exact_output"]),
     fromAmount: amount.optional(),
     outputAmount: amount.optional(),
-    settlementPreference: settlement,
+    // Public-only (RFC §4.2). An announcement naming another settlement fails
+    // the parse, so off the feed it takes the invalid-event path
+    // (`onInvalidEvent`) and never reaches `solver.quote()`.
+    settlementPreference: z.literal("public"),
     // See types.ts: the admissibility floor, not the venue's reserve.
     minOutput: amount,
     opensAt: z.number().int().nonnegative(),
     closesAt: z.number().int().nonnegative(),
     exclusiveWindowMs: z.number().int().nonnegative(),
-    recipientCommitment: z.string().optional(),
   })
   .passthrough()
   .transform((announcement) => {
