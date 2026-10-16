@@ -42,7 +42,9 @@ version moves because a solver built to `0.4.0-draft` accepts awards this
 revision tells it to decline, and that skew surfaces as slashed bonds, not as a
 refusal (§12). One announcement-wire change also lands inside this revision
 (the producer withdrawal below): `settlementPreference` narrows to `"public"`
-and `recipientCommitment` is removed, so an announcement parser MUST change.
+and `recipientCommitment` is removed. A parser built before it still accepts
+everything a withdrawn producer emits; narrowing the parser (SHOULD, §4.2) is
+defence in depth, not the privacy boundary.
 
 - **Decline, never skip** (§7.1 step 4): a solver MUST NOT accept while the
   origin escrow's `claimsPaused()` is true or while the origin claim signer
