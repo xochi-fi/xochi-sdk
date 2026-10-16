@@ -30,8 +30,9 @@ const settlement = z.enum(["public", "stealth", "shielded"]);
 // unmodelled: `reserveOutput` (the venue's reserve is not announced) and
 // `trustScore` (no solver use, and it handed the panel the taker's fee tier),
 // both RFC 0.3.0-draft; `recipientCommitment` (RFC 0.5.0-draft producer
-// withdrawal: the announcement is public-only and names no recipient in any
-// form). `.passthrough()` keeps unknown keys, so without this delete each field
+// withdrawal: the announcement is public-only and carries no standalone
+// recipient identifier; an escrow `orderId` stays bound to the blinded
+// `destCommitment`). `.passthrough()` keeps unknown keys, so without this delete each field
 // would survive onto the object handed to `solver.quote()` and stay readable
 // through a cast.
 //

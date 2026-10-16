@@ -435,9 +435,11 @@ interface IntentAnnouncement {
 }
 ```
 
-The announcement carries **no taker identity, no recipient and no signature**:
-the signed `XochiIntent` and origin-pull authorization stay with the venue, so
-the venue rebuilds the digest server-side (`SPEC.md` §2).
+The announcement carries **no taker identity, no standalone recipient
+identifier and no signature** (an escrow `orderId` commits to the destination
+only through the blinded `destCommitment`, §7.1): the signed `XochiIntent` and
+origin-pull authorization stay with the venue, so the venue rebuilds the digest
+server-side (`SPEC.md` §2).
 
 **Public settlement only.** `settlementPreference` stays on the wire and stays
 REQUIRED, but on the announcement it has exactly one value, `"public"`. The
