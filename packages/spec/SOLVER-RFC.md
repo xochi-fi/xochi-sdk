@@ -306,7 +306,7 @@ the winner receives an exclusive fill window (§6).
   wire format (§5) carries the settled `output` explicitly so the settle rule can
   change without a schema change.
 
-### 2.2 Size privacy  `[IMPLEMENTED]`
+### 2.2 Size privacy  `[IMPLEMENTED]`; public-only withdrawal `[PROPOSED]`
 
 The RFQ reveals size **to the solicited panel only**, never to the public.
 Solvers need size to price, so the panel sees it and the market does not, which
@@ -315,7 +315,9 @@ a standalone recipient identifier (address, hash or commitment). An escrow
 `orderId` is still announced; it commits transitively to the destination
 through the blinded `destCommitment` (§7.1), which the panel cannot open, and
 that binding is the only recipient-derived value on the wire. A venue MUST
-announce only intents with `settlementPreference: "public"` (§4.2). A
+announce only intents with `settlementPreference: "public"` (§4.2). Both
+rules are the `0.5.0-draft` producer withdrawal, live only once Riddler
+#1200 is merged and deployed and the feed has drained. A
 stealth or shielded intent is not put to the panel: a commitment can hide
 who is paid, but not that a private intent of this size crossed this
 corridor at this time. In lower permissioning phases (§9) the panel is small
@@ -441,7 +443,9 @@ only through the blinded `destCommitment`, §7.1): the signed `XochiIntent` and
 origin-pull authorization stay with the venue, so the venue rebuilds the digest
 server-side (`SPEC.md` §2).
 
-**Public settlement only.** `settlementPreference` stays on the wire and stays
+**Public settlement only** `[PROPOSED]` (see the producer note below; not
+live until Riddler #1200 is merged and deployed and the feed has drained).
+`settlementPreference` stays on the wire and stays
 REQUIRED, but on the announcement it has exactly one value, `"public"`. The
 taker-side settlement types (`SPEC.md`) are unchanged; a stealth or shielded
 intent is simply not announced (§2.2), and the venue's own solver serves it
