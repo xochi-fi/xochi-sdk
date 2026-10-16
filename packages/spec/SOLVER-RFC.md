@@ -97,10 +97,12 @@ and `recipientCommitment` is removed, so an announcement parser MUST change.
   `recipientCommitment`** (§§2.2, 2.4, 4.2). `settlementPreference` stays a
   REQUIRED field, narrowed on the announcement to the single value
   `"public"`; a venue MUST NOT announce a stealth or shielded intent, and
-  `recipientCommitment` is withdrawn, so the announcement names the recipient
-  in no form. A keyed commitment hid the recipient but not the flow: route,
-  size and timing of a private intent were exact to every panel member, and
-  the panel is meant to open to permissionless, bonded admission (§9, P3).
+  `recipientCommitment` is withdrawn, so the announcement carries no
+  standalone recipient identifier (an escrow `orderId` stays bound to the
+  blinded `destCommitment`, §2.2). A keyed commitment hid the recipient but
+  not the flow: route, size and timing of a private intent were exact to
+  every panel member, and the panel is meant to open to permissionless,
+  bonded admission (§9, P3).
   Taker settlement types are untouched: stealth and shielded remain taker
   choices, served (where they are served at all) by the venue's own solver
   and no longer put to the panel. Nothing signed moves (the announcement is
@@ -309,7 +311,10 @@ the winner receives an exclusive fill window (§6).
 The RFQ reveals size **to the solicited panel only**, never to the public.
 Solvers need size to price, so the panel sees it and the market does not, which
 is the dark-pool boundary. The announcement MUST NOT carry taker identity or
-the recipient in any form (address, hash or commitment), and a venue MUST
+a standalone recipient identifier (address, hash or commitment). An escrow
+`orderId` is still announced; it commits transitively to the destination
+through the blinded `destCommitment` (§7.1), which the panel cannot open, and
+that binding is the only recipient-derived value on the wire. A venue MUST
 announce only intents with `settlementPreference: "public"` (§4.2). A
 stealth or shielded intent is not put to the panel: a commitment can hide
 who is paid, but not that a private intent of this size crossed this
@@ -510,7 +515,8 @@ any other value as malformed, not price it.
   `input` field to compete on instead. A future revision that adds an input-side
   bid dimension can lift this.
 - `recipientCommitment` is **withdrawn** (`0.5.0-draft`): the announcement
-  names the recipient in no form. It was an HMAC under a venue-held key,
+  carries no standalone recipient identifier (only the escrow `orderId`'s
+  blinded binding, §2.2). It was an HMAC under a venue-held key,
   emitted for stealth and shielded intents, and those are no longer
   announced. A key that still arrives is a producer that has not landed the
   withdrawal, or an entry from before it still on the feed's retention ring;
