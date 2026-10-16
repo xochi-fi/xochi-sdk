@@ -18,7 +18,7 @@ Nothing here moves funds.
 npm install @xochi/provider @aztec/bb.js viem
 ```
 
-`viem@^2` is a peer dependency; `@aztec/bb.js` provides the `Barretenberg` instance used for
+`viem@^2.55.0` is a peer dependency; `@aztec/bb.js` provides the `Barretenberg` instance used for
 Pedersen hashing. ESM-only (`require()` works on Node 22.12+).
 
 Production key custody uses `DigestSigner`: the package constructs and validates each 32-byte
@@ -48,19 +48,22 @@ import { RawPrivateKeyLoader, loadLocalSigner, signSignals } from "@xochi/provid
 const api = await Barretenberg.new();
 const signer = await loadLocalSigner(new RawPrivateKeyLoader(privateKeyBytes, "provider-1"));
 
-const signed = await signSignals(api, signer, {
-  proofType: 0x07, // 0x07 COMPLIANCE_SIGNED or 0x08 RISK_SCORE_SIGNED
-  chainId: 1n, // EVM chain ID of the consuming Oracle
-  oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
-  providerSetHash: BigInt("0x..."),
-  signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n], // length 8, zero-pad inactive
-  weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
-  timestamp: BigInt(Math.floor(Date.now() / 1000)), // the proof must reach the Oracle within 1 h
-  submitter: BigInt(account.address),
-});
-// signed: { signature, pubkeyX, pubkeyY, signerPubkeyHash, payloadHash } as Uint8Array
-signer.destroy();
-await api.destroy();
+try {
+  const signed = await signSignals(api, signer, {
+    proofType: 0x07, // 0x07 COMPLIANCE_SIGNED or 0x08 RISK_SCORE_SIGNED
+    chainId: 1n, // EVM chain ID of the consuming Oracle
+    oracleAddress: BigInt("0x..."), // address of the consuming Oracle (uint160 Field)
+    providerSetHash: BigInt("0x..."),
+    signals: [25n, 0n, 0n, 0n, 0n, 0n, 0n, 0n], // length 8, zero-pad inactive
+    weights: [100n, 0n, 0n, 0n, 0n, 0n, 0n, 0n],
+    timestamp: BigInt(Math.floor(Date.now() / 1000)), // proof must reach Oracle within 1 h
+    submitter: BigInt(account.address),
+  });
+  // Use `signed` as the SDK's `signedBundle`.
+} finally {
+  signer.destroy();
+  await api.destroy();
+}
 ```
 
 Pass `signed` as `signedBundle` to `@xochi/sdk`'s `proveComplianceSigned` / `proveRiskScoreSigned`
