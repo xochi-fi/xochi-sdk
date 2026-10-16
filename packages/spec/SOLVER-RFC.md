@@ -108,17 +108,25 @@ and `recipientCommitment` is removed, so an announcement parser MUST change.
   and no longer put to the panel. Nothing signed moves (the announcement is
   read-only for solvers), so this is a withdrawal inside `0.5.0-draft` and
   `rfcVersion` does not move. The order is fixed:
+  0. **Prerequisite: the venue serves `0.5.0-draft`.** A solver compares
+     `rfcVersion` exactly before consuming the feed (§12), so no SDK
+     advertising `0.5.0-draft`, before or after this withdrawal, can read a
+     venue still serving `0.4.0-draft`. Riddler's bump is a separate change
+     (Riddler PR #1245, open at this writing) and must be deployed before or
+     with step 1.
   1. **The producer withdraws first** (Riddler #1200): it stops announcing
      non-public intents and stops emitting the commitment, then old
      publishers and the feed's retention ring drain. A private announcement
      already published is disclosed and cannot be retracted.
   2. **Consumers filter as defence in depth, not as the privacy boundary.**
-     `@xochi/solver-sdk` refuses an announcement whose `settlementPreference`
-     is not `"public"` as a malformed feed entry (reported to
-     `onInvalidEvent`, or thrown without one; never passed to
+     `@xochi/solver-sdk`'s `HttpSolverTransport` refuses an announcement
+     whose `settlementPreference` is not `"public"` as a malformed feed entry
+     (reported to `onInvalidEvent`, or thrown without one; never passed to
      `solver.quote()`) and deletes a `recipientCommitment` from the parsed
-     announcement, as it does the keys retired in `0.3.0-draft`. Like that
-     delete, it protects only a panel member who chooses not to look.
+     announcement, as it does the keys retired in `0.3.0-draft`. An injected
+     `SolverTransport` bypasses that parse and MUST validate each event
+     itself with the exported `parseSolverEvent`. Like that delete, the
+     filter protects only a panel member who chooses not to look.
   3. **Private flow comes back only under a separately reviewed design**:
      an encrypted or commit-reveal auction (§2.4) whose disclosure to the
      panel is itself reviewed, never by re-admitting a value here.
