@@ -37,7 +37,7 @@ export const recipientAddress = z.union([ethAddress, tronAddress]);
 export const settlementType = z
   .enum(["public", "shielded", "stealth"])
   .describe(
-    "Where the payout lands. `public` settles to the wallet address. `stealth` settles to a one-time address on Ethereum L1 (ERC-5564). `shielded` (Aztec L2 notes) is planned and not yet live: it is gated by SHIELDED_SETTLEMENT_LIVE, served as unavailable in `settlement_options`, and refused as a `settlement_preference` while that is off. Read `settlement_options` for live availability rather than assuming this enum's members are all fillable.",
+    "Where the payout lands. `public` settles to the wallet address. `stealth` settles to a one-time address on Ethereum L1 (ERC-5564). `shielded` is unavailable: with SHIELDED_SETTLEMENT_LIVE off (the served state) it is listed as unavailable in `settlement_options` and refused as a `settlement_preference`. When offered it is a recipient-private Aztec L2 note only; amount, token, solver, timing and source activity stay public or inferable, and operators see destination and amount. Read `settlement_options` for live availability rather than assuming this enum's members are all fillable.",
   );
 
 /**
