@@ -236,6 +236,14 @@ export interface ExecuteResponse {
   stealthAddress?: string;
   ephemeralPubKey?: string;
   viewTag?: number;
+  /**
+   * Per-intent read capability (xochi#563), served once and only by a server
+   * that issues it. Keep it with the intent and pass it as `readToken` to
+   * `getIntent` / `getIntentStatus`: without it a stealth or shielded intent's
+   * status reads without its on-chain legs. A bearer secret: never log it or
+   * put it in a URL.
+   */
+  readToken?: string;
 }
 
 // ============================================================
@@ -418,6 +426,7 @@ export function mapExecuteResponse(w: ExecuteResponseWire): ExecuteResponse {
     stealthAddress: w.stealth_address,
     ephemeralPubKey: w.ephemeral_pub_key,
     viewTag: w.view_tag,
+    readToken: w.read_token,
   };
 }
 

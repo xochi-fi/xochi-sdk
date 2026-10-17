@@ -8,6 +8,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 - `feeBreakdownReconcilable(feeBreakdown)` lets a `getQuote` result reach `assertFeeBreakdownInvariants` (the README example threw).
 - `LayeredFeeBreakdownSchema` declares the served optional `discount { source: "tier" | "promo", bps, amount }` (xochi#584, served only when the quote request carried `promo_discount_bps > 0`). Shape-only: `assertFeeBreakdownInvariants` neither reads nor subtracts it, since `venue_fee`/`routing_fee` are already net of it. Previously it parsed through `.passthrough()` untyped.
+- **Intent read capability** (xochi#563). `ExecuteResponseSchema` declares the optional `read_token` (32 random bytes, unpadded base64url; older servers omit it), surfaced as `ExecuteResponse.readToken`. `getIntent` / `getIntentStatus` take `{ readToken }` and send it as the `X-Xochi-Read-Token` header, never in the URL; without it a stealth or shielded intent reads without its on-chain legs. A `readToken` not of that shape rejects before any request. New exports `READ_TOKEN_PATTERN`, `READ_TOKEN_HEADER`, `IntentReadOptions`.
 
 ### Changed
 

@@ -622,6 +622,66 @@ describe("intent records", () => {
   });
 });
 
+// xochi#563: the execute that admits an intent serves a one-time `read_token`;
+// sent back as a header, it lets the per-intent reads show a stealth or
+// shielded intent's on-chain legs. Never a query parameter.
+describe("intent read capability", () => {
+  const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+
+  it("surfaces read_token from execute, and leaves it undefined when an older server omits it", async () => {
+    const { c } = client((call) =>
+      json({
+        success: true,
+        intent_id: "intent-1",
+        status: "executing",
+        ...(call === 1 ? { read_token: READ_TOKEN } : {}),
+      }),
+    );
+    expect((await c.execute(execRequest)).readToken).toBe(READ_TOKEN);
+    expect((await c.execute(execRequest)).readToken).toBeUndefined();
+  });
+
+  it("holds read_token to its shape like every declared execute field", async () => {
+    const { c } = client(() =>
+      json({ success: true, intent_id: "intent-1", status: "executing", read_token: "short" }),
+    );
+    expect(((await rejection(c.execute(execRequest))) as Error).message).toBe(
+      "Invalid response format",
+    );
+  });
+
+  it("sends the token as a header on both reads, never in the URL, and no header without one", async () => {
+    const { c, calls } = client((call) =>
+      call % 2 === 1 ? json({ id: "xi_1", status: "completed" }) : json({ status: "completed" }),
+    );
+    await c.getIntent("xi_1", { readToken: READ_TOKEN });
+    await c.getIntentStatus("xi_1", { readToken: READ_TOKEN });
+    await c.getIntent("xi_1");
+    await c.getIntentStatus("xi_1", {});
+    expect(calls.map((r) => new Headers(r.init.headers).get("X-Xochi-Read-Token"))).toEqual([
+      READ_TOKEN,
+      READ_TOKEN,
+      null,
+      null,
+    ]);
+    for (const call of calls) expect(call.url).not.toContain(READ_TOKEN);
+  });
+
+  it("rejects a malformed token before any request, without echoing it", async () => {
+    const { c, calls } = client(() => json({ status: "completed" }));
+    const bad = "not a token\r\nX-Injected: 1";
+    for (const read of [
+      c.getIntent("xi_1", { readToken: bad }),
+      c.getIntentStatus("xi_1", { readToken: bad }),
+    ]) {
+      const err = (await rejection(read)) as Error;
+      expect(err.message).toMatch(/not a read_token/);
+      expect(err.message).not.toContain("not a token");
+    }
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("stealth claim calls (single attempt)", () => {
   it("returns the prepared body on a 200", async () => {
     const { c, calls } = client(() => json({ success: true, userOpHash: "0x01", chainId: 1 }));

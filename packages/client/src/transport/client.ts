@@ -15,6 +15,7 @@
  */
 
 import type { QuoteResponseWire, ExecuteResponseWire } from "../shared/index.js";
+import { READ_TOKEN_HEADER, READ_TOKEN_PATTERN } from "../shared/index.js";
 import type { PreparedClaim } from "@xochi/signer";
 import {
   decodeWireStatus,
@@ -245,6 +246,30 @@ export type CallResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; status?: number; errorCategory?: string; body?: unknown };
 
+/**
+ * Options for the per-intent reads. `readToken` is the `read_token` the execute
+ * of this intent returned (`ExecuteResponse.readToken`, xochi#563); it is sent
+ * as the `X-Xochi-Read-Token` header so a stealth or shielded intent reads with
+ * its on-chain legs. Absent, the read is anonymous and those legs are omitted;
+ * the server answers a wrong token exactly like an absent one.
+ */
+export interface IntentReadOptions {
+  readToken?: string;
+}
+
+/**
+ * The read-capability header for one intent read, or none. A token not of the
+ * `read_token` shape throws (without echoing it: it is a bearer secret).
+ */
+function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, string> {
+  const readToken = opts?.readToken;
+  if (readToken === undefined) return {};
+  if (!READ_TOKEN_PATTERN.test(readToken)) {
+    throw new Error("readToken is not a read_token (43 unpadded base64url characters)");
+  }
+  return { [READ_TOKEN_HEADER]: readToken };
+}
+
 // ============================================================
 // Client
 // ============================================================
@@ -256,8 +281,8 @@ export interface XochiClient {
   clearQuoteCache(): void;
   /** Execute a signed intent. Single attempt: a failure is in doubt, resolve it by polling status. */
   execute(request: ExecuteRequest): Promise<ExecuteResponse>;
-  getIntent(intentId: string): Promise<IntentRecord | null>;
-  getIntentStatus(intentId: string): Promise<IntentStatusResult>;
+  getIntent(intentId: string, opts?: IntentReadOptions): Promise<IntentRecord | null>;
+  getIntentStatus(intentId: string, opts?: IntentReadOptions): Promise<IntentStatusResult>;
   getIntentHistory(wallet: string, limit?: number): Promise<IntentRecord[]>;
   prepareStealthClaim(body: {
     counterfactualAddress: string;
@@ -610,10 +635,10 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       return mapExecuteResponse(wire);
     },
 
-    async getIntent(intentId) {
+    async getIntent(intentId, opts) {
       const { response, body } = await send(
         `/api/intent/${encodeURIComponent(intentId)}`,
-        { method: "GET" },
+        { method: "GET", headers: readTokenHeaders(opts) },
         timeouts.requestTimeoutMs,
         readOkJson,
       );
@@ -632,12 +657,15 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      *    can be terminalized on it, a dispatched one is held and reported),
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
+     * A malformed `readToken` rejects instead: it is the caller's bug, and the
+     * server would read it as anonymous without saying why.
      */
-    async getIntentStatus(intentId) {
+    async getIntentStatus(intentId, opts) {
+      const headers = readTokenHeaders(opts);
       try {
         const { response, body } = await send(
           `/api/intent/${encodeURIComponent(intentId)}/status`,
-          { method: "GET" },
+          { method: "GET", headers },
           timeouts.requestTimeoutMs,
           readOkJson,
         );

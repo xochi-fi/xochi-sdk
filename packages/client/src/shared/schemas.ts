@@ -509,6 +509,19 @@ export const QuoteResponseSchema = z
   })
   .strict();
 
+/**
+ * Shape of an intent read capability (`read_token` on the execute response,
+ * xochi#563): 32 random bytes as unpadded base64url, so exactly 43 characters.
+ */
+export const READ_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * The request header that carries a `read_token` on `GET /api/intent/:id` and
+ * `GET /api/intent/:id/status`. A header and never a query parameter: the token
+ * must not land in URLs, logs or referrers.
+ */
+export const READ_TOKEN_HEADER = "X-Xochi-Read-Token";
+
 /** Mirrors `ExecuteResponse` in public/openapi.yaml. */
 export const ExecuteResponseSchema = z
   .object({
@@ -533,6 +546,19 @@ export const ExecuteResponseSchema = z
     ephemeral_pub_key: z.string().optional(),
     view_tag: z.number().int().optional(),
     error: z.string().optional(),
+    // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
+    // padding. Served once, by the execute that admits the intent; present it as
+    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain
+    // legs of a non-public intent. Older servers omit it.
+    read_token: z
+      .string()
+      .regex(READ_TOKEN_PATTERN)
+      .optional()
+      .describe(
+        "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
+          "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
+          "on-chain legs of a stealth or shielded intent. Never put it in a URL.",
+      ),
   })
   .strict();
 
