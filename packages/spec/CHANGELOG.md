@@ -23,6 +23,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `spec-v*` tag.
 - `engines.node` is `>=22`. `prepublishOnly` runs `format:check`, `typecheck` and `test` before every publish. The tarball ships this `CHANGELOG.md`.
 - SPEC.md no longer links `docs/ARCHITECTURE.md`, which exists nowhere and shipped in no tarball; §5.2 and §9 still cite it by name.
+- SPEC.md §3.2 / §3.4 / §5.1 (docs only, no wire change): `aztec_proof` is recorded as unused by every producer and consumer (its removal from `ExecuteRequest` is a lockstep wire change with Riddler, then `generate:wire`); the shielded row drops "testnet; launch-pending" and the `noteHashes` / `nullifiers` arrays claim for what is served: scalars `noteCommitment`, `nullifierHash`, `l2TxHash`, with shielded not offered. The transaction-centric receipt is written when Riddler serves it.
 
 ### Fixed
 

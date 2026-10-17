@@ -600,6 +600,7 @@ describe("intent records", () => {
             status: "completed",
             wallet_address: "0xabc",
             settlement_tx_hash: null,
+            aztec_note_hash: null,
           })
         : new Response("", { status: 404 }),
     );
@@ -608,6 +609,7 @@ describe("intent records", () => {
       status: "completed",
       walletAddress: "0xabc",
       settlementTxHash: undefined,
+      aztecNoteHash: undefined,
     });
     expect(await c.getIntent("xi_2")).toBeNull();
   });
