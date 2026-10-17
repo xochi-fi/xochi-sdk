@@ -227,17 +227,124 @@ A pluggable `IProofOfFill` verifier, tiered per corridor and swapped via
 Tiers map onto the `ProofReceipt.proof_tier` (`SPEC.md` §5.2.3) and the
 `FillProof` union (`SOLVER-RFC.md` §6):
 
-| Tier | `proof_tier` | `FillProof.kind`                               | Trust                                                        |
-| ---- | ------------ | ---------------------------------------------- | ------------------------------------------------------------ |
-| 0    | `attested`   | `tx_hash` / `oracle_attestation`               | venue oracle watch (`[PROPOSED]` — must be built; see §11.0) |
-| 1    | `optimistic` | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                  |
-| 2    | `verified`   | `light_client` / `zk`                          | trust-minimized                                              |
+| Tier | `proof_tier`           | `FillProof.kind`                               | Trust                                                                                                                       |
+| ---- | ---------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (`[PROPOSED]` — must be built; see §11.0)                                                                |
+| 1    | `optimistic`           | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                                                                                 |
+| 1s   | `optimistic_disclosed` | `aztec_note_preimage`                          | venue verifies note inclusion on its own node from a solver-disclosed preimage; bonded; recipient hold (§5.1, `[PROPOSED]`) |
+| 2    | `verified`             | `light_client` / `zk`                          | trust-minimized                                                                                                             |
 
 A verifier MUST treat an **unknown proof kind as unproven (fail closed)** — the
 reference `StubEscrowGateway` (`@xochi/solver-sdk`) enforces exactly this.
-EVM↔EVM corridors can reach tier 2; Tron / shielded-Aztec legs stay tier 0–1
-(bonded, disclosed) because their finality is not verifiable from an origin EVM
-chain: accepted as bounded trust, and disclosed rather than hidden.
+EVM↔EVM corridors can reach tier 2; Tron legs stay tier 0–1 and shielded-Aztec
+legs are tier 1s only (§5.1): bonded and disclosed, because their finality is
+not verifiable from an origin EVM chain. Accepted as bounded trust, and
+disclosed rather than hidden.
+
+### 5.1 Shielded-Aztec fill proof `[PROPOSED]`
+
+The release rule for shielded-Aztec legs, decided 2026-10-17 with B-panel
+(xochi `docs/planning/shielded-execution.md` §4 "B-panel", D7–D9). Nothing in
+this subsection is built. A shielded leg is filled by the standard Aztec
+Token's private-to-private `transfer` from the solver's private inventory. That
+call emits no L2-to-L1 message and delivers the recipient note
+`onchain_unconstrained`, so no origin-chain verifier and no venue watcher can
+observe the fill: the only evidence is the note's preimage, which the solver
+holds. Tier 1s makes that disclosure the proof. It is `optimistic` in trust
+(bonded; no verifier on the origin chain) and `disclosed` because the venue
+learns the fill in full. It is not tier 2 and MUST be advertised as
+`optimistic_disclosed` (C5).
+
+**Payload.** The solver submits, over the authenticated solver channel
+(`POST /solver/fills`, `SOLVER-RFC.md` §6) and never on any chain:
+
+```
+FillProof { kind:       "aztec_note_preimage",
+            chainId:    number,   // OrderTerms.toChainId (the pinned Aztec network)
+            txHash:     string,   // L2 tx hash of the `transfer`
+            noteIndex:  number,   // the recipient note's index in the tx's note hashes
+            token:      string,   // pinned Token (AztecAddress) = DestOpening.toToken
+            recipient:  string,   // note owner (AztecAddress) = DestOpening.recipient
+            amount:     string,   // note value (u128, decimal) >= DestOpening.toAmount
+            randomness: string,   // the note's randomness (Field)
+            solver:     string }  // the bonded solver account (bid signer)
+```
+
+The note fields are the pinned token's note preimage and nothing more. At
+aztec-packages v5.1.0 the Token's balance note is `UintNote { value: u128 }`,
+hashed over `(owner, storage_slot, randomness)` with `storage_slot` derived
+from the token's private balance map and `owner`
+(`noir-projects/aztec-nr/uint-note/src/uint_note.nr`). An implementation pins
+the token's contract class; a payload whose fields do not match the pinned
+layout is unproven, and a layout change versions this `kind`.
+
+**Venue recomputation (normative).** The venue derives every hash itself. It
+MUST NOT accept a solver-supplied note hash, siloed hash, unique hash, nonce or
+inclusion witness, and MUST NOT read the chain through the solver's PXE or any
+node the solver names:
+
+1. `note_hash = UintNote::compute_note_hash(owner = recipient, storage_slot,
+   randomness)` with `value = amount`, per the pinned token class;
+2. `siloed = compute_siloed_note_hash(token, note_hash)`;
+3. fetch the tx effects of `txHash` from the venue's **own** Aztec node;
+   `first_nullifier` is the tx's first nullifier;
+   `note_nonce = compute_note_hash_nonce(first_nullifier, noteIndex)`;
+4. `unique = compute_unique_note_hash(note_nonce, siloed)`. Steps 2–4 are
+   `noir-protocol-circuits/crates/types/src/hash.nr` at v5.1.0:
+   <https://github.com/AztecProtocol/aztec-packages/blob/v5.1.0/noir-projects/noir-protocol-circuits/crates/types/src/hash.nr#L54-L110>;
+5. check that `unique` is a leaf of the note-hash tree on the venue's own node
+   at the corridor's required finality (proven, never pending or merely
+   mined), inserted by `txHash` at `noteIndex`.
+
+A failed step, a node error and an `unknown` result are all **unproven**, not
+"not filled": the venue MUST NOT treat them as a §6 no-show until the
+corridor's resolution process has run.
+
+**Registry.** Before any release the venue records `unique -> orderId` in a
+durable store. A recomputed `unique` already bound to a different `orderId`
+MUST be refused (`note_already_bound`), permanently for that payload: with
+standard-size orders one note would otherwise evidence two fills. The registry
+is retained at least as long as the longest open order's refund window.
+
+**Release predicate.** Release of the depositor's origin principal to `solver`
+follows the recomputation and the registry write, and nothing else:
+`verify(orderId, proof) ⇒ payee = solver` holds iff `recipient`, `token` and
+`amount` match the committed `DestOpening` (`amount >= toAmount`; exact under
+§13.2), the inclusion check passed at finality, and `unique` was free in the
+registry. What reaches the origin chain is the custody contract's own release
+artifact, as for tier 0: `FillAttestation(orderId, payee)` on `RiddlerEscrow`
+(§9.4), or the Depository's Aztec evidence path under D9's target custody pair
+(§13). The preimage, `txHash`, `noteIndex` and every hash derived from them
+never appear in origin calldata, events or escrow state (C2).
+
+**Recipient.**
+
+- Recipient acknowledgement is a **completion** predicate: it closes the
+  order's status and MUST NOT release, advance, or stand in for inclusion.
+- A recipient `not_received` assertion holds release for that `orderId` until
+  resolved; the hold has no expiry of its own.
+- Because `transfer` delivers `onchain_unconstrained`, inclusion proves the note
+  exists, not that the recipient's PXE discovered it. On the recipient's request
+  the venue forwards the disclosed preimage and `txHash` to the recipient so its
+  wallet can import the note. That forwarding is the only remedy: never a second
+  `transfer`, never a refund.
+
+**MUST NOT.**
+
+- MUST NOT trust any solver-supplied hash, nonce or inclusion witness (above).
+- MUST NOT release on the expiry of any window (claim, challenge,
+  acknowledgement, dispute) without preimage-verified inclusion.
+- MUST NOT resend or refund an outcome that is unknown; an unresolved
+  `transfer` stays held until reconciled against the venue's own node.
+- MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
+  silently or as a remedy.
+- MUST NOT advertise this tier as `verified` or as confidentiality tier 2
+  (C5, §9.5).
+
+**Wire.** `optimistic_disclosed` (`ProofReceipt.proof_tier`, `SPEC.md`
+§5.2.3) and `aztec_note_preimage` (`FillProof.kind`, `SOLVER-RFC.md` §6) are
+proposed additions to those enums. They land with Riddler in lockstep, not
+here; until then every consumer already fails closed on the unknown values.
 
 ## 6. Bonds, exclusivity, backstop `[PROPOSED]`
 
@@ -245,7 +352,11 @@ chain: accepted as bounded trust, and disclosed rather than hidden.
   no-show and a misfill; both slashes pay the affected user (the built
   `SolverBond.sol`, Riddler ADR-0015 row 15), at 2% of the fill with a $10
   minimum as deploy defaults, not protocol constants. A higher ZKSAR trust tier
-  lowers `collateralFactor` and shrinks the challenge window.
+  lowers `collateralFactor` and shrinks the challenge window. The no-show slash
+  applies to tier 1s (§5.1) the same way and pays the user; it never covers
+  principal, which returns only through `refund`. While Riddler is the only
+  shielded panel member, venue equals solver and the bond and dispute machinery
+  are inert (D9).
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
@@ -581,13 +692,19 @@ fill once, claim) are normative in `SOLVER-RFC.md` §7.1.
 | 2    | `confidential` | that a fill occurred; not `to`, `token` or `amount`                           | shielded destination only             |
 
 **The inversion (normative note).** Tier 0 proofs (`tx_hash`) are structurally
-incompatible with confidentiality tier ≥ 1 by C2. §5 confines Tron and
-shielded-Aztec legs to proof tiers 0–1 because their finality is not verifiable
-from an origin EVM chain. Shielded-Aztec is also the _only_ corridor that can
-reach confidentiality tier 2. So the corridor carrying the strongest privacy
-promise is the one whose available proofs most restrict privacy. Resolving that
-is a precondition for offering tier 2 over escrow, and it is **not resolved
-here**.
+incompatible with confidentiality tier ≥ 1 by C2. §5 confines Tron legs to
+proof tiers 0–1 and shielded-Aztec legs to tier 1s because their finality is
+not verifiable from an origin EVM chain. Shielded-Aztec is also the _only_
+corridor that can reach confidentiality tier 2. So the corridor carrying the
+strongest privacy promise is the one whose available proofs most restrict
+privacy. §5.1 now specifies (not builds) the shielded release path: a disclosed
+proof the venue verifies on its own node, which keeps the origin free of any
+destination locator (C2) at the cost of the venue learning the fill in full.
+Proof tier 2 for that corridor remains unreached, and what tier 1s hides is
+the Aztec side only: `to`, `token` and `amount` are hidden from the public
+Aztec observer, while the source debit stays public and bounds `amount`
+(§9.1, §9.6). Offering confidentiality tier 2 over escrow still requires C4's
+`k` for the corridor; nothing here waives it.
 
 ### 9.6 Amount correlation (residual)
 
@@ -599,12 +716,12 @@ standard bridge-correlation result and it is not defeated by identifier hygiene.
 
 Mitigations, by descending effect and ascending cost to somebody:
 
-| Mitigation           | Effect                              | Paid by                              |
-| -------------------- | ----------------------------------- | ------------------------------------ |
-| shielded destination | removes the event entirely (tier 2) | corridor availability                |
-| netting / batching   | collapses opposing flow             | only works with bidirectional volume |
-| amount binning       | widens the candidate set            | the taker, in residue                |
-| decoy fills          | widens the candidate set            | the solver, in capital               |
+| Mitigation           | Effect                                                                                         | Paid by                              |
+| -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------ |
+| shielded destination | hides `to`, `token`, `amount` on Aztec (tier 2); the public source debit still bounds `amount` | corridor availability                |
+| netting / batching   | collapses opposing flow                                                                        | only works with bidirectional volume |
+| amount binning       | widens the candidate set                                                                       | the taker, in residue                |
+| decoy fills          | widens the candidate set                                                                       | the solver, in capital               |
 
 None is sufficient alone at current flow. This is why C4 requires `k` to be
 published and recomputable from public logs rather than assumed.
@@ -931,6 +1048,7 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
 | `RiddlerEscrow` / `RiddlerFiller`               | `[PROPOSED]`    | built, undeployed, gated off (Riddler `contracts/riddler-escrow/src/*.sol`; M6.2)                         |
 | `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (tier 0 attesters built, undeployed, gated off: Riddler `lib/riddler/solver/escrow/*`; §11.0)           |
+| `IProofOfFill` tier 1s (shielded-Aztec preimage) | `[PROPOSED]`   | — (unbuilt; §5.1, xochi `shielded-execution.md` D9; no verifier, registry or recipient hold exists)        |
 | `SolverBond` / slashing                         | `[PROPOSED]`    | built, undeployed, gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §11.1)              |
 | Sealed-bid auction, award, allowlist            | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (`SOLVER-RFC.md` §§4–5)                                                    |
 | Fill-receipt intake (recorded, not settled)     | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (§11.0)                                                      |
@@ -943,7 +1061,8 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 ## Appendix B — Glossary
 
 `OrderTerms`, `DestOpening`, `destCommitment`, `orderId`, `OpenAuth`, `RiddlerEscrow`, `RiddlerFiller`, `IProofOfFill`,
-proof-of-fill tier (attested / optimistic / verified), `SolverBond`, exclusivity
-window, backstop, permissionless refund, fund-safety invariant, escrow gateway
-(`lock`/`release`/`void`), `fillId`, `fillSalt`, confidentiality tier (linked /
-unlinked / confidential), anonymity set.
+proof-of-fill tier (attested / optimistic / optimistic_disclosed / verified),
+`SolverBond`, exclusivity window, backstop, permissionless refund, fund-safety
+invariant, escrow gateway (`lock`/`release`/`void`), `fillId`, `fillSalt`,
+confidentiality tier (linked / unlinked / confidential), anonymity set, note
+preimage registry (`note_already_bound`), recipient hold (`not_received`).
