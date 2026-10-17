@@ -1306,6 +1306,245 @@ types are the contract.
 
 ---
 
+## 13. Firm liquidity: regimes, commitment class, award log  `[PROPOSED]`
+
+Everything in this section is net-new and MUST be built server-side before it
+is real (legend, top of file). Nothing here changes a shipped digest: §13.2 is a
+SolverBid **v3** with its own vector set, and every other clause is additive on
+the wire. The FX-market measurements each clause rests on, and where the FX
+analogy stops applying, are in §13.10; everything else here is protocol. Work
+is tracked in xochi-fi/xochi-sdk#31.
+
+The goal is one property, stated so it can be measured: **an awarded bid is
+honored**. §5.1 already makes the bid's expiry verifiable (`validUntilMs` is in
+the digest) and §5.3 already makes a sent FillAcceptance slashable. What is
+missing is the class of commitment a bid makes, the reason an award is declined,
+a record from which an honored rate can be computed, and the market regime
+against which that rate is bucketed.
+
+### 13.1 Regime, price sources, regime-indexed solver layer
+
+- `GET /solver/capabilities` gains `regime: { state, asOf, pairs? }`, `state ∈
+  {calm, elevated, stress, feed_degraded}`, computed by the venue from realized
+  volatility on the quoted pairs plus the health of the reference feeds the
+  venue itself watches. The detector's thresholds are published here when
+  built. `pairs`, when present, overrides `state` per pair.
+- `IntentAnnouncement` gains `regime` (the state at `opensAt`); `Award` gains
+  `regimeAtAward`. A solver MAY read it; the venue MUST stamp it.
+- `SolverCapabilities` gains `priceSources: [{ kind: "oracle" | "cex" | "dex" |
+  "internal", id: string, weight: number }]`, weights summing to 1. The venue
+  computes, per pair, the fraction of active solver weight on each `id` and
+  publishes it (§13.9). When a declared source is degraded the venue MAY set the
+  affected pairs to `feed_degraded`.
+- The solver layer of `fee/schedule.json` (`SPEC.md` §4) gains a served
+  multiplier per regime: `calm = 1.0`, the others published beside the
+  schedule. **Only the solver layer widens**; the venue and routing layers are
+  regime-invariant. The multiplier is applied to the reserve bid too, so the
+  taker floor widens in step and a third party still wins only by strictly
+  beating it (§2.1).
+
+### 13.2 Commitment class (SolverBid v3)
+
+`BidDraft` / `Bid` gain `commitmentClass: "firm" | "indicative"`, signed into the
+bid. The v3 type string is
+
+```
+SolverBid(bytes32 orderId,string auctionId,string intentId,uint256 output,uint64 validUntilMs,uint64 minExclusiveMs,uint8 commitmentClass)
+```
+
+with `firm = 1`, `indicative = 2`, domain version `"3"`, vectors in
+`conformance/solver-bid-v3.json` (v2 vectors stay as the pinned history of the
+v2 digest). Rules:
+
+- A `firm` bid MUST satisfy `validUntilMs − closesAt ≥ minFirmValidityMs`, a
+  venue constant served in capabilities; below it the bid is rejected `422`
+  (admissibility, same class as `minOutput`). **Decided 2026-10-17: 15 000 ms.**
+  It excludes pure latency quoting (FX non-bank order life is 1.6–3 s) and
+  stays inside typical origin-finality budgets, so cross-chain inventory risk
+  is priced rather than refused. It is served, not hard-coded, so it can move
+  without a wire change.
+- Only `firm` bids are award-eligible in `calm` / `elevated` / `stress`. In
+  `feed_degraded` an `indicative` bid is eligible after every `firm` bid above
+  the reserve, and an `indicative` award is a `[PROPOSED]` **non-binding**
+  award: declining it is never a broken commitment (§13.3).
+- The reserve bid is always `firm`.
+- **All `firm` bids decline in `feed_degraded`:** the venue re-auctions
+  **once**, in the same regime with the §13.1 stress multiplier applied to the
+  solver layer (so the widened reserve is the new floor), then the reserve
+  fills. The taker is never returned an empty result (§2.1 price floor), and
+  both the retry and the reserve fill are stamped in the award log (§13.4) so
+  the failure is counted, not hidden.
+
+### 13.3 Decline on the wire; what "broken" means
+
+`POST /solver/awards/:auctionId/decline` (panel-authenticated) carries
+`{ reason }` where `reason` is one of the `EscrowRefusalError` codes
+`@xochi/solver-sdk` already raises from the §7.1 re-gate (`insufficient_inventory`,
+`claims_paused`, `accept_window_closed`, `bond_mismatch`, …) plus
+`price_source_down` and `other`. The SDK MUST post it when the re-gate refuses
+an award it received, instead of letting `acceptBy` lapse silently; a lapse with
+no decline is still `winner_abandoned` (§5.3) and is recorded as
+`reason: "no_response"`.
+
+Three outcomes, kept distinct in the award log:
+
+| Outcome | Condition | Scored as |
+| --- | --- | --- |
+| **Broken commitment** | `firm` award declined or abandoned while `now ≤ validUntilMs` | counts against the honored rate |
+| **Lapsed** | declined or abandoned after `validUntilMs` | not counted; the venue issued late |
+| **Slashable no-show** | FillAcceptance sent, no fill by `fillAuth.deadline` | §5.3 / ESCROW-RFC §6.1, unchanged |
+
+Enforcement of a broken commitment starts as **scoring** (§13.5, §13.7).
+Extending SolverBond slashing to a `firm` decline inside validity is P2 and
+waits on enough award-log history to set a threshold an honest stress-event
+inventory miss does not trip.
+
+### 13.4 Award log
+
+The venue persists one record per award: `auctionId`, `intentId`, `solverId`,
+`output`, `validUntilMs`, `commitmentClass`, `regimeAtAward`, a realized-vol
+bucket, `awardedAt`, `acceptBy`, the §13.3 outcome and `reason`, fill result,
+`settledAt`. This is the raw material for the honored rate, the §13.7 tiers and
+the §13.9 telemetry; it is venue-internal and never served per record.
+Settlement latency is `awardedAt → settledAt`, published as p50/p95 by rail and
+regime.
+
+### 13.5 Scored award, tie-break, concentration
+
+Amends §2.1 "best output wins" to **best scored output above the reserve**:
+
+```
+score = output × honoredRate(solverId, regime)
+```
+
+where `honoredRate` is the solver's trailing honored-award rate in the current
+regime (§13.3 definition) with a published prior for a solver with no history.
+The reserve floor and `minOutput` admissibility are unchanged, so the §11
+auctioneer rule (never settle below the reserve or `minOutput`) still holds; a
+scored award can only pick, among bids that already beat the reserve, one whose
+output is not the maximum. The formula and prior are published here; an opaque
+score reads as venue discretion.
+
+Tie-break at equal score: reputation (§8) first, then **rotation** among solvers
+of equal reputation. Above **60 % award share over a trailing 30-day window**
+(decided 2026-10-17; a two-solver panel can settle before it bites, a
+three-solver panel cannot stay single-dealer past it), the dominant solver's
+score is discounted at equal output until its share falls; the threshold and
+the venue's HHI are published (§13.9). The reserve solver is exempt only as
+winner-of-last-resort: a reserve win counts in its share.
+
+First-price stays the settle rule. The §2.1 Vickrey option is revisited when
+the trailing-30-day **median count of `firm` bids above the reserve per
+auction reaches 5** (decided 2026-10-17; measured bids, not registered
+solvers: three externals at median plus the reserve gives a second price that
+survives one withdrawal). Shading is instrumented (bid vs. next-best) from the
+first award-log record so the decision is made on data.
+
+### 13.6 Disclosure: loser feedback, size bins, probing
+
+- **Losers.** A panel member whose bid lost receives a `lost` feed event with its
+  rank and `regimeAtAward`, never the winning `output` (§5.2 stays: awards are
+  addressed). Rank + regime is enough to calibrate; the winning price is what
+  teaches a non-committed bidder to shade.
+- **Size bins.** This is §2.1's D1b. The announcement's `fromAmount` /
+  `outputAmount` becomes a bin from a **published fixed-USD ladder** (decided
+  2026-10-17; e.g. `<1k, 1–5k, 5–25k, 25–100k, 100–500k, 500k+`, finalized with
+  the schedule); the exact amount travels in the award. Fixed buckets are
+  chosen over powers of two because each bin's width can be set to exceed the
+  tier spread (§2.1: `22/19/15/12/10` stable), which is the condition under
+  which a bin restores reserve uncertainty at every size, not only at large
+  ones. The interaction with `minOutput` MUST be restated here with the final
+  ladder.
+- **Probing.** The announcement gains `takerExecuteClass`, a coarse trailing
+  execute-rate class for the taker (no identity). The venue rate-limits intents
+  that reach the sealed round without executing, per taker, scaled by trust
+  tier.
+
+### 13.7 Reputation extensions, conduct statement
+
+§8 `SolverReputation` gains `honoredRateByRegime`, `committedSizeStressOverCalm`
+(`order_bounds_usd` upper bound in `stress` ÷ in `calm`, from capability
+snapshots) and `responseRate` (bids ÷ eligible announcements). Tiers are
+computed from these on a published cadence with published thresholds, so a
+solver can compute its own tier from its own data. Tier feeds the §13.5 weight,
+telemetry access and a **venue-fee share** (decided 2026-10-17): a published
+fraction of the venue layer (`SPEC.md` §4; never the solver layer, so the
+taker price is unchanged) is rebated to the winning solver per tier, e.g.
+tier 1 50 %, tier 2 25 %, tier 3 0 %, finalized with the tier thresholds. It
+is paid only on `firm` fills honored inside validity, and never on a reserve or
+backstop fill, so the venue's own solver cannot earn it.
+
+A **conduct statement** (firm bids are binding, decline reasons are truthful,
+`priceSources` is complete, no probing of the sealed round) is signed with the
+solver key and held as a solver-scoped attestation on the §10 substrate;
+`SolverDirectory` admission requires it from P1.
+
+### 13.8 Settlement statement (ESCROW-RFC)
+
+ESCROW-RFC gains, in §1, the sentence a counterparty will read first: *taker
+principal never leaves escrow without a proven fill; the solver carries the
+destination leg between its fill and its claim, bounded by `refundableAt`.* It is
+not PvP and MUST NOT be described as such. Beside it, a failure matrix naming
+outcome and bearer for: no-show before acceptance (abandoned → reserve fills),
+no-show after acceptance (slash → backstop), destination chain halt, claim
+revert, attestation window missed, origin reorg past `safe`. For XIP-1/XIP-2
+plans, whether a sub-trade failure unwinds the plan or only the leg is stated
+and shown to the taker before signing.
+
+### 13.9 Telemetry
+
+Monthly, aggregated at tier × regime (never per solver or per taker), with a
+published minimum cell count and a one-cycle delay: honored rate; median and
+p10 declared `validUntilMs − closesAt`; committed size stress ÷ calm; fill rate
+in `feed_degraded` windows per declared source; settlement p50/p95 by rail and
+regime; top-solver share and HHI; price improvement vs. `minOutput`; declined
+and lapsed awards by reason. A scheduled **outage drill** marks a declared
+source degraded in a test window and records who keeps bidding; its result is a
+row in the same report.
+
+### 13.10 Evidence and limits of the FX analogy
+
+The target is the spot-FX **bank tier** as measured by venue operators and
+central banks, not as self-described: quotes that live minutes, size that stays
+through a shock, pricing that survives the loss of a reference feed. The
+non-bank tier is the failure mode each clause above is built against. Sources
+are the CME/LSEG presentation to the ECB FX Contact Group and the FXCG minutes
+(both 2026-06-25), the BIS 2025 triennial settlement follow-up and the SNB
+study of the 2025-11-28 CME outage, as reported by FX Markets (Feb–Oct 2026);
+each clause names the row it rests on.
+
+| Measurement | Number | Clause |
+| --- | --- | --- |
+| Median order life, banks vs non-banks | 290 s / 181 s (EBS / Matching) vs 2.95 s / 1.64 s | 13.2 `minFirmValidityMs`, 13.3 broken vs lapsed |
+| BOJ intervention 2026-04-30 (USD/JPY 159.35 → 155.50, 385 pips, $77 bn) | non-banks refreshed at the touch and cancelled within seconds; banks rested bids down to 155.50 before spot arrived | 13.3, 13.5 honored rate over headline output |
+| Maker/taker ratio through the 2026-03-03 shock | banks 55:45 → 70:30 and kept resting size; non-banks 33:67 → 30:70 and left the book | 13.1 regime, solver-layer-only multiplier; 13.7 stress ÷ calm committed size |
+| CME outage 2025-11-28 (~11 h) | futures ~2 % of spot+forwards volume, yet spreads 2–4×, non-bank LPs up to 124× (SNB: EUR/USD 8×, non-bank PTFs ~30×) | 13.1 `priceSources` and `feed_degraded`; 13.9 outage drill |
+| EBS LP mix 60/40 bank/non-bank | the data feed requires making markets on 40 % of weekly volume and $200 m/day; LSEG Matching non-bank share 20 % → 33 % (2022 → 2026) with no such rule | 13.5 scored award, 13.7 behaviour-earned tiers |
+| Cboe FX, 2023 | every LP on the anonymous spot platform signs an FX Global Code statement of commitment | 13.7 conduct statement |
+| ECB FXCG verdict | non-bank liquidity is conditional, small-size, concentrated, with limited end-user transparency and untested resilience if a dominant firm withdraws | 13.5 concentration handicap + HHI, 13.9 telemetry |
+| FX HedgePool | >$4 tn matched since 2020, bought by LMAX for $20 m in 2024, then stalled: thin pools → few matches → deeper participants stay away; surviving P2P venues (Cürex, Siege FX, LoopFX) added bank axes as fallback | 13.2 re-auction-then-reserve; the reserve bid (§2.1) is the fallback liquidity |
+| PvP settlement share | 56 % today vs 54 % in 2006; non-banks < 50 % of gross obligations PvP, large dealers ~75 % | 13.8 settlement statement |
+| Banks internalising | dealers left primary venues for internal matching after resting quotes were picked off | 13.6 `lost` without the winning output, size bins, anti-probing |
+
+**Where the analogy stops.** The FX data is from continuous central limit
+order books in deliverable G10 spot; this is a sealed RFQ settling cross-chain
+stablecoins. "Order life" maps to validity window plus honored rate, not to
+resting liquidity (nothing here asks for resting orders). Last look is removed
+by the sealed round, so the only withdrawal path is the post-award decline,
+which is why 13.3 is about that gate. Crypto reference prices (oracles, CEX
+books, pools) fail differently and sometimes together, so the 13.1 detector is
+built for depegs, chain halts and liquidation cascades, not borrowed from FX;
+settlement and pricing risk arrive together, which is why the drill matters
+more here. Cross-chain fills force destination inventory, so a solver cannot be
+as capital-light as an FX HFT: it pushes toward bank-like behaviour and raises
+the onboarding bar. Agent takers (`raxol_payments`) have no human on the desk;
+retry storms and probing are their own problem that 13.6 only begins on.
+Sample size: CME and LSEG have decades and dozens of LPs; every threshold in
+§13 is set from the award log once it exists, with the FX numbers as priors,
+not targets.
+
+---
+
 ## Appendix A — Implementation status summary
 
 | Area | Status | Where |
@@ -1326,10 +1565,16 @@ types are the contract.
 | Bonds / slashing / permissioning P1–P3 | `[RESERVED]` | gated on the escrow (§7, M6); `SolverBond` helpers in `@xochi/solver-sdk` |
 | Non-custodial escrow boundary | `[RESERVED]` | `SPEC.md` §5.2 (M6); solver side `OnchainEscrowGateway` (§7.1) |
 | `GET /solver/attestations/:orderId` | `[PROPOSED]` | §6 (escrow-attest) |
+| Regime / `priceSources` / regime-indexed solver layer | `[PROPOSED]` | §13.1 |
+| SolverBid v3 `commitmentClass`, `minFirmValidityMs` | `[PROPOSED]` | §13.2 (new vector set) |
+| `POST /solver/awards/:auctionId/decline`, award log, scored award, `lost` event, size bins, telemetry | `[PROPOSED]` | §13.3–§13.9 |
 
 ## Appendix B — Glossary
 
 Sealed RFQ, reserve bid, exclusive window, backstop, first-price vs Vickrey,
 committed/encrypted bid, frequent batch auction (FBA), `FillProof`,
 `SolverDirectory`, `SolverReputation`, permissioning phase (P0–P3), escrow
-gateway (`lock`/`release`/`void`), dark-pool panel confidentiality.
+gateway (`lock`/`release`/`void`), dark-pool panel confidentiality, regime
+(`calm` / `elevated` / `stress` / `feed_degraded`), commitment class
+(`firm` / `indicative`), honored rate (broken vs lapsed), award log,
+concentration handicap (§13).

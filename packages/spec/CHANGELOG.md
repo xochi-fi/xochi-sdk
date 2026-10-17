@@ -8,6 +8,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 - **Moved in from the archived `axol-io/riddler-sdk`** (snapshot, no history) as `@xochi/spec` (was `@riddler/spec`). Every vector digest, signature, typehash and domain separator is byte-identical; only `description` strings naming a package changed. EIP-712 domain and contract names (`Xochi`, `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are unchanged.
 - `README.md`: how to consume the spec (moved from the repo root README).
+- **SOLVER-RFC §13 `[PROPOSED]`: firm liquidity.** Regime (`calm` / `elevated` / `stress` / `feed_degraded`) on capabilities, announcements and awards with a solver-layer-only fee multiplier; `priceSources` in capabilities; SolverBid **v3** with a signed `commitmentClass` and a served `minFirmValidityMs` (15 s); `POST /solver/awards/:auctionId/decline` and the broken / lapsed / slashable outcome split; the award log; scored award `output × honoredRate(regime)` above the unchanged reserve floor, reputation-then-rotation tie-break and a 60 % concentration handicap; `lost` feed event (rank + regime), fixed-USD size bins, `takerExecuteClass`; §8 reputation extensions, signed conduct statement, venue-fee share by tier; ESCROW-RFC settlement statement and failure matrix; monthly tier × regime telemetry and the outage drill; §13.10 FX evidence. No digest, vector or `rfcVersion` change; tracked in xochi-fi/xochi-sdk#31.
 
 ### Changed
 
