@@ -28,7 +28,7 @@ const quote = await xochi.getQuote(request);
 - `getIntentStatus` returns the status, `{ notFound: true }` on 404, or `null` on a transient failure.
 - An `execute` response may carry `readToken`, served once (xochi#563). Keep it with the intent and pass `{ readToken }` to `getIntent` / `getIntentStatus`, which send it as `X-Xochi-Read-Token`; without it a stealth or shielded intent's on-chain legs (tx hashes, chain ids, `sending` / `receiving`) are omitted. The machine's `status` API call carries only `intentId`, so the host that ran the `execute` call keeps the token. It is a bearer secret: never log it or put it in a URL.
 - 429/503 raise `ApiError` with `retryAfter`.
-- Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated). Each attempt's timeout stays armed until the body is read and cancels the body when it fires. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs` (15 s).
+- Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated). The one exception is a malformed `read_token`, which is dropped rather than failing an execute that may already have moved funds. Each attempt's timeout stays armed until the body is read and cancels the body when it fires. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs` (15 s).
 - The exported `QuoteResponseSchema` / `ExecuteResponseSchema` are `.strict()` (the declared wire shape); the transport validates with a `.passthrough()` copy so undeclared served fields (e.g. `escrow`) reach the signer checks. A consumer running the exported schema directly is stricter than the transport.
 
 ## State machine

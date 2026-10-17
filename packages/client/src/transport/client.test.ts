@@ -641,13 +641,30 @@ describe("intent read capability", () => {
     expect((await c.execute(execRequest)).readToken).toBeUndefined();
   });
 
-  it("holds read_token to its shape like every declared execute field", async () => {
-    const { c } = client(() =>
-      json({ success: true, intent_id: "intent-1", status: "executing", read_token: "short" }),
+  it("drops a malformed read_token and still reports the execute", async () => {
+    const malformed = [
+      "short",
+      `${READ_TOKEN}=`,
+      `${READ_TOKEN}A`,
+      READ_TOKEN.replace("-", "+"),
+      `${READ_TOKEN.slice(0, 41)}\r\n`,
+      42,
+      null,
+    ];
+    const { c } = client((call) =>
+      json({
+        success: true,
+        intent_id: "intent-1",
+        status: "completed",
+        tx_hash: "0xabc",
+        read_token: malformed[call - 1],
+      }),
     );
-    expect(((await rejection(c.execute(execRequest))) as Error).message).toBe(
-      "Invalid response format",
-    );
+    for (const _ of malformed) {
+      const res = await c.execute(execRequest);
+      expect(res).toMatchObject({ success: true, status: "completed", txHash: "0xabc" });
+      expect(res.readToken).toBeUndefined();
+    }
   });
 
   it("sends the token as a header on both reads, never in the URL, and no header without one", async () => {

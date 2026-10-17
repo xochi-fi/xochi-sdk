@@ -24,6 +24,7 @@ import type {
 import {
   ExecuteResponseSchema,
   QuoteResponseSchema,
+  READ_TOKEN_PATTERN,
   isSettlementType,
   isIntentStatus,
 } from "../shared/index.js";
@@ -426,7 +427,12 @@ export function mapExecuteResponse(w: ExecuteResponseWire): ExecuteResponse {
     stealthAddress: w.stealth_address,
     ephemeralPubKey: w.ephemeral_pub_key,
     viewTag: w.view_tag,
-    readToken: w.read_token,
+    // The decoders read the raw body, not the parse output, so the schema's
+    // drop of a malformed token does not reach here: check it again.
+    readToken:
+      typeof w.read_token === "string" && READ_TOKEN_PATTERN.test(w.read_token)
+        ? w.read_token
+        : undefined,
   };
 }
 
