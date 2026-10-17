@@ -55,10 +55,6 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 - **src/diffusion-scheduler.ts**: `scheduleDiffusion`, schedule sub-trades over time
 - **src/execution-orchestrator.ts**: `planExecution`, split -> route -> schedule
 
-#### Bridge Integration
-
-- **src/pxe-bridge-client.ts**: `PxeBridgeClient`, JSON-RPC client for pxe-bridge. Requires `https:` (plain `http:` only for loopback) and aborts each call after `timeoutMs` (default 15 s).
-
 #### Encoding & Constants
 
 - **src/encoding.ts**: public input/proof encoding for EVM submission, `normalizeInputs()` for Noir
