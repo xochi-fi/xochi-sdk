@@ -1488,7 +1488,6 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
             signature: request.signature,
             nonce: request.nonce,
             pull_signature: request.pullSignature,
-            aztec_proof: request.aztecProof,
           }),
         },
         isExecuteResponseWire,

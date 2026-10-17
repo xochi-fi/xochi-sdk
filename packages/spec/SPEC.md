@@ -420,23 +420,22 @@ server-parity list in §2.1.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ reserved `escrow` envelope when advertised, §5.2) |
-| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2). Only the `kid` that requested the quote may execute it (§3.5). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `404` unknown, expired or foreign quote; `429` rate limit; `503` not accepted or in doubt (§3.5) |
+| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (the declared `aztec_proof` is unused; see below); MAY echo `escrow.address`/`order_id` (§5.2). Only the `kid` that requested the quote may execute it (§3.5). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `404` unknown, expired or foreign quote; `429` rate limit; `503` not accepted or in doubt (§3.5) |
 | GET | `/xochi/status/:intent_id` | Poll settlement status |
 | POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` plus an optional `chain_id` (the chain the payment settled on; see below) → returns `userOpHash` |
 | POST | `/xochi/claim/submit` | Submit `{signature, user_op_hash}` → `{txHash, opHash, action, intentId, claimed}` once the op's receipt is seen |
 | GET | `/xochi/chains` · `/routes` · `/capabilities` | Discovery (§6) |
 | GET | `/xochi/openapi.json` · `/health` | Schema + health |
 
-`aztec_proof` is a **documented sink with no documented source**: `ExecuteRequest`
-declares it, and the served `QuoteResponse` declares no field carrying it. Clients
-read it off the quote, so shielded settlement rests on an undeclared response field
-until the server declares one.
-
-Note that `ExecuteRequest.required` is `["intent_id", "quote_id", "signature"]`:
-`aztec_proof` is OPTIONAL in the schema, and "required for `shielded`" is stated
-only in that property's `description`. A requirement carried by prose is one no
-schema check can enforce and one the wire probe deliberately never compares, so
-treat it as normative here and send it for `shielded` regardless.
+`aztec_proof` is **unused by every producer and consumer**: `ExecuteRequest`
+declares it (optional; `ExecuteRequest.required` is
+`["intent_id", "quote_id", "signature"]`, and "required for `shielded`" lives
+only in that property's `description`), but the served `QuoteResponse` declares
+no field carrying it, `@xochi/client` never sends it, the xochi Worker accepts
+it and never forwards it, and Riddler parses it as optional and never reads it.
+Do not send it. It stays in the vendored `wire/openapi.json` until it leaves the
+served schema; removing it from `ExecuteRequest` is a lockstep wire change with
+Riddler (then `npm run generate:wire`), and this paragraph goes with it.
 
 **Stealth claims are chain-bound by `chain_id`.** The counterfactual account is
 the same CREATE2 address on every chain, so a `/xochi/claim/prepare` without
@@ -500,7 +499,8 @@ refund, and one that treats `refund_pending` as terminal stops polling one hop
 early. Status MAY carry
 `settlementType`, `settlementConfirmed`, `txHash`/`receivingTxHash`/`refundTxHash`,
 `refundReason`/`substatus`, and stealth (`stealthAddress`, `ephemeralPubKey`,
-`counterfactualAddress`) / shielded (`noteHashes`, `nullifiers`, `l2TxHash`)
+`counterfactualAddress`) / shielded (scalars `noteCommitment`, `nullifierHash`,
+`l2TxHash`; §5.1)
 fields. When escrow is active (§5.2, M6) status MAY also carry the reserved
 `escrow.address`/`order_id` and a `proof_receipt` (§5.2.3); until then these are
 absent.
@@ -798,13 +798,18 @@ breakdown from the headline fee.
 |---|---|---|---|
 | `public` | plain address | ~30s | tx hashes |
 | `stealth` | ERC-5564 → ERC-4337 counterfactual account, gasless claim, on the chains in `stealth_chains` (§6) | ~60s | `stealthAddress`, `ephemeralPubKey`, `counterfactualAddress` |
-| `shielded` | Aztec note (reserved and unavailable: refused `settlement_not_allowed` whatever the deploy's allowlist or sidecar configuration) | ~120s | `noteHashes`, `nullifiers`, `l2TxHash` |
+| `shielded` | Aztec note (reserved and unavailable: refused `settlement_not_allowed` whatever the deploy's allowlist or sidecar configuration) | ~120s | `noteCommitment`, `nullifierHash`, `l2TxHash` (scalars) |
 
-A `transfer_to_private` emits two note hashes and three nullifiers, so the
-shielded surfaces are arrays. `noteCommitment` and `nullifierHash` remain as
-deprecated aliases for index 0 of each. `nullifierHash` is misleading: it is the
-protocol nullifier, and the transfer spends a public balance and nullifies no
-note, so it is not the nullifier for the note the taker receives.
+Shielded is not offered to takers today: the xochi Worker serves it as
+unavailable in `settlement_options` and refuses it as a `settlement_preference`
+while shielded is not offered by the venue (the Worker's
+`SHIELDED_SETTLEMENT_LIVE` flag). The served status surfaces are the three
+nullable scalars above; no array of note hashes or nullifiers is served.
+`nullifierHash` is misleading: it is the first protocol nullifier of the
+transaction, and a `transfer_to_private` spends a public balance and nullifies no
+note, so it is not the nullifier for the note the taker receives. A
+transaction-centric receipt replaces these scalars, with no scalar aliases, when
+Riddler serves it; it is written here then, not before.
 
 ### 5.2 Non-custodial escrow envelope — RESERVED
 

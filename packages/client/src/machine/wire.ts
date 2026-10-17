@@ -214,7 +214,6 @@ export interface ExecuteRequest {
   signature: string;
   nonce: number;
   pullSignature?: string;
-  aztecProof?: string;
 }
 
 export interface ExecuteResponse {
@@ -745,7 +744,12 @@ export interface IntentRecordWire {
   tier?: string;
   fee_rate?: number;
   settlement_type?: SettlementType;
-  aztec_note_hash?: string;
+  /**
+   * Served by the xochi Worker (not `/xochi/*`, so absent from `openapi.json`):
+   * the intents row's nullable `aztec_note_hash`, written from Riddler's
+   * settlement webhook `noteCommitment` (a scalar; null unless shielded).
+   */
+  aztec_note_hash?: string | null;
   tx_hash?: string;
   settlement_tx_hash?: string | null;
   settlement_chain_id?: ChainId | null;
@@ -797,7 +801,7 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     tier: w.tier ?? "",
     feeRate: w.fee_rate ?? 0,
     settlementType: w.settlement_type ?? "public",
-    aztecNoteHash: w.aztec_note_hash,
+    aztecNoteHash: w.aztec_note_hash ?? undefined,
     txHash: w.tx_hash,
     settlementTxHash: w.settlement_tx_hash ?? undefined,
     settlementChainId: w.settlement_chain_id ?? undefined,
