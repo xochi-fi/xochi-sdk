@@ -397,6 +397,41 @@ describe("wire validation", () => {
     expect(() => parseSolverEvent({ type: "award", award: award({ output: "9.5" }) })).toThrow();
   });
 
+  // An event published before the producer withdrew `recipientCommitment`
+  // (RFC 0.5.0-draft) still parses; the key is gone from what `quote` sees,
+  // like the keys retired in 0.3.0-draft, while an additive field survives.
+  it("parses an old public announcement with every retired key deleted", () => {
+    const wire = {
+      ...announcement(),
+      recipientCommitment: "0x" + "c1".repeat(32),
+      reserveOutput: "998000",
+      trustScore: 40,
+      announcedAt: "quote",
+    };
+    const event = parseSolverEvent({ type: "announcement", announcement: wire });
+    if (event.type !== "announcement") throw new Error("expected an announcement");
+    expect(event.announcement).toEqual({ ...announcement(), announcedAt: "quote" });
+    for (const key of ["recipientCommitment", "reserveOutput", "trustScore"])
+      expect(key in event.announcement).toBe(false);
+  });
+
+  it.each(["stealth", "shielded", "PUBLIC", ""])(
+    "refuses an announcement whose settlementPreference is %j",
+    (settlementPreference) => {
+      const wire = {
+        ...announcement(),
+        settlementPreference,
+        recipientCommitment: "0x" + "c1".repeat(32),
+      };
+      expect(() => parseSolverEvent({ type: "announcement", announcement: wire })).toThrow();
+    },
+  );
+
+  it("still requires settlementPreference on the wire", () => {
+    const { settlementPreference: _omitted, ...wire } = announcement();
+    expect(() => parseSolverEvent({ type: "announcement", announcement: wire })).toThrow();
+  });
+
   it("rejects a bid whose signature does not recover to solverId", async () => {
     // Signed by a different key, but claims SOLVER_ID: recovers to the wrong
     // address -> false.

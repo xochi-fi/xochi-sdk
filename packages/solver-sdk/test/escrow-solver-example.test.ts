@@ -913,6 +913,35 @@ describe("escrow example: a restart resumes persisted orders", () => {
     state.close();
   });
 
+  // A state file an earlier version wrote holds the announcement's
+  // `recipientCommitment`, since withdrawn (RFC 0.5.0-draft). The owed claim
+  // still resumes, and the key is neither handed back nor written out again.
+  it("resumes an order from an older state file carrying `recipientCommitment`, and drops the key", async () => {
+    const file = path.join(dir, "state.json");
+    const attestation = await filledBeforeStop(file);
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    onDisk.fills[0].announcement.recipientCommitment = "0x" + "c1".repeat(32);
+    fs.writeFileSync(file, JSON.stringify(onDisk));
+
+    const state = new FillStateFile(file);
+    const [entry] = state.entries();
+    expect(entry?.phase).toBe("filled");
+    expect(entry && "recipientCommitment" in entry.announcement).toBe(false);
+    state.put(entry!);
+    expect(fs.readFileSync(file, "utf8")).not.toContain("recipientCommitment");
+
+    const after = world([], { state });
+    after.lock.filled = true;
+    after.venue.attestation = attestation;
+    for (const e of state.entries()) after.escrowSolver.resume(e);
+    expect(await drain(after.background, 4)).toBe(true);
+
+    expect(claimsOn(after.origin)).toHaveLength(1);
+    expect(after.lock.status).toBe(LockStatus.Claimed);
+    expect(readFillStateFile(file)).toEqual([]);
+    state.close();
+  });
+
   // One entry that does not decode (a hand edit, a file an older version
   // wrote) costs that entry, loudly, never the rest; it stays on disk as it
   // was for whoever resolves it.

@@ -533,8 +533,8 @@ Deriving also covers P0, where there is no `Award`: the reserve wins every
 auction and the venue self-fills (`SOLVER-RFC.md` §9), recomputing the salt for
 any filler including itself.
 
-`venueKey` is the same class of secret as the RFQ `recipient_commitment` key
-(Riddler `adapter/quote.ex`, `put_recipient_commitment`): `orderId` is public
+`venueKey` is a venue-held secret of the same class the withdrawn RFQ
+`recipientCommitment` HMAC key was (SOLVER-RFC `0.5.0-draft`): `orderId` is public
 and low-entropy-adjacent, so an _unkeyed_ hash of it is recomputable by any
 observer and leaks the link it is meant to hide. The key MUST NOT be shared with
 the solver panel. A solver receives its `fillSalt` with the award (or, at P0,

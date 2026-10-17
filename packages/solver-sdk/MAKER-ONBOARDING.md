@@ -54,9 +54,12 @@ secret bound to that id.
   announcement index and refuse awards not in it.
 - **Awards are addressed, not broadcast.** No `GET /solver/awards`.
 - **Long poll only.** SSE is not served.
-- **Retired `trustScore`/`reserveOutput` may still be on the wire.** The SDK deletes them after
-  parse; do not price off them.
-- **`recipientCommitment`** is an opaque venue-keyed HMAC.
+- **Retired `trustScore`/`reserveOutput`/`recipientCommitment` may still be on the wire.** The SDK
+  deletes them when it parses (`HttpSolverTransport`, `parseSolverEvent`); do not price off them.
+- **Public settlement only.** `settlementPreference` is always `"public"`. `HttpSolverTransport`
+  refuses any other value as a malformed entry (passed to `onInvalidEvent`, thrown without one), so
+  it never reaches `quote`. An injected `SolverTransport` is not parsed by the SDK: validate each
+  event with the exported `parseSolverEvent` before yielding it.
 
 ## Copy from the reference solver
 

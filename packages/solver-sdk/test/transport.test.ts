@@ -432,6 +432,92 @@ describe("HttpSolverTransport malformed entries", () => {
 
     await expect(firstEvent(transport)).rejects.toThrow();
   });
+  // Events a venue published before landing the public-only withdrawal (RFC
+  // 0.5.0-draft) can still sit on the feed's retention ring. A stealth or
+  // shielded one is refused entry by entry, the feed keeps going, and a public
+  // one still carrying `recipientCommitment` is delivered without it.
+  const LEGACY_COMMITMENT = "0x" + "c1".repeat(32);
+  const legacy = (intentId: string, settlementPreference: string) => ({
+    type: "announcement",
+    announcement: {
+      ...ANNOUNCEMENT.announcement,
+      intentId,
+      auctionId: `auction-${intentId}`,
+      settlementPreference,
+      recipientCommitment: LEGACY_COMMITMENT,
+    },
+  });
+  const LEGACY_BATCH = {
+    events: [
+      legacy("stealth-1", "stealth"),
+      legacy("shielded-1", "shielded"),
+      legacy("public-1", "public"),
+    ],
+    cursor: "3",
+  };
+
+  it("refuses stealth and shielded entries through onInvalidEvent and delivers the next public one", async () => {
+    const baseUrl = await serve((_req, res) => json(res, LEGACY_BATCH));
+    const bad: unknown[] = [];
+    const transport = new HttpSolverTransport({
+      baseUrl,
+      solverId: SOLVER_ID,
+      onInvalidEvent: (_err, raw) => bad.push(raw),
+    });
+
+    const ev = await firstEvent(transport);
+
+    expect(
+      bad.map((raw) => (raw as (typeof LEGACY_BATCH.events)[0]).announcement.intentId),
+    ).toEqual(["stealth-1", "shielded-1"]);
+    if (ev?.type !== "announcement") throw new Error("expected an announcement");
+    expect(ev.announcement.intentId).toBe("public-1");
+    expect(ev.announcement.settlementPreference).toBe("public");
+    expect("recipientCommitment" in ev.announcement).toBe(false);
+  });
+
+  it("never hands a non-public announcement to solver.quote(), and the run goes on", async () => {
+    let polls = 0;
+    const baseUrl = await serve((req, res) => {
+      if ((req.url ?? "").startsWith("/solver/capabilities")) return json(res, CAPABILITIES);
+      polls += 1;
+      if (polls === 1) return json(res, LEGACY_BATCH);
+      if (polls === 2) return json(res, { events: [ANNOUNCEMENT], cursor: "4" });
+      return json(res, { error: "gone" }, 500);
+    });
+    const refused: string[] = [];
+    const quoted: Record<string, unknown>[] = [];
+    const client = new SolverClient({
+      baseUrl,
+      solverKey: SOLVER_KEY,
+      now: () => 1_500,
+      onInvalidEvent: (_err, raw) =>
+        refused.push((raw as (typeof LEGACY_BATCH.events)[0]).announcement.intentId),
+    });
+    const solver: Solver = {
+      capabilities: () => ({
+        solverId: SOLVER_ID,
+        chains: [8453, 10],
+        tokens: ["USDC"],
+        settlementTypes: ["public"],
+        rfcVersion: SOLVER_RFC_VERSION,
+      }),
+      quote: async (a) => {
+        quoted.push({ ...a });
+        return null;
+      },
+      fill: async () => {
+        throw new Error("no award in this script");
+      },
+    };
+
+    await expect(client.run(solver)).rejects.toThrow(/solver feed 500/);
+
+    expect(refused).toEqual(["stealth-1", "shielded-1"]);
+    expect(quoted.map((a) => a.intentId)).toEqual(["public-1", "intent-1"]);
+    expect(quoted.every((a) => a.settlementPreference === "public")).toBe(true);
+    expect(quoted.some((a) => "recipientCommitment" in a)).toBe(false);
+  });
 
   it("refuses over the real transport before it POSTs anything", async () => {
     // The gate against a venue that actually answers, over the actual fetch

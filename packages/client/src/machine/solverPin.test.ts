@@ -253,8 +253,9 @@ describe("validatePayoutPin", () => {
   //
   // It does not. Riddler's recipient_address/1 (adapter/quote.ex) is
   // unconditional -- request recipient if non-empty, else the wallet -- and has no
-  // stealth branch. The stealth-specific value is `recipient_commitment`, which
-  // rides on the RFQ announcement to the solver panel, NOT on the signed intent.
+  // stealth branch. The stealth-specific `recipient_commitment` never rode on the
+  // signed intent, and it is withdrawn from the RFQ announcement as well
+  // (SOLVER-RFC 0.5.0-draft producer withdrawal).
   // Xochi sends no recipient_address on an EVM route, so a stealth intent signs
   // the wallet. Pinned here so a future change upstream fails loudly in CI rather
   // than silently at users' wallets.

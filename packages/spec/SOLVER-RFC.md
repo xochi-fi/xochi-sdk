@@ -36,11 +36,15 @@ deploy announces nothing and answers nothing.
 
 ### Changes in `0.5.0-draft`
 
-**Solver obligations only; nothing signed and no wire field moves**, so
-`conformance/solver-bid-v2.json`, `fill-acceptance.json` and every escrow set
-regenerate byte-identical. The version still moves because a solver built to
-`0.4.0-draft` accepts awards this revision tells it to decline, and that skew
-surfaces as slashed bonds, not as a refusal (§12).
+**Nothing signed moves**, so `conformance/solver-bid-v2.json`,
+`fill-acceptance.json` and every escrow set regenerate byte-identical. The
+version moves because a solver built to `0.4.0-draft` accepts awards this
+revision tells it to decline, and that skew surfaces as slashed bonds, not as a
+refusal (§12). One announcement-wire change also lands inside this revision
+(the producer withdrawal below): `settlementPreference` narrows to `"public"`
+and `recipientCommitment` is removed. A parser built before it still accepts
+everything a withdrawn producer emits; narrowing the parser (SHOULD, §4.2) is
+defence in depth, not the privacy boundary.
 
 - **Decline, never skip** (§7.1 step 4): a solver MUST NOT accept while the
   origin escrow's `claimsPaused()` is true or while the origin claim signer
@@ -91,6 +95,43 @@ surfaces as slashed bonds, not as a refusal (§12).
   stable per-integrator quasi-identifier. Nothing signed or parsed changes,
   so this is a clarification inside `0.5.0-draft` and `rfcVersion` does not
   move.
+- **Producer withdrawal: the announcement is public-only and carries no
+  `recipientCommitment`** (§§2.2, 2.4, 4.2). `settlementPreference` stays a
+  REQUIRED field, narrowed on the announcement to the single value
+  `"public"`; a venue MUST NOT announce a stealth or shielded intent, and
+  `recipientCommitment` is withdrawn, so the announcement carries no
+  standalone recipient identifier (an escrow `orderId` stays bound to the
+  blinded `destCommitment`, §2.2). A keyed commitment hid the recipient but
+  not the flow: route, size and timing of a private intent were exact to
+  every panel member, and the panel is meant to open to permissionless,
+  bonded admission (§9, P3).
+  Taker settlement types are untouched: stealth and shielded remain taker
+  choices, served (where they are served at all) by the venue's own solver
+  and no longer put to the panel. Nothing signed moves (the announcement is
+  read-only for solvers), so this is a withdrawal inside `0.5.0-draft` and
+  `rfcVersion` does not move. The order is fixed:
+  0. **Prerequisite: the venue serves `0.5.0-draft`.** A solver compares
+     `rfcVersion` exactly before consuming the feed (§12), so no SDK
+     advertising `0.5.0-draft`, before or after this withdrawal, can read a
+     venue still serving `0.4.0-draft`. Riddler's bump is a separate change
+     (Riddler PR #1245, open at this writing) and must be deployed before or
+     with step 1.
+  1. **The producer withdraws first** (Riddler #1200): it stops announcing
+     non-public intents and stops emitting the commitment, then old
+     publishers and the feed's retention ring drain. A private announcement
+     already published is disclosed and cannot be retracted.
+  2. **Consumers filter as defence in depth, not as the privacy boundary.**
+     `@xochi/solver-sdk`'s `HttpSolverTransport` refuses an announcement
+     whose `settlementPreference` is not `"public"` as a malformed feed entry
+     (reported to `onInvalidEvent`, or thrown without one; never passed to
+     `solver.quote()`) and deletes a `recipientCommitment` from the parsed
+     announcement, as it does the keys retired in `0.3.0-draft`. An injected
+     `SolverTransport` bypasses that parse and MUST validate each event
+     itself with the exported `parseSolverEvent`. Like that delete, the
+     filter protects only a panel member who chooses not to look.
+  3. **Private flow comes back only under a separately reviewed design**:
+     an encrypted or commit-reveal auction (§2.4) whose disclosure to the
+     panel is itself reviewed, never by re-admitting a value here.
 
 ### Changes in `0.4.0-draft`
 
@@ -275,14 +316,29 @@ the winner receives an exclusive fill window (§6).
   wire format (§5) carries the settled `output` explicitly so the settle rule can
   change without a schema change.
 
-### 2.2 Size privacy  `[IMPLEMENTED]`
+### 2.2 Size privacy  `[IMPLEMENTED]`; public-only withdrawal `[PROPOSED]`
 
 The RFQ reveals size **to the solicited panel only**, never to the public.
 Solvers need size to price, so the panel sees it and the market does not, which
-is the dark-pool boundary. The announcement MUST NOT carry taker
-identity, and SHOULD carry a `recipientCommitment` (a hash) rather than the
-recipient address (§4). In lower permissioning phases (§9) the panel is small and
-allowlisted, which bounds leakage; widening the panel is gated on reputation.
+is the dark-pool boundary. That holds for the RFQ itself; an executed escrow
+order then publishes its origin token and amount, `toChainId` and `orderId` in
+`Opened` (ESCROW-RFC §9.1). The announcement MUST NOT carry taker identity or
+a standalone recipient identifier (address, hash or commitment). An escrow
+`orderId` is still announced; it commits transitively to the destination
+through the blinded `destCommitment` (§7.1), which the panel cannot open, and
+that binding is the only recipient-derived value on the wire. Neither field
+is inline identity, but `orderId` is public on the origin chain once the lock
+opens: the panel can join an executed escrow RFQ to `Opened(orderId, ...)`
+and its depositor. A venue MUST
+announce only intents with `settlementPreference: "public"` (§4.2). Both
+rules are the `0.5.0-draft` producer withdrawal: `[PROPOSED]` until Riddler
+#1200 merges to `master`, and the privacy property holds only once it is
+deployed and the feed has drained. A
+stealth or shielded intent is not put to the panel: a commitment can hide
+who is paid, but not that a private intent of this size crossed this
+corridor at this time. In lower permissioning phases (§9) the panel is small
+and allowlisted, which bounds leakage; widening the panel is gated on
+reputation.
 
 ### 2.3 Deprecated: Dutch-decay / exclusive-limit orders  `[DEPRECATED]`
 
@@ -308,6 +364,13 @@ the pre-trade leakage of §2.3. The trust-minimized target instead SHOULD be one
 
 Either preserves *sealed, no-public-book* execution; on-chain Dutch decay does
 not.
+
+**Private flow stays off the panel until it has its own design.** Both targets
+above seal *bids*; neither hides the *announcement* from the panel. Stealth or
+shielded intents are reconsidered for announcement only under a separately
+reviewed encrypted or commit-reveal design whose disclosure to the panel is
+reviewed as a whole, and only with an `rfcVersion` bump; until then the
+announcement is public-only (§2.2, §4.2).
 
 ---
 
@@ -382,18 +445,31 @@ interface IntentAnnouncement {
   swapKind: "exact_input" | "exact_output";
   fromAmount?: string;      // present iff exact_input (origin base units)
   outputAmount?: string;    // present iff exact_output (dest base units)
-  settlementPreference: "public" | "stealth" | "shielded";
+  settlementPreference: "public"; // REQUIRED; the only value announced (§2.2)
   minOutput: string;        // admissibility floor; NOT the reserve (see 2.1)
   opensAt: number;          // server clock, ms
   closesAt: number;         // sealed-window close, ms
   exclusiveWindowMs: number;// winner's exclusive fill budget after award
-  recipientCommitment?: string; // hash of recipient in dark/stealth mode
 }
 ```
 
-The announcement carries **no taker identity and no signature**: the signed
-`XochiIntent` and origin-pull authorization stay with the venue, so the venue
-rebuilds the digest server-side (`SPEC.md` §2).
+The announcement carries **no inline taker identity, no standalone recipient
+identifier and no signature** (an escrow `orderId` commits to the destination
+only through the blinded `destCommitment`, §7.1, and becomes linkable to its
+depositor through the public `Opened(orderId, ...)` once the lock opens, §2.2):
+the signed `XochiIntent` and
+origin-pull authorization stay with the venue, so the venue rebuilds the digest
+server-side (`SPEC.md` §2).
+
+**Public settlement only** `[PROPOSED]` until Riddler #1200 merges to
+`master`; the property holds only once it is deployed and the feed has
+drained (see the producer note below).
+`settlementPreference` stays on the wire and stays
+REQUIRED, but on the announcement it has exactly one value, `"public"`. The
+taker-side settlement types (`SPEC.md`) are unchanged; a stealth or shielded
+intent is simply not announced (§2.2), and the venue's own solver serves it
+where it is served at all. A consumer SHOULD refuse an announcement carrying
+any other value as malformed, not price it.
 
 **As built:**
 
@@ -463,11 +539,18 @@ rebuilds the digest server-side (`SPEC.md` §2).
   the reserve, so no honest bid can strictly beat it, and this bid shape has no
   `input` field to compete on instead. A future revision that adds an input-side
   bid dimension can lift this.
-- `recipientCommitment` is an **HMAC under a venue-held key**, not a bare hash.
-  An address is a low-entropy preimage, so any unkeyed hash of one is
-  enumerable; salting with a value published in the same announcement (such as
-  `intentId`) defeats only a cross-intent rainbow table. It is opaque and not
-  reopenable by the panel.
+- `recipientCommitment` is **withdrawn** (`0.5.0-draft`): the announcement
+  carries no standalone recipient identifier (only the escrow `orderId`'s
+  blinded binding, §2.2). It was an HMAC under a venue-held key,
+  emitted for stealth and shielded intents, and those are no longer
+  announced. A key that still arrives is a producer that has not landed the
+  withdrawal, or an entry from before it still on the feed's retention ring;
+  `@xochi/solver-sdk` deletes it from the parsed announcement, which is
+  defence in depth only (see "Changes in `0.5.0-draft`").
+- The public-only producer is Riddler #1200 (PR #1302), **open and not
+  deployed** at this writing: until it is merged, deployed and the feed has
+  drained, a venue may still publish non-public announcements carrying
+  `recipientCommitment`.
 - Announcements MAY be published at **quote** time or at **execute** time, and a
   deployment MAY run both, gated per corridor (`SOLVER_ANNOUNCE_ON_QUOTE`).
   Quote-time announcement shows the panel price probes that never trade, so a
@@ -1286,14 +1369,23 @@ types are the contract.
   naming the version. Neither shape self-reports, nor does the third below,
   which is why the check is a MUST.
 - **A skew can also move no signed byte and no wire field at all.**
-  `0.4.0-draft` → `0.5.0-draft` changed only what a solver must do with an
-  escrowed award (§7.1 steps 4–7, one acceptance per order): every digest,
-  vector and schema is identical across it, so a `0.4.0-draft` solver bids,
-  wins and accepts normally. The only symptom is behavioural -- it accepts
-  awards it should decline, stops driving a fill it owes, gives up a claim
-  early -- and it surfaces later as slashed bonds and unrepaid fills, never as
-  a refusal. Nothing on the wire can catch an obligations-only MINOR, so the
-  pre-bid version check is its only guard.
+  `0.4.0-draft` → `0.5.0-draft` as first published changed only what a solver
+  must do with an escrowed award (§7.1 steps 4–7, one acceptance per order):
+  every digest, vector and schema is identical across it, so a `0.4.0-draft`
+  solver bids, wins and accepts normally. The only symptom is behavioural -- it
+  accepts awards it should decline, stops driving a fill it owes, gives up a
+  claim early -- and it surfaces later as slashed bonds and unrepaid fills,
+  never as a refusal. Nothing on the wire can catch an obligations-only MINOR,
+  so the pre-bid version check is its only guard.
+- **A withdrawal inside one `rfcVersion` is not caught by the version check
+  either.** The public-only announcement withdrawal (Changes in `0.5.0-draft`)
+  narrows `settlementPreference` and removes `recipientCommitment` without
+  moving `rfcVersion`, so old and new SDKs both advertise `0.5.0-draft`. It is
+  safe only because it narrows what a venue emits: a parser built before it
+  still accepts every announcement a withdrawn producer sends, and a parser
+  built after it refuses a non-public announcement per entry. The guard is the
+  rollout order -- producer first, then old publishers and the feed ring
+  drain -- not this check.
 - **The version lives in exactly one place.** `@xochi/solver-sdk` exports
   `SOLVER_RFC_VERSION` (importable from the package root) and `SolverClient`
   compares it to the venue's advertised `rfcVersion` by exact string equality
@@ -1318,6 +1410,7 @@ types are the contract.
 | SSE push feed | `[PROPOSED]` | — (long poll is served; SSE is additive) |
 | `GET /solver/awards?since=` | `[PROPOSED]` | — (awards are feed-delivered) |
 | Exact-output RFQ | `[PROPOSED]` | — (unwinnable under a bid with no input field; not announced) |
+| Public-only announcement, `recipientCommitment` withdrawn (`0.5.0-draft`) | `[PROPOSED]` producer; consumer narrowed in `@xochi/solver-sdk` 0.5.0 | Riddler #1200 (PR #1302 open, not deployed); §§2.2, 4.2 |
 | Sealed-bid auction, `Bid`/`Award` | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/{auction,bid,award}.ex` |
 | `SolverDirectory` (allowlist admission) | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/directory.ex` (`SOLVER_DIRECTORY_JSON`) |
 | `SolverReputation` | `[PROPOSED]` | — |

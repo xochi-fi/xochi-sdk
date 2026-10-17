@@ -18,6 +18,20 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
+- **BREAKING: `IntentAnnouncement.settlementPreference` is `"public"`** (was
+  `SettlementType`): SOLVER-RFC `0.5.0-draft` producer withdrawal,
+  `rfcVersion` unchanged. The field stays required on the wire.
+  `IntentAnnouncementSchema` accepts only `"public"`, so an announcement naming
+  `stealth` or `shielded` (an old event on the feed's retention ring, or a
+  venue that has not landed Riddler #1200) is a malformed entry:
+  `HttpSolverTransport` reports it to `onInvalidEvent` and delivers the next
+  entry, or throws without a handler (ending `SolverClient.run`), as for any
+  malformed entry. Through `HttpSolverTransport` it never reaches
+  `solver.quote()`; an injected `SolverTransport` is not parsed and must
+  validate with `parseSolverEvent` itself. `SettlementType` and
+  both capabilities' `settlementTypes` are unchanged. A comparison against
+  `"stealth"` or `"shielded"` no longer compiles; delete the branch.
+- **Version 0.5.0** (MINOR: a breaking type narrowing, pre-1.0).
 - `package.json` declares `repository` with its `directory` and gains
   description, keywords and homepage; per-condition `exports` types.
 - Built with TypeScript 6; sources, tests and examples are Prettier-formatted,
@@ -26,6 +40,17 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Removed
 
+- **BREAKING: `IntentAnnouncement.recipientCommitment`**, withdrawn by the
+  producer (RFC "Changes in `0.5.0-draft`"). The schema deletes it from a
+  parsed announcement, as it does `reserveOutput` and `trustScore`, so a
+  PUBLIC event carrying it still parses, without the key. Riddler emitted it
+  only on stealth and shielded announcements, and those fail the parse as
+  malformed entries with the key intact in `raw` (see "Changed"). Defence in
+  depth only:
+  `curl`, a fork, or `onInvalidEvent`'s `raw` still show it while a producer
+  sends it. `examples/fill-state-file.ts` drops it from a state file an
+  earlier version wrote, so it is neither resumed nor written back.
+- `examples/offline-solver.ts`: the shielded round and the settlement filter.
 - Source maps (`dist/*.map`) from the tarball.
 
 ### Fixed

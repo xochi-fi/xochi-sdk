@@ -162,6 +162,10 @@ function decodeEntry(entry: unknown): PersistedFill {
       throw new Error(`prepared.${path} is ${JSON.stringify(value)}, not a decimal`);
     }
   });
+  // A file an earlier version wrote may still carry the announcement's
+  // `recipientCommitment`, withdrawn in RFC 0.5.0-draft. It is dropped here,
+  // so it is neither handed back to the solver nor written out again.
+  delete entry.announcement.recipientCommitment;
   // Checked above wherever the solver needs a bigint or a container; the rest
   // is this file's own output.
   const decoded = entry as unknown as PersistedFill;
@@ -192,7 +196,6 @@ function persistable(e: PersistedFill): PersistedFill {
       opensAt: a.opensAt,
       closesAt: a.closesAt,
       exclusiveWindowMs: a.exclusiveWindowMs,
-      recipientCommitment: a.recipientCommitment,
     },
     output: e.output,
     prepared: {
