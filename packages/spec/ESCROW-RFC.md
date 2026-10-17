@@ -238,8 +238,10 @@ chain: accepted as bounded trust, and disclosed rather than hidden.
 ## 6. Bonds, exclusivity, backstop `[PROPOSED]`
 
 - **`SolverBond`** sizes max in-flight exposure (admission control), slashes a
-  no-show (pays the backstop) and a misfill (pays the challenger). A higher ZKSAR
-  trust tier lowers `collateralFactor` and shrinks the challenge window.
+  no-show and a misfill; both slashes pay the affected user (the built
+  `SolverBond.sol`, Riddler ADR-0015 row 15), at 2% of the fill with a $10
+  minimum as deploy defaults, not protocol constants. A higher ZKSAR trust tier
+  lowers `collateralFactor` and shrinks the challenge window.
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
@@ -923,9 +925,9 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 | Escrow-binding client guard                     | `[RESERVED]`    | `@xochi/signer` `assertEscrowBinding` + §7                                                              |
 | `EscrowGateway` stub (fund-safety)              | `[RESERVED]`    | `@xochi/solver-sdk` `StubEscrowGateway` + §1/§5                                                         |
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
-| `RiddlerEscrow` / `RiddlerFiller`               | `[PROPOSED]`    | — (M6.2, out-of-repo contracts)                                                                           |
-| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (tier 0 is also unbuilt; §11.0)                                                                         |
-| `SolverBond` / slashing                         | `[PROPOSED]`    | — (P2/M7, explicitly not M6; §11.1)                                                                       |
+| `RiddlerEscrow` / `RiddlerFiller`               | `[PROPOSED]`    | built, undeployed, gated off (Riddler `contracts/riddler-escrow/src/*.sol`; M6.2)                         |
+| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (tier 0 attesters built, undeployed, gated off: Riddler `lib/riddler/solver/escrow/*`; §11.0)           |
+| `SolverBond` / slashing                         | `[PROPOSED]`    | built, undeployed, gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §11.1)              |
 | Sealed-bid auction, award, allowlist            | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (`SOLVER-RFC.md` §§4–5)                                                    |
 | Fill-receipt intake (recorded, not settled)     | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (§11.0)                                                      |
 | Award gated on escrow envelope, not config      | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/award.ex` `for_panel/6` (§11.0)                                               |
