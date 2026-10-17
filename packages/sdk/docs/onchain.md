@@ -131,4 +131,4 @@ const plan = planExecution(
 const batch = await provePlan(prover, plan, complianceInput);
 ```
 
-Shielded needs score 50+ but is not available: shielded settlement is off everywhere, Sovereign is excluded by decision D1, and the accepted testnet design is recipient-private with a public amount (xochi `docs/planning/shielded-execution.md`). Submissions are spaced at least 12 s apart.
+Shielded needs score 50+ but is not available: shielded settlement is off everywhere and Sovereign is excluded from the shielded design (the `tiers.ts` exports still return and accept `sovereign`). Design A (recipient-private, public amount) is the testnet tracer; B-panel is conditionally accepted as the first production rail (xochi `docs/planning/shielded-execution.md` §4, D7–D9). Submissions are spaced at least 12 s apart.
