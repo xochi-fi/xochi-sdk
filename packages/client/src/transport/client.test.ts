@@ -697,6 +697,53 @@ describe("intent read capability", () => {
     }
     expect(calls).toHaveLength(0);
   });
+
+  it("captures read_token from a 502 execute and redacts it from the message and log", async () => {
+    const printed: string[] = [];
+    const { c } = client(
+      () =>
+        json(
+          {
+            success: false,
+            intent_id: "intent-1",
+            status: "completed",
+            error: "solver",
+            read_token: READ_TOKEN,
+          },
+          502,
+        ),
+      {
+        log: (_level, ...args: unknown[]) =>
+          printed.push(
+            args
+              .map((a) => (a instanceof Error ? `${a.message} ${JSON.stringify(a)}` : String(a)))
+              .join(" "),
+          ),
+      },
+    );
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(502);
+    expect(err.readToken).toBe(READ_TOKEN);
+    expect(err.message).toContain('"read_token":"[redacted]"');
+    expect(err.message).toContain('"error":"solver"');
+    expect(err.message).not.toContain(READ_TOKEN);
+    expect(JSON.stringify(err)).not.toContain(READ_TOKEN);
+    expect(Object.keys(err)).not.toContain("readToken");
+    expect(printed.length).toBeGreaterThan(0);
+    for (const line of printed) expect(line).not.toContain(READ_TOKEN);
+  });
+
+  it("leaves a 502 without a token unchanged, and drops a malformed one", async () => {
+    const body = { success: false, error: "solver rejected" };
+    const { c } = client((call) => json(call === 1 ? body : { ...body, read_token: "short" }, 502));
+    const plain = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(plain.message).toBe(`HTTP 502: ${JSON.stringify(body)}`);
+    expect(plain.readToken).toBeUndefined();
+    const malformed = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(malformed.readToken).toBeUndefined();
+    expect(malformed.message).not.toContain("short");
+  });
 });
 
 describe("stealth claim calls (single attempt)", () => {

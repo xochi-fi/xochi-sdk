@@ -122,18 +122,37 @@ export interface XochiClientOptions {
  * backpressure responses (429/503), an ABSOLUTE unix-seconds retry target so the
  * UI can render a countdown and disable Retry until it elapses. The message stays
  * the raw `HTTP {status}: {body}` string so a code-less consumer can still fall
- * back to matching on it.
+ * back to matching on it, except that any `read_token` in the body is redacted.
+ *
+ * `readToken` is the intent read capability a failed execute may still carry
+ * (xochi#563: the server serves it on a 502 when funds may have moved). Keep it
+ * with the intent and poll with it, exactly as for a 200. It is non-enumerable
+ * so logging or serializing the error does not print it.
  */
 export class ApiError extends Error {
   readonly code: number;
   readonly retryAfter?: number;
+  declare readonly readToken?: string;
 
-  constructor(message: string, code: number, retryAfter?: number) {
+  constructor(message: string, code: number, retryAfter?: number, readToken?: string) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.retryAfter = retryAfter;
+    if (readToken !== undefined) {
+      Object.defineProperty(this, "readToken", { value: readToken, enumerable: false });
+    }
   }
+}
+
+/**
+ * Replace every `"read_token": "..."` value in a raw response body, so the
+ * body can go into an error message or log. A regex over the raw text rather
+ * than a JSON round-trip: the body may not be JSON, and the rest of it must
+ * reach the message unchanged.
+ */
+function redactReadToken(body: string): string {
+  return body.replace(/("read_token"\s*:\s*")[^"]*"/g, '$1[redacted]"');
 }
 
 /**
@@ -443,10 +462,14 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               response.status === 429 || response.status === 503
                 ? resolveRetryAfterSeconds(response.headers, errorBody)
                 : undefined;
+            const servedToken = parseJsonObject(errorBody)?.read_token;
             throw new ApiError(
-              `HTTP ${response.status}: ${errorBody || response.statusText}`,
+              `HTTP ${response.status}: ${redactReadToken(errorBody) || response.statusText}`,
               response.status,
               retryAfter,
+              typeof servedToken === "string" && READ_TOKEN_PATTERN.test(servedToken)
+                ? servedToken
+                : undefined,
             );
           }
           return response.json();
