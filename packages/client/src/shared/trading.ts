@@ -66,8 +66,10 @@ export const MAX_PRICE_IMPACT_PERCENT = 50;
  * Minimum trust score for Aztec L2 shielded settlement (the Private privacy
  * level). L1 stealth (ERC-5564) is NOT trust-gated: privacy is free by default,
  * so any wallet can settle to a one-time stealth address and simply pays its own
- * trust-tier fee. Only the deeper Aztec-shielded tiers -- Private (50+) and
- * Sovereign (75+), both reached via pxe-bridge -- require trust.
+ * trust-tier fee. Only the Aztec-shielded Private level (50+) requires trust;
+ * it is the only planned shielded level and is not yet available (shielded
+ * settlement is off everywhere). Sovereign (75+) is excluded by decision D1
+ * (xochi `docs/planning/shielded-execution.md`).
  */
 export const SHIELDED_MIN_SCORE = 50;
 
