@@ -113,9 +113,6 @@ export { assignVenues, DEFAULT_GAS_ESTIMATES, VENUE_MIN_SCORES } from "./venue-r
 export { scheduleDiffusion } from "./diffusion-scheduler.js";
 export { planExecution, DEFAULT_EXECUTION_CONFIG } from "./execution-orchestrator.js";
 
-// PXE Bridge
-export { PxeBridgeClient } from "./pxe-bridge-client.js";
-
 // Input builders
 export { buildComplianceInputs } from "./inputs/compliance.js";
 export { buildComplianceSignedInputs } from "./inputs/compliance-signed.js";
@@ -186,4 +183,3 @@ export type { Settlement, SubSettlement } from "./settlement-registry.js";
 export type { VenueId, VenueAssignment, VenueConstraints } from "./venue-router.js";
 export type { ScheduledSubTrade } from "./diffusion-scheduler.js";
 export type { ExecutionConfig, ExecutionPlan } from "./execution-orchestrator.js";
-export type { CreateNoteParams, CreateNoteResult } from "./pxe-bridge-client.js";
