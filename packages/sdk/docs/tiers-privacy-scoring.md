@@ -39,7 +39,7 @@ isPrivacyLevelAllowed("sovereign", 60); // false (needs 75+)
 | private                  | 50        | Aztec L2   |
 | sovereign                | 75        | Aztec L2   |
 
-L1 stealth is open to all and never separately priced. `SHIELDED_MIN_SCORE` (50) is the Aztec threshold, not the stealth one; `VENUE_MIN_SCORES` (venue router) reads it rather than restating the table.
+L1 stealth is open to all and never separately priced. `SHIELDED_MIN_SCORE` (50) is the Aztec threshold, not the stealth one; `VENUE_MIN_SCORES` (venue router) reads it rather than restating the table. Neither Aztec level is available: shielded settlement is off everywhere, `sovereign` is excluded by decision D1, and `private` under the accepted testnet design is recipient-private with a public amount (xochi `docs/planning/shielded-execution.md`).
 
 ## Attestation scoring
 
