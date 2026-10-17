@@ -249,11 +249,15 @@ this subsection is built. A shielded leg is filled by the standard Aztec
 Token's private-to-private `transfer` from the solver's private inventory. That
 call emits no L2-to-L1 message and delivers the recipient note
 `onchain_unconstrained`, so no origin-chain verifier and no venue watcher can
-observe the fill: the only evidence is the note's preimage, which the solver
-holds. Tier 1s makes that disclosure the proof. It is `optimistic` in trust
-(bonded; no verifier on the origin chain) and `disclosed` because the venue
-learns the fill in full. It is not tier 2 and MUST be advertised as
-`optimistic_disclosed` (C5).
+observe the fill: the only evidence is the note's preimage. That preimage
+(including `randomness`) exists only in the solver's proving result
+(`PrivateExecutionResult.newNotes`); the solver's PXE does not retain notes it
+does not own, so the sender MUST journal the preimage durably before
+broadcast. A payout whose preimage was not journaled is an unknown outcome:
+held, never resent. Tier 1s makes the disclosure the proof. It is
+`optimistic` in trust (bonded; no verifier on the origin chain) and
+`disclosed` because the venue learns the fill in full. It is not tier 2 and
+MUST be advertised as `optimistic_disclosed` (C5).
 
 **Payload.** The solver submits, over the authenticated solver channel
 (`POST /solver/fills`, `SOLVER-RFC.md` §6) and never on any chain:
@@ -271,12 +275,16 @@ FillProof { kind:       "aztec_note_preimage",
 ```
 
 The note fields are the pinned token's note preimage and nothing more. At
-aztec-packages v5.1.0 the Token's balance note is `UintNote { value: u128 }`,
-hashed over `(owner, storage_slot, randomness)` with `storage_slot` derived
-from the token's private balance map and `owner`
-(`noir-projects/aztec-nr/uint-note/src/uint_note.nr`). An implementation pins
-the token's contract class; a payload whose fields do not match the pinned
-layout is unproven, and a layout change versions this `kind`.
+aztec-packages v5.1.0 the Token's balance note is `UintNote { value: u128 }`.
+Its hash is two Poseidon2 rounds: a partial commitment
+`H_sep([owner, randomness], PARTIAL_NOTE_COMMITMENT)`, completed as
+`H_sep([storage_slot, commitment, value], NOTE_HASH)`, so `owner`,
+`storage_slot`, `randomness` **and `value`** are all bound; `storage_slot` is
+derived from the token's private balance map and `owner`
+(`noir-projects/aztec-nr/uint-note/src/uint_note.nr`, `compute_note_hash` /
+`compute_complete_note_hash`). An implementation pins the token's contract
+class; a payload whose fields do not match the pinned layout is unproven, and
+a layout change versions this `kind`.
 
 **Venue recomputation (normative).** The venue derives every hash itself. It
 MUST NOT accept a solver-supplied note hash, siloed hash, unique hash, nonce or
@@ -287,47 +295,87 @@ node the solver names:
    randomness)` with `value = amount`, per the pinned token class;
 2. `siloed = compute_siloed_note_hash(token, note_hash)`;
 3. fetch the tx effects of `txHash` from the venue's **own** Aztec node;
-   `first_nullifier` is the tx's first nullifier;
+   `first_nullifier` is the tx's first (protocol) nullifier;
    `note_nonce = compute_note_hash_nonce(first_nullifier, noteIndex)`;
 4. `unique = compute_unique_note_hash(note_nonce, siloed)`. Steps 2–4 are
    `noir-protocol-circuits/crates/types/src/hash.nr` at v5.1.0:
    <https://github.com/AztecProtocol/aztec-packages/blob/v5.1.0/noir-projects/noir-protocol-circuits/crates/types/src/hash.nr#L54-L110>;
 5. check that `unique` is a leaf of the note-hash tree on the venue's own node
-   at the corridor's required finality (proven, never pending or merely
-   mined), inserted by `txHash` at `noteIndex`.
+   at the corridor's required finality (Aztec `finalized` plus the corridor's
+   configured L1 finality policy; never `pending`, `proposed`, `checkpointed`
+   or `proven` alone), inserted by `txHash` at `noteIndex`;
+6. check that the L2 block including `txHash` is at or after the L2 block
+   height the venue recorded when it issued the `:winner` FillAuth for
+   `orderId`. A note included earlier is unproven: a fill cannot precede the
+   award.
+
+Steps 3–4 assume a **private-only** transaction: `noteIndex` is the position
+in the tx's note hashes ordered by side-effect counter, and the nonce comes
+from the protocol (first) nullifier. Token `transfer` and the PrivateFPC fee
+path enqueue no public call, so this holds; a solver account or fee path that
+enqueues a public call changes the revertible-half numbering and is unproven
+under this `kind`.
 
 A failed step, a node error and an `unknown` result are all **unproven**, not
 "not filled": the venue MUST NOT treat them as a §6 no-show until the
 corridor's resolution process has run.
 
-**Registry.** Before any release the venue records `unique -> orderId` in a
-durable store. A recomputed `unique` already bound to a different `orderId`
-MUST be refused (`note_already_bound`), permanently for that payload: with
-standard-size orders one note would otherwise evidence two fills. The registry
-is retained at least as long as the longest open order's refund window.
+**Registry.** Before any release the venue records `unique -> orderId` as an
+atomic insert-if-absent keyed by `unique`; a write that finds a different
+bound `orderId` is refused (`note_already_bound`), permanently for that
+payload: with standard-size orders one note would otherwise evidence two
+fills. The registry is permanent for the corridor (a note hash is a leaf for
+the life of the chain): an entry MUST never expire, be pruned or be rebuilt
+from a partial backup. Losing it halts shielded release, never re-sign from
+memory.
 
 **Release predicate.** Release of the depositor's origin principal to `solver`
-follows the recomputation and the registry write, and nothing else:
+follows the recomputation, the registry write and the absence of an open
+recipient hold (below), and nothing else:
 `verify(orderId, proof) ⇒ payee = solver` holds iff `recipient`, `token` and
 `amount` match the committed `DestOpening` (`amount >= toAmount`; exact under
-§13.2), the inclusion check passed at finality, and `unique` was free in the
-registry. What reaches the origin chain is the custody contract's own release
-artifact, as for tier 0: `FillAttestation(orderId, payee)` on `RiddlerEscrow`
-(§9.4), or the Depository's Aztec evidence path under D9's target custody pair
-(§13). The preimage, `txHash`, `noteIndex` and every hash derived from them
+§13.2), the inclusion and lower-bound checks (steps 5–6) passed at finality,
+`unique` was free in the registry, and no `not_received` hold is open. Both
+custody paths keep C2: no destination locator reaches the origin chain.
+
+- On `RiddlerEscrow` the origin artifact is the custody contract's own release
+  artifact, as for tier 0: `FillAttestation(orderId, payee)` (§9.4).
+- On the XSP path (D9's target pair, §13) it is a blinded single-use
+  commitment (xochi `settlement-protocol.md` 3.8a):
+  `fillCommitment = keccak256(abi.encode(uniqueNoteHash, attestorSalt))`,
+  where `attestorSalt` is a fresh random 32-byte value per obligation, held by
+  the Attestor and never published. The evidence is
+  `Evidence(XSP_AZTEC_CHAIN_ID, txHash = fillCommitment, logIndex = 0,
+  blockNumber = 0, blockHash = 0)`, and `ObligationFilled.fillTxHash` carries
+  the same `fillCommitment`. `evidenceUsed` enforces one commitment per
+  obligation, but because the salt is per obligation it cannot catch one note
+  reused across obligations: the Attestor's registry, keyed by
+  `uniqueNoteHash`, is what enforces one note, one obligation. `destChainId`
+  and `solver` in `ObligationFilled` remain public, so the Ledger still
+  reveals the settlement type and the solver per obligation.
+
+The preimage, `txHash`, `noteIndex` and every unblinded hash derived from them
 never appear in origin calldata, events or escrow state (C2).
 
 **Recipient.**
 
 - Recipient acknowledgement is a **completion** predicate: it closes the
   order's status and MUST NOT release, advance, or stand in for inclusion.
-- A recipient `not_received` assertion holds release for that `orderId` until
-  resolved; the hold has no expiry of its own.
+- A recipient `not_received` assertion holds release for that `orderId`.
+  Resolution is evidence, never time. The hold lifts when (a) the recipient
+  acknowledges or withdraws, or (b) an operator records the venue's own
+  inclusion record for the recomputed note hash, the record that the L2 tx
+  hash and block were forwarded to the recipient's authenticated channel, and
+  the recipient's PXE observation if offered. The recipient cannot veto (b):
+  declining to sync a delivered note is not non-receipt. Escalation is bounded
+  in time (page at the settlement service deadline); release is not.
 - Because `transfer` delivers `onchain_unconstrained`, inclusion proves the note
-  exists, not that the recipient's PXE discovered it. On the recipient's request
-  the venue forwards the disclosed preimage and `txHash` to the recipient so its
-  wallet can import the note. That forwarding is the only remedy: never a second
-  `transfer`, never a refund.
+  exists, not that the recipient's PXE discovered it. No v5.1.0 wallet API
+  imports a note from its preimage. The remedy is re-discovery: the venue gives
+  the recipient the L2 tx hash and block; the wallet confirms the solver is
+  registered as an address-derived sender and re-syncs over a widened
+  unconstrained window. The preimage may be shown for manual verification
+  only. Never a second `transfer`, never a refund.
 
 **MUST NOT.**
 
@@ -336,6 +384,14 @@ never appear in origin calldata, events or escrow state (C2).
   acknowledgement, dispute) without preimage-verified inclusion.
 - MUST NOT resend or refund an outcome that is unknown; an unresolved
   `transfer` stays held until reconciled against the venue's own node.
+- MUST NOT issue a `:backstop` FillAuth for a shielded leg while the winner's
+  fill outcome is undisclosed. The winner's non-disclosure is resolved by the
+  refund path at `fillDeadline` (§3, §13), never by a second `transfer`; a
+  backstop for a shielded leg is a resend of an unknown outcome. A `:winner`
+  that discloses after `exclusiveUntil` for a `transfer` included before
+  `fillDeadline` is still verified under this subsection; refusing it does not
+  undo the payout. `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil` rule needs
+  this exemption for `aztec_note_preimage` when that kind lands in lockstep.
 - MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
   silently or as a remedy.
 - MUST NOT advertise this tier as `verified` or as confidentiality tier 2
@@ -354,9 +410,16 @@ here; until then every consumer already fails closed on the unknown values.
   minimum as deploy defaults, not protocol constants. A higher ZKSAR trust tier
   lowers `collateralFactor` and shrinks the challenge window. The no-show slash
   applies to tier 1s (§5.1) the same way and pays the user; it never covers
-  principal, which returns only through `refund`. While Riddler is the only
-  shielded panel member, venue equals solver and the bond and dispute machinery
-  are inert (D9).
+  principal, which returns only through `refund`. For tier 1s the attester
+  attests "no §5.1-verified disclosure by `fillDeadline` +
+  `FILL_DEADLINE_GRACE`", never "no fill"; a verification `unknown` (node
+  error, finality not reached) is not grounds for a slash. The solver's dispute
+  evidence is the venue's own §5.1 inclusion record for that `orderId`,
+  produced on request, not `filled(fillId)`. While Riddler is the only
+  shielded panel member, venue equals solver, and the bond and dispute
+  machinery are inert under `RiddlerEscrow` + `SolverBond` (Riddler runs the
+  attesters); under the Depository + Ledger pair the independent Attestor's
+  slash applies to Riddler like any solver (D9).
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
@@ -698,13 +761,17 @@ not verifiable from an origin EVM chain. Shielded-Aztec is also the _only_
 corridor that can reach confidentiality tier 2. So the corridor carrying the
 strongest privacy promise is the one whose available proofs most restrict
 privacy. §5.1 now specifies (not builds) the shielded release path: a disclosed
-proof the venue verifies on its own node, which keeps the origin free of any
-destination locator (C2) at the cost of the venue learning the fill in full.
-Proof tier 2 for that corridor remains unreached, and what tier 1s hides is
-the Aztec side only: `to`, `token` and `amount` are hidden from the public
-Aztec observer, while the source debit stays public and bounds `amount`
-(§9.1, §9.6). Offering confidentiality tier 2 over escrow still requires C4's
-`k` for the corridor; nothing here waives it.
+proof the venue verifies on its own node. Both custody paths keep C2: on
+`RiddlerEscrow` the origin artifact is `FillAttestation(orderId, payee)`; on
+the XSP path it is the blinded `fillCommitment` (xochi
+`settlement-protocol.md` 3.8a); neither carries a destination locator. The
+cost is the venue learning the fill in full, and the XSP Ledger still reveals
+settlement type and solver per obligation (`ObligationFilled.destChainId`,
+`solver`). Proof tier 2 for that corridor remains unreached, and what tier 1s
+hides is the Aztec side only: `to`, `token` and `amount` are hidden from the
+public Aztec observer, while the source debit stays public and bounds
+`amount` (§9.1, §9.6). Offering confidentiality tier 2 over escrow still
+requires C4's `k` for the corridor; nothing here waives it.
 
 ### 9.6 Amount correlation (residual)
 
@@ -718,7 +785,7 @@ Mitigations, by descending effect and ascending cost to somebody:
 
 | Mitigation           | Effect                                                                                         | Paid by                              |
 | -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------ |
-| shielded destination | hides `to`, `token`, `amount` on Aztec (tier 2); the public source debit still bounds `amount` | corridor availability                |
+| shielded destination | hides `to`, `token`, `amount` on Aztec (tier 2) (B-panel private `transfer` only; not design A); the public source debit still bounds `amount` | corridor availability                |
 | netting / batching   | collapses opposing flow                                                                        | only works with bidirectional volume |
 | amount binning       | widens the candidate set                                                                       | the taker, in residue                |
 | decoy fills          | widens the candidate set                                                                       | the solver, in capital               |
@@ -1065,4 +1132,5 @@ proof-of-fill tier (attested / optimistic / optimistic_disclosed / verified),
 `SolverBond`, exclusivity window, backstop, permissionless refund, fund-safety
 invariant, escrow gateway (`lock`/`release`/`void`), `fillId`, `fillSalt`,
 confidentiality tier (linked / unlinked / confidential), anonymity set, note
-preimage registry (`note_already_bound`), recipient hold (`not_received`).
+preimage registry (`note_already_bound`), recipient hold (`not_received`),
+fill commitment (`fillCommitment`).
