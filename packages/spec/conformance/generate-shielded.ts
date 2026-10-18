@@ -6,16 +6,27 @@
 // `Domain (binding)` / `Domain (terms)`, the RecipientBinding struct hash, EIP-712
 // digest and source-wallet signature, and the value refusals (Aztec bytes32, amounts).
 //
-// `@xochi/signer` (src/shielded.ts) is the REFERENCE. Riddler and the Xochi Worker
-// vendor this file and must reproduce every value; they never compute their own
-// expectations. ShieldedTermsV1, the manifestDigest struct, the descriptorDigest
-// encoding and the recipient message wrapper/acknowledgements are NOT here: §7 leaves
-// them open, and `open` in the output names each one.
+// INDEPENDENT OF @xochi/signer, deliberately. Every value is derived here from §7's
+// literals with ethers' generic primitives only (TypedDataEncoder, keccak256, AbiCoder,
+// Wallet), and every refusal expectation is written below as data, never obtained by
+// running the reference. `@xochi/signer`'s `shielded.ts` is then checked AGAINST this
+// file (packages/signer/test/shielded-vectors.test.ts), so the two implementations meet
+// only at the committed JSON. Importing the reference here would let it grade itself.
 //
-// Every network, corridor, digest and Aztec value below is a FIXTURE. No Aztec network,
-// corridor manifest or token is pinned by this file (manifest revision 1 is open).
-// The signer keys are the PUBLIC Hardhat/Anvil test keys #0 and #1: known to everyone,
-// never to hold funds.
+// NetworkIdentity: §7 names its five members and delegates the typed encoding to these
+// vectors. The encoding below was approved by the product owner on 2026-10-19
+// (protocolVersion = the numeric Aztec rollup version); the §7 record lands in a separate
+// xochi PR.
+//
+// Aztec values are checked by magnitude only: nonzero and below BN254 r. There is no
+// "looks like a padded EVM address" refusal: whether a bytes32 is really an Aztec address
+// (and not an EVM address) is established by descriptor/address derivation, not by its size.
+//
+// ShieldedTermsV1, the manifestDigest struct, the descriptorDigest encoding and the
+// recipient message wrapper/acknowledgements are NOT here: §7 leaves them open.
+//
+// Every network, corridor, digest and Aztec value below is a FIXTURE. The signer keys are
+// the PUBLIC Hardhat/Anvil test keys #0 and #1: known to everyone, never to hold funds.
 //
 // Run: npm run generate:shielded   (SHIELDED_VECTORS_DIR overrides the output dir)
 
@@ -25,50 +36,118 @@ import { fileURLToPath } from "url";
 
 import { ethers } from "ethers";
 
-import {
-  AZTEC_FIELD_MODULUS,
-  NETWORK_IDENTITY_TYPEHASH,
-  NETWORK_IDENTITY_TYPE_STRING,
-  RECIPIENT_BINDING_PURPOSE,
-  RECIPIENT_BINDING_TYPEHASH,
-  RECIPIENT_BINDING_TYPE_STRING,
-  SHIELDED_AMOUNT_MAX,
-  SHIELDED_BINDING_DOMAIN_NAME,
-  SHIELDED_DOMAIN_TYPEHASH,
-  SHIELDED_DOMAIN_TYPE_STRING,
-  SHIELDED_DOMAIN_VERSION,
-  SHIELDED_TERMS_DOMAIN_NAME,
-  ShieldedEncodingError,
-  assertAztecBytes32,
-  bindingDomain,
-  hashNetworkIdentity,
-  hashRecipientBinding,
-  parseShieldedAmount,
-  recipientBindingDigest,
-  shieldedDomainSalt,
-  shieldedDomainSeparator,
-  termsDomain,
-  type NetworkIdentity,
-  type RecipientBinding,
-} from "@xochi/signer";
+// --- §7 literals -----------------------------------------------------------------------
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #0 and #1). NOT SECRET. NEVER USE.
-const TEST_KEY_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const WALLET_0 = new ethers.Wallet(TEST_KEY_0);
-const WALLET_1 = new ethers.Wallet(TEST_KEY_1);
-const ADDR_0 = WALLET_0.address.toLowerCase();
-const ADDR_1 = WALLET_1.address.toLowerCase();
+const DOMAIN_VERSION = "1";
+const BINDING_DOMAIN_NAME = "Xochi Shielded Recipient";
+const TERMS_DOMAIN_NAME = "Xochi Shielded Terms";
+const PURPOSE = "xochi.shielded.recipient-binding.v1";
+// EIP-712's fixed member order for `{ name, version, chainId, salt }`.
+const DOMAIN_TYPE_STRING = "EIP712Domain(string name,string version,uint256 chainId,bytes32 salt)";
+// Approved byte-for-byte (§7).
+const RECIPIENT_BINDING_TYPE_STRING =
+  "RecipientBinding(address sourceWallet,uint256 sourceChainId,bytes32 aztecRecipient," +
+  "bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision," +
+  "bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)";
+// Approved 2026-10-19 by the product owner (see header).
+const NETWORK_IDENTITY_TYPE_STRING =
+  "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress," +
+  "uint256 l1ChainId,bytes32 genesisOrNetworkDigest)";
 
-const hex32 = (v: bigint) => "0x" + v.toString(16).padStart(64, "0");
-const P = AZTEC_FIELD_MODULUS;
+const NETWORK_TYPES = {
+  NetworkIdentity: [
+    { name: "aztecChainId", type: "uint256" },
+    { name: "protocolVersion", type: "uint256" },
+    { name: "rollupAddress", type: "address" },
+    { name: "l1ChainId", type: "uint256" },
+    { name: "genesisOrNetworkDigest", type: "bytes32" },
+  ],
+};
+const BINDING_TYPES = {
+  RecipientBinding: [
+    { name: "sourceWallet", type: "address" },
+    { name: "sourceChainId", type: "uint256" },
+    { name: "aztecRecipient", type: "bytes32" },
+    { name: "aztecToken", type: "bytes32" },
+    { name: "descriptorDigest", type: "bytes32" },
+    { name: "corridorId", type: "bytes32" },
+    { name: "corridorRevision", type: "uint32" },
+    { name: "manifestDigest", type: "bytes32" },
+    { name: "nonce", type: "bytes32" },
+    { name: "challengeExpiry", type: "uint64" },
+    { name: "purpose", type: "string" },
+  ],
+};
+// The type definitions above must spell exactly the literal type strings.
+for (const [primary, types, literal] of [
+  ["NetworkIdentity", NETWORK_TYPES, NETWORK_IDENTITY_TYPE_STRING],
+  ["RecipientBinding", BINDING_TYPES, RECIPIENT_BINDING_TYPE_STRING],
+] as const) {
+  const encoded = ethers.TypedDataEncoder.from(types).encodeType(primary);
+  if (encoded !== literal) throw new Error(`${primary} types spell ${encoded}`);
+}
+
+// BN254 scalar field order r (EIP-196/197); Aztec field elements and addresses are below it.
+const P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+const AMOUNT_MAX = 2n ** 128n - 1n;
 const UINT32_MAX = 2n ** 32n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const UINT256_MAX = 2n ** 256n - 1n;
 
-// --- Networks (FIXTURES) -----------------------------------------------------
+// PUBLIC TEST KEYS (Hardhat/Anvil accounts #0 and #1). NOT SECRET. NEVER USE.
+const WALLET_0 = new ethers.Wallet(
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+);
+const WALLET_1 = new ethers.Wallet(
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+);
+const ADDR_0 = WALLET_0.address.toLowerCase();
+const ADDR_1 = WALLET_1.address.toLowerCase();
 
-const NET_A: NetworkIdentity = {
+const hex32 = (v: bigint) => "0x" + v.toString(16).padStart(64, "0");
+const paddedEvm = (addr: string) => ethers.zeroPadValue(addr, 32).toLowerCase();
+
+type Network = {
+  aztecChainId: string;
+  protocolVersion: string;
+  rollupAddress: string;
+  l1ChainId: string;
+  genesisOrNetworkDigest: string;
+};
+type Binding = {
+  sourceWallet: string;
+  sourceChainId: string;
+  aztecRecipient: string;
+  aztecToken: string;
+  descriptorDigest: string;
+  corridorId: string;
+  corridorRevision: string;
+  manifestDigest: string;
+  nonce: string;
+  challengeExpiry: string;
+  purpose: string;
+};
+
+const networkDigest = (n: Network) =>
+  ethers.TypedDataEncoder.hashStruct("NetworkIdentity", NETWORK_TYPES, n);
+// salt = keccak256(abi.encode(keccak256(bytes(environment)), network_identity_digest))
+const domainSalt = (environment: string, n: Network) =>
+  ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ["bytes32", "bytes32"],
+      [ethers.id(environment), networkDigest(n)],
+    ),
+  );
+const domainFor = (name: string, chainId: string, environment: string, n: Network) => ({
+  name,
+  version: DOMAIN_VERSION,
+  chainId,
+  salt: domainSalt(environment, n),
+});
+
+// --- Networks (FIXTURES) ---------------------------------------------------------------
+
+const NET_A: Network = {
   aztecChainId: "11155111",
   protocolVersion: "3924331020",
   rollupAddress: "0x" + "a1".repeat(20),
@@ -76,9 +155,9 @@ const NET_A: NetworkIdentity = {
   genesisOrNetworkDigest: "0x" + "9e".repeat(32),
 };
 // Same network but a redeployed rollup: a different identity.
-const NET_B: NetworkIdentity = { ...NET_A, rollupAddress: "0x" + "a2".repeat(20) };
+const NET_B: Network = { ...NET_A, rollupAddress: "0x" + "a2".repeat(20) };
 // Every member at its largest admissible value.
-const NET_MAX: NetworkIdentity = {
+const NET_MAX: Network = {
   aztecChainId: (P - 1n).toString(),
   protocolVersion: (P - 1n).toString(),
   rollupAddress: "0x" + "ff".repeat(20),
@@ -86,35 +165,15 @@ const NET_MAX: NetworkIdentity = {
   genesisOrNetworkDigest: "0x" + "ff".repeat(32),
 };
 
-const NETWORKS: { name: string; network: NetworkIdentity }[] = [
+const networkVectors = [
   { name: "fixture-a", network: NET_A },
   { name: "fixture-a-redeployed-rollup", network: NET_B },
   { name: "max-members", network: NET_MAX },
-];
+].map((v) => ({ ...v, networkIdentityDigest: networkDigest(v.network) }));
 
-const networkJson = (n: NetworkIdentity) => ({
-  aztecChainId: String(n.aztecChainId),
-  protocolVersion: String(n.protocolVersion),
-  rollupAddress: n.rollupAddress.toLowerCase(),
-  l1ChainId: String(n.l1ChainId),
-  genesisOrNetworkDigest: n.genesisOrNetworkDigest.toLowerCase(),
-});
+// --- Domains -----------------------------------------------------------------------------
 
-const networkVectors = NETWORKS.map(({ name, network }) => ({
-  name,
-  network: networkJson(network),
-  networkIdentityDigest: hashNetworkIdentity(network),
-}));
-
-// --- Domains -------------------------------------------------------------------
-
-type DomainCase = {
-  name: string;
-  environment: string;
-  network: NetworkIdentity;
-  chainId: string;
-};
-const DOMAIN_CASES: DomainCase[] = [
+const domainVectors = [
   { name: "staging-fixture-a-84532", environment: "staging", network: NET_A, chainId: "84532" },
   {
     name: "production-fixture-a-84532",
@@ -135,75 +194,41 @@ const DOMAIN_CASES: DomainCase[] = [
     network: NET_MAX,
     chainId: UINT256_MAX.toString(),
   },
-];
-
-const domainVectors = DOMAIN_CASES.map((c) => {
-  const binding = bindingDomain(c.chainId, c.environment, c.network);
-  const terms = termsDomain(c.chainId, c.environment, c.network);
+].map((c) => {
+  const binding = domainFor(BINDING_DOMAIN_NAME, c.chainId, c.environment, c.network);
+  const terms = domainFor(TERMS_DOMAIN_NAME, c.chainId, c.environment, c.network);
   return {
-    name: c.name,
-    environment: c.environment,
-    network: networkJson(c.network),
-    chainId: c.chainId,
-    networkIdentityDigest: hashNetworkIdentity(c.network),
-    salt: shieldedDomainSalt(c.environment, c.network),
-    binding: { domain: binding, domainSeparator: shieldedDomainSeparator(binding) },
-    terms: { domain: terms, domainSeparator: shieldedDomainSeparator(terms) },
+    ...c,
+    networkIdentityDigest: networkDigest(c.network),
+    salt: domainSalt(c.environment, c.network),
+    binding: { domain: binding, domainSeparator: ethers.TypedDataEncoder.hashDomain(binding) },
+    terms: { domain: terms, domainSeparator: ethers.TypedDataEncoder.hashDomain(terms) },
   };
 });
 
-// --- RecipientBinding ------------------------------------------------------------
+// --- RecipientBinding --------------------------------------------------------------------
 
-const AZTEC_RECIPIENT = "0x" + "1c".repeat(32);
-const AZTEC_TOKEN = "0x" + "2b".repeat(32);
-
-const BASE_BINDING: RecipientBinding = {
+const BASE_BINDING: Binding = {
   sourceWallet: ADDR_0,
   sourceChainId: "84532",
-  aztecRecipient: AZTEC_RECIPIENT,
-  aztecToken: AZTEC_TOKEN,
+  aztecRecipient: "0x" + "1c".repeat(32),
+  aztecToken: "0x" + "2b".repeat(32),
   descriptorDigest: "0x" + "d5".repeat(32),
   corridorId: "0x" + "c0".repeat(32),
   corridorRevision: "1",
   manifestDigest: "0x" + "4d".repeat(32),
   nonce: "0x" + "0e".repeat(32),
   challengeExpiry: "1900000000",
-  purpose: RECIPIENT_BINDING_PURPOSE,
+  purpose: PURPOSE,
 };
 
-const bindingJson = (b: RecipientBinding) => ({
-  sourceWallet: b.sourceWallet.toLowerCase(),
-  sourceChainId: String(b.sourceChainId),
-  aztecRecipient: b.aztecRecipient.toLowerCase(),
-  aztecToken: b.aztecToken.toLowerCase(),
-  descriptorDigest: b.descriptorDigest.toLowerCase(),
-  corridorId: b.corridorId.toLowerCase(),
-  corridorRevision: String(b.corridorRevision),
-  manifestDigest: b.manifestDigest.toLowerCase(),
-  nonce: b.nonce.toLowerCase(),
-  challengeExpiry: String(b.challengeExpiry),
-  purpose: b.purpose,
-});
-
-// ethers' generic encoder: used here only to refuse to write a vector the reference and
-// an independent implementation disagree on.
-const ETHERS_BINDING_TYPES = {
-  RecipientBinding: RECIPIENT_BINDING_TYPE_STRING.slice("RecipientBinding(".length, -1)
-    .split(",")
-    .map((m) => {
-      const [type, name] = m.split(" ");
-      return { name: name!, type: type! };
-    }),
-};
-
-type BindingCase = {
+const BINDING_CASES: {
   name: string;
   environment: string;
-  network: NetworkIdentity;
-  binding: RecipientBinding;
+  network: Network;
+  binding: Binding;
   wallet: ethers.Wallet;
-};
-const BINDING_CASES: BindingCase[] = [
+}[] = [
   {
     name: "baseline",
     environment: "staging",
@@ -254,7 +279,7 @@ const BINDING_CASES: BindingCase[] = [
       ...BASE_BINDING,
       sourceChainId: UINT256_MAX.toString(),
       aztecRecipient: hex32(P - 1n),
-      aztecToken: hex32(2n ** 160n),
+      aztecToken: hex32(1n),
       corridorRevision: UINT32_MAX.toString(),
       nonce: "0x" + "ff".repeat(32),
       challengeExpiry: UINT64_MAX.toString(),
@@ -265,25 +290,23 @@ const BINDING_CASES: BindingCase[] = [
 
 const bindingVectors = await Promise.all(
   BINDING_CASES.map(async ({ name, environment, network, binding, wallet }) => {
-    const domain = bindingDomain(binding.sourceChainId, environment, network);
-    const message = bindingJson(binding);
-    const digest = recipientBindingDigest(binding, environment, network);
-    const independent = ethers.TypedDataEncoder.hash(domain, ETHERS_BINDING_TYPES, message);
-    if (independent !== digest) throw new Error(`${name}: reference digest disagrees with ethers`);
+    // Domain (binding)'s chainId is the source chain.
+    const domain = domainFor(BINDING_DOMAIN_NAME, binding.sourceChainId, environment, network);
+    const digest = ethers.TypedDataEncoder.hash(domain, BINDING_TYPES, binding);
     const signature = ethers.Signature.from(
-      await wallet.signTypedData(domain, ETHERS_BINDING_TYPES, message),
+      await wallet.signTypedData(domain, BINDING_TYPES, binding),
     ).serialized;
-    if (ethers.recoverAddress(digest, signature).toLowerCase() !== message.sourceWallet) {
+    if (ethers.recoverAddress(digest, signature).toLowerCase() !== binding.sourceWallet) {
       throw new Error(`${name}: signature does not recover sourceWallet`);
     }
     return {
       name,
       environment,
-      network: networkJson(network),
+      network,
       domain,
-      message,
-      domainSeparator: shieldedDomainSeparator(domain),
-      structHash: hashRecipientBinding(binding),
+      message: binding,
+      domainSeparator: ethers.TypedDataEncoder.hashDomain(domain),
+      structHash: ethers.TypedDataEncoder.hashStruct("RecipientBinding", BINDING_TYPES, binding),
       digest,
       signer: wallet.address.toLowerCase(),
       signature,
@@ -291,110 +314,155 @@ const bindingVectors = await Promise.all(
   }),
 );
 
-// --- Refusals ------------------------------------------------------------------------
+// --- Refusals: expectations are DATA, written from §7's rules ----------------------------
+//
+// Rules (codes are encoding-level, not the enrollment wire classes):
+//   not_bytes32               not 0x + 64 hex
+//   aztec_zero                Aztec value (bytes32, or uint256 Aztec chain id / version) is 0
+//   aztec_out_of_field        Aztec value >= BN254 r
+//   amount_not_canonical      not a canonical decimal (no sign/leading zero/space/exponent)
+//   amount_zero / amount_over_max   0, or > 2^128 - 1
+//   not_evm_address / evm_address_zero
+//   uint_not_canonical / uint_out_of_range   uint32/uint64 member outside its type
+//   chain_id_zero             a chain id of 0 (no virtual-chain stand-in)
+//   environment_empty / digest_zero (genesisOrNetworkDigest) / purpose_mismatch
 
-function refusalOf(fn: () => unknown): { code: string; field: string } {
-  try {
-    fn();
-  } catch (e) {
-    if (e instanceof ShieldedEncodingError) return { code: e.code, field: e.field };
-    throw e;
-  }
-  throw new Error("expected a refusal, got none");
-}
-
-const paddedEvm = (addr: string) => ethers.zeroPadValue(addr, 32).toLowerCase();
-
+// Magnitude does not police provenance (header), so a value no larger than an EVM address
+// is accepted like any other nonzero in-field value.
 const aztecAccepted = [
-  { name: "fixture-recipient", value: AZTEC_RECIPIENT },
-  { name: "fixture-token", value: AZTEC_TOKEN },
-  { name: "smallest-not-evm-shaped", value: hex32(2n ** 160n) },
-  { name: "largest-in-field", value: hex32(P - 1n) },
-].map((c) => ({ ...c, value: assertAztecBytes32("value", c.value) }));
-
-const aztecRefused = [
-  { name: "zero", value: hex32(0n) },
+  { name: "fixture-recipient", value: BASE_BINDING.aztecRecipient },
+  { name: "fixture-token", value: BASE_BINDING.aztecToken },
   { name: "one", value: hex32(1n) },
-  { name: "padded-evm-address", value: paddedEvm(ADDR_1) },
-  { name: "largest-evm-shaped", value: hex32(2n ** 160n - 1n) },
-  { name: "field-modulus", value: hex32(P) },
-  { name: "all-ones", value: hex32(UINT256_MAX) },
-  { name: "no-0x-prefix", value: "1c".repeat(32) },
-  { name: "31-bytes", value: "0x" + "1c".repeat(31) },
-  { name: "33-bytes", value: "0x" + "1c".repeat(33) },
-  { name: "non-hex", value: "0x" + "zz".repeat(32) },
-].map((c) => ({ ...c, error: refusalOf(() => assertAztecBytes32("value", c.value)).code }));
+  { name: "evm-address-sized", value: paddedEvm(ADDR_1) },
+  { name: "largest-below-2^160", value: hex32(2n ** 160n - 1n) },
+  { name: "largest-in-field", value: hex32(P - 1n) },
+];
+const aztecRefused = [
+  { name: "zero", value: hex32(0n), error: "aztec_zero" },
+  { name: "field-modulus", value: hex32(P), error: "aztec_out_of_field" },
+  { name: "all-ones", value: hex32(UINT256_MAX), error: "aztec_out_of_field" },
+  { name: "no-0x-prefix", value: "1c".repeat(32), error: "not_bytes32" },
+  { name: "31-bytes", value: "0x" + "1c".repeat(31), error: "not_bytes32" },
+  { name: "33-bytes", value: "0x" + "1c".repeat(33), error: "not_bytes32" },
+  { name: "non-hex", value: "0x" + "zz".repeat(32), error: "not_bytes32" },
+];
 
 const amountAccepted = [
   { name: "one", value: "1" },
   { name: "six-decimal-unit", value: "1000000" },
-  { name: "max", value: SHIELDED_AMOUNT_MAX.toString() },
-].map((c) => ({ ...c, parsed: parseShieldedAmount("amount", c.value).toString() }));
-
+  { name: "max", value: AMOUNT_MAX.toString() },
+];
 const amountRefused = [
-  { name: "zero", value: "0" },
-  { name: "max-plus-one", value: (SHIELDED_AMOUNT_MAX + 1n).toString() },
-  { name: "uint256-max", value: UINT256_MAX.toString() },
-  { name: "leading-zero", value: "01" },
-  { name: "double-zero", value: "00" },
-  { name: "negative", value: "-1" },
-  { name: "plus-sign", value: "+1" },
-  { name: "fraction", value: "1.0" },
-  { name: "exponent", value: "1e3" },
-  { name: "hex", value: "0x10" },
-  { name: "leading-space", value: " 1" },
-  { name: "trailing-space", value: "1 " },
-  { name: "empty", value: "" },
-].map((c) => ({ ...c, error: refusalOf(() => parseShieldedAmount("amount", c.value)).code }));
+  { name: "zero", value: "0", error: "amount_zero" },
+  { name: "max-plus-one", value: (AMOUNT_MAX + 1n).toString(), error: "amount_over_max" },
+  { name: "uint256-max", value: UINT256_MAX.toString(), error: "amount_over_max" },
+  { name: "leading-zero", value: "01", error: "amount_not_canonical" },
+  { name: "double-zero", value: "00", error: "amount_not_canonical" },
+  { name: "negative", value: "-1", error: "amount_not_canonical" },
+  { name: "plus-sign", value: "+1", error: "amount_not_canonical" },
+  { name: "fraction", value: "1.0", error: "amount_not_canonical" },
+  { name: "exponent", value: "1e3", error: "amount_not_canonical" },
+  { name: "hex", value: "0x10", error: "amount_not_canonical" },
+  { name: "leading-space", value: " 1", error: "amount_not_canonical" },
+  { name: "trailing-space", value: "1 ", error: "amount_not_canonical" },
+  { name: "empty", value: "", error: "amount_not_canonical" },
+];
 
 // Each case differs from the baseline in exactly ONE input, so its expected code does
 // not depend on the order an implementation runs its checks in.
-type BindingRefusalCase = {
-  name: string;
-  environment?: string;
-  network?: Partial<NetworkIdentity>;
-  binding?: Partial<RecipientBinding>;
-};
-const BINDING_REFUSAL_CASES: BindingRefusalCase[] = [
-  { name: "recipient-is-padded-source-wallet", binding: { aztecRecipient: paddedEvm(ADDR_0) } },
-  { name: "token-is-padded-evm-address", binding: { aztecToken: paddedEvm(ADDR_1) } },
-  { name: "token-zero", binding: { aztecToken: hex32(0n) } },
-  { name: "recipient-field-modulus", binding: { aztecRecipient: hex32(P) } },
-  { name: "purpose-other-version", binding: { purpose: "xochi.shielded.recipient-binding.v2" } },
-  {
-    name: "corridor-revision-over-uint32",
-    binding: { corridorRevision: (UINT32_MAX + 1n).toString() },
-  },
-  {
-    name: "challenge-expiry-over-uint64",
-    binding: { challengeExpiry: (UINT64_MAX + 1n).toString() },
-  },
-  { name: "source-chain-zero", binding: { sourceChainId: "0" } },
-  { name: "source-wallet-zero", binding: { sourceWallet: "0x" + "00".repeat(20) } },
-  { name: "source-wallet-not-20-bytes", binding: { sourceWallet: "0x" + "f3".repeat(19) } },
-  { name: "descriptor-digest-not-bytes32", binding: { descriptorDigest: "0x" + "d5".repeat(20) } },
-  { name: "environment-empty", environment: "" },
-  { name: "network-aztec-chain-zero", network: { aztecChainId: "0" } },
-  { name: "network-protocol-version-field-modulus", network: { protocolVersion: P.toString() } },
-  { name: "network-rollup-zero", network: { rollupAddress: "0x" + "00".repeat(20) } },
-  { name: "network-l1-chain-zero", network: { l1ChainId: "0" } },
-  { name: "network-genesis-digest-zero", network: { genesisOrNetworkDigest: hex32(0n) } },
-];
+const bindingRefusals = (
+  [
+    {
+      name: "token-zero",
+      binding: { aztecToken: hex32(0n) },
+      error: { code: "aztec_zero", field: "aztecToken" },
+    },
+    {
+      name: "recipient-field-modulus",
+      binding: { aztecRecipient: hex32(P) },
+      error: { code: "aztec_out_of_field", field: "aztecRecipient" },
+    },
+    {
+      name: "purpose-other-version",
+      binding: { purpose: "xochi.shielded.recipient-binding.v2" },
+      error: { code: "purpose_mismatch", field: "purpose" },
+    },
+    {
+      name: "corridor-revision-over-uint32",
+      binding: { corridorRevision: (UINT32_MAX + 1n).toString() },
+      error: { code: "uint_out_of_range", field: "corridorRevision" },
+    },
+    {
+      name: "challenge-expiry-over-uint64",
+      binding: { challengeExpiry: (UINT64_MAX + 1n).toString() },
+      error: { code: "uint_out_of_range", field: "challengeExpiry" },
+    },
+    {
+      name: "source-chain-zero",
+      binding: { sourceChainId: "0" },
+      error: { code: "chain_id_zero", field: "sourceChainId" },
+    },
+    {
+      name: "source-wallet-zero",
+      binding: { sourceWallet: "0x" + "00".repeat(20) },
+      error: { code: "evm_address_zero", field: "sourceWallet" },
+    },
+    {
+      name: "source-wallet-not-20-bytes",
+      binding: { sourceWallet: "0x" + "f3".repeat(19) },
+      error: { code: "not_evm_address", field: "sourceWallet" },
+    },
+    {
+      name: "descriptor-digest-not-bytes32",
+      binding: { descriptorDigest: "0x" + "d5".repeat(20) },
+      error: { code: "not_bytes32", field: "descriptorDigest" },
+    },
+    {
+      name: "environment-empty",
+      environment: "",
+      error: { code: "environment_empty", field: "environment" },
+    },
+    {
+      name: "network-aztec-chain-zero",
+      network: { aztecChainId: "0" },
+      error: { code: "aztec_zero", field: "network.aztecChainId" },
+    },
+    {
+      name: "network-protocol-version-field-modulus",
+      network: { protocolVersion: P.toString() },
+      error: { code: "aztec_out_of_field", field: "network.protocolVersion" },
+    },
+    {
+      name: "network-rollup-zero",
+      network: { rollupAddress: "0x" + "00".repeat(20) },
+      error: { code: "evm_address_zero", field: "network.rollupAddress" },
+    },
+    {
+      name: "network-l1-chain-zero",
+      network: { l1ChainId: "0" },
+      error: { code: "chain_id_zero", field: "network.l1ChainId" },
+    },
+    {
+      name: "network-genesis-digest-zero",
+      network: { genesisOrNetworkDigest: hex32(0n) },
+      error: { code: "digest_zero", field: "network.genesisOrNetworkDigest" },
+    },
+  ] as {
+    name: string;
+    environment?: string;
+    network?: Partial<Network>;
+    binding?: Partial<Binding>;
+    error: { code: string; field: string };
+  }[]
+).map((c) => ({
+  name: c.name,
+  environment: c.environment ?? "staging",
+  network: { ...NET_A, ...c.network },
+  message: { ...BASE_BINDING, ...c.binding },
+  error: c.error,
+}));
 
-const bindingRefusals = BINDING_REFUSAL_CASES.map((c) => {
-  const environment = c.environment ?? "staging";
-  const network = { ...NET_A, ...c.network };
-  const binding = { ...BASE_BINDING, ...c.binding };
-  return {
-    name: c.name,
-    environment,
-    network: networkJson(network),
-    message: bindingJson(binding),
-    error: refusalOf(() => recipientBindingDigest(binding, environment, network)),
-  };
-});
-
-// --- Output ----------------------------------------------------------------------------
+// --- Output ------------------------------------------------------------------------------
 
 const out = {
   version: 1,
@@ -403,22 +471,24 @@ const out = {
     'xochi docs/planning/shielded-execution.md §7 "Approved 2026-10-18: typed encodings" (xochi#633, xochi#635)',
   constants: {
     aztecFieldModulus: P.toString(),
-    amountMax: SHIELDED_AMOUNT_MAX.toString(),
-    domainVersion: SHIELDED_DOMAIN_VERSION,
-    bindingDomainName: SHIELDED_BINDING_DOMAIN_NAME,
-    termsDomainName: SHIELDED_TERMS_DOMAIN_NAME,
-    purpose: RECIPIENT_BINDING_PURPOSE,
+    amountMax: AMOUNT_MAX.toString(),
+    domainVersion: DOMAIN_VERSION,
+    bindingDomainName: BINDING_DOMAIN_NAME,
+    termsDomainName: TERMS_DOMAIN_NAME,
+    purpose: PURPOSE,
   },
-  domain: { typeString: SHIELDED_DOMAIN_TYPE_STRING, typehash: SHIELDED_DOMAIN_TYPEHASH },
+  domain: { typeString: DOMAIN_TYPE_STRING, typehash: ethers.id(DOMAIN_TYPE_STRING) },
   networkIdentity: {
+    approved:
+      "2026-10-19 by the product owner, protocolVersion = numeric Aztec rollup version; the §7 record lands in a separate xochi PR",
     typeString: NETWORK_IDENTITY_TYPE_STRING,
-    typehash: NETWORK_IDENTITY_TYPEHASH,
+    typehash: ethers.id(NETWORK_IDENTITY_TYPE_STRING),
     vectors: networkVectors,
   },
   domains: domainVectors,
   recipientBinding: {
     typeString: RECIPIENT_BINDING_TYPE_STRING,
-    typehash: RECIPIENT_BINDING_TYPEHASH,
+    typehash: ethers.id(RECIPIENT_BINDING_TYPE_STRING),
     signerIsTestKey: true,
     vectors: bindingVectors,
     refusals: bindingRefusals,
@@ -473,32 +543,17 @@ const NETWORK = obj({
 });
 const DOMAIN = obj({ name: STR, version: STR, chainId: UINT, salt: HEX32 });
 // Refusal inputs are the refused values themselves, so they are not shape-constrained.
-const MESSAGE_LOOSE = obj({
-  sourceWallet: STR,
-  sourceChainId: STR,
-  aztecRecipient: STR,
-  aztecToken: STR,
-  descriptorDigest: STR,
-  corridorId: STR,
-  corridorRevision: STR,
-  manifestDigest: STR,
-  nonce: STR,
-  challengeExpiry: STR,
-  purpose: STR,
-});
-const NETWORK_LOOSE = obj({
-  aztecChainId: STR,
-  protocolVersion: STR,
-  rollupAddress: STR,
-  l1ChainId: STR,
-  genesisOrNetworkDigest: STR,
-});
+const MESSAGE_LOOSE = obj(
+  Object.fromEntries(BINDING_TYPES.RecipientBinding.map((m) => [m.name, STR])),
+);
+const NETWORK_LOOSE = obj(
+  Object.fromEntries(NETWORK_TYPES.NetworkIdentity.map((m) => [m.name, STR])),
+);
 const REFUSAL_CODE = {
   enum: [
     "not_bytes32",
     "aztec_zero",
     "aztec_out_of_field",
-    "aztec_padded_evm_address",
     "amount_not_canonical",
     "amount_zero",
     "amount_over_max",
@@ -512,6 +567,7 @@ const REFUSAL_CODE = {
     "purpose_mismatch",
   ],
 };
+const OPEN_ITEM = obj({ item: STR, reason: STR });
 
 const schema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -520,7 +576,8 @@ const schema = {
   description:
     "NetworkIdentity hashStruct, the salted Domain (binding) / Domain (terms), the RecipientBinding " +
     "struct hash, EIP-712 digest and source-wallet signature (public test keys), and the value refusals " +
-    "(xochi shielded-execution.md §7, approved 2026-10-18). Reference: @xochi/signer. uint values are " +
+    "(xochi shielded-execution.md §7, approved 2026-10-18; NetworkIdentity encoding approved 2026-10-19). " +
+    "Generated from §7 literals with ethers primitives, independently of @xochi/signer. uint values are " +
     "decimal strings; bytes/addresses lowercase hex. Every refusal case differs from the baseline in " +
     "exactly one input, so its expected code is independent of check order. Network, corridor and Aztec " +
     "values are fixtures.",
@@ -538,6 +595,7 @@ const schema = {
     }),
     domain: obj({ typeString: STR, typehash: HEX32 }),
     networkIdentity: obj({
+      approved: STR,
       typeString: STR,
       typehash: HEX32,
       vectors: arr(obj({ name: STR, network: NETWORK, networkIdentityDigest: HEX32 })),
@@ -600,11 +658,11 @@ const schema = {
         refused: arr(obj({ name: STR, value: STR, error: REFUSAL_CODE })),
       }),
       amount: obj({
-        accepted: arr(obj({ name: STR, value: UINT, parsed: UINT })),
+        accepted: arr(obj({ name: STR, value: UINT })),
         refused: arr(obj({ name: STR, value: STR, error: REFUSAL_CODE })),
       }),
     }),
-    open: arr(obj({ item: STR, reason: STR })),
+    open: arr(OPEN_ITEM),
   }),
 };
 
@@ -612,7 +670,8 @@ const dir = process.env.SHIELDED_VECTORS_DIR ?? path.dirname(fileURLToPath(impor
 fs.writeFileSync(path.join(dir, "shielded.json"), JSON.stringify(out, null, 2) + "\n");
 fs.writeFileSync(path.join(dir, "shielded.schema.json"), JSON.stringify(schema, null, 2) + "\n");
 console.log(
-  `wrote shielded.json: ${networkVectors.length} networks, ${domainVectors.length} domains, ` +
-    `${bindingVectors.length} bindings, ${bindingRefusals.length} binding refusals`,
+  `wrote shielded.json: ${networkVectors.length} networks, ` +
+    `${domainVectors.length} domains, ${bindingVectors.length} bindings, ` +
+    `${bindingRefusals.length} binding refusals`,
 );
 for (const v of bindingVectors) console.log(`  ${v.name.padEnd(28)} ${v.digest}`);

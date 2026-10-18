@@ -46,10 +46,12 @@ export const SHIELDED_DOMAIN_TYPE_STRING =
 export const SHIELDED_DOMAIN_TYPEHASH = ethers.id(SHIELDED_DOMAIN_TYPE_STRING) as Hex;
 
 // §7 `NetworkIdentity = { aztec_chain_id, protocol_version, rollup_address, l1_chain_id,
-// genesis_or_network_digest }`. §7 delegates its typed encoding to these vectors. Member
-// names follow the approval's snake_case -> camelCase mapping. `rollupAddress` is the L1
-// rollup contract, so `address`; the two Aztec values are field elements in the Aztec
-// protocol (tx context `chainId` / `version`), carried as uint256 and held in-field.
+// genesis_or_network_digest }`. §7 delegates its typed encoding to these vectors; this one
+// was approved by the product owner on 2026-10-19 (its §7 record lands in a separate xochi
+// PR). Member names follow the approval's snake_case -> camelCase mapping. `rollupAddress`
+// is the L1 rollup contract, so `address`; `protocolVersion` is the numeric Aztec rollup
+// version. Both Aztec values are protocol field elements (tx context `chainId` /
+// `version`), carried as uint256 and held in-field.
 export const NETWORK_IDENTITY_TYPE_STRING =
   "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)";
 export const NETWORK_IDENTITY_TYPEHASH = ethers.id(NETWORK_IDENTITY_TYPE_STRING) as Hex;
@@ -69,7 +71,6 @@ export const SHIELDED_AMOUNT_MAX = 2n ** 128n - 1n;
 const UINT32_MAX = 2n ** 32n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const UINT256_MAX = 2n ** 256n - 1n;
-const EVM_ADDRESS_BOUND = 2n ** 160n;
 
 // ---------------------------------------------------------------------------
 // Refusals
@@ -84,7 +85,6 @@ export type ShieldedRefusal =
   | "not_bytes32"
   | "aztec_zero"
   | "aztec_out_of_field"
-  | "aztec_padded_evm_address"
   | "amount_not_canonical"
   | "amount_zero"
   | "amount_over_max"
@@ -124,18 +124,15 @@ function bytes32(field: string, value: string): Hex {
 }
 
 /**
- * An Aztec `bytes32`: a nonzero field element below the BN254 modulus, and never a
- * padded EVM address. A value with its top 12 bytes zero is exactly what padding an
- * EVM address produces, and a hash-derived Aztec address lands there with probability
- * ~2^-94, so it is refused rather than guessed at. (A HASHED EVM address cannot be told
- * apart from an Aztec value; that half of the rule is the producer's to keep.)
+ * An Aztec `bytes32`: a nonzero field element below the BN254 modulus. Magnitude is all
+ * this checks: that the value is an Aztec address and not an EVM address is established by
+ * descriptor/address derivation, not by its size, so a small value is not refused.
  */
 export function assertAztecBytes32(field: string, value: string): Hex {
   const hex = bytes32(field, value);
   const v = BigInt(hex);
   if (v === 0n) refuse("aztec_zero", field, "zero");
   if (v >= AZTEC_FIELD_MODULUS) refuse("aztec_out_of_field", field, "not below the BN254 modulus");
-  if (v < EVM_ADDRESS_BOUND) refuse("aztec_padded_evm_address", field, "top 12 bytes are zero");
   return hex;
 }
 

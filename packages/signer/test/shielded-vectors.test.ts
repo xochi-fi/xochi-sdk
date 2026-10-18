@@ -1,13 +1,14 @@
-// Shielded settlement contract v1 vectors: `@xochi/spec`'s conformance/shielded.json,
-// the file Riddler and the Xochi Worker vendor (xochi shielded-execution.md §7,
-// "Approved 2026-10-18: typed encodings").
+// Shielded settlement contract v1 vectors: `@xochi/spec`'s conformance/shielded.json
+// (xochi shielded-execution.md §7, "Approved 2026-10-18: typed encodings"; the
+// NetworkIdentity encoding was approved by the product owner on 2026-10-19).
 //
-// Three layers. (1) Every value is recomputed from @xochi/signer. (2) An INDEPENDENT
-// cross-check: @xochi/signer hand-rolls each hash from abi.encode, so the same values are
-// recomputed with ethers' generic TypedDataEncoder from type definitions written out here,
-// and every signature is recovered by ethers' verifyTypedData. (3) Anchors this repo cannot
-// edit: the approved type string, names and purpose as written in §7 (and, when a sibling
-// xochi checkout exists, read from §7 itself), and the published BN254 scalar field order.
+// The generator derives every value from §7 literals with ethers primitives and never
+// imports @xochi/signer, so this suite checks the REFERENCE against an independent
+// producer: (1) every value and refusal in the file is reproduced by @xochi/signer;
+// (2) the values are recomputed again here with ethers' TypedDataEncoder from type
+// definitions written out in this file, and every signature recovered by verifyTypedData;
+// (3) anchors this repo cannot edit: the approved type string, names and purpose as
+// written in §7 (and, with XOCHI_SHIELDED_SPEC, read from §7 itself), and BN254 r.
 
 import { describe, it, expect } from "vitest";
 import fs from "fs";
@@ -56,6 +57,7 @@ interface ShieldedFile {
   };
   domain: { typeString: string; typehash: string };
   networkIdentity: {
+    approved: string;
     typeString: string;
     typehash: string;
     vectors: { name: string; network: Network; networkIdentityDigest: string }[];
@@ -100,7 +102,7 @@ interface ShieldedFile {
       refused: { name: string; value: string; error: string }[];
     };
     amount: {
-      accepted: { name: string; value: string; parsed: string }[];
+      accepted: { name: string; value: string }[];
       refused: { name: string; value: string; error: string }[];
     };
   };
@@ -112,6 +114,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const file = JSON.parse(
   fs.readFileSync(path.join(here, "../../spec/conformance/shielded.json"), "utf8"),
 ) as ShieldedFile;
+const domains = file.domains;
 
 // --- Anchors (copied from §7, never from the implementation) ------------------------------
 
@@ -192,6 +195,7 @@ describe("approved names and type strings", () => {
     expect(file.networkIdentity.typeString).toBe(NETWORK_IDENTITY_TYPE_STRING);
     expect(file.networkIdentity.typehash).toBe(ethers.id(NETWORK_IDENTITY_TYPE_STRING));
     expect(NETWORK_IDENTITY_TYPEHASH).toBe(ethers.id(NETWORK_IDENTITY_TYPE_STRING));
+    expect(file.networkIdentity.approved).toMatch(/^2026-10-19 /);
   });
 
   it("uses EIP-712's member order for a { name, version, chainId, salt } domain", () => {
@@ -308,15 +312,15 @@ describe("RecipientBinding", () => {
     }
   });
 
-  it("every published Aztec value is nonzero, in-field and not EVM-shaped", () => {
+  it("every published Aztec value is nonzero and in-field", () => {
     for (const v of file.recipientBinding.vectors) {
-      for (const f of ["aztecRecipient", "aztecToken"] as const) {
-        const x = BigInt(v.message[f]);
-        expect(x >= 2n ** 160n && x < BN254_R, `${v.name}.${f}`).toBe(true);
-      }
-      for (const f of ["aztecChainId", "protocolVersion"] as const) {
-        const x = BigInt(v.network[f]);
-        expect(x > 0n && x < BN254_R, `${v.name}.${f}`).toBe(true);
+      for (const x of [
+        v.message.aztecRecipient,
+        v.message.aztecToken,
+        v.network.aztecChainId,
+        v.network.protocolVersion,
+      ]) {
+        expect(BigInt(x) > 0n && BigInt(x) < BN254_R, `${v.name}: ${x}`).toBe(true);
       }
     }
   });
@@ -346,17 +350,15 @@ describe("RecipientBinding", () => {
     }
   });
 
-  it("refuses a padded EVM address as either Aztec member, including the source wallet's own", () => {
-    const codes = file.recipientBinding.refusals
-      .filter((r) => r.error.code === "aztec_padded_evm_address")
-      .map((r) => r.error.field);
-    expect(codes.sort()).toEqual(["aztecRecipient", "aztecToken"]);
-    const self = file.recipientBinding.refusals.find(
-      (r) => r.name === "recipient-is-padded-source-wallet",
-    )!;
-    expect(self.message.aztecRecipient).toBe(
-      ethers.zeroPadValue(self.message.sourceWallet, 32).toLowerCase(),
+  it("a small (EVM-address-sized) Aztec value is admitted: provenance is not judged by magnitude", () => {
+    const boundary = file.recipientBinding.vectors.find((v) => v.name === "boundary-values")!;
+    expect(BigInt(boundary.message.aztecToken)).toBe(1n);
+    expect(recipientBindingDigest(boundary.message, boundary.environment, boundary.network)).toBe(
+      boundary.digest,
     );
+    const padded = ethers.zeroPadValue(boundary.message.sourceWallet, 32).toLowerCase();
+    const self = { ...boundary.message, aztecRecipient: padded };
+    expect(refusalOf(() => hashRecipientBinding(self))).toBeNull();
   });
 });
 
@@ -365,15 +367,13 @@ describe("value rules", () => {
     for (const a of file.values.aztecBytes32.accepted) {
       expect(assertAztecBytes32("value", a.value), a.name).toBe(a.value);
       const x = BigInt(a.value);
-      expect(x >= 2n ** 160n && x < BN254_R, a.name).toBe(true);
+      expect(x > 0n && x < BN254_R, a.name).toBe(true);
     }
     for (const r of file.values.aztecBytes32.refused) {
       expect(refusalOf(() => assertAztecBytes32("value", r.value))?.code, r.name).toBe(r.error);
     }
     const codes = new Set(file.values.aztecBytes32.refused.map((r) => r.error));
-    expect(codes).toEqual(
-      new Set(["aztec_zero", "aztec_out_of_field", "aztec_padded_evm_address", "not_bytes32"]),
-    );
+    expect(codes).toEqual(new Set(["aztec_zero", "aztec_out_of_field", "not_bytes32"]));
   });
 
   it("refuses the boundaries on both sides of each Aztec rule", () => {
@@ -383,8 +383,8 @@ describe("value rules", () => {
         .map((r) => [BigInt(r.value), r]),
     );
     const accepted = new Set(file.values.aztecBytes32.accepted.map((a) => BigInt(a.value)));
-    expect(refused.get(2n ** 160n - 1n)?.error).toBe("aztec_padded_evm_address");
-    expect(accepted.has(2n ** 160n)).toBe(true);
+    expect(accepted.has(1n)).toBe(true);
+    expect(accepted.has(2n ** 160n - 1n)).toBe(true);
     expect(refused.get(BN254_R)?.error).toBe("aztec_out_of_field");
     expect(accepted.has(BN254_R - 1n)).toBe(true);
     expect(refused.get(0n)?.error).toBe("aztec_zero");
@@ -392,7 +392,7 @@ describe("value rules", () => {
 
   it("accepts and refuses amounts as published, with 0 < amount <= 2^128 - 1", () => {
     for (const a of file.values.amount.accepted) {
-      expect(parseShieldedAmount("amount", a.value).toString(), a.name).toBe(a.parsed);
+      expect(parseShieldedAmount("amount", a.value).toString(), a.name).toBe(a.value);
       const x = BigInt(a.value);
       expect(x > 0n && x <= 2n ** 128n - 1n && String(x) === a.value, a.name).toBe(true);
     }

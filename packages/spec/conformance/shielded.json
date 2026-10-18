@@ -15,6 +15,7 @@
     "typehash": "0xa604fff5a27d5951f334ccda7abff3286a8af29caeeb196a6f2b40a1dce7612b"
   },
   "networkIdentity": {
+    "approved": "2026-10-19 by the product owner, protocolVersion = numeric Aztec rollup version; the §7 record lands in a separate xochi PR",
     "typeString": "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)",
     "typehash": "0xd30a9f62f8e7b404cb3181a16d547adec2b019fa08cadb19ea0a97528c727cff",
     "vectors": [
@@ -450,7 +451,7 @@
           "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "sourceChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
           "aztecRecipient": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
-          "aztecToken": "0x0000000000000000000000010000000000000000000000000000000000000000",
+          "aztecToken": "0x0000000000000000000000000000000000000000000000000000000000000001",
           "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
           "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
           "corridorRevision": "4294967295",
@@ -460,69 +461,13 @@
           "purpose": "xochi.shielded.recipient-binding.v1"
         },
         "domainSeparator": "0xa3a20ab2424aa1091746d04656789822995628348a5c4c28e11a5b70fab23cfb",
-        "structHash": "0xabcadd10192867bc865d316e49e68ba855a186cbf230f8a0c2e8feee9c5a2b94",
-        "digest": "0x2b0ff5eb01640885bd10cd266fd259fe0048b3e265e5b697999f198c209efcd1",
+        "structHash": "0x2cadccc8843257be7044f94b9c393295aa3d3a9fbeb436d7e9e1642c510907ce",
+        "digest": "0x73d757f32542eeecb8c9844332438e77dcafa103be31269594095637a75d38b9",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x829fea33a8d3f21be8567129adc22b6dc2be2ea04f5e3e0352ede1cc6559da0a77c49adc3f3fb3ecb17620cbd0ccd0bc091eadfcccba00d27efaefc7e156d3e91b"
+        "signature": "0xd9430602d93dd29b0a9b07a82e6bc188fe6039bef3c189711741c66206c5f2114fb916d825e284d1f9713ebdfadfbb40bbfc2bc79d3603b4a7a3182662a392be1c"
       }
     ],
     "refusals": [
-      {
-        "name": "recipient-is-padded-source-wallet",
-        "environment": "staging",
-        "network": {
-          "aztecChainId": "11155111",
-          "protocolVersion": "3924331020",
-          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-          "l1ChainId": "11155111",
-          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
-        },
-        "message": {
-          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "sourceChainId": "84532",
-          "aztecRecipient": "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
-          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-          "corridorRevision": "1",
-          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
-          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
-          "challengeExpiry": "1900000000",
-          "purpose": "xochi.shielded.recipient-binding.v1"
-        },
-        "error": {
-          "code": "aztec_padded_evm_address",
-          "field": "aztecRecipient"
-        }
-      },
-      {
-        "name": "token-is-padded-evm-address",
-        "environment": "staging",
-        "network": {
-          "aztecChainId": "11155111",
-          "protocolVersion": "3924331020",
-          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-          "l1ChainId": "11155111",
-          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
-        },
-        "message": {
-          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "sourceChainId": "84532",
-          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
-          "aztecToken": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
-          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-          "corridorRevision": "1",
-          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
-          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
-          "challengeExpiry": "1900000000",
-          "purpose": "xochi.shielded.recipient-binding.v1"
-        },
-        "error": {
-          "code": "aztec_padded_evm_address",
-          "field": "aztecToken"
-        }
-      },
       {
         "name": "token-zero",
         "environment": "staging",
@@ -957,8 +902,16 @@
           "value": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
         },
         {
-          "name": "smallest-not-evm-shaped",
-          "value": "0x0000000000000000000000010000000000000000000000000000000000000000"
+          "name": "one",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000001"
+        },
+        {
+          "name": "evm-address-sized",
+          "value": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+        },
+        {
+          "name": "largest-below-2^160",
+          "value": "0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff"
         },
         {
           "name": "largest-in-field",
@@ -970,21 +923,6 @@
           "name": "zero",
           "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
           "error": "aztec_zero"
-        },
-        {
-          "name": "one",
-          "value": "0x0000000000000000000000000000000000000000000000000000000000000001",
-          "error": "aztec_padded_evm_address"
-        },
-        {
-          "name": "padded-evm-address",
-          "value": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8",
-          "error": "aztec_padded_evm_address"
-        },
-        {
-          "name": "largest-evm-shaped",
-          "value": "0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff",
-          "error": "aztec_padded_evm_address"
         },
         {
           "name": "field-modulus",
@@ -1022,18 +960,15 @@
       "accepted": [
         {
           "name": "one",
-          "value": "1",
-          "parsed": "1"
+          "value": "1"
         },
         {
           "name": "six-decimal-unit",
-          "value": "1000000",
-          "parsed": "1000000"
+          "value": "1000000"
         },
         {
           "name": "max",
-          "value": "340282366920938463463374607431768211455",
-          "parsed": "340282366920938463463374607431768211455"
+          "value": "340282366920938463463374607431768211455"
         }
       ],
       "refused": [

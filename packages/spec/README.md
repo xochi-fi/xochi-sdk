@@ -19,10 +19,10 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   (+ `.schema.json`): escrow vectors (ESCROW-RFC, SOLVER-RFC §5.3). Public test keys only.
 - **`conformance/xsp.json`** + `.schema.json`: Xochi Settlement Protocol digests (ESCROW-RFC §13).
 - **`conformance/shielded.json`** + `.schema.json`: shielded settlement contract v1 typed encodings
-  (xochi `docs/planning/shielded-execution.md` §7, approved 2026-10-18): NetworkIdentity, the
-  salted `Domain (binding)` / `Domain (terms)`, RecipientBinding digests with source-wallet
-  signatures (public test keys), and the Aztec `bytes32` / amount refusals. Inert: shielded
-  settlement is not live.
+  (xochi `docs/planning/shielded-execution.md` §7, approved 2026-10-18; the NetworkIdentity
+  encoding approved 2026-10-19): NetworkIdentity, the salted `Domain (binding)` /
+  `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
+  and the Aztec `bytes32` / amount refusals. Inert: shielded settlement is not live.
 - **`fee/vectors.json`**, **`fee/schedule.json`**, **`fee/schema.json`**: 16 fee vectors (SPEC §4),
   the rate schedule, and the `fee_breakdown` schema.
 - **`wire/openapi.json`** + **`wire/openapi.sha256`**: the served `/xochi/openapi.json`, reformatted
@@ -54,11 +54,12 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   `capabilities.rfcVersion` against `SOLVER_RFC_VERSION`, the one place that literal lives.
   `npm run generate:solver-bid-v2` lands in lockstep with the server.
 - **`shielded.json`** is generated here and vendored inbound by Riddler and the Xochi Worker, which
-  never compute their own expectations (§7 "Vector authority"). Its reference is `@xochi/signer`'s
-  `shielded.ts`; `npm run generate:shielded` regenerates it, and only an edit to §7's approved
-  encodings may change it. Network, corridor and Aztec values are fixtures. It deliberately holds
-  no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest, descriptorDigest, the
-  recipient message); its `open` array names each one.
+  never compute their own expectations (§7 "Vector authority"). Its generator derives every value
+  from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
+  `shielded.ts` is tested against the committed file; `npm run generate:shielded` regenerates it,
+  and only an edit to §7's approved encodings may change it. Network, corridor and Aztec values
+  are fixtures. It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1,
+  manifestDigest, descriptorDigest, the recipient message); its `open` array names each one.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the

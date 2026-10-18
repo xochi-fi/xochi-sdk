@@ -2,7 +2,7 @@
 // Riddler and the Worker vendor those bytes, so a committed file that a fresh run would
 // not reproduce is a contract nobody can regenerate. The generator runs into a scratch
 // dir (SHIELDED_VECTORS_DIR), twice, and both runs must equal the committed files.
-// It imports @xochi/signer's build, so `npm run build -w @xochi/signer` comes first.
+// It needs only ethers: the generator imports nothing from @xochi/signer.
 
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "child_process";
