@@ -565,6 +565,21 @@ export interface IntentStatusData {
    */
   substatus: string | null;
   terminal: boolean;
+  /**
+   * Present (true) when the server withheld the on-chain legs of a stealth or
+   * shielded intent from this read (xochi#563): the read carried no valid
+   * `readToken` and no owner session. The tx hashes and `settlementChainId` are
+   * then null because they were withheld, not because they do not exist; the
+   * read token or a wallet SIWE session for the intent's wallet reads them.
+   */
+  legsWithheld?: true;
+  /**
+   * Served only with `legsWithheld`: true once the destination fill receipt
+   * exists, standing in for the withheld `settlementTxHash`. The machine shows
+   * it exactly as `substatus: "filled"` (delivered); it does not move `status`
+   * or `terminal`.
+   */
+  settlementConfirmed?: boolean;
 }
 
 /**
@@ -621,6 +636,27 @@ export interface IntentRecord {
   updatedAt: string;
   error?: string;
   destinationType?: DestinationType;
+  /** Never true on a full record: see `WithheldIntentRecord`. */
+  legsWithheld?: false;
+}
+
+/**
+ * `GET /api/intent/:id` for a stealth or shielded intent read without the read
+ * token or an owner session (xochi#563): the server's status-only view. Tokens,
+ * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
+ * so they are absent here rather than defaulted; read with the token, or a
+ * wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
+ */
+export interface WithheldIntentRecord {
+  legsWithheld: true;
+  id: string;
+  status: IntentStatus;
+  fromChainId?: ChainId;
+  toChainId?: ChainId;
+  settlementType?: SettlementType;
+  error?: string;
+  /** True once the destination fill receipt exists (it is withheld itself). */
+  settlementConfirmed: boolean;
 }
 
 export interface IntentRecordWire {
@@ -644,6 +680,26 @@ export interface IntentRecordWire {
   created_at?: string;
   updated_at?: string;
   error?: string;
+  legs_withheld?: boolean;
+  settlement_confirmed?: boolean;
+}
+
+/**
+ * One `GET /api/intent/:id` body: the status-only `WithheldIntentRecord` when
+ * the server says it withheld the legs, else the full record.
+ */
+export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldIntentRecord {
+  if (w.legs_withheld !== true) return mapIntentRecord(w);
+  return {
+    legsWithheld: true,
+    id: w.id,
+    status: w.status as IntentStatus,
+    fromChainId: w.from_chain_id,
+    toChainId: w.to_chain_id,
+    settlementType: w.settlement_type,
+    error: w.error,
+    settlementConfirmed: w.settlement_confirmed === true,
+  };
 }
 
 export function mapIntentRecord(w: IntentRecordWire): IntentRecord {

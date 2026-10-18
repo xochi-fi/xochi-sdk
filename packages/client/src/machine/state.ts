@@ -54,6 +54,8 @@ export interface IntentState {
    * Read only to tell a delivered destination leg apart from one still in
    * flight: Riddler can hold an intent at top-level `settling` with
    * `substatus: filled` indefinitely (xochi#376). Never advances the lifecycle.
+   * Also `filled` when a status poll reads `settlementConfirmed` (a private
+   * intent's fill confirmed, its receipt withheld from an anonymous read).
    */
   substatus: string | null;
   reconciling: boolean;

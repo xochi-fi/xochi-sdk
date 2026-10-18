@@ -703,6 +703,27 @@ describe("status", () => {
     expect(timers(fx)).toContain("clear:poll");
   });
 
+  it("shows a withheld but confirmed fill as delivered, without ending the poll", () => {
+    const { s, poll } = resumed("settling");
+    const fx = s.send({
+      type: "StatusReplied",
+      gen: poll.gen,
+      attempt: poll.attempt,
+      result: {
+        ok: true,
+        status: statusData({
+          status: "settling",
+          legsWithheld: true,
+          settlementConfirmed: true,
+        }),
+      },
+    });
+    expect(s.intent.status).toBe("settling");
+    expect(s.intent.substatus).toBe("filled");
+    expect(s.intent.settlementTxHash).toBeNull();
+    expect(timers(fx)).not.toContain("clear:poll");
+  });
+
   it("flips to the safe-to-close view after ~90s of polls without a change", () => {
     const { s } = resumed();
     let attempt = 1;

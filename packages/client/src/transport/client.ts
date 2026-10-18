@@ -23,11 +23,13 @@ import {
   isQuoteResponseWire,
   isTerminalIntentStatus,
   mapExecuteResponse,
+  mapIntentRead,
   mapIntentRecord,
   mapQuoteResponse,
   type ExecuteRequest,
   type ExecuteResponse,
   type IntentRecord,
+  type WithheldIntentRecord,
   type IntentRecordWire,
   type IntentStatusResult,
   type QuoteRequest,
@@ -349,7 +351,16 @@ export interface XochiClient {
   clearQuoteCache(): void;
   /** Execute a signed intent. Single attempt: a failure is in doubt, resolve it by polling status. */
   execute(request: ExecuteRequest): Promise<ExecuteResponse>;
-  getIntent(intentId: string, opts?: IntentReadOptions): Promise<IntentRecord | null>;
+  /**
+   * One intent record, or null on a 404. A stealth or shielded intent read
+   * without its `readToken` (or an owner session) is the status-only
+   * `WithheldIntentRecord` (`legsWithheld: true`); narrow on it before reading
+   * any traded value.
+   */
+  getIntent(
+    intentId: string,
+    opts?: IntentReadOptions,
+  ): Promise<IntentRecord | WithheldIntentRecord | null>;
   getIntentStatus(intentId: string, opts?: IntentReadOptions): Promise<IntentStatusResult>;
   getIntentHistory(wallet: string, limit?: number): Promise<IntentRecord[]>;
   prepareStealthClaim(body: {
@@ -734,7 +745,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         if (response.status === 404) return null;
         throw new Error(`Failed to get intent ${intentId}: HTTP ${response.status}`);
       }
-      return mapIntentRecord(body as IntentRecordWire);
+      return mapIntentRead(body as IntentRecordWire);
     },
 
     /**
@@ -784,6 +795,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           refund_reason?: string | null;
           substatus?: string | null;
           terminal?: boolean;
+          legs_withheld?: boolean;
+          settlement_confirmed?: boolean;
         };
         // Decode at the boundary: a granular/unknown solver status is bucketed
         // to a known state so the poll runs on to a real terminal, and an
@@ -803,6 +816,12 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           substatus: d.substatus ?? null,
           // Trust the server flag; else derive from the normalized status.
           terminal: d.terminal ?? isTerminalIntentStatus(status),
+          // The anonymous view of a private intent (xochi#563): legs withheld,
+          // so the null hashes above mean "not shown", not "not there".
+          ...(d.legs_withheld === true ? { legsWithheld: true } : {}),
+          ...(typeof d.settlement_confirmed === "boolean"
+            ? { settlementConfirmed: d.settlement_confirmed }
+            : {}),
         };
       } catch (err) {
         log("warn", "[xochi-client] status poll failed (will retry):", safeErrorForLog(err));

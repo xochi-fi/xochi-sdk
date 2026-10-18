@@ -797,6 +797,60 @@ describe("intent read capability", () => {
     expect(takeApiErrorReadToken(malformed)).toBeUndefined();
     expect(malformed.message).not.toContain("short");
   });
+
+  it("reads a withheld intent as the status-only record, defaulting nothing", async () => {
+    const { c } = client(() =>
+      json({
+        id: "xi_1",
+        status: "settling",
+        from_chain_id: 8453,
+        to_chain_id: 10,
+        settlement_type: "stealth",
+        settlement_confirmed: true,
+        legs_withheld: true,
+      }),
+    );
+    const record = await c.getIntent("xi_1");
+    expect(record).toEqual({
+      legsWithheld: true,
+      id: "xi_1",
+      status: "settling",
+      fromChainId: 8453,
+      toChainId: 10,
+      settlementType: "stealth",
+      error: undefined,
+      settlementConfirmed: true,
+    });
+  });
+
+  it("surfaces the withheld-legs markers on a status read", async () => {
+    const { c } = client((call) =>
+      json(
+        call === 1
+          ? {
+              intent_id: "xi_1",
+              status: "settling",
+              terminal: false,
+              settlement_type: "stealth",
+              settlement_confirmed: true,
+              legs_withheld: true,
+            }
+          : { intent_id: "xi_1", status: "settling", terminal: false, settlement_tx_hash: "0xf" },
+      ),
+    );
+    const anonymous = await c.getIntentStatus("xi_1");
+    expect(anonymous).toMatchObject({
+      status: "settling",
+      terminal: false,
+      settlementTxHash: null,
+      legsWithheld: true,
+      settlementConfirmed: true,
+    });
+    const owner = await c.getIntentStatus("xi_1", { readToken: READ_TOKEN });
+    expect(owner).toMatchObject({ settlementTxHash: "0xf" });
+    expect(owner).not.toHaveProperty("legsWithheld");
+    expect(owner).not.toHaveProperty("settlementConfirmed");
+  });
 });
 
 describe("stealth claim calls (single attempt)", () => {

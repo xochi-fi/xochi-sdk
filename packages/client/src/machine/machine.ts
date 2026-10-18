@@ -1571,7 +1571,9 @@ function onStatus(
         receivingTxHash: s.receivingTxHash ?? undefined,
         settlementTxHash: s.settlementTxHash ?? undefined,
         settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
-        substatus: s.substatus ?? undefined,
+        // A confirmed fill whose receipt the server withheld (anonymous read,
+        // xochi#563) is delivered, exactly as a `filled` substatus.
+        substatus: s.settlementConfirmed === true ? "filled" : (s.substatus ?? undefined),
         error: s.error ?? undefined,
         refundReason: s.refundReason ?? undefined,
         timestamp: new Date(now).toISOString(),
