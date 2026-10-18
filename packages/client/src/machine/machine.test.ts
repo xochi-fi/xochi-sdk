@@ -724,6 +724,29 @@ describe("status", () => {
     expect(timers(fx)).not.toContain("clear:poll");
   });
 
+  it("tracks each poll's withheld-legs verdict: set by an anonymous read, cleared by an owner read", () => {
+    const { s, poll } = resumed("settling");
+    expect(s.intent.legsWithheld).toBe(false);
+    s.send({
+      type: "StatusReplied",
+      gen: poll.gen,
+      attempt: poll.attempt,
+      result: { ok: true, status: statusData({ status: "settling", legsWithheld: true }) },
+    });
+    expect(s.intent.legsWithheld).toBe(true);
+    const tick = only(
+      apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+    );
+    s.send({
+      type: "StatusReplied",
+      gen: tick.gen,
+      attempt: tick.attempt,
+      result: { ok: true, status: statusData({ status: "settling", settlementTxHash: "0xf" }) },
+    });
+    expect(s.intent.legsWithheld).toBe(false);
+    expect(s.intent.settlementTxHash).toBe("0xf");
+  });
+
   it("flips to the safe-to-close view after ~90s of polls without a change", () => {
     const { s } = resumed();
     let attempt = 1;

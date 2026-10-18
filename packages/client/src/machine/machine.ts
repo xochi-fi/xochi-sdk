@@ -1580,6 +1580,12 @@ function onStatus(
       },
       s.unmapped === true,
     );
+    // Each poll's own verdict: an anonymous read sets it, an owner read (no
+    // marker) clears it, so the host knows when to offer SIWE recovery.
+    const legsWithheld = s.legsWithheld === true;
+    if (next.intent.intentId === id && next.intent.legsWithheld !== legsWithheld) {
+      next = patch(next, { legsWithheld });
+    }
     // The server owns the active-polling decision; a phase change refills the
     // give-up budget, so the ceiling bounds a swap that is not moving.
     verdict = s.terminal ? "stop" : s.status === previous ? undefined : "progress";
