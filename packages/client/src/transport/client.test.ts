@@ -15,6 +15,7 @@ import {
   type AuthExpiredEvent,
   type TransportLogLevel,
   type XochiClientOptions,
+  takeApiErrorReadToken,
 } from "./client.js";
 import {
   assertFeeBreakdownInvariants,
@@ -719,12 +720,15 @@ describe("intent read capability", () => {
     const err = (await rejection(c.execute(execRequest))) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(502);
-    expect(err.readToken).toBe(READ_TOKEN);
     expect(err.message).toContain('"read_token":"[redacted]"');
     expect(err.message).toContain('"error":"solver"');
     expect(err.message).not.toContain(READ_TOKEN);
-    expect(JSON.stringify(err)).not.toContain(READ_TOKEN);
-    expect(Object.keys(err)).not.toContain("readToken");
+    // Nothing reachable from the error itself holds the token, enumerable or not.
+    for (const key of Reflect.ownKeys(err)) {
+      expect(String(Reflect.get(err, key))).not.toContain(READ_TOKEN);
+    }
+    expect(takeApiErrorReadToken(err)).toBe(READ_TOKEN);
+    expect(takeApiErrorReadToken(err)).toBeUndefined();
     expect(logged).toEqual([
       {
         message: "[xochi-client] Request failed after retries:",
@@ -735,30 +739,62 @@ describe("intent read capability", () => {
     expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
   });
 
-  it("redacts a token-bearing ApiError thrown during status polling", async () => {
-    const logged: unknown[][] = [];
-    const failure = new ApiError(`poll failed: ${READ_TOKEN}`, 502, undefined, READ_TOKEN);
-    const c = createXochiClient({
-      baseUrl: "https://api.example.test",
-      fetch: async () => {
-        throw failure;
-      },
-      log: (_level, _message, ...data) => logged.push(data),
-    });
-    expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
-    expect(logged).toEqual([[{ name: "ApiError", message: "poll failed: [redacted]", code: 502 }]]);
-    expect(logged[0][0]).not.toBe(failure);
+  it("redacts every echo of a 502's token from the message, not only the read_token field", async () => {
+    const { c, logged } = client(() =>
+      json(
+        {
+          success: false,
+          intent_id: "intent-1",
+          status: "executing",
+          error: `diagnostic ${READ_TOKEN}`,
+          read_token: READ_TOKEN,
+        },
+        502,
+      ),
+    );
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.message).not.toContain(READ_TOKEN);
+    expect(err.message).toContain("diagnostic");
     expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
+    expect(takeApiErrorReadToken(err)).toBe(READ_TOKEN);
+  });
+
+  it("does not keep a 502 token naming another intent, and still redacts it", async () => {
+    const { c } = client(() =>
+      json(
+        { success: false, intent_id: "intent-2", status: "executing", read_token: READ_TOKEN },
+        502,
+      ),
+    );
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.message).not.toContain(READ_TOKEN);
+    expect(takeApiErrorReadToken(err)).toBeUndefined();
+  });
+
+  it("keeps the token of a 2xx execute whose other fields break the contract", async () => {
+    const { c, logged } = client(() =>
+      json({ success: true, intent_id: "intent-1", status: 5, read_token: READ_TOKEN }),
+    );
+    const err = (await rejection(c.execute(execRequest))) as Error;
+    expect(err.message).toBe("Invalid response format");
+    for (const key of Reflect.ownKeys(err)) {
+      expect(String(Reflect.get(err, key))).not.toContain(READ_TOKEN);
+    }
+    expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
+    expect(takeApiErrorReadToken(err)).toBe(READ_TOKEN);
+    expect(takeApiErrorReadToken(err)).toBeUndefined();
   });
 
   it("leaves a 502 without a token unchanged, and drops a malformed one", async () => {
     const body = { success: false, error: "solver rejected" };
-    const { c } = client((call) => json(call === 1 ? body : { ...body, read_token: "short" }, 502));
+    const { c } = client((call) =>
+      json(call === 1 ? body : { ...body, intent_id: "intent-1", read_token: "short" }, 502),
+    );
     const plain = (await rejection(c.execute(execRequest))) as ApiError;
     expect(plain.message).toBe(`HTTP 502: ${JSON.stringify(body)}`);
-    expect(plain.readToken).toBeUndefined();
+    expect(takeApiErrorReadToken(plain)).toBeUndefined();
     const malformed = (await rejection(c.execute(execRequest))) as ApiError;
-    expect(malformed.readToken).toBeUndefined();
+    expect(takeApiErrorReadToken(malformed)).toBeUndefined();
     expect(malformed.message).not.toContain("short");
   });
 });

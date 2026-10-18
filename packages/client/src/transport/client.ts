@@ -122,53 +122,86 @@ export interface XochiClientOptions {
  * backpressure responses (429/503), an ABSOLUTE unix-seconds retry target so the
  * UI can render a countdown and disable Retry until it elapses. The message stays
  * the raw `HTTP {status}: {body}` string so a code-less consumer can still fall
- * back to matching on it, except that any `read_token` in the body is redacted.
+ * back to matching on it, except that a `read_token` in the body is redacted.
  *
- * `readToken` is the intent read capability a failed execute may still carry
- * (xochi#563: the server serves it on a 502 when funds may have moved). Keep it
- * with the intent and poll with it, exactly as for a 200. It is non-enumerable
- * for serialization, and the transport passes only a token-free projection to
- * injected logging.
+ * A failed execute may still carry the intent read capability (xochi#563: the
+ * server serves it on a 502 when funds may have moved). It is never a property
+ * of the error: take it with `takeApiErrorReadToken`.
  */
 export class ApiError extends Error {
   readonly code: number;
   readonly retryAfter?: number;
-  declare readonly readToken?: string;
 
-  constructor(message: string, code: number, retryAfter?: number, readToken?: string) {
+  constructor(message: string, code: number, retryAfter?: number) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.retryAfter = retryAfter;
-    if (readToken !== undefined) {
-      Object.defineProperty(this, "readToken", { value: readToken, enumerable: false });
-    }
   }
 }
 
-/** Preserve useful API failure context without handing a bearer secret to a logger. */
+/**
+ * Read tokens held for the errors `execute` rejected with, keyed by the error
+ * so the token is never reachable from the error itself (a crash reporter or a
+ * debugger inspecting its own properties sees none).
+ */
+const errorReadTokens = new WeakMap<Error, string>();
+
+/**
+ * Take the `read_token` of the intent a failed `execute` named, once: a second
+ * call returns undefined. The error is an `ApiError` (a 502 when funds may have
+ * moved) or the `Invalid response format` error of a 2xx execute body whose
+ * other fields broke the contract. Keep it with the intent and poll with it,
+ * exactly as for a successful execute; take it before the error goes to any
+ * reporter. Undefined for any other error, and for a token naming another
+ * intent.
+ */
+export function takeApiErrorReadToken(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const token = errorReadTokens.get(error);
+  errorReadTokens.delete(error);
+  return token;
+}
+
+/** Preserve useful API failure context without handing the error object to a logger. */
 function safeErrorForLog(error: unknown): unknown {
   if (!(error instanceof ApiError)) return error;
-  const message =
-    error.readToken === undefined
-      ? error.message
-      : error.message.split(error.readToken).join("[redacted]");
   return {
     name: error.name,
-    message,
+    message: error.message,
     code: error.code,
     ...(error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter }),
   };
 }
 
 /**
- * Replace every `"read_token": "..."` value in a raw response body, so the
- * body can go into an error message or log. A regex over the raw text rather
+ * The `read_token` an execute body carries for `intentId`, or undefined. A token
+ * not of the issued shape, or naming another intent, is not kept: it would only
+ * ever be presented as a malformed header or for the wrong intent.
+ */
+function readTokenForIntent(
+  body: Record<string, unknown> | undefined,
+  intentId: string,
+): string | undefined {
+  if (body?.intent_id !== intentId) return undefined;
+  const token = body.read_token;
+  return typeof token === "string" && READ_TOKEN_PATTERN.test(token) ? token : undefined;
+}
+
+/**
+ * A raw response body made fit for an error message or a log: every exact
+ * occurrence of the body's own well-formed `read_token` is replaced wherever it
+ * is echoed, then every `"read_token": "..."` value. Over the raw text rather
  * than a JSON round-trip: the body may not be JSON, and the rest of it must
  * reach the message unchanged.
  */
 function redactReadToken(body: string): string {
-  return body.replace(/("read_token"\s*:\s*")[^"]*"/g, '$1[redacted]"');
+  const token = parseJsonObject(body)?.read_token;
+  const echoed =
+    typeof token === "string" && READ_TOKEN_PATTERN.test(token)
+      ? body.split(token).join("[redacted]")
+      : body;
+  return echoed.replace(/("read_token"\s*:\s*")[^"]*"/g, '$1[redacted]"');
 }
 
 /**
@@ -453,6 +486,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     // fails with "pull authorization has already been used". Those callers let
     // the failure surface and resolve it by polling status.
     maxAttempts: number,
+    // The intent whose `read_token` a failed attempt's body may carry (execute
+    // only). Held for the thrown error (`takeApiErrorReadToken`), never on it.
+    readTokenIntentId?: string,
   ): Promise<T> {
     let lastError: Error | null = null;
 
@@ -478,19 +514,31 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               response.status === 429 || response.status === 503
                 ? resolveRetryAfterSeconds(response.headers, errorBody)
                 : undefined;
-            const servedToken = parseJsonObject(errorBody)?.read_token;
-            throw new ApiError(
+            const error = new ApiError(
               `HTTP ${response.status}: ${redactReadToken(errorBody) || response.statusText}`,
               response.status,
               retryAfter,
-              typeof servedToken === "string" && READ_TOKEN_PATTERN.test(servedToken)
-                ? servedToken
-                : undefined,
             );
+            const servedToken =
+              readTokenIntentId === undefined
+                ? undefined
+                : readTokenForIntent(parseJsonObject(errorBody), readTokenIntentId);
+            if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
+            throw error;
           }
           return response.json();
         });
-        if (!validator(data)) throw new Error("Invalid response format");
+        if (!validator(data)) {
+          // A 2xx execute reports an execute that may already have moved funds:
+          // a token it served for this intent outlives the malformed body.
+          const error = new Error("Invalid response format");
+          const servedToken =
+            readTokenIntentId === undefined || typeof data !== "object" || data === null
+              ? undefined
+              : readTokenForIntent(data as Record<string, unknown>, readTokenIntentId);
+          if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
+          throw error;
+        }
         return data;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -670,6 +718,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         timeouts.executeTimeoutMs,
         // Single attempt: execute is non-idempotent (one-time pull authorization).
         1,
+        request.intentId,
       );
       return mapExecuteResponse(wire);
     },
