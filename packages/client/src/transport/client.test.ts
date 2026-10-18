@@ -698,8 +698,8 @@ describe("intent read capability", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("captures read_token from a 502 execute and redacts it from the message and log", async () => {
-    const printed: string[] = [];
+  it("captures a 502 read_token without handing the ApiError to injected logging", async () => {
+    const logged: { message: string; data: unknown[] }[] = [];
     const { c } = client(
       () =>
         json(
@@ -713,12 +713,7 @@ describe("intent read capability", () => {
           502,
         ),
       {
-        log: (_level, ...args: unknown[]) =>
-          printed.push(
-            args
-              .map((a) => (a instanceof Error ? `${a.message} ${JSON.stringify(a)}` : String(a)))
-              .join(" "),
-          ),
+        log: (_level, message, ...data) => logged.push({ message, data }),
       },
     );
     const err = (await rejection(c.execute(execRequest))) as ApiError;
@@ -730,8 +725,30 @@ describe("intent read capability", () => {
     expect(err.message).not.toContain(READ_TOKEN);
     expect(JSON.stringify(err)).not.toContain(READ_TOKEN);
     expect(Object.keys(err)).not.toContain("readToken");
-    expect(printed.length).toBeGreaterThan(0);
-    for (const line of printed) expect(line).not.toContain(READ_TOKEN);
+    expect(logged).toEqual([
+      {
+        message: "[xochi-client] Request failed after retries:",
+        data: [{ name: "ApiError", message: err.message, code: 502 }],
+      },
+    ]);
+    expect(logged[0].data[0]).not.toBe(err);
+    expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
+  });
+
+  it("redacts a token-bearing ApiError thrown during status polling", async () => {
+    const logged: unknown[][] = [];
+    const failure = new ApiError(`poll failed: ${READ_TOKEN}`, 502, undefined, READ_TOKEN);
+    const c = createXochiClient({
+      baseUrl: "https://api.example.test",
+      fetch: async () => {
+        throw failure;
+      },
+      log: (_level, _message, ...data) => logged.push(data),
+    });
+    expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
+    expect(logged).toEqual([[{ name: "ApiError", message: "poll failed: [redacted]", code: 502 }]]);
+    expect(logged[0][0]).not.toBe(failure);
+    expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
   });
 
   it("leaves a 502 without a token unchanged, and drops a malformed one", async () => {

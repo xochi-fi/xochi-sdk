@@ -11,8 +11,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { init, update, type Msg } from "./machine.js";
+import { decideExecuteResult } from "./decisions.js";
+import { init, update, type Context, type Msg } from "./machine.js";
 import { view } from "./view.js";
+import type { ExecuteResponse } from "./wire.js";
 import {
   CONFIG,
   Session,
@@ -27,8 +29,14 @@ import {
   type Step,
 } from "./test/session.js";
 
+const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+
 /** Preview -> connect -> quote -> refresh -> 2-signature sign -> execute -> status. */
-function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } {
+function recordSession(): {
+  initial: Context;
+  session: Session;
+  readToken: string;
+} {
   const initial = ctx({}, { address: null, chainId: null });
   const s = new Session(initial);
 
@@ -106,13 +114,23 @@ function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } 
       "execute",
     ),
   );
+  const response: ExecuteResponse = {
+    success: true,
+    intentId: "xi_1",
+    status: "settling",
+    readToken: READ_TOKEN,
+  };
+  // The effect host retains the bearer secret before projecting the response
+  // into the replay-safe decision the machine receives.
+  const readToken = response.readToken;
+  if (!readToken) throw new Error("fixture must carry a read token");
   const settling = only(
     apiCalls(
       s.send(
         {
           type: "ExecuteReplied",
           flow: exec.flow,
-          result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
+          result: { ok: true, decision: decideExecuteResult(response) },
         },
         1100,
       ),
@@ -146,7 +164,7 @@ function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } 
     },
     250,
   );
-  return { initial, session: s };
+  return { initial, session: s, readToken };
 }
 
 describe("replay", () => {
@@ -156,6 +174,13 @@ describe("replay", () => {
     expect(session.intent.quotedAddress).toBe(WALLET);
     expect(session.receipt.phase).toBe("success");
     expect(session.steps.length).toBeGreaterThan(15);
+  });
+
+  it("keeps the host-captured read token out of every replayable step", () => {
+    const { readToken, session } = recordSession();
+    expect(readToken).toBe(READ_TOKEN);
+    expect(JSON.stringify(session.steps)).not.toContain(READ_TOKEN);
+    expect(session.steps.some((step) => apiCalls(step.effects, "status").length > 0)).toBe(true);
   });
 
   it("replays the JSON log to identical effects and receipts at every step", () => {

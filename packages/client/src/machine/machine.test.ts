@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { STATUS_POLL_MS } from "./decisions.js";
+import { decideExecuteResult, STATUS_POLL_MS } from "./decisions.js";
 import { RECONCILE_AFTER_ATTEMPTS, SIGN_PROMPT_TIMEOUT_MS, type Effect } from "./machine.js";
 import { settlementDisclosure } from "./receipt.js";
 import { decodeWireStatus } from "./wire.js";
@@ -198,7 +198,14 @@ describe("one signature (no origin pull)", () => {
       {
         type: "ExecuteReplied",
         flow: exec.flow,
-        result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
+        result: {
+          ok: true,
+          decision: decideExecuteResult({
+            success: true,
+            intentId: "xi_1",
+            status: "settling",
+          }),
+        },
       },
       1200,
     );
@@ -242,7 +249,14 @@ describe("one signature (no origin pull)", () => {
       {
         type: "ExecuteReplied",
         flow: exec.flow,
-        result: { ok: true, response: { success: true, intentId: "xi_1", status: "completed" } },
+        result: {
+          ok: true,
+          decision: decideExecuteResult({
+            success: true,
+            intentId: "xi_1",
+            status: "completed",
+          }),
+        },
       },
       1500,
     );
@@ -527,7 +541,14 @@ describe("two signatures (origin pull)", () => {
     s.send({
       type: "ExecuteReplied",
       flow: exec.flow,
-      result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
+      result: {
+        ok: true,
+        decision: decideExecuteResult({
+          success: true,
+          intentId: "xi_1",
+          status: "settling",
+        }),
+      },
     });
     expect(s.model.isSigningPull).toBe(false);
     expect(s.model.pendingIntentSig).toBeNull();
@@ -822,7 +843,11 @@ describe("a quote for a trade that has moved on", () => {
         flow: execute.flow,
         result: {
           ok: true,
-          response: { success: true, intentId: "xi_1", status: "completed" },
+          decision: decideExecuteResult({
+            success: true,
+            intentId: "xi_1",
+            status: "completed",
+          }),
         },
       });
       expect(s.intent.status).toBe("completed");

@@ -127,7 +127,8 @@ export interface XochiClientOptions {
  * `readToken` is the intent read capability a failed execute may still carry
  * (xochi#563: the server serves it on a 502 when funds may have moved). Keep it
  * with the intent and poll with it, exactly as for a 200. It is non-enumerable
- * so logging or serializing the error does not print it.
+ * for serialization, and the transport passes only a token-free projection to
+ * injected logging.
  */
 export class ApiError extends Error {
   readonly code: number;
@@ -143,6 +144,21 @@ export class ApiError extends Error {
       Object.defineProperty(this, "readToken", { value: readToken, enumerable: false });
     }
   }
+}
+
+/** Preserve useful API failure context without handing a bearer secret to a logger. */
+function safeErrorForLog(error: unknown): unknown {
+  if (!(error instanceof ApiError)) return error;
+  const message =
+    error.readToken === undefined
+      ? error.message
+      : error.message.split(error.readToken).join("[redacted]");
+  return {
+    name: error.name,
+    message,
+    code: error.code,
+    ...(error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter }),
+  };
 }
 
 /**
@@ -498,7 +514,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       }
     }
 
-    log("error", "[xochi-client] Request failed after retries:", lastError);
+    log("error", "[xochi-client] Request failed after retries:", safeErrorForLog(lastError));
     throw lastError ?? new Error("Request failed");
   }
 
@@ -740,7 +756,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           terminal: d.terminal ?? isTerminalIntentStatus(status),
         };
       } catch (err) {
-        log("warn", "[xochi-client] status poll failed (will retry):", err);
+        log("warn", "[xochi-client] status poll failed (will retry):", safeErrorForLog(err));
         return null;
       }
     },

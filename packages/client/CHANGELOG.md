@@ -10,7 +10,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 - `LayeredFeeBreakdownSchema` declares the served optional `discount { source: "tier" | "promo", bps, amount }` (xochi#584, served only when the quote request carried `promo_discount_bps > 0`). Shape-only: `assertFeeBreakdownInvariants` neither reads nor subtracts it, since `venue_fee`/`routing_fee` are already net of it. Previously it parsed through `.passthrough()` untyped.
 - **Intent read capability** (xochi#563). `ExecuteResponseSchema` declares the optional `read_token` (32 random bytes, unpadded base64url; older servers omit it), surfaced as `ExecuteResponse.readToken`. `getIntent` / `getIntentStatus` take `{ readToken }` and send it as the `X-Xochi-Read-Token` header, never in the URL; without it a stealth or shielded intent reads without its on-chain legs. A `readToken` not of that shape rejects before any request. New exports `READ_TOKEN_PATTERN`, `READ_TOKEN_HEADER`, `IntentReadOptions`.
 - A malformed served `read_token` is dropped (`readToken` undefined) and the execute still parses: it is the one declared execute field that never fails the body, since that body reports a swap that may already have moved funds. Inbound strict, served lenient: a caller's malformed token is a bug to surface, a server's must not turn a settled swap into an in-doubt one.
-- A failed execute whose body carries `read_token` (the server serves it on a 502 when funds may have moved) surfaces it as `ApiError.readToken` (non-enumerable, so logging or serializing the error omits it). Any `read_token` in a non-ok body is redacted from `ApiError.message` and the transport's error log; before, the token reached both verbatim and was otherwise lost.
+- A failed execute whose body carries `read_token` (the server serves it on a 502 when funds may have moved) surfaces it as `ApiError.readToken` (non-enumerable, so serialization omits it). Any `read_token` in a non-ok body is redacted from `ApiError.message`, and injected logging receives only a token-free error projection; before, the token reached the raw message and was otherwise lost.
 
 ### Changed
 
@@ -27,7 +27,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Fixed
 
-None of these was published with the old behavior.
+- `ExecuteReplied` now carries the replay-safe `decideExecuteResult(response)` projection rather than the whole execute response. Effect hosts retain a successful response's `readToken` before dispatch, so no replayable machine message or event contains the bearer secret.
+- Injected transport logging receives a token-free projection of an `ApiError`, never the token-bearing error object itself.
 
 - **Machine**:
   - A new amount, trade/wallet context change, Reset or `ResumeRequested` drops in-flight quotes (a late reply overwrote the corrected quote; a Tron allocation waiting on sign-in re-quoted over the resumed deposit intent). Entering signing, awaiting-deposit or in-flight drops every quote in flight, and a reply arriving after quoting is logged and dropped.

@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import type { IntentStatus } from "../shared/index.js";
-import { POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
+import { decideExecuteResult, POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
 import {
   holdsCurrentQuote,
   init,
@@ -201,7 +201,11 @@ function answer(effect: Effect, variant: number, now: number): MsgBody | null {
         flow: call.flow,
         result: {
           ok: true,
-          response: { success: status !== "failed", intentId: call.request.intentId, status },
+          decision: decideExecuteResult({
+            success: status !== "failed",
+            intentId: call.request.intentId,
+            status,
+          }),
         },
       };
     }

@@ -33,7 +33,6 @@ import {
   buildResumedState,
   canSignQuote,
   computeRefreshDelayMs,
-  decideExecuteResult,
   decideSignPreflight,
   mapStatusUpdate,
   mergeSameStatusReceipt,
@@ -51,6 +50,7 @@ import {
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
   WALLET_INTERRUPTIBLE_STATES,
+  type ExecuteDecision,
   type SignPreflight,
 } from "./decisions.js";
 import { claimInfoError } from "./claimInfo.js";
@@ -69,7 +69,6 @@ import { applyStatusTransition } from "./transition.js";
 import { validateSwapParams } from "./validateRequest.js";
 import type {
   ExecuteRequest,
-  ExecuteResponse,
   IntentStatusResult,
   IntentWebSocketMessage,
   QuoteRequest,
@@ -261,7 +260,11 @@ export type MsgBody =
       result: Outcome<{ signature: string }>;
     }
   | { type: "ApprovalReplied"; flow: string; result: Outcome<{ approved: boolean }> }
-  | { type: "ExecuteReplied"; flow: string; result: Outcome<{ response: ExecuteResponse }> }
+  /**
+   * The host captures any execute read token, then sends only the replay-safe
+   * `decideExecuteResult(response)` projection.
+   */
+  | { type: "ExecuteReplied"; flow: string; result: Outcome<{ decision: ExecuteDecision }> }
   | {
       type: "StatusReplied";
       gen: number;
@@ -1414,7 +1417,7 @@ function onExecuted(
   m: Model,
   fx: Effect[],
   flowId: string,
-  result: Outcome<{ response: ExecuteResponse }>,
+  result: Outcome<{ decision: ExecuteDecision }>,
   now: number,
 ): Model {
   const flow = m.sign;
@@ -1426,7 +1429,7 @@ function onExecuted(
     log(fx, "warn", `${LOG} Execute in-doubt; polling to resolve:`, result.error.detail);
     return patch(next, { reconciling: true });
   }
-  const decision = decideExecuteResult(result.response);
+  const decision = result.decision;
   if (decision.kind === "failed") return transition(next, fx, "failed", { error: decision.error });
   // Inline fill: the execute round-trip bounds submit -> filled exactly.
   const timed =
