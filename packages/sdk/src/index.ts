@@ -139,7 +139,12 @@ export type {
   AssetClass,
   FeeLayers,
 } from "./tiers.js";
-export type { TierProof, TierProofVerification, TierProofExpectations } from "./tier-proofs.js";
+export type {
+  DecodedTierProofClaim,
+  TierProof,
+  TierProofVerification,
+  TierProofExpectations,
+} from "./tier-proofs.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,

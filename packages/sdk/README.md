@@ -41,8 +41,8 @@ await prover.destroy();
 | ID   | Type                    | Circuit                   | Public inputs | Method                         | Use case                                      |
 | ---- | ----------------------- | ------------------------- | ------------- | ------------------------------ | --------------------------------------------- |
 | 0x01 | Compliance              | `compliance`              | 6             | `proveCompliance()`            | Risk score below jurisdiction threshold       |
-| 0x02 | Risk Score              | `risk_score`              | 8             | `proveRiskScore()`             | Custom threshold (GT/LT) or range proofs      |
-| 0x03 | Pattern                 | `pattern`                 | 7             | `provePattern()`               | Anti-structuring, velocity, round amounts     |
+| 0x02 | Risk Score              | `risk_score`              | 9             | `proveRiskScore()`             | Custom threshold (GT/LT) or range proofs      |
+| 0x03 | Pattern                 | `pattern`                 | 8             | `provePattern()`               | Anti-structuring, velocity, round amounts     |
 | 0x04 | Attestation             | `attestation`             | 6             | `proveAttestation()`           | KYC/credential verification                   |
 | 0x05 | Membership              | `membership`              | 5             | `proveMembership()`            | Merkle inclusion (whitelist)                  |
 | 0x06 | Non-Membership          | `non_membership`          | 5             | `proveNonMembership()`         | Sorted Merkle adjacency (sanctions exclusion) |
@@ -50,7 +50,7 @@ await prover.destroy();
 | 0x08 | Risk Score Signed       | `risk_score_signed`       | 12            | `proveRiskScoreSigned()`       | Risk score with provider-signed signals       |
 | 0x09 | Compliance Multi-Signed | `compliance_multi_signed` | 14            | `proveComplianceMultiSigned()` | M-of-N provider signatures (up to 5 slots)    |
 
-Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
+Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. Every circuit carries a proof timestamp the Oracle rejects after `MAX_PROOF_AGE` (1 hour); for RISK_SCORE (input 7, before `submitter`) and PATTERN (input 7, after `settlement_root`) it is the builder's optional `timestamp`, default now. `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
 
 ## Provider-signed proofs
 

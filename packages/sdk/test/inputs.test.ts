@@ -149,6 +149,39 @@ describe("buildRiskScoreInputs", () => {
       }),
     ).toThrow("equal length");
   });
+
+  it("passes an explicit timestamp through and defaults to now", () => {
+    const base = {
+      type: "threshold" as const,
+      score: 60,
+      threshold: 5000,
+      direction: "gt" as const,
+      providerSetHash: PROVIDER_SET_HASH,
+      submitter: SUBMITTER,
+    };
+    expect(buildRiskScoreInputs({ ...base, timestamp: "1700000000" }).timestamp).toBe("1700000000");
+
+    const before = Math.floor(Date.now() / 1000);
+    const ts = Number(buildRiskScoreInputs(base).timestamp);
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+  });
+
+  it("rejects a timestamp outside the circuit's range", () => {
+    const base = {
+      type: "range" as const,
+      score: 50,
+      lowerBound: 4000,
+      upperBound: 7000,
+      providerSetHash: PROVIDER_SET_HASH,
+      submitter: SUBMITTER,
+    };
+    expect(() => buildRiskScoreInputs({ ...base, timestamp: "1000" })).toThrow("Timestamp");
+    expect(() => buildRiskScoreInputs({ ...base, timestamp: String(2 ** 40) })).toThrow(
+      "Timestamp",
+    );
+    expect(() => buildRiskScoreInputs({ ...base, timestamp: "1700000000.5" })).toThrow("Timestamp");
+  });
 });
 
 // ============================================================
@@ -466,11 +499,13 @@ describe("buildPatternInputs", () => {
       txSetHash: "0xabcd",
       submitter: SUBMITTER,
       settlementRoot: ZERO_SETTLEMENT_ROOT,
+      timestamp: "1700000000",
     });
 
     expect(result.analysis_type).toBe("1");
     expect(result.result).toBe("1");
     expect(result.settlement_root).toBe(ZERO_SETTLEMENT_ROOT);
+    expect(result.timestamp).toBe("1700000000");
     expect(result.amounts).toHaveLength(16); // padded
     expect(result.timestamps).toHaveLength(16);
     expect((result.amounts as string[])[0]).toBe("9000");
@@ -526,6 +561,26 @@ describe("buildPatternInputs", () => {
     expect(() => buildPatternInputs({ ...base, timeWindow: 86400 })).not.toThrow();
 
     expect(() => buildPatternInputs({ ...base, timeWindow: 7776000 })).not.toThrow();
+  });
+
+  it("defaults the proof timestamp to now and rejects one out of range", () => {
+    const base = {
+      amounts: [9000],
+      timestamps: [1700000000],
+      numTransactions: 1,
+      analysisType: 1 as const,
+      reportingThreshold: 10000,
+      timeWindow: 86400,
+      txSetHash: "0x",
+      submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
+    };
+    const before = Math.floor(Date.now() / 1000);
+    const ts = Number(buildPatternInputs(base).timestamp);
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+
+    expect(() => buildPatternInputs({ ...base, timestamp: "1000" })).toThrow("Timestamp");
   });
 
   it("rejects >16 amounts", () => {

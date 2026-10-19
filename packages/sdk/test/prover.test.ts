@@ -24,12 +24,14 @@ describe("ERC8262Prover", () => {
       threshold: 5000,
       direction: "gt",
       providerSetHash: "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2",
+      timestamp: "1700000000",
       submitter: SUBMITTER,
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
     expect(result.proof.length).toBeGreaterThan(0);
-    expect(result.publicInputs).toHaveLength(8);
+    expect(result.publicInputs).toHaveLength(9);
+    expect(BigInt(result.publicInputs[7])).toBe(1700000000n); // timestamp, before submitter
     expect(result.proofHex).toMatch(/^0x[0-9a-f]+$/);
     expect(result.publicInputsHex).toMatch(/^0x[0-9a-f]+$/);
 

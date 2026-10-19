@@ -47,14 +47,18 @@ Reads: `getVerifier`, `getVerifierVersion`, `getVerifierAtVersion`, `isVersionRe
 ## OracleLite (no viem)
 
 ```typescript
-import { OracleLite, PROOF_TYPES, decodeTierProofClaim } from "@xochi/sdk";
+import { OracleLite, PROOF_TYPES, assertProofRecent, decodeTierProofClaim } from "@xochi/sdk";
 
 const oracle = new OracleLite({ address: "0x...", rpcUrl: "https://rpc.example.com" });
 const status = await oracle.checkCompliance("0x...", 0); // same proof-type policy
 
 const result = await oracle.verifyProof("0x...", PROOF_TYPES.RISK_SCORE, proofHex, publicInputsHex);
 if (result.valid && result.publicInputs) {
-  decodeTierProofClaim(result.publicInputs, { submitter: "0x..." }); // 25 | 50 | 75 | 100
+  const { threshold, timestamp } = decodeTierProofClaim(result.publicInputs, {
+    submitter: "0x...",
+  });
+  assertProofRecent(timestamp); // the proof's own time, not the attestation's block time
+  // threshold: 25 | 50 | 75 | 100
 }
 ```
 
@@ -93,6 +97,7 @@ const pattern = await prover.provePattern({
   analysisType: 1,
   submitter: account.address,
   settlementRoot,
+  timestamp: String(Math.floor(Date.now() / 1000)), // optional; defaults to now
 });
 // submit it via oracle.submitCompliance, then:
 await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);

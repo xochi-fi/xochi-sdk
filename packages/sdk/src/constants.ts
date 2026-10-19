@@ -101,8 +101,8 @@ export const PATTERN_TIME_WINDOW_MAX = 7_776_000;
 /** Expected public input count per proof type (must match Noir circuits) */
 export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {
   0x01: 6, // compliance (+ submitter)
-  0x02: 8, // risk_score (+ submitter)
-  0x03: 7, // pattern (+ submitter, settlement_root from audit H-1)
+  0x02: 9, // risk_score (+ timestamp, submitter)
+  0x03: 8, // pattern (+ submitter, settlement_root from audit H-1, timestamp)
   0x04: 6, // attestation (+ submitter)
   0x05: 5, // membership (+ submitter)
   0x06: 5, // non_membership (+ submitter)

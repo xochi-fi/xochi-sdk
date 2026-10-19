@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
-import { validateActiveProviders, validateSubmitter } from "./validate.js";
+import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 
 interface ProviderSignals {
   signals: number[]; // 1-8 provider risk scores (0-100)
@@ -20,6 +20,12 @@ interface ThresholdBase {
   direction: "gt" | "lt";
   providerSetHash: string;
   configHash?: string;
+  /**
+   * Proof timestamp (unix seconds, default now). Public input 7; the Oracle
+   * rejects the proof once it is older than `MAX_PROOF_AGE` (1 hour) or dated
+   * in the future.
+   */
+  timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;
 }
@@ -30,6 +36,8 @@ interface RangeBase {
   upperBound: number; // basis points
   providerSetHash: string;
   configHash?: string;
+  /** Proof timestamp (unix seconds, default now); see ThresholdBase.timestamp. */
+  timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;
 }
@@ -102,6 +110,8 @@ const MAX_RISK_SCORE_BPS = 10000;
 
 export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, string | string[]> {
   const configHash = opts.configHash ?? DEFAULT_CONFIG_HASH;
+  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  validateTimestamp(Number(timestamp));
   validateSubmitter(opts.submitter);
   const p = resolveProviders(opts);
 
@@ -155,6 +165,7 @@ export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, strin
       result: "1",
       config_hash: configHash,
       provider_set_hash: opts.providerSetHash,
+      timestamp,
       submitter: opts.submitter,
     };
   }
@@ -194,6 +205,7 @@ export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, strin
     result: "1",
     config_hash: configHash,
     provider_set_hash: opts.providerSetHash,
+    timestamp,
     submitter: opts.submitter,
   };
 }

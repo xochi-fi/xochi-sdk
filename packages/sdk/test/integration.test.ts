@@ -128,11 +128,15 @@ describe("pattern proof", () => {
       txSetHash: "0x2231d26d52515af30cbb6e91834cdb9e3d1d36575f160cbb4f6ebbb3c3dd8dad",
       submitter: SUBMITTER,
       settlementRoot: "0x" + "0".repeat(64),
+      timestamp: "1700000000",
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
     expect(result.proof.length).toBeGreaterThan(0);
     expect(result.publicInputs).toHaveLength(PUBLIC_INPUT_COUNTS[PROOF_TYPES.PATTERN]);
+    // settlement_root stays input 6; the proof timestamp is appended as input 7.
+    expect(BigInt(result.publicInputs[6])).toBe(0n);
+    expect(BigInt(result.publicInputs[7])).toBe(1700000000n);
     expect(result.proofHex).toMatch(/^0x[0-9a-f]+$/);
 
     const valid = await prover.verify("pattern", result.proof, result.publicInputs);

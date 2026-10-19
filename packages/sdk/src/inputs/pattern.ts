@@ -39,6 +39,12 @@ export interface PatternInput {
    * the proof and pass that value here.
    */
   settlementRoot: string;
+  /**
+   * Proof timestamp (unix seconds, default now), not a transaction time.
+   * Public input 7, after `settlement_root`; the Oracle rejects the proof once
+   * it is older than `MAX_PROOF_AGE` (1 hour) or dated in the future.
+   */
+  timestamp?: string;
 }
 
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
@@ -60,6 +66,8 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
 
   validateReportingThreshold(opts.reportingThreshold);
   validateSubmitter(opts.submitter);
+  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  validateTimestamp(Number(timestamp));
 
   if (opts.timeWindow < PATTERN_TIME_WINDOW_MIN) {
     throw new Error(
@@ -98,5 +106,6 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     tx_set_hash: opts.txSetHash,
     submitter: opts.submitter,
     settlement_root: opts.settlementRoot,
+    timestamp,
   };
 }
