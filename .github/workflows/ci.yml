@@ -207,10 +207,11 @@ jobs:
           npm run generate:fee
           git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/
 
-      - name: Solver vector staleness check (bid v2 + escrow)
+      - name: Solver vector staleness check (bid v2 + escrow + shielded)
         run: |
           npm run generate:solver-bid-v2
           npm run generate:escrow
+          npm run generate:shielded -w @xochi/spec
           git diff --exit-code packages/spec/conformance/
 
       # The wire artifact's gate is NOT `generate:wire` + `git diff --exit-code`
