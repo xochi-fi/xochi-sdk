@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/erc8262/vectors.schema.json",
+  "title": "ERC-8262 provider protocol vector set",
+  "description": "Shape of vectors.json. The embedded `discovery` and `evidence` documents are validated by provider-discovery.schema.json and provider-evidence.schema.json, not here.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "description",
+    "version",
+    "protocol",
+    "protocolVersion",
+    "refusals",
+    "discovery",
+    "evidence",
+    "schemaCases",
+    "evaluationCases",
+    "quorumCases"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "protocol": {
+      "const": "erc8262-provider"
+    },
+    "protocolVersion": {
+      "const": 1
+    },
+    "refusals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "discovery": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "schemaCases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "kind",
+          "document"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "discovery",
+              "evidence"
+            ]
+          },
+          "document": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "evaluationCases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "discovery",
+          "evidence",
+          "context",
+          "expected"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "discovery": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "evidence": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "context": {
+            "type": "object",
+            "required": [
+              "host",
+              "chainId",
+              "oracleAddress",
+              "subject",
+              "now",
+              "registry",
+              "seen"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "chainId": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "oracleAddress": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "subject": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "now": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "registry": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "attestorProviderId",
+                    "credentialRoots",
+                    "signerPubkeyHashes"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "attestorProviderId": {
+                      "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^[1-9][0-9]*$"
+                    },
+                    "credentialRoots": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    },
+                    "signerPubkeyHashes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  }
+                }
+              },
+              "seen": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                }
+              }
+            }
+          },
+          "expected": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "accepted"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "accepted": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "accepted",
+                  "refusal"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "refusal": {
+                    "enum": [
+                      "trust_domain_mismatch",
+                      "deployment_mismatch",
+                      "attestor_mismatch",
+                      "claim_not_declared",
+                      "key_not_declared",
+                      "key_use_mismatch",
+                      "key_revoked",
+                      "key_not_valid_at_issuance",
+                      "not_registered_on_oracle",
+                      "subject_mismatch",
+                      "evidence_id_conflict",
+                      "evidence_revoked",
+                      "invalid_validity_window",
+                      "not_yet_valid",
+                      "expired"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "quorumCases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "threshold",
+          "chainId",
+          "oracleAddress",
+          "subject",
+          "now",
+          "registry",
+          "members",
+          "expected"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "chainId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "oracleAddress": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{40}$"
+          },
+          "subject": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{40}$"
+          },
+          "now": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "registry": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "attestorProviderId",
+                "credentialRoots",
+                "signerPubkeyHashes"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "attestorProviderId": {
+                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                  "type": "string",
+                  "maxLength": 78,
+                  "pattern": "^[1-9][0-9]*$"
+                },
+                "credentialRoots": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                },
+                "signerPubkeyHashes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              }
+            }
+          },
+          "members": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "discovery",
+                "evidence",
+                "host"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "discovery": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "evidence": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "host": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "expected": {
+            "type": "object",
+            "required": [
+              "attestors",
+              "count",
+              "satisfied"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "attestors": {
+                "type": "array",
+                "items": {
+                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                  "type": "string",
+                  "maxLength": 78,
+                  "pattern": "^[1-9][0-9]*$"
+                }
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "satisfied": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

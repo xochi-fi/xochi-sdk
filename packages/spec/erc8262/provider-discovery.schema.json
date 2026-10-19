@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/erc8262/provider-discovery.schema.json",
+  "title": "ERC-8262 provider discovery document",
+  "description": "Served at GET https://{trustDomainId}/.well-known/erc8262-provider.json (SPEC.md section 10.3). Discovery, never a pin: a consumer MUST check every key and root it relies on against the Oracle deployment named in the evidence. Re-fetch at least every revocationCheckSeconds.",
+  "type": "object",
+  "required": [
+    "protocol",
+    "protocolVersion",
+    "trustDomainId",
+    "mode",
+    "operator",
+    "deployments",
+    "keys",
+    "sources",
+    "revocationCheckSeconds",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {
+      "const": "erc8262-provider"
+    },
+    "protocolVersion": {
+      "description": "Provider protocol version; equals the `/v{n}/erc8262/` path segment. A consumer MUST refuse a version it does not implement.",
+      "const": 1
+    },
+    "trustDomainId": {
+      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https from this exact host, so no host can speak for another's trust domain. One trust domain maps to exactly one attestorProviderId per Oracle deployment.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+    },
+    "mode": {
+      "description": "`native`: the source operates its own keys, so the trust domain is the source's and lists exactly one source. `gateway`: an operator re-signs one or more vendor sources under one key set; every source behind it shares this one trust domain.",
+      "enum": [
+        "native",
+        "gateway"
+      ]
+    },
+    "operator": {
+      "description": "Human-readable name of the party controlling the keys.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "deployments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "description": "An ERC-8262 Oracle deployment and this trust domain's attestor on it. chainId and oracleAddress bind every artifact to one deployment (ERC-8262 signed payloads and credential roots are deployment-scoped), so evidence for one chain or Oracle is never accepted on another.",
+        "type": "object",
+        "required": [
+          "chainId",
+          "oracleAddress",
+          "attestorProviderId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "chainId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "oracleAddress": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{40}$"
+          },
+          "attestorProviderId": {
+            "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+            "type": "string",
+            "maxLength": 78,
+            "pattern": "^[1-9][0-9]*$"
+          }
+        }
+      },
+      "description": "One entry per Oracle deployment. A (chainId, oracleAddress) pair MUST appear at most once: one trust domain maps to one attestor per deployment."
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "description": "A signing key of this trust domain. Rotation: publish the successor first, then set the predecessor's notAfter; the Oracle registry (setCredentialSigner, registerSignerPubkeyHash / revokeSignerPubkeyHash) is updated in the same change and is authoritative over this list.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "keyId",
+              "use",
+              "credentialSigner",
+              "notBefore"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "keyId": {
+                "description": "Provider-chosen key identifier, unique within the trust domain and never reused.",
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9._-]+$"
+              },
+              "use": {
+                "description": "Signs EIP-712 CredentialRootPublication for proof type 4 roots.",
+                "const": "credential-root"
+              },
+              "credentialSigner": {
+                "description": "The address the Oracle holds as getCredentialSigner(attestorProviderId) while this key is current.",
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "notBefore": {
+                "description": "Unix seconds; first instant the key may issue.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "notAfter": {
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence issued inside [notBefore, notAfter) stays valid until its own expiresAt; evidence claiming a later issuedAt is refused.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "revokedAt": {
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared.",
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "keyId",
+              "use",
+              "signerPubkeyHash",
+              "notBefore"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "keyId": {
+                "description": "Provider-chosen key identifier, unique within the trust domain and never reused.",
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9._-]+$"
+              },
+              "use": {
+                "description": "Signs signal payloads for proof types 7, 8 and 9.",
+                "const": "signed-signals"
+              },
+              "signerPubkeyHash": {
+                "description": "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId).",
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "notBefore": {
+                "description": "Unix seconds; first instant the key may issue.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "notAfter": {
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence issued inside [notBefore, notAfter) stays valid until its own expiresAt; evidence claiming a later issuedAt is refused.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "revokedAt": {
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared.",
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "sourceId",
+          "claims"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "description": "The commercial evidence source (the vendor whose check produced the claim), e.g. `sumsub`. The same sourceId may appear under several trust domains (a vendor reached natively and through a gateway); quorum never counts sourceIds.",
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "claims": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "claimType",
+                "policyId",
+                "proofType"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "claimType": {
+                  "description": "The claim, namespaced `<namespace>.<name>`, e.g. `kyc.individual`, `personhood.unique`. Consumers map (sourceId, claimType) to their own scoring policy; a provider never sends points, categories or tiers.",
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+                },
+                "policyId": {
+                  "description": "The provider's verification policy under which the claim was established (e.g. a KYC level). Immutable per id: a change in what the provider checks is a new policyId, never an edit. Distinct from the consumer's scoring policy version, which a provider never sends.",
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
+                },
+                "proofType": {
+                  "description": "The ERC-8262 proof type the claim feeds: 4 (ATTESTATION, credential-root inclusion), 7 (COMPLIANCE_SIGNED), 8 (RISK_SCORE_SIGNED) or 9 (COMPLIANCE_MULTI_SIGNED).",
+                  "enum": [
+                    4,
+                    7,
+                    8,
+                    9
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "revocationCheckSeconds": {
+      "description": "Revocation: the longest a consumer may rely on a fetched evidence status (and this document) without re-fetching. A 404 for a held evidenceId means revoked.",
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400
+    },
+    "updatedAt": {
+      "description": "Unix seconds of the last change to this document.",
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "if": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "const": "native"
+      }
+    }
+  },
+  "then": {
+    "type": "object",
+    "properties": {
+      "sources": {
+        "type": "array",
+        "maxItems": 1
+      }
+    }
+  }
+}

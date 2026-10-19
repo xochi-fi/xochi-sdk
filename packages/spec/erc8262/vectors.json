@@ -1,0 +1,2501 @@
+{
+  "$schema": "./vectors.schema.json",
+  "description": "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. `context.registry` stands in for the consumer's Oracle reads; `context.seen` lists evidence the consumer observed earlier.",
+  "version": 1,
+  "protocol": "erc8262-provider",
+  "protocolVersion": 1,
+  "refusals": [
+    "trust_domain_mismatch",
+    "deployment_mismatch",
+    "attestor_mismatch",
+    "claim_not_declared",
+    "key_not_declared",
+    "key_use_mismatch",
+    "key_revoked",
+    "key_not_valid_at_issuance",
+    "not_registered_on_oracle",
+    "subject_mismatch",
+    "evidence_id_conflict",
+    "evidence_revoked",
+    "invalid_validity_window",
+    "not_yet_valid",
+    "expired"
+  ],
+  "discovery": {
+    "native": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "trustDomainId": "attest.native-kyc.test",
+      "mode": "native",
+      "operator": "Native KYC (fixture)",
+      "deployments": [
+        {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        {
+          "chainId": 8453,
+          "oracleAddress": "0x8262000000000000000000000000000000008453",
+          "attestorProviderId": "3"
+        }
+      ],
+      "keys": [
+        {
+          "keyId": "nk-root-2026a",
+          "use": "credential-root",
+          "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "notBefore": 1767225600,
+          "notAfter": 1788220800
+        },
+        {
+          "keyId": "nk-root-2026b",
+          "use": "credential-root",
+          "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+          "notBefore": 1788220800
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "native-kyc",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "native-kyc/individual/v2",
+              "proofType": 4
+            }
+          ]
+        }
+      ],
+      "revocationCheckSeconds": 3600,
+      "updatedAt": 1788220800
+    },
+    "gateway": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "trustDomainId": "gateway.xochi.test",
+      "mode": "gateway",
+      "operator": "Xochi gateway (fixture)",
+      "deployments": [
+        {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "1"
+        },
+        {
+          "chainId": 8453,
+          "oracleAddress": "0x8262000000000000000000000000000000008453",
+          "attestorProviderId": "2"
+        }
+      ],
+      "keys": [
+        {
+          "keyId": "gw-root-0",
+          "use": "credential-root",
+          "credentialSigner": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+          "notBefore": 1735689600,
+          "notAfter": 1767225600,
+          "revokedAt": 1769817600
+        },
+        {
+          "keyId": "gw-root-1",
+          "use": "credential-root",
+          "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+          "notBefore": 1767225600
+        },
+        {
+          "keyId": "gw-signals-1",
+          "use": "signed-signals",
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "notBefore": 1767225600
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "human-tech",
+          "claims": [
+            {
+              "claimType": "personhood.unique",
+              "policyId": "human-tech/passport-score-20/v1",
+              "proofType": 4
+            }
+          ]
+        },
+        {
+          "sourceId": "sumsub",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 4
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 7
+            }
+          ]
+        }
+      ],
+      "revocationCheckSeconds": 900,
+      "updatedAt": 1769817600
+    },
+    "alias": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "trustDomainId": "kyc.gateway-alias.test",
+      "mode": "gateway",
+      "operator": "Gateway alias (fixture)",
+      "deployments": [
+        {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "1"
+        }
+      ],
+      "keys": [
+        {
+          "keyId": "gw-root-1",
+          "use": "credential-root",
+          "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+          "notBefore": 1767225600
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "sumsub",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 4
+            }
+          ]
+        }
+      ],
+      "revocationCheckSeconds": 900,
+      "updatedAt": 1767225600
+    }
+  },
+  "evidence": {
+    "native-kyc": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_w10000000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "7"
+      },
+      "keyId": "nk-root-2026b",
+      "issuedAt": 1789948800,
+      "expiresAt": 1805500800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      }
+    },
+    "gateway-sumsub-base": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_base_w1000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 8453,
+        "oracleAddress": "0x8262000000000000000000000000000000008453",
+        "attestorProviderId": "2"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1791676800,
+      "expiresAt": 1823212800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      }
+    },
+    "gateway-human-tech": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_humantech_w100000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "human-tech",
+      "claimType": "personhood.unique",
+      "policyId": "human-tech/passport-score-20/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789084800,
+      "expiresAt": 1796860800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 2,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_w100000000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-signed": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_signed_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-signals-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 7
+      }
+    },
+    "alias-sumsub": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_alias_sumsub_w100000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "kyc.gateway-alias.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "native-kyc-retired-key-in-window": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_old_w1000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "7"
+      },
+      "keyId": "nk-root-2026a",
+      "issuedAt": 1785628800,
+      "expiresAt": 1801180800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+      }
+    },
+    "native-kyc-retired-key-after-window": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_late_w100000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "7"
+      },
+      "keyId": "nk-root-2026a",
+      "issuedAt": 1789948800,
+      "expiresAt": 1805500800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      }
+    },
+    "native-kyc-foreign-attestor": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_attestor_w10",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "nk-root-2026b",
+      "issuedAt": 1789948800,
+      "expiresAt": 1805500800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      }
+    },
+    "gateway-human-tech-undeclared-claim": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_humantech_kyc_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "human-tech",
+      "claimType": "kyc.individual",
+      "policyId": "human-tech/passport-score-20/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789084800,
+      "expiresAt": 1796860800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 2,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-undeclared-policy": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_policy_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v0",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-unknown-key": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_key_w10000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-9",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-key-use-mismatch": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_use_w10000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-signals-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-revoked-key": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_revkey_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-0",
+      "issuedAt": 1744329600,
+      "expiresAt": 1796083200,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-root-revoked-on-oracle": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_root_w1000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+      }
+    },
+    "native-kyc-extended-in-place": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_w10000000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "7"
+      },
+      "keyId": "nk-root-2026b",
+      "issuedAt": 1789948800,
+      "expiresAt": 1805587200,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      }
+    },
+    "native-kyc-revoked": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_native_kyc_w10000000000",
+      "status": "revoked",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "native-kyc",
+      "claimType": "kyc.individual",
+      "policyId": "native-kyc/individual/v2",
+      "trustDomainId": "attest.native-kyc.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "7"
+      },
+      "keyId": "nk-root-2026b",
+      "issuedAt": 1789948800,
+      "expiresAt": 1805500800,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      "revokedAt": 1793404800
+    },
+    "gateway-sumsub-zero-window": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_window_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1789257600,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-future": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_future_w10000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1793577600,
+      "expiresAt": 1802131200,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-expired": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_expired_w1000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1768089600,
+      "expiresAt": 1793491200,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    }
+  },
+  "schemaCases": [
+    {
+      "name": "discovery-native-two-sources",
+      "description": "A native trust domain is one source.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "attest.native-kyc.test",
+        "mode": "native",
+        "operator": "Native KYC (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": "7"
+          },
+          {
+            "chainId": 8453,
+            "oracleAddress": "0x8262000000000000000000000000000000008453",
+            "attestorProviderId": "3"
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "nk-root-2026a",
+            "use": "credential-root",
+            "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "notBefore": 1767225600,
+            "notAfter": 1788220800
+          },
+          {
+            "keyId": "nk-root-2026b",
+            "use": "credential-root",
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "notBefore": 1788220800
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "human-tech",
+            "claims": [
+              {
+                "claimType": "personhood.unique",
+                "policyId": "human-tech/passport-score-20/v1",
+                "proofType": 4
+              }
+            ]
+          },
+          {
+            "sourceId": "sumsub",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 4
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 7
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 3600,
+        "updatedAt": 1788220800
+      }
+    },
+    {
+      "name": "discovery-single-label-trust-domain",
+      "description": "trustDomainId is a DNS host with at least two labels.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "localhost",
+        "mode": "native",
+        "operator": "Native KYC (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": "7"
+          },
+          {
+            "chainId": 8453,
+            "oracleAddress": "0x8262000000000000000000000000000000008453",
+            "attestorProviderId": "3"
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "nk-root-2026a",
+            "use": "credential-root",
+            "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "notBefore": 1767225600,
+            "notAfter": 1788220800
+          },
+          {
+            "keyId": "nk-root-2026b",
+            "use": "credential-root",
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "notBefore": 1788220800
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "native-kyc",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "native-kyc/individual/v2",
+                "proofType": 4
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 3600,
+        "updatedAt": 1788220800
+      }
+    },
+    {
+      "name": "discovery-attestor-zero",
+      "description": "The Oracle rejects providerId 0.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "attest.native-kyc.test",
+        "mode": "native",
+        "operator": "Native KYC (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": "0"
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "nk-root-2026a",
+            "use": "credential-root",
+            "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "notBefore": 1767225600,
+            "notAfter": 1788220800
+          },
+          {
+            "keyId": "nk-root-2026b",
+            "use": "credential-root",
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "notBefore": 1788220800
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "native-kyc",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "native-kyc/individual/v2",
+                "proofType": 4
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 3600,
+        "updatedAt": 1788220800
+      }
+    },
+    {
+      "name": "discovery-attestor-not-decimal-string",
+      "description": "attestorProviderId is a uint256 decimal string, never a JSON number.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "attest.native-kyc.test",
+        "mode": "native",
+        "operator": "Native KYC (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": 7
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "nk-root-2026a",
+            "use": "credential-root",
+            "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "notBefore": 1767225600,
+            "notAfter": 1788220800
+          },
+          {
+            "keyId": "nk-root-2026b",
+            "use": "credential-root",
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "notBefore": 1788220800
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "native-kyc",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "native-kyc/individual/v2",
+                "proofType": 4
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 3600,
+        "updatedAt": 1788220800
+      }
+    },
+    {
+      "name": "discovery-key-without-material",
+      "description": "A credential-root key names its credentialSigner.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "attest.native-kyc.test",
+        "mode": "native",
+        "operator": "Native KYC (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": "7"
+          },
+          {
+            "chainId": 8453,
+            "oracleAddress": "0x8262000000000000000000000000000000008453",
+            "attestorProviderId": "3"
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "nk-root-2026b",
+            "use": "credential-root",
+            "notBefore": 1788220800
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "native-kyc",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "native-kyc/individual/v2",
+                "proofType": 4
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 3600,
+        "updatedAt": 1788220800
+      }
+    },
+    {
+      "name": "discovery-carries-points",
+      "description": "Scoring is the consumer's: no points, category or tier fields.",
+      "kind": "discovery",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "trustDomainId": "gateway.xochi.test",
+        "mode": "gateway",
+        "operator": "Xochi gateway (fixture)",
+        "deployments": [
+          {
+            "chainId": 84532,
+            "oracleAddress": "0x8262000000000000000000000000000000084532",
+            "attestorProviderId": "1"
+          },
+          {
+            "chainId": 8453,
+            "oracleAddress": "0x8262000000000000000000000000000000008453",
+            "attestorProviderId": "2"
+          }
+        ],
+        "keys": [
+          {
+            "keyId": "gw-root-0",
+            "use": "credential-root",
+            "credentialSigner": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+            "notBefore": 1735689600,
+            "notAfter": 1767225600,
+            "revokedAt": 1769817600
+          },
+          {
+            "keyId": "gw-root-1",
+            "use": "credential-root",
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "notBefore": 1767225600
+          },
+          {
+            "keyId": "gw-signals-1",
+            "use": "signed-signals",
+            "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "notBefore": 1767225600
+          }
+        ],
+        "sources": [
+          {
+            "sourceId": "human-tech",
+            "claims": [
+              {
+                "claimType": "personhood.unique",
+                "policyId": "human-tech/passport-score-20/v1",
+                "proofType": 4
+              }
+            ]
+          },
+          {
+            "sourceId": "sumsub",
+            "claims": [
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 4
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 7
+              }
+            ]
+          }
+        ],
+        "revocationCheckSeconds": 900,
+        "updatedAt": 1769817600,
+        "points": 20
+      }
+    },
+    {
+      "name": "evidence-revoked-without-revoked-at",
+      "description": "Revoked evidence states when.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "revoked",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    },
+    {
+      "name": "evidence-active-with-revoked-at",
+      "description": "revokedAt is present iff revoked.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "revokedAt": 1793491200
+      }
+    },
+    {
+      "name": "evidence-checksummed-subject",
+      "description": "Addresses are lowercase hex.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    },
+    {
+      "name": "evidence-carries-points",
+      "description": "Scoring is the consumer's: no points, category or tier fields.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        },
+        "points": 20
+      }
+    },
+    {
+      "name": "evidence-credential-without-root",
+      "description": "A proof type 4 artifact names its credential root.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1
+        }
+      }
+    },
+    {
+      "name": "evidence-claim-type-without-namespace",
+      "description": "claimType is `<namespace>.<name>`.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    },
+    {
+      "name": "evidence-guessable-id",
+      "description": "evidenceId carries at least 128 bits (22 base64url characters).",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 1,
+        "evidenceId": "ev_1",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    },
+    {
+      "name": "evidence-unknown-protocol-version",
+      "description": "A consumer refuses a version it does not implement.",
+      "kind": "evidence",
+      "document": {
+        "protocol": "erc8262-provider",
+        "protocolVersion": 2,
+        "evidenceId": "ev_native_kyc_w10000000000",
+        "status": "active",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "sourceId": "native-kyc",
+        "claimType": "kyc.individual",
+        "policyId": "native-kyc/individual/v2",
+        "trustDomainId": "attest.native-kyc.test",
+        "deployment": {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "7"
+        },
+        "keyId": "nk-root-2026b",
+        "issuedAt": 1789948800,
+        "expiresAt": 1805500800,
+        "artifact": {
+          "proofType": 4,
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      }
+    }
+  ],
+  "evaluationCases": [
+    {
+      "name": "native-accepted",
+      "description": "Native trust domain, Base Sepolia, current key, root registered to attestor 7.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "gateway-accepted-base",
+      "description": "Gateway trust domain on Base: differs from native-accepted in source, trust domain, attestor, policy, expiry, chain and Oracle.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-base",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 8453,
+        "oracleAddress": "0x8262000000000000000000000000000000008453",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "2",
+            "credentialRoots": [
+              "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+            ],
+            "signerPubkeyHashes": []
+          },
+          {
+            "attestorProviderId": "3",
+            "credentialRoots": [
+              "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "gateway-human-tech-accepted",
+      "description": "First of two sources behind the gateway.",
+      "discovery": "gateway",
+      "evidence": "gateway-human-tech",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "gateway-sumsub-accepted",
+      "description": "Second source behind the gateway: same trust domain and attestor.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "gateway-signed-signals-accepted",
+      "description": "Proof type 7 claim; the signed-signals key hash is registered to attestor 1.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "alias-accepted-individually",
+      "description": "A second host of the gateway operator, attesting as the same Oracle attestor.",
+      "discovery": "alias",
+      "evidence": "alias-sumsub",
+      "context": {
+        "host": "kyc.gateway-alias.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "rotation-retired-key-within-window",
+      "description": "Rotation: evidence issued by the retired key before its notAfter stays valid.",
+      "discovery": "native",
+      "evidence": "native-kyc-retired-key-in-window",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "replay-identical-redelivery",
+      "description": "Replay: the same evidenceId with identical fields is idempotent.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": [
+          "native-kyc"
+        ]
+      },
+      "expected": {
+        "accepted": true
+      }
+    },
+    {
+      "name": "discovery-from-foreign-host",
+      "description": "A document naming the gateway's trust domain, fetched from another host.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub",
+      "context": {
+        "host": "gateway.impostor.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "trust_domain_mismatch"
+      }
+    },
+    {
+      "name": "evidence-from-other-trust-domain",
+      "description": "Native evidence presented under the gateway's discovery document.",
+      "discovery": "gateway",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "trust_domain_mismatch"
+      }
+    },
+    {
+      "name": "replay-across-chains",
+      "description": "Base evidence presented to a Base Sepolia consumer.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-base",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "deployment_mismatch"
+      }
+    },
+    {
+      "name": "replay-across-oracles",
+      "description": "Right chain, different Oracle deployment.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000000bad",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "deployment_mismatch"
+      }
+    },
+    {
+      "name": "attestor-not-declared",
+      "description": "Native evidence claiming the gateway's attestor on Base Sepolia.",
+      "discovery": "native",
+      "evidence": "native-kyc-foreign-attestor",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "attestor_mismatch"
+      }
+    },
+    {
+      "name": "claim-type-not-declared",
+      "description": "human-tech declares personhood.unique only.",
+      "discovery": "gateway",
+      "evidence": "gateway-human-tech-undeclared-claim",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "claim_not_declared"
+      }
+    },
+    {
+      "name": "policy-not-declared",
+      "description": "A policyId the source does not declare.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-undeclared-policy",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "claim_not_declared"
+      }
+    },
+    {
+      "name": "key-not-declared",
+      "description": "keyId absent from discovery.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-unknown-key",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_not_declared"
+      }
+    },
+    {
+      "name": "key-use-mismatch",
+      "description": "A proof type 4 artifact naming a signed-signals key.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-key-use-mismatch",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_use_mismatch"
+      }
+    },
+    {
+      "name": "rotation-revoked-key",
+      "description": "Key revocation is retroactive: issuedAt inside the key's window does not help.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-revoked-key",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_revoked"
+      }
+    },
+    {
+      "name": "rotation-retired-key-after-window",
+      "description": "Rotation: the retired key cannot issue after its notAfter.",
+      "discovery": "native",
+      "evidence": "native-kyc-retired-key-after-window",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_not_valid_at_issuance"
+      }
+    },
+    {
+      "name": "revocation-root-revoked-on-oracle",
+      "description": "Revocation on-chain: the root is no longer valid for attestor 1.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-root-revoked-on-oracle",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle"
+      }
+    },
+    {
+      "name": "revocation-signer-hash-revoked-on-oracle",
+      "description": "Revocation on-chain: the signed-signals hash was revoked from the registry.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle"
+      }
+    },
+    {
+      "name": "replay-across-wallets",
+      "description": "Evidence for one wallet presented for another.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "subject_mismatch"
+      }
+    },
+    {
+      "name": "replay-evidence-id-reused",
+      "description": "Same evidenceId, different immutable field (an in-place extension).",
+      "discovery": "native",
+      "evidence": "native-kyc-extended-in-place",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": [
+          "native-kyc"
+        ]
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "evidence_id_conflict"
+      }
+    },
+    {
+      "name": "revocation-status-revoked",
+      "description": "The provider reports the evidence revoked.",
+      "discovery": "native",
+      "evidence": "native-kyc-revoked",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "evidence_revoked"
+      }
+    },
+    {
+      "name": "revocation-not-reversible",
+      "description": "An active response after the consumer observed revoked.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "host": "attest.native-kyc.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": [
+          "native-kyc-revoked"
+        ]
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "evidence_revoked"
+      }
+    },
+    {
+      "name": "validity-window-empty",
+      "description": "expiresAt equal to issuedAt.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-zero-window",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "invalid_validity_window"
+      }
+    },
+    {
+      "name": "issued-in-future",
+      "description": "issuedAt after the consumer's clock.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-future",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_yet_valid"
+      }
+    },
+    {
+      "name": "expired",
+      "description": "expiresAt is exclusive: now == expiresAt is expired.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-expired",
+      "context": {
+        "host": "gateway.xochi.test",
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seen": []
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "expired"
+      }
+    }
+  ],
+  "quorumCases": [
+    {
+      "name": "gateway-two-sources-one-trust-domain",
+      "description": "Two sources (human-tech, sumsub) re-signed by one gateway: one trust domain, one attestor, so 2-of-N is NOT met.",
+      "threshold": 2,
+      "chainId": 84532,
+      "oracleAddress": "0x8262000000000000000000000000000000084532",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "now": 1793491200,
+      "registry": [
+        {
+          "attestorProviderId": "1",
+          "credentialRoots": [
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          ],
+          "signerPubkeyHashes": [
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          ]
+        },
+        {
+          "attestorProviderId": "7",
+          "credentialRoots": [
+            "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "signerPubkeyHashes": []
+        }
+      ],
+      "members": [
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-human-tech",
+          "host": "gateway.xochi.test"
+        },
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-sumsub",
+          "host": "gateway.xochi.test"
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "1"
+        ],
+        "count": 1,
+        "satisfied": false
+      }
+    },
+    {
+      "name": "native-and-gateway-two-trust-domains",
+      "description": "One native and one gateway trust domain: two attestors, quorum met.",
+      "threshold": 2,
+      "chainId": 84532,
+      "oracleAddress": "0x8262000000000000000000000000000000084532",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "now": 1793491200,
+      "registry": [
+        {
+          "attestorProviderId": "1",
+          "credentialRoots": [
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          ],
+          "signerPubkeyHashes": [
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          ]
+        },
+        {
+          "attestorProviderId": "7",
+          "credentialRoots": [
+            "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "signerPubkeyHashes": []
+        }
+      ],
+      "members": [
+        {
+          "discovery": "native",
+          "evidence": "native-kyc",
+          "host": "attest.native-kyc.test"
+        },
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-sumsub",
+          "host": "gateway.xochi.test"
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "1",
+          "7"
+        ],
+        "count": 2,
+        "satisfied": true
+      }
+    },
+    {
+      "name": "three-sources-two-trust-domains",
+      "description": "Three sources across two trust domains count two.",
+      "threshold": 2,
+      "chainId": 84532,
+      "oracleAddress": "0x8262000000000000000000000000000000084532",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "now": 1793491200,
+      "registry": [
+        {
+          "attestorProviderId": "1",
+          "credentialRoots": [
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          ],
+          "signerPubkeyHashes": [
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          ]
+        },
+        {
+          "attestorProviderId": "7",
+          "credentialRoots": [
+            "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "signerPubkeyHashes": []
+        }
+      ],
+      "members": [
+        {
+          "discovery": "native",
+          "evidence": "native-kyc",
+          "host": "attest.native-kyc.test"
+        },
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-human-tech",
+          "host": "gateway.xochi.test"
+        },
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-sumsub",
+          "host": "gateway.xochi.test"
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "1",
+          "7"
+        ],
+        "count": 2,
+        "satisfied": true
+      }
+    },
+    {
+      "name": "alias-host-shares-attestor",
+      "description": "Two hosts attesting as one Oracle providerId are one trust domain on-chain and count once.",
+      "threshold": 2,
+      "chainId": 84532,
+      "oracleAddress": "0x8262000000000000000000000000000000084532",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "now": 1793491200,
+      "registry": [
+        {
+          "attestorProviderId": "1",
+          "credentialRoots": [
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          ],
+          "signerPubkeyHashes": [
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          ]
+        },
+        {
+          "attestorProviderId": "7",
+          "credentialRoots": [
+            "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "signerPubkeyHashes": []
+        }
+      ],
+      "members": [
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-human-tech",
+          "host": "gateway.xochi.test"
+        },
+        {
+          "discovery": "alias",
+          "evidence": "alias-sumsub",
+          "host": "kyc.gateway-alias.test"
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "1"
+        ],
+        "count": 1,
+        "satisfied": false
+      }
+    },
+    {
+      "name": "refused-member-not-counted",
+      "description": "Only evidence that passes the section 10.5 evaluation counts.",
+      "threshold": 2,
+      "chainId": 84532,
+      "oracleAddress": "0x8262000000000000000000000000000000084532",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "now": 1793491200,
+      "registry": [
+        {
+          "attestorProviderId": "1",
+          "credentialRoots": [
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          ],
+          "signerPubkeyHashes": [
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          ]
+        },
+        {
+          "attestorProviderId": "7",
+          "credentialRoots": [
+            "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          ],
+          "signerPubkeyHashes": []
+        }
+      ],
+      "members": [
+        {
+          "discovery": "native",
+          "evidence": "native-kyc",
+          "host": "attest.native-kyc.test"
+        },
+        {
+          "discovery": "gateway",
+          "evidence": "gateway-sumsub-expired",
+          "host": "gateway.xochi.test"
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "7"
+        ],
+        "count": 1,
+        "satisfied": false
+      }
+    }
+  ]
+}

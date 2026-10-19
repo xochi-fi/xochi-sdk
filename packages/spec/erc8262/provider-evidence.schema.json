@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/erc8262/provider-evidence.schema.json",
+  "title": "ERC-8262 provider evidence",
+  "description": "Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Fetching from the trust domain's host over https is the authentication; a callback or push only announces an evidenceId. Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per evidenceId.",
+  "type": "object",
+  "required": [
+    "protocol",
+    "protocolVersion",
+    "evidenceId",
+    "status",
+    "subject",
+    "sourceId",
+    "claimType",
+    "policyId",
+    "trustDomainId",
+    "deployment",
+    "keyId",
+    "issuedAt",
+    "expiresAt",
+    "artifact"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {
+      "const": "erc8262-provider"
+    },
+    "protocolVersion": {
+      "description": "Provider protocol version; equals the `/v{n}/erc8262/` path segment. A consumer MUST refuse a version it does not implement.",
+      "const": 1
+    },
+    "evidenceId": {
+      "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. Re-delivery of the same evidenceId with identical immutable fields is idempotent and counts once; the same evidenceId with any differing immutable field is refused. Renewal is a new evidenceId.",
+      "type": "string",
+      "minLength": 22,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "status": {
+      "description": "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
+      "enum": [
+        "active",
+        "revoked"
+      ]
+    },
+    "revokedAt": {
+      "description": "Unix seconds; present iff status is `revoked`.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "subject": {
+      "description": "Replay: the wallet (lowercase hex) the claim is about and the only submitter it may serve; ERC-8262 credentials and signed payloads bind the submitter.",
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{40}$"
+    },
+    "sourceId": {
+      "description": "The commercial evidence source (the vendor whose check produced the claim), e.g. `sumsub`. The same sourceId may appear under several trust domains (a vendor reached natively and through a gateway); quorum never counts sourceIds.",
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "claimType": {
+      "description": "The claim, namespaced `<namespace>.<name>`, e.g. `kyc.individual`, `personhood.unique`. Consumers map (sourceId, claimType) to their own scoring policy; a provider never sends points, categories or tiers.",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+    },
+    "policyId": {
+      "description": "The provider's verification policy under which the claim was established (e.g. a KYC level). Immutable per id: a change in what the provider checks is a new policyId, never an edit. Distinct from the consumer's scoring policy version, which a provider never sends.",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
+    },
+    "trustDomainId": {
+      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https from this exact host, so no host can speak for another's trust domain. One trust domain maps to exactly one attestorProviderId per Oracle deployment.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+    },
+    "deployment": {
+      "description": "An ERC-8262 Oracle deployment and this trust domain's attestor on it. chainId and oracleAddress bind every artifact to one deployment (ERC-8262 signed payloads and credential roots are deployment-scoped), so evidence for one chain or Oracle is never accepted on another.",
+      "type": "object",
+      "required": [
+        "chainId",
+        "oracleAddress",
+        "attestorProviderId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chainId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "oracleAddress": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{40}$"
+        },
+        "attestorProviderId": {
+          "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+          "type": "string",
+          "maxLength": 78,
+          "pattern": "^[1-9][0-9]*$"
+        }
+      }
+    },
+    "keyId": {
+      "description": "Provider-chosen key identifier, unique within the trust domain and never reused.",
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "issuedAt": {
+      "description": "Unix seconds.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "expiresAt": {
+      "description": "Unix seconds, exclusive; greater than issuedAt.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "artifact": {
+      "description": "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "proofType",
+            "credentialType",
+            "credentialRoot"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "proofType": {
+              "const": 4
+            },
+            "credentialType": {
+              "description": "ERC-8262 credential type (1-4).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "credentialRoot": {
+              "description": "The published root containing the subject's credential leaf. Valid only while the Oracle reports it registered to attestorProviderId and not revoked (revokeCredentialRoot is on-chain revocation).",
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "proofType"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "proofType": {
+              "enum": [
+                7,
+                8,
+                9
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "if": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "const": "revoked"
+      }
+    }
+  },
+  "then": {
+    "type": "object",
+    "properties": {
+      "revokedAt": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "revokedAt"
+    ]
+  },
+  "else": {
+    "type": "object",
+    "not": {
+      "type": "object",
+      "properties": {
+        "revokedAt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "revokedAt"
+      ]
+    }
+  }
+}

@@ -265,6 +265,7 @@ jobs:
           done
           npm run generate:conformance
           npm run generate:fee
+          npm run generate:erc8262
           npm run generate:solver-bid-v2
           npm run generate:escrow
           git diff --exit-code packages/spec/
