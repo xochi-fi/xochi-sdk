@@ -45,6 +45,8 @@ export {
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,
+  ProofTimestampInFutureError,
+  ProofTimestampNotMonotonicError,
   TimeWindowTooSmallError,
   EmptyBatchError,
   BatchTooLargeError,

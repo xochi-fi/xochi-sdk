@@ -42,7 +42,9 @@ export interface PatternInput {
   /**
    * Proof timestamp (unix seconds, default now), not a transaction time.
    * Public input 7, after `settlement_root`; the Oracle rejects the proof once
-   * it is older than `MAX_PROOF_AGE` (1 hour) or dated in the future.
+   * it is older than `MAX_PROOF_AGE` (1 hour) or dated in the future. The
+   * circuit requires every active transaction timestamp to lie in
+   * `[timestamp - timeWindow, timestamp]`.
    */
   timestamp?: string;
 }
@@ -80,12 +82,26 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     );
   }
 
+  // Mirrors circuits/pattern: every active transaction lies in the window ending
+  // at the proof timestamp, [timestamp - timeWindow, timestamp]. Failing here
+  // saves a proof generation the circuit would reject.
+  const proofTs = Number(timestamp);
   for (let i = 0; i < opts.numTransactions; i++) {
     if (opts.amounts[i] <= 0) {
       throw new Error(`Amount[${String(i)}] must be > 0 for active transaction`);
     }
     if (opts.timestamps[i] <= 0) {
       throw new Error(`Timestamp[${String(i)}] must be > 0 for active transaction`);
+    }
+    if (opts.timestamps[i] > proofTs) {
+      throw new Error(
+        `Timestamp[${String(i)}] ${String(opts.timestamps[i])} is after the proof timestamp ${timestamp}`,
+      );
+    }
+    if (proofTs - opts.timestamps[i] > opts.timeWindow) {
+      throw new Error(
+        `Timestamp[${String(i)}] ${String(opts.timestamps[i])} is outside the ${String(opts.timeWindow)}s window ending at ${timestamp}`,
+      );
     }
   }
 

@@ -120,7 +120,7 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
     build: () =>
       buildPatternInputs({
         amounts: [9000, 8500, 9200],
-        timestamps: [1700000000, 1700000100, 1700000200],
+        timestamps: [1699999800, 1699999900, 1700000000],
         numTransactions: 3,
         analysisType: 1,
         reportingThreshold: 10000,

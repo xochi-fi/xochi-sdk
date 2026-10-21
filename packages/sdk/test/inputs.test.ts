@@ -491,7 +491,7 @@ describe("buildPatternInputs", () => {
   it("builds structuring analysis", () => {
     const result = buildPatternInputs({
       amounts: [9000, 8500, 9200],
-      timestamps: [1700000000, 1700000100, 1700000200],
+      timestamps: [1699999800, 1699999900, 1700000000],
       numTransactions: 3,
       analysisType: 1,
       reportingThreshold: 10000,
@@ -556,6 +556,7 @@ describe("buildPatternInputs", () => {
       txSetHash: "0x",
       submitter: SUBMITTER,
       settlementRoot: ZERO_SETTLEMENT_ROOT,
+      timestamp: "1700000000",
     };
 
     expect(() => buildPatternInputs({ ...base, timeWindow: 86400 })).not.toThrow();
@@ -566,7 +567,7 @@ describe("buildPatternInputs", () => {
   it("defaults the proof timestamp to now and rejects one out of range", () => {
     const base = {
       amounts: [9000],
-      timestamps: [1700000000],
+      timestamps: [Math.floor(Date.now() / 1000) - 60],
       numTransactions: 1,
       analysisType: 1 as const,
       reportingThreshold: 10000,
@@ -581,6 +582,41 @@ describe("buildPatternInputs", () => {
     expect(ts).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
 
     expect(() => buildPatternInputs({ ...base, timestamp: "1000" })).toThrow("Timestamp");
+  });
+
+  it("rejects a transaction after the proof timestamp", () => {
+    expect(() =>
+      buildPatternInputs({
+        amounts: [9000],
+        timestamps: [1700000001],
+        numTransactions: 1,
+        analysisType: 1,
+        reportingThreshold: 10000,
+        timeWindow: 86400,
+        txSetHash: "0x",
+        submitter: SUBMITTER,
+        settlementRoot: ZERO_SETTLEMENT_ROOT,
+        timestamp: "1700000000",
+      }),
+    ).toThrow("after the proof timestamp");
+  });
+
+  it("rejects a transaction outside the window, accepts one on its edge", () => {
+    const base = {
+      amounts: [9000],
+      numTransactions: 1,
+      analysisType: 1 as const,
+      reportingThreshold: 10000,
+      timeWindow: 86400,
+      txSetHash: "0x",
+      submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
+      timestamp: "1700000000",
+    };
+    expect(() => buildPatternInputs({ ...base, timestamps: [1700000000 - 86400] })).not.toThrow();
+    expect(() => buildPatternInputs({ ...base, timestamps: [1700000000 - 86401] })).toThrow(
+      "outside the 86400s window",
+    );
   });
 
   it("rejects >16 amounts", () => {
