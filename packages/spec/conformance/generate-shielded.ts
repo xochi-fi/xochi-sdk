@@ -515,7 +515,7 @@ const out = {
     {
       item: "recipientMessage",
       reason:
-        "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs wait on the recipient account class (§7).",
+        "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are not specified (§7 'Still open'). The recipient account class is selected and no longer blocks them.",
     },
   ],
 };
