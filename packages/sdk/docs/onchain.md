@@ -9,7 +9,8 @@ import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
 
 const oracle = new ERC8262Oracle("0x...", publicClient, walletClient, mainnet);
 
-// The publicInputs timestamp must be within 1 hour of block.timestamp.
+// The publicInputs timestamp must not exceed block.timestamp and must be within
+// 1 hour of it: date the proof with chainProofTimestamp(publicClient).
 await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
@@ -25,7 +26,7 @@ const history = await oracle.getAttestationHistory("0x...", 0);
 
 `checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately. The contract reports `meetsThreshold: true` for every proof type, so this policy is client-side until ERC-8262 enforces it on-chain. `ComplianceAttestation` carries `proofType` (uint8) between `jurisdictionId` and `meetsThreshold`, in both the viem and the `OracleLite` (`ComplianceAttestationLite`) shape.
 
-On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`; `submitCompliance` pre-checks it with `assertProofRecent` when `proofTimestamp` is passed) and `MIN_TIME_WINDOW = 3600` for PATTERN analysis.
+On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`, which it must not exceed; `submitCompliance` pre-checks it against the local clock with `assertProofRecent` when `proofTimestamp` is passed) and `MIN_TIME_WINDOW = 3600` for PATTERN analysis. `chainProofTimestamp(client)` returns the latest block's timestamp as the builders' `timestamp` string, so a client clock ahead of the chain does not date proofs in the chain's future.
 
 Beyond the calls above, the client wraps the Oracle's history queries (`getHistoricalProof`, `getAttestationHistoryPaginated`, `getProofType`, `isAttestationValid`, `isAttestationRevoked`, `invalidateAttestation`, `attestationTTL`), config / Merkle root / reporting threshold validation (`providerConfigHash`, `isValidConfig`, `isRevokedConfig`, `isValidMerkleRoot`, `isValidReportingThreshold`), the signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`, `signerProvider`) and credential roots (`setProviderPublisher`, `getProviderPublisher`, `setCredentialSigner`, `getCredentialSigner`, `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`, `revokeCredentialRoot`, `isValidCredentialRoot`, `getCredentialRoot`).
 

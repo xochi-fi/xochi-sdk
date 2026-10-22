@@ -7,8 +7,30 @@
  * the current time, is rejected.
  */
 
+import type { Client } from "viem";
+import { getBlock } from "viem/actions";
+
 /** Default maximum proof age in seconds (1 hour). */
 export const DEFAULT_MAX_PROOF_AGE = 3600;
+
+/**
+ * Proof timestamp read from the target chain: the latest block's timestamp,
+ * in unix seconds, as the string the input builders' `timestamp` option takes.
+ *
+ * The Oracle rejects a proof timestamp after `block.timestamp`
+ * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
+ * (`ProofTimestampStale`). The builders default to the local wall clock, so a
+ * client whose clock runs ahead of the chain head makes proofs that revert
+ * until the chain catches up. The latest block's timestamp never exceeds that
+ * of the block that includes the submission; submit within an hour of reading it.
+ *
+ * @param client - Any viem client connected to the chain the Oracle is on
+ *   (public, wallet or test client).
+ */
+export async function chainProofTimestamp(client: Client): Promise<string> {
+  const block = await getBlock(client, { blockTag: "latest" });
+  return String(block.timestamp);
+}
 
 /**
  * Describe why a proof timestamp is not submittable now, or null when it is.

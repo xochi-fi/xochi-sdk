@@ -13,6 +13,10 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
   - **`decodeTierProofClaim` returns `{ threshold, timestamp }`** (new type `DecodedTierProofClaim`), was the threshold alone. Migrate: `decodeTierProofClaim(pi, exp).threshold`. `timestamp` is the proof's own time (unix seconds): bound its age against it (`assertProofRecent`), never against an Oracle attestation's `timestamp`, which is the block time. Decoding rejects a timestamp at or above 2^40.
   - `TierProof` gains `timestamp` (the bound value; `createdAt` / `expiresAt` stay unbound bookkeeping, and the Oracle refuses a tier proof an hour after `timestamp` whatever `expiresAt` says). `TierProofVerification` gains `timestamp` (0 when invalid). `verifyTierProof` does not check age.
 
+### Added
+
+- **`chainProofTimestamp(client)`** returns the target chain's latest block timestamp as the string the builders' `timestamp` option takes (any viem client). The Oracle rejects a proof timestamp after `block.timestamp` (`ProofTimestampInFuture`) or older than `MAX_PROOF_AGE` (1 hour); the builders still default to the local clock, so a client whose clock runs ahead of the chain made proofs that always reverted. Pass `timestamp: await chainProofTimestamp(publicClient)` (for the signed types, before requesting the signature). The `timestamp` option of every builder, `currentTimestamp` (attestation) and `signedTimestamp` (0x08) now document the bound.
+
 ### Changed
 
 - **Repo layout: `@xochi/sdk` moved from the repo root to `packages/sdk`** (sources, tests, `circuits/`, `scripts/sync-circuits.sh`, now `packages/sdk/scripts/sync-circuits.sh`). The root is the private npm workspace root `xochi-sdk-workspace` and publishes nothing. For the sdk alone use `-w @xochi/sdk` (or root `npm run test:sdk` / `test:integration`). The tarball still ships `dist` + `circuits`. The ERC-8262 checkout beside the repo stays the default for circuit sync and the drift/integration tests; `ERC_8262_PATH` still overrides it for the tests.

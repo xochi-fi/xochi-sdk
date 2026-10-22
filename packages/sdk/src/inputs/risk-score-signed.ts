@@ -50,7 +50,13 @@ interface ThresholdBaseSigned extends SignedDigestBinding {
   configHash?: string;
   submitter: Address;
   signedBundle: SignedSignalsBundle;
-  /** Timestamp the provider signed over (must match the signSignals input). */
+  /**
+   * Timestamp the provider signed over (must match the signSignals input).
+   * The Oracle rejects it when after `block.timestamp`
+   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
+   * (`ProofTimestampStale`): take it from `await chainProofTimestamp(client)`
+   * (the chain's latest block time) rather than a local clock.
+   */
   signedTimestamp: string | bigint;
 }
 
@@ -62,6 +68,7 @@ interface RangeBaseSigned extends SignedDigestBinding {
   configHash?: string;
   submitter: Address;
   signedBundle: SignedSignalsBundle;
+  /** Timestamp the provider signed over; see ThresholdBaseSigned.signedTimestamp. */
   signedTimestamp: string | bigint;
 }
 

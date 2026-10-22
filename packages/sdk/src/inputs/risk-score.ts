@@ -21,9 +21,12 @@ interface ThresholdBase {
   providerSetHash: string;
   configHash?: string;
   /**
-   * Proof timestamp (unix seconds, default now). Public input 7; the Oracle
-   * rejects the proof once it is older than `MAX_PROOF_AGE` (1 hour) or dated
-   * in the future.
+   * Proof timestamp (unix seconds, default the local clock). Public input 7;
+   * the Oracle rejects it when after `block.timestamp`
+   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
+   * (`ProofTimestampStale`), so a local clock ahead of the chain makes the
+   * default revert. Prefer `await chainProofTimestamp(client)` (the chain's
+   * latest block time).
    */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
@@ -36,7 +39,7 @@ interface RangeBase {
   upperBound: number; // basis points
   providerSetHash: string;
   configHash?: string;
-  /** Proof timestamp (unix seconds, default now); see ThresholdBase.timestamp. */
+  /** Proof timestamp (unix seconds); see ThresholdBase.timestamp. */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;
