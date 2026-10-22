@@ -746,6 +746,49 @@ describe("intent read capability", () => {
     expect(JSON.stringify(logged)).not.toContain("not a token");
   });
 
+  it("redacts every token echo shape from an execute error and its log", async () => {
+    const fragment = READ_TOKEN.slice(0, 24);
+    const bodies: Record<string, string> = {
+      "nested escaped JSON": JSON.stringify({ error: JSON.stringify({ read_token: READ_TOKEN }) }),
+      "camelCase key": JSON.stringify({ error: "solver", readToken: READ_TOKEN }),
+      "plain text": `upstream rejected token ${READ_TOKEN} for intent-1`,
+      "HTML echo": `<html><body><pre>X-Xochi-Read-Token: ${READ_TOKEN}</pre></body></html>`,
+      "truncated body": `{"success":false,"intent_id":"intent-1","read_token":"${fragment}`,
+      "\\u-escaped value": `{"error":"x","read_token":"\\u${READ_TOKEN.charCodeAt(0).toString(16).padStart(4, "0")}${READ_TOKEN.slice(1)}"}`,
+      "\\u-escaped key, partial value": `{"error":"x","read\\u005ftoken":"${fragment}"}`,
+      "doubly escaped value": JSON.stringify({
+        error: `{"read_token":"\\u0041${READ_TOKEN.slice(1)}"}`,
+      }),
+    };
+    for (const [shape, body] of Object.entries(bodies)) {
+      const { c, logged } = client(() => new Response(body, { status: 502 }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.code, shape).toBe(502);
+      for (const secret of [READ_TOKEN, READ_TOKEN.slice(1), fragment]) {
+        expect(err.message, shape).not.toContain(secret);
+        expect(JSON.stringify(logged), shape).not.toContain(secret);
+      }
+      expect(err.message, shape).toContain("[redacted]");
+    }
+  });
+
+  it("keeps hashes and addresses readable while redacting a token-shaped value", async () => {
+    const txHash = `0x${"ab".repeat(32)}`;
+    const address = `0x${"cd".repeat(20)}`;
+    // Collateral by design: any 43-character base64url run reads as a token.
+    const benign = "q".repeat(43);
+    const { c } = client(
+      () =>
+        new Response(`settlement ${txHash} to ${address} ref ${benign} via intent-1`, {
+          status: 502,
+        }),
+    );
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.message).toBe(
+      `HTTP 502: settlement ${txHash} to ${address} ref [redacted] via intent-1`,
+    );
+  });
+
   it("captures a 502 read_token without handing the ApiError to injected logging", async () => {
     const logged: { message: string; data: unknown[] }[] = [];
     const { c } = client(

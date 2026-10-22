@@ -125,7 +125,8 @@ export interface XochiClientOptions {
  * backpressure responses (429/503), an ABSOLUTE unix-seconds retry target so the
  * UI can render a countdown and disable Retry until it elapses. The message stays
  * the raw `HTTP {status}: {body}` string so a code-less consumer can still fall
- * back to matching on it, except that a `read_token` in the body is redacted.
+ * back to matching on it, except that anything read-token shaped is redacted
+ * (any read-token key's value, and every 43-character base64url run).
  *
  * A failed execute may still carry the intent read capability (xochi#563: the
  * server serves it on a 502 when funds may have moved). It is never a property
@@ -191,20 +192,39 @@ function readTokenForIntent(
   return typeof token === "string" && READ_TOKEN_PATTERN.test(token) ? token : undefined;
 }
 
+/** One `\uXXXX` JSON escape, at any escape depth (`\\u0041` inside an escaped string). */
+const JSON_UNICODE_ESCAPE = /\\+u([0-9a-fA-F]{4})/g;
+/** A read-token key (`read_token`, `readToken`, `X-Xochi-Read-Token`) and the value it opens. */
+const READ_TOKEN_KEYED_VALUE = /(read[_-]?token\\*["']?\s*[:=]\s*\\*["']?)[A-Za-z0-9_-]+/gi;
+/** A maximal base64url run of exactly a read token's length (43). */
+const TOKEN_SHAPED_RUN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
+
 /**
- * A raw response body made fit for an error message or a log: every exact
- * occurrence of the body's own well-formed `read_token` is replaced wherever it
- * is echoed, then every `"read_token": "..."` value. Over the raw text rather
- * than a JSON round-trip: the body may not be JSON, and the rest of it must
- * reach the message unchanged.
+ * A raw response body made fit for an error message or a log. Structural, so
+ * no echo shape carries a token through: escapes of base64url characters are
+ * decoded first (a `\u`-escaped key or value, at any nesting depth), the
+ * body's own `read_token` is cut wherever it is echoed, the value after any
+ * read-token key is cut whatever its length (a truncated body), and then every
+ * maximal base64url run of exactly 43 characters is cut wherever it appears
+ * (nested escaped JSON, camelCase keys, plain text or HTML echoes). A benign
+ * 43-character base64url value is redacted too: accepted collateral, since tx
+ * hashes (66), addresses (42) and intent ids are other lengths. Over the raw
+ * text rather than a JSON round-trip: the body may not be JSON, and the rest of
+ * it must reach the message readable.
  */
 function redactReadToken(body: string): string {
+  const decoded = body.replace(JSON_UNICODE_ESCAPE, (escape, hex: string) => {
+    const char = String.fromCharCode(parseInt(hex, 16));
+    return /^[A-Za-z0-9_-]$/.test(char) ? char : escape;
+  });
   const token = parseJsonObject(body)?.read_token;
   const echoed =
     typeof token === "string" && READ_TOKEN_PATTERN.test(token)
-      ? body.split(token).join("[redacted]")
-      : body;
-  return echoed.replace(/("read_token"\s*:\s*")[^"]*"/g, '$1[redacted]"');
+      ? decoded.split(token).join("[redacted]")
+      : decoded;
+  return echoed
+    .replace(READ_TOKEN_KEYED_VALUE, "$1[redacted]")
+    .replace(TOKEN_SHAPED_RUN, "[redacted]");
 }
 
 /**
