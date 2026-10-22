@@ -85,14 +85,25 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 
 - **Version gate.** `run` refuses (`VenueVersionSkewError`, nothing signed) unless
   `capabilities.rfcVersion === SOLVER_RFC_VERSION`; import the constant, never retype it. It
-  re-checks after a feed `reset` and before each of your awards reaches `fill` (never per
-  announcement), and a skew there throws out of `run`, past `onError`.
+  re-checks after a feed `reset`, after a skipped entry of an unknown `type`, and before each of
+  your awards reaches `fill` (never per announcement), and a skew there throws out of `run`, past
+  `onError`.
 - **Bids are SolverBid v2** (RFC §5.1), pinned by `@xochi/spec`'s
   `conformance/solver-bid-v2.json`; sign the announcement's `orderId` verbatim, `validUntilMs` is
   absolute unix ms, `output` is canonical decimal.
 - **`minOutput` is admissibility, not the reserve.** A bid at `minOutput + 1` is admissible and
   still loses.
 - **Handle `onFeedGap`.** `dropped` and `reset` mean intents you will never see.
+- **Unknown event types are skipped; malformed and lookalike ones are not.** `HttpSolverTransport`
+  skips an entry whose `type` it does not know (to `onInvalidEvent` as `UnknownSolverEventError`,
+  else one `console.warn` per distinct type, the first 32), keeps the batch, and `run` re-checks
+  the version before the next event. A `type` that folds to a known one (`"Award"`, `"award "`,
+  `"award\u200b"`) or an entry carrying a known payload key (`award`, `announcement`) is malformed,
+  never skipped. An `onInvalidEvent` that throws ends `run` like no handler, and the batch is
+  redelivered on restart. An injected transport must, for each `UnknownSolverEventError` from
+  `parseSolverEvent`, skip the entry (rethrowing ends `run` on every redelivery) and call the
+  listeners of its `addUnknownEventListener` (without that method, the version is re-checked only
+  before your awards).
 - **Escrow flow is `prepare(award, { bid, announcement })` -> `accept` -> `fill`.** Your own
   `bid.output` is the only FillAuth amount ceiling; `award.output` is the venue's word.
 - **Persist in `accept`'s `onSigned`.** It is awaited after signing and before the POST; a throw
@@ -129,7 +140,7 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 - `SOLVER_RFC_VERSION`, `SOLVER_BID_DOMAIN`, `SOLVER_BID_TYPES`, `SOLVER_BID_PRIMARY_TYPE`,
   `MAX_BID_MS`, `ZERO_ORDER_ID`
 - Zod wire schemas (`IntentAnnouncementSchema`, `AwardSchema`, `BidSchema`, ...) and
-  `parseSolverEvent`
+  `parseSolverEvent` (throws `UnknownSolverEventError` for an unknown `type`)
 - Escrow: `OnchainEscrowGateway`, `StubEscrowGateway`, `verifyAward`, `requireFillableEscrow`,
   `checkFillWindow`, `verifyAttestation`, `EscrowRefusalError`
 
