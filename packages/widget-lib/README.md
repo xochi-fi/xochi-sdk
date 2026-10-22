@@ -2,7 +2,7 @@
 
 Embeds the Xochi swap widget in an iframe with an EIP-1193 wallet bridge, auto-resize and lifecycle events. No runtime deps; ESM + CommonJS with types.
 
-> **Third-party embedding is not open yet** (xochi-fi/xochi#573): `widget.xochi.fi` sends `frame-ancestors 'self'`, so the frame loads only on its own origin until that is widened. The deployed widget does not speak this protocol yet; its frame side lands with xochi-fi/xochi-widget#53.
+> **Third-party embedding is not open yet** (xochi-fi/xochi#573): `widget.xochi.fi` sends `frame-ancestors 'self'`, so the frame loads only on its own origin until that is widened (a per-deploy `frame-ancestors` build flag lands with xochi-fi/xochi-widget#74). The deployed widget does not speak this protocol yet; its frame side lands with xochi-fi/xochi-widget#53.
 
 ## Install
 
