@@ -16,9 +16,10 @@
 // NOT here, because §7 leaves them open: ShieldedTermsV1 (no member names or types are
 // fixed, and `fee_breakdown` has no typed shape), the manifestDigest struct (its identity
 // fields are listed but not typed), the descriptorDigest encoding, and the recipient
-// message wrapper, field reduction and acknowledgement structs (not yet specified; the
-// recipient account class is selected and no longer blocks them). A vector for any of
-// them would be a guess other implementations are then held to.
+// message wrapper, field reduction and acknowledgement structs (open; the selected
+// recipient account class is a prerequisite only, pinned for Aztec SDK 5.2.0 networks,
+// and the tracer network's pin is open). A vector for any of them would be a guess other
+// implementations are then held to.
 //
 // Every hash is built by hand from `abi.encode`, so the vector suite can cross-check it
 // against ethers' TypedDataEncoder as an independent implementation.
