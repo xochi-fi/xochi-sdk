@@ -775,6 +775,12 @@ const evidence: Record<string, Evidence> = {
   "gateway-human-tech": gatewayHumanTech,
   "gateway-sumsub": gatewaySumsub,
   "gateway-persona": gatewayPersona,
+  // persona evidence naming sumsub's policy: declared, but by another source of the gateway.
+  "gateway-persona-sumsub-policy": {
+    ...gatewayPersona,
+    evidenceId: id("gw_persona_policy_w1"),
+    policyId: "sumsub/basic-kyc-level/v1",
+  },
   "impostor-sumsub": impostorSumsub,
   "native-kyc-multi": {
     ...nativeEvidence,
@@ -1445,6 +1451,15 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("claim_not_declared"),
   },
   {
+    name: "claim-declared-by-another-source",
+    description:
+      "persona evidence naming a (claimType, policyId, proofType) that only sumsub declares: claims are declared per sourceId, never per trust domain.",
+    discovery: "gateway",
+    evidence: "gateway-persona-sumsub-policy",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("claim_not_declared"),
+  },
+  {
     name: "key-not-declared",
     description: "keyId absent from discovery.",
     discovery: "gateway",
@@ -2040,6 +2055,15 @@ const evaluationCases: CaseInput[] = [
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
+    expected: accept,
+  },
+  {
+    name: "discovery-stale-per-trust-domain",
+    description:
+      "A newer document recorded for another trust domain does not make this one stale: staleness compares only documents of the same trust domain.",
+    discovery: "alias",
+    evidence: "alias-sumsub",
+    context: sepoliaContext(ALIAS_HOST, { seenDiscovery: ["gateway"] }),
     expected: accept,
   },
   {
