@@ -223,13 +223,11 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       // Runs before discovery is read: only the store and the body's status and evidenceId,
       // keyed by the allowlisted host and the announced id. Recording can only revoke.
-      const host = f.ctx.discoveryFetch.host;
-      const id = f.ctx.announcedEvidenceId;
-      const recorded =
-        f.ctx.seenRevoked.some((g) => g.trustDomainId === host && g.evidenceId === id) ||
-        f.ctx.seenEvidence
-          .map((name) => doc(V.evidence, name))
-          .some((p) => p.trustDomainId === host && p.evidenceId === id && p.status === "revoked");
+      const recorded = f.ctx.seenRevoked.some(
+        (g) =>
+          g.trustDomainId === f.ctx.discoveryFetch.host &&
+          g.evidenceId === f.ctx.announcedEvidenceId,
+      );
       return recorded || revokedBody(f);
     },
   ],
@@ -507,6 +505,17 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
       }
     },
   );
+
+  it("observation stores hold only reachable states", () => {
+    // A revoked body stops at step 5 and is recorded as a revocation, never as a document.
+    const stores = [
+      ...V.evaluationCases.map((c) => c.context),
+      ...V.quorumCases.map((c) => c.context),
+    ];
+    for (const store of stores) {
+      for (const name of store.seenEvidence) expect(doc(V.evidence, name).status).toBe("active");
+    }
+  });
 
   it("refusals lists every step, in runner order", () => {
     expect(V.refusals).toEqual(STEPS.map(([refusal]) => refusal));

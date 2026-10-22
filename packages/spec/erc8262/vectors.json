@@ -1420,7 +1420,7 @@
       "protocol": "erc8262-provider",
       "protocolVersion": 1,
       "evidenceId": "ev_gw_sumsub_w100000000000",
-      "status": "revoked",
+      "status": "active",
       "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
       "sourceId": "native-kyc",
       "claimType": "kyc.individual",
@@ -1438,8 +1438,7 @@
         "proofType": 4,
         "credentialType": 1,
         "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
-      },
-      "revokedAt": 1793404800
+      }
     },
     "gateway-sumsub-skew": {
       "protocol": "erc8262-provider",
@@ -4471,7 +4470,7 @@
     },
     {
       "name": "evidence-id-scoped-by-trust-domain",
-      "description": "A revoked document from another trust domain that reuses this evidenceId does not affect it: observations are keyed by (trustDomainId, evidenceId).",
+      "description": "A recorded document of another trust domain that reuses this evidenceId and differs in every binding is no conflict: observations are keyed by (trustDomainId, evidenceId).",
       "discovery": "gateway",
       "evidence": "gateway-sumsub",
       "context": {
@@ -7785,7 +7784,8 @@
     },
     {
       "name": "revocation-not-reversible",
-      "description": "An active response after the consumer observed revoked.",
+      "description": "An active response after the consumer recorded the revoked body of revocation-status-revoked.",
+      "follows": "revocation-status-revoked",
       "discovery": "native",
       "evidence": "native-kyc",
       "context": {
@@ -7845,11 +7845,16 @@
             "signerPubkeyHashes": []
           }
         ],
-        "seenDiscovery": [],
-        "seenEvidence": [
-          "native-kyc-revoked"
+        "seenDiscovery": [
+          "native"
         ],
-        "seenRevoked": [],
+        "seenEvidence": [],
+        "seenRevoked": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        ],
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10167,6 +10172,109 @@
           {
             "trustDomainId": "gateway.xochi.test",
             "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        ],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "revocation-scoped-by-evidence-id",
+      "description": "A revocation recorded for another evidenceId of the same trust domain does not affect this one: a revocation never spreads to the host's other evidence.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_old_w1000000"
           }
         ],
         "discoveryFetch": {
@@ -15358,7 +15466,7 @@
     },
     {
       "name": "recorded-revocation-before-conflict",
-      "description": "An evidenceId reused with a changed field against a recorded revoked document: the recorded revocation (evidence_revoked) is checked before discovery, so before evidence_id_conflict.",
+      "description": "An evidenceId reused with a changed field (against the recorded active document) whose revocation is also recorded: the recorded revocation (evidence_revoked) is checked before discovery, so before evidence_id_conflict.",
       "discovery": "native",
       "evidence": "native-kyc-extended-in-place",
       "context": {
@@ -15420,9 +15528,14 @@
         ],
         "seenDiscovery": [],
         "seenEvidence": [
-          "native-kyc-revoked"
+          "native-kyc"
         ],
-        "seenRevoked": [],
+        "seenRevoked": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        ],
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200

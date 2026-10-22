@@ -344,7 +344,7 @@
                 }
               },
               "seenEvidence": {
-                "description": "Evidence fixtures in the consumer's observation store.",
+                "description": "Active evidence fixtures in the consumer's observation store.",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -967,7 +967,7 @@
                 }
               },
               "seenEvidence": {
-                "description": "Evidence fixtures in the consumer's observation store.",
+                "description": "Active evidence fixtures in the consumer's observation store.",
                 "type": "array",
                 "items": {
                   "type": "string",

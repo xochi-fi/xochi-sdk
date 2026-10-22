@@ -793,12 +793,10 @@ const evidence: Record<string, Evidence> = {
     issuedAt: T_ROTATE - 30 * DAY,
     expiresAt: T_ROTATE + 150 * DAY,
   },
-  // Another trust domain's document reusing gateway-sumsub's evidenceId.
+  // Another trust domain's (active) document reusing gateway-sumsub's evidenceId.
   "native-kyc-colliding-id": {
     ...nativeEvidence,
     evidenceId: gatewaySumsub.evidenceId,
-    status: "revoked",
-    revokedAt: NOW - DAY,
   },
   "gateway-sumsub-skew": {
     ...gatewaySumsub,
@@ -1235,7 +1233,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "evidence-id-scoped-by-trust-domain",
     description:
-      "A revoked document from another trust domain that reuses this evidenceId does not affect it: observations are keyed by (trustDomainId, evidenceId).",
+      "A recorded document of another trust domain that reuses this evidenceId and differs in every binding is no conflict: observations are keyed by (trustDomainId, evidenceId).",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, { seenEvidence: ["native-kyc-colliding-id"] }),
@@ -1526,10 +1524,15 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "revocation-not-reversible",
-    description: "An active response after the consumer observed revoked.",
+    description:
+      "An active response after the consumer recorded the revoked body of revocation-status-revoked.",
+    follows: "revocation-status-revoked",
     discovery: "native",
     evidence: "native-kyc",
-    context: sepoliaContext(NATIVE_HOST, { seenEvidence: ["native-kyc-revoked"] }),
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["native"],
+      seenRevoked: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
     expected: refuse("evidence_revoked"),
   },
   {
@@ -1761,6 +1764,22 @@ const evaluationCases: CaseInput[] = [
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
       seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: accept,
+  },
+  {
+    name: "revocation-scoped-by-evidence-id",
+    description:
+      "A revocation recorded for another evidenceId of the same trust domain does not affect this one: a revocation never spreads to the host's other evidence.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenRevoked: [
+        {
+          trustDomainId: NATIVE_HOST,
+          evidenceId: evidence["native-kyc-retired-key-in-window"]!.evidenceId,
+        },
+      ],
     }),
     expected: accept,
   },
@@ -2287,10 +2306,13 @@ const evaluationCases: CaseInput[] = [
   {
     name: "recorded-revocation-before-conflict",
     description:
-      "An evidenceId reused with a changed field against a recorded revoked document: the recorded revocation (evidence_revoked) is checked before discovery, so before evidence_id_conflict.",
+      "An evidenceId reused with a changed field (against the recorded active document) whose revocation is also recorded: the recorded revocation (evidence_revoked) is checked before discovery, so before evidence_id_conflict.",
     discovery: "native",
     evidence: "native-kyc-extended-in-place",
-    context: sepoliaContext(NATIVE_HOST, { seenEvidence: ["native-kyc-revoked"] }),
+    context: sepoliaContext(NATIVE_HOST, {
+      seenEvidence: ["native-kyc"],
+      seenRevoked: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
     expected: refuse("evidence_revoked"),
   },
   {
@@ -2888,7 +2910,7 @@ const CONSUMER_FIELDS = {
     type: "array",
     items: NAME,
   }),
-  seenEvidence: d("Evidence fixtures in the consumer's observation store.", {
+  seenEvidence: d("Active evidence fixtures in the consumer's observation store.", {
     type: "array",
     items: NAME,
   }),
