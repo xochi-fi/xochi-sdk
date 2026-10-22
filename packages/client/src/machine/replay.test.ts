@@ -11,7 +11,6 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { decideExecuteResult } from "./decisions.js";
 import { init, update, type Context, type Msg } from "./machine.js";
 import { view } from "./view.js";
 import type { ExecuteResponse } from "./wire.js";
@@ -120,9 +119,8 @@ function recordSession(): {
     status: "settling",
     readToken: READ_TOKEN,
   };
-  // The effect host retains the bearer secret before projecting the response
-  // into the replay-safe decision the machine receives.
-  const readToken = response.readToken;
+  // The effect host keeps the bearer secret and relays the rest of the response.
+  const { readToken, ...reply } = response;
   if (!readToken) throw new Error("fixture must carry a read token");
   const settling = only(
     apiCalls(
@@ -130,7 +128,7 @@ function recordSession(): {
         {
           type: "ExecuteReplied",
           flow: exec.flow,
-          result: { ok: true, decision: decideExecuteResult(response) },
+          result: { ok: true, response: reply },
         },
         1100,
       ),

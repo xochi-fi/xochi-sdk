@@ -27,12 +27,13 @@ import type {
   SelectableChainId,
   SettlementType,
 } from "../shared/index.js";
-import { canTransitionTo, isChainId } from "../shared/index.js";
+import { canTransitionTo, isChainId, isIntentStatus } from "../shared/index.js";
 import {
   buildQuoteRequest,
   buildResumedState,
   canSignQuote,
   computeRefreshDelayMs,
+  decideExecuteResult,
   decideSignPreflight,
   mapStatusUpdate,
   mergeSameStatusReceipt,
@@ -50,7 +51,6 @@ import {
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
   WALLET_INTERRUPTIBLE_STATES,
-  type ExecuteDecision,
   type SignPreflight,
 } from "./decisions.js";
 import { claimInfoError } from "./claimInfo.js";
@@ -68,6 +68,7 @@ import { INITIAL_INTENT_STATE, type IntentState, type StructuredError } from "./
 import { applyStatusTransition } from "./transition.js";
 import { validateSwapParams } from "./validateRequest.js";
 import type {
+  ExecuteReply,
   ExecuteRequest,
   IntentStatusResult,
   IntentWebSocketMessage,
@@ -261,10 +262,12 @@ export type MsgBody =
     }
   | { type: "ApprovalReplied"; flow: string; result: Outcome<{ approved: boolean }> }
   /**
-   * The host captures any execute read token, then sends only the replay-safe
-   * `decideExecuteResult(response)` projection.
+   * The execute response with its `readToken` removed (`ExecuteReply`): the
+   * host keeps the bearer secret outside the machine and relays the rest. The
+   * machine itself decides failed vs in doubt (#226); a reply it cannot read
+   * as an execute response for this intent is in doubt, like a thrown execute.
    */
-  | { type: "ExecuteReplied"; flow: string; result: Outcome<{ decision: ExecuteDecision }> }
+  | { type: "ExecuteReplied"; flow: string; result: Outcome<{ response: ExecuteReply }> }
   | {
       type: "StatusReplied";
       gen: number;
@@ -1417,7 +1420,7 @@ function onExecuted(
   m: Model,
   fx: Effect[],
   flowId: string,
-  result: Outcome<{ decision: ExecuteDecision }>,
+  result: Outcome<{ response: ExecuteReply }>,
   now: number,
 ): Model {
   const flow = m.sign;
@@ -1425,18 +1428,81 @@ function onExecuted(
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
   // may have moved funds): flag reconciling and let the poll resolve it (#226).
-  if (!result.ok) {
-    log(fx, "warn", `${LOG} Execute in-doubt; polling to resolve:`, result.error.detail);
-    return patch(next, { reconciling: true });
-  }
-  const decision = result.decision;
+  const response = executeReplyFor(fx, result, next.intent.intentId);
+  if (!response) return patch(next, { reconciling: true });
+  const decision = decideExecuteResult(response);
   if (decision.kind === "failed") return transition(next, fx, "failed", { error: decision.error });
   // Inline fill: the execute round-trip bounds submit -> filled exactly.
   const timed =
     decision.status === "completed" && next.submittedAt !== null
       ? { ...next, clientFillMs: now - next.submittedAt }
       : next;
-  return transition(timed, fx, decision.status, decision.updates);
+  const moved = transition(timed, fx, decision.status, decision.updates);
+  // A refused move (the reply names the status the intent is already in, or
+  // one it cannot reach) must not drop an in-doubt verdict with it.
+  return moved.intent === timed.intent && decision.updates.reconciling === true
+    ? patch(moved, { reconciling: true })
+    : moved;
+}
+
+/**
+ * The execute response a reply carries for `intentId`, or null when the
+ * execute is in doubt: a reported failure, or a reply the machine cannot read
+ * as an execute response for this intent (a malformed one, the unreleased
+ * `{ decision }` shape, another intent's response). Checked here rather than
+ * trusted from the host: the failed-vs-in-doubt verdict decides whether Retry
+ * is offered on a swap whose funds may have moved. Read defensively, since a
+ * replayed or foreign message need not match its type.
+ */
+function executeReplyFor(
+  fx: Effect[],
+  result: Outcome<{ response: ExecuteReply }>,
+  intentId: string | null,
+): ExecuteReply | null {
+  const reply = result as
+    | { ok?: unknown; error?: { detail?: unknown }; response?: unknown }
+    | null
+    | undefined;
+  if (reply?.ok === false) {
+    log(fx, "warn", `${LOG} Execute in-doubt; polling to resolve:`, reply.error?.detail);
+    return null;
+  }
+  const response = reply?.ok === true ? reply.response : undefined;
+  if (!isExecuteReply(response)) {
+    log(fx, "error", `${LOG} Execute reply is not an execute response; in doubt, polling`);
+    return null;
+  }
+  if (response.intentId !== intentId) {
+    log(fx, "error", `${LOG} Execute reply names another intent; in doubt, polling`, {
+      reply: response.intentId,
+      current: intentId,
+    });
+    return null;
+  }
+  if ("readToken" in response) {
+    // Never read, stored or echoed: the host already put it in the message.
+    log(fx, "warn", `${LOG} Execute reply carried a readToken; keep it outside the machine`);
+  }
+  return response;
+}
+
+/** The fields `decideExecuteResult` reads, each of its declared type. */
+function isExecuteReply(value: unknown): value is ExecuteReply {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  const optional = (v: unknown, type: "string" | "number" | "boolean") =>
+    v === undefined || typeof v === type;
+  return (
+    typeof r.success === "boolean" &&
+    typeof r.intentId === "string" &&
+    isIntentStatus(r.status) &&
+    optional(r.reconciling, "boolean") &&
+    optional(r.settlementChainId, "number") &&
+    optional(r.error, "string") &&
+    optional(r.txHash, "string") &&
+    optional(r.receivingTxHash, "string") &&
+    optional(r.settlementTxHash, "string")
+  );
 }
 
 function endSignFlow(m: Model, flow: SignFlow): Model {

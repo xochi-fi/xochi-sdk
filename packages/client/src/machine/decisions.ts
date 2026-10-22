@@ -502,9 +502,6 @@ export type ExecuteDecision =
  * `reconciling` on when the server withheld success so the UI shows the
  * safe-to-close "Still confirming" path with no Retry (an in-session retry of a
  * funds-moved swap would be a double execution).
- * The returned projection is also the replay boundary: the host retains
- * `result.readToken` outside the machine before dispatching it as an
- * `ExecuteReplied.result.decision`.
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   if (!result.success && result.status === "failed") {

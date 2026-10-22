@@ -247,6 +247,15 @@ export interface ExecuteResponse {
   readToken?: string;
 }
 
+/**
+ * An execute response as the machine receives it in `ExecuteReplied`: the
+ * bearer `readToken` removed (`const { readToken, ...response } = ...`) and
+ * kept outside the machine, so no message, model, effect or replay log holds
+ * it. The machine derives the fund-safety verdict (#226) from this response
+ * itself; a host relays it and never decides it.
+ */
+export type ExecuteReply = Omit<ExecuteResponse, "readToken"> & { readToken?: never };
+
 // ============================================================
 // Intent Status Messages
 // ============================================================

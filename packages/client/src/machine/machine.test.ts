@@ -6,8 +6,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { decideExecuteResult, STATUS_POLL_MS } from "./decisions.js";
-import { RECONCILE_AFTER_ATTEMPTS, SIGN_PROMPT_TIMEOUT_MS, type Effect } from "./machine.js";
+import { STATUS_POLL_MS } from "./decisions.js";
+import {
+  RECONCILE_AFTER_ATTEMPTS,
+  SIGN_PROMPT_TIMEOUT_MS,
+  type Effect,
+  type MsgBody,
+} from "./machine.js";
 import { settlementDisclosure } from "./receipt.js";
 import { decodeWireStatus } from "./wire.js";
 import {
@@ -198,14 +203,7 @@ describe("one signature (no origin pull)", () => {
       {
         type: "ExecuteReplied",
         flow: exec.flow,
-        result: {
-          ok: true,
-          decision: decideExecuteResult({
-            success: true,
-            intentId: "xi_1",
-            status: "settling",
-          }),
-        },
+        result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
       },
       1200,
     );
@@ -249,14 +247,7 @@ describe("one signature (no origin pull)", () => {
       {
         type: "ExecuteReplied",
         flow: exec.flow,
-        result: {
-          ok: true,
-          decision: decideExecuteResult({
-            success: true,
-            intentId: "xi_1",
-            status: "completed",
-          }),
-        },
+        result: { ok: true, response: { success: true, intentId: "xi_1", status: "completed" } },
       },
       1500,
     );
@@ -401,6 +392,113 @@ describe("one signature (no origin pull)", () => {
     expect(s.intent.reconciling).toBe(true);
     expect(s.receipt.phase).toBe("pending");
   });
+
+  describe("an execute reply is judged by the machine, not the host", () => {
+    const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+    const executing = () => {
+      const s = new Session();
+      s.quoteWith(quote());
+      const prompt = signIntent(s);
+      const exec = only(
+        apiCalls(
+          s.send({
+            type: "SignReplied",
+            flow: prompt.flow,
+            purpose: "intent",
+            result: { ok: true, signature: "0xsig" },
+          }),
+          "execute",
+        ),
+      );
+      return { s, flow: exec.flow };
+    };
+    // A reply shape the type no longer admits (a stale or hand-built host).
+    const foreign = (flow: string, result: unknown) =>
+      ({ type: "ExecuteReplied", flow, result }) as unknown as MsgBody;
+
+    it("keeps a fail-closed downgrade in doubt (no Retry), whatever status it names", () => {
+      for (const status of ["settling", "executing"] as const) {
+        const { s, flow } = executing();
+        s.send({
+          type: "ExecuteReplied",
+          flow,
+          result: { ok: true, response: { success: false, intentId: "xi_1", status } },
+        });
+        expect(s.intent.status).toBe(status);
+        expect(s.intent.reconciling).toBe(true);
+        expect(s.receipt.phase).not.toBe("failed");
+      }
+    });
+
+    it("cannot be handed a host-built verdict: the unreleased { decision } shape is in doubt", () => {
+      const { s, flow } = executing();
+      // A host that decided "failed" itself would have offered Retry on a swap
+      // whose origin pull may already have moved funds.
+      const fx = s.send(
+        foreign(flow, { ok: true, decision: { kind: "failed", error: "laundered" } }),
+      );
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(true);
+      expect(s.intent.error).toBeNull();
+      expect(s.model.sign).toBeNull();
+      expect(logs(fx, "error").join()).toMatch(/not an execute response/);
+
+      const completed = executing();
+      completed.s.send(
+        foreign(completed.flow, {
+          ok: true,
+          decision: { kind: "transition", status: "completed", updates: { reconciling: false } },
+        }),
+      );
+      expect(completed.s.intent.status).toBe("executing");
+      expect(completed.s.intent.reconciling).toBe(true);
+    });
+
+    it("handles a malformed reply without throwing", () => {
+      for (const result of [
+        undefined,
+        null,
+        { ok: true },
+        { ok: true, response: { success: "yes", intentId: "xi_1", status: "completed" } },
+        { ok: true, response: { success: true, intentId: "xi_1", status: "done" } },
+        { ok: false },
+      ]) {
+        const { s, flow } = executing();
+        expect(() => s.send(foreign(flow, result))).not.toThrow();
+        expect(s.intent.status).toBe("executing");
+        expect(s.intent.reconciling).toBe(true);
+      }
+    });
+
+    it("treats a reply for another intent as in doubt", () => {
+      const { s, flow } = executing();
+      s.send({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: true,
+          response: { success: true, intentId: "xi_other", status: "completed" },
+        },
+      });
+      expect(s.intent.intentId).toBe("xi_1");
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(true);
+    });
+
+    it("never stores or echoes a read token a host left on the reply", () => {
+      const { s, flow } = executing();
+      const fx = s.send(
+        foreign(flow, {
+          ok: true,
+          response: { success: true, intentId: "xi_1", status: "settling", readToken: READ_TOKEN },
+        }),
+      );
+      expect(s.intent.status).toBe("settling");
+      expect(logs(fx, "warn").join()).toMatch(/readToken/);
+      expect(JSON.stringify(fx)).not.toContain(READ_TOKEN);
+      expect(JSON.stringify(s.model)).not.toContain(READ_TOKEN);
+    });
+  });
 });
 
 describe("two signatures (origin pull)", () => {
@@ -541,14 +639,7 @@ describe("two signatures (origin pull)", () => {
     s.send({
       type: "ExecuteReplied",
       flow: exec.flow,
-      result: {
-        ok: true,
-        decision: decideExecuteResult({
-          success: true,
-          intentId: "xi_1",
-          status: "settling",
-        }),
-      },
+      result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
     });
     expect(s.model.isSigningPull).toBe(false);
     expect(s.model.pendingIntentSig).toBeNull();
@@ -887,11 +978,7 @@ describe("a quote for a trade that has moved on", () => {
         flow: execute.flow,
         result: {
           ok: true,
-          decision: decideExecuteResult({
-            success: true,
-            intentId: "xi_1",
-            status: "completed",
-          }),
+          response: { success: true, intentId: "xi_1", status: "completed" },
         },
       });
       expect(s.intent.status).toBe("completed");
