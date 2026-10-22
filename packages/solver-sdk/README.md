@@ -93,6 +93,10 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 - **`minOutput` is admissibility, not the reserve.** A bid at `minOutput + 1` is admissible and
   still loses.
 - **Handle `onFeedGap`.** `dropped` and `reset` mean intents you will never see.
+- **Unknown event types are skipped, malformed known ones are not.** `HttpSolverTransport`
+  skips an entry whose `type` it does not know (to `onInvalidEvent` as `UnknownSolverEventError`,
+  else one `console.warn`) and keeps the batch; an injected transport must skip that error from
+  `parseSolverEvent` too, or a redelivered batch ends `run` every time.
 - **Escrow flow is `prepare(award, { bid, announcement })` -> `accept` -> `fill`.** Your own
   `bid.output` is the only FillAuth amount ceiling; `award.output` is the venue's word.
 - **Persist in `accept`'s `onSigned`.** It is awaited after signing and before the POST; a throw
@@ -129,7 +133,7 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 - `SOLVER_RFC_VERSION`, `SOLVER_BID_DOMAIN`, `SOLVER_BID_TYPES`, `SOLVER_BID_PRIMARY_TYPE`,
   `MAX_BID_MS`, `ZERO_ORDER_ID`
 - Zod wire schemas (`IntentAnnouncementSchema`, `AwardSchema`, `BidSchema`, ...) and
-  `parseSolverEvent`
+  `parseSolverEvent` (throws `UnknownSolverEventError` for an unknown `type`)
 - Escrow: `OnchainEscrowGateway`, `StubEscrowGateway`, `verifyAward`, `requireFillableEscrow`,
   `checkFillWindow`, `verifyAttestation`, `EscrowRefusalError`
 

@@ -7,7 +7,8 @@
 // `getCapabilities()` must work unauthenticated, since SOLVER-RFC §12 expects a
 // solver to gate on `rfcVersion` and `phase` before it has been admitted.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { ZodError } from "zod";
 import http from "node:http";
 import { AddressInfo } from "node:net";
 
@@ -23,6 +24,7 @@ import {
   type SolverEvent,
   type Bid,
   type FillReceipt,
+  UnknownSolverEventError,
 } from "../src/index";
 
 const SOLVER_KEY = "0x0000000000000000000000000000000000000000000000000000000000000001";
@@ -549,6 +551,138 @@ describe("HttpSolverTransport malformed entries", () => {
     await expect(client.run(solver)).rejects.toThrow(/version skew/);
 
     expect(seen.map((r) => r.url)).toEqual(["/solver/capabilities"]);
+  });
+});
+
+// A venue that adds an event kind (a future `lost`) ahead of this SDK. The
+// entry is skipped, never thrown: a throw ends the run before the batch's
+// cursor is taken, so every redelivery of the batch would end it again and
+// the award in it would never be filled.
+describe("HttpSolverTransport unknown event types", () => {
+  const OWN_AWARD = {
+    type: "award",
+    award: {
+      auctionId: "auction-1",
+      intentId: "intent-1",
+      solverId: SOLVER_ID,
+      output: "998000",
+      exclusiveUntil: 9_999,
+    },
+  };
+  const PAYLOAD_MARKER = "payload-must-not-be-logged";
+  const LOST = { type: "lost", lost: { auctionId: "auction-0", note: PAYLOAD_MARKER } };
+  const streamUrls = () =>
+    seen.map((r) => r.url).filter((u) => u.startsWith("/solver/intents/stream"));
+
+  it("reports an unknown type to onInvalidEvent, delivers the known ones, and moves the cursor", async () => {
+    let polls = 0;
+    const baseUrl = await serve((_req, res) => {
+      polls += 1;
+      if (polls === 1) return json(res, { events: [OWN_AWARD, LOST, ANNOUNCEMENT], cursor: "7" });
+      return json(res, { error: "gone" }, 500);
+    });
+    const invalid: { err: unknown; raw: unknown }[] = [];
+    const transport = new HttpSolverTransport({
+      baseUrl,
+      solverId: SOLVER_ID,
+      onInvalidEvent: (err, raw) => invalid.push({ err, raw }),
+    });
+    const delivered: SolverEvent[] = [];
+
+    await expect(
+      (async () => {
+        for await (const ev of transport.events()) delivered.push(ev);
+      })(),
+    ).rejects.toThrow(/solver feed 500/);
+
+    expect(delivered.map((e) => e.type)).toEqual(["award", "announcement"]);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]!.err).toBeInstanceOf(UnknownSolverEventError);
+    expect(invalid[0]!.err).toMatchObject({ eventType: "lost" });
+    expect(invalid[0]!.raw).toEqual(LOST);
+    expect(streamUrls()).toEqual([
+      "/solver/intents/stream?since=0",
+      "/solver/intents/stream?since=7",
+    ]);
+  });
+
+  it("without a handler, SolverClient.run fills and quotes around it and warns once", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let polls = 0;
+    const baseUrl = await serve((req, res) => {
+      const url = req.url ?? "";
+      if (url === "/solver/capabilities") return json(res, CAPABILITIES);
+      if (url === "/solver/fills") return json(res, {});
+      polls += 1;
+      if (polls === 1) {
+        const lostAgain = { type: "lost", lost: { auctionId: "auction-2" } };
+        return json(res, { events: [OWN_AWARD, LOST, lostAgain, ANNOUNCEMENT], cursor: "7" });
+      }
+      return json(res, { error: "gone" }, 500);
+    });
+    const quoted: string[] = [];
+    const filled: string[] = [];
+    const client = new SolverClient({ baseUrl, solverKey: SOLVER_KEY, now: () => 1_500 });
+    const solver: Solver = {
+      capabilities: () => ({
+        solverId: SOLVER_ID,
+        chains: [8453, 10],
+        tokens: ["USDC"],
+        settlementTypes: ["public"],
+        rfcVersion: SOLVER_RFC_VERSION,
+      }),
+      quote: async (a) => {
+        quoted.push(a.intentId);
+        return null;
+      },
+      fill: async (award) => {
+        filled.push(award.auctionId);
+        return {
+          auctionId: award.auctionId,
+          intentId: award.intentId,
+          solverId: SOLVER_ID,
+          proof: { kind: "tx_hash", chainId: 10, txHash: "0x" + "ab".repeat(32) },
+        };
+      },
+    };
+
+    try {
+      // Ends on the second poll's 500, not on the unknown entries: that poll
+      // asks from the batch's cursor, so the batch is not redelivered.
+      await expect(client.run(solver)).rejects.toThrow(/solver feed 500/);
+
+      expect(filled).toEqual(["auction-1"]);
+      expect(seen.map((r) => r.url)).toContain("/solver/fills");
+      expect(quoted).toEqual(["intent-1"]);
+      expect(streamUrls()).toEqual([
+        "/solver/intents/stream?since=0",
+        "/solver/intents/stream?since=7",
+      ]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0]![0]);
+      expect(message).toContain('"lost"');
+      expect(message).not.toContain(PAYLOAD_MARKER);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // "Unknown" is a string `type` outside the known set, nothing looser: these
+  // stay validation failures, so without a handler they still end the run.
+  it.each<[string, unknown]>([
+    ["no type", { kind: "lost", lost: {} }],
+    ["a non-string type", { type: 7 }],
+    ["a malformed award", { type: "award", award: { ...OWN_AWARD.award, output: "9.5" } }],
+  ])("rethrows an entry with %s without a handler, as a ZodError", async (_name, entry) => {
+    const baseUrl = await serve((_req, res) =>
+      json(res, { events: [entry, ANNOUNCEMENT], cursor: "7" }),
+    );
+    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+
+    const outcome = await firstEvent(transport).catch((err: unknown) => err);
+
+    expect(outcome).toBeInstanceOf(ZodError);
+    expect(streamUrls()).toEqual(["/solver/intents/stream?since=0"]);
   });
 });
 

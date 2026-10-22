@@ -23,6 +23,7 @@ import type {
 import { signBid, solverIdFromKey, walletFromKey } from "./bid";
 import {
   parseSolverEvent,
+  UnknownSolverEventError,
   FeedBatchSchema,
   FillAcceptanceReceiptSchema,
   FillAttestationWireSchema,
@@ -91,7 +92,8 @@ export interface SolverClientOptions {
   // Called when a feed entry fails validation. Supplying it SKIPS the offending
   // entry and continues; omitting it rethrows and ends the loop. Same contract
   // as `onError`: the error is reported or raised, never swallowed. Like
-  // `onFeedGap`, it belongs to the default transport.
+  // `onFeedGap`, it belongs to the default transport. An entry of an unknown
+  // `type` is skipped either way (see `HttpSolverTransportOptions`).
   onInvalidEvent?: (err: unknown, raw: unknown) => void;
 }
 
@@ -295,6 +297,13 @@ export interface HttpSolverTransportOptions {
   // This is deliberately per-ENTRY. A malformed batch envelope is NOT routed
   // here and always throws: without a trustworthy `cursor` there is no safe way
   // to continue -- resuming from the old one replays, and inventing one skips.
+  //
+  // An entry whose `type` is a string this SDK does not know (an event kind a
+  // newer venue added) is skipped with or without this handler: it gets an
+  // `UnknownSolverEventError` here, or one `console.warn` per transport when
+  // this is omitted. Rethrowing it would stall the cursor on that batch, so
+  // every redelivery would end the run again and the batch's awards would
+  // never be acted on. A KNOWN type that fails validation is not skipped.
   onInvalidEvent?: (err: unknown, raw: unknown) => void;
   // Upper bound on `acceptAward` (default 10_000 ms), on top of any caller
   // signal. An acceptance is owed from the moment it is sent, so a venue that
@@ -329,6 +338,7 @@ export class HttpSolverTransport implements SolverTransport {
   private readonly postTimeoutMs: number;
   private readonly feedGapListeners = new Set<(gap: FeedGap) => void>();
   private cursor: string;
+  private warnedUnknownType = false;
 
   constructor(opts: HttpSolverTransportOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
@@ -376,6 +386,10 @@ export class HttpSolverTransport implements SolverTransport {
         try {
           event = parseSolverEvent(raw);
         } catch (err) {
+          if (err instanceof UnknownSolverEventError) {
+            this.skipUnknownType(err, raw);
+            continue;
+          }
           // One malformed entry must not take down a solver daemon. Reported and
           // skipped when a handler exists, rethrown when one does not -- never
           // swallowed. The throw escapes `SolverClient.run`'s per-event try,
@@ -388,6 +402,18 @@ export class HttpSolverTransport implements SolverTransport {
       }
       this.cursor = batch.cursor;
     }
+  }
+
+  // Without a handler, one warning per transport: the type is venue-chosen,
+  // so a set of every type seen would be unbounded.
+  private skipUnknownType(err: UnknownSolverEventError, raw: unknown): void {
+    if (this.onInvalidEvent) return this.onInvalidEvent(err, raw);
+    if (this.warnedUnknownType) return;
+    this.warnedUnknownType = true;
+    console.warn(
+      `HttpSolverTransport: skipping a feed entry: ${err.message}; later unknown-type ` +
+        "entries are skipped without a warning (set onInvalidEvent to see each)",
+    );
   }
 
   // `GET /solver/capabilities` is public and unauthenticated (RFC §12), so this

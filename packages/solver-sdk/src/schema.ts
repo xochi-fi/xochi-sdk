@@ -178,6 +178,23 @@ export const SolverEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("award"), award: AwardSchema }),
 ]);
 
+// Read off the union, so adding an event kind to the schema is the only step.
+const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(
+  SolverEventSchema.options.map((option) => option.shape.type.value),
+);
+
+// Thrown by `parseSolverEvent` for an entry whose `type` is a string this SDK
+// does not implement: an event kind a newer venue added, not a malformed
+// entry. `HttpSolverTransport` skips it (see `onInvalidEvent`); a known type
+// that fails validation, or an entry with no string `type`, is a `ZodError`
+// and stays fatal without a handler. Only the type, truncated, is echoed.
+export class UnknownSolverEventError extends Error {
+  readonly name = "UnknownSolverEventError";
+  constructor(readonly eventType: string) {
+    super(`unknown solver event type ${JSON.stringify(eventType.slice(0, 64))}`);
+  }
+}
+
 const fillProof = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("tx_hash"),
@@ -275,8 +292,16 @@ export const FeedBatchSchema = z
   })
   .passthrough();
 
-// Parse + validate a raw feed event. Throws (zod) on a malformed shape -- the
-// caller at the boundary MUST NOT swallow it.
+// Parse + validate a raw feed event. Throws `UnknownSolverEventError` for an
+// unknown string `type`, zod otherwise on a malformed shape -- the caller at
+// the boundary MUST NOT swallow either; it may skip only the former.
 export function parseSolverEvent(raw: unknown) {
+  // Own data property only: an inherited or accessor `type` is left to zod.
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const type: unknown = Object.getOwnPropertyDescriptor(raw, "type")?.value;
+    if (typeof type === "string" && !KNOWN_EVENT_TYPES.has(type)) {
+      throw new UnknownSolverEventError(type);
+    }
+  }
   return SolverEventSchema.parse(raw);
 }

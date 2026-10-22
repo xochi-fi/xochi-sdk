@@ -68,6 +68,16 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   `RIDDLER_SOLVER_URL` by name (warning on loopback `http:`), and prunes its bid
   and award maps. The startup checks both examples share live in
   `examples/env.ts`.
+- A feed entry whose `type` is a string the SDK does not know (an event kind a
+  newer venue adds) no longer ends `SolverClient.run`. Without `onInvalidEvent`
+  it threw before the batch's cursor was taken, so every redelivery ended the
+  run again and the awards in that batch were never filled. `HttpSolverTransport`
+  now skips it and delivers the rest of the batch, reporting it to
+  `onInvalidEvent` as the new `UnknownSolverEventError` (`eventType`), or with
+  one `console.warn` per transport without a handler. `parseSolverEvent` throws
+  that error for such an entry. A known type that fails validation, or an entry
+  without a string `type`, is still a `ZodError` and still ends the run without
+  a handler.
 
 ## `0.4.1` — the version gate re-runs under a running solver
 
