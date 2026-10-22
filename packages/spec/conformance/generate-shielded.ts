@@ -515,7 +515,7 @@ const out = {
     {
       item: "recipientMessage",
       reason:
-        "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are open (§7). The selected recipient account class is a prerequisite only; it is pinned for Aztec SDK 5.2.0 networks, and the tracer network's pin is open.",
+        "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are open (§7). Selecting the recipient account class (§7 'Recipient authorization') is a prerequisite, not their specification.",
     },
   ],
 };

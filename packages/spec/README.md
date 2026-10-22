@@ -57,10 +57,10 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   never compute their own expectations (§7 "Vector authority"). Its generator derives every value
   from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
   `shielded.ts` is tested against the committed file; `npm run generate:shielded` regenerates it,
-  and only an edit to §7's approved encodings may change its vectors; the `open` prose follows
-  §7's open list. Network, corridor and Aztec values are fixtures. It deliberately holds no vector
-  for what §7 leaves open (ShieldedTermsV1, manifestDigest, descriptorDigest, the recipient
-  message); its `open` array names each one.
+  and only an edit to §7 may change it: its approved encodings fix the vectors, refusals and
+  values, and what it leaves open fixes `open`. Network, corridor and Aztec values are fixtures.
+  It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest,
+  descriptorDigest, the recipient message); its `open` array names each one.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the
