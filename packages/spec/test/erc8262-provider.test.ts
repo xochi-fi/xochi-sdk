@@ -90,6 +90,17 @@ type Attempt = {
 };
 type Context = Consumer & Attempt;
 type DocRef = string | { schemaCase: string };
+type Observed = { trustDomainId: string; evidenceId: string };
+// What one evaluation writes to the observation store (SPEC.md section 10.7).
+type Records = {
+  discovery: null | {
+    trustDomainId: string;
+    updatedAt: number;
+    revokedKeys: { keyId: string; material: string }[];
+  };
+  revocation: Observed | null;
+  evidence: Observed | null;
+};
 type Vectors = {
   limits: { maxEvidenceLifetimeSeconds: number; clockSkewSeconds: number };
   refusals: string[];
@@ -101,7 +112,8 @@ type Vectors = {
     discovery: DocRef;
     evidence: DocRef;
     context: Context;
-    expected: { accepted: boolean; refusal?: string };
+    follows?: string;
+    expected: { accepted: boolean; refusal?: string; records: Records };
   }[];
   quorumCases: {
     name: string;
@@ -191,6 +203,14 @@ function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
   return { disc, ev, ctx, signed, pinned, priorDiscovery, key, registry, priorEvidence };
 }
 
+// A 200 whose body validates, carries the announced id and says revoked: final, and recorded
+// before discovery is read. Only status and evidenceId are trusted.
+const revokedBody = (f: Facts): boolean =>
+  f.ctx.evidenceFetch.status === 200 &&
+  validateEvidence(f.ev) &&
+  f.ev.evidenceId === f.ctx.announcedEvidenceId &&
+  f.ev.status === "revoked";
+
 /** SPEC.md section 10.5, in order: a step refuses when its predicate holds. */
 const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   ["trust_domain_not_allowed", (f) => f.pinned() === undefined],
@@ -210,12 +230,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
         f.ctx.seenEvidence
           .map((name) => doc(V.evidence, name))
           .some((p) => p.trustDomainId === host && p.evidenceId === id && p.status === "revoked");
-      const revokedBody =
-        f.ctx.evidenceFetch.status === 200 &&
-        validateEvidence(f.ev) &&
-        f.ev.evidenceId === id &&
-        f.ev.status === "revoked";
-      return recorded || revokedBody;
+      return recorded || revokedBody(f);
     },
   ],
   [
@@ -371,6 +386,49 @@ function evaluate(disc: unknown, held: unknown, ctx: Context): string | null {
   return STEPS.find(([, refuses]) => refuses(f))?.[0] ?? null;
 }
 
+const stepIndex = (refusal: string): number => STEPS.findIndex(([r]) => r === refusal);
+const refuses = (refusal: string, f: Facts): boolean => {
+  const found = STEPS.find(([r]) => r === refusal);
+  if (!found) throw new Error(`no step ${refusal}`);
+  return found[1](f);
+};
+
+/** SPEC.md sections 10.3, 10.4 and 10.7: what one evaluation writes to the store. */
+function recordsOf(disc: unknown, held: unknown, ctx: Context, refusal: string | null): Records {
+  const f = facts(disc, held, ctx);
+  // The discovery steps are evaluated on their own: the evidence's outcome does not matter.
+  const discoveryPasses =
+    !refuses("trust_domain_not_allowed", f) &&
+    !refuses("discovery_unavailable", f) &&
+    f.disc.trustDomainId === ctx.discoveryFetch.host &&
+    !refuses("discovery_invalid", f) &&
+    !refuses("discovery_from_future", f) &&
+    !refuses("discovery_stale", f);
+  const preconditions =
+    !refuses("trust_domain_not_allowed", f) &&
+    !refuses("evidence_id_invalid", f) &&
+    !refuses("origin_mismatch", f);
+  const revoked = preconditions && (ctx.evidenceFetch.status === 410 || revokedBody(f));
+  const passedStep9 = refusal === null || stepIndex(refusal) > stepIndex("evidence_id_mismatch");
+  return {
+    discovery: discoveryPasses
+      ? {
+          trustDomainId: f.disc.trustDomainId,
+          updatedAt: f.disc.updatedAt,
+          revokedKeys: f.disc.keys
+            .filter((k) => k.revokedAt !== undefined)
+            .map((k) => ({ keyId: k.keyId, material: material(k) ?? "" })),
+        }
+      : null,
+    revocation: revoked
+      ? { trustDomainId: ctx.discoveryFetch.host, evidenceId: ctx.announcedEvidenceId }
+      : null,
+    evidence: passedStep9
+      ? { trustDomainId: f.ev.trustDomainId, evidenceId: f.ev.evidenceId }
+      : null,
+  };
+}
+
 const byNumericValue = (a: string, b: string): number =>
   BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0;
 
@@ -417,15 +475,38 @@ describe("erc8262 provider schemas", () => {
 
 describe("erc8262 evaluation (SPEC section 10.5)", () => {
   it.each(V.evaluationCases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    const refusal = evaluate(
-      resolve(V.discovery, "discovery", c.discovery),
-      resolve(V.evidence, "evidence", c.evidence),
-      c.context,
-    );
-    expect(refusal === null ? { accepted: true } : { accepted: false, refusal }).toEqual(
-      c.expected,
-    );
+    const disc = resolve(V.discovery, "discovery", c.discovery);
+    const held = resolve(V.evidence, "evidence", c.evidence);
+    const refusal = evaluate(disc, held, c.context);
+    const records = recordsOf(disc, held, c.context, refusal);
+    expect(
+      refusal === null ? { accepted: true, records } : { accepted: false, refusal, records },
+    ).toEqual(c.expected);
   });
+
+  it.each(V.evaluationCases.filter((c) => c.follows).map((c) => [c.name, c] as const))(
+    "%s starts from what its earlier case recorded",
+    (_name, c) => {
+      const earlier = V.evaluationCases.find((x) => x.name === c.follows);
+      if (!earlier) throw new Error(`${c.name} follows unknown case ${c.follows}`);
+      const { discovery, revocation, evidence } = earlier.expected.records;
+      const store = c.context;
+      if (revocation) expect(store.seenRevoked).toContainEqual(revocation);
+      if (evidence) {
+        const recorded = store.seenEvidence.map((n) => doc(V.evidence, n));
+        expect(
+          recorded.map((e) => ({ trustDomainId: e.trustDomainId, evidenceId: e.evidenceId })),
+        ).toContainEqual(evidence);
+      }
+      if (discovery) {
+        const newest = store.seenDiscovery
+          .map((n) => doc(V.discovery, n))
+          .filter((d) => d.trustDomainId === discovery.trustDomainId)
+          .map((d) => d.updatedAt);
+        expect(Math.max(...newest)).toBeGreaterThanOrEqual(discovery.updatedAt);
+      }
+    },
+  );
 
   it("refusals lists every step, in runner order", () => {
     expect(V.refusals).toEqual(STEPS.map(([refusal]) => refusal));

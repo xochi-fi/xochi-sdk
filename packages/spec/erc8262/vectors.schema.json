@@ -179,6 +179,11 @@
           "description": {
             "type": "string"
           },
+          "follows": {
+            "description": "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked).",
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
           "discovery": {
             "oneOf": [
               {
@@ -513,12 +518,136 @@
               {
                 "type": "object",
                 "required": [
-                  "accepted"
+                  "accepted",
+                  "records"
                 ],
                 "additionalProperties": false,
                 "properties": {
                   "accepted": {
                     "const": true
+                  },
+                  "records": {
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.7). discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (allowlisted host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass. null: nothing of that kind is written.",
+                    "type": "object",
+                    "required": [
+                      "discovery",
+                      "revocation",
+                      "evidence"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "discovery": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "updatedAt",
+                              "revokedKeys"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "updatedAt": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 4294967295
+                              },
+                              "revokedKeys": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "keyId",
+                                    "material"
+                                  ],
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "keyId": {
+                                      "description": "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
+                                      "type": "string",
+                                      "maxLength": 64,
+                                      "pattern": "^[A-Za-z0-9._-]+$"
+                                    },
+                                    "material": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "revocation": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "evidence": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               },
@@ -526,7 +655,8 @@
                 "type": "object",
                 "required": [
                   "accepted",
-                  "refusal"
+                  "refusal",
+                  "records"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -566,6 +696,129 @@
                       "expired",
                       "proof_mismatch"
                     ]
+                  },
+                  "records": {
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.7). discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (allowlisted host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass. null: nothing of that kind is written.",
+                    "type": "object",
+                    "required": [
+                      "discovery",
+                      "revocation",
+                      "evidence"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "discovery": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "updatedAt",
+                              "revokedKeys"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "updatedAt": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 4294967295
+                              },
+                              "revokedKeys": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "keyId",
+                                    "material"
+                                  ],
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "keyId": {
+                                      "description": "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
+                                      "type": "string",
+                                      "maxLength": 64,
+                                      "pattern": "^[A-Za-z0-9._-]+$"
+                                    },
+                                    "material": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "revocation": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "evidence": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               }

@@ -3770,7 +3770,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -3834,7 +3846,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_base_w1000000"
+          }
+        }
       }
     },
     {
@@ -3920,7 +3949,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_humantech_w100000000"
+          }
+        }
       }
     },
     {
@@ -4006,7 +4052,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -4090,7 +4153,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
       }
     },
     {
@@ -4176,7 +4256,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "updatedAt": 1767225600,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "evidenceId": "ev_alias_sumsub_w100000000"
+          }
+        }
       }
     },
     {
@@ -4262,7 +4354,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_old_w1000000"
+          }
+        }
       }
     },
     {
@@ -4350,7 +4454,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -4438,7 +4554,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -4526,7 +4659,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -4612,7 +4762,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_skew_w1000000"
+          }
+        }
       }
     },
     {
@@ -4699,7 +4866,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "trust_domain_not_allowed"
+        "refusal": "trust_domain_not_allowed",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -4786,7 +4958,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "origin_mismatch"
+        "refusal": "origin_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -4873,7 +5059,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -4960,7 +5151,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_gone"
+        "refusal": "evidence_gone",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
@@ -5047,7 +5255,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_unavailable"
+        "refusal": "evidence_unavailable",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -5134,7 +5356,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_unavailable"
+        "refusal": "evidence_unavailable",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -5221,7 +5457,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "trust_domain_mismatch"
+        "refusal": "trust_domain_mismatch",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -5308,7 +5549,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "trust_domain_mismatch"
+        "refusal": "trust_domain_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -5395,7 +5650,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_invalid"
+        "refusal": "discovery_invalid",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -5482,7 +5745,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_invalid"
+        "refusal": "discovery_invalid",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -5569,7 +5840,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_invalid"
+        "refusal": "discovery_invalid",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -5658,7 +5937,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_stale"
+        "refusal": "discovery_stale",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -5745,7 +6032,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "deployment_mismatch"
+        "refusal": "deployment_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_base_w1000000"
+          }
+        }
       }
     },
     {
@@ -5832,7 +6136,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "deployment_mismatch"
+        "refusal": "deployment_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -5919,7 +6235,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_mismatch"
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_attestor_w10"
+          }
+        }
       }
     },
     {
@@ -6010,7 +6338,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_mismatch"
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "kyc.impostor.test",
+            "updatedAt": 1767225600,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "kyc.impostor.test",
+            "evidenceId": "ev_impostor_sumsub_w100000"
+          }
+        }
       }
     },
     {
@@ -6097,7 +6437,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "claim_not_declared"
+        "refusal": "claim_not_declared",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_humantech_kyc_w10000"
+          }
+        }
       }
     },
     {
@@ -6184,7 +6541,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "claim_not_declared"
+        "refusal": "claim_not_declared",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_policy_w10000"
+          }
+        }
       }
     },
     {
@@ -6271,7 +6645,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_not_declared"
+        "refusal": "key_not_declared",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_key_w10000000"
+          }
+        }
       }
     },
     {
@@ -6358,7 +6749,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_use_mismatch"
+        "refusal": "key_use_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_use_w10000000"
+          }
+        }
       }
     },
     {
@@ -6445,7 +6853,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_revoked"
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_revkey_w10000"
+          }
+        }
       }
     },
     {
@@ -6534,7 +6959,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_revoked"
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788307200,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_revkey_w10000"
+          }
+        }
       }
     },
     {
@@ -6621,7 +7058,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_not_valid_at_issuance"
+        "refusal": "key_not_valid_at_issuance",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_late_w100000"
+          }
+        }
       }
     },
     {
@@ -6707,7 +7156,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_retired"
+        "refusal": "key_retired",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_old_w1"
+          }
+        }
       }
     },
     {
@@ -6794,7 +7260,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "credential_signer_mismatch"
+        "refusal": "credential_signer_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -6881,7 +7364,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "not_registered_on_oracle"
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_root_w1000000"
+          }
+        }
       }
     },
     {
@@ -6964,7 +7464,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "not_registered_on_oracle"
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
       }
     },
     {
@@ -7051,7 +7568,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "subject_mismatch"
+        "refusal": "subject_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -7140,7 +7669,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_conflict"
+        "refusal": "evidence_id_conflict",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -7227,7 +7768,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
@@ -7316,7 +7869,16 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -7403,7 +7965,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "invalid_validity_window"
+        "refusal": "invalid_validity_window",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_window_w10000"
+          }
+        }
       }
     },
     {
@@ -7490,7 +8069,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "validity_too_long"
+        "refusal": "validity_too_long",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_long_w1000000"
+          }
+        }
       }
     },
     {
@@ -7577,7 +8173,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "not_yet_valid"
+        "refusal": "not_yet_valid",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_future_w10000"
+          }
+        }
       }
     },
     {
@@ -7664,7 +8277,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "expired"
+        "refusal": "expired",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_expired_w1000"
+          }
+        }
       }
     },
     {
@@ -7751,7 +8381,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_multi_w10000"
+          }
+        }
       }
     },
     {
@@ -7838,7 +8480,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -7925,7 +8579,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -8012,7 +8678,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -8099,7 +8777,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -8186,7 +8876,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -8273,7 +8975,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -8358,7 +9072,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
       }
     },
     {
@@ -8445,7 +9176,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "proof_mismatch"
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_multi_w10000"
+          }
+        }
       }
     },
     {
@@ -8532,7 +9275,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_invalid"
+        "refusal": "evidence_id_invalid",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -8619,7 +9376,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_invalid"
+        "refusal": "evidence_id_invalid",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -8706,7 +9477,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_invalid"
+        "refusal": "evidence_id_invalid",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -8793,7 +9578,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_mismatch"
+        "refusal": "evidence_id_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -8880,7 +9679,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_mismatch"
+        "refusal": "evidence_id_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -8969,7 +9782,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_revoked"
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788307200,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_relisted_w100"
+          }
+        }
       }
     },
     {
@@ -9056,7 +9881,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_denied"
+        "refusal": "attestor_denied",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -9141,7 +9978,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_denied"
+        "refusal": "attestor_denied",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
       }
     },
     {
@@ -9233,7 +10087,16 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -9324,7 +10187,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -9413,7 +10288,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -9502,7 +10382,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -9591,7 +10476,16 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_unavailable"
+        "refusal": "evidence_unavailable",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -9677,7 +10571,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1793491260,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -9764,7 +10675,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_from_future"
+        "refusal": "discovery_from_future",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -9851,7 +10770,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "not_registered_on_oracle"
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_foreign_root_w1"
+          }
+        }
       }
     },
     {
@@ -9938,7 +10874,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_mismatch"
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -10025,7 +10973,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_mismatch"
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -10113,7 +11073,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -10199,7 +11176,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_nb_w10000000"
+          }
+        }
       }
     },
     {
@@ -10286,7 +11275,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_not_valid_at_issuance"
+        "refusal": "key_not_valid_at_issuance",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_early_w10000"
+          }
+        }
       }
     },
     {
@@ -10372,7 +11373,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_last_w100000"
+          }
+        }
       }
     },
     {
@@ -10459,7 +11472,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_not_valid_at_issuance"
+        "refusal": "key_not_valid_at_issuance",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_na_w10000000"
+          }
+        }
       }
     },
     {
@@ -10545,7 +11570,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_retired"
+        "refusal": "key_retired",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_old_w1"
+          }
+        }
       }
     },
     {
@@ -10630,7 +11672,24 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_old_w1"
+          }
+        }
       }
     },
     {
@@ -10717,7 +11776,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "deployment_mismatch"
+        "refusal": "deployment_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -10802,7 +11878,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "claim_not_declared"
+        "refusal": "claim_not_declared",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_humantech_signed_w10"
+          }
+        }
       }
     },
     {
@@ -10889,7 +11982,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "credential_signer_mismatch"
+        "refusal": "credential_signer_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -10975,7 +12080,19 @@
         }
       },
       "expected": {
-        "accepted": true
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -11062,7 +12179,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "trust_domain_not_allowed"
+        "refusal": "trust_domain_not_allowed",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11149,7 +12271,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_invalid"
+        "refusal": "evidence_id_invalid",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11236,7 +12372,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "origin_mismatch"
+        "refusal": "origin_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11323,7 +12473,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_gone"
+        "refusal": "evidence_gone",
+        "records": {
+          "discovery": null,
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
@@ -11412,12 +12570,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_gone"
+        "refusal": "evidence_gone",
+        "records": {
+          "discovery": null,
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
       "name": "gone-during-outage-stays-revoked",
-      "description": "After a 410 (order-gone-before-discovery-unavailable) or a revoked body (revoked-body-during-discovery-outage) was recorded during a discovery outage, discovery is back and the host answers 200 active: refused (evidence_revoked).",
+      "description": "The 410 recorded during the discovery outage is final: discovery is back and the host answers 200 active, refused (evidence_revoked).",
+      "follows": "order-gone-before-discovery-unavailable",
       "discovery": "gateway",
       "evidence": "gateway-sumsub",
       "context": {
@@ -11504,7 +12671,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11591,7 +12772,113 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": null,
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
+      }
+    },
+    {
+      "name": "revoked-body-recorded-refuses-during-outage",
+      "description": "The revocation recorded from the revoked body refuses the next fetch (200 active) before the discovery checks, while discovery is still unavailable.",
+      "follows": "revoked-body-during-discovery-outage",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        ],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 503
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_w100000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "1",
+          "credentialType": 1,
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11680,7 +12967,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": null,
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
@@ -11767,7 +13062,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11854,7 +13154,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_mismatch"
+        "refusal": "evidence_id_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -11943,7 +13257,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12032,7 +13351,16 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_unavailable"
+        "refusal": "evidence_unavailable",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12119,7 +13447,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "origin_mismatch"
+        "refusal": "origin_mismatch",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12211,7 +13544,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_gone"
+        "refusal": "evidence_gone",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          },
+          "evidence": null
+        }
       }
     },
     {
@@ -12298,7 +13648,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_unavailable"
+        "refusal": "discovery_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12385,7 +13740,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_unavailable"
+        "refusal": "evidence_unavailable",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12472,7 +13832,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "trust_domain_mismatch"
+        "refusal": "trust_domain_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12559,7 +13933,12 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_mismatch"
+        "refusal": "evidence_id_mismatch",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -12646,7 +14025,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_invalid"
+        "refusal": "discovery_invalid",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -12735,7 +14122,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_from_future"
+        "refusal": "discovery_from_future",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        }
       }
     },
     {
@@ -12824,7 +14219,15 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "discovery_stale"
+        "refusal": "discovery_stale",
+        "records": {
+          "discovery": null,
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_base_w1000000"
+          }
+        }
       }
     },
     {
@@ -12911,7 +14314,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "deployment_mismatch"
+        "refusal": "deployment_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_attestor_w10"
+          }
+        }
       }
     },
     {
@@ -12998,7 +14413,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_mismatch"
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_humantech_kyc_w10000"
+          }
+        }
       }
     },
     {
@@ -13085,7 +14517,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "claim_not_declared"
+        "refusal": "claim_not_declared",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_policy_key_w1"
+          }
+        }
       }
     },
     {
@@ -13170,7 +14619,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_use_mismatch"
+        "refusal": "key_use_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_rootkey_w1"
+          }
+        }
       }
     },
     {
@@ -13257,7 +14723,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_revoked"
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_revkey_late_w1"
+          }
+        }
       }
     },
     {
@@ -13342,7 +14825,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_not_valid_at_issuance"
+        "refusal": "key_not_valid_at_issuance",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_late_w1"
+          }
+        }
       }
     },
     {
@@ -13428,7 +14928,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "key_retired"
+        "refusal": "key_retired",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_old_w1"
+          }
+        }
       }
     },
     {
@@ -13515,7 +15032,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "attestor_denied"
+        "refusal": "attestor_denied",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -13602,7 +15131,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "credential_signer_mismatch"
+        "refusal": "credential_signer_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_root_w1000000"
+          }
+        }
       }
     },
     {
@@ -13689,7 +15235,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "not_registered_on_oracle"
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_root_w1000000"
+          }
+        }
       }
     },
     {
@@ -13778,7 +15341,19 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "subject_mismatch"
+        "refusal": "subject_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
       }
     },
     {
@@ -13867,7 +15442,16 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -13959,7 +15543,21 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_revoked"
+        "refusal": "evidence_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": null
+        }
       }
     },
     {
@@ -14048,7 +15646,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "evidence_id_conflict"
+        "refusal": "evidence_id_conflict",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_window_w10000"
+          }
+        }
       }
     },
     {
@@ -14135,7 +15750,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "validity_too_long"
+        "refusal": "validity_too_long",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_future_long_w1"
+          }
+        }
       }
     },
     {
@@ -14222,7 +15854,24 @@
       },
       "expected": {
         "accepted": false,
-        "refusal": "expired"
+        "refusal": "expired",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_expired_w1000"
+          }
+        }
       }
     }
   ],

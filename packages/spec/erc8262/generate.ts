@@ -1120,6 +1120,8 @@ type DocRef = string | { schemaCase: string };
 type CaseInput = {
   name: string;
   description: string;
+  // An earlier case whose records this case's observation store starts from.
+  follows?: string;
   discovery: DocRef;
   evidence: DocRef;
   context: ContextInput;
@@ -1998,7 +2000,8 @@ const evaluationCases: CaseInput[] = [
   {
     name: "gone-during-outage-stays-revoked",
     description:
-      "After a 410 (order-gone-before-discovery-unavailable) or a revoked body (revoked-body-during-discovery-outage) was recorded during a discovery outage, discovery is back and the host answers 200 active: refused (evidence_revoked).",
+      "The 410 recorded during the discovery outage is final: discovery is back and the host answers 200 active, refused (evidence_revoked).",
+    follows: "order-gone-before-discovery-unavailable",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2013,6 +2016,19 @@ const evaluationCases: CaseInput[] = [
     discovery: "gateway",
     evidence: "gateway-sumsub-revoked",
     context: sepoliaContext(GATEWAY_HOST, { discoveryFetch: { host: GATEWAY_HOST, status: 503 } }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "revoked-body-recorded-refuses-during-outage",
+    description:
+      "The revocation recorded from the revoked body refuses the next fetch (200 active) before the discovery checks, while discovery is still unavailable.",
+    follows: "revoked-body-during-discovery-outage",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
     expected: refuse("evidence_revoked"),
   },
   {
@@ -2698,21 +2714,88 @@ function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
   return found.document as T;
 }
 
+// What one evaluation writes to the observation store (SPEC.md section 10.7): the discovery
+// document (its updatedAt and every revoked key, by keyId and material) when it passes the
+// discovery steps evaluated on their own; the revocation of (allowlisted host, announced id)
+// from a 410 or a revoked body once steps 1-3 pass; the active evidence document when the
+// case's expected outcome passes steps 1-9.
+type Records = {
+  discovery: null | {
+    trustDomainId: string;
+    updatedAt: number;
+    revokedKeys: { keyId: string; material: string }[];
+  };
+  revocation: null | { trustDomainId: string; evidenceId: string };
+  evidence: null | { trustDomainId: string; evidenceId: string };
+};
+const EVIDENCE_ID_RULE = new RegExp(
+  `^[A-Za-z0-9_-]{${MIN_EVIDENCE_ID_LENGTH},${MAX_EVIDENCE_ID_LENGTH}}$`,
+);
+function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): Records {
+  const host = ctx.discoveryFetch.host;
+  const allowed = ctx.allowlist.some((a) => a.trustDomainId === host);
+  const unique = (values: string[]) => new Set(values).size === values.length;
+  const recordedNewer = ctx.seenDiscovery
+    .map((n) => discovery[n]!)
+    .some((p) => p.trustDomainId === disc.trustDomainId && p.updatedAt > disc.updatedAt);
+  const discoveryRecorded =
+    allowed &&
+    ctx.discoveryFetch.status === 200 &&
+    typeof c.discovery === "string" &&
+    disc.trustDomainId === host &&
+    unique(disc.deployments.map((d) => `${d.chainId}/${d.oracleAddress}`)) &&
+    unique(disc.keys.map((k) => k.keyId)) &&
+    unique(disc.sources.map((s) => s.sourceId)) &&
+    disc.updatedAt <= ctx.now + CLOCK_SKEW_SECONDS &&
+    !recordedNewer;
+  const revocationRecorded =
+    allowed &&
+    EVIDENCE_ID_RULE.test(ctx.announcedEvidenceId) &&
+    ctx.evidenceFetch.host === host &&
+    (ctx.evidenceFetch.status === 410 ||
+      (ctx.evidenceFetch.status === 200 &&
+        typeof c.evidence === "string" &&
+        ev.evidenceId === ctx.announcedEvidenceId &&
+        ev.status === "revoked"));
+  const passedStep9 =
+    c.expected.accepted ||
+    REFUSALS.indexOf(c.expected.refusal) > REFUSALS.indexOf("evidence_id_mismatch");
+  return {
+    discovery: discoveryRecorded
+      ? {
+          trustDomainId: disc.trustDomainId,
+          updatedAt: disc.updatedAt,
+          revokedKeys: disc.keys
+            .filter((k) => k.revokedAt !== undefined)
+            .map((k) => ({
+              keyId: k.keyId,
+              material: (k.credentialSigner ?? k.signerPubkeyHash)!,
+            })),
+        }
+      : null,
+    revocation: revocationRecorded
+      ? { trustDomainId: host, evidenceId: ctx.announcedEvidenceId }
+      : null,
+    evidence: passedStep9 ? { trustDomainId: ev.trustDomainId, evidenceId: ev.evidenceId } : null,
+  };
+}
+
 // Spells out every context field: a runner evaluates exactly what the vector states.
 function finalize({ context, expected, ...c }: CaseInput) {
   const disc = resolve(discovery, "discovery", c.discovery);
   const ev = resolve(evidence, "evidence", c.evidence);
   const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, ...consumer } = context;
+  const full: Context = {
+    ...consumer,
+    discoveryFetch,
+    evidenceFetch,
+    announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
+    proof: proof ?? matchingProof(disc, ev),
+  };
   return {
     ...c,
-    context: {
-      ...consumer,
-      discoveryFetch,
-      evidenceFetch,
-      announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
-      proof: proof ?? matchingProof(disc, ev),
-    },
-    expected,
+    context: full,
+    expected: { ...expected, records: recordsFor({ context, expected, ...c }, full, disc, ev) },
   };
 }
 
@@ -2827,6 +2910,31 @@ const ATTEMPT_FIELDS = {
   proof: PROOF,
 };
 
+const OBSERVED_PAIR = obj({
+  trustDomainId: TRUST_DOMAIN_ID,
+  evidenceId: evidenceSchema.properties.evidenceId,
+});
+const RECORDS = d(
+  "What this evaluation writes to the observation store (SPEC.md section 10.7). discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (allowlisted host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass. null: nothing of that kind is written.",
+  obj({
+    discovery: {
+      oneOf: [
+        { type: "null" },
+        obj({
+          trustDomainId: TRUST_DOMAIN_ID,
+          updatedAt: UNIX,
+          revokedKeys: {
+            type: "array",
+            items: obj({ keyId: KEY_ID, material: { type: "string" } }),
+          },
+        }),
+      ],
+    },
+    revocation: { oneOf: [{ type: "null" }, OBSERVED_PAIR] },
+    evidence: { oneOf: [{ type: "null" }, OBSERVED_PAIR] },
+  }),
+);
+
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: `${SCHEMA_BASE}/vectors.schema.json`,
@@ -2856,22 +2964,29 @@ const vectorsSchema = {
     evaluationCases: {
       type: "array",
       minItems: 1,
-      items: obj({
-        name: NAME,
-        description: { type: "string" },
-        discovery: DOC_REF,
-        evidence: d(
-          "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
-          DOC_REF,
-        ),
-        context: obj({ ...CONSUMER_FIELDS, ...ATTEMPT_FIELDS }),
-        expected: {
-          oneOf: [
-            obj({ accepted: { const: true } }),
-            obj({ accepted: { const: false }, refusal: { enum: REFUSALS } }),
-          ],
+      items: obj(
+        {
+          name: NAME,
+          description: { type: "string" },
+          follows: d(
+            "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked).",
+            NAME,
+          ),
+          discovery: DOC_REF,
+          evidence: d(
+            "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
+            DOC_REF,
+          ),
+          context: obj({ ...CONSUMER_FIELDS, ...ATTEMPT_FIELDS }),
+          expected: {
+            oneOf: [
+              obj({ accepted: { const: true }, records: RECORDS }),
+              obj({ accepted: { const: false }, refusal: { enum: REFUSALS }, records: RECORDS }),
+            ],
+          },
         },
-      }),
+        ["follows"],
+      ),
     },
     quorumCases: {
       type: "array",
