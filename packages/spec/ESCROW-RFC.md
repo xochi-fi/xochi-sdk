@@ -280,6 +280,7 @@ FillProof { kind:            "aztec_note_preimage",
             amount:          string,   // note value (u128, decimal) >= DestOpening.toAmount
             randomness:      string,   // the note's randomness (Field)
             solver:          string }  // the bonded solver account; MUST equal the authenticated awardee
+```
 
 `chainId` is a settlement-type label, not a network identity. The XSP path
 pins it as `XSP_AZTEC_CHAIN_ID = 0x41A7EC` (4302828; xochi
