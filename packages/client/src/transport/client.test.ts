@@ -692,17 +692,12 @@ describe("intent read capability", () => {
     for (const call of calls) expect(call.url).not.toContain(READ_TOKEN);
   });
 
-  it("rejects a malformed token before any request, without echoing it", async () => {
-    const { c, calls } = client(() => json({ status: "completed" }));
+  it("rejects a malformed token on a one-shot read, before any request, without echoing it", async () => {
+    const { c, calls } = client(() => json({ id: "xi_1", status: "completed" }));
     const bad = "not a token\r\nX-Injected: 1";
-    for (const read of [
-      c.getIntent("xi_1", { readToken: bad }),
-      c.getIntentStatus("xi_1", { readToken: bad }),
-    ]) {
-      const err = (await rejection(read)) as Error;
-      expect(err.message).toMatch(/not a read_token/);
-      expect(err.message).not.toContain("not a token");
-    }
+    const err = (await rejection(c.getIntent("xi_1", { readToken: bad }))) as Error;
+    expect(err.message).toMatch(/not a read_token/);
+    expect(err.message).not.toContain("not a token");
     expect(calls).toHaveLength(0);
   });
 
@@ -731,6 +726,24 @@ describe("intent read capability", () => {
     expect(res.status).toBe("settling");
     expect(res.readToken).toBeUndefined();
     expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
+  });
+
+  it("keeps polling on a malformed token: reads anonymously, reports it once, never echoes it", async () => {
+    const { c, calls, logged } = client(() => json({ status: "settling", terminal: false }));
+    const bad = "not a token\r\nX-Injected: 1";
+    for (let poll = 0; poll < 3; poll++) {
+      expect(await c.getIntentStatus("xi_1", { readToken: bad })).toMatchObject({
+        status: "settling",
+      });
+    }
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(new Headers(call.init.headers).has("X-Xochi-Read-Token")).toBe(false);
+    }
+    const reports = logged.filter((l) => /not a read_token/.test(l.message));
+    expect(reports).toHaveLength(1);
+    expect(reports[0].level).toBe("warn");
+    expect(JSON.stringify(logged)).not.toContain("not a token");
   });
 
   it("captures a 502 read_token without handing the ApiError to injected logging", async () => {

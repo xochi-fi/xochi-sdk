@@ -329,17 +329,17 @@ export interface IntentReadOptions {
 }
 
 /**
- * The read-capability header for one intent read, or none. A token not of the
- * `read_token` shape throws (without echoing it: it is a bearer secret).
+ * The read-capability header for one intent read: none without a token, null
+ * for a token not of the `read_token` shape (the caller decides whether that
+ * throws; nothing echoes the token, a bearer secret).
  */
-function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, string> {
+function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, string> | null {
   const readToken = opts?.readToken;
   if (readToken === undefined) return {};
-  if (!READ_TOKEN_PATTERN.test(readToken)) {
-    throw new Error("readToken is not a read_token (43 unpadded base64url characters)");
-  }
-  return { [READ_TOKEN_HEADER]: readToken };
+  return READ_TOKEN_PATTERN.test(readToken) ? { [READ_TOKEN_HEADER]: readToken } : null;
 }
+
+const MALFORMED_READ_TOKEN = "readToken is not a read_token (43 unpadded base64url characters)";
 
 // ============================================================
 // Client
@@ -407,6 +407,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
   // poll loop, so a persistently failing id would flood the log; warn once per
   // id instead. Cleared when it grows past a bound so a long session can't leak.
   const warnedStatusIds = new Set<string>();
+  // Ids already warned about a malformed caller `readToken`, bounded the same way.
+  const warnedReadTokenIds = new Set<string>();
 
   /**
    * One HTTP attempt with the bearer token attached and a timeout. Reports a
@@ -757,9 +759,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     },
 
     async getIntent(intentId, opts) {
+      // Strict: a one-shot read the caller asked for, so a malformed token is a
+      // bug to surface now, not a poll that can stall on it.
+      const headers = readTokenHeaders(opts);
+      if (headers === null) throw new Error(MALFORMED_READ_TOKEN);
       const { response, body } = await send(
         `/api/intent/${encodeURIComponent(intentId)}`,
-        { method: "GET", headers: readTokenHeaders(opts) },
+        { method: "GET", headers },
         timeouts.requestTimeoutMs,
         readOkJson,
       );
@@ -778,11 +784,20 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      *    can be terminalized on it, a dispatched one is held and reported),
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
-     * A malformed `readToken` rejects instead: it is the caller's bug, and the
-     * server would read it as anonymous without saying why.
+     * A malformed `readToken` never stops the poll: the read goes out
+     * anonymous (exactly what the server would make of it) and the caller's
+     * bug is reported once per intent, without echoing the token.
      */
     async getIntentStatus(intentId, opts) {
-      const headers = readTokenHeaders(opts);
+      let headers = readTokenHeaders(opts);
+      if (headers === null) {
+        if (!warnedReadTokenIds.has(intentId)) {
+          if (warnedReadTokenIds.size > 500) warnedReadTokenIds.clear();
+          warnedReadTokenIds.add(intentId);
+          log("warn", `[xochi-client] ${MALFORMED_READ_TOKEN}; polling ${intentId} without it`);
+        }
+        headers = {};
+      }
       try {
         const { response, body } = await send(
           `/api/intent/${encodeURIComponent(intentId)}/status`,
