@@ -701,21 +701,35 @@ describe("intent read capability", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("never lets a token-bearing read follow a redirect", async () => {
-    const { c, calls } = client((call) => {
-      if (call === 1) {
-        // An injected fetch that followed a redirect regardless of `redirect`.
-        const followed = json({ id: "xi_1", status: "completed" });
-        Object.defineProperty(followed, "redirected", { value: true });
-        return followed;
+  it("refuses every redirect shape on a token-bearing read, and sends it with redirect: manual", async () => {
+    const followed = (patch: Record<string, unknown>) => {
+      const res = json({ id: "xi_1", status: "completed" });
+      for (const [key, value] of Object.entries(patch)) {
+        Object.defineProperty(res, key, { value });
       }
-      return json({ status: "settling" });
-    });
-    const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
-    expect(err.message).toMatch(/redirected/);
-    expect(err.message).not.toContain(READ_TOKEN);
+      return res;
+    };
+    const shapes: Record<string, () => Response> = {
+      "3xx (manual mode, undici and Workers)": () =>
+        new Response(null, { status: 302, headers: { Location: "https://evil.test/x" } }),
+      "opaqueredirect (manual mode, browsers)": () =>
+        followed({ type: "opaqueredirect", status: 0 }),
+      "redirected (a fetch that followed anyway)": () => followed({ redirected: true }),
+      "foreign response.url": () => followed({ url: "https://evil.test/api/intent/xi_1" }),
+    };
+    for (const [shape, answer] of Object.entries(shapes)) {
+      const { c, calls } = client(answer);
+      const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
+      expect(err.message, shape).toMatch(/redirect/);
+      expect(err.message, shape).not.toContain(READ_TOKEN);
+      expect(calls[0].init.redirect, shape).toBe("manual");
+    }
+    const { c, calls } = client(() =>
+      followed({ url: "https://api.example.test/api/intent/xi_1/status" }),
+    );
+    expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).not.toBeNull();
     await c.getIntentStatus("xi_1");
-    expect(calls.map((call) => call.init.redirect)).toEqual(["error", undefined]);
+    expect(calls.map((call) => call.init.redirect)).toEqual(["manual", undefined]);
   });
 
   it("drops a successful execute's token when the response names another intent", async () => {
@@ -1021,7 +1035,8 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
     return { url: `http://127.0.0.1:${port}`, seen, close };
   }
 
-  it("fails the read on a cross-origin 302; the redirect target never sees the token", async () => {
+  /** `target` answers every status read; `origin` 302s every request to it. */
+  async function redirectPair() {
     const target = await loopback((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ id: "xi_1", status: "settling" }));
@@ -1030,33 +1045,90 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
       res.writeHead(302, { Location: `${target.url}${req.url}` });
       res.end();
     });
+    const close = () => Promise.all([origin.close(), target.close()]);
+    return { origin, target, close };
+  }
+
+  function recordingClient(baseUrl: string, fetch?: XochiClientOptions["fetch"]) {
+    const logged: string[] = [];
+    const c = createXochiClient({
+      baseUrl,
+      ...(fetch ? { fetch } : {}),
+      log: (level, message, ...data) =>
+        logged.push(
+          [level, message, ...data.map((d) => `${String(d)} ${JSON.stringify(d)}`)].join(" "),
+        ),
+    });
+    return { c, logged };
+  }
+
+  /** Cloudflare Workers: `redirect: "error"` throws as the Request is built. */
+  const workersFetch: XochiClientOptions["fetch"] = (input, init) => {
+    if (init.redirect === "error") {
+      return Promise.reject(new TypeError("Workers does not implement redirect: error"));
+    }
+    return globalThis.fetch(input, init);
+  };
+
+  for (const [runtime, fetch] of [
+    ["native fetch", undefined],
+    ["a Workers-like fetch", workersFetch],
+  ] as const) {
+    it(`refuses a cross-origin 302 and polls on anonymously (${runtime}); the target never sees the token`, async () => {
+      const { origin, target, close } = await redirectPair();
+      try {
+        const { c, logged } = recordingClient(origin.url, fetch);
+        const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
+        expect(err.message).toMatch(/redirect/);
+        for (let poll = 0; poll < 2; poll++) {
+          expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toMatchObject({
+            status: "settling",
+          });
+        }
+        // Each poll tries the token first, then reads anonymously through the redirect.
+        expect(origin.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([
+          READ_TOKEN,
+          READ_TOKEN,
+          undefined,
+          READ_TOKEN,
+          undefined,
+        ]);
+        expect(target.seen).toHaveLength(2);
+        for (const r of target.seen) expect(r.headers).not.toHaveProperty("x-xochi-read-token");
+        expect(logged.filter((l) => /redirected/.test(l))).toHaveLength(1);
+        expect(logged.join("\n")).not.toContain(READ_TOKEN);
+      } finally {
+        await close();
+      }
+    });
+  }
+
+  it("sends the token on a read that is not redirected, under a Workers-like fetch", async () => {
+    const { target, close } = await redirectPair();
     try {
-      const logged: string[] = [];
-      const c = createXochiClient({
-        baseUrl: origin.url,
-        log: (level, message, ...data) =>
-          logged.push(
-            [level, message, ...data.map((d) => `${String(d)} ${JSON.stringify(d)}`)].join(" "),
-          ),
+      const { c } = recordingClient(target.url, workersFetch);
+      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toMatchObject({
+        status: "settling",
       });
-
-      const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
-      expect(`${String(err)} ${String(err.cause)}`).not.toContain(READ_TOKEN);
-      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
-      expect(origin.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([
-        READ_TOKEN,
-        READ_TOKEN,
-      ]);
-      expect(target.seen).toHaveLength(0);
-      expect(logged.join("\n")).not.toContain(READ_TOKEN);
-
-      // The same redirect is followed by a read that carries no token, so the
-      // refusal above is the token rule, not a target the client cannot reach.
-      expect(await c.getIntentStatus("xi_1")).toMatchObject({ status: "settling" });
-      expect(target.seen).toHaveLength(1);
-      expect(target.seen[0].headers).not.toHaveProperty("x-xochi-read-token");
+      expect(target.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([READ_TOKEN]);
     } finally {
-      await Promise.all([origin.close(), target.close()]);
+      await close();
+    }
+  });
+
+  it("refuses the response an injected fetch reached by following the redirect anyway", async () => {
+    const { origin, close } = await redirectPair();
+    try {
+      const following: XochiClientOptions["fetch"] = (input, init) =>
+        globalThis.fetch(input, { ...init, redirect: "follow" });
+      const { c } = recordingClient(origin.url, following);
+      const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
+      expect(err.message).toMatch(/redirect/);
+      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toMatchObject({
+        status: "settling",
+      });
+    } finally {
+      await close();
     }
   });
 });

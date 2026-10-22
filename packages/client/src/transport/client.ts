@@ -370,6 +370,31 @@ function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, s
 
 const MALFORMED_READ_TOKEN = `readToken is not a read_token (${READ_TOKEN_LENGTH} unpadded base64url characters)`;
 
+/** A read-token request answered by a redirect, or by a response from another origin. */
+class ReadTokenRedirectRefused extends Error {
+  constructor(path: string) {
+    super(`Refused a redirect on a read-token request (${path})`);
+    this.name = "ReadTokenRedirectRefused";
+  }
+}
+
+/**
+ * Whether a response's `url` is on the origin the request was sent to. A
+ * constructed `Response` names no url (empty): nothing to compare. A request
+ * url that does not resolve (a relative `baseUrl` outside a browser) fails
+ * closed.
+ */
+function staysOnOrigin(responseUrl: string, requestUrl: string): boolean {
+  if (!responseUrl) return true;
+  // A browser resolves a relative `baseUrl` against the page; elsewhere there is none.
+  const page = typeof location === "undefined" ? undefined : location.href;
+  try {
+    return new URL(responseUrl).origin === new URL(requestUrl, page).origin;
+  } catch {
+    return false;
+  }
+}
+
 // ============================================================
 // Client
 // ============================================================
@@ -436,7 +461,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
   // poll loop, so a persistently failing id would flood the log; warn once per
   // id instead. Cleared when it grows past a bound so a long session can't leak.
   const warnedStatusIds = new Set<string>();
-  // Ids already warned about a malformed caller `readToken`, bounded the same way.
+  // Ids already warned about a read token their status poll could not use
+  // (malformed, or answered by a redirect), bounded the same way.
   const warnedReadTokenIds = new Set<string>();
 
   /**
@@ -450,12 +476,14 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    * same as a stalled connect, whether or not the injected `fetch` honours the
    * signal on its body.
    *
-   * A request carrying the read capability never follows a redirect
-   * (`redirect: "error"`): fetch drops `Authorization` on a cross-origin hop
-   * but forwards a custom header, so the hop would hand the bearer secret to
-   * whatever host the `Location` names. The redirect surfaces as a failed
-   * request instead, and a response an injected `fetch` reached by redirecting
-   * anyway is refused.
+   * A request carrying the read capability is sent with `redirect: "manual"`
+   * and refused (`ReadTokenRedirectRefused`) on any 3xx or `opaqueredirect`,
+   * on `redirected`, or on a `response.url` off the request's origin. fetch
+   * drops `Authorization` on a cross-origin hop but forwards a custom header,
+   * so following would hand the bearer secret to whatever host the `Location`
+   * names. `"manual"`, not `"error"`: Cloudflare Workers throws on `"error"`,
+   * and the status/url checks also catch an injected `fetch` that followed
+   * anyway (the token has then left already; its response is still refused).
    */
   async function send<T>(
     path: string,
@@ -479,11 +507,17 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         ...init,
         headers,
         signal: controller.signal,
-        ...(carriesReadToken ? { redirect: "error" as const } : {}),
+        ...(carriesReadToken ? { redirect: "manual" as const } : {}),
       });
-      if (carriesReadToken && fetched.redirected) {
+      if (
+        carriesReadToken &&
+        (fetched.type === "opaqueredirect" ||
+          (fetched.status >= 300 && fetched.status < 400) ||
+          fetched.redirected ||
+          !staysOnOrigin(fetched.url, `${baseUrl}${path}`))
+      ) {
         cancelBody(fetched);
-        throw new Error(`Refused a redirected response to a read-token request (${path})`);
+        throw new ReadTokenRedirectRefused(path);
       }
       let response = fetched;
       if (fetched.body) {
@@ -813,27 +847,35 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      *    can be terminalized on it, a dispatched one is held and reported),
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
-     * A malformed `readToken` never stops the poll: the read goes out
-     * anonymous (exactly what the server would make of it) and the caller's
-     * bug is reported once per intent, without echoing the token.
+     * A read token never stops the poll. A malformed one is not sent, and a
+     * token-bearing read answered by a redirect (`ReadTokenRedirectRefused`)
+     * is read again without it: either way the poll gets the anonymous
+     * status-only view and the problem is reported once per intent, without
+     * echoing the token.
      */
     async getIntentStatus(intentId, opts) {
+      const warnOnce = (message: string) => {
+        if (warnedReadTokenIds.has(intentId)) return;
+        if (warnedReadTokenIds.size > 500) warnedReadTokenIds.clear();
+        warnedReadTokenIds.add(intentId);
+        log("warn", message);
+      };
       let headers = readTokenHeaders(opts);
       if (headers === null) {
-        if (!warnedReadTokenIds.has(intentId)) {
-          if (warnedReadTokenIds.size > 500) warnedReadTokenIds.clear();
-          warnedReadTokenIds.add(intentId);
-          log("warn", `[xochi-client] ${MALFORMED_READ_TOKEN}; polling ${intentId} without it`);
-        }
+        warnOnce(`[xochi-client] ${MALFORMED_READ_TOKEN}; polling ${intentId} without it`);
         headers = {};
       }
+      const path = `/api/intent/${encodeURIComponent(intentId)}/status`;
+      const read = (h: Record<string, string>) =>
+        send(path, { method: "GET", headers: h }, timeouts.requestTimeoutMs, readOkJson);
       try {
-        const { response, body } = await send(
-          `/api/intent/${encodeURIComponent(intentId)}/status`,
-          { method: "GET", headers },
-          timeouts.requestTimeoutMs,
-          readOkJson,
-        );
+        const { response, body } = await read(headers).catch((err: unknown) => {
+          if (!(err instanceof ReadTokenRedirectRefused)) throw err;
+          warnOnce(
+            `[xochi-client] status read for ${intentId} was redirected; polling it without the read token`,
+          );
+          return read({});
+        });
         if (!response.ok) {
           // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
           // order reading "settling forever" and is the signal that was missing
