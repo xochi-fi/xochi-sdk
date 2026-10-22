@@ -1943,7 +1943,9 @@ first award-log record so the decision is made on data.
   `lost` (or any new feed event type) under an `rfcVersion` whose SDK release
   has not shipped, and that release MUST also skip and report an unknown
   event type and advance the cursor past it. No opt-in field is needed: the
-  version gate is the opt-in.
+  version gate is the opt-in. A new event type carries its payload under its
+  own key (`lost`), never `announcement` or `award`: the SDK fails closed on an
+  unknown type that carries a known payload key or normalizes to a known type.
 - **Size bins.** This is §2.1's D1b. The announcement's `fromAmount` /
   `outputAmount` becomes a bin from a **published fixed-USD ladder** (decided
   2026-10-17; e.g. `<1k, 1–5k, 5–25k, 25–100k, 100–500k, 500k+`, finalized with
