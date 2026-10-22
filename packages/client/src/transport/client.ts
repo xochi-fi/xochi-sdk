@@ -15,7 +15,7 @@
  */
 
 import type { QuoteResponseWire, ExecuteResponseWire } from "../shared/index.js";
-import { READ_TOKEN_HEADER, READ_TOKEN_PATTERN } from "../shared/index.js";
+import { READ_TOKEN_HEADER, READ_TOKEN_LENGTH, READ_TOKEN_PATTERN } from "../shared/index.js";
 import type { PreparedClaim } from "@xochi/signer";
 import {
   decodeWireStatus,
@@ -123,10 +123,10 @@ export interface XochiClientOptions {
 /**
  * A structured API failure. Carries the numeric HTTP status and, for
  * backpressure responses (429/503), an ABSOLUTE unix-seconds retry target so the
- * UI can render a countdown and disable Retry until it elapses. The message stays
- * the raw `HTTP {status}: {body}` string so a code-less consumer can still fall
- * back to matching on it, except that anything read-token shaped is redacted
- * (any read-token key's value, and every 43-character base64url run).
+ * UI can render a countdown and disable Retry until it elapses. The message is
+ * `HTTP {status}: {body excerpt}` so a code-less consumer can still fall back to
+ * matching on it; the excerpt is capped and read-token redacted (README
+ * "Transport" states the rule).
  *
  * A failed execute may still carry the intent read capability (xochi#563: the
  * server serves it on a 502 when funds may have moved). It is never a property
@@ -192,39 +192,48 @@ function readTokenForIntent(
   return typeof token === "string" && READ_TOKEN_PATTERN.test(token) ? token : undefined;
 }
 
-/** One `\uXXXX` JSON escape, at any escape depth (`\\u0041` inside an escaped string). */
-const JSON_UNICODE_ESCAPE = /\\+u([0-9a-fA-F]{4})/g;
+/** The most of an error body that reaches `ApiError.message`, cut before any redaction work. */
+const MAX_ERROR_EXCERPT_CHARS = 2048;
+/** Decode passes for nested escaping (`%2522`, `\\u0022`); each pass is linear. */
+const ESCAPE_DECODE_PASSES = 3;
+const REDACTED = "[redacted]";
 /** A read-token key (`read_token`, `readToken`, `X-Xochi-Read-Token`) and the value it opens. */
 const READ_TOKEN_KEYED_VALUE = /(read[_-]?token\\*["']?\s*[:=]\s*\\*["']?)[A-Za-z0-9_-]+/gi;
-/** A maximal base64url run of exactly a read token's length (43). */
-const TOKEN_SHAPED_RUN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
+/** A base64url run at least a read token long (greedy from its first character: maximal). */
+const LONG_BASE64URL_RUN = new RegExp(`[A-Za-z0-9_-]{${READ_TOKEN_LENGTH},}`, "g");
+const HEX_RUN = /^(?:0x)?[0-9a-fA-F]+$/;
 
 /**
- * A raw response body made fit for an error message or a log. Structural, so
- * no echo shape carries a token through: escapes of base64url characters are
- * decoded first (a `\u`-escaped key or value, at any nesting depth), the
- * body's own `read_token` is cut wherever it is echoed, the value after any
- * read-token key is cut whatever its length (a truncated body), and then every
- * maximal base64url run of exactly 43 characters is cut wherever it appears
- * (nested escaped JSON, camelCase keys, plain text or HTML echoes). A benign
- * 43-character base64url value is redacted too: accepted collateral, since tx
- * hashes (66), addresses (42) and intent ids are other lengths. Over the raw
- * text rather than a JSON round-trip: the body may not be JSON, and the rest of
- * it must reach the message readable.
+ * A raw error body made fit for `ApiError.message` and the logs: the redaction
+ * rule stated in README "Transport", applied in its order. Every step is linear
+ * in the excerpt, which is bounded before any of them runs.
  */
-function redactReadToken(body: string): string {
-  const decoded = body.replace(JSON_UNICODE_ESCAPE, (escape, hex: string) => {
-    const char = String.fromCharCode(parseInt(hex, 16));
-    return /^[A-Za-z0-9_-]$/.test(char) ? char : escape;
-  });
+function redactErrorBody(body: string): string {
+  // Cut first, so a huge or hostile body costs a bounded amount of work.
+  const truncated = body.length > MAX_ERROR_EXCERPT_CHARS;
+  let text = truncated ? body.slice(0, MAX_ERROR_EXCERPT_CHARS) : body;
+  // Decode `\uXXXX` and `%XX` escapes, nested ones included.
+  for (let pass = 0; pass < ESCAPE_DECODE_PASSES; pass++) {
+    const next = text
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/%([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === text) break;
+    text = next;
+  }
+  // The cut may have split a token: drop the run it ends in.
+  if (truncated) {
+    let end = text.length;
+    while (end > 0 && /[A-Za-z0-9_-]/.test(text[end - 1])) end--;
+    text = `${text.slice(0, end)}…`;
+  }
+  // The body's own token (read from the whole body), wherever it is echoed.
   const token = parseJsonObject(body)?.read_token;
-  const echoed =
-    typeof token === "string" && READ_TOKEN_PATTERN.test(token)
-      ? decoded.split(token).join("[redacted]")
-      : decoded;
-  return echoed
-    .replace(READ_TOKEN_KEYED_VALUE, "$1[redacted]")
-    .replace(TOKEN_SHAPED_RUN, "[redacted]");
+  if (typeof token === "string" && READ_TOKEN_PATTERN.test(token)) {
+    text = text.split(token).join(REDACTED);
+  }
+  return text
+    .replace(READ_TOKEN_KEYED_VALUE, `$1${REDACTED}`)
+    .replace(LONG_BASE64URL_RUN, (run) => (HEX_RUN.test(run) ? run : REDACTED));
 }
 
 /**
@@ -359,7 +368,7 @@ function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, s
   return READ_TOKEN_PATTERN.test(readToken) ? { [READ_TOKEN_HEADER]: readToken } : null;
 }
 
-const MALFORMED_READ_TOKEN = "readToken is not a read_token (43 unpadded base64url characters)";
+const MALFORMED_READ_TOKEN = `readToken is not a read_token (${READ_TOKEN_LENGTH} unpadded base64url characters)`;
 
 // ============================================================
 // Client
@@ -563,7 +572,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
                 ? resolveRetryAfterSeconds(response.headers, errorBody)
                 : undefined;
             const error = new ApiError(
-              `HTTP ${response.status}: ${redactReadToken(errorBody) || response.statusText}`,
+              `HTTP ${response.status}: ${redactErrorBody(errorBody) || response.statusText}`,
               response.status,
               retryAfter,
             );

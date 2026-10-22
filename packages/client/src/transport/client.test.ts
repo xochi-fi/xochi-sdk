@@ -759,6 +759,14 @@ describe("intent read capability", () => {
       "doubly escaped value": JSON.stringify({
         error: `{"read_token":"\\u0041${READ_TOKEN.slice(1)}"}`,
       }),
+      "\\u0022-escaped quotes, partial value": `{"error":"echo {\\u0022read_token\\u0022:\\u0022${fragment}\\u0022}"}`,
+      "\\u0022-escaped quotes": `{"error":"echo {\\u0022read_token\\u0022:\\u0022${READ_TOKEN}\\u0022}"}`,
+      "percent-encoded, partial value": `error=bad&echo=%22read_token%22%3A%22${fragment}%22`,
+      "percent-encoded": `error=bad&echo=%22read_token%22%3A%22${READ_TOKEN}%22`,
+      "doubly percent-encoded": `echo=%2522read_token%2522%253A%2522${fragment}%2522`,
+      "adjacent prefix": `cache key token_${READ_TOKEN}`,
+      "adjacent short prefix": `rt_${READ_TOKEN}`,
+      "adjacent suffix": `${READ_TOKEN}_v1 rejected`,
     };
     for (const [shape, body] of Object.entries(bodies)) {
       const { c, logged } = client(() => new Response(body, { status: 502 }));
@@ -775,7 +783,8 @@ describe("intent read capability", () => {
   it("keeps hashes and addresses readable while redacting a token-shaped value", async () => {
     const txHash = `0x${"ab".repeat(32)}`;
     const address = `0x${"cd".repeat(20)}`;
-    // Collateral by design: any 43-character base64url run reads as a token.
+    // Collateral by design: any base64url run at least a token long that is
+    // not hex reads as a token (a 43-character base58 address included).
     const benign = "q".repeat(43);
     const { c } = client(
       () =>
@@ -787,6 +796,24 @@ describe("intent read capability", () => {
     expect(err.message).toBe(
       `HTTP 502: settlement ${txHash} to ${address} ref [redacted] via intent-1`,
     );
+  });
+
+  it("caps the error body before any redaction work, and drops a token split by the cut", async () => {
+    // 80k backslashes made the old escape decoder quadratic (seconds); the cut
+    // bounds every step, so the message can never carry more than the excerpt.
+    const hostile = `${"\\".repeat(80_000)}u0041`;
+    const straddling = `${"x".repeat(2048 - 20)} ${READ_TOKEN} tail`;
+    for (const body of [hostile, straddling]) {
+      const { c, logged } = client(() => new Response(body, { status: 400 }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.code).toBe(400);
+      expect(err.message.length).toBeLessThanOrEqual("HTTP 400: ".length + 2048 + 1);
+      expect(err.message.endsWith("…")).toBe(true);
+      for (const secret of [READ_TOKEN, READ_TOKEN.slice(0, 19)]) {
+        expect(err.message).not.toContain(secret);
+        expect(JSON.stringify(logged)).not.toContain(secret);
+      }
+    }
   });
 
   it("captures a 502 read_token without handing the ApiError to injected logging", async () => {

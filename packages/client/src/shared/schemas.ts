@@ -510,10 +510,13 @@ export const QuoteResponseSchema = z
   .strict();
 
 /**
- * Shape of an intent read capability (`read_token` on the execute response,
- * xochi#563): 32 random bytes as unpadded base64url, so exactly 43 characters.
+ * Length of an intent read capability (`read_token` on the execute response,
+ * xochi#563): 32 random bytes as unpadded base64url.
  */
-export const READ_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+export const READ_TOKEN_LENGTH = 43;
+
+/** Shape of an intent read capability: exactly `READ_TOKEN_LENGTH` base64url characters. */
+export const READ_TOKEN_PATTERN = new RegExp(`^[A-Za-z0-9_-]{${READ_TOKEN_LENGTH}}$`);
 
 /**
  * The request header that carries a `read_token` on `GET /api/intent/:id` and
