@@ -4,6 +4,15 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Breaking
+
+- **RISK_SCORE (0x02) and PATTERN (0x03) carry a proof timestamp** (xochi-fi/ERC-8262#25, ERC-8262 PR #33). The Oracle now rejects either once the timestamp is older than `MAX_PROOF_AGE` (1 hour) or in the future, and ratchets on it per type; before, both used `block.timestamp` and had no age bound. Bundled `risk_score.json` and `pattern.json` are re-synced: their verification keys changed, so deploy the matching ERC-8262 verifiers and Oracle. Proofs made by earlier releases do not verify against the new verifiers.
+  - `PUBLIC_INPUT_COUNTS`: `0x02` 8 -> 9, `0x03` 7 -> 8.
+  - risk_score layout: `timestamp` is input 7, `submitter` moves 7 -> 8. `RiskScoreInput` (`buildRiskScoreInputs`, `proveRiskScore`, `proveBatch`, `provePlan`) gains optional `timestamp` (unix seconds as a string, default now), validated like compliance's.
+  - pattern layout: `timestamp` is appended as input 7; `settlement_root` stays input 6, so `SettlementRegistry.finalizeTrade` is unchanged. `PatternInput` gains optional `timestamp` (default now). It is the proof time, not a transaction time (`timestamps`).
+  - **`decodeTierProofClaim` returns `{ threshold, timestamp }`** (new type `DecodedTierProofClaim`), was the threshold alone. Migrate: `decodeTierProofClaim(pi, exp).threshold`. `timestamp` is the proof's own time (unix seconds): bound its age against it (`assertProofRecent`), never against an Oracle attestation's `timestamp`, which is the block time. Decoding rejects a timestamp at or above 2^40.
+  - `TierProof` gains `timestamp` (the bound value; `createdAt` / `expiresAt` stay unbound bookkeeping, and the Oracle refuses a tier proof an hour after `timestamp` whatever `expiresAt` says). `TierProofVerification` gains `timestamp` (0 when invalid). `verifyTierProof` does not check age.
+
 ### Changed
 
 - **Repo layout: `@xochi/sdk` moved from the repo root to `packages/sdk`** (sources, tests, `circuits/`, `scripts/sync-circuits.sh`, now `packages/sdk/scripts/sync-circuits.sh`). The root is the private npm workspace root `xochi-sdk-workspace` and publishes nothing. For the sdk alone use `-w @xochi/sdk` (or root `npm run test:sdk` / `test:integration`). The tarball still ships `dist` + `circuits`. The ERC-8262 checkout beside the repo stays the default for circuit sync and the drift/integration tests; `ERC_8262_PATH` still overrides it for the tests.

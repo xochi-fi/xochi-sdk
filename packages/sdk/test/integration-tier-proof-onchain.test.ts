@@ -157,7 +157,10 @@ describe("tier proofs on the real Oracle (anvil)", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.valid).toBe(true);
-    expect(decodeTierProofClaim(result.publicInputs!, { submitter: ALICE })).toBe(100);
+    expect(decodeTierProofClaim(result.publicInputs!, { submitter: ALICE })).toEqual({
+      threshold: 100,
+      timestamp: institutional.timestamp,
+    });
   });
 
   it("rejects the same proof submitted by another wallet", async () => {

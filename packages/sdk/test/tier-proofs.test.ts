@@ -23,12 +23,16 @@ const OTHER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" as Address;
 
 let trusted: TierProof; // score 25, exactly at the Trusted boundary
 let institutional: TierProof; // score 110, above the circuit's signal cap
+let provedFrom: number; // unix seconds before proving
+let provedTo: number; // unix seconds after proving
 
 beforeAll(async () => {
+  provedFrom = Math.floor(Date.now() / 1000);
   trusted = await generateTierProof(loader, 25, 25, SUBMITTER);
   const top = await generateHighestTierProof(loader, 110, SUBMITTER);
   if (!top) throw new Error("expected an Institutional proof for score 110");
   institutional = top;
+  provedTo = Math.floor(Date.now() / 1000);
 });
 
 describe("tier proof generation", () => {
@@ -38,6 +42,7 @@ describe("tier proof generation", () => {
       valid: true,
       threshold: 25,
       tierName: "Trusted",
+      timestamp: trusted.timestamp,
     });
   });
 
@@ -51,6 +56,13 @@ describe("tier proof generation", () => {
     // [proof_type, direction, bound_lower, bound_upper, result, ...]
     expect(trusted.publicInputs.slice(0, 5).map((w) => BigInt(w))).toEqual([1n, 1n, 2499n, 0n, 1n]);
     expect(BigInt(institutional.publicInputs[2])).toBe(9999n);
+  });
+
+  it("binds the generation time as public input 7, before submitter", () => {
+    expect(trusted.timestamp).toBeGreaterThanOrEqual(provedFrom);
+    expect(trusted.timestamp).toBeLessThanOrEqual(provedTo);
+    expect(BigInt(trusted.publicInputs[7])).toBe(BigInt(trusted.timestamp));
+    expect(BigInt(trusted.publicInputs[8])).toBe(BigInt(SUBMITTER));
   });
 
   it("has no proof for Standard", async () => {
@@ -100,9 +112,10 @@ describe("verifyTierProof reads the claim from the public inputs", () => {
     expect(result.error).toMatch(/config_hash does not match/);
   });
 
-  it("does not trust expiresAt", async () => {
-    const stale = { ...trusted, expiresAt: 0 };
-    expect((await verifyTierProof(loader, stale, { submitter: SUBMITTER })).valid).toBe(true);
+  it("does not trust expiresAt or the timestamp label", async () => {
+    const stale = { ...trusted, expiresAt: 0, timestamp: 0 };
+    const result = await verifyTierProof(loader, stale, { submitter: SUBMITTER });
+    expect(result).toMatchObject({ valid: true, timestamp: trusted.timestamp });
   });
 
   it("rejects tampered public inputs through bb.js", async () => {
@@ -113,11 +126,31 @@ describe("verifyTierProof reads the claim from the public inputs", () => {
     const result = await verifyTierProof(loader, tampered, { submitter: SUBMITTER });
     expect(result).toMatchObject({ valid: false, threshold: 0, error: "Invalid proof" });
   });
+
+  it("rejects a re-dated timestamp through bb.js", async () => {
+    const words = [...trusted.publicInputs];
+    words[7] = `0x${(trusted.timestamp + 3600).toString(16).padStart(64, "0")}`;
+    const redated: TierProof = { ...trusted, publicInputs: words };
+
+    const result = await verifyTierProof(loader, redated, { submitter: SUBMITTER });
+    expect(result).toMatchObject({ valid: false, timestamp: 0, error: "Invalid proof" });
+  });
 });
 
 describe("decodeTierProofClaim", () => {
-  it("returns the proven threshold", () => {
-    expect(decodeTierProofClaim(institutional.publicInputs, { submitter: SUBMITTER })).toBe(100);
+  it("returns the proven threshold and the proof timestamp", () => {
+    expect(decodeTierProofClaim(institutional.publicInputs, { submitter: SUBMITTER })).toEqual({
+      threshold: 100,
+      timestamp: institutional.timestamp,
+    });
+  });
+
+  it("rejects a timestamp no Noir proof can carry (>= 2^40)", () => {
+    const words = [...trusted.publicInputs];
+    words[7] = `0x${(1n << 40n).toString(16).padStart(64, "0")}`;
+    expect(() => decodeTierProofClaim(words, { submitter: SUBMITTER })).toThrow(
+      /timestamp .* is not below 2\^40/,
+    );
   });
 
   it.each<[string, number, bigint]>([
@@ -134,8 +167,8 @@ describe("decodeTierProofClaim", () => {
 
   it("rejects the wrong number of public inputs", () => {
     expect(() =>
-      decodeTierProofClaim(trusted.publicInputs.slice(0, 7), { submitter: SUBMITTER }),
-    ).toThrow(/Expected 8 risk_score public inputs, got 7/);
+      decodeTierProofClaim(trusted.publicInputs.slice(0, 8), { submitter: SUBMITTER }),
+    ).toThrow(/Expected 9 risk_score public inputs, got 8/);
   });
 });
 

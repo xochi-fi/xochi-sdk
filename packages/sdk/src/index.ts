@@ -45,6 +45,8 @@ export {
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,
+  ProofTimestampInFutureError,
+  ProofTimestampNotMonotonicError,
   TimeWindowTooSmallError,
   EmptyBatchError,
   BatchTooLargeError,
@@ -139,7 +141,12 @@ export type {
   AssetClass,
   FeeLayers,
 } from "./tiers.js";
-export type { TierProof, TierProofVerification, TierProofExpectations } from "./tier-proofs.js";
+export type {
+  DecodedTierProofClaim,
+  TierProof,
+  TierProofVerification,
+  TierProofExpectations,
+} from "./tier-proofs.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,
