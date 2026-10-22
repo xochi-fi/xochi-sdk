@@ -96,10 +96,10 @@ export function circuitToProofType(name: CircuitName): ProofType {
 export const PATTERN_TIME_WINDOW_MIN = 86_400;
 
 /**
- * Maximum time_window for pattern analysis: 30 days (seconds). Mirrors
+ * Maximum time_window for pattern analysis: 90 days (seconds). Mirrors
  * ERC8262Oracle.MAX_TIME_WINDOW, which reverts `TimeWindowTooLarge` above it.
  */
-export const PATTERN_TIME_WINDOW_MAX = 2_592_000;
+export const PATTERN_TIME_WINDOW_MAX = 7_776_000;
 
 /** Expected public input count per proof type (must match Noir circuits) */
 export const PUBLIC_INPUT_COUNTS: Record<ProofType, number> = {

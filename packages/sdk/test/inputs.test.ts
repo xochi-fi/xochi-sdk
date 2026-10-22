@@ -530,7 +530,7 @@ describe("buildPatternInputs", () => {
     ).toThrow("below minimum");
   });
 
-  it("rejects time_window above maximum (30d, the Oracle's MAX_TIME_WINDOW)", () => {
+  it("rejects time_window above maximum (90d, the Oracle's MAX_TIME_WINDOW)", () => {
     expect(() =>
       buildPatternInputs({
         amounts: [9000],
@@ -538,7 +538,7 @@ describe("buildPatternInputs", () => {
         numTransactions: 1,
         analysisType: 1,
         reportingThreshold: 10000,
-        timeWindow: 2_592_001,
+        timeWindow: 7_776_001,
         txSetHash: "0x",
         submitter: SUBMITTER,
         settlementRoot: ZERO_SETTLEMENT_ROOT,
@@ -561,7 +561,7 @@ describe("buildPatternInputs", () => {
 
     expect(() => buildPatternInputs({ ...base, timeWindow: 86400 })).not.toThrow();
 
-    expect(() => buildPatternInputs({ ...base, timeWindow: 2_592_000 })).not.toThrow();
+    expect(() => buildPatternInputs({ ...base, timeWindow: 7_776_000 })).not.toThrow();
   });
 
   it("defaults the proof timestamp to now and rejects one out of range", () => {

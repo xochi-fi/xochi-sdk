@@ -91,12 +91,12 @@ describe("decodeContractError", () => {
 
   it("decodes TimeWindowTooLarge with the window and maximum", () => {
     const err = decodeContractError(
-      makeRevert("TimeWindowTooLarge", [2592001n, 2592000n]),
+      makeRevert("TimeWindowTooLarge", [7776001n, 7776000n]),
       ORACLE_ABI,
     );
     expect(err).toBeInstanceOf(TimeWindowTooLargeError);
-    expect((err as TimeWindowTooLargeError).timeWindow).toBe(2592001n);
-    expect((err as TimeWindowTooLargeError).maximum).toBe(2592000n);
+    expect((err as TimeWindowTooLargeError).timeWindow).toBe(7776001n);
+    expect((err as TimeWindowTooLargeError).maximum).toBe(7776000n);
   });
 
   it("decodes BatchTooLarge and EmptyBatch (no args)", () => {
