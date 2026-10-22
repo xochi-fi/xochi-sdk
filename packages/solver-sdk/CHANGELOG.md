@@ -15,6 +15,17 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   unchanged.
 - `walletFromKey`, so a malformed key never appears in an error.
 - The tarball ships a LICENSE.
+- `UnknownSolverEventError` (`eventType`), thrown by `parseSolverEvent` for an
+  entry whose `type` is a string the SDK does not know (an event kind a newer
+  venue adds). Its message echoes the type truncated to 64 characters, with
+  everything outside printable ASCII escaped as `\uXXXX`.
+- Optional `SolverTransport.addUnknownEventListener`, implemented by
+  `HttpSolverTransport`: each entry skipped as `UnknownSolverEventError`
+  re-arms `SolverClient.run`'s version gate, so `run` re-reads
+  `/solver/capabilities` before acting on the next event and ends with
+  `VenueVersionSkewError` (nothing signed) if the venue now serves another
+  `rfcVersion`, as after a feed `reset`. An injected transport without it is
+  re-checked only before its awards.
 
 ### Changed
 
@@ -37,6 +48,18 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 - Built with TypeScript 6; sources, tests and examples are Prettier-formatted,
   and `format:check` gates CI and `prepublishOnly` (with typecheck, test and
   build). `engines.node` is `>=22`.
+- **BREAKING: `parseSolverEvent` throws `UnknownSolverEventError`** (was a
+  `ZodError`) for an unknown string `type`; a catch that tests only for
+  `ZodError` no longer sees those entries. A `type` that folds to a known one
+  (NFKC, case, whitespace, control and format characters: `"Award"`,
+  `"award "`, `"award\u200b"`) or an entry carrying a known kind's payload key
+  (`award`, `announcement`) is still a `ZodError`: a malformed known event,
+  never skipped as a new kind.
+- `HttpSolverTransport` skips an unknown-type entry with or without
+  `onInvalidEvent` and delivers the rest of the batch. Without a handler it
+  warns once per distinct type for the first 32 types, then once that further
+  types go unreported. An `onInvalidEvent` that throws ends `run` as having no
+  handler does; the option's comment now states that one contract.
 
 ### Removed
 
@@ -68,16 +91,10 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   `RIDDLER_SOLVER_URL` by name (warning on loopback `http:`), and prunes its bid
   and award maps. The startup checks both examples share live in
   `examples/env.ts`.
-- A feed entry whose `type` is a string the SDK does not know (an event kind a
-  newer venue adds) no longer ends `SolverClient.run`. Without `onInvalidEvent`
-  it threw before the batch's cursor was taken, so every redelivery ended the
-  run again and the awards in that batch were never filled. `HttpSolverTransport`
-  now skips it and delivers the rest of the batch, reporting it to
-  `onInvalidEvent` as the new `UnknownSolverEventError` (`eventType`), or with
-  one `console.warn` per transport without a handler. `parseSolverEvent` throws
-  that error for such an entry. A known type that fails validation, or an entry
-  without a string `type`, is still a `ZodError` and still ends the run without
-  a handler.
+- A feed entry of an unknown `type` no longer ends `SolverClient.run` through
+  `HttpSolverTransport`. Without `onInvalidEvent` it threw before the batch's
+  cursor was taken, so every redelivery ended the run again and the awards in
+  that batch were never filled.
 
 ## `0.4.1` — the version gate re-runs under a running solver
 

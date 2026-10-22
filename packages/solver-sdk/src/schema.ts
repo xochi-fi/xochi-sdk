@@ -183,15 +183,41 @@ const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(
   SolverEventSchema.options.map((option) => option.shape.type.value),
 );
 
+// Each known kind's payload key (`announcement`, `award`), read off the same union.
+const KNOWN_PAYLOAD_KEYS: readonly string[] = SolverEventSchema.options.flatMap((option) =>
+  Object.keys(option.shape).filter((key) => key !== "type"),
+);
+
+// A `type` spelling that is a known kind mangled, not a new kind: compatibility
+// forms (fullwidth), case, whitespace and invisible format/control characters
+// (`"Award"`, `"award "`, `"award\u200b"`) all fold to `"award"`.
+function foldEventType(type: string): string {
+  return type
+    .normalize("NFKC")
+    .replace(/[\p{Cc}\p{Cf}\p{Z}\s]/gu, "")
+    .toLowerCase();
+}
+
+// JSON-quoted with every character outside printable ASCII as `\uXXXX`, so a
+// venue-chosen string cannot pass in a log for a known one (`"award\u200b"`
+// does not print as `"award"`) or break the log line.
+function quoteForLog(value: string): string {
+  return JSON.stringify(value).replace(
+    /[^\x20-\x7e]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
+
 // Thrown by `parseSolverEvent` for an entry whose `type` is a string this SDK
 // does not implement: an event kind a newer venue added, not a malformed
-// entry. `HttpSolverTransport` skips it (see `onInvalidEvent`); a known type
-// that fails validation, or an entry with no string `type`, is a `ZodError`
-// and stays fatal without a handler. Only the type, truncated, is echoed.
+// entry. Not thrown when the `type` folds to a known kind or the entry carries
+// a known kind's payload key: that entry is a malformed known event (a
+// `ZodError`), since skipping it could drop an award. Only the type, truncated
+// and escaped, is echoed.
 export class UnknownSolverEventError extends Error {
   readonly name = "UnknownSolverEventError";
   constructor(readonly eventType: string) {
-    super(`unknown solver event type ${JSON.stringify(eventType.slice(0, 64))}`);
+    super(`unknown solver event type ${quoteForLog(eventType.slice(0, 64))}`);
   }
 }
 
@@ -293,14 +319,29 @@ export const FeedBatchSchema = z
   .passthrough();
 
 // Parse + validate a raw feed event. Throws `UnknownSolverEventError` for an
-// unknown string `type`, zod otherwise on a malformed shape -- the caller at
-// the boundary MUST NOT swallow either; it may skip only the former.
+// unknown string `type` (see the class for what is not unknown), zod otherwise
+// on a malformed shape -- the caller at the boundary MUST NOT swallow either;
+// it may skip only the former.
 export function parseSolverEvent(raw: unknown) {
-  // Own data property only: an inherited or accessor `type` is left to zod.
+  // Own data properties only: an inherited or accessor `type` is left to zod.
   if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
     const type: unknown = Object.getOwnPropertyDescriptor(raw, "type")?.value;
     if (typeof type === "string" && !KNOWN_EVENT_TYPES.has(type)) {
-      throw new UnknownSolverEventError(type);
+      const folded = foldEventType(type);
+      const known = KNOWN_EVENT_TYPES.has(folded)
+        ? folded
+        : KNOWN_PAYLOAD_KEYS.find((key) => Object.getOwnPropertyDescriptor(raw, key));
+      if (known === undefined) throw new UnknownSolverEventError(type);
+      throw new z.ZodError([
+        {
+          code: "custom",
+          path: ["type"],
+          input: type,
+          message:
+            `type ${quoteForLog(type.slice(0, 64))} is not a known event type but reads as ` +
+            `${quoteForLog(known)}; refused as a malformed entry, not skipped as a new kind`,
+        },
+      ]);
     }
   }
   return SolverEventSchema.parse(raw);

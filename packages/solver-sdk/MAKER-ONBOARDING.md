@@ -59,7 +59,9 @@ secret bound to that id.
 - **Public settlement only.** `settlementPreference` is always `"public"`. `HttpSolverTransport`
   refuses any other value as a malformed entry (passed to `onInvalidEvent`, thrown without one), so
   it never reaches `quote`. An injected `SolverTransport` is not parsed by the SDK: validate each
-  event with the exported `parseSolverEvent` before yielding it.
+  event with the exported `parseSolverEvent` before yielding it, and handle what it throws as the
+  README's [unknown event types rule](README.md#rules-you-must-follow) requires. Rethrowing
+  everything it throws ends `run` on every redelivery of a batch carrying a newer event kind.
 
 ## Copy from the reference solver
 

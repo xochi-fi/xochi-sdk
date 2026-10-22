@@ -272,6 +272,12 @@ export interface SolverTransport {
   // without it is re-checked only on this solver's own awards. Returns the
   // unsubscribe.
   addFeedGapListener?(listener: (gap: FeedGap) => void): () => void;
+  // Subscribe to the entries the feed skipped because their `type` is unknown
+  // (`UnknownSolverEventError`): a kind this SDK has never heard of is what a
+  // venue redeployed on a newer RFC emits, so `SolverClient` re-checks the
+  // venue's RFC version before acting on the next event, as after a `reset`.
+  // Call each listener before yielding the next event. Returns the unsubscribe.
+  addUnknownEventListener?(listener: (eventType: string) => void): () => void;
 }
 
 // The escrow LIFECYCLE as the venue sees it (RFC section 7): lock on open,

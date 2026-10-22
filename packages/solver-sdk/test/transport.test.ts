@@ -282,22 +282,25 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
   // Each run subscribes for its own lifetime: clients rebuilt over one
   // transport (a supervisor restarting the loop) must not leave a listener
   // apiece behind on it.
-  it("leaves no gap listener on a shared transport once each run ends", async () => {
+  it("leaves no gap or unknown-type listener on a shared transport once each run ends", async () => {
     const baseUrl = await serve((req, res) => {
       if ((req.url ?? "").startsWith("/solver/capabilities")) return json(res, CAPABILITIES);
       return json(res, { error: "gone" }, 500);
     });
     const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
     let live = 0;
-    const add = transport.addFeedGapListener.bind(transport);
-    transport.addFeedGapListener = (listener) => {
-      live += 1;
-      const off = add(listener);
-      return () => {
-        live -= 1;
-        off();
+    const counted =
+      <L>(add: (listener: L) => () => void) =>
+      (listener: L) => {
+        live += 1;
+        const off = add(listener);
+        return () => {
+          live -= 1;
+          off();
+        };
       };
-    };
+    transport.addFeedGapListener = counted(transport.addFeedGapListener.bind(transport));
+    transport.addUnknownEventListener = counted(transport.addUnknownEventListener.bind(transport));
     const solver: Solver = {
       capabilities: () => ({
         solverId: SOLVER_ID,
@@ -683,6 +686,173 @@ describe("HttpSolverTransport unknown event types", () => {
 
     expect(outcome).toBeInstanceOf(ZodError);
     expect(streamUrls()).toEqual(["/solver/intents/stream?since=0"]);
+  });
+
+  // A known kind spelled so it reads as one, or carrying a known kind's
+  // payload, is a malformed known event: skipping it could drop an award.
+  it.each<[string, Record<string, unknown>]>([
+    ["a capitalised type", { type: "Award" }],
+    ["a trailing space", { type: "award " }],
+    ["a zero-width space", { type: "award\u200b" }],
+    ["a control character", { type: "\u0000award" }],
+    ["fullwidth letters", { type: "\uff41\uff57\uff41\uff52\uff44" }],
+    ["a new type carrying the award payload", { type: "award_v2", award: OWN_AWARD.award }],
+    [
+      "a new type carrying the announcement payload",
+      { type: "rfq", announcement: ANNOUNCEMENT.announcement },
+    ],
+  ])("refuses %s as malformed, never skips it as unknown", async (_name, entry) => {
+    const baseUrl = await serve((_req, res) =>
+      json(res, { events: [entry, ANNOUNCEMENT], cursor: "7" }),
+    );
+    const invalid: unknown[] = [];
+    const reported = new HttpSolverTransport({
+      baseUrl,
+      solverId: SOLVER_ID,
+      onInvalidEvent: (err) => invalid.push(err),
+    });
+
+    expect(await firstEvent(reported)).toMatchObject({ type: "announcement" });
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]).toBeInstanceOf(ZodError);
+
+    const unhandled = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    expect(await firstEvent(unhandled).catch((err: unknown) => err)).toBeInstanceOf(ZodError);
+  });
+
+  it("without a handler, warns once per distinct type, escaped, for the first 32 types", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const types = ["l\u00f6sen", "zap\u202e", ...Array.from({ length: 38 }, (_, i) => `kind-${i}`)];
+    const unknown = [...types, ...types].map((type) => ({ type }));
+    let polls = 0;
+    const baseUrl = await serve((_req, res) => {
+      polls += 1;
+      if (polls === 1) return json(res, { events: [...unknown, ANNOUNCEMENT], cursor: "7" });
+      return json(res, { error: "gone" }, 500);
+    });
+    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const delivered: string[] = [];
+
+    try {
+      await expect(
+        (async () => {
+          for await (const ev of transport.events()) delivered.push(ev.type);
+        })(),
+      ).rejects.toThrow(/solver feed 500/);
+
+      expect(delivered).toEqual(["announcement"]);
+      const messages = warn.mock.calls.map((call) => String(call[0]));
+      expect(messages).toHaveLength(33);
+      expect(messages[0]).toContain('"l\\u00f6sen"');
+      expect(messages[1]).toContain('"zap\\u202e"');
+      expect(messages.join("\n")).not.toMatch(/[^\x20-\x7e\n]/);
+      expect(messages[31]).toContain('"kind-29"');
+      expect(messages[32]).toMatch(/further unknown types/);
+      expect(streamUrls()).toEqual([
+        "/solver/intents/stream?since=0",
+        "/solver/intents/stream?since=7",
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // Not caught: a throw is how a handler chooses to stop.
+  it("ends the read when onInvalidEvent rethrows, so the batch is read again", async () => {
+    const baseUrl = await serve((_req, res) =>
+      json(res, { events: [LOST, ANNOUNCEMENT], cursor: "7" }),
+    );
+    const transport = new HttpSolverTransport({
+      baseUrl,
+      solverId: SOLVER_ID,
+      onInvalidEvent: (err) => {
+        throw err;
+      },
+    });
+
+    for (let i = 0; i < 2; i++) {
+      const outcome = await firstEvent(transport).catch((err: unknown) => err);
+      expect(outcome).toBeInstanceOf(UnknownSolverEventError);
+    }
+    expect(streamUrls()).toEqual([
+      "/solver/intents/stream?since=0",
+      "/solver/intents/stream?since=0",
+    ]);
+  });
+
+  // A venue redeployed on a newer RFC emits a kind this SDK has never heard
+  // of. Skipping it must not skip the version gate.
+  describe("SolverClient re-checks rfcVersion after one", () => {
+    const AWARD_V2 = { type: "award_v2", awardV2: OWN_AWARD.award };
+
+    async function venue(afterUnknown: string, handler: boolean) {
+      let served = false;
+      let capabilityReads = 0;
+      const bids: string[] = [];
+      const baseUrl = await serve((req, res) => {
+        const url = req.url ?? "";
+        if (url === "/solver/capabilities") {
+          capabilityReads += 1;
+          return json(res, {
+            ...CAPABILITIES,
+            rfcVersion: served ? afterUnknown : SOLVER_RFC_VERSION,
+          });
+        }
+        if (url === "/solver/bids") {
+          bids.push(url);
+          return json(res, { ok: true });
+        }
+        if (served) return json(res, { error: "gone" }, 500);
+        served = true;
+        return json(res, { events: [AWARD_V2, ANNOUNCEMENT], cursor: "7" });
+      });
+      const skipped: unknown[] = [];
+      const client = new SolverClient({
+        baseUrl,
+        solverKey: SOLVER_KEY,
+        now: () => 1_500,
+        ...(handler ? { onInvalidEvent: (err: unknown) => skipped.push(err) } : {}),
+      });
+      const solver: Solver = {
+        capabilities: () => ({
+          solverId: SOLVER_ID,
+          chains: [8453, 10],
+          tokens: ["USDC"],
+          settlementTypes: ["public"],
+          rfcVersion: SOLVER_RFC_VERSION,
+        }),
+        quote: async () => ({ output: "99800000", validUntilMs: 10_000, minExclusiveMs: 1_000 }),
+        fill: async () => {
+          throw new Error("no award in this script");
+        },
+      };
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const err = await client.run(solver).catch((e: unknown) => e);
+        return { err, bids, skipped, capabilityReads };
+      } finally {
+        warn.mockRestore();
+      }
+    }
+
+    it.each([false, true])(
+      "ends run with nothing signed when the venue now serves another version (handler: %s)",
+      async (handler) => {
+        const { err, bids, skipped, capabilityReads } = await venue("9.9.9-draft", handler);
+        expect(err).toBeInstanceOf(VenueVersionSkewError);
+        expect(err).toMatchObject({ advertised: "9.9.9-draft" });
+        expect(bids).toHaveLength(0);
+        expect(capabilityReads).toBe(2);
+        expect(skipped).toHaveLength(handler ? 1 : 0);
+      },
+    );
+
+    it("skips it and bids on when the version still matches", async () => {
+      const { err, bids, capabilityReads } = await venue(SOLVER_RFC_VERSION, false);
+      expect((err as Error).message).toMatch(/solver feed 500/);
+      expect(bids).toHaveLength(1);
+      expect(capabilityReads).toBe(2);
+    });
   });
 });
 
