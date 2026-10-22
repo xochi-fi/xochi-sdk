@@ -35,6 +35,14 @@ export interface AttestationInput {
   credentialType: number;
   /** Per-provider credentials root, currently registered in the Oracle. */
   credentialRoot: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock), also the time
+   * `expiryTimestamp` is checked against. The Oracle rejects it when after
+   * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
+   * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
+   * chain makes the default revert. Prefer
+   * `Number(await chainProofTimestamp(client))` (the chain's latest block time).
+   */
   currentTimestamp?: number;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;

@@ -4,7 +4,7 @@
 
 import type { Account, Address, Chain, Hex, PublicClient, Transport, WalletClient } from "viem";
 import { bytesToHex } from "viem";
-import { writeContract } from "viem/actions";
+import { getBlock, writeContract } from "viem/actions";
 import { ORACLE_ABI } from "./abis.js";
 import type { ProofType } from "./constants.js";
 import { COMPLIANCE_PROOF_TYPES } from "./constants.js";
@@ -35,7 +35,11 @@ export interface SubmitComplianceParams {
   proof: Hex;
   publicInputs: Hex;
   providerSetHash: Hex;
-  /** Unix timestamp (seconds) of proof generation. When set, recency is checked before submission. */
+  /**
+   * Unix timestamp (seconds) of proof generation. When set, recency is checked
+   * before submission against the chain's latest block time, as the Oracle
+   * does against `block.timestamp` (one extra RPC read).
+   */
   proofTimestamp?: number;
   /** Max proof age in seconds (default: 3600). Only used when proofTimestamp is set. */
   maxProofAge?: number;
@@ -83,7 +87,14 @@ export class ERC8262Oracle {
     const wallet = this.requireWallet();
 
     if (params.proofTimestamp !== undefined) {
-      assertProofRecent(params.proofTimestamp, params.maxProofAge ?? DEFAULT_MAX_PROOF_AGE);
+      // Chain time, not the local clock: a client clock behind (or ahead of)
+      // the chain would otherwise refuse proofs the Oracle accepts.
+      const latest = await getBlock(this.publicClient, { blockTag: "latest" });
+      assertProofRecent(
+        params.proofTimestamp,
+        params.maxProofAge ?? DEFAULT_MAX_PROOF_AGE,
+        Number(latest.timestamp),
+      );
     }
 
     return withDecodedErrors(ORACLE_ABI, () =>

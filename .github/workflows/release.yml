@@ -87,7 +87,7 @@ concurrency:
 
 env:
   # Same pins as ci.yml; the @xochi/sdk gate needs the ERC-8262 artifacts.
-  ERC_8262_REF: da508f962a3da4d8fca3efeb904107bcd87c3ce6
+  ERC_8262_REF: 1238acc8c68e2796b6274f31e066516b6087ee04
   FOUNDRY_VERSION: v1.5.1
 
 jobs:

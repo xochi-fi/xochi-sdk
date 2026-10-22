@@ -50,6 +50,14 @@ interface MultiProviderComplianceSigned extends SignedDigestBinding {
   jurisdictionId: number;
   providerSetHash: string;
   configHash?: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock); must equal the
+   * timestamp the provider signed. The Oracle rejects it when after
+   * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
+   * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
+   * chain makes the default revert. Prefer `await chainProofTimestamp(client)`
+   * (the chain's latest block time), read before requesting the signature.
+   */
   timestamp?: string;
   submitter: Address;
   signedBundle: SignedSignalsBundle;
@@ -60,6 +68,7 @@ interface SingleProviderComplianceSigned extends SignedDigestBinding {
   jurisdictionId: number;
   providerSetHash: string;
   configHash?: string;
+  /** Proof timestamp (unix seconds); see MultiProviderComplianceSigned.timestamp. */
   timestamp?: string;
   submitter: Address;
   signedBundle: SignedSignalsBundle;

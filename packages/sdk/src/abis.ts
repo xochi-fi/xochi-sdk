@@ -618,6 +618,14 @@ export const ORACLE_ABI = [
   },
   {
     type: "error",
+    name: "TimeWindowTooLarge",
+    inputs: [
+      { name: "timeWindow", type: "uint256" },
+      { name: "maximum", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
     name: "ProofTimestampStale",
     inputs: [
       { name: "proofTimestamp", type: "uint256" },
