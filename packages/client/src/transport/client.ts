@@ -934,11 +934,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
                 legsWithheld: true,
                 ...(typeof d.settlement_confirmed === "boolean"
                   ? {
-                      settlementConfirmed: withheldSettlementConfirmed(
-                        status,
-                        true,
-                        d.settlement_confirmed,
-                      ),
+                      settlementConfirmed: withheldSettlementConfirmed({
+                        status: d.status,
+                        legsWithheld: d.legs_withheld,
+                        settlementConfirmed: d.settlement_confirmed,
+                      }),
                     }
                   : {}),
               }

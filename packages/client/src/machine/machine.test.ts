@@ -833,6 +833,25 @@ describe("status", () => {
     expect(timers(fx)).not.toContain("clear:poll");
   });
 
+  it("never reads settlementConfirmed as delivered on an unmapped status", () => {
+    const { s, poll } = resumed("executing");
+    s.send({
+      type: "StatusReplied",
+      gen: poll.gen,
+      attempt: poll.attempt,
+      result: {
+        ok: true,
+        status: statusData({
+          status: "executing",
+          unmapped: true,
+          legsWithheld: true,
+          settlementConfirmed: true,
+        }),
+      },
+    });
+    expect(s.intent.substatus).not.toBe("filled");
+  });
+
   it("never reads settlementConfirmed as delivered off a read that withheld nothing", () => {
     const { s, poll } = resumed("settling");
     s.send({

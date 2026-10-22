@@ -1010,6 +1010,33 @@ describe("intent read capability", () => {
       settlementConfirmed: false,
     });
   });
+
+  it("never reports a confirmed fill on a granular failure, refund or unmapped status", async () => {
+    const statuses = [
+      "fill_failed",
+      "refund_failed",
+      "refund_pending",
+      "refunding",
+      "some_future_state",
+    ];
+    for (const status of statuses) {
+      const { c } = client((call) =>
+        json({
+          ...(call === 1 ? { intent_id: "xi_1" } : { id: "xi_1" }),
+          status,
+          settlement_confirmed: true,
+          legs_withheld: true,
+        }),
+      );
+      expect(await c.getIntentStatus("xi_1"), status).toMatchObject({ settlementConfirmed: false });
+      expect(await c.getIntent("xi_1"), status).toMatchObject({ settlementConfirmed: false });
+    }
+    // A granular in-flight status still counts: the fill is confirmed.
+    const { c } = client(() =>
+      json({ id: "xi_1", status: "filling", settlement_confirmed: true, legs_withheld: true }),
+    );
+    expect(await c.getIntent("xi_1")).toMatchObject({ settlementConfirmed: true });
+  });
 });
 
 describe("a read token never follows a redirect (real loopback servers)", () => {

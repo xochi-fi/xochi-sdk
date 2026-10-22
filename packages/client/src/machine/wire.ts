@@ -620,21 +620,23 @@ export function isTerminalIntentStatus(status: IntentStatus): boolean {
 
 /**
  * Whether an anonymous read's `settlement_confirmed` (xochi#563) counts as a
- * delivered fill: only on a read that withheld the legs (the marker stands in
- * for the withheld receipt) and only on a status that is not a terminal
- * failure. A `refunded`, `failed` or `expired` intent never reads as delivered,
- * whatever the marker says.
+ * delivered fill. Only on a read that withheld the legs (the marker stands in
+ * for the withheld receipt), and only when `status` decodes (`decodeWireStatus`)
+ * to a status this build models that is not a terminal failure and not part of
+ * a refund: never on `refunded` / `failed` / `expired`, on a granular status
+ * bucketed to one (`fill_failed`, `refund_failed`), on any `refund*` status
+ * (`refunding`, `refund_pending`), or on an unmapped or absent status.
  */
-export function withheldSettlementConfirmed(
-  status: IntentStatus,
-  legsWithheld: unknown,
-  settlementConfirmed: unknown,
-): boolean {
-  return (
-    legsWithheld === true &&
-    settlementConfirmed === true &&
-    !(isTerminalIntentStatus(status) && status !== "completed")
-  );
+export function withheldSettlementConfirmed(read: {
+  status: unknown;
+  legsWithheld: unknown;
+  settlementConfirmed: unknown;
+}): boolean {
+  if (read.legsWithheld !== true || read.settlementConfirmed !== true) return false;
+  const decoded = decodeWireStatus(read.status);
+  if (decoded.kind !== "mapped") return false;
+  if (typeof read.status === "string" && read.status.startsWith("refund")) return false;
+  return !(isTerminalIntentStatus(decoded.status) && decoded.status !== "completed");
 }
 
 // ============================================================
@@ -730,11 +732,11 @@ export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldInten
     toChainId: w.to_chain_id,
     settlementType: w.settlement_type,
     error: w.error,
-    settlementConfirmed: withheldSettlementConfirmed(
-      w.status as IntentStatus,
-      true,
-      w.settlement_confirmed,
-    ),
+    settlementConfirmed: withheldSettlementConfirmed({
+      status: w.status,
+      legsWithheld: w.legs_withheld,
+      settlementConfirmed: w.settlement_confirmed,
+    }),
   };
 }
 

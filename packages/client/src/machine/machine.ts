@@ -1658,9 +1658,14 @@ function onStatus(
         settlementTxHash: s.settlementTxHash ?? undefined,
         settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
         // A confirmed fill whose receipt the server withheld (anonymous read,
-        // xochi#563) is delivered, exactly as a `filled` substatus; never on a
-        // terminal failure, and only on a read that withheld the legs.
-        substatus: withheldSettlementConfirmed(s.status, s.legsWithheld, s.settlementConfirmed)
+        // xochi#563) is delivered, exactly as a `filled` substatus, under the
+        // rule `withheldSettlementConfirmed` states. An unmapped status is only
+        // its in-flight bucket, so it never qualifies.
+        substatus: withheldSettlementConfirmed({
+          status: s.unmapped === true ? undefined : s.status,
+          legsWithheld: s.legsWithheld,
+          settlementConfirmed: s.settlementConfirmed,
+        })
           ? "filled"
           : (s.substatus ?? undefined),
         error: s.error ?? undefined,
