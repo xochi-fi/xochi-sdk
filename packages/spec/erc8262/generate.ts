@@ -270,7 +270,7 @@ const evidenceSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: `${SCHEMA_BASE}/provider-evidence.schema.json`,
   title: "ERC-8262 provider evidence",
-  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified and its public inputs match this document (SPEC.md section 10.5, proof_mismatch). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
+  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified, its public inputs match this document (SPEC.md section 10.5, proof_mismatch) and it is current (proof_stale). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
   ...obj(
     {
       ...PROTOCOL_FIELDS,
@@ -1644,7 +1644,7 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("expired"),
   },
 
-  // --- The verified proof the evidence feeds (proof_mismatch) ---
+  // --- The verified proof the evidence feeds (proof_mismatch, proof_stale) ---
   {
     name: "proof-multi-signed-slots-include-key",
     description:
@@ -1846,7 +1846,7 @@ const evaluationCases: CaseInput[] = [
     context: sepoliaContext(NATIVE_HOST, {
       proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW - 1 },
     }),
-    expected: refuse("proof_mismatch"),
+    expected: refuse("proof_stale"),
   },
   {
     name: "proof-attestation-revoked",
@@ -1857,7 +1857,7 @@ const evaluationCases: CaseInput[] = [
     context: sepoliaContext(NATIVE_HOST, {
       proof: { ...NATIVE_PROOF, attestationRevoked: true },
     }),
-    expected: refuse("proof_mismatch"),
+    expected: refuse("proof_stale"),
   },
   {
     name: "proof-timestamp-within-skew-of-issuance",
@@ -1877,7 +1877,7 @@ const evaluationCases: CaseInput[] = [
     context: sepoliaContext(NATIVE_HOST, {
       proof: { ...NATIVE_PROOF, timestamp: nativeEvidence.issuedAt - CLOCK_SKEW_SECONDS - 1 },
     }),
-    expected: refuse("proof_mismatch"),
+    expected: refuse("proof_stale"),
   },
   {
     name: "proof-timestamp-at-evidence-expiry",
@@ -1886,6 +1886,17 @@ const evaluationCases: CaseInput[] = [
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
       proof: { ...NATIVE_PROOF, timestamp: nativeEvidence.expiresAt },
+    }),
+    expected: refuse("proof_stale"),
+  },
+  {
+    name: "order-proof-mismatch-before-stale",
+    description:
+      "A proof of another attestor (proof_mismatch) whose attestation has also expired (proof_stale).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, providerId: "1", attestationExpiresAt: NOW - 1 },
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -3000,6 +3011,7 @@ const REFUSALS = [
   "not_yet_valid",
   "expired",
   "proof_mismatch",
+  "proof_stale",
 ];
 
 const LIMITS = {

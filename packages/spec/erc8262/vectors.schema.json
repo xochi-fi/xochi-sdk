@@ -762,7 +762,8 @@
                       "validity_too_long",
                       "not_yet_valid",
                       "expired",
-                      "proof_mismatch"
+                      "proof_mismatch",
+                      "proof_stale"
                     ]
                   },
                   "records": {

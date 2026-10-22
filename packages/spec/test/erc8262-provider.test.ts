@@ -363,16 +363,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       const { proof } = f.ctx;
       const art = f.ev.artifact;
-      // Time: the Oracle attestation is still live, and the proof was made while this
-      // evidence was valid (its timestamp may trail issuedAt by the skew: prover vs provider).
-      if (proof.attestationRevoked || f.ctx.now > proof.attestationExpiresAt) return true;
-      if (
-        proof.timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
-        proof.timestamp >= f.ev.expiresAt
-      ) {
-        return true;
-      }
-      // Identity: the evidence's attestor and artifact, or the keyId key's signer hash.
+      // The evidence's attestor and artifact, or the keyId key's signer hash.
       if (proof.proofType !== art.proofType || proof.submitter !== f.ev.subject) return true;
       if (proof.proofType === 4 && art.proofType === 4) {
         return (
@@ -385,6 +376,20 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       return proof.proofType === 9
         ? hash === undefined || !proof.signerPubkeyHashes.includes(hash)
         : proof.proofType !== 4 && proof.signerPubkeyHash !== hash;
+    },
+  ],
+  [
+    "proof_stale",
+    (f) => {
+      // The Oracle attestation is still live, and the proof was made while this evidence was
+      // valid (its timestamp may trail issuedAt by the skew: prover vs provider clocks).
+      const { proof } = f.ctx;
+      return (
+        proof.attestationRevoked ||
+        f.ctx.now > proof.attestationExpiresAt ||
+        proof.timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
+        proof.timestamp >= f.ev.expiresAt
+      );
     },
   ],
 ];
