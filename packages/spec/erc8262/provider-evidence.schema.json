@@ -37,7 +37,7 @@
       "pattern": "^[A-Za-z0-9_-]+$"
     },
     "status": {
-      "description": "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` (or a 410 for the id) it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
+      "description": "Revocation: `active` or `revoked`, monotonic. Once a consumer records `revoked` (or a 410) for (trustDomainId, evidenceId), fetched from the allowlisted host after SPEC.md section 10.5 steps 1-3, it MUST NOT accept that evidenceId under that trust domain again, whatever a later response says. A revoked body from a relay, or for another id than announced, is not recorded. Expiry is computed from expiresAt, never signalled here.",
       "enum": [
         "active",
         "revoked"

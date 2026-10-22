@@ -149,9 +149,12 @@
                 "const": "signed-signals"
               },
               "signerPubkeyHash": {
-                "description": "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId).",
+                "description": "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId). Never the all-zero hash, which marks an inactive signer slot.",
                 "type": "string",
-                "pattern": "^0x[0-9a-f]{64}$"
+                "pattern": "^0x[0-9a-f]{64}$",
+                "not": {
+                  "const": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }
               },
               "notBefore": {
                 "description": "Unix seconds; first instant the key may issue.",
@@ -237,7 +240,7 @@
       }
     },
     "revocationCheckSeconds": {
-      "description": "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for a held evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
+      "description": "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for an announced evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
       "type": "integer",
       "minimum": 60,
       "maximum": 86400

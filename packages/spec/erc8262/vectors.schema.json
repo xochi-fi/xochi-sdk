@@ -53,46 +53,57 @@
       "additionalProperties": false,
       "properties": {
         "maxEvidenceLifetimeSeconds": {
+          "description": "Largest expiresAt - issuedAt (365 days).",
           "type": "integer",
           "minimum": 1
         },
         "clockSkewSeconds": {
+          "description": "Tolerated disagreement between clocks (SPEC.md section 10.5, Clocks).",
           "type": "integer",
           "minimum": 1
         },
         "maxListItems": {
+          "description": "Most entries in each discovery list: deployments, keys, sources, and claims per source.",
           "type": "integer",
           "minimum": 1
         },
         "maxDiscoveryBytes": {
+          "description": "Discovery body cap in bytes.",
           "type": "integer",
           "minimum": 1
         },
         "maxEvidenceBytes": {
+          "description": "Evidence body cap in bytes.",
           "type": "integer",
           "minimum": 1
         },
         "fetchTimeoutSeconds": {
+          "description": "Timeout of each fetch.",
           "type": "integer",
           "minimum": 1
         },
         "minRevocationCheckSeconds": {
+          "description": "Smallest revocationCheckSeconds a discovery document may declare.",
           "type": "integer",
           "minimum": 1
         },
         "maxRevocationCheckSeconds": {
+          "description": "Largest revocationCheckSeconds a discovery document may declare.",
           "type": "integer",
           "minimum": 1
         },
         "minEvidenceIdLength": {
+          "description": "Shortest evidenceId (128 bits of base64url).",
           "type": "integer",
           "minimum": 1
         },
         "maxEvidenceIdLength": {
+          "description": "Longest evidenceId.",
           "type": "integer",
           "minimum": 1
         },
         "maxTimestamp": {
+          "description": "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
           "type": "integer",
           "minimum": 1
         }
@@ -206,7 +217,7 @@
             ]
           },
           "evidence": {
-            "description": "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
+            "description": "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the document the announced id names, and no document is evaluated.",
             "oneOf": [
               {
                 "type": "string",

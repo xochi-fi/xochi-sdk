@@ -60,6 +60,7 @@ const d = <T extends object>(description: string, schema: T) => {
 const UNIX = { type: "integer", minimum: 0, maximum: MAX_TIMESTAMP };
 const ADDRESS = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
 const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
+const ZERO_HASH = "0x" + "00".repeat(32);
 
 // A canonical decimal string of an integer in [1, max]: shorter than max, or as long as max
 // and agreeing with it up to a smaller digit, or max itself. JSON Schema cannot compare
@@ -172,8 +173,8 @@ const KEY = d(
             const: "signed-signals",
           }),
           signerPubkeyHash: d(
-            "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId).",
-            HEX32,
+            "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId). Never the all-zero hash, which marks an inactive signer slot.",
+            { ...HEX32, not: { const: ZERO_HASH } },
           ),
           ...KEY_WINDOW,
         },
@@ -233,7 +234,7 @@ const discoverySchema = {
       }),
     },
     revocationCheckSeconds: d(
-      "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for a held evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
+      "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for an announced evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
       {
         type: "integer",
         minimum: MIN_REVOCATION_CHECK_SECONDS,
@@ -283,7 +284,7 @@ const evidenceSchema = {
         },
       ),
       status: d(
-        "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` (or a 410 for the id) it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
+        "Revocation: `active` or `revoked`, monotonic. Once a consumer records `revoked` (or a 410) for (trustDomainId, evidenceId), fetched from the allowlisted host after SPEC.md section 10.5 steps 1-3, it MUST NOT accept that evidenceId under that trust domain again, whatever a later response says. A revoked body from a relay, or for another id than announced, is not recorded. Expiry is computed from expiresAt, never signalled here.",
         { enum: ["active", "revoked"] },
       ),
       revokedAt: d("Unix seconds; present iff status is `revoked`.", UNIX),
@@ -374,6 +375,8 @@ const BASE_SEPOLIA = 84532;
 const BASE = 8453;
 const ORACLE_BASE_SEPOLIA = "0x8262000000000000000000000000000000084532";
 const ORACLE_BASE = "0x8262000000000000000000000000000000008453";
+// A second Oracle on Base Sepolia (an Oracle migration): a distinct deployment.
+const ORACLE_BASE_SEPOLIA_NEXT = "0x82620000000000000000000000000000000084ff";
 
 const DAY = 86400;
 const T_2025 = 1735689600; // 2025-01-01T00:00:00Z
@@ -670,6 +673,35 @@ const discovery: Record<string, Discovery> = {
   "native-base-only": { ...nativeDiscovery, deployments: [nativeDiscovery.deployments[1]!] },
   "gateway-updated-at-skew": { ...gatewayDiscovery, updatedAt: NOW + CLOCK_SKEW_SECONDS },
   "gateway-future-dated": { ...gatewayDiscovery, updatedAt: NOW + CLOCK_SKEW_SECONDS + 1 },
+  // gw-root-1 revoked at a future instant: revokedAt revokes on presence, whatever its value.
+  "gateway-key-revoked-future": {
+    ...gatewayDiscovery,
+    keys: gatewayDiscovery.keys.map((key) =>
+      key.keyId === "gw-root-1" ? { ...key, revokedAt: NOW + DAY } : key,
+    ),
+  },
+  // Two Oracles on one chain: distinct deployments, not duplicates (an Oracle migration).
+  "native-two-oracles-one-chain": {
+    ...nativeDiscovery,
+    deployments: [
+      ...nativeDiscovery.deployments,
+      { chainId: BASE_SEPOLIA, oracleAddress: ORACLE_BASE_SEPOLIA_NEXT, attestorProviderId: "7" },
+    ],
+  },
+  // gw-root-0 still listed as revoked, and its credentialSigner listed again as gw-root-2 in
+  // the same document.
+  "gateway-material-relisted-same-doc": {
+    ...gatewayDiscovery,
+    keys: [
+      ...gatewayDiscovery.keys,
+      {
+        keyId: "gw-root-2",
+        use: "credential-root",
+        credentialSigner: GATEWAY_SIGNER_0,
+        notBefore: T_2026,
+      },
+    ],
+  },
 };
 
 const id = (seed: string) => `ev_${seed}`.padEnd(26, "0");
@@ -1320,7 +1352,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "evidence-gone",
     description:
-      "410 Gone for a held evidenceId is final: the consumer records (trustDomainId, evidenceId) as revoked.",
+      "410 Gone for the announced evidenceId is final: the consumer records (trustDomainId, evidenceId) as revoked.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, { evidenceFetch: { host: GATEWAY_HOST, status: 410 } }),
@@ -1881,6 +1913,15 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("evidence_id_invalid"),
   },
   {
+    name: "evidence-id-trailing-newline",
+    description:
+      "Patterns follow ECMA-262: `$` does not match before a trailing line terminator, so an id ending in a newline fails the rule (a Python re.search-style check would let it through).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: `${gatewaySumsub.evidenceId}\n` }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
     name: "evidence-id-too-short",
     description: `An announced evidenceId shorter than ${MIN_EVIDENCE_ID_LENGTH} characters carries under 128 bits.`,
     discovery: "gateway",
@@ -1920,6 +1961,35 @@ const evaluationCases: CaseInput[] = [
       registry: gatewayRegistry({ credentialSigner: GATEWAY_SIGNER_0 }),
     }),
     expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-material-relisted-in-same-document",
+    description:
+      "One document lists gw-root-0 as revoked and its credentialSigner again as gw-root-2: the revoked material is refused under the new keyId with no earlier document.",
+    discovery: "gateway-material-relisted-same-doc",
+    evidence: "gateway-sumsub-material-relisted",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({ credentialSigner: GATEWAY_SIGNER_0 }),
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revoked-at-future-instant",
+    description:
+      "A revokedAt after the consumer's clock still revokes: revocation is the field's presence, never its value.",
+    discovery: "gateway-key-revoked-future",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "discovery-two-oracles-one-chain",
+    description:
+      "Two deployments on one chainId with different Oracle addresses are distinct, not duplicates.",
+    discovery: "native-two-oracles-one-chain",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: accept,
   },
   {
     name: "revocation-attestor-denied-on-oracle",
@@ -2706,7 +2776,7 @@ const quorumCases = [
   {
     name: "proof-mismatched-member-not-counted",
     description:
-      "The native trust domain's verified proof presented for the gateway evidence does not feed it, so one proof never counts as two attestors.",
+      "The native trust domain's type 4 proof (provider_id 7) presented for the gateway evidence does not feed it, so it counts only for the native attestor. A proof counts for an attestor only when it feeds that attestor's evidence (a type 9 proof whose slots carry both keys feeds both, see multi-signed-two-trust-domains).",
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub", NATIVE_PROOF)],
@@ -2803,6 +2873,23 @@ const schemaCases = [
     description: "evidenceId carries at least 128 bits (22 base64url characters).",
     kind: "evidence",
     document: { ...nativeEvidence, evidenceId: "ev_1" },
+  },
+  {
+    name: "evidence-id-trailing-newline",
+    description: "Patterns follow ECMA-262: no trailing line terminator before `$`.",
+    kind: "evidence",
+    document: { ...nativeEvidence, evidenceId: `${nativeEvidence.evidenceId}\n` },
+  },
+  {
+    name: "discovery-zero-signer-hash",
+    description: "The all-zero hash marks an inactive signer slot; it is never a key's hash.",
+    kind: "discovery",
+    document: {
+      ...gatewayDiscovery,
+      keys: gatewayDiscovery.keys.map((key) =>
+        key.keyId === "gw-signals-1" ? { ...key, signerPubkeyHash: ZERO_HASH } : key,
+      ),
+    },
   },
   {
     name: "evidence-unknown-protocol-version",
@@ -2927,6 +3014,20 @@ const LIMITS = {
   minEvidenceIdLength: MIN_EVIDENCE_ID_LENGTH,
   maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
   maxTimestamp: MAX_TIMESTAMP,
+};
+const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
+  maxEvidenceLifetimeSeconds: "Largest expiresAt - issuedAt (365 days).",
+  clockSkewSeconds: "Tolerated disagreement between clocks (SPEC.md section 10.5, Clocks).",
+  maxListItems:
+    "Most entries in each discovery list: deployments, keys, sources, and claims per source.",
+  maxDiscoveryBytes: "Discovery body cap in bytes.",
+  maxEvidenceBytes: "Evidence body cap in bytes.",
+  fetchTimeoutSeconds: "Timeout of each fetch.",
+  minRevocationCheckSeconds: "Smallest revocationCheckSeconds a discovery document may declare.",
+  maxRevocationCheckSeconds: "Largest revocationCheckSeconds a discovery document may declare.",
+  minEvidenceIdLength: "Shortest evidenceId (128 bits of base64url).",
+  maxEvidenceIdLength: "Longest evidenceId.",
+  maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -3188,7 +3289,14 @@ const vectorsSchema = {
     version: { const: 1 },
     protocol: { const: PROTOCOL },
     protocolVersion: { const: PROTOCOL_VERSION },
-    limits: obj(Object.fromEntries(Object.keys(LIMITS).map((key) => [key, POSITIVE]))),
+    limits: obj(
+      Object.fromEntries(
+        (Object.keys(LIMITS) as (keyof typeof LIMITS)[]).map((key) => [
+          key,
+          d(LIMIT_DESCRIPTIONS[key], POSITIVE),
+        ]),
+      ),
+    ),
     refusals: { type: "array", items: { type: "string" }, uniqueItems: true },
     discovery: { type: "object", propertyNames: NAME, additionalProperties: { type: "object" } },
     evidence: { type: "object", propertyNames: NAME, additionalProperties: { type: "object" } },
@@ -3215,7 +3323,7 @@ const vectorsSchema = {
           ),
           discovery: DOC_REF,
           evidence: d(
-            "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
+            "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the document the announced id names, and no document is evaluated.",
             DOC_REF,
           ),
           context: obj({ ...CONSUMER_FIELDS, ...ATTEMPT_FIELDS }),
