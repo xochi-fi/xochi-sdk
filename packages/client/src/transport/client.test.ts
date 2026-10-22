@@ -4,6 +4,13 @@
  * the injected retry policy, so no timer is faked.
  */
 
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, it, expect } from "vitest";
 import {
   ApiError,
@@ -699,6 +706,23 @@ describe("intent read capability", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("never lets a token-bearing read follow a redirect", async () => {
+    const { c, calls } = client((call) => {
+      if (call === 1) {
+        // An injected fetch that followed a redirect regardless of `redirect`.
+        const followed = json({ id: "xi_1", status: "completed" });
+        Object.defineProperty(followed, "redirected", { value: true });
+        return followed;
+      }
+      return json({ status: "settling" });
+    });
+    const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
+    expect(err.message).toMatch(/redirected/);
+    expect(err.message).not.toContain(READ_TOKEN);
+    await c.getIntentStatus("xi_1");
+    expect(calls.map((call) => call.init.redirect)).toEqual(["error", undefined]);
+  });
+
   it("captures a 502 read_token without handing the ApiError to injected logging", async () => {
     const logged: { message: string; data: unknown[] }[] = [];
     const { c } = client(
@@ -878,6 +902,69 @@ describe("intent read capability", () => {
       status: "failed",
       settlementConfirmed: false,
     });
+  });
+});
+
+describe("a read token never follows a redirect (real loopback servers)", () => {
+  const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+
+  /** A real HTTP server on 127.0.0.1 recording each request's path and headers. */
+  async function loopback(handler: (req: IncomingMessage, res: ServerResponse) => void) {
+    const seen: { url: string; headers: IncomingHttpHeaders }[] = [];
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url ?? "", headers: req.headers });
+      handler(req, res);
+    });
+    const listening = Promise.withResolvers<void>();
+    server.listen(0, "127.0.0.1", listening.resolve);
+    await listening.promise;
+    const { port } = server.address() as AddressInfo;
+    const close = () => {
+      server.closeAllConnections();
+      const closed = Promise.withResolvers<void>();
+      server.close(() => closed.resolve());
+      return closed.promise;
+    };
+    return { url: `http://127.0.0.1:${port}`, seen, close };
+  }
+
+  it("fails the read on a cross-origin 302; the redirect target never sees the token", async () => {
+    const target = await loopback((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ id: "xi_1", status: "settling" }));
+    });
+    const origin = await loopback((req, res) => {
+      res.writeHead(302, { Location: `${target.url}${req.url}` });
+      res.end();
+    });
+    try {
+      const logged: string[] = [];
+      const c = createXochiClient({
+        baseUrl: origin.url,
+        log: (level, message, ...data) =>
+          logged.push(
+            [level, message, ...data.map((d) => `${String(d)} ${JSON.stringify(d)}`)].join(" "),
+          ),
+      });
+
+      const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
+      expect(`${String(err)} ${String(err.cause)}`).not.toContain(READ_TOKEN);
+      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
+      expect(origin.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([
+        READ_TOKEN,
+        READ_TOKEN,
+      ]);
+      expect(target.seen).toHaveLength(0);
+      expect(logged.join("\n")).not.toContain(READ_TOKEN);
+
+      // The same redirect is followed by a read that carries no token, so the
+      // refusal above is the token rule, not a target the client cannot reach.
+      expect(await c.getIntentStatus("xi_1")).toMatchObject({ status: "settling" });
+      expect(target.seen).toHaveLength(1);
+      expect(target.seen[0].headers).not.toHaveProperty("x-xochi-read-token");
+    } finally {
+      await Promise.all([origin.close(), target.close()]);
+    }
   });
 });
 

@@ -418,6 +418,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    * no deadline at all. On expiry the attempt rejects with an `AbortError`, the
    * same as a stalled connect, whether or not the injected `fetch` honours the
    * signal on its body.
+   *
+   * A request carrying the read capability never follows a redirect
+   * (`redirect: "error"`): fetch drops `Authorization` on a cross-origin hop
+   * but forwards a custom header, so the hop would hand the bearer secret to
+   * whatever host the `Location` names. The redirect surfaces as a failed
+   * request instead, and a response an injected `fetch` reached by redirecting
+   * anyway is refused.
    */
   async function send<T>(
     path: string,
@@ -429,6 +436,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     const headers = new Headers(init.headers);
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
+    const carriesReadToken = headers.has(READ_TOKEN_HEADER);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     // The source body's reader, held here so an abort can cancel the stream
@@ -439,7 +448,12 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         ...init,
         headers,
         signal: controller.signal,
+        ...(carriesReadToken ? { redirect: "error" as const } : {}),
       });
+      if (carriesReadToken && fetched.redirected) {
+        cancelBody(fetched);
+        throw new Error(`Refused a redirected response to a read-token request (${path})`);
+      }
       let response = fetched;
       if (fetched.body) {
         const reader = fetched.body.getReader();
