@@ -218,7 +218,7 @@ the property §9.4 must preserve when it changes the key. The solver spends its 
 inventory here; it is made whole only by a later `claim` on the origin escrow
 (§3).
 
-## 5. Proof-of-fill `[PROPOSED]` (no verifier exists; substrate is orphaned clients — §11.0)
+## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[BUILT, UNDEPLOYED]`; tiers 1, 1s and 2 unbuilt — §11.0)
 
 A pluggable `IProofOfFill` verifier, tiered per corridor and swapped via
 `setProofVerifier(destChainId, …)` **with zero change to the user signature**.
@@ -1038,8 +1038,11 @@ taker quote path is untouched until an operator opts in twice:
 | `POST /solver/fills` intake: attributable receipts, unknown kinds fail closed     | the input side of the release predicate, already running              |
 | `computeOrderId` / `assertEscrowBinding` (`@xochi/signer`), `StubEscrowGateway` | the client guard (§7) and the interface the real gateway must satisfy |
 
-**The tier-0 verifier substrate does not exist.** Nothing in the server submits
-or verifies a proof of fill today; the oracle orchestration was removed.
+**Nothing deployed verifies a fill, and the third-party oracle substrate does
+not exist.** The tier-0 attesters (Riddler `lib/riddler/solver/escrow/*`) are
+`[BUILT, UNDEPLOYED]` and gated off, so nothing in the deployed server submits
+or verifies a proof of fill today; the third-party oracle orchestration (the
+`oracle_attestation` watch) was removed (riddler #766).
 
 What remains is the per-protocol API clients (`Riddler.Integrations.{Polymer,
 Wormhole,Hyperlane}`) with **zero callers**. The expensive parts survived
@@ -1287,13 +1290,14 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 
 | Area                                            | Status          | Where                                                                                                     |
 | ----------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| Fill oracles (attested fills)                   | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (§11.0) |
+| Third-party fill oracles (`oracle_attestation`) | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (§11.0) |
 | `OrderTerms` / `orderId` / `OpenAuth` reference | `[RESERVED]`    | `@xochi/signer` `computeDestCommitment`, `computeOrderId`, `openAuthDigest` + §2, §12                   |
 | Escrow-binding client guard                     | `[RESERVED]`    | `@xochi/signer` `assertEscrowBinding` + §7                                                              |
 | `EscrowGateway` stub (fund-safety)              | `[RESERVED]`    | `@xochi/solver-sdk` `StubEscrowGateway` + §1/§5                                                         |
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
 | `RiddlerEscrow` / `RiddlerFiller`               | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/*.sol`; M6.2)                                      |
-| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (tier 0 attesters `[BUILT, UNDEPLOYED]`, gated off: Riddler `lib/riddler/solver/escrow/*`; §11.0)    |
+| `IProofOfFill` tier 0 (venue attesters)         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `lib/riddler/solver/escrow/*`; §11.0)                                            |
+| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (unbuilt; §5)                                                                                           |
 | `IProofOfFill` tier 1s (shielded-Aztec preimage) | `[PROPOSED]`   | — (unbuilt; §5.1, xochi `shielded-execution.md` D9; no verifier, registry, fill tag or recipient hold exists) |
 | `SolverBond` / slashing                         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §11.1)                            |
 | Sealed-bid auction, award, allowlist            | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (`SOLVER-RFC.md` §§4–5)                                                    |
