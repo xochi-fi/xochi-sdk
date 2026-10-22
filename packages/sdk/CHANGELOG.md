@@ -6,7 +6,6 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ### Breaking
 
-- **`PATTERN_TIME_WINDOW_MAX` is 30 days (2,592,000 s), was 90 days**, mirroring ERC-8262's new `MAX_TIME_WINDOW` (ERC-8262 PR #33): the Oracle reverts `TimeWindowTooLarge(timeWindow, maximum)` above it, and `buildPatternInputs` now rejects a `timeWindow` over 30 days before proving. The error is in `ORACLE_ABI` and decodes to the new `TimeWindowTooLargeError`. Migrate: split analyses longer than 30 days.
 - **RISK_SCORE (0x02) and PATTERN (0x03) carry a proof timestamp** (xochi-fi/ERC-8262#25, ERC-8262 PR #33). The Oracle now rejects either once the timestamp is older than `MAX_PROOF_AGE` (1 hour) or in the future, and ratchets on it per type; before, both used `block.timestamp` and had no age bound. Bundled `risk_score.json` and `pattern.json` are re-synced: their verification keys changed, so deploy the matching ERC-8262 verifiers and Oracle. Proofs made by earlier releases do not verify against the new verifiers.
   - `PUBLIC_INPUT_COUNTS`: `0x02` 8 -> 9, `0x03` 7 -> 8.
   - risk_score layout: `timestamp` is input 7, `submitter` moves 7 -> 8. `RiskScoreInput` (`buildRiskScoreInputs`, `proveRiskScore`, `proveBatch`, `provePlan`) gains optional `timestamp` (unix seconds as a string, default now), validated like compliance's.
@@ -17,6 +16,12 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 ### Added
 
 - **`chainProofTimestamp(client)`** returns the target chain's latest block timestamp as the string the builders' `timestamp` option takes (any viem client). The Oracle rejects a proof timestamp after `block.timestamp` (`ProofTimestampInFuture`) or older than `MAX_PROOF_AGE` (1 hour); the builders still default to the local clock, so a client whose clock runs ahead of the chain made proofs that always reverted. Pass `timestamp: await chainProofTimestamp(publicClient)` (for the signed types, before requesting the signature). The `timestamp` option of every builder, `currentTimestamp` (attestation) and `signedTimestamp` (0x08) now document the bound.
+- **`TimeWindowTooLarge(timeWindow, maximum)`** is in `ORACLE_ABI` and decodes to `TimeWindowTooLargeError`: ERC-8262's new `MAX_TIME_WINDOW` (90 days, ERC-8262 PR #33) reverts it. `PATTERN_TIME_WINDOW_MAX` is unchanged (90 days) and now mirrors it.
+- `assertProofRecent` / `isProofRecent` take an optional third argument, `nowSeconds`, the reference time (default the local clock).
+
+### Fixed
+
+- **`submitCompliance`'s `proofTimestamp` pre-check uses the chain's latest block time**, not the local clock (one extra RPC read when `proofTimestamp` is passed). On a client whose clock was behind the chain it refused chain-dated proofs the Oracle accepts; with the clock ahead it let through proofs the Oracle then reverted.
 
 ### Changed
 

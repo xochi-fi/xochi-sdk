@@ -33,17 +33,20 @@ export async function chainProofTimestamp(client: Client): Promise<string> {
 }
 
 /**
- * Describe why a proof timestamp is not submittable now, or null when it is.
- * Timestamps are unix seconds; a millisecond value reads as far future.
+ * Describe why a proof timestamp is not submittable at `now` (unix seconds),
+ * or null when it is. Timestamps are unix seconds; a millisecond value reads
+ * as far future.
  */
-function recencyError(proofTimestamp: number, maxAgeSeconds: number): string | null {
+function recencyError(proofTimestamp: number, maxAgeSeconds: number, now: number): string | null {
   if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
     return `maxAgeSeconds must be a non-negative integer, got ${String(maxAgeSeconds)}`;
   }
   if (!Number.isSafeInteger(proofTimestamp) || proofTimestamp < 0) {
     return `Proof timestamp must be a non-negative integer (unix seconds), got ${String(proofTimestamp)}`;
   }
-  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(now) || now < 0) {
+    return `Reference time must be a non-negative integer (unix seconds), got ${String(now)}`;
+  }
   if (proofTimestamp > now) {
     return `Proof timestamp ${String(proofTimestamp)} is in the future (now ${String(now)}); timestamps are unix seconds, not milliseconds`;
   }
@@ -54,18 +57,26 @@ function recencyError(proofTimestamp: number, maxAgeSeconds: number): string | n
   return null;
 }
 
+function localNow(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 /**
  * Check whether a proof timestamp is recent enough for submission.
  *
  * @param proofTimestamp - Unix timestamp (seconds) when the proof was generated
  * @param maxAgeSeconds - Maximum allowed age in seconds (default: 3600)
+ * @param nowSeconds - Reference time in unix seconds (default: the local
+ *   clock). The Oracle measures against `block.timestamp`, so pass the chain's
+ *   latest block time when the local clock may differ from the chain.
  * @returns true if the proof is within the allowed age window and not in the future
  */
 export function isProofRecent(
   proofTimestamp: number,
   maxAgeSeconds: number = DEFAULT_MAX_PROOF_AGE,
+  nowSeconds: number = localNow(),
 ): boolean {
-  return recencyError(proofTimestamp, maxAgeSeconds) === null;
+  return recencyError(proofTimestamp, maxAgeSeconds, nowSeconds) === null;
 }
 
 /**
@@ -74,11 +85,15 @@ export function isProofRecent(
  *
  * @param proofTimestamp - Unix timestamp (seconds) when the proof was generated
  * @param maxAgeSeconds - Maximum allowed age in seconds (default: 3600)
+ * @param nowSeconds - Reference time in unix seconds (default: the local
+ *   clock). The Oracle measures against `block.timestamp`, so pass the chain's
+ *   latest block time when the local clock may differ from the chain.
  */
 export function assertProofRecent(
   proofTimestamp: number,
   maxAgeSeconds: number = DEFAULT_MAX_PROOF_AGE,
+  nowSeconds: number = localNow(),
 ): void {
-  const error = recencyError(proofTimestamp, maxAgeSeconds);
+  const error = recencyError(proofTimestamp, maxAgeSeconds, nowSeconds);
   if (error !== null) throw new Error(error);
 }

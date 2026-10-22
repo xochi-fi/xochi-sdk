@@ -217,4 +217,39 @@ describe("chainProofTimestamp (anvil behind the local clock)", () => {
     expect(BigInt(proof.publicInputs[7])).toBe(BigInt(timestamp));
     expect((await alice.checkComplianceByType(ALICE, EU, PROOF_TYPES.RISK_SCORE)).valid).toBe(true);
   });
+
+  it("the proofTimestamp pre-check measures against chain time, not the local clock", async () => {
+    // The local clock is years ahead of anvil here. Against it, a chain-dated
+    // proof reads as stale; against the latest block it is fresh.
+    const timestamp = await chainProofTimestamp(publicClient);
+    const proof = await prover.proveRiskScore({ ...RISK_SCORE_INPUT, timestamp });
+
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: await alice.submitCompliance({
+        jurisdictionId: EU,
+        proofType: PROOF_TYPES.RISK_SCORE,
+        proof: proof.proofHex,
+        publicInputs: proof.publicInputsHex,
+        providerSetHash: PROVIDER_SET_HASH,
+        proofTimestamp: Number(timestamp),
+      }),
+    });
+    expect(receipt.status).toBe("success");
+  });
+
+  it("the proofTimestamp pre-check refuses a proof dated after the chain head", async () => {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const proof = await prover.proveRiskScore({ ...RISK_SCORE_INPUT, timestamp });
+
+    await expect(
+      alice.submitCompliance({
+        jurisdictionId: EU,
+        proofType: PROOF_TYPES.RISK_SCORE,
+        proof: proof.proofHex,
+        publicInputs: proof.publicInputsHex,
+        providerSetHash: PROVIDER_SET_HASH,
+        proofTimestamp: Number(timestamp),
+      }),
+    ).rejects.toThrow("is in the future");
+  });
 });

@@ -64,7 +64,7 @@ const result = await prover.proveRiskScore({ ...input, timestamp });
 // submit within MAX_PROOF_AGE (1 hour) of `timestamp`
 ```
 
-For the signed types, read it before requesting the signature: the provider signs the same timestamp. `submitCompliance`'s optional `proofTimestamp` pre-check (`assertProofRecent`) compares against the local clock, so on a client behind the chain it refuses a chain-dated proof the Oracle would accept; omit `proofTimestamp` there.
+For the signed types, read it before requesting the signature: the provider signs the same timestamp. `submitCompliance`'s optional `proofTimestamp` pre-check measures the proof's age against the chain's latest block time, as the Oracle does, so a local clock behind or ahead of the chain does not affect it.
 
 ## Provider-signed proofs
 
