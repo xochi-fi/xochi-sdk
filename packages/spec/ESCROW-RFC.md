@@ -371,34 +371,64 @@ whose tx carries a non-interactive handshake log. Without this rule §9.5's
 and value; it binds neither the order nor the sender, and a private tx hides
 `msg_sender`. The `transfer` tx MUST therefore also carry a fill tag that the
 venue verifies in that tx's own effects: a private call, in the same tx, to
-the pinned `FillTag` contract class, which emits the nullifier
-`tag = H_sep([hi(fillId), lo(fillId)], FILL_TAG)` (`fillId` per §9.4, split
-into two 128-bit limbs; `FILL_TAG` is a separator fixed with this `kind`'s
-layout). At step 3 the venue recomputes `fillId` from its own `fillSalt`,
-computes `compute_siloed_nullifier(FillTag address, tag)` and checks that it
-is a nullifier in `txHash`'s effects; absent or different is unproven. The
+the corridor's pinned `FillTag` instance, which emits the nullifier
+`tag = H_sep([hi(fillSalt), lo(fillSalt)], FILL_TAG)` (`fillSalt` per §9.4,
+split into two 128-bit limbs). The instance is pinned by **address**, not by
+class: each approved `networkIdentity` records exactly one `FillTag` address
+(in the corridor configuration, beside the bounds of the claim window below),
+because a nullifier is siloed by the address that emits it and uniqueness
+holds per address only; a tag emitted from any other address is absent.
+`FILL_TAG` is `[RESERVED]`: the separator constant is fixed by the pinned
+`FillTag` class when it is built and published with the corridor, a change
+to it versions this `kind`, and until then no value is valid. At step 3 the
+venue recomputes `fillSalt` from `orderId` (§9.4), computes
+`compute_siloed_nullifier(FillTag address, tag)` and checks that it is a
+nullifier in `txHash`'s effects; absent or different is unproven. The
 `FillTag` call emits no note hash and enqueues no public call, so step 3's
-numbering holds. The solver receives `fillSalt` only with the award (§9.4),
-so no tagged tx can predate the award, and the protocol's nullifier
-uniqueness admits one tagged tx per `fillId`. A note from an unrelated
-transfer, a third party's payment, or a payment to a shared or custodial
-recipient (an exchange deposit address) cannot evidence this order. The tag
-puts no origin value on Aztec (C1): `fillId` commits the keyed `fillSalt`.
-Residual: the extra nullifier makes a fill tx distinguishable by shape from a
-plain `transfer`, which narrows the anonymity set (§9.6); a solver that leaks
-its `fillSalt` lets the leak's recipient tag a tx for the order (the payee is
-still the authenticated awardee); `FillTag` is net-new and unbuilt. The XSP
-path has no `fillSalt`: 3.8a must adopt an equivalent Attestor-issued
-per-obligation tag input in lockstep, and until it does the XSP path carries
-the unbound-note risk this paragraph closes.
+numbering holds. The tag input is `fillSalt`, not `fillId`: `fillId` also
+reaches the attester and the slash arbiter in the FillAuth preimage (§6.1),
+while `fillSalt` is held only by the venue and the awardee, who receives it
+only with the award (§9.4). So no tagged tx can predate the award, and the
+protocol's nullifier uniqueness admits one tagged tx per order on that
+address. A note from an unrelated transfer, a third party's payment, or a
+payment to a shared or custodial recipient (an exchange deposit address)
+cannot evidence this order. The tag puts no origin value on Aztec (C1):
+`fillSalt` is keyed by the venue. Residual: the extra nullifier makes a fill
+tx distinguishable by shape from a plain `transfer`, which narrows the
+anonymity set (§9.6); a leaked `fillSalt` (the venue's or the awardee's
+fault) lets its holder tag a tx for the order, or burn the tag first so the
+awardee's tagged transfer cannot land (the payee is still the authenticated
+awardee); `FillTag` is net-new and unbuilt. The XSP path has no `fillSalt`:
+3.8a must adopt an equivalent Attestor-issued per-obligation tag input in
+lockstep, and until it does the XSP path carries the unbound-note risk this
+paragraph closes.
 
 A failed step, a node error and an `unknown` result are all **unproven**, not
-"not filled". A disclosure received in time is never a §6 no-show while its
-verification is pending or `unknown`; only a refusal on its content (a field
-mismatch, a missing fill tag, `note_already_bound`) counts as no disclosure
-(§6).
+"not filled". For §6 every received disclosure resolves, by `holdDeadline` at
+the latest, into exactly one class:
 
-**Registry.** Before any release the venue records
+- **verified**: every release-predicate check (below) passed at finality;
+- **refused on content**, which counts as no disclosure (§6): a field
+  mismatch, a missing fill tag, a payload the venue's node rejects as
+  malformed, a `txHash` that the venue's node, outside a venue outage, does
+  not show included at the corridor's finality by receipt + `T_final`
+  (`not_included`; `T_final` already covers a proving stall), or
+  `note_already_bound` (an existing entry is always fully verified, because
+  the registry is written only after every other check passes, below);
+- **venue outage**: the venue's own Aztec or L1 node, its identity proof or
+  the registry was failing for every disclosure on that corridor, by the
+  venue's own health record, not only for this one. Never grounds for a
+  slash; the order follows the outage residual (Claim window, below).
+
+A disclosure still unclassified at `holdDeadline` for any reason other than
+a venue outage is refused on content, so a fabricated or never-included
+`txHash` cannot keep a no-show unslashable. On the XSP path, until 3.8a adopts
+the fill tag, `note_already_bound` is never slash grounds: an untagged note
+can be bound first by another awardee who knows its preimage.
+
+**Registry.** Only after every other check of the release predicate has
+passed (network binding, steps 1–6, the fill tag, the payee and the
+`DestOpening` match), and never before, the venue records
 `(networkIdentity, unique) -> HMAC_k(orderId)` (on the XSP path
 `HMAC_k(obligationId)`) as an atomic insert-if-absent keyed by
 `(networkIdentity, unique)`. `k` is a venue-held key; retired key
@@ -430,9 +460,9 @@ the digest recorded with the award and the venue's node proved it, `recipient`,
 `token` and `amount` match the committed `DestOpening` (`amount >= toAmount`;
 exact under §13.2), the inclusion, lower-bound and fill-tag checks (steps 5–6,
 Order binding) passed at finality, `(networkIdentity, unique)` was free in the
-registry, no `not_received` hold is open, and no slash is proposed for
-`orderId` (§6). Both custody paths keep C2: no destination locator reaches the
-origin chain.
+registry, no `not_received` hold is open, and the order's outcome record
+admits release (release/slash exclusivity, §6). Both custody paths keep C2:
+no destination locator reaches the origin chain.
 
 - On `RiddlerEscrow` the origin artifact is the custody contract's own release
   artifact, as for tier 0: `FillAttestation(orderId, payee)` (§9.4).
@@ -487,7 +517,7 @@ and refund are made exclusive by bounding every wait a shielded release can
 depend on, and a corridor carrying any shielded order MUST set
 
 ```
-claimWindow >= T_final + T_verify + T_hold + T_registry + T_release
+claimWindow >= T_final + T_verify + T_hold + T_registry + T_dispute + T_release
 ```
 
 where `T_final` is Aztec `finalized` plus the configured L1 policy, including
@@ -497,9 +527,13 @@ pruned); `T_verify` is the venue's verification latency; `T_hold` is the
 operator's hold-resolution budget, the least time a hold opened at
 verification gets before `holdDeadline` (below); `T_registry` is the
 registry recovery bound (a restore that has not reproduced its checkpoint
-digest within it stays halted); and `T_release` is the time to land the
-release artifact on the origin chain at its finality. Each is a per-corridor
-configured bound, recorded with the corridor.
+digest within it stays halted); `T_dispute` is `FILL_DEADLINE_GRACE` plus
+the SolverBond `disputeWindow` (§6.1), the longest a late `:winner`'s
+release can wait for a slash proposed at the grace end to be voided (§6);
+and `T_release` is the time to land the release artifact on the origin chain
+at its finality. Each is a per-corridor configured bound, recorded in the
+corridor configuration beside its approved `networkIdentity` and `FillTag`
+address.
 
 Every hold on a disclosed fill (a `not_received` assertion, a pending
 operator record, an `unknown` verification) resolves by
@@ -513,13 +547,16 @@ recorded for completion and escalation and holds nothing.
 
 Exposure stops before a bound is spent: while a corridor's registry is
 halted, the venue's Aztec node for it lags finality by more than `T_final`,
-or any hold on it is open past `T_hold`, the venue MUST NOT issue a shielded
-`:winner` FillAuth for that corridor. Residual: an outage longer than its
-bound on an in-flight order (registry, venue nodes or operator) lets
-`refund` return the principal while the recipient keeps a delivered note. The
-solver bears that loss (Riddler, while it is the only shielded panel member),
-bounded by the corridor's in-flight notional cap. The "never refund an
-unknown" rule below binds the venue's own actions only.
+or a hold on it has lacked the venue's own evidence (b) (the inclusion and
+forwarding records, Recipient above) for `T_hold`, the venue MUST NOT issue a
+shielded `:winner` FillAuth for that corridor. A `not_received` assertion on
+a fill whose evidence (b) exists never halts the corridor, so no recipient
+can freeze awards for other users by asserting non-receipt. Residual: an
+outage longer than its bound on an in-flight order (registry, venue nodes or
+operator) lets `refund` return the principal while the recipient keeps a
+delivered note. The solver bears that loss (Riddler, while it is the only
+shielded panel member), bounded by the corridor's in-flight notional cap.
+The "never refund an unknown" rule below binds the venue's own actions only.
 
 **MUST NOT.**
 
@@ -535,10 +572,10 @@ unknown" rule below binds the venue's own actions only.
   refund path at `refundableAt` (§3, §13), never by a second `transfer`; a
   backstop for a shielded leg is a resend of an unknown outcome. A `:winner`
   that discloses after `exclusiveUntil` for a `transfer` included before
-  `fillDeadline` is still verified under this subsection, subject to §6's
-  one-outcome rule; refusing it does not undo the payout. `SOLVER-RFC.md` §6's
-  409-after-`exclusiveUntil` rule needs this exemption for
-  `aztec_note_preimage` when that kind lands in lockstep.
+  `fillDeadline` is still verified under this subsection, subject to
+  release/slash exclusivity (§6); refusing it does not undo the payout.
+  `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil` rule needs this exemption
+  for `aztec_note_preimage` when that kind lands in lockstep.
 - MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
   silently or as a remedy.
 - MUST NOT advertise this tier as `verified` or as confidentiality tier 2
@@ -565,34 +602,48 @@ consumer in this tree parses it.
   attests "no `aztec_note_preimage` disclosure for this `orderId` **received**
   from the awardee by `fillDeadline + FILL_DEADLINE_GRACE`", never "no fill"
   and never "not verified". Receipt is the attributable `POST /solver/fills`
-  record (§11.0), timestamped by the venue on arrival. A disclosure received
-  in time is never grounds for a slash while its verification is pending or
-  `unknown` (node error, Aztec or L1 finality not reached, however long that
-  takes); only a §5.1 refusal on its content (a field mismatch, a missing
-  fill tag, `note_already_bound`) counts as no disclosure. **Release and slash
-  are mutually exclusive per `orderId`:** the attester records each order's
-  outcome as an atomic insert-if-absent, never signs a slash for an `orderId`
-  with a received disclosure that is not refused, or with a release artifact,
-  and never signs a release artifact for an `orderId` with a proposed slash
-  until that slash is disputed and voided. A disclosure received after a
-  slash proposal (§5.1's late `:winner`) is the solver's dispute evidence:
-  release follows only once the dispute voids the slash, and only before
-  `holdDeadline` (§5.1), else the order refunds. The solver's dispute
-  evidence is the venue's own §5.1 inclusion record for that `orderId`,
-  produced on request, not `filled(fillId)`. While Riddler is the only
-  shielded panel member, venue equals solver, and the bond and dispute
-  machinery are inert under `RiddlerEscrow` + `SolverBond` (Riddler runs the
-  attesters); under the Depository + Ledger pair the independent Attestor's
-  slash applies to Riddler like any solver (D9).
+  record (§11.0), timestamped by the venue on arrival; the attester compares
+  that timestamp with `fillDeadline + FILL_DEADLINE_GRACE` on the same venue
+  clock, and the proposal is still gated on the bond chain's clock by
+  `FillWindowOpen` (§6.1). A disclosure received in time is slash grounds
+  only once §5.1 classes it **refused on content**; while it is verified,
+  unclassified or a venue outage it is not, and §5.1 classes every disclosure
+  by `holdDeadline`, so a junk disclosure delays the slash but cannot dodge
+  it.
+
+  **Release/slash exclusivity (per `orderId`).** The attester keeps one
+  outcome record per `orderId`, moved only by atomic compare-and-set along
+  `open → released`, `open → slash_proposed → slash_executed`,
+  `slash_proposed → slash_voided → released`, and `→ refunded` from any
+  unreleased state once `refund` lands. A release artifact is signed only
+  from `open` or `slash_voided`; a slash only from `open`, and never while a
+  received disclosure is unclassified or verified. A disclosure whose receipt
+  is recorded before the `open → slash_proposed` transition blocks the slash;
+  one recorded after it (§5.1's late `:winner`) is the solver's dispute
+  evidence, and release follows only from `slash_voided`, inside §5.1's
+  `T_dispute` term and before `holdDeadline`, else the order refunds. So at
+  most one of a release artifact and an executed slash exists per `orderId`.
+  The solver's dispute evidence is the venue's own §5.1 inclusion record for
+  that `orderId`, produced on request, not `filled(fillId)`. While Riddler is
+  the only shielded panel member, venue equals solver, and the bond and
+  dispute machinery are inert under `RiddlerEscrow` + `SolverBond` (Riddler
+  runs the attesters); under the Depository + Ledger pair the independent
+  Attestor's slash applies to Riddler like any solver (D9).
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
   reserve under its own FillAuth and the defaulter is slashed (`SOLVER-RFC.md`
   §2.1). Shielded legs are exempt from the backstop: no `:backstop` FillAuth
   while the winner's outcome is undisclosed (§5.1 MUST NOT), so a shielded
-  no-show resolves by slash plus `refund`, never by a second `transfer`.
-  `claim` itself is permissionless and pays the payee the attestation names.
-  Reuses the existing WAL / reorg-guard / no-double-pay discipline.
+  winner that accepted and then did not fill resolves by slash plus `refund`,
+  never by a second `transfer`. A shielded winner that never sends a
+  FillAcceptance faces neither: the attester has no acceptance to slash on
+  (`no_fill_acceptance`, §6.1) and no backstop may fill, so the user's only
+  path is the permissionless `refund` at `refundableAt`. Residual: that user
+  waits the full shielded `claimWindow` (§5.1) with no slash payment; the
+  venue records `winner_abandoned`, which is grounds for panel removal
+  (§6.1). `claim` itself is permissionless and pays the payee the attestation
+  names. Reuses the existing WAL / reorg-guard / no-double-pay discipline.
 
 ### 6.1 Slash proof on solver signatures (SolverBond v2)
 
@@ -654,7 +705,9 @@ one for a window it chose.
 The solver's obligation starts when it SENDS the acceptance, not when the venue
 acknowledges it, and the venue enforces an acceptance window: a `:winner` with
 no verified acceptance by `issued_at + acceptance window` is abandoned to a
-`:backstop` FillAuth for the same `fillId` (at most one fill can land). The
+`:backstop` FillAuth for the same `fillId` (at most one fill can land),
+except on a shielded leg, which gets no backstop and refunds at
+`refundableAt` (§5.1 MUST NOT, §6). The
 venue records the award as abandoned (`winner_abandoned` on the order), and
 repeated abandonment is the operator's grounds for removing the solver from the
 panel directory (`SOLVER-RFC.md` §5.3).
@@ -1010,15 +1063,19 @@ today and a `@xochi/spec` MAJOR plus a redeploy after M6.2 (§10, §11.1).
   `[PROPOSED]` text versions with its wire landing): §5 adds proof tier 1s
   (`optimistic_disclosed` / `aztec_note_preimage`) and §5.1's release rule,
   with the payload bound to the approved `NetworkIdentity` digest (registry
-  partitioned by it), a fill tag binding the tx to `fillId`, a bounded
-  `claimWindow` floor and `holdDeadline` so release and the permissionless
-  `refund` stay exclusive, and no `:backstop` for a shielded leg. The legend
-  gains `[BUILT, UNDEPLOYED]` (used by §5, §11.0 and Appendix A for the
-  tier-0 attesters, `RiddlerEscrow` / `RiddlerFiller` and `SolverBond`). §6
-  is rewritten: both slashes pay the affected user at deploy-default rates;
-  the tier 1s no-show is "no disclosure received by `fillDeadline +
-  FILL_DEADLINE_GRACE`", never pending finality; release and slash are
-  exclusive per `orderId`. No preimage, digest or vector changes.
+  partitioned by it, written only after every other check), a fill tag from
+  `fillSalt` on a `FillTag` instance pinned by address, every disclosure
+  classed verified / refused on content / venue outage by `holdDeadline`, a
+  bounded `claimWindow` floor (including `T_dispute`) and `holdDeadline` so
+  release and the permissionless `refund` stay exclusive, and no `:backstop`
+  for a shielded leg. The legend gains `[BUILT, UNDEPLOYED]` (used by §5,
+  §11.0 and Appendix A for the tier-0 attesters, `RiddlerEscrow` /
+  `RiddlerFiller` and `SolverBond`). §6 is rewritten: both slashes pay the
+  affected user at deploy-default rates; the tier 1s no-show is "no
+  disclosure received by `fillDeadline + FILL_DEADLINE_GRACE`", or one refused
+  on content, never a pending or venue-outage verification; release and
+  slash are exclusive per `orderId` through a compare-and-set outcome record.
+  No preimage, digest or vector changes.
 
 ---
 
@@ -1322,4 +1379,5 @@ invariant, escrow gateway (`lock`/`release`/`void`), `fillId`, `fillSalt`,
 confidentiality tier (linked / unlinked / confidential), anonymity set, note
 preimage registry (`note_already_bound`), recipient hold (`not_received`),
 hold deadline (`holdDeadline`), network identity (`networkIdentity`), fill tag
-(`FillTag`), fill commitment (`fillCommitment`).
+(`FillTag`), fill commitment (`fillCommitment`), outcome record
+(release/slash exclusivity).
