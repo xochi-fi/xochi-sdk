@@ -233,7 +233,7 @@
               "registry",
               "seenDiscovery",
               "seenEvidence",
-              "seenGone",
+              "seenRevoked",
               "discoveryFetch",
               "evidenceFetch",
               "announcedEvidenceId",
@@ -346,8 +346,8 @@
                   "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                 }
               },
-              "seenGone": {
-                "description": "(trustDomainId, evidenceId) pairs the consumer recorded from a 410.",
+              "seenRevoked": {
+                "description": "(trustDomainId, evidenceId) pairs the consumer recorded as revoked from a 410 or a revoked body, trustDomainId being the allowlisted host it came from.",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -539,6 +539,7 @@
                       "evidence_id_invalid",
                       "origin_mismatch",
                       "evidence_gone",
+                      "evidence_revoked",
                       "discovery_unavailable",
                       "evidence_unavailable",
                       "trust_domain_mismatch",
@@ -559,7 +560,6 @@
                       "not_registered_on_oracle",
                       "subject_mismatch",
                       "evidence_id_conflict",
-                      "evidence_revoked",
                       "invalid_validity_window",
                       "validity_too_long",
                       "not_yet_valid",
@@ -612,7 +612,7 @@
               "registry",
               "seenDiscovery",
               "seenEvidence",
-              "seenGone"
+              "seenRevoked"
             ],
             "additionalProperties": false,
             "properties": {
@@ -721,8 +721,8 @@
                   "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                 }
               },
-              "seenGone": {
-                "description": "(trustDomainId, evidenceId) pairs the consumer recorded from a 410.",
+              "seenRevoked": {
+                "description": "(trustDomainId, evidenceId) pairs the consumer recorded as revoked from a 410 or a revoked body, trustDomainId being the allowlisted host it came from.",
                 "type": "array",
                 "items": {
                   "type": "object",

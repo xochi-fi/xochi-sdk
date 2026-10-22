@@ -963,6 +963,15 @@ const evidence: Record<string, Evidence> = {
     evidenceId: id("gw_sumsub_signed_late_w1"),
     keyId: "gw-signals-0",
   },
+  // gateway-sumsub as its host serves it once revoked.
+  "gateway-sumsub-revoked": { ...gatewaySumsub, status: "revoked", revokedAt: NOW - DAY },
+  // gateway-sumsub-zero-window re-served under the same id with moved (still empty) times.
+  "gateway-sumsub-zero-window-moved": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_window_w1"),
+    issuedAt: gatewaySumsub.issuedAt + DAY,
+    expiresAt: gatewaySumsub.issuedAt + DAY,
+  },
   "gateway-sumsub-future-too-long": {
     ...gatewaySumsub,
     evidenceId: id("gw_sumsub_future_long_w1"),
@@ -987,7 +996,8 @@ type RegistryEntry = {
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
 // The host a document was fetched from and the HTTP status of that fetch.
 type Fetch = { host: string; status: number };
-// An evidence id the consumer recorded as gone (a 410), keyed like every observation.
+// An evidence id the consumer recorded as revoked (a 410 or a revoked body), keyed like
+// every observation.
 type Observed = { trustDomainId: string; evidenceId: string };
 // The public inputs of the Oracle-verified proof the evidence feeds, as the consumer reads
 // them: provider_id as a canonical decimal string, every bytes32 value as lowercase hex.
@@ -1013,7 +1023,7 @@ type Consumer = {
   registry: RegistryEntry[];
   seenDiscovery: string[];
   seenEvidence: string[];
-  seenGone: Observed[];
+  seenRevoked: Observed[];
 };
 // What one evaluation adds: the announced evidenceId, both fetches and the verified proof.
 type Attempt = {
@@ -1088,7 +1098,7 @@ const SEPOLIA_CONSUMER: Consumer = {
   registry: REGISTRY_BASE_SEPOLIA,
   seenDiscovery: [],
   seenEvidence: [],
-  seenGone: [],
+  seenRevoked: [],
 };
 
 // A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id
@@ -1737,7 +1747,7 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      seenGone: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+      seenRevoked: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
     }),
     expected: refuse("evidence_revoked"),
   },
@@ -1748,7 +1758,7 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: nativeEvidence.evidenceId }],
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: nativeEvidence.evidenceId }],
     }),
     expected: accept,
   },
@@ -1988,13 +1998,92 @@ const evaluationCases: CaseInput[] = [
   {
     name: "gone-during-outage-stays-revoked",
     description:
-      "After order-gone-before-discovery-unavailable recorded the 410, discovery is back and the host answers 200 active: refused (evidence_revoked).",
+      "After a 410 (order-gone-before-discovery-unavailable) or a revoked body (revoked-body-during-discovery-outage) was recorded during a discovery outage, discovery is back and the host answers 200 active: refused (evidence_revoked).",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
-      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
     }),
     expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "revoked-body-during-discovery-outage",
+    description:
+      "A schema-valid revoked body for the announced id from the allowlisted host while its discovery fetch fails: refused and recorded as revoked under (host, evidenceId). Only status and evidenceId are read.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-revoked",
+    context: sepoliaContext(GATEWAY_HOST, { discoveryFetch: { host: GATEWAY_HOST, status: 503 } }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "revoked-body-with-invalid-discovery",
+    description:
+      "A revoked body while the host's discovery body fails its schema: refused and recorded as revoked.",
+    discovery: { schemaCase: "discovery-carries-points" },
+    evidence: "gateway-sumsub-revoked",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "revoked-body-id-mismatch-during-outage",
+    description:
+      "A revoked body for another evidenceId than the announced one during a discovery outage is not recorded; the outage is the refusal.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-revoked",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: gatewayPersona.evidenceId,
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+    }),
+    expected: refuse("discovery_unavailable"),
+  },
+  {
+    name: "revoked-body-id-mismatch",
+    description: "The same id-mismatched revoked body with discovery available: not recorded.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-revoked",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewayPersona.evidenceId }),
+    expected: refuse("evidence_id_mismatch"),
+  },
+  {
+    name: "revoked-body-fails-schema-during-outage",
+    description:
+      "A revoked body that fails the evidence schema (no revokedAt) during a discovery outage is not recorded; the outage is the refusal.",
+    discovery: "native",
+    evidence: { schemaCase: "evidence-revoked-without-revoked-at" },
+    context: sepoliaContext(NATIVE_HOST, { discoveryFetch: { host: NATIVE_HOST, status: 503 } }),
+    expected: refuse("discovery_unavailable"),
+  },
+  {
+    name: "revoked-body-fails-schema",
+    description:
+      "The same schema-invalid revoked body with discovery available: unavailable, not recorded.",
+    discovery: "native",
+    evidence: { schemaCase: "evidence-revoked-without-revoked-at" },
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("evidence_unavailable"),
+  },
+  {
+    name: "revoked-body-from-relay",
+    description:
+      "A revoked body fetched from another host than discovery's (a relay): origin_mismatch, not recorded.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-revoked",
+    context: sepoliaContext(GATEWAY_HOST, {
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+      evidenceFetch: { host: NATIVE_HOST, status: 200 },
+    }),
+    expected: refuse("origin_mismatch"),
+  },
+  {
+    name: "order-gone-before-revoked",
+    description: "A 410 (evidence_gone) for an id already recorded as revoked (evidence_revoked).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      evidenceFetch: { host: GATEWAY_HOST, status: 410 },
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_gone"),
   },
   {
     name: "order-discovery-unavailable-before-evidence-unavailable",
@@ -2180,22 +2269,22 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("subject_mismatch"),
   },
   {
-    name: "order-conflict-before-revoked",
+    name: "recorded-revocation-before-conflict",
     description:
-      "A changed immutable field (evidence_id_conflict) against a recorded document that is revoked (evidence_revoked).",
+      "An evidenceId reused with a changed field against a recorded revoked document: the recorded revocation (evidence_revoked) is checked before discovery, so before evidence_id_conflict.",
     discovery: "native",
     evidence: "native-kyc-extended-in-place",
     context: sepoliaContext(NATIVE_HOST, { seenEvidence: ["native-kyc-revoked"] }),
-    expected: refuse("evidence_id_conflict"),
+    expected: refuse("evidence_revoked"),
   },
   {
-    name: "order-revoked-before-window-empty",
+    name: "recorded-revocation-before-window-empty",
     description:
       "A recorded 410 (evidence_revoked) for evidence with an empty validity window (invalid_validity_window).",
     discovery: "gateway",
     evidence: "gateway-sumsub-zero-window",
     context: sepoliaContext(GATEWAY_HOST, {
-      seenGone: [
+      seenRevoked: [
         {
           trustDomainId: GATEWAY_HOST,
           evidenceId: evidence["gateway-sumsub-zero-window"]!.evidenceId,
@@ -2203,6 +2292,15 @@ const evaluationCases: CaseInput[] = [
       ],
     }),
     expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "order-conflict-before-window-empty",
+    description:
+      "An evidenceId re-served with changed times (evidence_id_conflict) that are also an empty window (invalid_validity_window).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-zero-window-moved",
+    context: sepoliaContext(GATEWAY_HOST, { seenEvidence: ["gateway-sumsub-zero-window"] }),
+    expected: refuse("evidence_id_conflict"),
   },
   {
     name: "order-too-long-before-not-yet-valid",
@@ -2357,7 +2455,7 @@ const quorumCases = [
     threshold: 2,
     context: {
       ...SEPOLIA_CONSUMER,
-      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
     },
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
@@ -2547,6 +2645,7 @@ const REFUSALS = [
   "evidence_id_invalid",
   "origin_mismatch",
   "evidence_gone",
+  "evidence_revoked",
   "discovery_unavailable",
   "evidence_unavailable",
   "trust_domain_mismatch",
@@ -2567,7 +2666,6 @@ const REFUSALS = [
   "not_registered_on_oracle",
   "subject_mismatch",
   "evidence_id_conflict",
-  "evidence_revoked",
   "invalid_validity_window",
   "validity_too_long",
   "not_yet_valid",
@@ -2621,7 +2719,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
 const vectors = {
   $schema: "./vectors.schema.json",
   description:
-    "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. An evaluation names its documents as fixtures, or as `{ schemaCase }`: a 200 whose body fails its schema. `context.allowlist` is the consumer's pin of each trust domain to its attestor; `context.registry` stands in for the consumer's Oracle reads; `context.seenDiscovery` / `context.seenEvidence` name documents in the consumer's observation store and `context.seenGone` the (trustDomainId, evidenceId) pairs it recorded from a 410; `context.announcedEvidenceId` is the id the consumer was given and requests; `context.discoveryFetch` / `context.evidenceFetch` give the host each document came from and the HTTP status (a non-200 evidence fetch evaluates no document); `context.proof` holds the public inputs of the Oracle-verified proof the evidence feeds. A quorum case's `context` is shared by its members, each of which adds its own fetches, announced id and proof. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
+    "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. An evaluation names its documents as fixtures, or as `{ schemaCase }`: a 200 whose body fails its schema. `context.allowlist` is the consumer's pin of each trust domain to its attestor; `context.registry` stands in for the consumer's Oracle reads; `context.seenDiscovery` / `context.seenEvidence` name documents in the consumer's observation store and `context.seenRevoked` the (trustDomainId, evidenceId) pairs it recorded as revoked from a 410 or from a revoked body (section 10.5 evidence_revoked, recorded even during a discovery outage); `context.announcedEvidenceId` is the id the consumer was given and requests; `context.discoveryFetch` / `context.evidenceFetch` give the host each document came from and the HTTP status (a non-200 evidence fetch evaluates no document); `context.proof` holds the public inputs of the Oracle-verified proof the evidence feeds. A quorum case's `context` is shared by its members, each of which adds its own fetches, announced id and proof. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
   version: 1,
   protocol: PROTOCOL,
   protocolVersion: PROTOCOL_VERSION,
@@ -2711,13 +2809,16 @@ const CONSUMER_FIELDS = {
     type: "array",
     items: NAME,
   }),
-  seenGone: d("(trustDomainId, evidenceId) pairs the consumer recorded from a 410.", {
-    type: "array",
-    items: obj({
-      trustDomainId: TRUST_DOMAIN_ID,
-      evidenceId: evidenceSchema.properties.evidenceId,
-    }),
-  }),
+  seenRevoked: d(
+    "(trustDomainId, evidenceId) pairs the consumer recorded as revoked from a 410 or a revoked body, trustDomainId being the allowlisted host it came from.",
+    {
+      type: "array",
+      items: obj({
+        trustDomainId: TRUST_DOMAIN_ID,
+        evidenceId: evidenceSchema.properties.evidenceId,
+      }),
+    },
+  ),
 };
 const ATTEMPT_FIELDS = {
   discoveryFetch: FETCH,

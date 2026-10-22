@@ -80,7 +80,7 @@ type Consumer = {
   registry: RegistryEntry[];
   seenDiscovery: string[];
   seenEvidence: string[];
-  seenGone: { trustDomainId: string; evidenceId: string }[];
+  seenRevoked: { trustDomainId: string; evidenceId: string }[];
 };
 type Attempt = {
   discoveryFetch: Fetch;
@@ -199,6 +199,26 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   // A 410 from the discovery host is final even while discovery itself is unavailable.
   ["evidence_gone", (f) => f.ctx.evidenceFetch.status === 410],
   [
+    "evidence_revoked",
+    (f) => {
+      // Runs before discovery is read: only the store and the body's status and evidenceId,
+      // keyed by the allowlisted host and the announced id. Recording can only revoke.
+      const host = f.ctx.discoveryFetch.host;
+      const id = f.ctx.announcedEvidenceId;
+      const recorded =
+        f.ctx.seenRevoked.some((g) => g.trustDomainId === host && g.evidenceId === id) ||
+        f.ctx.seenEvidence
+          .map((name) => doc(V.evidence, name))
+          .some((p) => p.trustDomainId === host && p.evidenceId === id && p.status === "revoked");
+      const revokedBody =
+        f.ctx.evidenceFetch.status === 200 &&
+        validateEvidence(f.ev) &&
+        f.ev.evidenceId === id &&
+        f.ev.status === "revoked";
+      return recorded || revokedBody;
+    },
+  ],
+  [
     "discovery_unavailable",
     (f) => f.ctx.discoveryFetch.status !== 200 || !validateDiscovery(f.disc),
   ],
@@ -313,15 +333,6 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   [
     "evidence_id_conflict",
     (f) => f.priorEvidence().some((p) => immutableFields(p) !== immutableFields(f.ev)),
-  ],
-  [
-    "evidence_revoked",
-    (f) =>
-      f.ev.status === "revoked" ||
-      f.priorEvidence().some((p) => p.status === "revoked") ||
-      f.ctx.seenGone.some(
-        (g) => g.trustDomainId === f.ev.trustDomainId && g.evidenceId === f.ev.evidenceId,
-      ),
   ],
   ["invalid_validity_window", (f) => f.ev.expiresAt <= f.ev.issuedAt],
   [
