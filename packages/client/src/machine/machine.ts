@@ -67,6 +67,7 @@ import { validatePayoutPin, validateSolverPin, type SolverPinConfig } from "./so
 import { INITIAL_INTENT_STATE, type IntentState, type StructuredError } from "./state.js";
 import { applyStatusTransition } from "./transition.js";
 import { validateSwapParams } from "./validateRequest.js";
+import { withheldSettlementConfirmed } from "./wire.js";
 import type {
   ExecuteReply,
   ExecuteRequest,
@@ -1638,8 +1639,11 @@ function onStatus(
         settlementTxHash: s.settlementTxHash ?? undefined,
         settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
         // A confirmed fill whose receipt the server withheld (anonymous read,
-        // xochi#563) is delivered, exactly as a `filled` substatus.
-        substatus: s.settlementConfirmed === true ? "filled" : (s.substatus ?? undefined),
+        // xochi#563) is delivered, exactly as a `filled` substatus; never on a
+        // terminal failure, and only on a read that withheld the legs.
+        substatus: withheldSettlementConfirmed(s.status, s.legsWithheld, s.settlementConfirmed)
+          ? "filled"
+          : (s.substatus ?? undefined),
         error: s.error ?? undefined,
         refundReason: s.refundReason ?? undefined,
         timestamp: new Date(now).toISOString(),

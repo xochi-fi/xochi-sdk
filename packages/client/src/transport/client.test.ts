@@ -851,6 +851,34 @@ describe("intent read capability", () => {
     expect(owner).not.toHaveProperty("legsWithheld");
     expect(owner).not.toHaveProperty("settlementConfirmed");
   });
+
+  it("never reports a confirmed fill on a terminal failure, or off a read that withheld nothing", async () => {
+    const { c } = client((call) =>
+      json(
+        call === 1
+          ? {
+              intent_id: "xi_1",
+              status: "refunded",
+              settlement_confirmed: true,
+              legs_withheld: true,
+            }
+          : call === 2
+            ? { intent_id: "xi_1", status: "settling", settlement_confirmed: true }
+            : { id: "xi_1", status: "failed", settlement_confirmed: true, legs_withheld: true },
+      ),
+    );
+    expect(await c.getIntentStatus("xi_1")).toMatchObject({
+      status: "refunded",
+      legsWithheld: true,
+      settlementConfirmed: false,
+    });
+    expect(await c.getIntentStatus("xi_1")).not.toHaveProperty("settlementConfirmed");
+    expect(await c.getIntent("xi_1")).toMatchObject({
+      legsWithheld: true,
+      status: "failed",
+      settlementConfirmed: false,
+    });
+  });
 });
 
 describe("stealth claim calls (single attempt)", () => {

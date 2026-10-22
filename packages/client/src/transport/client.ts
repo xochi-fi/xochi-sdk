@@ -26,6 +26,7 @@ import {
   mapIntentRead,
   mapIntentRecord,
   mapQuoteResponse,
+  withheldSettlementConfirmed,
   type ExecuteRequest,
   type ExecuteResponse,
   type IntentRecord,
@@ -817,10 +818,23 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           // Trust the server flag; else derive from the normalized status.
           terminal: d.terminal ?? isTerminalIntentStatus(status),
           // The anonymous view of a private intent (xochi#563): legs withheld,
-          // so the null hashes above mean "not shown", not "not there".
-          ...(d.legs_withheld === true ? { legsWithheld: true } : {}),
-          ...(typeof d.settlement_confirmed === "boolean"
-            ? { settlementConfirmed: d.settlement_confirmed }
+          // so the null hashes above mean "not shown", not "not there". Its
+          // `settlement_confirmed` stands in for the withheld receipt, so it
+          // means nothing on a read that withheld nothing, and a confirmed
+          // fill never reads as delivered on a refunded/failed/expired intent.
+          ...(d.legs_withheld === true
+            ? {
+                legsWithheld: true,
+                ...(typeof d.settlement_confirmed === "boolean"
+                  ? {
+                      settlementConfirmed: withheldSettlementConfirmed(
+                        status,
+                        true,
+                        d.settlement_confirmed,
+                      ),
+                    }
+                  : {}),
+              }
             : {}),
         };
       } catch (err) {

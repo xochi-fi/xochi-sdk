@@ -815,6 +815,49 @@ describe("status", () => {
     expect(timers(fx)).not.toContain("clear:poll");
   });
 
+  it("never reads settlementConfirmed as delivered off a read that withheld nothing", () => {
+    const { s, poll } = resumed("settling");
+    s.send({
+      type: "StatusReplied",
+      gen: poll.gen,
+      attempt: poll.attempt,
+      result: { ok: true, status: statusData({ status: "settling", settlementConfirmed: true }) },
+    });
+    expect(s.intent.substatus).not.toBe("filled");
+  });
+
+  it("never shows a terminal failure as delivered, whatever settlementConfirmed says", () => {
+    const s = new Session();
+    const poll = only(
+      apiCalls(
+        s.send({
+          type: "ResumeRequested",
+          intentId: "xi_1",
+          status: "awaiting_deposit",
+          owner: WALLET,
+          depositDeadline: Math.floor(s.now / 1000) + 3600,
+        }),
+        "status",
+      ),
+    );
+    s.send({
+      type: "StatusReplied",
+      gen: poll.gen,
+      attempt: poll.attempt,
+      result: {
+        ok: true,
+        status: statusData({
+          status: "expired",
+          terminal: true,
+          legsWithheld: true,
+          settlementConfirmed: true,
+        }),
+      },
+    });
+    expect(s.intent.status).toBe("expired");
+    expect(s.intent.substatus).not.toBe("filled");
+  });
+
   it("tracks each poll's withheld-legs verdict: set by an anonymous read, cleared by an owner read", () => {
     const { s, poll } = resumed("settling");
     expect(s.intent.legsWithheld).toBe(false);

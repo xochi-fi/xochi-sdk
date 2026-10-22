@@ -583,10 +583,11 @@ export interface IntentStatusData {
    */
   legsWithheld?: true;
   /**
-   * Served only with `legsWithheld`: true once the destination fill receipt
-   * exists, standing in for the withheld `settlementTxHash`. The machine shows
-   * it exactly as `substatus: "filled"` (delivered); it does not move `status`
-   * or `terminal`.
+   * Present only with `legsWithheld`: true once the destination fill receipt
+   * exists, standing in for the withheld `settlementTxHash`; never true on a
+   * terminal failure (`withheldSettlementConfirmed`). The machine shows it
+   * exactly as `substatus: "filled"` (delivered); it does not move `status` or
+   * `terminal`.
    */
   settlementConfirmed?: boolean;
 }
@@ -615,6 +616,25 @@ export const TERMINAL_INTENT_STATUSES: Readonly<Partial<Record<IntentStatus, tru
 
 export function isTerminalIntentStatus(status: IntentStatus): boolean {
   return TERMINAL_INTENT_STATUSES[status] === true;
+}
+
+/**
+ * Whether an anonymous read's `settlement_confirmed` (xochi#563) counts as a
+ * delivered fill: only on a read that withheld the legs (the marker stands in
+ * for the withheld receipt) and only on a status that is not a terminal
+ * failure. A `refunded`, `failed` or `expired` intent never reads as delivered,
+ * whatever the marker says.
+ */
+export function withheldSettlementConfirmed(
+  status: IntentStatus,
+  legsWithheld: unknown,
+  settlementConfirmed: unknown,
+): boolean {
+  return (
+    legsWithheld === true &&
+    settlementConfirmed === true &&
+    !(isTerminalIntentStatus(status) && status !== "completed")
+  );
 }
 
 // ============================================================
@@ -664,7 +684,10 @@ export interface WithheldIntentRecord {
   toChainId?: ChainId;
   settlementType?: SettlementType;
   error?: string;
-  /** True once the destination fill receipt exists (it is withheld itself). */
+  /**
+   * True once the destination fill receipt exists (it is withheld itself);
+   * never on a terminal failure (`withheldSettlementConfirmed`).
+   */
   settlementConfirmed: boolean;
 }
 
@@ -707,7 +730,11 @@ export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldInten
     toChainId: w.to_chain_id,
     settlementType: w.settlement_type,
     error: w.error,
-    settlementConfirmed: w.settlement_confirmed === true,
+    settlementConfirmed: withheldSettlementConfirmed(
+      w.status as IntentStatus,
+      true,
+      w.settlement_confirmed,
+    ),
   };
 }
 
