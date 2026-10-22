@@ -746,7 +746,14 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         1,
         request.intentId,
       );
-      return mapExecuteResponse(wire);
+      const { readToken, ...response } = mapExecuteResponse(wire);
+      if (readToken === undefined) return response;
+      // Bound to the executed intent, exactly as on the failure path
+      // (`readTokenForIntent`): a token served under another intent id would
+      // only ever be presented for the wrong intent.
+      if (wire.intent_id === request.intentId) return { ...response, readToken };
+      log("warn", `[xochi-client] execute of ${request.intentId} answered for another intent`);
+      return response;
     },
 
     async getIntent(intentId, opts) {

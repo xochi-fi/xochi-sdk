@@ -723,6 +723,16 @@ describe("intent read capability", () => {
     expect(calls.map((call) => call.init.redirect)).toEqual(["error", undefined]);
   });
 
+  it("drops a successful execute's token when the response names another intent", async () => {
+    const { c, logged } = client(() =>
+      json({ success: true, intent_id: "intent-2", status: "settling", read_token: READ_TOKEN }),
+    );
+    const res = await c.execute(execRequest);
+    expect(res.status).toBe("settling");
+    expect(res.readToken).toBeUndefined();
+    expect(JSON.stringify(logged)).not.toContain(READ_TOKEN);
+  });
+
   it("captures a 502 read_token without handing the ApiError to injected logging", async () => {
     const logged: { message: string; data: unknown[] }[] = [];
     const { c } = client(
