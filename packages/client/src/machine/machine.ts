@@ -27,7 +27,7 @@ import type {
   SelectableChainId,
   SettlementType,
 } from "../shared/index.js";
-import { canTransitionTo, isChainId, isIntentStatus } from "../shared/index.js";
+import { canTransitionTo, isChainId } from "../shared/index.js";
 import {
   buildQuoteRequest,
   buildResumedState,
@@ -67,9 +67,10 @@ import { validatePayoutPin, validateSolverPin, type SolverPinConfig } from "./so
 import { INITIAL_INTENT_STATE, type IntentState, type StructuredError } from "./state.js";
 import { applyStatusTransition } from "./transition.js";
 import { validateSwapParams } from "./validateRequest.js";
-import { withheldSettlementConfirmed } from "./wire.js";
+import { decodeWireStatus, withheldSettlementConfirmed } from "./wire.js";
 import type {
   ExecuteReply,
+  ExecuteResponse,
   ExecuteRequest,
   IntentStatusResult,
   IntentWebSocketMessage,
@@ -1429,37 +1430,47 @@ function onExecuted(
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
   // may have moved funds): flag reconciling and let the poll resolve it (#226).
-  const response = executeReplyFor(fx, result, next.intent.intentId);
-  if (!response) return patch(next, { reconciling: true });
-  const decision = decideExecuteResult(response);
+  const reply = executeResponseUnlessInDoubt(fx, result, next.intent.intentId);
+  if (!reply) return patch(next, { reconciling: true });
+  const decision = decideExecuteResult(reply.response);
   if (decision.kind === "failed") return transition(next, fx, "failed", { error: decision.error });
+  // An unmapped or granular-failure status is applied as an in-flight bucket
+  // and shown in doubt, as an unmapped status poll is (`applyStatusUpdate`).
+  const updates = reply.inDoubt ? { ...decision.updates, reconciling: true } : decision.updates;
   // Inline fill: the execute round-trip bounds submit -> filled exactly.
   const timed =
     decision.status === "completed" && next.submittedAt !== null
       ? { ...next, clientFillMs: now - next.submittedAt }
       : next;
-  const moved = transition(timed, fx, decision.status, decision.updates);
+  const moved = transition(timed, fx, decision.status, updates);
   // A refused move (the reply names the status the intent is already in, or
   // one it cannot reach) must not drop an in-doubt verdict with it.
-  return moved.intent === timed.intent && decision.updates.reconciling === true
+  return moved.intent === timed.intent && updates.reconciling === true
     ? patch(moved, { reconciling: true })
     : moved;
 }
 
+/** An execute reply as a host may actually send it: any status string, maybe a token. */
+type RelayedExecuteReply = Omit<ExecuteReply, "status" | "readToken"> & {
+  status: string;
+  readToken?: unknown;
+};
+
 /**
- * The execute response a reply carries for `intentId`, or null when the
- * execute is in doubt: a reported failure, or a reply the machine cannot read
- * as an execute response for this intent (a malformed one, the unreleased
- * `{ decision }` shape, another intent's response). Checked here rather than
- * trusted from the host: the failed-vs-in-doubt verdict decides whether Retry
- * is offered on a swap whose funds may have moved. Read defensively, since a
- * replayed or foreign message need not match its type.
+ * The execute response a reply carries for `intentId`, its status decoded
+ * (`decodeWireStatus`), or null when the execute is in doubt: a reported
+ * failure, or a reply the machine cannot read as an execute response for this
+ * intent (malformed, or another intent's response; intent ids compare
+ * exactly). Checked here rather than trusted from the host: the
+ * failed-vs-in-doubt verdict decides whether Retry is offered on a swap whose
+ * funds may have moved. Read defensively, since a replayed or foreign message
+ * need not match its type.
  */
-function executeReplyFor(
+function executeResponseUnlessInDoubt(
   fx: Effect[],
   result: Outcome<{ response: ExecuteReply }>,
   intentId: string | null,
-): ExecuteReply | null {
+): { response: ExecuteResponse; inDoubt: boolean } | null {
   const reply = result as
     | { ok?: unknown; error?: { detail?: unknown }; response?: unknown }
     | null
@@ -1469,7 +1480,7 @@ function executeReplyFor(
     return null;
   }
   const response = reply?.ok === true ? reply.response : undefined;
-  if (!isExecuteReply(response)) {
+  if (!isRelayedExecuteReply(response)) {
     log(fx, "error", `${LOG} Execute reply is not an execute response; in doubt, polling`);
     return null;
   }
@@ -1480,15 +1491,23 @@ function executeReplyFor(
     });
     return null;
   }
-  if ("readToken" in response) {
+  const { readToken, status, ...rest } = response;
+  if (readToken !== undefined) {
     // Never read, stored or echoed: the host already put it in the message.
     log(fx, "warn", `${LOG} Execute reply carried a readToken; keep it outside the machine`);
   }
-  return response;
+  const decoded = decodeWireStatus(status);
+  // Only the literal `failed` is an execute failure (Retry). A granular one
+  // (`fill_failed`: the pull may already have moved funds) is left to the poll.
+  const granularFailure = decoded.status === "failed" && status !== "failed";
+  return {
+    response: { ...rest, status: granularFailure ? "executing" : decoded.status },
+    inDoubt: decoded.kind === "unmapped" || granularFailure,
+  };
 }
 
-/** The fields `decideExecuteResult` reads, each of its declared type. */
-function isExecuteReply(value: unknown): value is ExecuteReply {
+/** The fields `decideExecuteResult` reads, each of its wire type (`status` any string). */
+function isRelayedExecuteReply(value: unknown): value is RelayedExecuteReply {
   if (typeof value !== "object" || value === null) return false;
   const r = value as Record<string, unknown>;
   const optional = (v: unknown, type: "string" | "number" | "boolean") =>
@@ -1496,7 +1515,7 @@ function isExecuteReply(value: unknown): value is ExecuteReply {
   return (
     typeof r.success === "boolean" &&
     typeof r.intentId === "string" &&
-    isIntentStatus(r.status) &&
+    typeof r.status === "string" &&
     optional(r.reconciling, "boolean") &&
     optional(r.settlementChainId, "number") &&
     optional(r.error, "string") &&

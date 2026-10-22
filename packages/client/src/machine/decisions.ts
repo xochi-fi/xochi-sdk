@@ -498,10 +498,11 @@ export type ExecuteDecision =
  * (status "failed" -- terminal, retryable) AND a fail-closed downgrade (a
  * non-failure status like "settling" with reconciling -- the origin pull already
  * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only status
- * "failed" is a real failure; anything else advances and keeps polling, forcing
- * `reconciling` on when the server withheld success so the UI shows the
- * safe-to-close "Still confirming" path with no Retry (an in-session retry of a
- * funds-moved swap would be a double execution).
+ * "failed" is a real failure; anything else advances and keeps polling.
+ * `reconciling` is the server's flag when it sends one, else on whenever the
+ * server withheld success (`reconciling ?? !success`), so a withheld success
+ * shows the safe-to-close "Still confirming" path with no Retry (an in-session
+ * retry of a funds-moved swap would be a double execution).
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   if (!result.success && result.status === "failed") {

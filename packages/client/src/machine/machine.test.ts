@@ -430,7 +430,7 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
-    it("cannot be handed a host-built verdict: the unreleased { decision } shape is in doubt", () => {
+    it("cannot be handed a host-built verdict in place of the response", () => {
       const { s, flow } = executing();
       // A host that decided "failed" itself would have offered Retry on a swap
       // whose origin pull may already have moved funds.
@@ -460,13 +460,31 @@ describe("one signature (no origin pull)", () => {
         null,
         { ok: true },
         { ok: true, response: { success: "yes", intentId: "xi_1", status: "completed" } },
-        { ok: true, response: { success: true, intentId: "xi_1", status: "done" } },
+        { ok: true, response: { success: true, intentId: "xi_1", status: 7 } },
         { ok: false },
       ]) {
         const { s, flow } = executing();
         expect(() => s.send(foreign(flow, result))).not.toThrow();
         expect(s.intent.status).toBe("executing");
         expect(s.intent.reconciling).toBe(true);
+      }
+    });
+
+    it("buckets a served status it does not model, never reading it as a failure", () => {
+      const cases = [
+        // A new server status: its in-flight bucket, shown in doubt like an unmapped poll.
+        { success: true, status: "some_future_state", to: "executing", reconciling: true },
+        // A granular failure at execute is the poll's to resolve: no Retry.
+        { success: false, status: "fill_failed", to: "executing", reconciling: true },
+        // A granular in-flight status advances like its bucket.
+        { success: true, status: "filling", to: "settling", reconciling: false },
+      ];
+      for (const { success, status, to, reconciling } of cases) {
+        const { s, flow } = executing();
+        s.send(foreign(flow, { ok: true, response: { success, intentId: "xi_1", status } }));
+        expect(s.intent.status, status).toBe(to);
+        expect(s.intent.reconciling, status).toBe(reconciling);
+        expect(s.receipt.phase, status).not.toBe("failed");
       }
     });
 
