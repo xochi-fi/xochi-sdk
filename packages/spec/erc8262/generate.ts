@@ -1118,7 +1118,7 @@ type CaseInput = {
 const accept = { accepted: true } as const;
 const refuse = (refusal: string) => ({ accepted: false, refusal }) as const;
 
-// The proof whose public inputs match an evidence (section 10.5 step 28): what a consumer
+// The proof whose public inputs match an evidence (section 10.5, proof_mismatch): what a consumer
 // reads from the Oracle-verified proof the evidence feeds.
 function matchingProof(disc: Discovery, ev: Evidence): Proof {
   const { artifact, subject } = ev;
@@ -1553,7 +1553,7 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("expired"),
   },
 
-  // --- The verified proof the evidence feeds (step 28) ---
+  // --- The verified proof the evidence feeds (proof_mismatch) ---
   {
     name: "proof-multi-signed-slots-include-key",
     description:
@@ -1649,7 +1649,7 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("proof_mismatch"),
   },
 
-  // --- The announced evidenceId (steps 2 and 8) ---
+  // --- The announced evidenceId (evidence_id_invalid, evidence_id_mismatch) ---
   {
     name: "evidence-id-dot-segments",
     description:
@@ -1719,7 +1719,16 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, { registry: registryWith("7", { denied: true }) }),
-    expected: refuse("not_registered_on_oracle"),
+    expected: refuse("attestor_denied"),
+  },
+  {
+    name: "revocation-attestor-denied-signed",
+    description:
+      "A denied attestor's proof type 7 evidence is refused although its signer hash is still registered.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { registry: gatewayRegistry({ denied: true }) }),
+    expected: refuse("attestor_denied"),
   },
   {
     name: "revocation-gone-not-reversible",
@@ -1781,11 +1790,11 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "discovery-updated-at-in-future",
-    description: `A discovery updatedAt more than ${CLOCK_SKEW_SECONDS} seconds ahead is refused and not recorded, so it cannot make every later document stale.`,
+    description: `A discovery updatedAt ${CLOCK_SKEW_SECONDS + 1} seconds ahead (one past the skew) is refused and not recorded, so it cannot make every later document stale.`,
     discovery: "gateway-future-dated",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST),
-    expected: refuse("discovery_invalid"),
+    expected: refuse("discovery_from_future"),
   },
 
   // --- Boundaries and branches ---
@@ -1923,11 +1932,12 @@ const evaluationCases: CaseInput[] = [
     expected: accept,
   },
 
-  // --- Two failures, the earlier step wins: pins the order of adjacent steps ---
+  // --- Two failures, the earlier step wins: pins the order of adjacent steps. Each
+  // description names the two refusals in check order. ---
   {
     name: "order-not-allowed-before-evidence-id",
     description:
-      "Host outside the allowlist (step 1) and an invalid announced evidenceId (step 2).",
+      "Host outside the allowlist (trust_domain_not_allowed) and an invalid announced evidenceId (evidence_id_invalid).",
     discovery: "impostor",
     evidence: "impostor-sumsub",
     context: sepoliaContext(IMPOSTOR_HOST, { announcedEvidenceId: "../evidence" }),
@@ -1935,7 +1945,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-evidence-id-before-origin",
-    description: "Invalid announced evidenceId (step 2) and evidence from another host (step 3).",
+    description:
+      "Invalid announced evidenceId (evidence_id_invalid) and evidence from another host (origin_mismatch).",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -1945,31 +1956,62 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("evidence_id_invalid"),
   },
   {
-    name: "order-origin-before-discovery-unavailable",
-    description: "Evidence from another host (step 3) and a failed discovery fetch (step 4).",
+    name: "order-origin-before-gone",
+    description:
+      "A 410 relayed from another host (origin_mismatch before evidence_gone): only the discovery host's own 410 is recorded.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
-    context: sepoliaContext(GATEWAY_HOST, {
-      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
-      evidenceFetch: { host: NATIVE_HOST, status: 200 },
-    }),
+    context: sepoliaContext(GATEWAY_HOST, { evidenceFetch: { host: NATIVE_HOST, status: 410 } }),
     expected: refuse("origin_mismatch"),
   },
   {
-    name: "order-discovery-unavailable-before-gone",
-    description: "A failed discovery fetch (step 4) and a 410 for the evidence (step 5).",
+    name: "order-gone-before-discovery-unavailable",
+    description:
+      "A 410 from the allowlisted host while its discovery fetch fails (evidence_gone before discovery_unavailable): the revocation is final and recorded even during a discovery outage.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
       discoveryFetch: { host: GATEWAY_HOST, status: 503 },
       evidenceFetch: { host: GATEWAY_HOST, status: 410 },
     }),
+    expected: refuse("evidence_gone"),
+  },
+  {
+    name: "order-gone-before-discovery-invalid-body",
+    description:
+      "A 410 from the allowlisted host while its discovery body fails the schema (evidence_gone before discovery_unavailable).",
+    discovery: { schemaCase: "discovery-carries-points" },
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { evidenceFetch: { host: GATEWAY_HOST, status: 410 } }),
+    expected: refuse("evidence_gone"),
+  },
+  {
+    name: "gone-during-outage-stays-revoked",
+    description:
+      "After order-gone-before-discovery-unavailable recorded the 410, discovery is back and the host answers 200 active: refused (evidence_revoked).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "order-discovery-unavailable-before-evidence-unavailable",
+    description:
+      "Both fetches fail, discovery with 503 and evidence with 404 (discovery_unavailable before evidence_unavailable).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+      evidenceFetch: { host: GATEWAY_HOST, status: 404 },
+    }),
     expected: refuse("discovery_unavailable"),
   },
   {
     name: "order-evidence-unavailable-before-trust-domain",
     description:
-      "A 404 for the evidence (step 6) and a discovery document naming another trust domain (step 7).",
+      "A 404 for the evidence (evidence_unavailable) and a discovery document naming another trust domain (trust_domain_mismatch).",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(ALIAS_HOST, { evidenceFetch: { host: ALIAS_HOST, status: 404 } }),
@@ -1978,7 +2020,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-trust-domain-before-evidence-id-mismatch",
     description:
-      "Evidence of another trust domain (step 7) whose id is not the one requested (step 8).",
+      "Evidence of another trust domain (trust_domain_mismatch) whose id is not the one requested (evidence_id_mismatch).",
     discovery: "gateway",
     evidence: "native-kyc",
     context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewaySumsub.evidenceId }),
@@ -1987,24 +2029,37 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-evidence-id-mismatch-before-discovery-invalid",
     description:
-      "A body for another evidenceId (step 8) under a document repeating a keyId (step 9).",
+      "A body for another evidenceId (evidence_id_mismatch) under a document repeating a keyId (discovery_invalid).",
     discovery: "gateway-duplicate-key",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewayPersona.evidenceId }),
     expected: refuse("evidence_id_mismatch"),
   },
   {
-    name: "order-discovery-invalid-before-stale",
+    name: "order-discovery-invalid-before-future",
     description:
-      "A document repeating a keyId (step 9) that is also older than one recorded (step 10).",
+      "A document repeating a keyId (discovery_invalid) whose updatedAt is more than the skew ahead of the clock (discovery_from_future).",
     discovery: "gateway-duplicate-key",
     evidence: "gateway-sumsub",
-    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway-revocation-dropped"] }),
+    context: sepoliaContext(GATEWAY_HOST, { now: T_ROTATE - CLOCK_SKEW_SECONDS - 1 }),
     expected: refuse("discovery_invalid"),
   },
   {
+    name: "order-future-before-stale",
+    description:
+      "A document ahead of the clock (discovery_from_future) that is also older than one recorded (discovery_stale).",
+    discovery: "gateway-rolled-back",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      now: T_2026 + 30 * DAY - CLOCK_SKEW_SECONDS - 1,
+      seenDiscovery: ["gateway"],
+    }),
+    expected: refuse("discovery_from_future"),
+  },
+  {
     name: "order-stale-before-deployment",
-    description: "A stale document (step 10) and evidence for another deployment (step 11).",
+    description:
+      "A stale document (discovery_stale) and evidence for another deployment (deployment_mismatch).",
     discovery: "gateway-rolled-back",
     evidence: "gateway-sumsub-base",
     context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
@@ -2012,7 +2067,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-deployment-before-attestor",
-    description: "Another Oracle (step 11) and an attestor other than the pin (step 12).",
+    description:
+      "Another Oracle (deployment_mismatch) and an attestor other than the pin (attestor_mismatch).",
     discovery: "native",
     evidence: "native-kyc-foreign-attestor",
     context: sepoliaContext(NATIVE_HOST, {
@@ -2023,7 +2079,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-attestor-before-claim",
     description:
-      "The consumer pins the gateway to attestor 9 (step 12) and the claim is undeclared (step 13).",
+      "The consumer pins the gateway to attestor 9 (attestor_mismatch) and the claim is undeclared (claim_not_declared).",
     discovery: "gateway",
     evidence: "gateway-human-tech-undeclared-claim",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2035,7 +2091,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-claim-before-key",
-    description: "An undeclared policyId (step 13) and an undeclared keyId (step 14).",
+    description:
+      "An undeclared policyId (claim_not_declared) and an undeclared keyId (key_not_declared).",
     discovery: "gateway",
     evidence: "gateway-sumsub-undeclared-policy-unknown-key",
     context: sepoliaContext(GATEWAY_HOST),
@@ -2044,7 +2101,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-key-use-before-revoked",
     description:
-      "A proof type 7 claim naming a credential-root key (step 15) that is revoked (step 16).",
+      "A proof type 7 claim naming a credential-root key (key_use_mismatch) that is revoked (key_revoked).",
     discovery: "gateway",
     evidence: "gateway-sumsub-signed-root-key",
     context: sepoliaContext(GATEWAY_HOST),
@@ -2052,7 +2109,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-revoked-before-window",
-    description: "A revoked key (step 16) named by evidence issued after its notAfter (step 17).",
+    description:
+      "A revoked key (key_revoked) named by evidence issued after its notAfter (key_not_valid_at_issuance).",
     discovery: "gateway",
     evidence: "gateway-sumsub-revoked-key-late",
     context: sepoliaContext(GATEWAY_HOST),
@@ -2061,16 +2119,41 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-window-before-retired",
     description:
-      "A signed-signals key named by evidence issued after its notAfter (step 17), and retired at evaluation (step 18).",
+      "A signed-signals key named by evidence issued after its notAfter (key_not_valid_at_issuance), and retired at evaluation (key_retired).",
     discovery: "gateway",
     evidence: "gateway-sumsub-signed-retired-key-late",
     context: sepoliaContext(GATEWAY_HOST),
     expected: refuse("key_not_valid_at_issuance"),
   },
   {
+    name: "order-retired-before-denied",
+    description:
+      "A retired signed-signals key (key_retired) of an attestor the Oracle has denied (attestor_denied).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed-retired-key",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        denied: true,
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
+      }),
+    }),
+    expected: refuse("key_retired"),
+  },
+  {
+    name: "order-denied-before-credential-signer",
+    description:
+      "A denied attestor (attestor_denied) whose Oracle credential signer also differs from the current key's (credential_signer_mismatch).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      registry: registryWith("7", { denied: true, credentialSigner: NATIVE_SIGNER_A }),
+    }),
+    expected: refuse("attestor_denied"),
+  },
+  {
     name: "order-credential-signer-before-registry",
     description:
-      "The Oracle holds another credential signer (step 19) and no longer holds the root (step 20).",
+      "The Oracle holds another credential signer (credential_signer_mismatch) and no longer holds the root (not_registered_on_oracle).",
     discovery: "gateway",
     evidence: "gateway-sumsub-root-revoked-on-oracle",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2080,7 +2163,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-registry-before-subject",
-    description: "A root no longer on the Oracle (step 20) presented for another wallet (step 21).",
+    description:
+      "A root no longer on the Oracle (not_registered_on_oracle) presented for another wallet (subject_mismatch).",
     discovery: "gateway",
     evidence: "gateway-sumsub-root-revoked-on-oracle",
     context: sepoliaContext(GATEWAY_HOST, { subject: OTHER_WALLET }),
@@ -2089,7 +2173,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-subject-before-conflict",
     description:
-      "Another wallet (step 21) and an evidenceId reused with a changed field (step 22).",
+      "Another wallet (subject_mismatch) and an evidenceId reused with a changed field (evidence_id_conflict).",
     discovery: "native",
     evidence: "native-kyc-extended-in-place",
     context: sepoliaContext(NATIVE_HOST, { subject: OTHER_WALLET, seenEvidence: ["native-kyc"] }),
@@ -2098,7 +2182,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "order-conflict-before-revoked",
     description:
-      "A changed immutable field (step 22) against a recorded document that is revoked (step 23).",
+      "A changed immutable field (evidence_id_conflict) against a recorded document that is revoked (evidence_revoked).",
     discovery: "native",
     evidence: "native-kyc-extended-in-place",
     context: sepoliaContext(NATIVE_HOST, { seenEvidence: ["native-kyc-revoked"] }),
@@ -2106,7 +2190,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-revoked-before-window-empty",
-    description: "A recorded 410 (step 23) for evidence with an empty validity window (step 24).",
+    description:
+      "A recorded 410 (evidence_revoked) for evidence with an empty validity window (invalid_validity_window).",
     discovery: "gateway",
     evidence: "gateway-sumsub-zero-window",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2121,7 +2206,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-too-long-before-not-yet-valid",
-    description: "A lifetime past 365 days (step 25) starting in the future (step 26).",
+    description:
+      "A lifetime past 365 days (validity_too_long) starting in the future (not_yet_valid).",
     discovery: "gateway",
     evidence: "gateway-sumsub-future-too-long",
     context: sepoliaContext(GATEWAY_HOST),
@@ -2129,7 +2215,7 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "order-expired-before-proof",
-    description: "Expired evidence (step 27) fed to a proof of another attestor (step 28).",
+    description: "Expired evidence (expired) fed to a proof of another attestor (proof_mismatch).",
     discovery: "gateway",
     evidence: "gateway-sumsub-expired",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2460,12 +2546,13 @@ const REFUSALS = [
   "trust_domain_not_allowed",
   "evidence_id_invalid",
   "origin_mismatch",
-  "discovery_unavailable",
   "evidence_gone",
+  "discovery_unavailable",
   "evidence_unavailable",
   "trust_domain_mismatch",
   "evidence_id_mismatch",
   "discovery_invalid",
+  "discovery_from_future",
   "discovery_stale",
   "deployment_mismatch",
   "attestor_mismatch",
@@ -2475,6 +2562,7 @@ const REFUSALS = [
   "key_revoked",
   "key_not_valid_at_issuance",
   "key_retired",
+  "attestor_denied",
   "credential_signer_mismatch",
   "not_registered_on_oracle",
   "subject_mismatch",

@@ -196,11 +196,12 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   ["trust_domain_not_allowed", (f) => f.pinned() === undefined],
   ["evidence_id_invalid", (f) => !validateEvidenceId(f.ctx.announcedEvidenceId)],
   ["origin_mismatch", (f) => f.ctx.evidenceFetch.host !== f.ctx.discoveryFetch.host],
+  // A 410 from the discovery host is final even while discovery itself is unavailable.
+  ["evidence_gone", (f) => f.ctx.evidenceFetch.status === 410],
   [
     "discovery_unavailable",
     (f) => f.ctx.discoveryFetch.status !== 200 || !validateDiscovery(f.disc),
   ],
-  ["evidence_gone", (f) => f.ctx.evidenceFetch.status === 410],
   ["evidence_unavailable", (f) => f.ctx.evidenceFetch.status !== 200 || !validateEvidence(f.ev)],
   [
     "trust_domain_mismatch",
@@ -214,9 +215,9 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) =>
       hasDuplicates(f.disc.deployments.map((d) => `${d.chainId}/${d.oracleAddress}`)) ||
       hasDuplicates(f.disc.keys.map((k) => k.keyId)) ||
-      hasDuplicates(f.disc.sources.map((s) => s.sourceId)) ||
-      f.disc.updatedAt > f.ctx.now + V.limits.clockSkewSeconds,
+      hasDuplicates(f.disc.sources.map((s) => s.sourceId)),
   ],
+  ["discovery_from_future", (f) => f.disc.updatedAt > f.ctx.now + V.limits.clockSkewSeconds],
   ["discovery_stale", (f) => f.priorDiscovery().some((p) => p.updatedAt > f.disc.updatedAt)],
   [
     "deployment_mismatch",
@@ -287,6 +288,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       return f.signed() && notAfter !== undefined && f.ctx.now >= notAfter;
     },
   ],
+  ["attestor_denied", (f) => f.registry()?.denied === true],
   [
     "credential_signer_mismatch",
     (f) => {
@@ -300,7 +302,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     "not_registered_on_oracle",
     (f) => {
       const reg = f.registry();
-      if (reg === undefined || reg.denied) return true;
+      if (reg === undefined) return true;
       const art = f.ev.artifact;
       return art.proofType === 4
         ? !reg.credentialRoots.includes(art.credentialRoot)
