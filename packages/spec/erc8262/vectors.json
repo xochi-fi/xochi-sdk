@@ -193,6 +193,11 @@
             {
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 9
             }
           ]
@@ -357,6 +362,11 @@
             {
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 9
             }
           ]
@@ -444,6 +454,11 @@
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 7
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
             },
             {
               "claimType": "kyc.individual",
@@ -611,6 +626,11 @@
             {
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 9
             }
           ]
@@ -699,6 +719,11 @@
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 7
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
             },
             {
               "claimType": "kyc.individual",
@@ -799,6 +824,11 @@
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 7
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
             },
             {
               "claimType": "kyc.individual",
@@ -1104,6 +1134,11 @@
             {
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 9
             }
           ]
@@ -1192,6 +1227,11 @@
               "claimType": "kyc.individual",
               "policyId": "sumsub/basic-kyc-level/v1",
               "proofType": 7
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
             },
             {
               "claimType": "kyc.individual",
@@ -2153,6 +2193,28 @@
         "proofType": 7
       }
     },
+    "gateway-sumsub-risk": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_risk_w1000000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "1"
+      },
+      "keyId": "gw-signals-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
+      "artifact": {
+        "proofType": 8
+      }
+    },
     "gateway-sumsub-revoked": {
       "protocol": "erc8262-provider",
       "protocolVersion": 1,
@@ -2304,6 +2366,11 @@
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 7
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
               },
               {
                 "claimType": "kyc.individual",
@@ -2633,6 +2700,11 @@
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 7
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
               },
               {
                 "claimType": "kyc.individual",
@@ -3139,6 +3211,11 @@
               {
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 9
               }
             ]
@@ -3232,6 +3309,11 @@
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 7
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
               },
               {
                 "claimType": "kyc.individual",
@@ -3461,6 +3543,11 @@
               {
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 9
               }
             ]
@@ -3617,6 +3704,11 @@
               {
                 "claimType": "kyc.individual",
                 "policyId": "sumsub/basic-kyc-level/v1",
+                "proofType": 8
+              },
+              {
+                "claimType": "kyc.individual",
+                "policyId": "sumsub/basic-kyc-level/v1",
                 "proofType": 9
               }
             ]
@@ -3765,7 +3857,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -3841,7 +3936,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "2",
           "credentialType": 1,
-          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "timestamp": 1791676800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -3944,7 +4042,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 2,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789084800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4047,7 +4148,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4148,7 +4252,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4251,7 +4358,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4349,7 +4459,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+          "timestamp": 1785628800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4449,7 +4562,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4549,7 +4665,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4654,7 +4773,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4757,7 +4879,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1793491200,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4860,7 +4985,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -4952,7 +5080,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5053,7 +5184,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5145,7 +5279,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5249,7 +5386,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5350,7 +5490,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5451,7 +5594,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5543,7 +5689,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5644,7 +5793,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5739,7 +5891,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5834,7 +5989,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -5931,7 +6089,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6026,7 +6187,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "2",
           "credentialType": 1,
-          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "timestamp": 1791676800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6130,7 +6294,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6229,7 +6396,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6332,7 +6502,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6431,7 +6604,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 2,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789084800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6535,7 +6711,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6639,7 +6818,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6743,7 +6925,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6847,7 +7032,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1764633600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -6953,7 +7141,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1764633600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7052,7 +7243,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7150,7 +7344,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1785628800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7254,7 +7451,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7358,7 +7558,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7458,7 +7661,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7562,7 +7768,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7663,7 +7872,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7762,7 +7974,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7869,7 +8084,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -7965,7 +8183,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8069,7 +8290,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8173,7 +8397,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1793491200,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8277,7 +8504,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1768089600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8382,7 +8612,10 @@
           "signerPubkeyHashes": [
             "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
             "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
-          ]
+          ],
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8480,7 +8713,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8579,7 +8815,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8678,7 +8917,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8777,7 +9019,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 2,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8876,7 +9121,10 @@
           "submitter": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -8975,7 +9223,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "signerPubkeyHashes": [
             "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
-          ]
+          ],
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9072,7 +9323,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+          "signerPubkeyHash": "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9176,7 +9430,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "signerPubkeyHashes": [
             "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
-          ]
+          ],
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9192,6 +9449,1145 @@
           "evidence": {
             "trustDomainId": "attest.native-kyc.test",
             "evidenceId": "ev_native_kyc_multi_w10000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-signer-hash-of-sibling-key",
+      "description": "A proof type 7 proof signed by another key of the same trust domain (the retired gw-signals-0, whose hash the Oracle still holds) does not feed evidence naming gw-signals-1.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_signed_w10000",
+        "proof": {
+          "proofType": 7,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-multi-signed-slot-of-sibling-key",
+      "description": "A proof type 9 proof whose only gateway slot is the sibling gw-signals-0 does not feed evidence naming gw-signals-1.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-multi",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_multi_w100000",
+        "proof": {
+          "proofType": 9,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "signerPubkeyHashes": [
+            "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+            "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+          ],
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_multi_w100000"
+          }
+        }
+      }
+    },
+    {
+      "name": "registry-holds-only-sibling-key",
+      "description": "The Oracle holds the hash of another key of the trust domain (gw-signals-0) but not of gw-signals-1, the key the evidence names.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_signed_w10000",
+        "proof": {
+          "proofType": 7,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        }
+      }
+    },
+    {
+      "name": "risk-score-signed-accepted",
+      "description": "Proof type 8 (RISK_SCORE_SIGNED) evidence fed to a matching type 8 proof.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-risk",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_risk_w1000000",
+        "proof": {
+          "proofType": 8,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_risk_w1000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "risk-score-signed-hash-mismatch",
+      "description": "A type 8 proof signed by the sibling key gw-signals-0.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-risk",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_risk_w1000000",
+        "proof": {
+          "proofType": 8,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_risk_w1000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-attestation-expires-now",
+      "description": "The Oracle attestation is live through its expiresAt (block.timestamp <= expiresAt): now == expiresAt still feeds.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793491200,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-attestation-expired",
+      "description": "The Oracle attestation expired one second ago: a held grant does not outlive it.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793491199,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-attestation-revoked",
+      "description": "The Oracle reports the attestation revoked (isAttestationRevoked: guardian-invalidated or verified by a revoked verifier version).",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": true
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-timestamp-within-skew-of-issuance",
+      "description": "A proof timestamp 60 s before issuedAt is tolerated (prover and provider clocks).",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948740,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-timestamp-before-issuance",
+      "description": "A proof made 61 s before the evidence was issued (e.g. under an earlier, since-revoked evidence) does not feed it.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948739,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        }
+      }
+    },
+    {
+      "name": "proof-timestamp-at-evidence-expiry",
+      "description": "expiresAt is exclusive for the proof timestamp too.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": []
+          }
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofType": 4,
+          "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "providerId": "7",
+          "credentialType": 1,
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1805500800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
           }
         }
       }
@@ -9275,7 +10671,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9376,7 +10775,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9477,7 +10879,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9578,7 +10983,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789430400,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9679,7 +11087,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9782,7 +11193,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9881,7 +11295,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -9978,7 +11395,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10087,7 +11507,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10188,7 +11611,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10291,7 +11717,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10391,7 +11820,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10485,7 +11917,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10579,7 +12014,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10675,7 +12113,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10778,7 +12219,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10873,7 +12317,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -10977,7 +12424,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11076,7 +12526,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11177,7 +12630,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11280,7 +12736,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1788220800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11378,7 +12837,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1788220799,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11477,7 +12939,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+          "timestamp": 1788220799,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11575,7 +13040,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+          "credentialRoot": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+          "timestamp": 1788220800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11673,7 +13141,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1785628800,
+          "attestationExpiresAt": 1788307200,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11776,7 +13247,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1785628800,
+          "attestationExpiresAt": 1788307199,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11879,7 +13353,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -11981,7 +13458,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "timestamp": 1789084800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12085,7 +13565,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1796169599,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12184,7 +13667,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1796169600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12282,7 +13768,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12374,7 +13863,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12475,7 +13967,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12576,7 +14071,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12673,7 +14171,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12774,7 +14275,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12875,7 +14379,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -12976,7 +14483,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13070,7 +14580,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13165,7 +14678,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13257,7 +14773,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13360,7 +14879,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13454,7 +14976,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13550,7 +15075,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13647,7 +15175,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13751,7 +15282,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13843,7 +15377,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -13935,7 +15472,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14036,7 +15576,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14128,7 +15671,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1788220739,
+          "attestationExpiresAt": 1788307139,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14225,7 +15771,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1769817539,
+          "attestationExpiresAt": 1769903939,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14322,7 +15871,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "2",
           "credentialType": 1,
-          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+          "credentialRoot": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "timestamp": 1791676800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14417,7 +15969,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14516,7 +16071,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 2,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789084800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14620,7 +16178,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14722,7 +16283,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          "signerPubkeyHash": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14826,7 +16390,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -14928,7 +16495,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15031,7 +16601,10 @@
         "proof": {
           "proofType": 7,
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "timestamp": 1785628800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15135,7 +16708,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15234,7 +16810,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15338,7 +16917,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+          "credentialRoot": "0xb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15444,7 +17026,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15550,7 +17135,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+          "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "timestamp": 1789948800,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15651,7 +17239,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15754,7 +17345,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789344000,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15858,7 +17452,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "1",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1793491200,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -15962,7 +17559,10 @@
           "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
           "providerId": "7",
           "credentialType": 1,
-          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+          "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "timestamp": 1789257600,
+          "attestationExpiresAt": 1793577600,
+          "attestationRevoked": false
         }
       },
       "expected": {
@@ -16076,7 +17676,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789430400,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16096,7 +17699,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16195,7 +17801,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16215,7 +17824,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16315,7 +17927,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16335,7 +17950,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789430400,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16355,7 +17973,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16455,7 +18076,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16475,7 +18099,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16574,7 +18201,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16594,7 +18224,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1768089600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16693,7 +18326,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16713,7 +18349,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16812,7 +18451,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16832,7 +18474,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 2,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789084800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -16932,7 +18577,10 @@
             "signerPubkeyHashes": [
               "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
               "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
-            ]
+            ],
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -16953,7 +18601,10 @@
             "signerPubkeyHashes": [
               "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
               "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
-            ]
+            ],
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -17053,7 +18704,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "signerPubkeyHashes": [
               "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
-            ]
+            ],
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -17073,7 +18727,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -17172,7 +18829,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "12",
             "credentialType": 1,
-            "credentialRoot": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            "credentialRoot": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -17192,7 +18852,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -17297,7 +18960,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -17317,7 +18983,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "1",
             "credentialType": 1,
-            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "timestamp": 1789257600,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],
@@ -17416,7 +19085,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         },
         {
@@ -17436,7 +19108,10 @@
             "submitter": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "providerId": "7",
             "credentialType": 1,
-            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "timestamp": 1789948800,
+            "attestationExpiresAt": 1793577600,
+            "attestationRevoked": false
           }
         }
       ],

@@ -52,7 +52,7 @@ type Evidence = {
   expiresAt: number;
   artifact: Artifact;
 };
-type Proof =
+type Proof = { timestamp: number; attestationExpiresAt: number; attestationRevoked: boolean } & (
   | {
       proofType: 4;
       submitter: string;
@@ -61,7 +61,8 @@ type Proof =
       credentialRoot: string;
     }
   | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
-  | { proofType: 9; submitter: string; signerPubkeyHashes: string[] };
+  | { proofType: 9; submitter: string; signerPubkeyHashes: string[] }
+);
 type RegistryEntry = {
   attestorProviderId: string;
   denied: boolean;
@@ -359,6 +360,16 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       const { proof } = f.ctx;
       const art = f.ev.artifact;
+      // Time: the Oracle attestation is still live, and the proof was made while this
+      // evidence was valid (its timestamp may trail issuedAt by the skew: prover vs provider).
+      if (proof.attestationRevoked || f.ctx.now > proof.attestationExpiresAt) return true;
+      if (
+        proof.timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
+        proof.timestamp >= f.ev.expiresAt
+      ) {
+        return true;
+      }
+      // Identity: the evidence's attestor and artifact, or the keyId key's signer hash.
       if (proof.proofType !== art.proofType || proof.submitter !== f.ev.subject) return true;
       if (proof.proofType === 4 && art.proofType === 4) {
         return (

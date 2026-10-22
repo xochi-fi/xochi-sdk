@@ -309,7 +309,7 @@ const evidenceSchema = {
         UNIX,
       ),
       artifact: d(
-        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash.",
+        `What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash. Its timestamp lies in [issuedAt - ${CLOCK_SKEW_SECONDS} s, expiresAt), and its Oracle attestation is unrevoked and unexpired.`,
         { oneOf: [CREDENTIAL_ARTIFACT, SIGNED_ARTIFACT] },
       ),
     },
@@ -514,6 +514,7 @@ const gatewayDiscovery: Discovery = {
       claims: [
         { claimType: "kyc.individual", policyId: "sumsub/basic-kyc-level/v1", proofType: 4 },
         { claimType: "kyc.individual", policyId: "sumsub/basic-kyc-level/v1", proofType: 7 },
+        { claimType: "kyc.individual", policyId: "sumsub/basic-kyc-level/v1", proofType: 8 },
         { claimType: "kyc.individual", policyId: "sumsub/basic-kyc-level/v1", proofType: 9 },
       ],
     },
@@ -961,6 +962,11 @@ const evidence: Record<string, Evidence> = {
     evidenceId: id("gw_sumsub_signed_late_w1"),
     keyId: "gw-signals-0",
   },
+  "gateway-sumsub-risk": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_risk_w1"),
+    artifact: { proofType: 8 },
+  },
   // gateway-sumsub as its host serves it once revoked.
   "gateway-sumsub-revoked": { ...gatewaySumsub, status: "revoked", revokedAt: NOW - DAY },
   // gateway-sumsub-zero-window re-served under the same id with moved (still empty) times.
@@ -998,18 +1004,25 @@ type Fetch = { host: string; status: number };
 // every observation.
 type Observed = { trustDomainId: string; evidenceId: string };
 // The public inputs of the Oracle-verified proof the evidence feeds, as the consumer reads
-// them: provider_id as a canonical decimal string, every bytes32 value as lowercase hex.
-// Types 7/8 carry their one signer_pubkey_hash; type 9 its active (nonzero) signer slots.
-type Proof =
-  | {
-      proofType: 4;
-      submitter: string;
-      providerId: string;
-      credentialType: number;
-      credentialRoot: string;
-    }
-  | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
-  | { proofType: 9; submitter: string; signerPubkeyHashes: string[] };
+// them (SPEC.md section 10.5, proof binding): submitter as the 20-byte address in lowercase
+// hex (the low 20 bytes of the input), provider_id as a canonical decimal string,
+// credential_type and timestamp as integers, roots and signer hashes as 32-byte lowercase
+// hex. Types 7/8 carry their one signer_pubkey_hash; type 9 its active (nonzero) signer
+// slots. attestationExpiresAt / attestationRevoked are the Oracle's record of the
+// verification (its expiresAt, and isAttestationRevoked).
+type ProofTiming = { timestamp: number; attestationExpiresAt: number; attestationRevoked: boolean };
+type Proof = ProofTiming &
+  (
+    | {
+        proofType: 4;
+        submitter: string;
+        providerId: string;
+        credentialType: number;
+        credentialRoot: string;
+      }
+    | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
+    | { proofType: 9; submitter: string; signerPubkeyHashes: string[] }
+  );
 // What the consumer brings to every evaluation of a deployment, including its observation
 // store; a quorum case shares it across its members.
 type Consumer = {
@@ -1128,9 +1141,18 @@ type CaseInput = {
 const accept = { accepted: true } as const;
 const refuse = (refusal: string) => ({ accepted: false, refusal }) as const;
 
+// A live Oracle attestation for a proof made while the evidence was valid: the proof's
+// timestamp is the evidence's issuedAt (or now, if issuedAt is still ahead within the skew),
+// and the attestation runs the Oracle's default 24 h past now.
+const live = (ev: Evidence, now = NOW): ProofTiming => ({
+  timestamp: Math.min(ev.issuedAt, now),
+  attestationExpiresAt: now + DAY,
+  attestationRevoked: false,
+});
+
 // The proof whose public inputs match an evidence (section 10.5, proof_mismatch): what a consumer
 // reads from the Oracle-verified proof the evidence feeds.
-function matchingProof(disc: Discovery, ev: Evidence): Proof {
+function matchingProof(disc: Discovery, ev: Evidence, now: number): Proof {
   const { artifact, subject } = ev;
   if (artifact.proofType === 4) {
     return {
@@ -1139,12 +1161,18 @@ function matchingProof(disc: Discovery, ev: Evidence): Proof {
       providerId: ev.deployment.attestorProviderId,
       credentialType: artifact.credentialType,
       credentialRoot: artifact.credentialRoot,
+      ...live(ev, now),
     };
   }
   const hash = disc.keys.find((k) => k.keyId === ev.keyId)?.signerPubkeyHash ?? UNREGISTERED_HASH;
   return artifact.proofType === 9
-    ? { proofType: 9, submitter: subject, signerPubkeyHashes: [hash] }
-    : { proofType: artifact.proofType, submitter: subject, signerPubkeyHash: hash };
+    ? { proofType: 9, submitter: subject, signerPubkeyHashes: [hash], ...live(ev, now) }
+    : {
+        proofType: artifact.proofType,
+        submitter: subject,
+        signerPubkeyHash: hash,
+        ...live(ev, now),
+      };
 }
 // native-kyc's matching proof, spelled out so mismatch cases vary one input at a time.
 const NATIVE_PROOF = {
@@ -1153,6 +1181,7 @@ const NATIVE_PROOF = {
   providerId: "7",
   credentialType: 1,
   credentialRoot: ROOT_NATIVE_SEPOLIA,
+  ...live(nativeEvidence),
 } as const satisfies Proof;
 
 const evaluationCases: CaseInput[] = [
@@ -1580,6 +1609,7 @@ const evaluationCases: CaseInput[] = [
         proofType: 9,
         submitter: WALLET,
         signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, NATIVE_SIGNALS_HASH],
+        ...live(nativeEvidence),
       },
     }),
     expected: accept,
@@ -1638,7 +1668,12 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: { proofType: 9, submitter: WALLET, signerPubkeyHashes: [NATIVE_SIGNALS_HASH] },
+      proof: {
+        proofType: 9,
+        submitter: WALLET,
+        signerPubkeyHashes: [NATIVE_SIGNALS_HASH],
+        ...live(nativeEvidence),
+      },
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1649,7 +1684,12 @@ const evaluationCases: CaseInput[] = [
     discovery: "gateway",
     evidence: "gateway-sumsub-signed",
     context: sepoliaContext(GATEWAY_HOST, {
-      proof: { proofType: 7, submitter: WALLET, signerPubkeyHash: NATIVE_SIGNALS_HASH },
+      proof: {
+        proofType: 7,
+        submitter: WALLET,
+        signerPubkeyHash: NATIVE_SIGNALS_HASH,
+        ...live(gatewaySignals),
+      },
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1659,7 +1699,146 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc-multi",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: { proofType: 9, submitter: WALLET, signerPubkeyHashes: [GATEWAY_SIGNALS_HASH] },
+      proof: {
+        proofType: 9,
+        submitter: WALLET,
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH],
+        ...live(nativeEvidence),
+      },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-signer-hash-of-sibling-key",
+    description:
+      "A proof type 7 proof signed by another key of the same trust domain (the retired gw-signals-0, whose hash the Oracle still holds) does not feed evidence naming gw-signals-1.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
+      }),
+      proof: {
+        proofType: 7,
+        submitter: WALLET,
+        signerPubkeyHash: GATEWAY_SIGNALS_HASH_OLD,
+        ...live(gatewaySignals),
+      },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-multi-signed-slot-of-sibling-key",
+    description:
+      "A proof type 9 proof whose only gateway slot is the sibling gw-signals-0 does not feed evidence naming gw-signals-1.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-multi",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
+      }),
+      proof: {
+        proofType: 9,
+        submitter: WALLET,
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, NATIVE_SIGNALS_HASH],
+        ...live(gatewaySignals),
+      },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "registry-holds-only-sibling-key",
+    description:
+      "The Oracle holds the hash of another key of the trust domain (gw-signals-0) but not of gw-signals-1, the key the evidence names.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({ signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD] }),
+    }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "risk-score-signed-accepted",
+    description: "Proof type 8 (RISK_SCORE_SIGNED) evidence fed to a matching type 8 proof.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: accept,
+  },
+  {
+    name: "risk-score-signed-hash-mismatch",
+    description: "A type 8 proof signed by the sibling key gw-signals-0.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: {
+        proofType: 8,
+        submitter: WALLET,
+        signerPubkeyHash: GATEWAY_SIGNALS_HASH_OLD,
+        ...live(gatewaySignals),
+      },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-attestation-expires-now",
+    description:
+      "The Oracle attestation is live through its expiresAt (block.timestamp <= expiresAt): now == expiresAt still feeds.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW },
+    }),
+    expected: accept,
+  },
+  {
+    name: "proof-attestation-expired",
+    description: "The Oracle attestation expired one second ago: a held grant does not outlive it.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW - 1 },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-attestation-revoked",
+    description:
+      "The Oracle reports the attestation revoked (isAttestationRevoked: guardian-invalidated or verified by a revoked verifier version).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationRevoked: true },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-timestamp-within-skew-of-issuance",
+    description: `A proof timestamp ${CLOCK_SKEW_SECONDS} s before issuedAt is tolerated (prover and provider clocks).`,
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, timestamp: nativeEvidence.issuedAt - CLOCK_SKEW_SECONDS },
+    }),
+    expected: accept,
+  },
+  {
+    name: "proof-timestamp-before-issuance",
+    description: `A proof made ${CLOCK_SKEW_SECONDS + 1} s before the evidence was issued (e.g. under an earlier, since-revoked evidence) does not feed it.`,
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, timestamp: nativeEvidence.issuedAt - CLOCK_SKEW_SECONDS - 1 },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-timestamp-at-evidence-expiry",
+    description: "expiresAt is exclusive for the proof timestamp too.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, timestamp: nativeEvidence.expiresAt },
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -2361,6 +2540,7 @@ const evaluationCases: CaseInput[] = [
         providerId: "7",
         credentialType: 1,
         credentialRoot: ROOT_GATEWAY_SEPOLIA,
+        ...live(gatewaySumsub),
       },
     }),
     expected: refuse("expired"),
@@ -2378,7 +2558,7 @@ const member = (disc: string, ev: string, proof?: Proof) => {
     discoveryFetch: { host, status: 200 },
     evidenceFetch: { host, status: 200 },
     announcedEvidenceId: held.evidenceId,
-    proof: proof ?? matchingProof(discovery[disc]!, held),
+    proof: proof ?? matchingProof(discovery[disc]!, held, NOW),
   };
 };
 // One verified proof type 9 proof whose active slots carry both trust domains' signer hashes
@@ -2387,6 +2567,8 @@ const MULTI_SIGNED_PROOF: Proof = {
   proofType: 9,
   submitter: WALLET,
   signerPubkeyHashes: [NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH],
+  // Inside both evidences' windows: native-kyc-multi is issued after gateway-sumsub-multi.
+  ...live(nativeEvidence),
 };
 
 const quorumContext = { threshold: 2, context: SEPOLIA_CONSUMER };
@@ -2812,7 +2994,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
     discoveryFetch,
     evidenceFetch,
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
-    proof: proof ?? matchingProof(disc, ev),
+    proof: proof ?? matchingProof(disc, ev, consumer.now),
   };
   return {
     ...c,
@@ -2873,8 +3055,16 @@ const ANNOUNCED_EVIDENCE_ID = d(
   "The evidenceId the consumer was given (announcement or its own record). Not necessarily valid: the consumer checks it against the evidence schema's evidenceId rule before building the URL.",
   { type: "string" },
 );
+const PROOF_TIMING = {
+  timestamp: d("The proof's timestamp public input (Unix seconds, an integer).", UNIX),
+  attestationExpiresAt: d(
+    "The Oracle attestation's expiresAt: live while the consumer's clock is at or before it.",
+    UNIX,
+  ),
+  attestationRevoked: d("isAttestationRevoked(proofHash).", { type: "boolean" }),
+};
 const PROOF = d(
-  "Public inputs of the Oracle-verified proof the evidence feeds: provider_id as a canonical decimal string, bytes32 values as lowercase hex. Types 7/8 carry their signer_pubkey_hash; type 9 its active (nonzero) signer slots.",
+  "Public inputs of the Oracle-verified proof the evidence feeds, plus the Oracle's record of the verification. Rendering: submitter is the 20-byte address in lowercase hex (the low 20 bytes of its bytes32 input); provider_id a canonical decimal string; credential_type and timestamp integers; credential_root and signer hashes 32-byte lowercase hex. Types 7/8 carry their signer_pubkey_hash; type 9 its active (nonzero) signer slots.",
   {
     oneOf: [
       obj({
@@ -2883,8 +3073,14 @@ const PROOF = d(
         providerId: ATTESTOR_PROVIDER_ID,
         credentialType: { type: "integer", minimum: 1, maximum: 4 },
         credentialRoot: HEX32,
+        ...PROOF_TIMING,
       }),
-      obj({ proofType: { enum: [7, 8] }, submitter: ADDRESS, signerPubkeyHash: HEX32 }),
+      obj({
+        proofType: { enum: [7, 8] },
+        submitter: ADDRESS,
+        signerPubkeyHash: HEX32,
+        ...PROOF_TIMING,
+      }),
       obj({
         proofType: { const: 9 },
         submitter: ADDRESS,
@@ -2895,6 +3091,7 @@ const PROOF = d(
           uniqueItems: true,
           items: HEX32,
         },
+        ...PROOF_TIMING,
       }),
     ],
   },

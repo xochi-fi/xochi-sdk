@@ -123,7 +123,7 @@
       "maximum": 4294967295
     },
     "artifact": {
-      "description": "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash.",
+      "description": "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash. Its timestamp lies in [issuedAt - 60 s, expiresAt), and its Oracle attestation is unrevoked and unexpired.",
       "oneOf": [
         {
           "type": "object",
