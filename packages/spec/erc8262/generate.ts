@@ -29,11 +29,19 @@ export const PROTOCOL_VERSION = 1;
 // Protocol limits (SPEC.md section 10), shipped in vectors.json `limits` so a runner reads
 // them rather than retyping them.
 const MAX_EVIDENCE_LIFETIME_SECONDS = 365 * 86400; // expiresAt - issuedAt
-const CLOCK_SKEW_SECONDS = 60; // issuedAt may lead the consumer's clock by this much
+const CLOCK_SKEW_SECONDS = 60; // issuedAt and discovery updatedAt may lead the clock by this
 const MAX_LIST_ITEMS = 32; // deployments, keys, sources, claims per source
 const MAX_DISCOVERY_BYTES = 65536;
 const MAX_EVIDENCE_BYTES = 8192;
 const FETCH_TIMEOUT_SECONDS = 10;
+const MIN_REVOCATION_CHECK_SECONDS = 60;
+const MAX_REVOCATION_CHECK_SECONDS = 86400;
+const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
+const MAX_EVIDENCE_ID_LENGTH = 128;
+// Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
+// fails the schema instead of becoming a permanent "newest updatedAt", and every runner
+// language compares the values exactly.
+const MAX_TIMESTAMP = 2 ** 32 - 1;
 
 // --- Schema building blocks --------------------------------------------------
 
@@ -43,18 +51,39 @@ const obj = (props: Record<string, unknown>, optional: string[] = []) => ({
   additionalProperties: false,
   properties: props,
 });
-const d = <T extends object>(description: string, schema: T) => ({ description, ...schema });
+// The outer description wins over one the wrapped schema already carries, and stays first.
+const d = <T extends object>(description: string, schema: T) => {
+  const { description: _inner, ...rest } = schema as T & { description?: string };
+  return { description, ...rest };
+};
 
-const UNIX = { type: "integer", minimum: 0 };
+const UNIX = { type: "integer", minimum: 0, maximum: MAX_TIMESTAMP };
 const ADDRESS = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
 const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
 
+// A canonical decimal string of an integer in [1, max]: shorter than max, or as long as max
+// and agreeing with it up to a smaller digit, or max itself. JSON Schema cannot compare
+// strings numerically, so the uint256 bound is spelled as a regex.
+const UINT256_MAX = (2n ** 256n - 1n).toString();
+function decimalAtMost(max: string): string {
+  const alternatives = [`[1-9][0-9]{0,${max.length - 2}}`];
+  for (let i = 0; i < max.length; i++) {
+    const low = i === 0 ? 1 : 0;
+    const high = Number(max[i]) - 1;
+    if (high < low) continue;
+    const rest = max.length - i - 1;
+    alternatives.push(`${max.slice(0, i)}[${low}-${high}]${rest > 0 ? `[0-9]{${rest}}` : ""}`);
+  }
+  alternatives.push(max);
+  return `^(?:${alternatives.join("|")})$`;
+}
+
 const TRUST_DOMAIN_ID = d(
-  "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+  "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
   {
     type: "string",
     maxLength: 253,
-    pattern: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+    pattern: "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
   },
 );
 const SOURCE_ID = d(
@@ -74,11 +103,11 @@ const POLICY_ID = d(
   { type: "string", maxLength: 128, pattern: "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$" },
 );
 const ATTESTOR_PROVIDER_ID = d(
-  "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
-  { type: "string", maxLength: 78, pattern: "^[1-9][0-9]*$" },
+  "The ERC-8262 Oracle `providerId` (uint256: nonzero and at most 2^256 - 1) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+  { type: "string", maxLength: UINT256_MAX.length, pattern: decimalAtMost(UINT256_MAX) },
 );
 const KEY_ID = d(
-  "Provider-chosen key identifier, unique within the trust domain and never reused.",
+  "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
   {
     type: "string",
     maxLength: 64,
@@ -108,11 +137,11 @@ const PROTOCOL_FIELDS = {
 const KEY_WINDOW = {
   notBefore: d("Unix seconds; first instant the key may issue.", UNIX),
   notAfter: d(
-    "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence stays valid until its own expiresAt (its roots stay registered). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
+    "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement: it stays acceptable until its own expiresAt while the Oracle still holds its credentialRoot valid (registered, unrevoked and inside the Oracle's 48-hour CREDENTIAL_ROOT_TTL from registration). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
     UNIX,
   ),
   revokedAt: d(
-    "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per (trustDomainId, keyId): a later document omitting it does not restore the key.",
+    "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per trust domain by keyId and by key material (credentialSigner or signerPubkeyHash): a later document omitting it, or listing the same material under a new keyId, does not restore the key.",
     UNIX,
   ),
 };
@@ -129,7 +158,7 @@ const KEY = d(
             const: "credential-root",
           }),
           credentialSigner: d(
-            "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current (no notAfter); a consumer refuses evidence naming a current key whose credentialSigner differs. Not checked once retired: the Oracle then holds the successor.",
+            "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock before notAfter. A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter on: the Oracle then holds the successor.",
             ADDRESS,
           ),
           ...KEY_WINDOW,
@@ -204,11 +233,15 @@ const discoverySchema = {
       }),
     },
     revocationCheckSeconds: d(
-      "Revocation: the longest a consumer may rely on a fetched evidence status (and this document) without re-fetching. A 410 for a held evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
-      { type: "integer", minimum: 60, maximum: 86400 },
+      "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for a held evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
+      {
+        type: "integer",
+        minimum: MIN_REVOCATION_CHECK_SECONDS,
+        maximum: MAX_REVOCATION_CHECK_SECONDS,
+      },
     ),
     updatedAt: d(
-      "Unix seconds of the last change to this document. Never decreases: a consumer refuses a document older than one it has observed for the same trust domain (a stale cache or rollback).",
+      `Unix seconds of the last change to this document. Never decreases: a consumer refuses a document older than one it has recorded for the same trust domain (a stale cache or rollback), and refuses (without recording) one more than ${CLOCK_SKEW_SECONDS} seconds ahead of its clock, so a mis-scaled value cannot lock the trust domain out.`,
       UNIX,
     ),
   }),
@@ -226,7 +259,7 @@ const CREDENTIAL_ARTIFACT = obj({
     maximum: 4,
   }),
   credentialRoot: d(
-    "The published root containing the subject's credential leaf. Valid only while the Oracle reports it registered to attestorProviderId and not revoked (revokeCredentialRoot is on-chain revocation).",
+    "The published root containing the subject's credential leaf. Valid only while the Oracle reports it registered to attestorProviderId, not revoked (revokeCredentialRoot is on-chain revocation) and inside its 48-hour CREDENTIAL_ROOT_TTL.",
     HEX32,
   ),
 });
@@ -236,13 +269,18 @@ const evidenceSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: `${SCHEMA_BASE}/provider-evidence.schema.json`,
   title: "ERC-8262 provider evidence",
-  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds verifies. Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
+  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified and its public inputs match this document (SPEC.md section 10.5, proof_mismatch). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
   ...obj(
     {
       ...PROTOCOL_FIELDS,
       evidenceId: d(
-        "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
-        { type: "string", minLength: 22, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" },
+        "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+        {
+          type: "string",
+          minLength: MIN_EVIDENCE_ID_LENGTH,
+          maxLength: MAX_EVIDENCE_ID_LENGTH,
+          pattern: "^[A-Za-z0-9_-]+$",
+        },
       ),
       status: d(
         "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` (or a 410 for the id) it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
@@ -259,7 +297,7 @@ const evidenceSchema = {
       trustDomainId: TRUST_DOMAIN_ID,
       deployment: DEPLOYMENT,
       keyId: d(
-        "Rotation: the discovery key that produced the artifact. issuedAt MUST fall inside that key's [notBefore, notAfter) window, the key MUST NOT be revoked, and a signed-signals key (proof types 7-9) MUST NOT be retired at evaluation time.",
+        "Rotation: the discovery key that produced the artifact, matched exactly (case-sensitive) against discovery keyIds. issuedAt MUST fall inside that key's [notBefore, notAfter) window, the key MUST NOT be revoked (by keyId or key material), and a signed-signals key (proof types 7-9) MUST NOT be retired at evaluation time.",
         KEY_ID,
       ),
       issuedAt: d(
@@ -271,7 +309,7 @@ const evidenceSchema = {
         UNIX,
       ),
       artifact: d(
-        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId.",
+        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash.",
         { oneOf: [CREDENTIAL_ARTIFACT, SIGNED_ARTIFACT] },
       ),
     },
@@ -353,6 +391,9 @@ const GATEWAY_SIGNER_1 = "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc";
 const GATEWAY_SIGNALS_HASH_OLD = "0x" + "5b".repeat(32);
 const GATEWAY_SIGNALS_HASH = "0x" + "5a".repeat(32);
 const NATIVE_SIGNALS_HASH = "0x" + "6a".repeat(32);
+const SECOND_SIGNER = "0x976ea74026e726554db657fa54763abd0c3a0aa9";
+// Registered to no attestor: the stand-in for a proof's signer slot that matches no key.
+const UNREGISTERED_HASH = "0x" + "ee".repeat(32);
 
 const ROOT_NATIVE_SEPOLIA_OLD = "0x" + "a0".repeat(32);
 const ROOT_NATIVE_SEPOLIA = "0x" + "a1".repeat(32);
@@ -360,11 +401,15 @@ const ROOT_NATIVE_BASE = "0x" + "a2".repeat(32);
 const ROOT_GATEWAY_SEPOLIA = "0x" + "b1".repeat(32);
 const ROOT_GATEWAY_BASE = "0x" + "b2".repeat(32);
 const ROOT_GATEWAY_REVOKED = "0x" + "b9".repeat(32);
+const ROOT_SECOND_SEPOLIA = "0x" + "c1".repeat(32);
 
 const NATIVE_HOST = "attest.native-kyc.test";
 const GATEWAY_HOST = "gateway.xochi.test";
 const ALIAS_HOST = "kyc.gateway-alias.test";
 const IMPOSTOR_HOST = "kyc.impostor.test";
+// A second native trust domain whose attestor (12) sorts before 7 as a string but after it
+// as a number: quorum attestors are listed in ascending numeric order.
+const SECOND_HOST = "kyc.second-native.test";
 
 const protocolFields = { protocol: PROTOCOL, protocolVersion: PROTOCOL_VERSION };
 
@@ -527,6 +572,58 @@ const gatewayRevocationDropped: Discovery = {
   }),
 };
 
+// A newer gateway document that drops the revoked gw-root-0 and lists its credentialSigner
+// again under a fresh keyId: revocation memory is by key material, not only by keyId.
+const gatewayMaterialRelisted: Discovery = {
+  ...gatewayDiscovery,
+  updatedAt: T_ROTATE + DAY,
+  keys: [
+    ...gatewayDiscovery.keys.filter((key) => key.keyId !== "gw-root-0"),
+    {
+      keyId: "gw-root-2",
+      use: "credential-root",
+      credentialSigner: GATEWAY_SIGNER_0,
+      notBefore: T_2026,
+    },
+  ],
+};
+
+const secondNativeDiscovery: Discovery = {
+  ...protocolFields,
+  trustDomainId: SECOND_HOST,
+  mode: "native",
+  operator: "Second native KYC (fixture)",
+  deployments: [
+    { chainId: BASE_SEPOLIA, oracleAddress: ORACLE_BASE_SEPOLIA, attestorProviderId: "12" },
+  ],
+  keys: [
+    {
+      keyId: "sn-root-1",
+      use: "credential-root",
+      credentialSigner: SECOND_SIGNER,
+      notBefore: T_2026,
+    },
+  ],
+  sources: [
+    {
+      sourceId: "second-kyc",
+      claims: [{ claimType: "kyc.individual", policyId: "second-kyc/individual/v1", proofType: 4 }],
+    },
+  ],
+  revocationCheckSeconds: 3600,
+  updatedAt: T_2026,
+};
+
+// The native trust domain announcing nk-root-2026b's retirement ahead of time: the key stays
+// current, so its credentialSigner is checked, until the consumer's clock reaches notAfter.
+const ROTATION_ANNOUNCED = NOW + 30 * DAY;
+const nativeRotationAnnounced: Discovery = {
+  ...nativeDiscovery,
+  keys: nativeDiscovery.keys.map((key) =>
+    key.keyId === "nk-root-2026b" ? { ...key, notAfter: ROTATION_ANNOUNCED } : key,
+  ),
+};
+
 const discovery: Record<string, Discovery> = {
   native: nativeDiscovery,
   gateway: gatewayDiscovery,
@@ -556,6 +653,22 @@ const discovery: Record<string, Discovery> = {
       },
     ],
   },
+  "gateway-material-relisted": gatewayMaterialRelisted,
+  "second-native": secondNativeDiscovery,
+  "native-rotation-announced": nativeRotationAnnounced,
+  // The document names attestor 9 for Base Sepolia while the consumer pins the trust domain
+  // to 7; the evidence still names 7.
+  "native-attestor-drift": {
+    ...nativeDiscovery,
+    deployments: [
+      { chainId: BASE_SEPOLIA, oracleAddress: ORACLE_BASE_SEPOLIA, attestorProviderId: "9" },
+      nativeDiscovery.deployments[1]!,
+    ],
+  },
+  // The document does not list the evidence's deployment at all.
+  "native-base-only": { ...nativeDiscovery, deployments: [nativeDiscovery.deployments[1]!] },
+  "gateway-updated-at-skew": { ...gatewayDiscovery, updatedAt: NOW + CLOCK_SKEW_SECONDS },
+  "gateway-future-dated": { ...gatewayDiscovery, updatedAt: NOW + CLOCK_SKEW_SECONDS + 1 },
 };
 
 const id = (seed: string) => `ev_${seed}`.padEnd(26, "0");
@@ -769,13 +882,102 @@ const evidence: Record<string, Evidence> = {
     issuedAt: T_2026 + 10 * DAY,
     expiresAt: NOW,
   },
+  "second-native-kyc": {
+    ...nativeEvidence,
+    evidenceId: id("second_kyc_w1"),
+    sourceId: "second-kyc",
+    policyId: "second-kyc/individual/v1",
+    trustDomainId: SECOND_HOST,
+    deployment: {
+      chainId: BASE_SEPOLIA,
+      oracleAddress: ORACLE_BASE_SEPOLIA,
+      attestorProviderId: "12",
+    },
+    keyId: "sn-root-1",
+    artifact: { proofType: 4, credentialType: 1, credentialRoot: ROOT_SECOND_SEPOLIA },
+  },
+  // Key-window boundaries: [notBefore, notAfter) is closed at notBefore, open at notAfter.
+  "native-kyc-at-key-not-before": {
+    ...nativeEvidence,
+    evidenceId: id("native_kyc_nb_w1"),
+    issuedAt: T_ROTATE,
+  },
+  "native-kyc-before-key-not-before": {
+    ...nativeEvidence,
+    evidenceId: id("native_kyc_early_w1"),
+    issuedAt: T_ROTATE - 1,
+  },
+  "native-kyc-retired-key-last-second": {
+    ...nativeEvidence,
+    evidenceId: id("native_kyc_last_w1"),
+    keyId: "nk-root-2026a",
+    issuedAt: T_ROTATE - 1,
+    expiresAt: T_ROTATE + 150 * DAY,
+    artifact: { proofType: 4, credentialType: 1, credentialRoot: ROOT_NATIVE_SEPOLIA_OLD },
+  },
+  "native-kyc-retired-key-at-not-after": {
+    ...nativeEvidence,
+    evidenceId: id("native_kyc_na_w1"),
+    keyId: "nk-root-2026a",
+    issuedAt: T_ROTATE,
+    expiresAt: T_ROTATE + 150 * DAY,
+    artifact: { proofType: 4, credentialType: 1, credentialRoot: ROOT_NATIVE_SEPOLIA_OLD },
+  },
+  // A root the Oracle holds valid, but registered to attestor 7, not the gateway's 1.
+  "gateway-sumsub-foreign-root": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_foreign_root_w1"),
+    artifact: { proofType: 4, credentialType: 1, credentialRoot: ROOT_NATIVE_SEPOLIA },
+  },
+  // human-tech declares personhood.unique for proof type 4 only.
+  "gateway-human-tech-undeclared-proof-type": {
+    ...gatewayHumanTech,
+    evidenceId: id("gw_humantech_signed_w1"),
+    keyId: "gw-signals-1",
+    artifact: { proofType: 7 },
+  },
+  "gateway-sumsub-material-relisted": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_relisted_w1"),
+    keyId: "gw-root-2",
+  },
+  // Two failures each, pinning the order of adjacent section 10.5 steps.
+  "gateway-sumsub-undeclared-policy-unknown-key": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_policy_key_w1"),
+    policyId: "sumsub/basic-kyc-level/v0",
+    keyId: "gw-root-9",
+  },
+  "gateway-sumsub-signed-root-key": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_signed_rootkey_w1"),
+    keyId: "gw-root-0",
+  },
+  "gateway-sumsub-revoked-key-late": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_revkey_late_w1"),
+    keyId: "gw-root-0",
+  },
+  "gateway-sumsub-signed-retired-key-late": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_signed_late_w1"),
+    keyId: "gw-signals-0",
+  },
+  "gateway-sumsub-future-too-long": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_future_long_w1"),
+    issuedAt: NOW + CLOCK_SKEW_SECONDS + 1,
+    expiresAt: NOW + CLOCK_SKEW_SECONDS + 1 + MAX_EVIDENCE_LIFETIME_SECONDS + 1,
+  },
 };
 
-// The Oracle reads a consumer makes, per deployment: roots currently valid and
-// registered to each attestor (getCredentialRoot + isValidCredentialRoot), and signer
-// hashes currently valid for it (signerProvider + isValidSignerPubkeyHash).
+// The Oracle reads a consumer makes, per deployment and attestor: isProviderDenied (denied),
+// getCredentialSigner (credentialSigner), the roots it holds valid and registered to the
+// attestor (isValidCredentialRoot + getCredentialRoot(root).providerId), and the signer
+// hashes registered to it (signerProvider(hash) == attestorProviderId).
 type RegistryEntry = {
   attestorProviderId: string;
+  denied: boolean;
   credentialSigner: string;
   credentialRoots: string[];
   signerPubkeyHashes: string[];
@@ -785,87 +987,165 @@ type RegistryEntry = {
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
 // The host a document was fetched from and the HTTP status of that fetch.
 type Fetch = { host: string; status: number };
-type Context = {
+// An evidence id the consumer recorded as gone (a 410), keyed like every observation.
+type Observed = { trustDomainId: string; evidenceId: string };
+// The public inputs of the Oracle-verified proof the evidence feeds, as the consumer reads
+// them: provider_id as a canonical decimal string, every bytes32 value as lowercase hex.
+// Types 7/8 carry their one signer_pubkey_hash; type 9 its active (nonzero) signer slots.
+type Proof =
+  | {
+      proofType: 4;
+      submitter: string;
+      providerId: string;
+      credentialType: number;
+      credentialRoot: string;
+    }
+  | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
+  | { proofType: 9; submitter: string; signerPubkeyHashes: string[] };
+// What the consumer brings to every evaluation of a deployment, including its observation
+// store; a quorum case shares it across its members.
+type Consumer = {
   chainId: number;
   oracleAddress: string;
   subject: string;
   now: number;
   allowlist: AllowlistEntry[];
-  discoveryFetch: Fetch;
-  evidenceFetch: Fetch;
   registry: RegistryEntry[];
   seenDiscovery: string[];
   seenEvidence: string[];
+  seenGone: Observed[];
 };
+// What one evaluation adds: the announced evidenceId, both fetches and the verified proof.
+type Attempt = {
+  discoveryFetch: Fetch;
+  evidenceFetch: Fetch;
+  announcedEvidenceId: string;
+  proof: Proof;
+};
+type Context = Consumer & Attempt;
 
 const REGISTRY_BASE_SEPOLIA: RegistryEntry[] = [
   {
     attestorProviderId: "1",
+    denied: false,
     credentialSigner: GATEWAY_SIGNER_1,
     credentialRoots: [ROOT_GATEWAY_SEPOLIA],
     signerPubkeyHashes: [GATEWAY_SIGNALS_HASH],
   },
   {
     attestorProviderId: "7",
+    denied: false,
     credentialSigner: NATIVE_SIGNER_B,
     credentialRoots: [ROOT_NATIVE_SEPOLIA_OLD, ROOT_NATIVE_SEPOLIA],
     signerPubkeyHashes: [NATIVE_SIGNALS_HASH],
+  },
+  {
+    attestorProviderId: "12",
+    denied: false,
+    credentialSigner: SECOND_SIGNER,
+    credentialRoots: [ROOT_SECOND_SEPOLIA],
+    signerPubkeyHashes: [],
   },
 ];
 const REGISTRY_BASE: RegistryEntry[] = [
   {
     attestorProviderId: "2",
+    denied: false,
     credentialSigner: GATEWAY_SIGNER_1,
     credentialRoots: [ROOT_GATEWAY_BASE],
     signerPubkeyHashes: [],
   },
   {
     attestorProviderId: "3",
+    denied: false,
     credentialSigner: NATIVE_SIGNER_B,
     credentialRoots: [ROOT_NATIVE_BASE],
     signerPubkeyHashes: [],
   },
 ];
-// Base Sepolia reads with the gateway attestor's entry changed.
-const gatewayRegistry = (over: Partial<RegistryEntry>): RegistryEntry[] =>
-  REGISTRY_BASE_SEPOLIA.map((r) => (r.attestorProviderId === "1" ? { ...r, ...over } : r));
+// Base Sepolia reads with one attestor's entry changed.
+const registryWith = (attestor: string, over: Partial<RegistryEntry>): RegistryEntry[] =>
+  REGISTRY_BASE_SEPOLIA.map((r) => (r.attestorProviderId === attestor ? { ...r, ...over } : r));
+const gatewayRegistry = (over: Partial<RegistryEntry>) => registryWith("1", over);
 
 const ALLOWLIST_BASE_SEPOLIA: AllowlistEntry[] = [
   { trustDomainId: NATIVE_HOST, attestorProviderId: "7" },
   { trustDomainId: GATEWAY_HOST, attestorProviderId: "1" },
   { trustDomainId: ALIAS_HOST, attestorProviderId: "1" },
+  { trustDomainId: SECOND_HOST, attestorProviderId: "12" },
 ];
 const ALLOWLIST_BASE: AllowlistEntry[] = [
   { trustDomainId: NATIVE_HOST, attestorProviderId: "3" },
   { trustDomainId: GATEWAY_HOST, attestorProviderId: "2" },
 ];
 
-const sepoliaContext = (host: string, over: Partial<Context> = {}): Context => ({
+const SEPOLIA_CONSUMER: Consumer = {
   chainId: BASE_SEPOLIA,
   oracleAddress: ORACLE_BASE_SEPOLIA,
   subject: WALLET,
   now: NOW,
   allowlist: ALLOWLIST_BASE_SEPOLIA,
-  discoveryFetch: { host, status: 200 },
-  evidenceFetch: { host, status: 200 },
   registry: REGISTRY_BASE_SEPOLIA,
   seenDiscovery: [],
   seenEvidence: [],
+  seenGone: [],
+};
+
+// A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id
+// and proof to the proof that matches the evidence, so a case states only what it varies.
+// The shipped vectors carry every field.
+type ContextInput = Consumer &
+  Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
+  Partial<Pick<Attempt, "announcedEvidenceId" | "proof">>;
+const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
+  ...SEPOLIA_CONSUMER,
+  discoveryFetch: { host, status: 200 },
+  evidenceFetch: { host, status: 200 },
   ...over,
 });
 
-type Case = {
+// An evaluation names its documents as fixtures, or as a `schemaCases` document: a 200 whose
+// body fails its schema.
+type DocRef = string | { schemaCase: string };
+type CaseInput = {
   name: string;
   description: string;
-  discovery: string;
-  evidence: string;
-  context: Context;
+  discovery: DocRef;
+  evidence: DocRef;
+  context: ContextInput;
   expected: { accepted: true } | { accepted: false; refusal: string };
 };
 const accept = { accepted: true } as const;
 const refuse = (refusal: string) => ({ accepted: false, refusal }) as const;
 
-const evaluationCases: Case[] = [
+// The proof whose public inputs match an evidence (section 10.5 step 28): what a consumer
+// reads from the Oracle-verified proof the evidence feeds.
+function matchingProof(disc: Discovery, ev: Evidence): Proof {
+  const { artifact, subject } = ev;
+  if (artifact.proofType === 4) {
+    return {
+      proofType: 4,
+      submitter: subject,
+      providerId: ev.deployment.attestorProviderId,
+      credentialType: artifact.credentialType,
+      credentialRoot: artifact.credentialRoot,
+    };
+  }
+  const hash = disc.keys.find((k) => k.keyId === ev.keyId)?.signerPubkeyHash ?? UNREGISTERED_HASH;
+  return artifact.proofType === 9
+    ? { proofType: 9, submitter: subject, signerPubkeyHashes: [hash] }
+    : { proofType: artifact.proofType, submitter: subject, signerPubkeyHash: hash };
+}
+// native-kyc's matching proof, spelled out so mismatch cases vary one input at a time.
+const NATIVE_PROOF = {
+  proofType: 4,
+  submitter: WALLET,
+  providerId: "7",
+  credentialType: 1,
+  credentialRoot: ROOT_NATIVE_SEPOLIA,
+} as const satisfies Proof;
+
+const evaluationCases: CaseInput[] = [
   {
     name: "native-accepted",
     description: "Native trust domain, Base Sepolia, current key, root registered to attestor 7.",
@@ -926,7 +1206,7 @@ const evaluationCases: Case[] = [
   {
     name: "rotation-retired-key-within-window",
     description:
-      "Rotation, proof type 4: evidence issued by the retired credential-root key before its notAfter stays valid (its root stays registered).",
+      "Rotation, proof type 4: evidence issued by the retired credential-root key before its notAfter is not refused for the retirement; the Oracle still holds its root valid.",
     discovery: "native",
     evidence: "native-kyc-retired-key-in-window",
     context: sepoliaContext(NATIVE_HOST),
@@ -986,7 +1266,7 @@ const evaluationCases: Case[] = [
   {
     name: "discovery-unavailable",
     description:
-      "The discovery fetch failed (here 503) and the consumer holds no copy younger than revocationCheckSeconds.",
+      "The discovery fetch failed (here 503). A consumer never substitutes a cached copy for a fetch.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, { discoveryFetch: { host: GATEWAY_HOST, status: 503 } }),
@@ -1152,7 +1432,7 @@ const evaluationCases: Case[] = [
   {
     name: "key-revocation-not-reversible",
     description:
-      "A newer document that drops a key's revokedAt does not restore the key: the consumer remembers revocations per (trustDomainId, keyId).",
+      "A newer document that drops a key's revokedAt does not restore the key: the consumer remembers revocations per trust domain.",
     discovery: "gateway-revocation-dropped",
     evidence: "gateway-sumsub-revoked-key",
     context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
@@ -1272,23 +1552,622 @@ const evaluationCases: Case[] = [
     context: sepoliaContext(GATEWAY_HOST),
     expected: refuse("expired"),
   },
+
+  // --- The verified proof the evidence feeds (step 28) ---
+  {
+    name: "proof-multi-signed-slots-include-key",
+    description:
+      "A proof type 9 proof whose active signer slots include the evidence key's hash, next to another provider's slot, matches.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: {
+        proofType: 9,
+        submitter: WALLET,
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, NATIVE_SIGNALS_HASH],
+      },
+    }),
+    expected: accept,
+  },
+  {
+    name: "proof-attestor-mismatch",
+    description:
+      "A verified proof type 4 proof for the same wallet whose provider_id is another attestor (the gateway's): it does not feed this evidence.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, providerId: "1", credentialRoot: ROOT_GATEWAY_SEPOLIA },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-provider-mismatch-same-root",
+    description:
+      "provider_id differs while credential_root is the evidence's: only the provider_id input is wrong.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { proof: { ...NATIVE_PROOF, providerId: "1" } }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-root-mismatch",
+    description:
+      "provider_id matches, but credential_root is another root the attestor holds valid.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, credentialRoot: ROOT_NATIVE_SEPOLIA_OLD },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-credential-type-mismatch",
+    description: "The proof attests another credential type than the evidence names.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { proof: { ...NATIVE_PROOF, credentialType: 2 } }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-submitter-mismatch",
+    description: "The proof was submitted by another wallet than the evidence's subject.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { proof: { ...NATIVE_PROOF, submitter: OTHER_WALLET } }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-type-mismatch",
+    description:
+      "The evidence feeds proof type 4; the verified proof is a type 9 proof signed by the same trust domain's signed-signals key.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { proofType: 9, submitter: WALLET, signerPubkeyHashes: [NATIVE_SIGNALS_HASH] },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-signer-hash-mismatch",
+    description:
+      "A proof type 7 proof signed by another attestor's registered key does not feed evidence naming the gateway's key.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: { proofType: 7, submitter: WALLET, signerPubkeyHash: NATIVE_SIGNALS_HASH },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-multi-signed-slots-omit-key",
+    description: "A proof type 9 proof whose active signer slots do not include the evidence key.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { proofType: 9, submitter: WALLET, signerPubkeyHashes: [GATEWAY_SIGNALS_HASH] },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+
+  // --- The announced evidenceId (steps 2 and 8) ---
+  {
+    name: "evidence-id-dot-segments",
+    description:
+      "An announced evidenceId with dot segments would leave /v1/erc8262/evidence/ once a URL parser normalizes it; it fails the evidenceId rule and is never fetched.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: "../../.well-known/erc8262-provider.json",
+    }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
+    name: "evidence-id-percent-encoded",
+    description: "Percent-encoded dot segments are refused the same way: `%` is outside the rule.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: "%2e%2e%2f%2e%2e%2fadmin%2fexport",
+    }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
+    name: "evidence-id-too-short",
+    description: `An announced evidenceId shorter than ${MIN_EVIDENCE_ID_LENGTH} characters carries under 128 bits.`,
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: "ev_1" }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
+    name: "evidence-id-body-mismatch",
+    description:
+      "The host answers the request for one evidenceId with another valid document of its own.",
+    discovery: "gateway",
+    evidence: "gateway-persona",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewaySumsub.evidenceId }),
+    expected: refuse("evidence_id_mismatch"),
+  },
+  {
+    name: "evidence-id-case-differs",
+    description: "evidenceIds compare exactly: a body whose id differs only in case is another id.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: gatewaySumsub.evidenceId.toUpperCase(),
+    }),
+    expected: refuse("evidence_id_mismatch"),
+  },
+
+  // --- Revocation memory, denial and the observation store ---
+  {
+    name: "key-material-relisted-under-new-id",
+    description:
+      "After gw-root-0 was revoked, a newer document drops it and lists its credentialSigner as gw-root-2 (and the attestor re-points the Oracle to it): revocation is remembered by key material, not only keyId.",
+    discovery: "gateway-material-relisted",
+    evidence: "gateway-sumsub-material-relisted",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: ["gateway"],
+      registry: gatewayRegistry({ credentialSigner: GATEWAY_SIGNER_0 }),
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "revocation-attestor-denied-on-oracle",
+    description:
+      "The Oracle guardian denied attestor 7 (isProviderDenied): its evidence is refused although its root is still registered and the Oracle's ATTESTATION path does not check denial itself.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { registry: registryWith("7", { denied: true }) }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "revocation-gone-not-reversible",
+    description:
+      "A 410 recorded earlier for this (trustDomainId, evidenceId) is final: a later 200 with status active is refused.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenGone: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "gone-scoped-by-trust-domain",
+    description:
+      "A 410 recorded for the same evidenceId under another trust domain does not affect it.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: accept,
+  },
+
+  // --- Bodies that fail their schema, and discovery timestamps ---
+  {
+    name: "discovery-body-fails-schema",
+    description:
+      "A 200 whose discovery body fails its schema (here a points field) is unavailable: refused for now, never recorded.",
+    discovery: { schemaCase: "discovery-carries-points" },
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("discovery_unavailable"),
+  },
+  {
+    name: "discovery-unsupported-protocol-version",
+    description: "A discovery document of a protocolVersion the consumer does not implement.",
+    discovery: { schemaCase: "discovery-unknown-protocol-version" },
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("discovery_unavailable"),
+  },
+  {
+    name: "evidence-unsupported-protocol-version",
+    description:
+      "An evidence body of a protocolVersion the consumer does not implement is unavailable, never revoked.",
+    discovery: "native",
+    evidence: { schemaCase: "evidence-unknown-protocol-version" },
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("evidence_unavailable"),
+  },
+  {
+    name: "discovery-updated-at-within-skew",
+    description: `A discovery updatedAt ${CLOCK_SKEW_SECONDS} seconds ahead of the consumer's clock is tolerated.`,
+    discovery: "gateway-updated-at-skew",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: accept,
+  },
+  {
+    name: "discovery-updated-at-in-future",
+    description: `A discovery updatedAt more than ${CLOCK_SKEW_SECONDS} seconds ahead is refused and not recorded, so it cannot make every later document stale.`,
+    discovery: "gateway-future-dated",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("discovery_invalid"),
+  },
+
+  // --- Boundaries and branches ---
+  {
+    name: "root-registered-to-other-attestor",
+    description:
+      "The Oracle holds the root valid, but registered to attestor 7, not the gateway's attestor 1.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-foreign-root",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "discovery-attestor-differs-from-pin",
+    description:
+      "The evidence names the pinned attestor 7, but the discovery document names 9 for the deployment.",
+    discovery: "native-attestor-drift",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("attestor_mismatch"),
+  },
+  {
+    name: "discovery-lacks-deployment",
+    description: "The discovery document does not list the evidence's deployment.",
+    discovery: "native-base-only",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("attestor_mismatch"),
+  },
+  {
+    name: "discovery-same-updated-at",
+    description: "Re-fetching the document already recorded (equal updatedAt) is not stale.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
+    expected: accept,
+  },
+  {
+    name: "issued-at-key-not-before",
+    description: "issuedAt equal to the key's notBefore is inside its window.",
+    discovery: "native",
+    evidence: "native-kyc-at-key-not-before",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: accept,
+  },
+  {
+    name: "issued-before-key-not-before",
+    description: "issuedAt one second before the key's notBefore.",
+    discovery: "native",
+    evidence: "native-kyc-before-key-not-before",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("key_not_valid_at_issuance"),
+  },
+  {
+    name: "issued-last-second-before-key-not-after",
+    description: "issuedAt one second before the retired key's notAfter is inside its window.",
+    discovery: "native",
+    evidence: "native-kyc-retired-key-last-second",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: accept,
+  },
+  {
+    name: "issued-at-key-not-after",
+    description: "notAfter is exclusive: issuedAt equal to it is outside the window.",
+    discovery: "native",
+    evidence: "native-kyc-retired-key-at-not-after",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: refuse("key_not_valid_at_issuance"),
+  },
+  {
+    name: "signals-key-retired-at-not-after",
+    description:
+      "A signed-signals key is retired from the instant the consumer's clock equals notAfter.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed-retired-key",
+    context: sepoliaContext(GATEWAY_HOST, {
+      now: T_ROTATE,
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
+      }),
+    }),
+    expected: refuse("key_retired"),
+  },
+  {
+    name: "signals-key-last-second-before-not-after",
+    description: "One second before notAfter the signed-signals key still serves.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed-retired-key",
+    context: sepoliaContext(GATEWAY_HOST, {
+      now: T_ROTATE - 1,
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
+      }),
+    }),
+    expected: accept,
+  },
+  {
+    name: "deployment-mismatch-chain-only",
+    description: "The consumer's Oracle address, another chain.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { chainId: BASE }),
+    expected: refuse("deployment_mismatch"),
+  },
+  {
+    name: "proof-type-not-declared",
+    description: "human-tech declares personhood.unique for proof type 4 only, not 7.",
+    discovery: "gateway",
+    evidence: "gateway-human-tech-undeclared-proof-type",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("claim_not_declared"),
+  },
+  {
+    name: "credential-signer-checked-before-announced-not-after",
+    description:
+      "nk-root-2026b carries a future notAfter: one second before it the key is still current, so its credentialSigner must be the Oracle's (here the Oracle holds another).",
+    discovery: "native-rotation-announced",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      now: ROTATION_ANNOUNCED - 1,
+      registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }),
+    }),
+    expected: refuse("credential_signer_mismatch"),
+  },
+  {
+    name: "credential-signer-not-checked-from-not-after",
+    description:
+      "From notAfter on the key is retired and the Oracle holds its successor: credentialSigner is no longer compared.",
+    discovery: "native-rotation-announced",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      now: ROTATION_ANNOUNCED,
+      registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }),
+    }),
+    expected: accept,
+  },
+
+  // --- Two failures, the earlier step wins: pins the order of adjacent steps ---
+  {
+    name: "order-not-allowed-before-evidence-id",
+    description:
+      "Host outside the allowlist (step 1) and an invalid announced evidenceId (step 2).",
+    discovery: "impostor",
+    evidence: "impostor-sumsub",
+    context: sepoliaContext(IMPOSTOR_HOST, { announcedEvidenceId: "../evidence" }),
+    expected: refuse("trust_domain_not_allowed"),
+  },
+  {
+    name: "order-evidence-id-before-origin",
+    description: "Invalid announced evidenceId (step 2) and evidence from another host (step 3).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: "../evidence",
+      evidenceFetch: { host: NATIVE_HOST, status: 200 },
+    }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
+    name: "order-origin-before-discovery-unavailable",
+    description: "Evidence from another host (step 3) and a failed discovery fetch (step 4).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+      evidenceFetch: { host: NATIVE_HOST, status: 200 },
+    }),
+    expected: refuse("origin_mismatch"),
+  },
+  {
+    name: "order-discovery-unavailable-before-gone",
+    description: "A failed discovery fetch (step 4) and a 410 for the evidence (step 5).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      discoveryFetch: { host: GATEWAY_HOST, status: 503 },
+      evidenceFetch: { host: GATEWAY_HOST, status: 410 },
+    }),
+    expected: refuse("discovery_unavailable"),
+  },
+  {
+    name: "order-evidence-unavailable-before-trust-domain",
+    description:
+      "A 404 for the evidence (step 6) and a discovery document naming another trust domain (step 7).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(ALIAS_HOST, { evidenceFetch: { host: ALIAS_HOST, status: 404 } }),
+    expected: refuse("evidence_unavailable"),
+  },
+  {
+    name: "order-trust-domain-before-evidence-id-mismatch",
+    description:
+      "Evidence of another trust domain (step 7) whose id is not the one requested (step 8).",
+    discovery: "gateway",
+    evidence: "native-kyc",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewaySumsub.evidenceId }),
+    expected: refuse("trust_domain_mismatch"),
+  },
+  {
+    name: "order-evidence-id-mismatch-before-discovery-invalid",
+    description:
+      "A body for another evidenceId (step 8) under a document repeating a keyId (step 9).",
+    discovery: "gateway-duplicate-key",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { announcedEvidenceId: gatewayPersona.evidenceId }),
+    expected: refuse("evidence_id_mismatch"),
+  },
+  {
+    name: "order-discovery-invalid-before-stale",
+    description:
+      "A document repeating a keyId (step 9) that is also older than one recorded (step 10).",
+    discovery: "gateway-duplicate-key",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway-revocation-dropped"] }),
+    expected: refuse("discovery_invalid"),
+  },
+  {
+    name: "order-stale-before-deployment",
+    description: "A stale document (step 10) and evidence for another deployment (step 11).",
+    discovery: "gateway-rolled-back",
+    evidence: "gateway-sumsub-base",
+    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
+    expected: refuse("discovery_stale"),
+  },
+  {
+    name: "order-deployment-before-attestor",
+    description: "Another Oracle (step 11) and an attestor other than the pin (step 12).",
+    discovery: "native",
+    evidence: "native-kyc-foreign-attestor",
+    context: sepoliaContext(NATIVE_HOST, {
+      oracleAddress: "0x8262000000000000000000000000000000000bad",
+    }),
+    expected: refuse("deployment_mismatch"),
+  },
+  {
+    name: "order-attestor-before-claim",
+    description:
+      "The consumer pins the gateway to attestor 9 (step 12) and the claim is undeclared (step 13).",
+    discovery: "gateway",
+    evidence: "gateway-human-tech-undeclared-claim",
+    context: sepoliaContext(GATEWAY_HOST, {
+      allowlist: ALLOWLIST_BASE_SEPOLIA.map((a) =>
+        a.trustDomainId === GATEWAY_HOST ? { ...a, attestorProviderId: "9" } : a,
+      ),
+    }),
+    expected: refuse("attestor_mismatch"),
+  },
+  {
+    name: "order-claim-before-key",
+    description: "An undeclared policyId (step 13) and an undeclared keyId (step 14).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-undeclared-policy-unknown-key",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("claim_not_declared"),
+  },
+  {
+    name: "order-key-use-before-revoked",
+    description:
+      "A proof type 7 claim naming a credential-root key (step 15) that is revoked (step 16).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed-root-key",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("key_use_mismatch"),
+  },
+  {
+    name: "order-revoked-before-window",
+    description: "A revoked key (step 16) named by evidence issued after its notAfter (step 17).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-revoked-key-late",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "order-window-before-retired",
+    description:
+      "A signed-signals key named by evidence issued after its notAfter (step 17), and retired at evaluation (step 18).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed-retired-key-late",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("key_not_valid_at_issuance"),
+  },
+  {
+    name: "order-credential-signer-before-registry",
+    description:
+      "The Oracle holds another credential signer (step 19) and no longer holds the root (step 20).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-root-revoked-on-oracle",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({ credentialSigner: GATEWAY_SIGNER_0 }),
+    }),
+    expected: refuse("credential_signer_mismatch"),
+  },
+  {
+    name: "order-registry-before-subject",
+    description: "A root no longer on the Oracle (step 20) presented for another wallet (step 21).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-root-revoked-on-oracle",
+    context: sepoliaContext(GATEWAY_HOST, { subject: OTHER_WALLET }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "order-subject-before-conflict",
+    description:
+      "Another wallet (step 21) and an evidenceId reused with a changed field (step 22).",
+    discovery: "native",
+    evidence: "native-kyc-extended-in-place",
+    context: sepoliaContext(NATIVE_HOST, { subject: OTHER_WALLET, seenEvidence: ["native-kyc"] }),
+    expected: refuse("subject_mismatch"),
+  },
+  {
+    name: "order-conflict-before-revoked",
+    description:
+      "A changed immutable field (step 22) against a recorded document that is revoked (step 23).",
+    discovery: "native",
+    evidence: "native-kyc-extended-in-place",
+    context: sepoliaContext(NATIVE_HOST, { seenEvidence: ["native-kyc-revoked"] }),
+    expected: refuse("evidence_id_conflict"),
+  },
+  {
+    name: "order-revoked-before-window-empty",
+    description: "A recorded 410 (step 23) for evidence with an empty validity window (step 24).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-zero-window",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenGone: [
+        {
+          trustDomainId: GATEWAY_HOST,
+          evidenceId: evidence["gateway-sumsub-zero-window"]!.evidenceId,
+        },
+      ],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "order-too-long-before-not-yet-valid",
+    description: "A lifetime past 365 days (step 25) starting in the future (step 26).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-future-too-long",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("validity_too_long"),
+  },
+  {
+    name: "order-expired-before-proof",
+    description: "Expired evidence (step 27) fed to a proof of another attestor (step 28).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-expired",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: {
+        proofType: 4,
+        submitter: WALLET,
+        providerId: "7",
+        credentialType: 1,
+        credentialRoot: ROOT_GATEWAY_SEPOLIA,
+      },
+    }),
+    expected: refuse("expired"),
+  },
 ];
 
-const member = (disc: string, ev: string) => ({
-  discovery: disc,
-  evidence: ev,
-  host: discovery[disc]!.trustDomainId,
-});
-
-const quorumContext = {
-  threshold: 2,
-  chainId: BASE_SEPOLIA,
-  oracleAddress: ORACLE_BASE_SEPOLIA,
-  subject: WALLET,
-  now: NOW,
-  allowlist: ALLOWLIST_BASE_SEPOLIA,
-  registry: REGISTRY_BASE_SEPOLIA,
+// A quorum member: one evidence fetched from its trust domain's own host, evaluated under
+// the case's consumer context and fed to `proof` (by default the proof that matches it).
+const member = (disc: string, ev: string, proof?: Proof) => {
+  const host = discovery[disc]!.trustDomainId;
+  const held = evidence[ev]!;
+  return {
+    discovery: disc,
+    evidence: ev,
+    discoveryFetch: { host, status: 200 },
+    evidenceFetch: { host, status: 200 },
+    announcedEvidenceId: held.evidenceId,
+    proof: proof ?? matchingProof(discovery[disc]!, held),
+  };
 };
+// One verified proof type 9 proof whose active slots carry both trust domains' signer hashes
+// feeds both multi-signed members.
+const MULTI_SIGNED_PROOF: Proof = {
+  proofType: 9,
+  submitter: WALLET,
+  signerPubkeyHashes: [NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH],
+};
+
+const quorumContext = { threshold: 2, context: SEPOLIA_CONSUMER };
 // A requirement names one claim and the proof type it must feed.
 const KYC_ATTESTATION = { claimType: "kyc.individual", proofType: 4 };
 const KYC_MULTI_SIGNED = { claimType: "kyc.individual", proofType: 9 };
@@ -1362,7 +2241,10 @@ const quorumCases = [
       "Proof type 9 KYC from the native and the gateway trust domains: two attestors, quorum met.",
     ...quorumContext,
     requirement: KYC_MULTI_SIGNED,
-    members: [member("native", "native-kyc-multi"), member("gateway", "gateway-sumsub-multi")],
+    members: [
+      member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
+      member("gateway", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
+    ],
     expected: { attestors: ["1", "7"], count: 2, satisfied: true },
   },
   {
@@ -1371,6 +2253,37 @@ const quorumCases = [
     ...quorumContext,
     requirement: KYC_MULTI_SIGNED,
     members: [member("native", "native-kyc-multi"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "attestors-sorted-numerically",
+    description:
+      "attestors lists providerIds in ascending numeric order: 7 before 12, though `12` sorts first as a string.",
+    ...quorumContext,
+    requirement: KYC_ATTESTATION,
+    members: [member("second-native", "second-native-kyc"), member("native", "native-kyc")],
+    expected: { attestors: ["7", "12"], count: 2, satisfied: true },
+  },
+  {
+    name: "observed-revocation-not-counted",
+    description:
+      "Members are evaluated against the consumer's observation store: a 410 it recorded for the gateway evidence removes that member.",
+    threshold: 2,
+    context: {
+      ...SEPOLIA_CONSUMER,
+      seenGone: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    },
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "proof-mismatched-member-not-counted",
+    description:
+      "The native trust domain's verified proof presented for the gateway evidence does not feed it, so one proof never counts as two attestors.",
+    ...quorumContext,
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub", NATIVE_PROOF)],
     expected: { attestors: ["7"], count: 1, satisfied: false },
   },
 ];
@@ -1485,16 +2398,73 @@ const schemaCases = [
       })),
     },
   },
+  {
+    name: "discovery-unknown-protocol-version",
+    description: "A consumer refuses a version it does not implement.",
+    kind: "discovery",
+    document: { ...gatewayDiscovery, protocolVersion: 2 },
+  },
+  {
+    name: "discovery-ipv4-trust-domain",
+    description: "trustDomainId is never an IP literal (here the cloud metadata address).",
+    kind: "discovery",
+    document: { ...nativeDiscovery, trustDomainId: "169.254.169.254" },
+  },
+  {
+    name: "discovery-numeric-last-label-trust-domain",
+    description:
+      "A host whose last label is numeric is parsed as IPv4 by WHATWG URL (`0x7f.1` is 127.0.0.1): the last label starts with a letter.",
+    kind: "discovery",
+    document: { ...nativeDiscovery, trustDomainId: "0x7f.1" },
+  },
+  {
+    name: "discovery-updated-at-milliseconds",
+    description: `Timestamps are Unix seconds, at most ${MAX_TIMESTAMP}: a millisecond updatedAt fails the schema instead of locking the trust domain out.`,
+    kind: "discovery",
+    document: { ...gatewayDiscovery, updatedAt: T_ROTATE * 1000 },
+  },
+  {
+    name: "discovery-attestor-above-uint256",
+    description: "attestorProviderId is at most 2^256 - 1.",
+    kind: "discovery",
+    document: {
+      ...nativeDiscovery,
+      deployments: [
+        { ...nativeDiscovery.deployments[0]!, attestorProviderId: (2n ** 256n).toString() },
+      ],
+    },
+  },
+  {
+    name: "discovery-revocation-check-too-short",
+    description: `revocationCheckSeconds is at least ${MIN_REVOCATION_CHECK_SECONDS}.`,
+    kind: "discovery",
+    document: { ...gatewayDiscovery, revocationCheckSeconds: MIN_REVOCATION_CHECK_SECONDS - 1 },
+  },
+  {
+    name: "evidence-issued-at-beyond-uint32",
+    description: `Timestamps are at most ${MAX_TIMESTAMP}.`,
+    kind: "evidence",
+    document: { ...nativeEvidence, issuedAt: MAX_TIMESTAMP + 1 },
+  },
+  {
+    name: "evidence-id-path-characters",
+    description:
+      "evidenceId is base64url only: no `.`, `/` or `%` that a URL parser would rewrite.",
+    kind: "evidence",
+    document: { ...nativeEvidence, evidenceId: "../../.well-known/erc8262-provider" },
+  },
 ];
 
 // Section 10.5 order: the first failing check is the refusal.
 const REFUSALS = [
   "trust_domain_not_allowed",
+  "evidence_id_invalid",
   "origin_mismatch",
   "discovery_unavailable",
   "evidence_gone",
   "evidence_unavailable",
   "trust_domain_mismatch",
+  "evidence_id_mismatch",
   "discovery_invalid",
   "discovery_stale",
   "deployment_mismatch",
@@ -1514,6 +2484,7 @@ const REFUSALS = [
   "validity_too_long",
   "not_yet_valid",
   "expired",
+  "proof_mismatch",
 ];
 
 const LIMITS = {
@@ -1523,12 +2494,46 @@ const LIMITS = {
   maxDiscoveryBytes: MAX_DISCOVERY_BYTES,
   maxEvidenceBytes: MAX_EVIDENCE_BYTES,
   fetchTimeoutSeconds: FETCH_TIMEOUT_SECONDS,
+  minRevocationCheckSeconds: MIN_REVOCATION_CHECK_SECONDS,
+  maxRevocationCheckSeconds: MAX_REVOCATION_CHECK_SECONDS,
+  minEvidenceIdLength: MIN_EVIDENCE_ID_LENGTH,
+  maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
+  maxTimestamp: MAX_TIMESTAMP,
 };
+
+function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
+  if (typeof ref === "string") {
+    const found = map[ref];
+    if (found === undefined) throw new Error(`unknown ${kind} fixture ${ref}`);
+    return found;
+  }
+  const found = schemaCases.find((c) => c.name === ref.schemaCase && c.kind === kind);
+  if (!found) throw new Error(`unknown ${kind} schema case ${ref.schemaCase}`);
+  return found.document as T;
+}
+
+// Spells out every context field: a runner evaluates exactly what the vector states.
+function finalize({ context, expected, ...c }: CaseInput) {
+  const disc = resolve(discovery, "discovery", c.discovery);
+  const ev = resolve(evidence, "evidence", c.evidence);
+  const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, ...consumer } = context;
+  return {
+    ...c,
+    context: {
+      ...consumer,
+      discoveryFetch,
+      evidenceFetch,
+      announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
+      proof: proof ?? matchingProof(disc, ev),
+    },
+    expected,
+  };
+}
 
 const vectors = {
   $schema: "./vectors.schema.json",
   description:
-    "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. `context.allowlist` is the consumer's pin of each trust domain to its attestor; `context.discoveryFetch` / `context.evidenceFetch` give the host each document came from and the HTTP status (a non-200 evidence fetch evaluates no document); `context.registry` stands in for the consumer's Oracle reads; `context.seenDiscovery` / `context.seenEvidence` name documents the consumer observed earlier. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
+    "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. An evaluation names its documents as fixtures, or as `{ schemaCase }`: a 200 whose body fails its schema. `context.allowlist` is the consumer's pin of each trust domain to its attestor; `context.registry` stands in for the consumer's Oracle reads; `context.seenDiscovery` / `context.seenEvidence` name documents in the consumer's observation store and `context.seenGone` the (trustDomainId, evidenceId) pairs it recorded from a 410; `context.announcedEvidenceId` is the id the consumer was given and requests; `context.discoveryFetch` / `context.evidenceFetch` give the host each document came from and the HTTP status (a non-200 evidence fetch evaluates no document); `context.proof` holds the public inputs of the Oracle-verified proof the evidence feeds. A quorum case's `context` is shared by its members, each of which adds its own fetches, announced id and proof. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
   version: 1,
   protocol: PROTOCOL,
   protocolVersion: PROTOCOL_VERSION,
@@ -1537,20 +2542,30 @@ const vectors = {
   discovery,
   evidence,
   schemaCases,
-  evaluationCases,
+  evaluationCases: evaluationCases.map(finalize),
   quorumCases,
 };
 
 // --- Vector-set schema ------------------------------------------------------------
 
 const NAME = { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" };
+const DOC_REF = {
+  oneOf: [NAME, obj({ schemaCase: NAME })],
+};
 const REGISTRY = {
   type: "array",
   items: obj({
     attestorProviderId: ATTESTOR_PROVIDER_ID,
-    credentialSigner: ADDRESS,
-    credentialRoots: { type: "array", items: HEX32 },
-    signerPubkeyHashes: { type: "array", items: HEX32 },
+    denied: d("isProviderDenied(attestorProviderId).", { type: "boolean" }),
+    credentialSigner: d("getCredentialSigner(attestorProviderId).", ADDRESS),
+    credentialRoots: d(
+      "Roots the Oracle holds valid (isValidCredentialRoot) and registered to the attestor (getCredentialRoot(root).providerId).",
+      { type: "array", items: HEX32 },
+    ),
+    signerPubkeyHashes: d("Hashes with signerProvider(hash) == attestorProviderId.", {
+      type: "array",
+      items: HEX32,
+    }),
   }),
 };
 const ALLOWLIST = {
@@ -1563,6 +2578,65 @@ const FETCH = obj({
 });
 const CHAIN_ID = { type: "integer", minimum: 1 };
 const POSITIVE = { type: "integer", minimum: 1 };
+const ANNOUNCED_EVIDENCE_ID = d(
+  "The evidenceId the consumer was given (announcement or its own record). Not necessarily valid: the consumer checks it against the evidence schema's evidenceId rule before building the URL.",
+  { type: "string" },
+);
+const PROOF = d(
+  "Public inputs of the Oracle-verified proof the evidence feeds: provider_id as a canonical decimal string, bytes32 values as lowercase hex. Types 7/8 carry their signer_pubkey_hash; type 9 its active (nonzero) signer slots.",
+  {
+    oneOf: [
+      obj({
+        proofType: { const: 4 },
+        submitter: ADDRESS,
+        providerId: ATTESTOR_PROVIDER_ID,
+        credentialType: { type: "integer", minimum: 1, maximum: 4 },
+        credentialRoot: HEX32,
+      }),
+      obj({ proofType: { enum: [7, 8] }, submitter: ADDRESS, signerPubkeyHash: HEX32 }),
+      obj({
+        proofType: { const: 9 },
+        submitter: ADDRESS,
+        signerPubkeyHashes: {
+          type: "array",
+          minItems: 1,
+          maxItems: 5,
+          uniqueItems: true,
+          items: HEX32,
+        },
+      }),
+    ],
+  },
+);
+const CONSUMER_FIELDS = {
+  chainId: CHAIN_ID,
+  oracleAddress: ADDRESS,
+  subject: ADDRESS,
+  now: UNIX,
+  allowlist: ALLOWLIST,
+  registry: REGISTRY,
+  seenDiscovery: d("Discovery fixtures in the consumer's observation store.", {
+    type: "array",
+    items: NAME,
+  }),
+  seenEvidence: d("Evidence fixtures in the consumer's observation store.", {
+    type: "array",
+    items: NAME,
+  }),
+  seenGone: d("(trustDomainId, evidenceId) pairs the consumer recorded from a 410.", {
+    type: "array",
+    items: obj({
+      trustDomainId: TRUST_DOMAIN_ID,
+      evidenceId: evidenceSchema.properties.evidenceId,
+    }),
+  }),
+};
+const ATTEMPT_FIELDS = {
+  discoveryFetch: FETCH,
+  evidenceFetch: FETCH,
+  announcedEvidenceId: ANNOUNCED_EVIDENCE_ID,
+  proof: PROOF,
+};
 
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1576,14 +2650,7 @@ const vectorsSchema = {
     version: { const: 1 },
     protocol: { const: PROTOCOL },
     protocolVersion: { const: PROTOCOL_VERSION },
-    limits: obj({
-      maxEvidenceLifetimeSeconds: POSITIVE,
-      clockSkewSeconds: POSITIVE,
-      maxListItems: POSITIVE,
-      maxDiscoveryBytes: POSITIVE,
-      maxEvidenceBytes: POSITIVE,
-      fetchTimeoutSeconds: POSITIVE,
-    }),
+    limits: obj(Object.fromEntries(Object.keys(LIMITS).map((key) => [key, POSITIVE]))),
     refusals: { type: "array", items: { type: "string" }, uniqueItems: true },
     discovery: { type: "object", propertyNames: NAME, additionalProperties: { type: "object" } },
     evidence: { type: "object", propertyNames: NAME, additionalProperties: { type: "object" } },
@@ -1603,23 +2670,12 @@ const vectorsSchema = {
       items: obj({
         name: NAME,
         description: { type: "string" },
-        discovery: NAME,
+        discovery: DOC_REF,
         evidence: d(
-          "The evidence fixture; when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
-          NAME,
+          "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
+          DOC_REF,
         ),
-        context: obj({
-          chainId: CHAIN_ID,
-          oracleAddress: ADDRESS,
-          subject: ADDRESS,
-          now: UNIX,
-          allowlist: ALLOWLIST,
-          discoveryFetch: FETCH,
-          evidenceFetch: FETCH,
-          registry: REGISTRY,
-          seenDiscovery: { type: "array", items: NAME },
-          seenEvidence: { type: "array", items: NAME },
-        }),
+        context: obj({ ...CONSUMER_FIELDS, ...ATTEMPT_FIELDS }),
         expected: {
           oneOf: [
             obj({ accepted: { const: true } }),
@@ -1635,20 +2691,18 @@ const vectorsSchema = {
         name: NAME,
         description: { type: "string" },
         threshold: { type: "integer", minimum: 1 },
-        chainId: CHAIN_ID,
-        oracleAddress: ADDRESS,
-        subject: ADDRESS,
-        now: UNIX,
-        allowlist: ALLOWLIST,
-        registry: REGISTRY,
+        context: obj(CONSUMER_FIELDS),
         requirement: obj({ claimType: CLAIM_TYPE, proofType: PROOF_TYPE }),
         members: {
           type: "array",
           minItems: 1,
-          items: obj({ discovery: NAME, evidence: NAME, host: { type: "string" } }),
+          items: obj({ discovery: NAME, evidence: NAME, ...ATTEMPT_FIELDS }),
         },
         expected: obj({
-          attestors: { type: "array", items: ATTESTOR_PROVIDER_ID },
+          attestors: d("Distinct attestorProviderIds, in ascending numeric order.", {
+            type: "array",
+            items: ATTESTOR_PROVIDER_ID,
+          }),
           count: { type: "integer", minimum: 0 },
           satisfied: { type: "boolean" },
         }),
