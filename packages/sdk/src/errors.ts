@@ -113,6 +113,20 @@ export class TimeWindowTooSmallError extends ERC8262ContractError {
   }
 }
 
+export class TimeWindowTooLargeError extends ERC8262ContractError {
+  readonly timeWindow: bigint;
+  readonly maximum: bigint;
+  constructor(timeWindow: bigint, maximum: bigint) {
+    super(
+      "TimeWindowTooLarge",
+      [timeWindow, maximum],
+      `Pattern time_window ${String(timeWindow)} above maximum ${String(maximum)}`,
+    );
+    this.timeWindow = timeWindow;
+    this.maximum = maximum;
+  }
+}
+
 export class EmptyBatchError extends ERC8262ContractError {
   constructor() {
     super("EmptyBatch", [], "Cannot submit empty batch");
@@ -357,6 +371,8 @@ export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractErro
       return new ProofTimestampNotMonotonicError(args[0] as bigint, args[1] as bigint);
     case "TimeWindowTooSmall":
       return new TimeWindowTooSmallError(args[0] as bigint, args[1] as bigint);
+    case "TimeWindowTooLarge":
+      return new TimeWindowTooLargeError(args[0] as bigint, args[1] as bigint);
     case "EmptyBatch":
       return new EmptyBatchError();
     case "BatchTooLarge":

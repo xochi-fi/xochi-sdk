@@ -81,7 +81,7 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
   }
   if (opts.timeWindow > PATTERN_TIME_WINDOW_MAX) {
     throw new Error(
-      `time_window ${String(opts.timeWindow)} exceeds maximum ${String(PATTERN_TIME_WINDOW_MAX)}s (90d)`,
+      `time_window ${String(opts.timeWindow)} exceeds maximum ${String(PATTERN_TIME_WINDOW_MAX)}s (30d)`,
     );
   }
 

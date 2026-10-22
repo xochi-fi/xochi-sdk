@@ -15,6 +15,7 @@ import {
   ProofTimestampStaleError,
   ProofTimestampInFutureError,
   ProofTimestampNotMonotonicError,
+  TimeWindowTooLargeError,
   BatchTooLargeError,
   EmptyBatchError,
   VersionRevokedError,
@@ -86,6 +87,16 @@ describe("decodeContractError", () => {
     );
     expect(err).toBeInstanceOf(ProofTimestampInFutureError);
     expect((err as ProofTimestampInFutureError).blockTimestamp).toBe(1700000000n);
+  });
+
+  it("decodes TimeWindowTooLarge with the window and maximum", () => {
+    const err = decodeContractError(
+      makeRevert("TimeWindowTooLarge", [2592001n, 2592000n]),
+      ORACLE_ABI,
+    );
+    expect(err).toBeInstanceOf(TimeWindowTooLargeError);
+    expect((err as TimeWindowTooLargeError).timeWindow).toBe(2592001n);
+    expect((err as TimeWindowTooLargeError).maximum).toBe(2592000n);
   });
 
   it("decodes BatchTooLarge and EmptyBatch (no args)", () => {

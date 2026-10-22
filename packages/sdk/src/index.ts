@@ -53,6 +53,7 @@ export {
   ProofTimestampInFutureError,
   ProofTimestampNotMonotonicError,
   TimeWindowTooSmallError,
+  TimeWindowTooLargeError,
   EmptyBatchError,
   BatchTooLargeError,
   BatchLengthMismatchError,

@@ -6,6 +6,7 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ### Breaking
 
+- **`PATTERN_TIME_WINDOW_MAX` is 30 days (2,592,000 s), was 90 days**, mirroring ERC-8262's new `MAX_TIME_WINDOW` (ERC-8262 PR #33): the Oracle reverts `TimeWindowTooLarge(timeWindow, maximum)` above it, and `buildPatternInputs` now rejects a `timeWindow` over 30 days before proving. The error is in `ORACLE_ABI` and decodes to the new `TimeWindowTooLargeError`. Migrate: split analyses longer than 30 days.
 - **RISK_SCORE (0x02) and PATTERN (0x03) carry a proof timestamp** (xochi-fi/ERC-8262#25, ERC-8262 PR #33). The Oracle now rejects either once the timestamp is older than `MAX_PROOF_AGE` (1 hour) or in the future, and ratchets on it per type; before, both used `block.timestamp` and had no age bound. Bundled `risk_score.json` and `pattern.json` are re-synced: their verification keys changed, so deploy the matching ERC-8262 verifiers and Oracle. Proofs made by earlier releases do not verify against the new verifiers.
   - `PUBLIC_INPUT_COUNTS`: `0x02` 8 -> 9, `0x03` 7 -> 8.
   - risk_score layout: `timestamp` is input 7, `submitter` moves 7 -> 8. `RiskScoreInput` (`buildRiskScoreInputs`, `proveRiskScore`, `proveBatch`, `provePlan`) gains optional `timestamp` (unix seconds as a string, default now), validated like compliance's.
