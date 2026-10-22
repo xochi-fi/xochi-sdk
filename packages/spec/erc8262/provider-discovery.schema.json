@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://riddler.axol.io/spec/erc8262/provider-discovery.schema.json",
   "title": "ERC-8262 provider discovery document",
-  "description": "Served at GET https://{trustDomainId}/.well-known/erc8262-provider.json (SPEC.md section 10.3). Discovery, never a pin: a consumer MUST check every key and root it relies on against the Oracle deployment named in the evidence. Re-fetch at least every revocationCheckSeconds.",
+  "description": "Served at GET https://{trustDomainId}/.well-known/erc8262-provider.json (SPEC.md section 10.3). Discovery is never a pin: the consumer's allowlist pins the trust domain to its attestor, and every key and root is checked against the Oracle deployment named in the evidence. Re-fetch at least every revocationCheckSeconds; updatedAt never decreases. Body at most 65536 bytes.",
   "type": "object",
   "required": [
     "protocol",
@@ -26,7 +26,7 @@
       "const": 1
     },
     "trustDomainId": {
-      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https from this exact host, so no host can speak for another's trust domain. One trust domain maps to exactly one attestorProviderId per Oracle deployment.",
+      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
       "type": "string",
       "maxLength": 253,
       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
@@ -47,6 +47,7 @@
     "deployments": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 32,
       "items": {
         "description": "An ERC-8262 Oracle deployment and this trust domain's attestor on it. chainId and oracleAddress bind every artifact to one deployment (ERC-8262 signed payloads and credential roots are deployment-scoped), so evidence for one chain or Oracle is never accepted on another.",
         "type": "object",
@@ -66,20 +67,21 @@
             "pattern": "^0x[0-9a-f]{40}$"
           },
           "attestorProviderId": {
-            "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+            "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
             "type": "string",
             "maxLength": 78,
             "pattern": "^[1-9][0-9]*$"
           }
         }
       },
-      "description": "One entry per Oracle deployment. A (chainId, oracleAddress) pair MUST appear at most once: one trust domain maps to one attestor per deployment."
+      "description": "One entry per Oracle deployment. A (chainId, oracleAddress) pair MUST appear at most once (a consumer refuses a duplicate): one trust domain maps to one attestor per deployment."
     },
     "keys": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 32,
       "items": {
-        "description": "A signing key of this trust domain. Rotation: publish the successor first, then set the predecessor's notAfter; the Oracle registry (setCredentialSigner, registerSignerPubkeyHash / revokeSignerPubkeyHash) is updated in the same change and is authoritative over this list.",
+        "description": "A signing key of this trust domain. Rotation: publish the successor with notBefore at the rotation instant, then set the predecessor's notAfter and update the Oracle (setCredentialSigner; registerSignerPubkeyHash plus revokeSignerPubkeyHash of the predecessor) in the same change. The Oracle registry is authoritative over this list. A key never issues before the Oracle holds it.",
         "oneOf": [
           {
             "type": "object",
@@ -102,7 +104,7 @@
                 "const": "credential-root"
               },
               "credentialSigner": {
-                "description": "The address the Oracle holds as getCredentialSigner(attestorProviderId) while this key is current.",
+                "description": "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current (no notAfter); a consumer refuses evidence naming a current key whose credentialSigner differs. Not checked once retired: the Oracle then holds the successor.",
                 "type": "string",
                 "pattern": "^0x[0-9a-f]{40}$"
               },
@@ -112,12 +114,12 @@
                 "minimum": 0
               },
               "notAfter": {
-                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence issued inside [notBefore, notAfter) stays valid until its own expiresAt; evidence claiming a later issuedAt is refused.",
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence stays valid until its own expiresAt (its roots stay registered). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
                 "type": "integer",
                 "minimum": 0
               },
               "revokedAt": {
-                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared.",
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per (trustDomainId, keyId): a later document omitting it does not restore the key.",
                 "type": "integer",
                 "minimum": 0
               }
@@ -154,23 +156,26 @@
                 "minimum": 0
               },
               "notAfter": {
-                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence issued inside [notBefore, notAfter) stays valid until its own expiresAt; evidence claiming a later issuedAt is refused.",
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence stays valid until its own expiresAt (its roots stay registered). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
                 "type": "integer",
                 "minimum": 0
               },
               "revokedAt": {
-                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared.",
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per (trustDomainId, keyId): a later document omitting it does not restore the key.",
                 "type": "integer",
                 "minimum": 0
               }
             }
           }
         ]
-      }
+      },
+      "description": "keyId MUST be unique within the document (a consumer refuses a duplicate)."
     },
     "sources": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 32,
+      "description": "sourceId MUST be unique within the document (a consumer refuses a duplicate).",
       "items": {
         "type": "object",
         "required": [
@@ -188,6 +193,7 @@
           "claims": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 32,
             "items": {
               "type": "object",
               "required": [
@@ -225,13 +231,13 @@
       }
     },
     "revocationCheckSeconds": {
-      "description": "Revocation: the longest a consumer may rely on a fetched evidence status (and this document) without re-fetching. A 404 for a held evidenceId means revoked.",
+      "description": "Revocation: the longest a consumer may rely on a fetched evidence status (and this document) without re-fetching. A 410 for a held evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
       "type": "integer",
       "minimum": 60,
       "maximum": 86400
     },
     "updatedAt": {
-      "description": "Unix seconds of the last change to this document.",
+      "description": "Unix seconds of the last change to this document. Never decreases: a consumer refuses a document older than one it has observed for the same trust domain (a stale cache or rollback).",
       "type": "integer",
       "minimum": 0
     }

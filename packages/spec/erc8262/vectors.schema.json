@@ -10,6 +10,7 @@
     "version",
     "protocol",
     "protocolVersion",
+    "limits",
     "refusals",
     "discovery",
     "evidence",
@@ -33,6 +34,44 @@
     },
     "protocolVersion": {
       "const": 1
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "maxEvidenceLifetimeSeconds",
+        "clockSkewSeconds",
+        "maxListItems",
+        "maxDiscoveryBytes",
+        "maxEvidenceBytes",
+        "fetchTimeoutSeconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "maxEvidenceLifetimeSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "clockSkewSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxListItems": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxDiscoveryBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxEvidenceBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fetchTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     },
     "refusals": {
       "type": "array",
@@ -120,25 +159,26 @@
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
           "evidence": {
+            "description": "The evidence fixture; when context.evidenceFetch.status is not 200 it is the held copy whose id was re-fetched, and no document is evaluated.",
             "type": "string",
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
           "context": {
             "type": "object",
             "required": [
-              "host",
               "chainId",
               "oracleAddress",
               "subject",
               "now",
+              "allowlist",
+              "discoveryFetch",
+              "evidenceFetch",
               "registry",
-              "seen"
+              "seenDiscovery",
+              "seenEvidence"
             ],
             "additionalProperties": false,
             "properties": {
-              "host": {
-                "type": "string"
-              },
               "chainId": {
                 "type": "integer",
                 "minimum": 1
@@ -155,22 +195,88 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "allowlist": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "trustDomainId",
+                    "attestorProviderId"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "trustDomainId": {
+                      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                      "type": "string",
+                      "maxLength": 253,
+                      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+                    },
+                    "attestorProviderId": {
+                      "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^[1-9][0-9]*$"
+                    }
+                  }
+                }
+              },
+              "discoveryFetch": {
+                "type": "object",
+                "required": [
+                  "host",
+                  "status"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 599
+                  }
+                }
+              },
+              "evidenceFetch": {
+                "type": "object",
+                "required": [
+                  "host",
+                  "status"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 599
+                  }
+                }
+              },
               "registry": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "required": [
                     "attestorProviderId",
+                    "credentialSigner",
                     "credentialRoots",
                     "signerPubkeyHashes"
                   ],
                   "additionalProperties": false,
                   "properties": {
                     "attestorProviderId": {
-                      "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                      "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
                       "type": "string",
                       "maxLength": 78,
                       "pattern": "^[1-9][0-9]*$"
+                    },
+                    "credentialSigner": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{40}$"
                     },
                     "credentialRoots": {
                       "type": "array",
@@ -189,7 +295,14 @@
                   }
                 }
               },
-              "seen": {
+              "seenDiscovery": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                }
+              },
+              "seenEvidence": {
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -225,7 +338,14 @@
                   },
                   "refusal": {
                     "enum": [
+                      "trust_domain_not_allowed",
+                      "origin_mismatch",
+                      "discovery_unavailable",
+                      "evidence_gone",
+                      "evidence_unavailable",
                       "trust_domain_mismatch",
+                      "discovery_invalid",
+                      "discovery_stale",
                       "deployment_mismatch",
                       "attestor_mismatch",
                       "claim_not_declared",
@@ -233,11 +353,14 @@
                       "key_use_mismatch",
                       "key_revoked",
                       "key_not_valid_at_issuance",
+                      "key_retired",
+                      "credential_signer_mismatch",
                       "not_registered_on_oracle",
                       "subject_mismatch",
                       "evidence_id_conflict",
                       "evidence_revoked",
                       "invalid_validity_window",
+                      "validity_too_long",
                       "not_yet_valid",
                       "expired"
                     ]
@@ -262,7 +385,9 @@
           "oracleAddress",
           "subject",
           "now",
+          "allowlist",
           "registry",
+          "requirement",
           "members",
           "expected"
         ],
@@ -295,22 +420,52 @@
             "type": "integer",
             "minimum": 0
           },
+          "allowlist": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "trustDomainId",
+                "attestorProviderId"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "trustDomainId": {
+                  "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                  "type": "string",
+                  "maxLength": 253,
+                  "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+                },
+                "attestorProviderId": {
+                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+                  "type": "string",
+                  "maxLength": 78,
+                  "pattern": "^[1-9][0-9]*$"
+                }
+              }
+            }
+          },
           "registry": {
             "type": "array",
             "items": {
               "type": "object",
               "required": [
                 "attestorProviderId",
+                "credentialSigner",
                 "credentialRoots",
                 "signerPubkeyHashes"
               ],
               "additionalProperties": false,
               "properties": {
                 "attestorProviderId": {
-                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
                   "type": "string",
                   "maxLength": 78,
                   "pattern": "^[1-9][0-9]*$"
+                },
+                "credentialSigner": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{40}$"
                 },
                 "credentialRoots": {
                   "type": "array",
@@ -326,6 +481,31 @@
                     "pattern": "^0x[0-9a-f]{64}$"
                   }
                 }
+              }
+            }
+          },
+          "requirement": {
+            "type": "object",
+            "required": [
+              "claimType",
+              "proofType"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "claimType": {
+                "description": "The claim, namespaced `<namespace>.<name>`, e.g. `kyc.individual`, `personhood.unique`. Consumers map (sourceId, claimType) to their own scoring policy; a provider never sends points, categories or tiers.",
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+              },
+              "proofType": {
+                "description": "The ERC-8262 proof type the claim feeds: 4 (ATTESTATION, credential-root inclusion), 7 (COMPLIANCE_SIGNED), 8 (RISK_SCORE_SIGNED) or 9 (COMPLIANCE_MULTI_SIGNED).",
+                "enum": [
+                  4,
+                  7,
+                  8,
+                  9
+                ]
               }
             }
           },
@@ -367,7 +547,7 @@
               "attestors": {
                 "type": "array",
                 "items": {
-                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+                  "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
                   "type": "string",
                   "maxLength": 78,
                   "pattern": "^[1-9][0-9]*$"

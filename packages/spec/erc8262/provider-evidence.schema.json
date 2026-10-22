@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://riddler.axol.io/spec/erc8262/provider-evidence.schema.json",
   "title": "ERC-8262 provider evidence",
-  "description": "Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Fetching from the trust domain's host over https is the authentication; a callback or push only announces an evidenceId. Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per evidenceId.",
+  "description": "Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds verifies. Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most 8192 bytes.",
   "type": "object",
   "required": [
     "protocol",
@@ -30,14 +30,14 @@
       "const": 1
     },
     "evidenceId": {
-      "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. Re-delivery of the same evidenceId with identical immutable fields is idempotent and counts once; the same evidenceId with any differing immutable field is refused. Renewal is a new evidenceId.",
+      "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
       "type": "string",
       "minLength": 22,
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9_-]+$"
     },
     "status": {
-      "description": "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
+      "description": "Revocation: `active` or `revoked`, monotonic. Once a consumer observes `revoked` (or a 410 for the id) it MUST NOT accept the evidenceId again, whatever a later response says. Expiry is computed from expiresAt, never signalled here.",
       "enum": [
         "active",
         "revoked"
@@ -72,7 +72,7 @@
       "pattern": "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
     },
     "trustDomainId": {
-      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https from this exact host, so no host can speak for another's trust domain. One trust domain maps to exactly one attestorProviderId per Oracle deployment.",
+      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
       "type": "string",
       "maxLength": 253,
       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
@@ -96,7 +96,7 @@
           "pattern": "^0x[0-9a-f]{40}$"
         },
         "attestorProviderId": {
-          "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string.",
+          "description": "The ERC-8262 Oracle `providerId` (uint256, nonzero) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
           "type": "string",
           "maxLength": 78,
           "pattern": "^[1-9][0-9]*$"
@@ -110,12 +110,12 @@
       "pattern": "^[A-Za-z0-9._-]+$"
     },
     "issuedAt": {
-      "description": "Unix seconds.",
+      "description": "Unix seconds. May lead the consumer's clock by at most 60 seconds.",
       "type": "integer",
       "minimum": 0
     },
     "expiresAt": {
-      "description": "Unix seconds, exclusive; greater than issuedAt.",
+      "description": "Unix seconds, exclusive; greater than issuedAt and at most 31536000 seconds (365 days) after it.",
       "type": "integer",
       "minimum": 0
     },

@@ -17,6 +17,7 @@ type Deployment = { chainId: number; oracleAddress: string; attestorProviderId: 
 type Key = {
   keyId: string;
   use: "credential-root" | "signed-signals";
+  credentialSigner?: string;
   signerPubkeyHash?: string;
   notBefore: number;
   notAfter?: number;
@@ -31,6 +32,7 @@ type Discovery = {
     sourceId: string;
     claims: { claimType: string; policyId: string; proofType: number }[];
   }[];
+  updatedAt: number;
 };
 type Evidence = {
   evidenceId: string;
@@ -49,19 +51,26 @@ type Evidence = {
 };
 type RegistryEntry = {
   attestorProviderId: string;
+  credentialSigner: string;
   credentialRoots: string[];
   signerPubkeyHashes: string[];
 };
+type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
+type Fetch = { host: string; status: number };
 type Context = {
-  host: string;
   chainId: number;
   oracleAddress: string;
   subject: string;
   now: number;
+  allowlist: AllowlistEntry[];
+  discoveryFetch: Fetch;
+  evidenceFetch: Fetch;
   registry: RegistryEntry[];
-  seen: string[];
+  seenDiscovery: string[];
+  seenEvidence: string[];
 };
 type Vectors = {
+  limits: { maxEvidenceLifetimeSeconds: number; clockSkewSeconds: number };
   refusals: string[];
   discovery: Record<string, Discovery>;
   evidence: Record<string, Evidence>;
@@ -80,7 +89,9 @@ type Vectors = {
     oracleAddress: string;
     subject: string;
     now: number;
+    allowlist: AllowlistEntry[];
     registry: RegistryEntry[];
+    requirement: { claimType: string; proofType: number };
     members: { discovery: string; evidence: string; host: string }[];
     expected: { attestors: string[]; count: number; satisfied: boolean };
   }[];
@@ -114,22 +125,44 @@ function immutableFields(ev: Evidence): string {
   return JSON.stringify(canonical(rest));
 }
 
-/** SPEC.md section 10.5: the first failing check, or null when the evidence is accepted. */
-function evaluate(disc: Discovery, ev: Evidence, ctx: Context): string | null {
-  if (disc.trustDomainId !== ctx.host || ev.trustDomainId !== disc.trustDomainId) {
+const hasDuplicates = (values: string[]): boolean => new Set(values).size !== values.length;
+
+/**
+ * SPEC.md section 10.5: the first failing check, or null when the evidence is accepted.
+ * `held` is the evidence document; it is read only when the evidence fetch returned 200.
+ */
+function evaluate(disc: Discovery, held: Evidence, ctx: Context): string | null {
+  const pinned = ctx.allowlist.find((a) => a.trustDomainId === ctx.discoveryFetch.host);
+  if (!pinned) return "trust_domain_not_allowed";
+  if (ctx.evidenceFetch.host !== ctx.discoveryFetch.host) return "origin_mismatch";
+  if (ctx.discoveryFetch.status !== 200) return "discovery_unavailable";
+  if (ctx.evidenceFetch.status === 410) return "evidence_gone";
+  if (ctx.evidenceFetch.status !== 200) return "evidence_unavailable";
+  const ev = held;
+  if (disc.trustDomainId !== ctx.discoveryFetch.host || ev.trustDomainId !== disc.trustDomainId) {
     return "trust_domain_mismatch";
   }
+  if (
+    hasDuplicates(disc.deployments.map((d) => `${d.chainId}/${d.oracleAddress}`)) ||
+    hasDuplicates(disc.keys.map((k) => k.keyId)) ||
+    hasDuplicates(disc.sources.map((s) => s.sourceId))
+  ) {
+    return "discovery_invalid";
+  }
+  const priorDiscovery = ctx.seenDiscovery
+    .map((name) => doc(V.discovery, name))
+    .filter((p) => p.trustDomainId === disc.trustDomainId);
+  if (priorDiscovery.some((p) => p.updatedAt > disc.updatedAt)) return "discovery_stale";
   const dep = ev.deployment;
   if (dep.chainId !== ctx.chainId || dep.oracleAddress !== ctx.oracleAddress) {
     return "deployment_mismatch";
   }
+  const declared = disc.deployments.find(
+    (d) => d.chainId === dep.chainId && d.oracleAddress === dep.oracleAddress,
+  );
   if (
-    !disc.deployments.some(
-      (d) =>
-        d.chainId === dep.chainId &&
-        d.oracleAddress === dep.oracleAddress &&
-        d.attestorProviderId === dep.attestorProviderId,
-    )
+    dep.attestorProviderId !== pinned.attestorProviderId ||
+    declared?.attestorProviderId !== pinned.attestorProviderId
   ) {
     return "attestor_mismatch";
   }
@@ -144,29 +177,37 @@ function evaluate(disc: Discovery, ev: Evidence, ctx: Context): string | null {
   if (!claimed) return "claim_not_declared";
   const key = disc.keys.find((k) => k.keyId === ev.keyId);
   if (!key) return "key_not_declared";
-  if (key.use !== (ev.artifact.proofType === 4 ? "credential-root" : "signed-signals")) {
-    return "key_use_mismatch";
-  }
-  if (key.revokedAt !== undefined) return "key_revoked";
+  const signed = ev.artifact.proofType !== 4;
+  if (key.use !== (signed ? "signed-signals" : "credential-root")) return "key_use_mismatch";
+  const revokedEarlier = priorDiscovery.some((p) =>
+    p.keys.some((k) => k.keyId === key.keyId && k.revokedAt !== undefined),
+  );
+  if (key.revokedAt !== undefined || revokedEarlier) return "key_revoked";
   if (ev.issuedAt < key.notBefore || (key.notAfter !== undefined && ev.issuedAt >= key.notAfter)) {
     return "key_not_valid_at_issuance";
   }
+  if (signed && key.notAfter !== undefined && ctx.now >= key.notAfter) return "key_retired";
   const reg = ctx.registry.find((r) => r.attestorProviderId === dep.attestorProviderId);
-  const registered =
-    ev.artifact.proofType === 4
-      ? reg?.credentialRoots.includes(ev.artifact.credentialRoot ?? "")
-      : reg?.signerPubkeyHashes.includes(key.signerPubkeyHash ?? "");
+  if (!signed && key.notAfter === undefined && reg?.credentialSigner !== key.credentialSigner) {
+    return "credential_signer_mismatch";
+  }
+  const registered = signed
+    ? reg?.signerPubkeyHashes.includes(key.signerPubkeyHash ?? "")
+    : reg?.credentialRoots.includes(ev.artifact.credentialRoot ?? "");
   if (!registered) return "not_registered_on_oracle";
   if (ev.subject !== ctx.subject) return "subject_mismatch";
-  const prior = ctx.seen
+  const prior = ctx.seenEvidence
     .map((name) => doc(V.evidence, name))
-    .filter((p) => p.evidenceId === ev.evidenceId);
+    .filter((p) => p.trustDomainId === ev.trustDomainId && p.evidenceId === ev.evidenceId);
   if (prior.some((p) => immutableFields(p) !== immutableFields(ev))) return "evidence_id_conflict";
   if (ev.status === "revoked" || prior.some((p) => p.status === "revoked")) {
     return "evidence_revoked";
   }
   if (ev.expiresAt <= ev.issuedAt) return "invalid_validity_window";
-  if (ev.issuedAt > ctx.now) return "not_yet_valid";
+  if (ev.expiresAt - ev.issuedAt > V.limits.maxEvidenceLifetimeSeconds) {
+    return "validity_too_long";
+  }
+  if (ev.issuedAt > ctx.now + V.limits.clockSkewSeconds) return "not_yet_valid";
   if (ctx.now >= ev.expiresAt) return "expired";
   return null;
 }
@@ -234,14 +275,24 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     const attestors = new Set<string>();
     for (const m of c.members) {
       const ev = doc(V.evidence, m.evidence);
+      if (
+        ev.claimType !== c.requirement.claimType ||
+        ev.artifact.proofType !== c.requirement.proofType
+      ) {
+        continue;
+      }
+      const fetched = { host: m.host, status: 200 };
       const ctx: Context = {
-        host: m.host,
         chainId: c.chainId,
         oracleAddress: c.oracleAddress,
         subject: c.subject,
         now: c.now,
+        allowlist: c.allowlist,
+        discoveryFetch: fetched,
+        evidenceFetch: fetched,
         registry: c.registry,
-        seen: [],
+        seenDiscovery: [],
+        seenEvidence: [],
       };
       if (evaluate(doc(V.discovery, m.discovery), ev, ctx) === null) {
         attestors.add(ev.deployment.attestorProviderId);
