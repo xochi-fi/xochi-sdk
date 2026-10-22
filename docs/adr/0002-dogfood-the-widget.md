@@ -63,19 +63,20 @@ widget's private `embedParams.ts`, so integrators cannot use any of it and
 6. **Locks and allow-lists stay frame-private until the server enforces them
    per publishable key.** xochi#579 closed as completed on 2026-10-08
    (xochi#592): publishable keys (`pk_live_` / `pk_test_`) now exist with an
-   origin allowlist and a stored policy, behind `API_KEYS_ENABLED` (off). That
-   policy has no lock or chain/token allow-list field, and quote and execute
-   check none, so the condition this decision waits on still does not hold:
-   it needs a policy field the Worker enforces on quote and execute, which no
-   longer has #579 as its tracker. The configurator can set locks and
-   allow-lists on its own preview; the widget-lib types do not expose them,
-   because a host must not mistake a browser-side convenience for a checkout
-   guarantee.
+   origin allowlist and a stored policy, behind `API_KEYS_ENABLED` (off as of
+   2026-10-22). That policy has no lock or chain/token allow-list field, and
+   quote and execute check none, so the condition this decision waits on
+   still does not hold: it needs a policy field the Worker enforces on quote
+   and execute, which no longer has #579 as its tracker. The configurator can
+   set locks and allow-lists on its own preview; the widget-lib types do not
+   expose them, because a host must not mistake a browser-side convenience
+   for a checkout guarantee.
 7. **xochi.fi hosts the widget.** `xochi.fi/trade` becomes a `createXochiWidget`
    host that lends the frame its connected wallet (`autoConnect` when already
    connected). Until the embed prerequisites below hold, `/trade` redirects new
    swaps to `widget.xochi.fi`, and xochi deletes its swap code and the wallet
-   stack only once the drain (Order step 6) has ended.
+   stack only at the deletion point of the drain (Order step 6), keeping its
+   stealth claim and key-export page.
 8. **One deployable for the widget.** `xochi-widget` keeps serving both the
    live frame (`/embed`) and the configurator (`/`) on `widget.xochi.fi` and
    `widget-stg.xochi.fi`, as `widget.cow.fi` does. The configurator is the way
@@ -100,29 +101,61 @@ widget's private `embedParams.ts`, so integrators cannot use any of it and
 4. Configurator preview and snippet on `createXochiWidget`; widget-stg on
    `next`.
 5. Give the stealth key namespace a public home before anything retires
-   `@xochi/shared`'s public half: move `STEALTH_DERIVE_MESSAGE` and
-   `encodeMetaAddress` into `@xochi/signer`, with a test that pins both byte
-   for byte against the values xochi publishes in `@xochi-fi/shared`
-   (`packages/shared/src/stealth.ts`, a value this repo cannot edit), publish
-   it, and move xochi-widget's imports to it. Retyping that string, or
-   changing one byte of it, derives different keys, so stealth funds already
-   received match no announcement. Step 6 does not start while anything
-   imports either from `@xochi/shared`.
-6. `xochi.fi/trade` redirects new swaps to `widget.xochi.fi`, behind a drain:
+   `@xochi/shared`'s public half. `@xochi/shared` is the name xochi and
+   xochi-widget import; it is the same package xochi publishes to GitHub
+   Packages as the private `@xochi-fi/shared` (`publish-shared.yml`;
+   xochi-widget depends on `"@xochi/shared": "npm:@xochi-fi/shared@…"`). Move
+   `STEALTH_DERIVE_MESSAGE` and `encodeMetaAddress` into `@xochi/signer` and
+   publish it:
+   - **Vendored pin.** `@xochi/signer` carries the current bytes of both
+     (copied from xochi `packages/shared/src/stealth.ts`) as a vendored
+     fixture with its SHA-256, and a unit test holds the exports to it byte
+     for byte. The public CI needs no registry credential, because the
+     private package is never installed here.
+   - **Scheduled drift probe.** The vendored copy is editable here, so on its
+     own its pin proves nothing (CLAUDE.md, repo-wide invariants). A daily,
+     secret-gated job in the producer-drift pattern reads the same bytes
+     from xochi (a read-only token, never exposed to PR CI) and fails on any
+     difference.
+   - Retyping that string, or changing one byte of it, derives different
+     keys, so stealth funds already received match no announcement.
+   - xochi-widget, and the xochi.fi claim page step 6 keeps, import both
+     from `@xochi/signer`. Step 6 does not start while anything outside xochi
+     imports either from `@xochi/shared`.
+6. `xochi.fi/trade` redirects new swaps to `widget.xochi.fi`, behind a drain.
+   No intent record carries the origin it was opened on, so every intent
+   created before the redirect counts as opened on xochi.fi; that only
+   lengthens the drain.
    - Wallet sessions (`sessionStorage`) and stealth meta-addresses
      (`localStorage`) are per origin and do not follow the redirect. xochi.fi
-     keeps serving intent status and stealth claims for every intent opened
-     there, and tells the user before redirecting.
+     tells the user before redirecting. Intent status is read from the
+     Worker API by intent id, not from origin storage, so widget.xochi.fi
+     can show it.
    - On `widget.xochi.fi` the frame re-derives stealth keys from the same
      derive message (step 5), so a wallet whose signature over it is
      deterministic recovers its state. A wallet whose signature is not (some
      smart accounts) derives different keys there, so its keys exist only on
-     xochi.fi, and xochi.fi's claim path stays until the drain ends.
-   - The drain ends when no intent opened on xochi.fi is non-terminal and a
-     claim notice period announced with the redirect has passed. Only then
-     does xochi delete its swap code, the trade-only dependencies and the
-     public half of `@xochi/shared` (`publish-shared.yml` retires when
-     nothing outside xochi imports it).
+     xochi.fi.
+   - **Claim and key-export page.** xochi.fi keeps one minimal page that
+     derives stealth keys from the wallet's signature over the derive
+     message, scans announcements, claims, and exports the derived keys
+     locally after a wallet prompt (never sent anywhere), so a user can claim
+     with any tool. It keeps only the wallet connector it needs and survives
+     the deletion below. It stays up until no announcement from an intent
+     created before the redirect is unclaimed (its stealth address still
+     holds the delivered token, read from the chain), however long that
+     takes; an unclaimed balance can keep it up indefinitely, which is the
+     accepted cost.
+   - **Stuck intents.** 30 days after the redirect, the xochi maintainers
+     (owner: the xochi repo's code owners) list every intent created before
+     the redirect that is still non-terminal (for example one Riddler holds
+     at `settling` + `filled`, xochi#376) in a tracking issue and resolve each
+     through the Worker and Riddler operators. Those intents no longer block
+     the deletion; their status stays readable through the Worker API.
+   - At that cutoff xochi deletes its swap code, the trade-only dependencies
+     and the public half of `@xochi/shared` (`publish-shared.yml` retires
+     when nothing outside xochi imports it). The claim and key-export page is
+     not part of that deletion.
 7. Embed on xochi.fi once its prerequisites hold.
 
 ## Prerequisites for embedding on xochi.fi
