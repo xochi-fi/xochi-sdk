@@ -328,7 +328,10 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       const key = f.key();
       if (key === undefined || f.signed()) return false;
-      const current = key.notAfter === undefined || f.ctx.now < key.notAfter;
+      // Skew in the provider's favour: the key stops being current 60 s before notAfter, so a
+      // consumer whose clock lags the provider's never compares against a switched Oracle.
+      const current =
+        key.notAfter === undefined || f.ctx.now < key.notAfter - V.limits.clockSkewSeconds;
       return current && f.registry()?.credentialSigner !== key.credentialSigner;
     },
   ],

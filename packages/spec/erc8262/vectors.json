@@ -13488,14 +13488,14 @@
     },
     {
       "name": "credential-signer-checked-before-announced-not-after",
-      "description": "nk-root-2026b carries a future notAfter: one second before it the key is still current, so its credentialSigner must be the Oracle's (here the Oracle holds another).",
+      "description": "nk-root-2026b carries a future notAfter: 61 s before it the key is still current, so its credentialSigner must be the Oracle's (here the Oracle holds another).",
       "discovery": "native-rotation-announced",
       "evidence": "native-kyc",
       "context": {
         "chainId": 84532,
         "oracleAddress": "0x8262000000000000000000000000000000084532",
         "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "now": 1796083199,
+        "now": 1796083139,
         "allowlist": [
           {
             "trustDomainId": "attest.native-kyc.test",
@@ -13567,7 +13567,7 @@
           "credentialType": 1,
           "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
           "timestamp": 1789948800,
-          "attestationExpiresAt": 1796169599,
+          "attestationExpiresAt": 1796169539,
           "attestationRevoked": false
         }
       },
@@ -13589,15 +13589,15 @@
       }
     },
     {
-      "name": "credential-signer-not-checked-from-not-after",
-      "description": "From notAfter on the key is retired and the Oracle holds its successor: credentialSigner is no longer compared.",
+      "name": "credential-signer-not-checked-within-skew-of-not-after",
+      "description": "From 60 s before notAfter the key is no longer current: a consumer whose clock lags the provider's by up to the skew does not compare against an Oracle that already holds the successor.",
       "discovery": "native-rotation-announced",
       "evidence": "native-kyc",
       "context": {
         "chainId": 84532,
         "oracleAddress": "0x8262000000000000000000000000000000084532",
         "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "now": 1796083200,
+        "now": 1796083140,
         "allowlist": [
           {
             "trustDomainId": "attest.native-kyc.test",
@@ -13669,7 +13669,7 @@
           "credentialType": 1,
           "credentialRoot": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
           "timestamp": 1789948800,
-          "attestationExpiresAt": 1796169600,
+          "attestationExpiresAt": 1796169540,
           "attestationRevoked": false
         }
       },

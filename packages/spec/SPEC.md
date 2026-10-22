@@ -1030,7 +1030,21 @@ trust domain; its allowlist; its own deployment (`chainId`, `oracleAddress`);
 the wallet it is acting for; its clock; its Oracle reads; the announced
 `evidenceId`; the host and status of both fetches; its observation store
 (§10.7); and the public inputs of the Oracle-verified proof the evidence feeds.
-The checks run in this order and the first failure is the refusal:
+The checks run in this order and the first failure is the refusal.
+
+**Clocks.** The consumer's, the provider's and the prover's clocks may differ
+by up to 60 s (`limits.clockSkewSeconds`), and one rule applies throughout:
+where a check compares instants from two different clocks and would refuse
+because the later party's instant is ahead, it tolerates 60 s; a check that
+ends something (evidence `expiresAt`, a signed-signals key's `notAfter`, the
+Oracle attestation's `expiresAt`) never tolerates skew, so revocation and
+expiry are never delayed; instants from one clock compare exactly. So: steps
+11 and 28 accept a provider `updatedAt` / `issuedAt` up to 60 s ahead of the
+consumer's clock; step 22 stops treating a key as current 60 s before its
+`notAfter`; step 30 accepts a proof `timestamp` up to 60 s before `issuedAt`;
+steps 20 and 29 and step 30's attestation expiry compare the consumer's clock
+exactly; step 19 (`issuedAt` against the key window, both provider instants)
+and step 27 compare exactly.
 
 | # | Refusal | Refused when |
 |---|---|---|
@@ -1055,7 +1069,7 @@ The checks run in this order and the first failure is the refusal:
 | 19 | `key_not_valid_at_issuance` | `issuedAt` is outside the key's [`notBefore`, `notAfter`) |
 | 20 | `key_retired` | proof type 7/8/9 and the consumer's clock is at or past the key's `notAfter` |
 | 21 | `attestor_denied` | the Oracle reports `isProviderDenied(attestorProviderId)` |
-| 22 | `credential_signer_mismatch` | proof type 4, the key is current (no `notAfter`, or the consumer's clock before it), and its `credentialSigner` is not the Oracle's `getCredentialSigner(attestorProviderId)` |
+| 22 | `credential_signer_mismatch` | proof type 4, the key is current (no `notAfter`, or the consumer's clock more than 60 s before it), and its `credentialSigner` is not the Oracle's `getCredentialSigner(attestorProviderId)` |
 | 23 | `not_registered_on_oracle` | type 4: `isValidCredentialRoot(credentialRoot)` is false or `getCredentialRoot(credentialRoot).providerId` is not `attestorProviderId`; 7/8/9: `signerProvider(signerPubkeyHash)` of the key named by `keyId` (not any key of the trust domain) is not `attestorProviderId` |
 | 24 | `subject_mismatch` | `subject` is not the wallet the consumer acts for, both compared as 20-byte addresses in lowercase hex (the schema requires lowercase; the consumer lowercases its own wallet, never applies EIP-55) |
 | 25 | `evidence_id_conflict` | a document recorded for this (`trustDomainId`, `evidenceId`) differs in any field other than `status`/`revokedAt` |
@@ -1120,13 +1134,18 @@ numeric order.
   idempotent and counts once, any other change is refused, and renewal is a
   new `evidenceId`. Evidence lives at most 365 days.
 - **Rotation.** Publish the successor key with `notBefore` at the rotation
-  instant, then set the predecessor's `notAfter` and update the Oracle in the
-  same change: `setCredentialSigner` for a credential-root key;
-  `registerSignerPubkeyHash` of the successor and `revokeSignerPubkeyHash` of
-  the predecessor for a signed-signals key. A key never issues before the
-  Oracle holds it. A key is **current** while it has no `notAfter` or the
-  consumer's clock is before it, so an announced future `notAfter` keeps the
-  `credentialSigner` check (step 22) until it arrives. A retired
+  instant and set the predecessor's `notAfter` to that instant in the same
+  discovery change, at least `revocationCheckSeconds` plus the host's cache
+  propagation time before it, so every consumer sees the rotation announced
+  before it happens. At `notAfter` (not earlier) update the Oracle:
+  `setCredentialSigner` for a credential-root key; `registerSignerPubkeyHash`
+  of the successor (which MAY be registered ahead) and `revokeSignerPubkeyHash`
+  of the predecessor for a signed-signals key. A key never issues before the
+  Oracle holds it, so successor evidence is issued only after the switch. A
+  key is **current** while it has no `notAfter` or the consumer's clock is more
+  than 60 s before it (step 22), so a consumer whose clock lags the provider's,
+  or that read the announcement late, never compares a current key against an
+  Oracle that already holds the successor. A retired
   **credential-root** key's evidence is not refused for the retirement: it
   stays acceptable until its own `expiresAt` while the Oracle still holds its
   `credentialRoot` valid (step 23), which the Oracle does for

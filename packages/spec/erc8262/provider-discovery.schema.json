@@ -104,7 +104,7 @@
                 "const": "credential-root"
               },
               "credentialSigner": {
-                "description": "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock before notAfter. A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter on: the Oracle then holds the successor.",
+                "description": "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock more than 60 s before notAfter (the skew favours a consumer whose clock lags the provider's). A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter - 60 s on: the Oracle switches to the successor at notAfter.",
                 "type": "string",
                 "pattern": "^0x[0-9a-f]{40}$"
               },

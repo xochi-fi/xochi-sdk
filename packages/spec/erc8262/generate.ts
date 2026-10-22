@@ -158,7 +158,7 @@ const KEY = d(
             const: "credential-root",
           }),
           credentialSigner: d(
-            "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock before notAfter. A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter on: the Oracle then holds the successor.",
+            `The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock more than ${CLOCK_SKEW_SECONDS} s before notAfter (the skew favours a consumer whose clock lags the provider's). A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter - ${CLOCK_SKEW_SECONDS} s on: the Oracle switches to the successor at notAfter.`,
             ADDRESS,
           ),
           ...KEY_WINDOW,
@@ -2119,24 +2119,22 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "credential-signer-checked-before-announced-not-after",
-    description:
-      "nk-root-2026b carries a future notAfter: one second before it the key is still current, so its credentialSigner must be the Oracle's (here the Oracle holds another).",
+    description: `nk-root-2026b carries a future notAfter: ${CLOCK_SKEW_SECONDS + 1} s before it the key is still current, so its credentialSigner must be the Oracle's (here the Oracle holds another).`,
     discovery: "native-rotation-announced",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      now: ROTATION_ANNOUNCED - 1,
+      now: ROTATION_ANNOUNCED - CLOCK_SKEW_SECONDS - 1,
       registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }),
     }),
     expected: refuse("credential_signer_mismatch"),
   },
   {
-    name: "credential-signer-not-checked-from-not-after",
-    description:
-      "From notAfter on the key is retired and the Oracle holds its successor: credentialSigner is no longer compared.",
+    name: "credential-signer-not-checked-within-skew-of-not-after",
+    description: `From ${CLOCK_SKEW_SECONDS} s before notAfter the key is no longer current: a consumer whose clock lags the provider's by up to the skew does not compare against an Oracle that already holds the successor.`,
     discovery: "native-rotation-announced",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      now: ROTATION_ANNOUNCED,
+      now: ROTATION_ANNOUNCED - CLOCK_SKEW_SECONDS,
       registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }),
     }),
     expected: accept,
