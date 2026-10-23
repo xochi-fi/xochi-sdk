@@ -681,7 +681,14 @@ export interface IntentRecord {
 export interface WithheldIntentRecord {
   legsWithheld: true;
   id: string;
+  /**
+   * The served status decoded (`decodeWireStatus`): a granular one
+   * (`fill_failed`) as its bucket, an unmodelled one as `executing` with
+   * `unmapped: true`.
+   */
   status: IntentStatus;
+  /** True when the served status was outside this build's vocabulary. Absent means mapped. */
+  unmapped?: true;
   fromChainId?: ChainId;
   toChainId?: ChainId;
   settlementType?: SettlementType;
@@ -724,10 +731,12 @@ export interface IntentRecordWire {
  */
 export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldIntentRecord {
   if (w.legs_withheld !== true) return mapIntentRecord(w);
+  const decoded = decodeWireStatus(w.status);
   return {
     legsWithheld: true,
     id: w.id,
-    status: w.status as IntentStatus,
+    status: decoded.status,
+    ...(decoded.kind === "unmapped" ? { unmapped: true as const } : {}),
     fromChainId: w.from_chain_id,
     toChainId: w.to_chain_id,
     settlementType: w.settlement_type,

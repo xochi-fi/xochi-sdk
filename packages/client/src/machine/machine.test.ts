@@ -14,7 +14,7 @@ import {
   type MsgBody,
 } from "./machine.js";
 import { settlementDisclosure } from "./receipt.js";
-import { decodeWireStatus } from "./wire.js";
+import { decodeWireStatus, type IntentStatusData } from "./wire.js";
 import {
   AMOUNT,
   ATTACKER,
@@ -443,6 +443,78 @@ describe("one signature (no origin pull)", () => {
         expect(s.intent.error, label).toBeNull();
         expect(s.receipt.phase, label).toBe("pending");
       }
+    });
+
+    // The poll answers with what the transport decodes: a granular
+    // `fill_failed` arrives as `failed`, a status the server calls terminal.
+    const pollReply = (s: Session, status: IntentStatusData) => {
+      const poll = s.model.poll;
+      if (!poll) throw new Error("no poll armed");
+      return s.send({
+        type: "StatusReplied",
+        gen: poll.gen,
+        attempt: poll.polls,
+        result: { ok: true, status },
+      });
+    };
+    const failedPoll = statusData({ status: "failed", terminal: true, error: "Fill failed" });
+
+    it("keeps an in-doubt reply in doubt through failed polls until a refund", () => {
+      for (const response of [
+        { success: true, intentId: "xi_1", status: "failed" },
+        { success: false, intentId: "xi_1", status: "failed", reconciling: true },
+        { success: false, intentId: "xi_1", status: "failed" },
+        { success: false, intentId: "xi_1", status: "fill_failed" },
+        { success: false, intentId: "xi_1", status: "settling" },
+        { success: true, intentId: "xi_1", status: "some_future_state" },
+      ]) {
+        const label = JSON.stringify(response);
+        const { s, flow } = executing();
+        s.send(foreign(flow, { ok: true, response }));
+        const held = s.intent.status;
+        expect(s.receipt.phase, label).toBe("pending");
+
+        const first = pollReply(s, failedPoll);
+        expect(s.intent.status, label).toBe(held);
+        expect(s.intent.reconciling, label).toBe(true);
+        expect(s.receipt.phase, label).toBe("pending");
+        // Not a terminal for this intent: the poll runs on, so a refund still lands.
+        expect(timers(first), label).not.toContain("clear:poll");
+        expect(s.model.poll?.stopped, label).toBe(false);
+        expect(logs(first, "warn").join(), label).toMatch(/in doubt/);
+
+        const second = pollReply(s, failedPoll);
+        expect(s.receipt.phase, label).toBe("pending");
+        expect(logs(second, "warn"), label).toHaveLength(0);
+
+        pollReply(s, statusData({ status: "refunded", terminal: true, refundReason: "fill" }));
+        expect(s.intent.status, label).toBe("refunded");
+        expect(s.receipt.phase, label).toBe("refunded");
+      }
+    });
+
+    it("lets a poll fail an execute whose reply said nothing about the funds, or failed cleanly", () => {
+      const thrown = executing();
+      thrown.s.send({
+        type: "ExecuteReplied",
+        flow: thrown.flow,
+        result: { ok: false, error: { rejected: false, value: "HTTP 502", detail: "502" } },
+      });
+      pollReply(thrown.s, failedPoll);
+      expect(thrown.s.intent.status).toBe("failed");
+      expect(thrown.s.receipt.phase).toBe("failed");
+
+      const clean = executing();
+      clean.s.send({
+        type: "ExecuteReplied",
+        flow: clean.flow,
+        result: {
+          ok: true,
+          response: { success: false, intentId: "xi_1", status: "failed", reconciling: false },
+        },
+      });
+      expect(clean.s.intent.status).toBe("failed");
+      expect(clean.s.receipt.phase).toBe("failed");
     });
 
     it("cannot be handed a host-built verdict in place of the response", () => {

@@ -196,9 +196,20 @@ describe("decideExecuteResult (in-doubt vs failure)", () => {
     ...over,
   });
 
-  it("treats success:false + status 'failed' as a real, terminal failure", () => {
-    const d = decideExecuteResult(res({ success: false, status: "failed", error: "bad sig" }));
+  it("treats success:false + status 'failed' + reconciling:false as a real, terminal failure", () => {
+    const d = decideExecuteResult(
+      res({ success: false, status: "failed", reconciling: false, error: "bad sig" }),
+    );
     expect(d).toEqual({ kind: "failed", error: "bad sig" });
+  });
+
+  it("reads an absent reconciling flag on a failed reply as on (reconciling ?? !success)", () => {
+    const d = decideExecuteResult(res({ success: false, status: "failed", error: "bad sig" }));
+    expect(d.kind).toBe("transition");
+    if (d.kind === "transition") {
+      expect(d.status).toBe("executing");
+      expect(d.updates.reconciling).toBe(true);
+    }
   });
 
   it("does NOT fail a success:false downgrade (funds moved, in-doubt) -- advances + reconciles", () => {

@@ -494,21 +494,28 @@ export type ExecuteDecision =
 
 /**
  * Interpret an /execute response, preserving the in-doubt distinction (#226):
- * the worker returns HTTP 200 `{success:false}` for BOTH a genuine failure
- * (status "failed" -- terminal, retryable) AND a fail-closed downgrade (a
- * non-failure status like "settling" with reconciling -- the origin pull already
- * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only a
- * consistent failure (`success:false`, status "failed", `reconciling` not true)
- * is a real failure; anything else advances and keeps polling. A contradictory
- * "failed" (`success:true`, or `reconciling:true`) is in doubt: it moves to the
- * in-flight `executing` with reconciling on, never to the Retry view.
- * `reconciling` is the server's flag when it sends one, else on whenever the
- * server withheld success (`reconciling ?? !success`), so a withheld success
- * shows the safe-to-close "Still confirming" path with no Retry (an in-session
- * retry of a funds-moved swap would be a double execution).
+ * the worker returns `{success:false}` for BOTH a genuine failure AND a
+ * fail-closed downgrade (the origin pull already moved funds but the
+ * settlement is unconfirmed inline, so IN-DOUBT). `reconciling` is the
+ * server's flag when it sends one, else on whenever the server withheld
+ * success (`reconciling ?? !success`). The verdicts, in order:
+ * - `failed` with `success: false` and `reconciling` off by that rule (the
+ *   server sent `reconciling: false`) is the one real failure (Retry).
+ * - `completed` completes with reconciling off, whatever the reply says: a
+ *   completion leaves nothing to reconcile.
+ * - Any other `failed` (`success: true`, or `reconciling` on, the absent flag
+ *   included) is in doubt: it moves to the in-flight `executing` with
+ *   reconciling on, never to the Retry view.
+ * - Anything else advances to its status with reconciling by that rule, so a
+ *   withheld success shows the safe-to-close "Still confirming" path with no
+ *   Retry (an in-session retry of a funds-moved swap would be a double
+ *   execution).
+ * `onExecuted` also shows an unmapped or granular-failure status in doubt,
+ * and keeps an in-doubt reply in doubt until a refund or completion.
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
-  if (!result.success && result.status === "failed" && result.reconciling !== true) {
+  const reconciling = result.reconciling ?? !result.success;
+  if (result.status === "failed" && !result.success && !reconciling) {
     return { kind: "failed", error: result.error || "Execution failed" };
   }
 
@@ -525,11 +532,7 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   if (result.status === "failed") {
     return { kind: "transition", status: "executing", updates: { ...base, reconciling: true } };
   }
-  return {
-    kind: "transition",
-    status: result.status,
-    updates: { ...base, reconciling: result.reconciling ?? !result.success },
-  };
+  return { kind: "transition", status: result.status, updates: { ...base, reconciling } };
 }
 
 // ============================================================
