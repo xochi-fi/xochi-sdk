@@ -21,6 +21,7 @@ import {
   resolveRetryAfterSeconds,
   type AuthExpiredEvent,
   type TransportLogLevel,
+  type XochiClient,
   type XochiClientOptions,
   takeApiErrorReadToken,
 } from "./client.js";
@@ -827,6 +828,89 @@ describe("intent read capability", () => {
         expect(err.message).not.toContain(secret);
         expect(JSON.stringify(logged)).not.toContain(secret);
       }
+    }
+  });
+
+  it("leaves no 16-character fragment of a token, however the body splits or encodes it", async () => {
+    const percent = (s: string) =>
+      [...s].map((ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`).join("");
+    const bytesHex = Buffer.from(READ_TOKEN, "base64url").toString("hex");
+    const charsHex = Buffer.from(READ_TOKEN).toString("hex");
+    const served = (error: string) =>
+      JSON.stringify({ success: false, intent_id: "intent-1", error, read_token: READ_TOKEN });
+    const bodies: Record<string, string> = {
+      // The old excerpt cut fell between `%` and the hex of the 43rd escape.
+      "percent-escaped, cut mid-escape at the excerpt": `${".".repeat(1920)}${percent(READ_TOKEN)} tail`,
+      // 900 escaped zero-width spaces fill the read up to the token's 31st escape.
+      "percent-escaped, cut mid-escape at the read cap": `${"%E2%80%8B".repeat(900)}${percent(READ_TOKEN)}`,
+      "zero-width space": `echo ${READ_TOKEN.slice(0, 22)}\u200b${READ_TOKEN.slice(22)}`,
+      "escaped zero-width joiner": `echo ${READ_TOKEN.slice(0, 22)}\\u200d${READ_TOKEN.slice(22)}`,
+      "HTML tags": `<p>echo ${READ_TOKEN.slice(0, 20)}<b></b>${READ_TOKEN.slice(20)}</p>`,
+      "hex of its bytes": served(`key 0x${bytesHex}`),
+      "hex of its characters, upper case": served(charsHex.toUpperCase()),
+      "split by a space": served(`${READ_TOKEN.slice(0, 20)} ${READ_TOKEN.slice(20)}`),
+    };
+    const leaked = (text: string) => {
+      const folded = text.toLowerCase();
+      for (const [form, haystack] of [
+        [READ_TOKEN, text],
+        [bytesHex, folded],
+        [charsHex, folded],
+      ]) {
+        for (let i = 0; i + 16 <= form.length; i++) {
+          if (haystack.includes(form.slice(i, i + 16))) return form.slice(i, i + 16);
+        }
+      }
+      return undefined;
+    };
+    for (const [shape, body] of Object.entries(bodies)) {
+      const { c, logged } = client(() => new Response(body, { status: 502 }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.code, shape).toBe(502);
+      expect(leaked(err.message), shape).toBeUndefined();
+      expect(leaked(JSON.stringify(logged)), shape).toBeUndefined();
+    }
+  });
+
+  it("reads at most 8 KiB of an error body and cancels the rest unread", async () => {
+    const cases: {
+      path: string;
+      status: number;
+      options?: Partial<XochiClientOptions>;
+      call: (c: XochiClient) => Promise<unknown>;
+    }[] = [
+      { path: "execute", status: 502, call: (c) => rejection(c.execute(execRequest)) },
+      {
+        path: "execute, credential failure reported",
+        status: 401,
+        options: { onAuthExpired: () => {} },
+        call: (c) => rejection(c.execute(execRequest)),
+      },
+      {
+        path: "stealth claim",
+        status: 502,
+        call: (c) =>
+          c.prepareStealthClaim({ counterfactualAddress: "0xC", recipientAddress: "0xR" }),
+      },
+    ];
+    for (const { path, status, options, call } of cases) {
+      const chunk = new TextEncoder().encode("x".repeat(1024));
+      let pulled = 0;
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += chunk.byteLength;
+          if (pulled > 1024 * 1024) controller.error(new Error("read past the cap"));
+          else controller.enqueue(chunk);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      const { c } = client(() => new Response(body, { status }), options);
+      await call(c);
+      expect(pulled, path).toBeLessThanOrEqual(16 * 1024);
+      expect(cancelled, path).toBe(true);
     }
   });
 

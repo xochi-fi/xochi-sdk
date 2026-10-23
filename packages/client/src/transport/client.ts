@@ -192,46 +192,192 @@ function readTokenForIntent(
   return typeof token === "string" && READ_TOKEN_PATTERN.test(token) ? token : undefined;
 }
 
-/** The most of an error body that reaches `ApiError.message`, cut before any redaction work. */
+/** The most of an error body ever read (bytes); the rest is cancelled unread. */
+const MAX_ERROR_BODY_BYTES = 8 * 1024;
+/** The most of a normalized error body that reaches `ApiError.message`. */
 const MAX_ERROR_EXCERPT_CHARS = 2048;
-/** Decode passes for nested escaping (`%2522`, `\\u0022`); each pass is linear. */
-const ESCAPE_DECODE_PASSES = 3;
+/** Normalization passes for nested escaping (`%2522`, `\\u0022`); each pass is linear. */
+const NORMALIZE_PASSES = 3;
+/** The shortest fragment of a possible read token that is redacted wherever it appears. */
+const TOKEN_FRAGMENT_CHARS = 16;
 const REDACTED = "[redacted]";
 /** A read-token key (`read_token`, `readToken`, `X-Xochi-Read-Token`) and the value it opens. */
-const READ_TOKEN_KEYED_VALUE = /(read[_-]?token\\*["']?\s*[:=]\s*\\*["']?)[A-Za-z0-9_-]+/gi;
+const READ_TOKEN_KEYED_VALUE = /(read[_-]?token\\*["']?\s*[:=]\s*\\*["']?)([A-Za-z0-9_-]+)/gi;
 /** A base64url run at least a read token long (greedy from its first character: maximal). */
 const LONG_BASE64URL_RUN = new RegExp(`[A-Za-z0-9_-]{${READ_TOKEN_LENGTH},}`, "g");
 const HEX_RUN = /^(?:0x)?[0-9a-fA-F]+$/;
+/** What renders as nothing: format and default-ignorable characters, controls but tab and line breaks. */
+const INVISIBLE = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+const MARKUP_TAG = /<[^<>]*>/g;
+const UNCLOSED_TRAILING_TAG = /<[^<>]*$/;
+/** What the end of a cut excerpt may hold of a token or an unfinished escape. */
+const CUT_TAIL_CHAR = /[A-Za-z0-9_%\\&#-]/;
+const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /**
- * A raw error body made fit for `ApiError.message` and the logs: the redaction
- * rule stated in README "Transport", applied in its order. Every step is linear
- * in the excerpt, which is bounded before any of them runs.
+ * At most the first `MAX_ERROR_BODY_BYTES` of a body as UTF-8 text, and whether
+ * any of it went unread. The rest is cancelled, so a huge or endless error body
+ * costs a bounded read. A body that fails mid-read yields what arrived before
+ * the failure, marked truncated.
  */
-function redactErrorBody(body: string): string {
-  // Cut first, so a huge or hostile body costs a bounded amount of work.
-  const truncated = body.length > MAX_ERROR_EXCERPT_CHARS;
-  let text = truncated ? body.slice(0, MAX_ERROR_EXCERPT_CHARS) : body;
-  // Decode `\uXXXX` and `%XX` escapes, nested ones included.
-  for (let pass = 0; pass < ESCAPE_DECODE_PASSES; pass++) {
-    const next = text
-      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-      .replace(/%([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+async function readCappedText(response: Response): Promise<{ text: string; truncated: boolean }> {
+  if (!response.body) return { text: "", truncated: false };
+  const reader = response.body.getReader();
+  const bytes = new Uint8Array(MAX_ERROR_BODY_BYTES);
+  let size = 0;
+  let truncated = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const room = MAX_ERROR_BODY_BYTES - size;
+      bytes.set(value.subarray(0, room), size);
+      size += Math.min(value.byteLength, room);
+      if (value.byteLength > room) {
+        truncated = true;
+        break;
+      }
+    }
+  } catch {
+    // A failed body read is a cut: what arrived is kept, and treated as cut.
+    truncated = true;
+  }
+  reader.cancel().catch(() => {});
+  return { text: new TextDecoder().decode(bytes.subarray(0, size)), truncated };
+}
+
+/** A run of `%XX` escapes decoded as UTF-8 (an invalid sequence becomes U+FFFD). */
+function decodePercentRun(run: string): string {
+  const bytes = new Uint8Array(run.length / 3);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(run.slice(i * 3 + 1, i * 3 + 3), 16);
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * One linear normalization pass: decode `\uXXXX`, `%XX` and numeric character
+ * references, then drop invisible characters and complete markup tags, so a
+ * token split by either reads whole again.
+ */
+function normalizeOnce(text: string): string {
+  return text
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/(?:%[0-9a-fA-F]{2})+/g, decodePercentRun)
+    .replace(
+      /&#(?:[xX]([0-9a-fA-F]{1,6})|([0-9]{1,7}));/g,
+      (ref: string, hex: string | undefined, dec: string | undefined) => {
+        const codePoint = hex === undefined ? Number(dec) : parseInt(hex, 16);
+        return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : ref;
+      },
+    )
+    .replace(INVISIBLE, "")
+    .replace(MARKUP_TAG, "");
+}
+
+/**
+ * Every value of a body that may be a read token: the body's own `read_token`,
+ * the value after any read-token key, and every base64url run at least a token
+ * long that is not hex. Read from the whole normalized prefix, so an echo
+ * before the cut is caught even when the token itself lies past it.
+ */
+function possibleTokens(body: string, text: string): string[] {
+  const tokens: string[] = [];
+  const served = parseJsonObject(body)?.read_token;
+  if (typeof served === "string" && READ_TOKEN_PATTERN.test(served)) tokens.push(served);
+  for (const [, , value] of text.matchAll(READ_TOKEN_KEYED_VALUE)) tokens.push(value);
+  for (const [run] of text.matchAll(LONG_BASE64URL_RUN)) if (!HEX_RUN.test(run)) tokens.push(run);
+  return tokens;
+}
+
+/** The bytes a base64url string encodes, as lowercase hex. */
+function base64urlHex(value: string): string {
+  let hex = "";
+  let acc = 0;
+  let bits = 0;
+  for (const char of value) {
+    acc = ((acc << 6) | BASE64URL_ALPHABET.indexOf(char)) & 0xffff;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      hex += ((acc >> bits) & 0xff).toString(16).padStart(2, "0");
+    }
+  }
+  return hex;
+}
+
+/** An ASCII string's character codes as lowercase hex. */
+function asciiHex(value: string): string {
+  let hex = "";
+  for (let i = 0; i < value.length; i++) hex += value.charCodeAt(i).toString(16).padStart(2, "0");
+  return hex;
+}
+
+/**
+ * `text` with every `TOKEN_FRAGMENT_CHARS`-long fragment of each token
+ * replaced, in base64url, standard base64 or hex (of its bytes or of its
+ * characters, any case). Overlapping fragments merge into one `[redacted]`.
+ */
+function redactTokenFragments(text: string, tokens: readonly string[]): string {
+  const width = TOKEN_FRAGMENT_CHARS;
+  const plain = new Set<string>();
+  const hex = new Set<string>();
+  const addFragments = (into: Set<string>, form: string) => {
+    for (let i = 0; i + width <= form.length; i++) into.add(form.slice(i, i + width));
+  };
+  for (const token of tokens) {
+    addFragments(plain, token);
+    addFragments(plain, token.replace(/-/g, "+").replace(/_/g, "/"));
+    addFragments(hex, base64urlHex(token));
+    addFragments(hex, asciiHex(token));
+  }
+  if (plain.size === 0) return text;
+  const folded = text.replace(/[A-F]/g, (c) => c.toLowerCase());
+  const hidden = new Uint8Array(text.length);
+  for (let i = 0; i + width <= text.length; i++) {
+    if (plain.has(text.slice(i, i + width)) || hex.has(folded.slice(i, i + width))) {
+      hidden.fill(1, i, i + width);
+    }
+  }
+  let out = "";
+  for (let i = 0; i < text.length; ) {
+    if (!hidden[i]) {
+      out += text[i++];
+      continue;
+    }
+    out += REDACTED;
+    while (i < text.length && hidden[i]) i++;
+  }
+  return out;
+}
+
+/**
+ * An error body's capped prefix (`readCappedText`) made fit for
+ * `ApiError.message` and the logs: the redaction rule stated in README
+ * "Transport", applied in its order. Every step is linear in the prefix.
+ */
+function redactErrorBody(body: string, truncated: boolean): string {
+  // Decode before cutting, so the cut never splits an escape mid-token.
+  let text = body;
+  for (let pass = 0; ; pass++) {
+    const next = normalizeOnce(text);
     if (next === text) break;
+    // Still unwrapping after the last pass: nothing of it is shown.
+    if (pass === NORMALIZE_PASSES) return REDACTED;
     text = next;
   }
-  // The cut may have split a token: drop the run it ends in.
-  if (truncated) {
+  const tokens = possibleTokens(body, text);
+  let cut = truncated;
+  if (text.length > MAX_ERROR_EXCERPT_CHARS) {
+    text = text.slice(0, MAX_ERROR_EXCERPT_CHARS);
+    cut = true;
+  }
+  // A cut may have split a tag, an escape or a token: drop what it ends in.
+  if (cut) {
+    text = text.replace(UNCLOSED_TRAILING_TAG, "");
     let end = text.length;
-    while (end > 0 && /[A-Za-z0-9_-]/.test(text[end - 1])) end--;
+    while (end > 0 && CUT_TAIL_CHAR.test(text[end - 1])) end--;
     text = `${text.slice(0, end)}…`;
   }
-  // The body's own token (read from the whole body), wherever it is echoed.
-  const token = parseJsonObject(body)?.read_token;
-  if (typeof token === "string" && READ_TOKEN_PATTERN.test(token)) {
-    text = text.split(token).join(REDACTED);
-  }
-  return text
+  return redactTokenFragments(text, tokens)
     .replace(READ_TOKEN_KEYED_VALUE, `$1${REDACTED}`)
     .replace(LONG_BASE64URL_RUN, (run) => (HEX_RUN.test(run) ? run : REDACTED));
 }
@@ -582,10 +728,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       }
 
       if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
-        const body = await response
-          .clone()
-          .text()
-          .catch(() => "");
+        const { text: body } = await readCappedText(response.clone());
         if (response.status === 401 && /expired/i.test(body)) {
           options.onAuthExpired({ reason: "expired", status: response.status });
         } else if (token) {
@@ -637,7 +780,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       try {
         const data = await send(path, init, timeoutMs, async (response): Promise<unknown> => {
           if (!response.ok) {
-            const errorBody = await response.text().catch(() => "");
+            const { text: errorBody, truncated } = await readCappedText(response);
             // A 503 is a transient solver blip (saturation / gas-oracle
             // unavailable); pace the retry off the server's Retry-After.
             if (response.status === 503) {
@@ -653,7 +796,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
                 ? resolveRetryAfterSeconds(response.headers, errorBody)
                 : undefined;
             const error = new ApiError(
-              `HTTP ${response.status}: ${redactErrorBody(errorBody) || response.statusText}`,
+              `HTTP ${response.status}: ${redactErrorBody(errorBody, truncated) || response.statusText}`,
               response.status,
               retryAfter,
             );
@@ -714,7 +857,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           body: JSON.stringify(body),
         },
         timeouts.requestTimeoutMs,
-        async (response) => ({ response, text: await response.text() }),
+        async (response) => ({
+          response,
+          // A failure's body is read capped; a success's is the documented response.
+          text: response.ok ? await response.text() : (await readCappedText(response)).text,
+        }),
       );
       if (!response.ok) {
         const record = parseJsonObject(text);
