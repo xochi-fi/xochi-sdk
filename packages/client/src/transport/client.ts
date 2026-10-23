@@ -135,13 +135,44 @@ export interface XochiClientOptions {
 export class ApiError extends Error {
   readonly code: number;
   readonly retryAfter?: number;
+  /**
+   * True only on an `execute` the server refused before accepting anything
+   * (`isNotAcceptedExecuteBody`): nothing was claimed or sent, so the SAME
+   * request may be sent again once `retryAfter` has passed. False on every
+   * other failure, which stays in doubt. Hand it to the machine as
+   * `ErrorReport.notAccepted`.
+   */
+  readonly notAccepted: boolean;
 
-  constructor(message: string, code: number, retryAfter?: number) {
+  constructor(message: string, code: number, retryAfter?: number, notAccepted = false) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.retryAfter = retryAfter;
+    this.notAccepted = notAccepted;
   }
+}
+
+/**
+ * The Worker's explicit backpressure answer to `POST /api/intent/execute`: a
+ * 503 or 429 whose body is a JSON object with `accepted` the boolean `false`
+ * and `intent_id` equal to the executed intent. The Worker sends it only after
+ * undoing its own claim on a solver refusal that provably ran before anything
+ * was accepted. Anything else (another status, a missing or non-boolean
+ * marker, another intent, a body that does not parse, one cut by the read cap)
+ * is not it: fail closed, the failure stays in doubt.
+ */
+function isNotAcceptedExecuteBody(
+  status: number,
+  body: Record<string, unknown> | undefined,
+  intentId: string,
+): boolean {
+  return (
+    (status === 503 || status === 429) &&
+    body !== undefined &&
+    body.accepted === false &&
+    body.intent_id === intentId
+  );
 }
 
 /**
@@ -175,6 +206,7 @@ function safeErrorForLog(error: unknown): unknown {
     message: error.message,
     code: error.code,
     ...(error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter }),
+    ...(error.notAccepted ? { notAccepted: true } : {}),
   };
 }
 
@@ -582,6 +614,17 @@ export function resolveRetryAfterSeconds(headers: Headers, body: string): number
   return Math.min(target, nowSec + MAX_RETRY_WAIT_SEC);
 }
 
+/**
+ * The not-accepted execute answer's body `retry_after` (DELTA seconds, a
+ * positive finite number) as an absolute target, clamped like
+ * `resolveRetryAfterSeconds`. Read only when no header was readable.
+ */
+function retryAfterFromDelta(delta: unknown): number | undefined {
+  if (typeof delta !== "number" || !Number.isFinite(delta) || delta <= 0) return undefined;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return nowSec + Math.min(Math.ceil(delta), MAX_RETRY_WAIT_SEC);
+}
+
 function deriveRetryTarget(headers: Headers, body: string, nowSec: number): number | undefined {
   const retryAfterHeader = headers.get("Retry-After");
   if (retryAfterHeader !== null) {
@@ -953,9 +996,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     // fails with "pull authorization has already been used". Those callers let
     // the failure surface and resolve it by polling status.
     maxAttempts: number,
-    // The intent whose `read_token` a failed attempt's body may carry (execute
-    // only). Held for the thrown error (`takeApiErrorReadToken`), never on it.
-    readTokenIntentId?: string,
+    // The intent an execute names (execute only): a failed attempt's body may
+    // carry its `read_token`, held for the thrown error
+    // (`takeApiErrorReadToken`) and never on it, or the not-accepted marker
+    // (`ApiError.notAccepted`).
+    executedIntentId?: string,
   ): Promise<T> {
     let lastError: Error | null = null;
 
@@ -975,24 +1020,34 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
                 retry.maxDelayMs,
               );
             }
+            // A cut body does not parse, so it never carries the marker.
+            const record = truncated ? undefined : parseJsonObject(errorBody);
+            const notAccepted =
+              executedIntentId !== undefined &&
+              isNotAcceptedExecuteBody(response.status, record, executedIntentId);
             // Structured failure: the numeric status plus, for backpressure
-            // (429/503), an absolute retry target for a countdown.
+            // (429/503), an absolute retry target for a countdown. A browser
+            // cannot read a `Retry-After` the server does not CORS-expose, so
+            // the not-accepted answer's own `retry_after` (delta seconds) is
+            // its fallback.
             const retryAfter =
               response.status === 429 || response.status === 503
-                ? resolveRetryAfterSeconds(response.headers, errorBody)
+                ? (resolveRetryAfterSeconds(response.headers, errorBody) ??
+                  (notAccepted ? retryAfterFromDelta(record?.retry_after) : undefined))
                 : undefined;
             const error = new ApiError(
               `HTTP ${response.status}: ${redactErrorBody(errorBody, truncated) || response.statusText}`,
               response.status,
               retryAfter,
+              notAccepted,
             );
             // A cut body does not parse: its token is read from the prefix kept.
             const servedToken =
-              readTokenIntentId === undefined
+              executedIntentId === undefined
                 ? undefined
                 : truncated
-                  ? readTokenFromPrefix(errorBody, readTokenIntentId)
-                  : readTokenForIntent(parseJsonObject(errorBody), readTokenIntentId);
+                  ? readTokenFromPrefix(errorBody, executedIntentId)
+                  : readTokenForIntent(record, executedIntentId);
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
             throw error;
           }
@@ -1003,9 +1058,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           // a token it served for this intent outlives the malformed body.
           const error = new Error("Invalid response format");
           const servedToken =
-            readTokenIntentId === undefined || typeof data !== "object" || data === null
+            executedIntentId === undefined || typeof data !== "object" || data === null
               ? undefined
-              : readTokenForIntent(data as Record<string, unknown>, readTokenIntentId);
+              : readTokenForIntent(data as Record<string, unknown>, executedIntentId);
           if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
           throw error;
         }

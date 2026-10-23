@@ -261,6 +261,89 @@ describe("execute: single attempt, structured backpressure errors", () => {
   });
 });
 
+// The Worker's explicit backpressure answer (503/429, `accepted: false`, the
+// executed `intent_id`): nothing was accepted, so the SAME request may be sent
+// again after `retryAfter`. Everything else stays in doubt.
+describe("execute: the not-accepted refusal", () => {
+  const notAccepted = (over: Record<string, unknown> = {}) => ({
+    success: false,
+    intent_id: "intent-1",
+    status: "quoted",
+    accepted: false,
+    error: "Solver busy",
+    retry_after: 7,
+    ...over,
+  });
+  const nowSec = () => Math.floor(Date.now() / 1000);
+
+  it("marks a 503 or 429 carrying the marker for the executed intent, single attempt", async () => {
+    for (const status of [503, 429]) {
+      const { c, calls } = client(() => json(notAccepted(), status, { "Retry-After": "5" }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err, String(status)).toBeInstanceOf(ApiError);
+      expect(err.code, String(status)).toBe(status);
+      expect(err.notAccepted, String(status)).toBe(true);
+      // The header wins over the body's delta.
+      expect(err.retryAfter, String(status)).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
+      expect(err.retryAfter, String(status)).toBeLessThanOrEqual(nowSec() + 5 + 1);
+      expect(calls, String(status)).toHaveLength(1);
+    }
+  });
+
+  it("takes the delay from the body's retry_after when no header is readable", async () => {
+    const { c } = client(() => json(notAccepted(), 503));
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.notAccepted).toBe(true);
+    expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 7 - 1);
+    expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 7 + 1);
+
+    for (const retry_after of [0, -3, "7", null]) {
+      const bad = client(() => json(notAccepted({ retry_after }), 503));
+      const e = (await rejection(bad.c.execute(execRequest))) as ApiError;
+      expect(e.notAccepted, String(retry_after)).toBe(true);
+      expect(e.retryAfter, String(retry_after)).toBeUndefined();
+    }
+  });
+
+  it("is not set without the exact marker, for another intent, or on another status", async () => {
+    const cases: [string, () => Response][] = [
+      ["marker absent", () => json(notAccepted({ accepted: undefined }), 503)],
+      ["accepted true", () => json(notAccepted({ accepted: true }), 503)],
+      ['string "false"', () => json(notAccepted({ accepted: "false" }), 503)],
+      ["accepted 0", () => json(notAccepted({ accepted: 0 }), 503)],
+      ["accepted null", () => json(notAccepted({ accepted: null }), 503)],
+      ["another intent", () => json(notAccepted({ intent_id: "intent-2" }), 503)],
+      ["no intent", () => json(notAccepted({ intent_id: undefined }), 429)],
+      ["500 with the marker", () => json(notAccepted(), 500)],
+      ["502 with the marker", () => json(notAccepted(), 502)],
+      ["409 with the marker", () => json(notAccepted(), 409)],
+      ["not an object", () => json([notAccepted()], 503)],
+      ["not JSON", () => new Response("accepted: false", { status: 503 })],
+      [
+        "cut by the read cap",
+        () => json(notAccepted({ pad: "x".repeat(9 * 1024) }), 503, { "Retry-After": "5" }),
+      ],
+    ];
+    for (const [label, respond] of cases) {
+      const { c, calls } = client(respond);
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err, label).toBeInstanceOf(ApiError);
+      expect(err.notAccepted, label).toBe(false);
+      expect(calls, label).toHaveLength(1);
+    }
+    // Today's in-doubt 500 keeps no countdown either.
+    const { c } = client(() => json(notAccepted(), 500));
+    expect(((await rejection(c.execute(execRequest))) as ApiError).retryAfter).toBeUndefined();
+  });
+
+  it("is an execute answer only: a quote never carries it", async () => {
+    const { c } = client(() => json(notAccepted({ intent_id: "xi_test" }), 503));
+    const err = (await rejection(c.getQuote(req))) as ApiError;
+    expect(err.code).toBe(503);
+    expect(err.notAccepted).toBe(false);
+  });
+});
+
 // The quote path is idempotent, so unlike execute it does retry, but only a
 // transient GATEWAY status. A 500 is an unhandled exception in the worker, so
 // re-POSTing it just multiplies the error rate.
