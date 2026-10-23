@@ -46,7 +46,6 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ### Removed
 
-- **BREAKING: `PxeBridgeClient` is removed** (`src/pxe-bridge-client.ts`, with `CreateNoteParams` / `CreateNoteResult`, all exported from the 0.4.0 main entry). It called `pxe_createNote` / `pxe_getVersion` with an object param while pxe-bridge serves `aztec_createNote` / `aztec_getVersion` with array params, so it never worked against the bridge; it had no retry safety and no consumer. Shielded settlement is off everywhere (decision record: xochi `docs/planning/shielded-execution.md` §4, D7–D9).
 - **BREAKING: the `@xochi/sdk/provider` subpath export is removed.** Import provider signing from `@xochi/provider` instead. Production custody implements its non-exportable `DigestSigner`; tests and development can use `loadLocalSigner(new RawPrivateKeyLoader(...))`. Proof generation is unaffected: the signed builders and `prove*Signed` take the same byte bundles, and the two byte helpers they borrowed from the provider module are now the sdk's own copies (`packages/sdk/src/inputs/field-bytes.ts`), so the sdk has no dependency on `@xochi/provider`.
 - **The `@noble/curves` dependency** (only the provider signer used it; `@xochi/provider` depends on it now). The sdk's `npm run daemon` script and its daemon typecheck are gone.
 - The `prepare` script (a build on `npm install`). `npm install github:xochi-fi/xochi-sdk#<ref>` no longer yields a usable package: install from npm, or build the workspace (`npm run build -w @xochi/sdk`) and pack it.
