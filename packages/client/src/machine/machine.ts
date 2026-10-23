@@ -33,6 +33,7 @@ import {
   buildResumedState,
   canSignQuote,
   computeRefreshDelayMs,
+  decideExecuteResend,
   decideExecuteResult,
   decideSignPreflight,
   mapStatusUpdate,
@@ -48,6 +49,8 @@ import {
   ALLOCATABLE_STATES,
   ENDED_STATES,
   QUOTE_BUSY_STATES,
+  EXECUTE_RESEND_MARGIN_SECS,
+  MAX_EXECUTE_RESENDS,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
   WALLET_INTERRUPTIBLE_STATES,
@@ -174,7 +177,7 @@ export interface MachineConfig {
 // Effects (JSON)
 // ============================================================
 
-export type TimerName = "debounce" | "refresh" | "expiry" | "poll" | "signPrompt";
+export type TimerName = "debounce" | "refresh" | "expiry" | "poll" | "signPrompt" | "execute";
 
 export type ApiCall =
   | { op: "quote"; flight: string; request: QuoteRequest; forceRefresh: boolean }
@@ -231,6 +234,13 @@ export interface ErrorReport {
   value: string | StructuredError | null;
   /** For the log line only. */
   detail: string;
+  /**
+   * Execute only, and only from `ApiError.notAccepted`: the server proved it
+   * refused before accepting anything, so the machine may send the SAME
+   * request again at `value.retryAfter` (`decideExecuteResend`). Anything but
+   * `true` leaves a failed execute in doubt.
+   */
+  notAccepted?: boolean;
 }
 
 export type Outcome<T> = ({ ok: true } & T) | { ok: false; error: ErrorReport };
@@ -309,6 +319,21 @@ export interface SignFlow {
   origin: "sign" | "pull";
   stage: "intent" | "approval" | "pull" | "execute";
   intentSignature: string | null;
+  /** Stage `execute`: the request dispatched and its not-accepted resends. */
+  execute?: ExecuteAttempt;
+}
+
+/**
+ * The execute of a sign flow. `request` is held so an execute the server did
+ * not accept (`ErrorReport.notAccepted`) is sent again unchanged; `resendAt`
+ * (epoch ms) is set only while waiting for that resend, with no request in
+ * flight, and `error` is the refusal shown if the wait ends in Retry.
+ */
+export interface ExecuteAttempt {
+  request: ExecuteRequest;
+  resends: number;
+  resendAt: number | null;
+  error: string | StructuredError | null;
 }
 
 export interface PollState {
@@ -480,6 +505,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       clearTimer(fx, "debounce");
       clearTimer(fx, "refresh");
       clearTimer(fx, "signPrompt");
+      if (awaitingResend(m)) clearTimer(fx, "execute");
       fx.push({ type: "Wallet", call: { op: "resetApproval" } });
       return {
         ...supersedeFlights(m, fx),
@@ -1142,6 +1168,9 @@ function onTimer(m: Model, fx: Effect[], timer: TimerName, now: number): Model {
             detail: "wallet_prompt_timeout",
           })
         : m;
+
+    case "execute":
+      return resendExecute(m, fx, now);
   }
 }
 
@@ -1386,7 +1415,8 @@ function onSigned(
 
 /**
  * Dispatch /execute with the collected signatures. Everything after this is
- * POST-dispatch, so a failure is in doubt rather than terminal (#226).
+ * POST-dispatch, so a failure is in doubt rather than terminal (#226), except
+ * the one the server proves accepted nothing (`onNotAccepted`).
  */
 function runExecute(
   m: Model,
@@ -1402,27 +1432,28 @@ function runExecute(
     log(fx, "warn", `${LOG} Dropping signature: intent is ${m.intent.status}, not signing`);
     return abandonSign(m, fx);
   }
+  const request: ExecuteRequest = {
+    intentId: m.intent.intentId ?? "",
+    quoteId: m.intent.quoteId ?? "",
+    signature,
+    nonce: now,
+    pullSignature,
+  };
   // The flow is marked `execute` before the move, so `transition` can tell
   // this step from a status update that skipped the ceremony.
-  const staged: Model = { ...m, sign: { ...flow, stage: "execute" } };
+  const staged: Model = {
+    ...m,
+    sign: {
+      ...flow,
+      stage: "execute",
+      execute: { request, resends: 0, resendAt: null, error: null },
+    },
+  };
   const executing = transition(staged, fx, "executing");
   if (executing.intent.status !== "executing") return abandonSign(m, fx);
   // Fill clock starts here: the signed intent is now with the solver.
   const next: Model = { ...executing, submittedAt: now, clientFillMs: null };
-  fx.push({
-    type: "Api",
-    call: {
-      op: "execute",
-      flow: flow.id,
-      request: {
-        intentId: next.intent.intentId ?? "",
-        quoteId: next.intent.quoteId ?? "",
-        signature,
-        nonce: now,
-        pullSignature,
-      },
-    },
-  });
+  fx.push({ type: "Api", call: { op: "execute", flow: flow.id, request } });
   return next;
 }
 
@@ -1434,7 +1465,11 @@ function onExecuted(
   now: number,
 ): Model {
   const flow = m.sign;
-  if (!flow || flow.id !== flowId || flow.stage !== "execute") return m;
+  // While a resend is pending no request is in flight, so nothing answers.
+  if (!flow || flow.id !== flowId || flow.stage !== "execute" || awaitingResend(m)) return m;
+  const report = notAcceptedReport(result);
+  const handled = report ? onNotAccepted(m, fx, flow, report, now) : null;
+  if (handled) return handled;
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
   // may have moved funds): flag reconciling and let the poll resolve it (#226).
@@ -1463,6 +1498,122 @@ function onExecuted(
   // A refused move (the reply names the status the intent is already in, or
   // one it cannot reach) must not drop an in-doubt verdict with it.
   return moved.intent === timed.intent ? patch(latched, { reconciling: true }) : latched;
+}
+
+/** A thrown execute's report carrying the not-accepted flag (`true`, nothing else), read defensively. */
+function notAcceptedReport(result: Outcome<{ response: ExecuteReply }>): ErrorReport | null {
+  const reply = result as { ok?: unknown; error?: Partial<ErrorReport> } | null | undefined;
+  return reply?.ok === false && reply.error?.notAccepted === true
+    ? (reply.error as ErrorReport)
+    : null;
+}
+
+/**
+ * The server refused this execute before accepting anything: nothing was
+ * claimed or sent, so it is not in doubt. Waits for the refusal's
+ * `retryAfter` and sends the SAME request again (`resendExecute`), within
+ * `decideExecuteResend`'s bounds; past them, the intent fails with the refusal
+ * (Retry, with its countdown). Null, leaving the reply in doubt like any other
+ * thrown execute, when anything else already says the funds may have moved:
+ * this intent's execute was read as in doubt before (`executeInDoubt`, which
+ * a refusal never clears), or the intent already shows in doubt.
+ */
+function onNotAccepted(
+  m: Model,
+  fx: Effect[],
+  flow: SignFlow,
+  report: ErrorReport,
+  now: number,
+): Model | null {
+  const attempt = flow.execute;
+  const intentId = m.intent.intentId;
+  if (
+    !attempt ||
+    intentId === null ||
+    attempt.request.intentId !== intentId ||
+    m.intent.status !== "executing" ||
+    m.intent.reconciling ||
+    m.executeInDoubt?.intentId === intentId
+  ) {
+    log(fx, "warn", `${LOG} Execute not accepted, but kept in doubt: the intent already is`);
+    return null;
+  }
+  const error = report.value ?? "The solver is busy. Try again.";
+  const decision = decideExecuteResend({
+    resends: attempt.resends,
+    retryAfter: typeof report.value === "object" ? report.value?.retryAfter : undefined,
+    deadline: executeDeadline(m.intent.quote),
+    now,
+  });
+  if (decision.kind === "give_up") {
+    log(fx, "warn", `${LOG} Execute not accepted; not resending (${decision.reason})`);
+    return transition(endSignFlow({ ...m, pendingIntentSig: null }, flow), fx, "failed", { error });
+  }
+  log(
+    fx,
+    "warn",
+    `${LOG} Execute not accepted (solver busy); resend ${attempt.resends + 1}/${MAX_EXECUTE_RESENDS} in ${decision.delayMs}ms`,
+    report.detail,
+  );
+  setTimer(fx, "execute", decision.delayMs, false);
+  return {
+    ...m,
+    pendingIntentSig: null,
+    sign: { ...flow, execute: { ...attempt, resendAt: now + decision.delayMs, error } },
+  };
+}
+
+/**
+ * The not-accepted wait is over: send the held request again, unchanged, under
+ * a new flow id. A timer that fires past the deadline (a throttled background
+ * tab) fails the intent with the refusal instead.
+ */
+function resendExecute(m: Model, fx: Effect[], now: number): Model {
+  const flow = m.sign;
+  const attempt = flow?.execute;
+  if (!flow || !attempt || !awaitingResend(m) || m.intent.status !== "executing") return m;
+  const deadline = executeDeadline(m.intent.quote);
+  if (deadline === null || now > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {
+    log(fx, "warn", `${LOG} Execute not accepted; the deadline passed before the resend`);
+    return transition(endSignFlow(m, flow), fx, "failed", {
+      error: attempt.error ?? "The solver is busy. Try again.",
+    });
+  }
+  const [id, next] = nextId(m, "s");
+  fx.push({ type: "Api", call: { op: "execute", flow: id, request: attempt.request } });
+  return {
+    ...next,
+    submittedAt: now,
+    sign: {
+      ...flow,
+      id,
+      execute: { ...attempt, resends: attempt.resends + 1, resendAt: null, error: null },
+    },
+  };
+}
+
+/** A not-accepted execute is waiting for its resend: no request is in flight. */
+function awaitingResend(m: Model): boolean {
+  return m.sign?.stage === "execute" && typeof m.sign.execute?.resendAt === "number";
+}
+
+/**
+ * The earliest deadline (unix seconds) a resent execute carries: the quote's
+ * expiry and the signed intent's and origin pull's own deadlines. Null without
+ * a readable quote expiry, which never resends.
+ */
+function executeDeadline(quote: QuoteResponse | null): number | null {
+  const expiryMs = quote ? new Date(quote.expiry).getTime() : NaN;
+  if (!quote || !Number.isFinite(expiryMs)) return null;
+  const signed = [
+    quote.eip712Data?.message?.deadline,
+    quote.pullAuthorization?.message?.validBefore,
+    quote.pullAuthorization?.message?.deadline,
+  ].flatMap((v) => {
+    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) ? [n] : [];
+  });
+  return Math.min(Math.floor(expiryMs / 1000), ...signed);
 }
 
 /** An execute reply as a host may actually send it: any status string, maybe a token. */
@@ -1550,6 +1701,7 @@ function endSignFlow(m: Model, flow: SignFlow): Model {
  */
 function abandonSign(m: Model, fx: Effect[]): Model {
   if (m.sign?.stage === "pull") clearTimer(fx, "signPrompt");
+  if (awaitingResend(m)) clearTimer(fx, "execute");
   return { ...m, sign: null, pendingIntentSig: null, awaitingPull: false, isSigningPull: false };
 }
 
@@ -1888,11 +2040,16 @@ function armExpiry(m: Model, fx: Effect[], now: number): Model {
 /**
  * The status poll: armed per (intent, phase) while in flight. Re-armed PER
  * PHASE deliberately: the ceiling is sized from the phase being entered, and
- * the reconcile escalation counts polls within one phase.
+ * the reconcile escalation counts polls within one phase. Disarmed while a
+ * not-accepted execute waits for its resend: the server holds nothing to
+ * report, and the resend re-arms it.
  */
 function armPoll(m: Model, fx: Effect[], now: number): Model {
   const { intentId, status } = m.intent;
-  const key = POLL_INFLIGHT_STATES.includes(status) && intentId ? `${intentId}:${status}` : null;
+  const key =
+    POLL_INFLIGHT_STATES.includes(status) && intentId && !awaitingResend(m)
+      ? `${intentId}:${status}`
+      : null;
   if (key === (m.poll?.key ?? null)) return m;
   if (m.poll && !m.poll.stopped) clearTimer(fx, "poll");
   if (key === null || !intentId) return { ...m, poll: null };

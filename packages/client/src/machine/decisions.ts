@@ -535,6 +535,43 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   return { kind: "transition", status: result.status, updates: { ...base, reconciling } };
 }
 
+/** Automatic resends of an execute the server did not accept (`ErrorReport.notAccepted`). */
+export const MAX_EXECUTE_RESENDS = 3;
+/** A resend must reach the server at least this long before the first deadline it carries. */
+export const EXECUTE_RESEND_MARGIN_SECS = 5;
+
+export type ExecuteResend =
+  | { kind: "resend"; delayMs: number }
+  | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "deadline" };
+
+/**
+ * After the server refused an execute before accepting anything (nothing
+ * claimed, nothing sent), whether to send the SAME request again and when.
+ * Resends only with a server-named `retryAfter` (unix seconds), fewer than
+ * MAX_EXECUTE_RESENDS made, and `retryAfter` at least
+ * EXECUTE_RESEND_MARGIN_SECS before `deadline` (unix seconds: the earliest
+ * deadline the signed request carries; null when none is known, which never
+ * resends). The wait is at least a second, so a past `retryAfter` cannot spin.
+ * A give-up is the Retry view, not in doubt: the server said nothing happened.
+ */
+export function decideExecuteResend(input: {
+  resends: number;
+  retryAfter: number | undefined;
+  deadline: number | null;
+  now: number;
+}): ExecuteResend {
+  if (input.resends >= MAX_EXECUTE_RESENDS) return { kind: "give_up", reason: "exhausted" };
+  const { retryAfter, deadline } = input;
+  if (retryAfter === undefined || !Number.isFinite(retryAfter)) {
+    return { kind: "give_up", reason: "no_retry_after" };
+  }
+  const sendAt = Math.max(retryAfter * 1000, input.now + 1000);
+  if (deadline === null || sendAt > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {
+    return { kind: "give_up", reason: "deadline" };
+  }
+  return { kind: "resend", delayMs: sendAt - input.now };
+}
+
 // ============================================================
 // Status update (poll / message -> transition)
 // ============================================================

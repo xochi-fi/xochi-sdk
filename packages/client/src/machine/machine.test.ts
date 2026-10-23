@@ -604,6 +604,213 @@ describe("one signature (no origin pull)", () => {
       expect(JSON.stringify(s.model)).not.toContain(READ_TOKEN);
     });
   });
+
+  // The Worker's explicit backpressure answer (`ApiError.notAccepted`): the
+  // solver refused before accepting anything, so nothing is in doubt and the
+  // SAME signed request goes again after Retry-After, a bounded number of times.
+  describe("an execute the server did not accept", () => {
+    const executing = () => {
+      const s = new Session();
+      s.quoteWith(quote());
+      const prompt = signIntent(s);
+      const exec = only(
+        apiCalls(
+          s.send({
+            type: "SignReplied",
+            flow: prompt.flow,
+            purpose: "intent",
+            result: { ok: true, signature: "0xsig" },
+          }),
+          "execute",
+        ),
+      );
+      return { s, exec };
+    };
+    const nowSec = (s: Session) => Math.floor(s.now / 1000);
+    // What a host builds from the thrown `ApiError` (its code, retryAfter and flag).
+    const busy = (flow: string, retryAfter: number | undefined, notAccepted: unknown = true) =>
+      ({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: false,
+          error: {
+            rejected: false,
+            value: { message: "HTTP 503: Solver busy", code: 503, retryAfter },
+            detail: "HTTP 503",
+            notAccepted,
+          },
+        },
+      }) as MsgBody;
+    const timerSet = (fx: Effect[], timer: string) =>
+      fx.flatMap((e) =>
+        e.type === "Timer" && e.call.op === "set" && e.call.timer === timer ? [e.call.ms] : [],
+      );
+
+    it("waits for Retry-After, then resends the same signed request once", () => {
+      const { s, exec } = executing();
+      const retryAt = nowSec(s) + 5;
+      const fx = s.send(busy(exec.flow, retryAt));
+      // Not in doubt: no latch, no reconciling, no poll while nothing is accepted.
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(false);
+      expect(s.model.executeInDoubt).toBeNull();
+      expect(s.model.poll).toBeNull();
+      expect(timers(fx)).toContain("clear:poll");
+      expect(s.receipt.phase).toBe("submitting");
+      expect(s.receipt.signing).toEqual({ kind: "busy", retryAt, resend: 1, of: 3 });
+      const delay = only(timerSet(fx, "execute"));
+      expect(delay).toBe(retryAt * 1000 - s.now);
+
+      // A stray reply for the attempt already answered changes nothing.
+      expect(s.send(busy(exec.flow, retryAt))).toEqual([]);
+      expect(apiCalls(s.send({ type: "TimerFired", timer: "poll" }), "status")).toEqual([]);
+
+      const resent = s.send({ type: "TimerFired", timer: "execute" }, delay);
+      const again = only(apiCalls(resent, "execute"));
+      expect(again.request).toEqual(exec.request);
+      expect(again.flow).not.toBe(exec.flow);
+      expect(s.receipt.signing).toEqual({ kind: "submitted" });
+      expect(only(apiCalls(resent, "status")).intentId).toBe("xi_1");
+
+      s.send({
+        type: "ExecuteReplied",
+        flow: again.flow,
+        result: { ok: true, response: { success: true, intentId: "xi_1", status: "completed" } },
+      });
+      expect(s.intent.status).toBe("completed");
+      expect(s.receipt.phase).toBe("success");
+      expect(s.model.sign).toBeNull();
+    });
+
+    it("stops after three resends: the Retry view with the countdown", () => {
+      const { s, exec } = executing();
+      let flow = exec.flow;
+      for (let resend = 1; resend <= 3; resend++) {
+        const fx = s.send(busy(flow, nowSec(s) + 5));
+        expect(s.receipt.signing).toMatchObject({ kind: "busy", resend, of: 3 });
+        const next = s.send(
+          { type: "TimerFired", timer: "execute" },
+          only(timerSet(fx, "execute")),
+        );
+        const call = only(apiCalls(next, "execute"));
+        expect(call.request).toEqual(exec.request);
+        flow = call.flow;
+      }
+      const retryAfter = nowSec(s) + 5;
+      const fx = s.send(busy(flow, retryAfter));
+      expect(timerSet(fx, "execute")).toEqual([]);
+      expect(s.intent.status).toBe("failed");
+      expect(s.intent.error).toEqual({ message: "HTTP 503: Solver busy", code: 503, retryAfter });
+      expect(s.intent.reconciling).toBe(false);
+      expect(s.model.executeInDoubt).toBeNull();
+      expect(s.receipt.phase).toBe("failed");
+      expect(s.model.sign).toBeNull();
+      expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute")).toEqual(
+        [],
+      );
+    });
+
+    it("never resends past the quote deadline", () => {
+      // Retry-After lands after the quote expires (60 s after it was served).
+      const late = executing();
+      const retryAfter = nowSec(late.s) + 120;
+      const fx = late.s.send(busy(late.exec.flow, retryAfter));
+      expect(timerSet(fx, "execute")).toEqual([]);
+      expect(late.s.intent.status).toBe("failed");
+      expect(late.s.intent.error).toMatchObject({ code: 503, retryAfter });
+      expect(late.s.receipt.phase).toBe("failed");
+
+      // A wait that was in time, but whose timer fires past the deadline.
+      const throttled = executing();
+      throttled.s.send(busy(throttled.exec.flow, nowSec(throttled.s) + 5));
+      const fired = throttled.s.send({ type: "TimerFired", timer: "execute" }, 70_000);
+      expect(apiCalls(fired, "execute")).toEqual([]);
+      expect(throttled.s.intent.status).toBe("failed");
+      expect(throttled.s.intent.error).toMatchObject({ code: 503 });
+
+      // No Retry-After: nothing to wait for, so Retry rather than a guess.
+      const unhinted = executing();
+      unhinted.s.send(busy(unhinted.exec.flow, undefined));
+      expect(unhinted.s.intent.status).toBe("failed");
+      expect(unhinted.s.receipt.phase).toBe("failed");
+    });
+
+    it("stays in doubt unless the flag is exactly true", () => {
+      for (const flag of ["true", 1, false, null]) {
+        const { s, exec } = executing();
+        const fx = s.send(busy(exec.flow, nowSec(s) + 5, flag));
+        expect(timerSet(fx, "execute"), String(flag)).toEqual([]);
+        expect(s.intent.status, String(flag)).toBe("executing");
+        expect(s.intent.reconciling, String(flag)).toBe(true);
+        expect(s.receipt.phase, String(flag)).toBe("pending");
+      }
+    });
+
+    it("never clears an in-doubt verdict for the same intent", () => {
+      const { s, exec } = executing();
+      s.send({
+        type: "ExecuteReplied",
+        flow: exec.flow,
+        result: { ok: true, response: { success: false, intentId: "xi_1", status: "settling" } },
+      });
+      expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: false });
+      // The same intent id served again and executed: a refusal now says
+      // nothing about the execute that was already in doubt.
+      s.send({ type: "ResetRequested" });
+      s.quoteWith(quote());
+      const prompt = signIntent(s);
+      const second = only(
+        apiCalls(
+          s.send({
+            type: "SignReplied",
+            flow: prompt.flow,
+            purpose: "intent",
+            result: { ok: true, signature: "0xsig" },
+          }),
+          "execute",
+        ),
+      );
+      const fx = s.send(busy(second.flow, nowSec(s) + 5));
+      expect(timerSet(fx, "execute")).toEqual([]);
+      expect(logs(fx, "warn").join()).toMatch(/kept in doubt/);
+      expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: false });
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(true);
+      expect(s.receipt.phase).toBe("pending");
+
+      const poll = s.model.poll;
+      if (!poll) throw new Error("no poll armed");
+      s.send({
+        type: "StatusReplied",
+        gen: poll.gen,
+        attempt: poll.polls,
+        result: { ok: true, status: statusData({ status: "failed", terminal: true }) },
+      });
+      expect(s.receipt.phase).toBe("pending");
+    });
+
+    it("drops the pending resend when the intent moves on or the user resets", () => {
+      const moved = executing();
+      moved.s.send(busy(moved.exec.flow, nowSec(moved.s) + 5));
+      const fx = moved.s.send({
+        type: "StreamStatus",
+        message: { type: "intent_status", intentId: "xi_1", status: "bridging", timestamp: "t" },
+      });
+      expect(timers(fx)).toContain("clear:execute");
+      expect(moved.s.model.sign).toBeNull();
+      expect(
+        apiCalls(moved.s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute"),
+      ).toEqual([]);
+
+      const reset = executing();
+      reset.s.send(busy(reset.exec.flow, nowSec(reset.s) + 5));
+      expect(timers(reset.s.send({ type: "ResetRequested" }))).toContain("clear:execute");
+      expect(
+        apiCalls(reset.s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute"),
+      ).toEqual([]);
+    });
+  });
 });
 
 describe("two signatures (origin pull)", () => {

@@ -33,6 +33,7 @@ export {
   type QuoteFlight,
   type SignFlow,
   type PollState,
+  type ExecuteAttempt,
 } from "./machine.js";
 export { view } from "./view.js";
 export {

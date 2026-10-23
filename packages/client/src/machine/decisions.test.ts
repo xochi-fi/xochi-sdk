@@ -4,6 +4,9 @@ import {
   computeRefreshDelayMs,
   decideSignPreflight,
   decideExecuteResult,
+  decideExecuteResend,
+  EXECUTE_RESEND_MARGIN_SECS,
+  MAX_EXECUTE_RESENDS,
   mapStatusUpdate,
   mapStatusFrame,
   mergeSameStatusReceipt,
@@ -231,6 +234,46 @@ describe("decideExecuteResult (in-doubt vs failure)", () => {
       expect(d.updates.reconciling).toBe(false);
       expect(d.updates.txHash).toBe("0xtx");
     }
+  });
+});
+
+describe("decideExecuteResend (a not-accepted execute)", () => {
+  const now = 1_000_000_000_000;
+  const nowSec = now / 1000;
+  const ok = { resends: 0, retryAfter: nowSec + 5, deadline: nowSec + 60, now };
+
+  it("resends at retryAfter while resends and the deadline leave room", () => {
+    expect(decideExecuteResend(ok)).toEqual({ kind: "resend", delayMs: 5000 });
+    expect(decideExecuteResend({ ...ok, resends: MAX_EXECUTE_RESENDS - 1 }).kind).toBe("resend");
+    // At the margin exactly: still in time.
+    const edge = nowSec + 60 - EXECUTE_RESEND_MARGIN_SECS;
+    expect(decideExecuteResend({ ...ok, retryAfter: edge }).kind).toBe("resend");
+  });
+
+  it("waits at least a second for a retryAfter already past", () => {
+    expect(decideExecuteResend({ ...ok, retryAfter: nowSec - 30 })).toEqual({
+      kind: "resend",
+      delayMs: 1000,
+    });
+  });
+
+  it("gives up when exhausted, unhinted, or past the deadline", () => {
+    expect(decideExecuteResend({ ...ok, resends: MAX_EXECUTE_RESENDS })).toEqual({
+      kind: "give_up",
+      reason: "exhausted",
+    });
+    for (const retryAfter of [undefined, NaN, Infinity]) {
+      expect(decideExecuteResend({ ...ok, retryAfter })).toEqual({
+        kind: "give_up",
+        reason: "no_retry_after",
+      });
+    }
+    const late = nowSec + 60 - EXECUTE_RESEND_MARGIN_SECS + 1;
+    expect(decideExecuteResend({ ...ok, retryAfter: late })).toEqual({
+      kind: "give_up",
+      reason: "deadline",
+    });
+    expect(decideExecuteResend({ ...ok, deadline: null }).kind).toBe("give_up");
   });
 });
 

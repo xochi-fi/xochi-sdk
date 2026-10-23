@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import type { IntentStatus } from "../shared/index.js";
-import { POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
+import { MAX_EXECUTE_RESENDS, POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
 import {
   holdsCurrentQuote,
   init,
@@ -57,7 +57,7 @@ const STATUSES: IntentStatus[] = [
   "failed",
   "expired",
 ];
-const TIMERS: TimerName[] = ["debounce", "refresh", "expiry", "poll", "signPrompt"];
+const TIMERS: TimerName[] = ["debounce", "refresh", "expiry", "poll", "signPrompt", "execute"];
 const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
 
 /** One scripted action. `pick` selects an outstanding effect; `variant` its outcome. */
@@ -188,6 +188,22 @@ function answer(effect: Effect, variant: number, now: number): MsgBody | null {
           };
     }
     if (call.op === "execute") {
+      if (variant === 10) {
+        // The server refused before accepting anything (`ApiError.notAccepted`).
+        return {
+          type: "ExecuteReplied",
+          flow: call.flow,
+          result: {
+            ok: false,
+            error: {
+              rejected: false,
+              value: { message: "HTTP 503", code: 503, retryAfter: Math.floor(now / 1000) + 5 },
+              detail: "busy",
+              notAccepted: true,
+            },
+          },
+        };
+      }
       if (variant >= 7) {
         return {
           type: "ExecuteReplied",
@@ -336,6 +352,30 @@ const ceremonies = fc
   ]);
 
 /**
+ * Scripts that execute and get the server's not-accepted refusal, then churn
+ * with the resend timer and further refusals weighted in, so the bounded
+ * resend path runs against arbitrary interleavings.
+ */
+const refusals = fc
+  .array(
+    fc.oneof(
+      { weight: 3, arbitrary: actionArb },
+      { weight: 1, arbitrary: fc.constant<Action>({ kind: "timer", timer: "execute" }) },
+      { weight: 1, arbitrary: fc.constant<Action>({ kind: "answer", pick: 0, variant: 10 }) },
+    ),
+    { minLength: 1, maxLength: 60, size: "max" },
+  )
+  .map((rest): Action[] => [
+    { kind: "user", which: 0, arg: 0 },
+    { kind: "timer", timer: "debounce" },
+    { kind: "answer", pick: 0, variant: 0 },
+    { kind: "user", which: 1, arg: 0 },
+    { kind: "answer", pick: 0, variant: 0 },
+    { kind: "answer", pick: 0, variant: 10 },
+    ...rest,
+  ]);
+
+/**
  * Scripts that correct the trade while its quote is still in the air (another
  * amount, or a context change), then let that first quote answer honestly
  * before arbitrary churn.
@@ -360,7 +400,7 @@ const corrections = fc
 describe("update properties", () => {
   it("is pure, deterministic and JSON-clean at every step", () => {
     fc.assert(
-      fc.property(scripts, (actions) => {
+      fc.property(fc.oneof(scripts, refusals), (actions) => {
         for (const t of run(actions)) {
           const before = JSON.stringify(t.prev);
           const [again, effectsAgain] = update(t.prev, t.msg);
@@ -428,7 +468,7 @@ describe("update properties", () => {
 
   it("prompts the wallet and executes only on the paths that earned it", () => {
     fc.assert(
-      fc.property(fc.oneof(scripts, ceremonies), (actions) => {
+      fc.property(fc.oneof(scripts, ceremonies, refusals), (actions) => {
         for (const t of run(actions)) {
           for (const e of t.effects) {
             if (
@@ -447,9 +487,21 @@ describe("update properties", () => {
               expect(String(e.call.typedData.message.to).toLowerCase()).toBe(SOLVER.toLowerCase());
             }
             if (e.type === "Api" && e.call.op === "execute") {
-              // Never execute without the wallet's own signature in hand.
-              expect(t.msg.type).toBe("SignReplied");
-              expect(t.msg.type === "SignReplied" && t.msg.result.ok).toBe(true);
+              // Never execute without the wallet's own signature in hand: from
+              // the signature itself, or as the unchanged resend of a request
+              // the server did not accept, never once its execute is in doubt.
+              if (t.msg.type === "TimerFired") {
+                const attempt = t.prev.sign?.execute;
+                expect(t.msg.timer).toBe("execute");
+                expect(typeof attempt?.resendAt).toBe("number");
+                expect(attempt?.resends).toBeLessThan(MAX_EXECUTE_RESENDS);
+                expect(e.call.request).toEqual(attempt?.request);
+                expect(t.prev.intent.reconciling).toBe(false);
+                expect(t.prev.executeInDoubt?.intentId).not.toBe(t.prev.intent.intentId);
+              } else {
+                expect(t.msg.type).toBe("SignReplied");
+                expect(t.msg.type === "SignReplied" && t.msg.result.ok).toBe(true);
+              }
               expect(e.call.request.signature).toMatch(/^0xsig/);
             }
           }
@@ -566,11 +618,16 @@ describe("update properties", () => {
 
   it("executes only out of a live signing ceremony, never behind a refusal", () => {
     fc.assert(
-      fc.property(fc.oneof(scripts, ceremonies), (actions) => {
+      fc.property(fc.oneof(scripts, ceremonies, refusals), (actions) => {
         let landedQuoted = false;
         for (const t of run(actions)) {
           const executes = t.effects.some((e) => e.type === "Api" && e.call.op === "execute");
-          if (executes) {
+          if (executes && t.msg.type === "TimerFired") {
+            // A resend keeps the ceremony it was dispatched from.
+            expect(t.prev.intent.status).toBe("executing");
+            expect(t.prev.sign?.stage).toBe("execute");
+            expect(t.next.intent.status).toBe("executing");
+          } else if (executes) {
             expect(t.prev.intent.status).toBe("signing");
             expect(t.prev.sign?.stage).toBe(t.msg.type === "SignReplied" ? t.msg.purpose : null);
             expect(t.next.intent.status).toBe("executing");
@@ -592,7 +649,7 @@ describe("update properties", () => {
 
   it("leaves no signing residue outside a ceremony, and no stale quote moves a swap", () => {
     fc.assert(
-      fc.property(fc.oneof(scripts, ceremonies), (actions) => {
+      fc.property(fc.oneof(scripts, ceremonies, refusals), (actions) => {
         for (const t of run(actions)) {
           const status = t.next.intent.status;
           if (status !== "signing" && status !== "executing") {

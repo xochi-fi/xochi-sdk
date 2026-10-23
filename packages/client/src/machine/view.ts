@@ -2,8 +2,7 @@
  * view(model) -> Receipt. Pure; the renderer draws this and nothing it derives
  * on its own from the raw quote.
  */
-
-import { canSignQuote } from "./decisions.js";
+import { canSignQuote, MAX_EXECUTE_RESENDS } from "./decisions.js";
 import { holdsCurrentQuote, type Model } from "./machine.js";
 import { phaseFromStatus } from "./phase.js";
 import {
@@ -37,7 +36,17 @@ function signingSlot(model: Model): SigningSlot {
   const signatures = quote?.pullAuthorization ? 2 : 1;
   const flow = model.sign;
   if (flow) {
-    if (flow.stage === "execute") return { kind: "submitted" };
+    if (flow.stage === "execute") {
+      const attempt = flow.execute;
+      return typeof attempt?.resendAt === "number"
+        ? {
+            kind: "busy",
+            retryAt: Math.ceil(attempt.resendAt / 1000),
+            resend: attempt.resends + 1,
+            of: MAX_EXECUTE_RESENDS,
+          }
+        : { kind: "submitted" };
+    }
     return flow.stage === "intent"
       ? { kind: "in_wallet", step: 1, of: signatures }
       : { kind: "in_wallet", step: 2, of: 2 };
