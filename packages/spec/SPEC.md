@@ -838,7 +838,8 @@ A compliant **signer** MUST reproduce `digest`, `signature`, and `signed_object`
 byte-for-byte for every §8.1 vector, and recover to `expected.signer`. Runner
 contract: `sign(protocol, inputs) → {digest, signature, signed_object}`. A
 compliant **fee implementation** MUST reproduce every §8.2 vector's `expected`
-core. A green run over both == "Riddler Compliant @ SPEC vX.Y".
+core. A green run over both == "Riddler Compliant @ SPEC vX.Y". ERC-8262
+provider-protocol conformance is separate, with its own vectors (§10.8).
 
 ### 8.4 Levels
 
@@ -846,6 +847,8 @@ core. A green run over both == "Riddler Compliant @ SPEC vX.Y".
 - **Taker**: Signer + §4 fee reproduction + the §3 quote/execute/status/claim
   flow.
 - **Solver**: the §7 maker protocol. *(Reserved.)*
+- **ERC-8262 provider / consumer**: the §10 documents and evaluation, held to
+  `erc8262/vectors.json` (§10.8); independent of the levels above.
 
 ---
 
@@ -962,7 +965,7 @@ discovery steps of §10.5, evaluated on their own rather than in the
 first-failure order: from an allowlisted host (1), a `200` whose body
 validates (6), naming the host it came from (the discovery half of 8), no
 duplicate (10), not ahead of the clock (11), not stale (12). The evidence's
-outcome does not matter (an evaluation refused at step 2, 3, 5 or 7 still
+outcome does not matter (an evaluation refused at step 2, 3, 4, 5 or 7 still
 records a discovery document that passes these); a document failing any of
 them is never recorded. The converse does not hold:
 an evidence revocation (a `410` or a revoked body, §10.4) is recorded without
@@ -1194,28 +1197,38 @@ attestors in ascending numeric order.
   30-31 hold the proof to them. Fields other than `status`/`revokedAt` are
   immutable per (`trustDomainId`, `evidenceId`): identical re-delivery is
   idempotent and counts once, any other change is refused, and renewal is a
-  new `evidenceId`. Evidence lives at most 365 days.
-- **Rotation.** Publish the successor key with `notBefore` at the rotation
-  instant and set the predecessor's `notAfter` to that instant in the same
-  discovery change, at least `revocationCheckSeconds` plus the host's cache
-  propagation time before it, so every consumer sees the rotation announced
-  before it happens. At `notAfter` (not earlier) update the Oracle:
-  `setCredentialSigner` for a credential-root key; `registerSignerPubkeyHash`
-  of the successor (which MAY be registered ahead) and `revokeSignerPubkeyHash`
-  of the predecessor for a signed-signals key. A key never issues before the
-  Oracle holds it, so successor evidence is issued only after the switch. A
-  key is **current** while it has no `notAfter` or the consumer's clock is more
-  than 60 s before it (step 22), so a consumer whose clock lags the provider's,
-  or that read the announcement late, never compares a current key against an
-  Oracle that already holds the successor. A retired
-  **credential-root** key's evidence is not refused for the retirement: it
-  stays acceptable until its own `expiresAt` while the Oracle still holds its
-  `credentialRoot` valid (step 23), which the Oracle does for
-  `CREDENTIAL_ROOT_TTL` (48 h) from the root's registration; a root is never
-  re-published. A retired **signed-signals** key ends at `notAfter`: proof
-  types 7-9 are signed per proof, so its evidence is refused from then on
-  (`key_retired`) and is reissued under the successor. Key ids and key
-  material are never reused.
+  new `evidenceId`. Evidence lives at most 365 days. A consumer keeps the first
+  document it recorded for an id. A provider that served wrong fields under an
+  id (a misdeploy) MUST re-issue that evidence under new ids: every consumer
+  that recorded the wrong copy refuses the corrected one (`evidence_id_conflict`)
+  until the recorded `expiresAt`.
+- **Rotation.** Announce first and switch the Oracle at the instant: set the
+  predecessor's `notAfter` at least `revocationCheckSeconds` plus the host's
+  cache propagation time ahead, so every consumer sees the rotation announced
+  before it happens, and at `notAfter` (not earlier) update the Oracle. A key
+  never issues before the Oracle holds it. A key is **current** while it has
+  no `notAfter` or the consumer's clock is more than 60 s before it (step 22),
+  so a consumer whose clock lags the provider's, or that read the announcement
+  late, never compares a current key against an Oracle that already holds the
+  successor. Key ids and key material are never reused.
+  - **Credential-root keys.** The Oracle holds one credential signer per
+    attestor, so the successor's `notBefore` is the predecessor's `notAfter`,
+    `setCredentialSigner` runs at that instant, and successor evidence is
+    issued only after the switch. A retired credential-root key's evidence is
+    not refused for the retirement. Every type 4 evidence, from a current key
+    or a retired one, is acceptable only while the Oracle holds its
+    `credentialRoot` valid (step 23), which it does for `CREDENTIAL_ROOT_TTL`
+    (48 h) from the root's registration; a root is never re-published, so a
+    provider SHOULD set a type 4 evidence's `expiresAt` no later than its
+    root's registration plus 48 h.
+  - **Signed-signals keys.** The Oracle holds any number of signer hashes, so
+    `registerSignerPubkeyHash` the successor first and then publish it with a
+    `notBefore` before the predecessor's `notAfter`: in that overlap both keys
+    issue, and evidence under the predecessor is re-issued under the successor
+    before the predecessor ends. The predecessor still ends at its `notAfter`:
+    proof types 7-9 are signed per proof, so its evidence is refused from then
+    on (`key_retired`), and `revokeSignerPubkeyHash` removes it from the Oracle
+    at that instant.
 - **Revocation.** Four levels, each final: an evidence (`status: "revoked"` or
   `410`, monotonic per (`trustDomainId`, `evidenceId`)); a key (`revokedAt`,
   retroactive over everything it issued, and remembered by the consumer per
@@ -1225,15 +1238,18 @@ attestors in ascending numeric order.
   step 23); and on-chain denial of the attestor (the Oracle guardian's
   `denyProvider`, read as `isProviderDenied` at step 21, which the Oracle's own
   ATTESTATION check does not apply). A `410` or a revoked body from the
-  allowlisted host is recorded even while that host's discovery document is
-  unavailable or invalid (§10.4), so a discovery outage never delays an
-  evidence revocation. `404` is never revocation.
+  allowlisted host is recorded whatever that host's discovery fetch returned
+  (§10.4), so a discovery outage never delays an evidence revocation. `404` is
+  never revocation.
 - **Held grants.** A consumer holding a grant re-evaluates it (both fetches)
-  at least every `revocationCheckSeconds`. A refusal ends the grant. A
-  re-evaluation that cannot complete (discovery or evidence unavailable, the
-  Oracle or the observation store unreadable) **suspends** the grant: it is not
-  exercised until a re-evaluation completes, it is not revoked, and nothing is
-  recorded. A completed re-evaluation that accepts lifts the suspension.
+  at least every `revocationCheckSeconds`. A refusal ends the grant, except a
+  refusal at step 11 (`discovery_from_future`) or 12 (`discovery_stale`): those
+  describe the provider's clock, a lagging cache edge or a rollback, not the
+  user. They, and a re-evaluation that cannot complete (discovery or evidence
+  unavailable, the Oracle or the observation store unreadable), **suspend** the
+  grant: it is not exercised until a re-evaluation completes, it is not
+  revoked, and nothing is recorded. A completed re-evaluation that accepts
+  lifts the suspension. A new evaluation refused at step 11 or 12 is refused.
 - **Observation store.** What a consumer records (evidence documents and
   revocations per (`trustDomainId`, `evidenceId`), where a revocation's
   `trustDomainId` is the allowlisted host it came from; key revocations per
@@ -1252,13 +1268,18 @@ attestors in ascending numeric order.
   atomic maximum (never lowered by a concurrent write), revocations and key
   revocations are insert-if-absent and never removed before their retention,
   and an evidence document is inserted only if absent (a differing document is
-  a conflict, never an overwrite). An evaluation that can grant reads a store
-  state that includes every write committed before it began (read-your-writes
-  across instances), so no instance accepts against a state another instance
-  has already moved past. A consumer MAY bound revocation records per trust
-  domain; it records only `evidenceId`s it was itself announced, and when the
-  bound is reached it treats that trust domain as unavailable rather than
-  evicting a record.
+  a conflict and the first stays, never an overwrite). An evaluation that can
+  grant reads a store state that includes every write committed before it
+  began (read-your-writes across instances), so no instance accepts against a
+  state another instance has already moved past.
+- **Revocation bound.** A consumer records only `evidenceId`s it was itself
+  announced, and MAY bound revocation records per trust domain, at no fewer
+  than `limits.minRevocationRecordsPerTrustDomain` and no fewer than the grants
+  it holds on that trust domain. Reaching the bound never evicts a record: it
+  makes new evaluations of that trust domain unavailable (a grant made then
+  could not be revoked), while held grants keep re-evaluating, and one whose
+  evidence is gone or revoked still ends and has its revocation recorded past
+  the bound.
 
 ### 10.8 Conformance
 
