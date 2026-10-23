@@ -198,52 +198,76 @@ const MAX_ERROR_BODY_BYTES = 8 * 1024;
 const MAX_ERROR_EXCERPT_CHARS = 2048;
 /** Normalization passes for nested escaping (`%2522`, `\\u0022`); each pass is linear. */
 const NORMALIZE_PASSES = 3;
-/** The shortest fragment of a possible read token that is redacted wherever it appears. */
+/**
+ * The window a possible read token is redacted by: every run of this many of
+ * its characters, in any of its forms and with separators ignored, is hidden
+ * wherever it appears. 16 base64url characters are 96 random bits, so a window
+ * never matches unrelated text by chance; what a split can leave readable of a
+ * token is a piece shorter than this, with other text on both sides.
+ */
 const TOKEN_FRAGMENT_CHARS = 16;
 const REDACTED = "[redacted]";
 /** A read-token key (`read_token`, `readToken`, `X-Xochi-Read-Token`) and the value it opens. */
 const READ_TOKEN_KEYED_VALUE = /(read[_-]?token\\*["']?\s*[:=]\s*\\*["']?)([A-Za-z0-9_-]+)/gi;
 /** A base64url run at least a read token long (greedy from its first character: maximal). */
 const LONG_BASE64URL_RUN = new RegExp(`[A-Za-z0-9_-]{${READ_TOKEN_LENGTH},}`, "g");
+const BASE64URL_RUN = /[A-Za-z0-9_-]+/g;
 const HEX_RUN = /^(?:0x)?[0-9a-fA-F]+$/;
+const HEX_DIGIT = /[0-9a-fA-F]/;
 /** What renders as nothing: format and default-ignorable characters, controls but tab and line breaks. */
 const INVISIBLE = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
-const MARKUP_TAG = /<[^<>]*>/g;
-const UNCLOSED_TRAILING_TAG = /<[^<>]*$/;
+/**
+ * Separators that split no word of ASCII text, between two base64url
+ * characters: combining marks, and every space and line separator but U+0020.
+ */
+const RUN_JOINER =
+  /(?<=[A-Za-z0-9_-])[\p{M}\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+(?=[A-Za-z0-9_-])/gu;
+/** What may sit between two pieces of a split token: one space, tab or `.`, or a line break. */
+const PIECE_GAP = /^(?:[ \t.]|\r?\n[ \t]*)$/;
+/** Complete markup: an element tag (`<p>`, `</b>`, `<a href=…>`), `<!…>` or `<?…>`; never a bare `<`. */
+const MARKUP_TAG = /<(?:\/?[A-Za-z][^<>]*|[!?][^<>]*)>/g;
+const UNCLOSED_TRAILING_TAG = /<(?:\/?[A-Za-z]|[!?])[^<>]*$/;
 /** What the end of a cut excerpt may hold of a token or an unfinished escape. */
-const CUT_TAIL_CHAR = /[A-Za-z0-9_%\\&#-]/;
+const CUT_TAIL_CHAR = /[A-Za-z0-9_%\\&#{-]/;
 const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /**
- * At most the first `MAX_ERROR_BODY_BYTES` of a body as UTF-8 text, and whether
- * any of it went unread. The rest is cancelled, so a huge or endless error body
- * costs a bounded read. A body that fails mid-read yields what arrived before
- * the failure, marked truncated.
+ * At most the first `MAX_ERROR_BODY_BYTES` of a body, and whether any of it
+ * went unread. Reading stops once the cap is full, without waiting for the
+ * body to end (a body that fills the cap counts as cut), and the rest is
+ * cancelled, so a huge, endless or stalled error body costs a bounded read.
+ * A body that fails mid-read yields what arrived before the failure, marked
+ * truncated.
  */
-async function readCappedText(response: Response): Promise<{ text: string; truncated: boolean }> {
-  if (!response.body) return { text: "", truncated: false };
+async function readCappedBytes(
+  response: Response,
+): Promise<{ bytes: Uint8Array; truncated: boolean }> {
+  if (!response.body) return { bytes: new Uint8Array(0), truncated: false };
   const reader = response.body.getReader();
   const bytes = new Uint8Array(MAX_ERROR_BODY_BYTES);
   let size = 0;
   let truncated = false;
   try {
-    for (;;) {
+    while (size < MAX_ERROR_BODY_BYTES) {
       const { done, value } = await reader.read();
       if (done) break;
       const room = MAX_ERROR_BODY_BYTES - size;
       bytes.set(value.subarray(0, room), size);
       size += Math.min(value.byteLength, room);
-      if (value.byteLength > room) {
-        truncated = true;
-        break;
-      }
     }
+    if (size === MAX_ERROR_BODY_BYTES) truncated = true;
   } catch {
     // A failed body read is a cut: what arrived is kept, and treated as cut.
     truncated = true;
   }
   reader.cancel().catch(() => {});
-  return { text: new TextDecoder().decode(bytes.subarray(0, size)), truncated };
+  return { bytes: bytes.subarray(0, size), truncated };
+}
+
+/** `readCappedBytes` as UTF-8 text (a character split by the cap becomes U+FFFD). */
+async function readCappedText(response: Response): Promise<{ text: string; truncated: boolean }> {
+  const { bytes, truncated } = await readCappedBytes(response);
+  return { text: new TextDecoder().decode(bytes), truncated };
 }
 
 /** A run of `%XX` escapes decoded as UTF-8 (an invalid sequence becomes U+FFFD). */
@@ -253,38 +277,99 @@ function decodePercentRun(run: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+/** The character `codePoint` names, or `escape` itself when it names none. */
+function codePointOr(escape: string, codePoint: number): string {
+  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : escape;
+}
+
 /**
- * One linear normalization pass: decode `\uXXXX`, `%XX` and numeric character
- * references, then drop invisible characters and complete markup tags, so a
- * token split by either reads whole again.
+ * One linear normalization pass: decode `\u{…}`, `\uXXXX`, `\xXX`, `%XX` and
+ * numeric character references (any number of leading zeros, `;` optional),
+ * then drop invisible characters and complete markup tags, so a token split by
+ * either reads whole again.
  */
 function normalizeOnce(text: string): string {
   return text
+    .replace(/\\u\{0*([0-9a-fA-F]{1,6})\}/g, (escape: string, hex: string) =>
+      codePointOr(escape, parseInt(hex, 16)),
+    )
     .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/(?:%[0-9a-fA-F]{2})+/g, decodePercentRun)
     .replace(
-      /&#(?:[xX]([0-9a-fA-F]{1,6})|([0-9]{1,7}));/g,
-      (ref: string, hex: string | undefined, dec: string | undefined) => {
-        const codePoint = hex === undefined ? Number(dec) : parseInt(hex, 16);
-        return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : ref;
-      },
+      /&#(?:[xX]0*([0-9a-fA-F]{1,6})|0*([0-9]{1,7}));?/g,
+      (ref: string, hex: string | undefined, dec: string | undefined) =>
+        codePointOr(ref, hex === undefined ? Number(dec) : parseInt(hex, 16)),
     )
     .replace(INVISIBLE, "")
     .replace(MARKUP_TAG, "");
 }
 
 /**
+ * Whether a base64url run may be a piece of a random token rather than a word
+ * or a hex value: at least 8 characters, not hex, holding a digit, `-` or `_`,
+ * or mixing cases past its first character.
+ */
+function tokenPiece(run: string): boolean {
+  return (
+    run.length >= 8 &&
+    !HEX_RUN.test(run) &&
+    (/[0-9_-]/.test(run) || (/[a-z]/.test(run) && /[A-Z]/.test(run.slice(1))))
+  );
+}
+
+/**
+ * Tokens split by ASCII separators, joined: chains of token pieces
+ * (`tokenPiece`), one `PIECE_GAP` apart, at least a token long together.
+ * After a line break that follows a piece of `TOKEN_FRAGMENT_CHARS` or more (a
+ * hard wrap), the run that ends the chain may be of any shape.
+ */
+function splitTokens(text: string): string[] {
+  const found: string[] = [];
+  let chain: string[] = [];
+  let end = 0;
+  const flush = () => {
+    const joined = chain.join("");
+    if (chain.length > 1 && joined.length >= READ_TOKEN_LENGTH) found.push(joined);
+    chain = [];
+  };
+  for (const match of text.matchAll(BASE64URL_RUN)) {
+    const [run] = match;
+    const gap = text.slice(end, match.index);
+    end = match.index + run.length;
+    const prev = chain[chain.length - 1];
+    const joins =
+      prev !== undefined &&
+      tokenPiece(prev) &&
+      PIECE_GAP.test(gap) &&
+      (tokenPiece(run) || (gap.includes("\n") && prev.length >= TOKEN_FRAGMENT_CHARS));
+    if (joins) {
+      chain.push(run);
+    } else {
+      flush();
+      if (tokenPiece(run)) chain = [run];
+    }
+  }
+  flush();
+  return found;
+}
+
+/**
  * Every value of a body that may be a read token: the body's own `read_token`,
- * the value after any read-token key, and every base64url run at least a token
- * long that is not hex. Read from the whole normalized prefix, so an echo
- * before the cut is caught even when the token itself lies past it.
+ * the value after any read-token key, every base64url run at least a token
+ * long that is not hex, and every token split into pieces (`RUN_JOINER`
+ * separators removed, `splitTokens` across ASCII ones). Read from the whole
+ * normalized prefix, so an echo before the cut is caught even when the token
+ * itself lies past it.
  */
 function possibleTokens(body: string, text: string): string[] {
   const tokens: string[] = [];
   const served = parseJsonObject(body)?.read_token;
   if (typeof served === "string" && READ_TOKEN_PATTERN.test(served)) tokens.push(served);
-  for (const [, , value] of text.matchAll(READ_TOKEN_KEYED_VALUE)) tokens.push(value);
-  for (const [run] of text.matchAll(LONG_BASE64URL_RUN)) if (!HEX_RUN.test(run)) tokens.push(run);
+  const joined = text.replace(RUN_JOINER, "");
+  for (const [, , value] of joined.matchAll(READ_TOKEN_KEYED_VALUE)) tokens.push(value);
+  for (const [run] of joined.matchAll(LONG_BASE64URL_RUN)) if (!HEX_RUN.test(run)) tokens.push(run);
+  tokens.push(...splitTokens(joined));
   return tokens;
 }
 
@@ -312,29 +397,61 @@ function asciiHex(value: string): string {
 }
 
 /**
- * `text` with every `TOKEN_FRAGMENT_CHARS`-long fragment of each token
- * replaced, in base64url, standard base64 or hex (of its bytes or of its
- * characters, any case). Overlapping fragments merge into one `[redacted]`.
+ * The characters of `text` in one alphabet, each with its index in `text`:
+ * what a token reads as once every separator around or inside it is ignored.
+ * The hex alphabet is folded to lower case and skips `0x` prefixes.
+ */
+function skeleton(text: string, alphabet: RegExp, hex: boolean): { chars: string; at: number[] } {
+  let chars = "";
+  const at: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (
+      hex &&
+      text[i] === "0" &&
+      /[xX]/.test(text[i + 1] ?? "") &&
+      HEX_DIGIT.test(text[i + 2] ?? "")
+    ) {
+      i++;
+      continue;
+    }
+    if (!alphabet.test(text[i])) continue;
+    chars += hex ? text[i].toLowerCase() : text[i];
+    at.push(i);
+  }
+  return { chars, at };
+}
+
+/**
+ * `text` with every `TOKEN_FRAGMENT_CHARS`-long fragment of each token hidden,
+ * in base64url, standard base64 or hex (of its bytes or of its characters, any
+ * case), matched on the text's `skeleton` in that alphabet: a fragment is
+ * found whatever separators split it, and the span it covers, separators
+ * included, is hidden. Overlapping spans merge into one `[redacted]`.
  */
 function redactTokenFragments(text: string, tokens: readonly string[]): string {
   const width = TOKEN_FRAGMENT_CHARS;
-  const plain = new Set<string>();
+  const base64url = new Set<string>();
+  const base64 = new Set<string>();
   const hex = new Set<string>();
   const addFragments = (into: Set<string>, form: string) => {
     for (let i = 0; i + width <= form.length; i++) into.add(form.slice(i, i + width));
   };
   for (const token of tokens) {
-    addFragments(plain, token);
-    addFragments(plain, token.replace(/-/g, "+").replace(/_/g, "/"));
+    addFragments(base64url, token);
+    addFragments(base64, token.replace(/-/g, "+").replace(/_/g, "/"));
     addFragments(hex, base64urlHex(token));
     addFragments(hex, asciiHex(token));
   }
-  if (plain.size === 0) return text;
-  const folded = text.replace(/[A-F]/g, (c) => c.toLowerCase());
+  if (base64url.size === 0) return text;
   const hidden = new Uint8Array(text.length);
-  for (let i = 0; i + width <= text.length; i++) {
-    if (plain.has(text.slice(i, i + width)) || hex.has(folded.slice(i, i + width))) {
-      hidden.fill(1, i, i + width);
+  const forms: [Set<string>, { chars: string; at: number[] }][] = [
+    [base64url, skeleton(text, /[A-Za-z0-9_-]/, false)],
+    [base64, skeleton(text, /[A-Za-z0-9+/]/, false)],
+    [hex, skeleton(text, HEX_DIGIT, true)],
+  ];
+  for (const [fragments, { chars, at }] of forms) {
+    for (let i = 0; i + width <= chars.length; i++) {
+      if (fragments.has(chars.slice(i, i + width))) hidden.fill(1, at[i], at[i + width - 1] + 1);
     }
   }
   let out = "";
@@ -380,6 +497,28 @@ function redactErrorBody(body: string, truncated: boolean): string {
   return redactTokenFragments(text, tokens)
     .replace(READ_TOKEN_KEYED_VALUE, `$1${REDACTED}`)
     .replace(LONG_BASE64URL_RUN, (run) => (HEX_RUN.test(run) ? run : REDACTED));
+}
+
+/** `"intent_id": "…"` and the opening of a `read_token` key in a JSON prefix. */
+const PREFIX_INTENT_ID = /"intent_id"\s*:\s*"([^"\\]*)"/g;
+const PREFIX_READ_TOKEN_KEY = /"read_token"\s*:/g;
+const PREFIX_READ_TOKEN = new RegExp(
+  `"read_token"\\s*:\\s*"([A-Za-z0-9_-]{${READ_TOKEN_LENGTH}})"`,
+);
+
+/**
+ * The `read_token` a cut JSON error body carries for `intentId`, read by strict
+ * match from the prefix that `readCappedText` kept (a cut body does not parse).
+ * Only from a prefix that opens a JSON object and names exactly one
+ * `intent_id`, equal to `intentId`, and exactly one `read_token` key, whose
+ * value is a whole token followed by its closing quote.
+ */
+function readTokenFromPrefix(prefix: string, intentId: string): string | undefined {
+  if (!/^\s*\{/.test(prefix)) return undefined;
+  const ids = [...prefix.matchAll(PREFIX_INTENT_ID)];
+  if (ids.length !== 1 || ids[0][1] !== intentId) return undefined;
+  if ([...prefix.matchAll(PREFIX_READ_TOKEN_KEY)].length !== 1) return undefined;
+  return PREFIX_READ_TOKEN.exec(prefix)?.[1];
 }
 
 /**
@@ -516,13 +655,22 @@ function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, s
 
 const MALFORMED_READ_TOKEN = `readToken is not a read_token (${READ_TOKEN_LENGTH} unpadded base64url characters)`;
 
-/** A pinned request answered by a redirect it may not follow, or by a response from another origin. */
-class RedirectRefused extends Error {
+/**
+ * An intent read answered by a redirect it may not follow, or by a response
+ * from another origin (rules: README "Transport"). `getIntent` and
+ * `getIntentHistory` reject with it; `getIntentStatus` reports it once per
+ * intent and reads again without the token, or returns null when that read is
+ * refused too.
+ */
+export class RedirectRefused extends Error {
   constructor(path: string) {
     super(`Refused a redirect (${path})`);
     this.name = "RedirectRefused";
   }
 }
+
+/** Ids a log-once set holds before it is cleared, so a long session cannot grow it without bound. */
+const MAX_WARNED_IDS = 500;
 
 /** The statuses whose `Location` a pinned GET may follow by hand (once, same origin). */
 const FOLLOWABLE_REDIRECT: Readonly<Record<number, true>> = {
@@ -654,18 +802,22 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    * same as a stalled connect, whether or not the injected `fetch` honours the
    * signal on its body.
    *
-   * A request carrying the read capability, or asking for `redirect: "manual"`
-   * itself (the anonymous re-read of a refused status poll), is pinned to the
-   * request's origin: sent with `redirect: "manual"`, it may follow one plain
-   * redirect whose `Location` stays on that origin, by hand and with the same
-   * headers (a path migration keeps the token). Anything else is refused
-   * (`RedirectRefused`): a further 3xx, an `opaqueredirect`, `redirected`, or a
-   * `response.url` off the origin. fetch drops `Authorization` on a
-   * cross-origin hop but forwards a custom header, so following would hand the
-   * bearer secret to whatever host the `Location` names, and that host's body
-   * would become the intent's status. `"manual"`, not `"error"`: Cloudflare
-   * Workers throws on `"error"`. The guard holds only for an injected `fetch`
-   * that honours `redirect: "manual"` (README "Transport").
+   * Every GET (the intent reads) is pinned to the request's origin, so no
+   * other host's answer becomes an intent's status or record:
+   * - A request carrying the read capability is sent with `redirect:
+   *   "manual"`. It may follow one plain redirect whose `Location` stays on
+   *   that origin, by hand and with the same headers (a path migration keeps
+   *   the token). Anything else is refused (`RedirectRefused`): a further 3xx,
+   *   an `opaqueredirect` (a browser's answer to every manual redirect: it
+   *   hides the `Location`), `redirected`, or a `response.url` off the origin.
+   *   fetch drops `Authorization` on a cross-origin hop but forwards a custom
+   *   header, so following would hand the bearer secret to whatever host the
+   *   `Location` names. `"manual"`, not `"error"`: Cloudflare Workers throws
+   *   on `"error"`. The guard holds only for an injected `fetch` that honours
+   *   `redirect: "manual"` (README "Transport").
+   * - A GET without it carries no secret, so fetch follows its redirects, and
+   *   the answer is refused (`RedirectRefused`) unless its `response.url` is
+   *   on the origin.
    */
   async function send<T>(
     path: string,
@@ -677,7 +829,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     const headers = new Headers(init.headers);
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
-    const pinned = headers.has(READ_TOKEN_HEADER) || init.redirect === "manual";
+    const carriesToken = headers.has(READ_TOKEN_HEADER);
+    const isGet = (init.method ?? "GET") === "GET";
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -690,14 +843,11 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         ...init,
         headers,
         signal: controller.signal,
-        ...(pinned ? { redirect: "manual" as const } : {}),
+        ...(carriesToken ? { redirect: "manual" as const } : {}),
       };
       let fetched = await doFetch(requestUrl, requestInit);
-      if (pinned) {
-        const target =
-          (init.method ?? "GET") === "GET"
-            ? sameOriginRedirectTarget(fetched, requestUrl)
-            : undefined;
+      if (carriesToken) {
+        const target = isGet ? sameOriginRedirectTarget(fetched, requestUrl) : undefined;
         if (target !== undefined) {
           cancelBody(fetched);
           fetched = await doFetch(target, requestInit);
@@ -711,24 +861,60 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           cancelBody(fetched);
           throw new RedirectRefused(path);
         }
+      } else if (
+        isGet &&
+        (fetched.type === "opaqueredirect" || !staysOnOrigin(fetched.url, requestUrl))
+      ) {
+        cancelBody(fetched);
+        throw new RedirectRefused(path);
       }
       let response = fetched;
       if (fetched.body) {
         const reader = fetched.body.getReader();
         source = reader;
-        const body = new ReadableStream<Uint8Array>({
-          async pull(sink) {
-            const chunk = await reader.read();
-            if (chunk.done) sink.close();
-            else sink.enqueue(chunk.value);
+        // Pulled only on demand (no read-ahead), so a capped read
+        // (`readCappedText`) takes no more of the source than it keeps.
+        const body = new ReadableStream<Uint8Array>(
+          {
+            async pull(sink) {
+              const chunk = await reader.read();
+              if (chunk.done) sink.close();
+              else sink.enqueue(chunk.value);
+            },
+            cancel: (reason) => reader.cancel(reason),
           },
-          cancel: (reason) => reader.cancel(reason),
-        });
+          { highWaterMark: 0 },
+        );
         response = rewrapResponse(fetched, body);
       }
 
       if (options.onAuthExpired && (response.status === 401 || response.status === 403)) {
-        const { text: body } = await readCappedText(response.clone());
+        // Read once, capped, and hand `read` exactly that prefix, ending as the
+        // read did (cut or not): every reader of a failure reads it capped, and
+        // a copy (`clone`) would read ahead of the cap for the other branch.
+        const { bytes, truncated } = await readCappedBytes(response);
+        const body = new TextDecoder().decode(bytes);
+        let delivered = bytes.byteLength === 0;
+        response = rewrapResponse(
+          response,
+          new ReadableStream<Uint8Array>(
+            {
+              // Erroring clears a stream's queue, so the cut is signalled on
+              // the pull after the prefix, never with it.
+              pull(sink) {
+                if (!delivered) {
+                  delivered = true;
+                  sink.enqueue(bytes);
+                } else if (truncated) {
+                  sink.error(new Error("cut at the error-body read cap"));
+                } else {
+                  sink.close();
+                }
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+        );
         if (response.status === 401 && /expired/i.test(body)) {
           options.onAuthExpired({ reason: "expired", status: response.status });
         } else if (token) {
@@ -800,10 +986,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               response.status,
               retryAfter,
             );
+            // A cut body does not parse: its token is read from the prefix kept.
             const servedToken =
               readTokenIntentId === undefined
                 ? undefined
-                : readTokenForIntent(parseJsonObject(errorBody), readTokenIntentId);
+                : truncated
+                  ? readTokenFromPrefix(errorBody, readTokenIntentId)
+                  : readTokenForIntent(parseJsonObject(errorBody), readTokenIntentId);
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
             throw error;
           }
@@ -1042,17 +1231,17 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
      * A read token never stops the poll. A malformed one is not sent, and a
-     * token-bearing read answered by a redirect (`RedirectRefused`) is read
-     * again without it: either way the poll gets the anonymous status-only
-     * view and the problem is reported once per intent, without echoing the
-     * token. That re-read stays pinned to the origin like the token read, so a
-     * redirect refused again is a transient failure (`null`): no other host's
-     * answer ever becomes the intent's status.
+     * token-bearing read refused for a redirect (`RedirectRefused`; in a
+     * browser, any redirect) is read again without it: either way the poll
+     * gets the anonymous status-only view and the problem is reported once per
+     * intent, without echoing the token. That re-read, like every token-less
+     * read, follows redirects natively and is accepted only from the origin
+     * (`send`), so a refused one is a transient failure (`null`).
      */
     async getIntentStatus(intentId, opts) {
       const warnOnce = (message: string) => {
         if (warnedReadTokenIds.has(intentId)) return;
-        if (warnedReadTokenIds.size > 500) warnedReadTokenIds.clear();
+        if (warnedReadTokenIds.size > MAX_WARNED_IDS) warnedReadTokenIds.clear();
         warnedReadTokenIds.add(intentId);
         log("warn", message);
       };
@@ -1066,18 +1255,18 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         send(path, { method: "GET", ...init }, timeouts.requestTimeoutMs, readOkJson);
       try {
         const { response, body } = await read({ headers }).catch((err: unknown) => {
-          if (!(err instanceof RedirectRefused)) throw err;
+          if (!(err instanceof RedirectRefused) || !(READ_TOKEN_HEADER in headers)) throw err;
           warnOnce(
             `[xochi-client] status read for ${intentId} was redirected; polling it without the read token`,
           );
-          return read({ headers: {}, redirect: "manual" });
+          return read({ headers: {} });
         });
         if (!response.ok) {
           // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
           // order reading "settling forever" and is the signal that was missing
           // when diagnosing a stuck order (#269).
           if (!warnedStatusIds.has(intentId)) {
-            if (warnedStatusIds.size > 500) warnedStatusIds.clear();
+            if (warnedStatusIds.size > MAX_WARNED_IDS) warnedStatusIds.clear();
             warnedStatusIds.add(intentId);
             log(
               "warn",

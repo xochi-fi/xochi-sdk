@@ -16,6 +16,7 @@ import {
   ApiError,
   DEFAULT_RETRY,
   MAX_RETRY_WAIT_SEC,
+  RedirectRefused,
   createXochiClient,
   parseRetryAfterMs,
   resolveRetryAfterSeconds,
@@ -897,19 +898,23 @@ describe("intent read capability", () => {
       const chunk = new TextEncoder().encode("x".repeat(1024));
       let pulled = 0;
       let cancelled = false;
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          pulled += chunk.byteLength;
-          if (pulled > 1024 * 1024) controller.error(new Error("read past the cap"));
-          else controller.enqueue(chunk);
+      // No read-ahead of its own, so `pulled` is exactly what the transport took.
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulled += chunk.byteLength;
+            if (pulled > 1024 * 1024) controller.error(new Error("read past the cap"));
+            else controller.enqueue(chunk);
+          },
+          cancel() {
+            cancelled = true;
+          },
         },
-        cancel() {
-          cancelled = true;
-        },
-      });
+        { highWaterMark: 0 },
+      );
       const { c } = client(() => new Response(body, { status }), options);
       await call(c);
-      expect(pulled, path).toBeLessThanOrEqual(16 * 1024);
+      expect(pulled, path).toBe(8 * 1024);
       expect(cancelled, path).toBe(true);
     }
   });
@@ -1123,8 +1128,225 @@ describe("intent read capability", () => {
   });
 });
 
+describe("a real read token through the real error path", () => {
+  // 32 random bytes, as the server issues them; its 15 + 15 + 13 pieces carry `-` or `_`.
+  const TOKEN = "wkuL6jD-xX66m-OK-fSMVhvMEe91_h9gdfCRGtR9sSI";
+  const bytes = [...Buffer.from(TOKEN, "base64url")].map((b) => b.toString(16).padStart(2, "0"));
+  const charsHex = [...TOKEN].map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0"));
+  const pieces = [TOKEN.slice(0, 15), TOKEN.slice(15, 30), TOKEN.slice(30)];
+  const each = (encode: (code: string) => string) =>
+    [...TOKEN].map((ch) => encode(ch.charCodeAt(0).toString(16))).join("");
+
+  /**
+   * A 16-character window of the token in any of its forms, read with every
+   * separator ignored: what a reader could rejoin from `text`.
+   */
+  const rejoinable = (text: string): string | undefined => {
+    const keep = (alphabet: RegExp, s: string) => [...s].filter((c) => alphabet.test(c)).join("");
+    const hexText = keep(/[0-9a-f]/, text.toLowerCase().replace(/0x(?=[0-9a-f])/g, ""));
+    for (const [form, haystack] of [
+      [TOKEN, keep(/[A-Za-z0-9_-]/, text)],
+      [Buffer.from(TOKEN, "base64url").toString("base64"), keep(/[A-Za-z0-9+/]/, text)],
+      [bytes.join(""), hexText],
+      [charsHex.join(""), hexText],
+    ]) {
+      for (let i = 0; i + 16 <= form.length; i++) {
+        if (haystack.includes(form.slice(i, i + 16))) return form.slice(i, i + 16);
+      }
+    }
+    return undefined;
+  };
+
+  /** A client whose log keeps every argument, as an injected logger receives them. */
+  const loggingClient = (
+    respond: (call: number) => Response,
+    options: Partial<XochiClientOptions> = {},
+  ) => {
+    const logged: unknown[] = [];
+    const c = createXochiClient({
+      baseUrl: "https://api.example.test",
+      fetch: async () => respond(logged.length),
+      log: (...args) => logged.push(args),
+      retry: { baseDelayMs: 0 },
+      ...options,
+    });
+    return { c, logged };
+  };
+
+  const splits: Record<string, string> = {
+    "15 + 15 + 13, spaces": pieces.join(" "),
+    "15 + 15 + 13, dots": pieces.join("."),
+    "no-break spaces": pieces.join("\u00a0"),
+    "line separators": pieces.join("\u2028"),
+    "combining marks": pieces.join("\u0301"),
+    "wrapped at 40 columns": `${TOKEN.slice(0, 40)}\n${TOKEN.slice(40)}`,
+    "zero-padded numeric references": each((hex) => `&#${"0".repeat(9)}${parseInt(hex, 16)};`),
+    "\\xNN escapes": each((hex) => `\\x${hex}`),
+    "\\u{NN} escapes": each((hex) => `\\u{${hex}}`),
+  };
+
+  it("redacts the served token in every encoding and split, in the message and every log line", async () => {
+    const forms: Record<string, string> = {
+      ...splits,
+      "hex of its bytes, 0x": `0x${bytes.join("")}`,
+      "hex of its bytes, upper case": bytes.join("").toUpperCase(),
+      "hex of its bytes, colon separated": bytes.join(":"),
+      "hex of its bytes, one 0x per byte": bytes.map((b) => `0x${b}`).join(", "),
+      "hex of its characters, spaced, upper case": charsHex.join(" ").toUpperCase(),
+      "standard base64, padded": Buffer.from(TOKEN, "base64url").toString("base64"),
+    };
+    for (const [shape, echo] of Object.entries(forms)) {
+      const body = JSON.stringify({
+        success: false,
+        intent_id: "intent-1",
+        status: "executing",
+        error: `upstream echo ${echo} end`,
+        read_token: TOKEN,
+      });
+      const { c, logged } = loggingClient(() => new Response(body, { status: 502 }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.code, shape).toBe(502);
+      expect(rejoinable(err.message), shape).toBeUndefined();
+      expect(rejoinable(JSON.stringify(logged)), shape).toBeUndefined();
+      expect(err.message, shape).toContain("upstream echo");
+      expect(takeApiErrorReadToken(err), shape).toBe(TOKEN);
+    }
+  });
+
+  it("redacts a split token no read-token key names, on every retry's log line", async () => {
+    for (const [shape, echo] of Object.entries(splits)) {
+      const { c, logged } = loggingClient(
+        () => new Response(`<pre>upstream rejected ${echo} for intent-1</pre>`, { status: 502 }),
+      );
+      const err = (await rejection(c.getQuote(req))) as ApiError;
+      expect(err.code, shape).toBe(502);
+      expect(logged.length, shape).toBe(DEFAULT_RETRY.maxAttempts);
+      expect(rejoinable(err.message), shape).toBeUndefined();
+      expect(rejoinable(JSON.stringify(logged)), shape).toBeUndefined();
+      for (const piece of pieces) expect(err.message, shape).not.toContain(piece);
+      expect(err.message, shape).toContain("upstream rejected");
+    }
+  });
+
+  it("keeps text that only looks like markup", async () => {
+    const { c } = loggingClient(
+      () => new Response("min amount < 5 USDC, got > 3 <b>USDC</b>", { status: 400 }),
+    );
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.message).toBe("HTTP 400: min amount < 5 USDC, got > 3 USDC");
+  });
+
+  it("takes the token of an error body longer than the read cap, for the executed intent only", async () => {
+    const long = (fields: string) =>
+      new Response(`{${fields},"error":"${"x".repeat(9000)}"}`, { status: 502 });
+    const id = (intent: string) => `"success":false,"intent_id":"${intent}"`;
+    const token = `"read_token":"${TOKEN}"`;
+    const cases: [string, string, string | undefined][] = [
+      ["token first", `${token},${id("intent-1")}`, TOKEN],
+      ["token after the id", `${id("intent-1")},${token}`, TOKEN],
+      ["another intent", `${id("intent-2")},${token}`, undefined],
+      ["two intent ids", `${id("intent-1")},"intent_id":"intent-2",${token}`, undefined],
+      ["two tokens", `${id("intent-1")},${token},${token}`, undefined],
+      ["a short token", `${id("intent-1")},"read_token":"${TOKEN.slice(1)}"`, undefined],
+    ];
+    for (const [shape, fields, expected] of cases) {
+      const { c, logged } = loggingClient(() => long(fields));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.code, shape).toBe(502);
+      expect(takeApiErrorReadToken(err), shape).toBe(expected);
+      expect(err.message, shape).not.toContain(TOKEN.slice(1, 17));
+      expect(JSON.stringify(logged), shape).not.toContain(TOKEN.slice(1, 17));
+    }
+    // A token cut by the read cap is not a token.
+    const cut = `{${id("intent-1")},"pad":"${"x".repeat(8130)}",${token}}`;
+    const { c } = loggingClient(() => new Response(cut, { status: 502 }));
+    expect(takeApiErrorReadToken(await rejection(c.execute(execRequest)))).toBeUndefined();
+  });
+
+  it("stops reading an error body once the cap is full, without waiting for the rest", async () => {
+    // Exactly the cap, then a connection that never sends another byte.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("x".repeat(8 * 1024)));
+      },
+    });
+    const { c } = loggingClient(() => new Response(body, { status: 502 }), {
+      timeouts: { executeTimeoutMs: 5_000 },
+    });
+    const started = Date.now();
+    const err = await rejection(c.execute(execRequest));
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe(502);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("follows a browser's opaque redirect without the token, accepting only its own origin", async () => {
+    // A browser answers every `redirect: "manual"` redirect with this shape.
+    const opaque = () => {
+      const res = new Response(null, { status: 302 });
+      Object.defineProperty(res, "type", { value: "opaqueredirect" });
+      Object.defineProperty(res, "status", { value: 0 });
+      return res;
+    };
+    const followedTo = (url: string) => {
+      const res = json({ intent_id: "xi_1", status: "settling", legs_withheld: true });
+      Object.defineProperty(res, "url", { value: url });
+      Object.defineProperty(res, "redirected", { value: true });
+      return res;
+    };
+    for (const [target, expected] of [
+      ["https://api.example.test/v2/intent/xi_1/status", "settling"],
+      ["https://evil.test/api/intent/xi_1/status", null],
+    ] as const) {
+      const { c, calls } = client((_call, r) =>
+        r.init.redirect === "manual" ? opaque() : followedTo(target),
+      );
+      const read = await c.getIntentStatus("xi_1", { readToken: TOKEN });
+      expect(read && "status" in read ? read.status : read, target).toBe(expected);
+      expect(
+        calls.map((r) => [r.init.redirect, new Headers(r.init.headers).get("X-Xochi-Read-Token")]),
+        target,
+      ).toEqual([
+        ["manual", TOKEN],
+        [undefined, null],
+      ]);
+      expect(await rejection(c.getIntent("xi_1", { readToken: TOKEN }))).toBeInstanceOf(
+        RedirectRefused,
+      );
+    }
+  });
+
+  it("pins a token-less read to the origin too", async () => {
+    const foreign = () => {
+      const res = json({ id: "xi_1", intent_id: "xi_1", status: "completed", terminal: true });
+      Object.defineProperty(res, "url", { value: "https://evil.test/api/intent/xi_1/status" });
+      Object.defineProperty(res, "redirected", { value: true });
+      return res;
+    };
+    const { c, calls } = client(foreign);
+    expect(await c.getIntentStatus("xi_1")).toBeNull();
+    expect(await rejection(c.getIntent("xi_1"))).toBeInstanceOf(RedirectRefused);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) expect(call.init.redirect).toBeUndefined();
+  });
+
+  it("decodes a withheld record's status rather than casting it", async () => {
+    const { c } = client((call) =>
+      json({
+        id: "xi_1",
+        status: call <= 2 ? "fill_failed" : "some_future_state",
+        legs_withheld: true,
+      }),
+    );
+    expect(await c.getIntent("xi_1")).toMatchObject({ status: "failed" });
+    expect(await c.getIntent("xi_1")).not.toHaveProperty("unmapped");
+    expect(await c.getIntent("xi_1")).toMatchObject({ status: "executing", unmapped: true });
+  });
+});
+
 describe("a read token never leaves the origin (real loopback servers)", () => {
   const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+  const WALLET_A = "0x1111111111111111111111111111111111111111";
 
   /** A real HTTP server on 127.0.0.1 recording each request's path and headers. */
   async function loopback(handler: (req: IncomingMessage, res: ServerResponse) => void) {
@@ -1190,19 +1412,29 @@ describe("a read token never leaves the origin (real loopback servers)", () => {
       try {
         const { c, logged } = recordingClient(origin.url, fetch);
         const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
-        expect(err.message).toMatch(/redirect/);
-        // The anonymous re-read is refused too: a transient failure, so the poll runs on.
+        expect(err).toBeInstanceOf(RedirectRefused);
+        // The anonymous re-read follows to the target and is refused there: a
+        // transient failure, so the poll runs on.
         for (let poll = 0; poll < 2; poll++) {
           expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
         }
+        // A read that never carried the token is pinned the same way.
+        expect(await c.getIntentStatus("xi_1")).toBeNull();
+        expect(await rejection(c.getIntent("xi_1"))).toBeInstanceOf(RedirectRefused);
+        expect(await rejection(c.getIntentHistory(WALLET_A))).toBeInstanceOf(RedirectRefused);
         expect(origin.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([
           READ_TOKEN,
           READ_TOKEN,
           undefined,
           READ_TOKEN,
           undefined,
+          undefined,
+          undefined,
+          undefined,
         ]);
-        expect(target.seen).toHaveLength(0);
+        // The target only ever saw token-less reads, and no answer of it was kept.
+        expect(target.seen).toHaveLength(5);
+        for (const r of target.seen) expect(r.headers["x-xochi-read-token"]).toBeUndefined();
         expect(logged.filter((l) => /redirected/.test(l))).toHaveLength(1);
         expect(logged.join("\n")).not.toContain(READ_TOKEN);
       } finally {
@@ -1239,7 +1471,12 @@ describe("a read token never leaves the origin (real loopback servers)", () => {
       const owner = await c.getIntentStatus("xi_1", { readToken: READ_TOKEN });
       expect(owner).toMatchObject({ status: "settling", settlementTxHash: "0xfill" });
       expect(owner).not.toHaveProperty("legsWithheld");
-      expect(await c.getIntentStatus("xi_2", { readToken: READ_TOKEN })).toBeNull();
+      // The second hop refuses the token read; the anonymous re-read follows
+      // both hops natively (same origin) and gets the status-only view.
+      expect(await c.getIntentStatus("xi_2", { readToken: READ_TOKEN })).toMatchObject({
+        status: "settling",
+        legsWithheld: true,
+      });
       expect(api.seen.map((r) => [r.url, r.headers["x-xochi-read-token"]])).toEqual([
         ["/api/intent/xi_1/status", READ_TOKEN],
         ["/v2/intent/xi_1/status", READ_TOKEN],
@@ -1247,6 +1484,7 @@ describe("a read token never leaves the origin (real loopback servers)", () => {
         ["/hop/xi_2", READ_TOKEN],
         ["/api/intent/xi_2/status", undefined],
         ["/hop/xi_2", undefined],
+        ["/v2/intent/xi_2/status", undefined],
       ]);
     } finally {
       await api.close();
