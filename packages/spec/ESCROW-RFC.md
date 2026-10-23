@@ -522,15 +522,24 @@ never appear in origin calldata, events or escrow state (C2).
 
 **Recipient.**
 
+- The **recipient capability** is owner-bound: a request authenticated as the
+  order's owner, the wallet that signed the `XochiIntent` (`SPEC.md` §2.1),
+  by that wallet's own signature over the request or by a SIWE (EIP-4361)
+  session for that wallet. The recipient's **authenticated channel** is
+  delivery to that owner inside such a session. A bearer intent read token
+  (such as the `X-Xochi-Read-Token` `@xochi/client` sends) never qualifies:
+  whoever holds it, an embedding host included, can present it, so it is
+  read-only and never authorizes a hold, an acknowledgement or withdrawing
+  either.
 - Recipient acknowledgement is a **completion** predicate: it closes the
   order's status and MUST NOT release, advance, or stand in for inclusion.
 - A recipient `not_received` assertion holds release for that `orderId`. It
-  is posted through the same authenticated recipient capability as
+  is posted through the recipient capability (above), as is
   acknowledgement; an unauthenticated assertion is ignored. Resolution is
   evidence, never time. The hold lifts when (a) the recipient acknowledges or
   withdraws, or (b) an operator records the venue's own inclusion record for
   the recomputed note hash, the record that the L2 tx hash and block were
-  forwarded to the recipient's authenticated channel (owner-bound, never a
+  forwarded to the recipient's authenticated channel (above; never a
   public status field such as `receiving_tx_hash` on an intent-id public
   read), and the recipient's PXE observation if offered. The recipient cannot
   veto (b): declining to sync a delivered note is not non-receipt. Escalation
@@ -761,7 +770,7 @@ one for a window it chose.
 
 The solver's obligation starts when it SENDS the acceptance, not when the venue
 acknowledges it, and the venue enforces an acceptance window: a `:winner` with
-no verified acceptance by `issued_at + acceptance window` is abandoned to a
+no verified acceptance by its `acceptBy` (`SOLVER-RFC.md` §5.3) is abandoned to a
 `:backstop` FillAuth for the same `fillId` (at most one fill can land),
 except on a shielded leg, which gets no backstop and refunds at
 `refundableAt` (§5.1 MUST NOT, §6). The
@@ -1117,22 +1126,11 @@ today and a `@xochi/spec` MAJOR plus a redeploy after M6.2 (§10, §11.1).
   equal the recomputed `orderId`. A binding missing either throws. No
   preimage, digest or vector changes.
 - `0.5.0-draft` (docs only, no version bump; this draft's policy is that
-  `[PROPOSED]` text versions with its wire landing): §5 adds proof tier 1s
-  (`optimistic_disclosed` / `aztec_note_preimage`) and §5.1's release rule,
-  with the payload bound to the approved `NetworkIdentity` digest (registry
-  partitioned by it, written only after every other check), a fill tag from
-  `fillSalt` on a `FillTag` instance pinned by address, every disclosure
-  classed verified / refused on content / venue outage by `holdDeadline`, a
-  bounded `claimWindow` floor (including `T_dispute`) and `holdDeadline` so
-  release and the permissionless `refund` stay exclusive, and no `:backstop`
-  for a shielded leg. The legend gains `[BUILT, UNDEPLOYED]` (used by §5,
-  §11.0 and Appendix A for the tier-0 attesters, `RiddlerEscrow` /
-  `RiddlerFiller` and `SolverBond`). §6 is rewritten: both slashes pay the
-  affected user at deploy-default rates; the tier 1s no-show is "no
-  disclosure received by `fillDeadline + FILL_DEADLINE_GRACE`", or one refused
-  on content, never a pending or venue-outage verification; release and
-  slash are exclusive per `orderId` through a compare-and-set outcome record.
-  No preimage, digest or vector changes.
+  `[PROPOSED]` text versions with its wire landing): proof tier 1s
+  (`optimistic_disclosed` / `aztec_note_preimage`) for shielded-Aztec legs,
+  normative in §5.1, with its slash, withdrawal and outcome-record rules in
+  §6; the legend gains `[BUILT, UNDEPLOYED]`. No preimage, digest or vector
+  changes.
 
 ---
 
