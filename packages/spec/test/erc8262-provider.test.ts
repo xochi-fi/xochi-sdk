@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { concat, keccak256 } from "ethers";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../erc8262");
 const load = (file: string): unknown => JSON.parse(fs.readFileSync(path.join(DIR, file), "utf8"));
@@ -52,17 +53,28 @@ type Evidence = {
   expiresAt: number;
   artifact: Artifact;
 };
-type Proof = { timestamp: number; attestationExpiresAt: number; attestationRevoked: boolean } & (
-  | {
-      proofType: 4;
-      submitter: string;
-      providerId: string;
-      credentialType: number;
-      credentialRoot: string;
-    }
-  | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
-  | { proofType: 9; submitter: string; signerPubkeyHashes: string[] }
-);
+// The verified proof (SPEC.md section 10.5, steps 30-31): the publicInputs words it was
+// submitted with and the Oracle's record of it.
+type Proof = {
+  publicInputs: string[];
+  attestation: {
+    subject: string;
+    proofType: number;
+    publicInputsHash: string;
+    expiresAt: number;
+    revoked: boolean;
+  };
+};
+// What the consumer requires the proof to prove: null for type 4, else per proof type.
+type Statement = null | {
+  jurisdictionIds?: number[];
+  configHash?: string;
+  riskProofType?: number;
+  direction?: number;
+  boundLower?: number;
+  boundUpper?: number;
+  minThresholdM?: number;
+};
 type RegistryEntry = {
   attestorProviderId: string;
   denied: boolean;
@@ -71,7 +83,7 @@ type RegistryEntry = {
   signerPubkeyHashes: string[];
 };
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
-type Fetch = { host: string; status: number };
+type Fetch = { host: string; status: number | null };
 type Consumer = {
   chainId: number;
   oracleAddress: string;
@@ -89,7 +101,7 @@ type Attempt = {
   announcedEvidenceId: string;
   proof: Proof;
 };
-type Context = Consumer & Attempt;
+type Context = Consumer & Attempt & { statement: Statement };
 type DocRef = string | { schemaCase: string };
 type Observed = { trustDomainId: string; evidenceId: string };
 // What one evaluation writes to the observation store (SPEC.md section 10.7).
@@ -120,7 +132,7 @@ type Vectors = {
     name: string;
     threshold: number;
     context: Consumer;
-    requirement: { claimType: string; proofType: number };
+    requirement: { claimType: string; proofType: number; statement: Statement };
     members: ({ discovery: string; evidence: string } & Attempt)[];
     expected: { attestors: string[]; count: number; satisfied: boolean };
   }[];
@@ -169,6 +181,18 @@ function immutableFields(ev: Evidence): string {
 
 const hasDuplicates = (values: string[]): boolean => new Set(values).size !== values.length;
 const material = (key: Key): string | undefined => key.credentialSigner ?? key.signerPubkeyHash;
+// SPEC.md section 10.5 layout table: per proof type, the number of publicInputs words and
+// where the submitter, the timestamp and the signer slots sit. Steps 30-31 read the
+// remaining positions by the same table.
+const LAYOUTS: Record<
+  number,
+  { length: number; submitter: number; timestamp: number; signers: number[] }
+> = {
+  4: { length: 6, submitter: 5, timestamp: 4, signers: [] },
+  7: { length: 9, submitter: 8, timestamp: 3, signers: [5] },
+  8: { length: 12, submitter: 11, timestamp: 7, signers: [8] },
+  9: { length: 14, submitter: 13, timestamp: 3, signers: [6, 7, 8, 9, 10] },
+};
 
 /**
  * What a step reads. Each derived value is computed on demand, so a step reads only what
@@ -361,21 +385,49 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   [
     "proof_mismatch",
     (f) => {
-      const { proof } = f.ctx;
+      const { publicInputs: words, attestation } = f.ctx.proof;
       const art = f.ev.artifact;
-      // The evidence's attestor and artifact, or the keyId key's signer hash.
-      if (proof.proofType !== art.proofType || proof.submitter !== f.ev.subject) return true;
-      if (proof.proofType === 4 && art.proofType === 4) {
+      const layout = LAYOUTS[art.proofType]!;
+      // Provenance: the words are the ones the Oracle verified, for this subject and type.
+      if (
+        attestation.proofType !== art.proofType ||
+        attestation.subject !== f.ev.subject ||
+        words.length !== layout.length ||
+        keccak256(concat(words)) !== attestation.publicInputsHash
+      ) {
+        return true;
+      }
+      const at = (i: number): bigint => BigInt(words[i]!);
+      const is = (i: number, value: number | string | undefined): boolean =>
+        value !== undefined && at(i) === BigInt(value);
+      // Identity: the subject, then the attestor and artifact, or the keyId key's signer hash.
+      if (!is(layout.submitter, f.ev.subject)) return true;
+      if (art.proofType === 4) {
         return (
-          proof.providerId !== f.ev.deployment.attestorProviderId ||
-          proof.credentialType !== art.credentialType ||
-          proof.credentialRoot !== art.credentialRoot
+          !is(0, f.ev.deployment.attestorProviderId) ||
+          !is(1, art.credentialType) ||
+          !is(3, art.credentialRoot)
         );
       }
       const hash = f.key()?.signerPubkeyHash;
-      return proof.proofType === 9
-        ? hash === undefined || !proof.signerPubkeyHashes.includes(hash)
-        : proof.proofType !== 4 && proof.signerPubkeyHash !== hash;
+      if (hash === undefined || !layout.signers.some((i) => words[i] === hash)) return true;
+      // Statement: what the consumer requires the proof to prove.
+      const st = f.ctx.statement;
+      if (st === null) return true;
+      if (art.proofType === 8) {
+        return (
+          !is(0, st.riskProofType) ||
+          !is(1, st.direction) ||
+          !is(2, st.boundLower) ||
+          !is(3, st.boundUpper) ||
+          !is(5, st.configHash)
+        );
+      }
+      const jurisdictionOk = st.jurisdictionIds?.some((j) => is(0, j)) === true;
+      const thresholdOk =
+        art.proofType !== 9 ||
+        (st.minThresholdM !== undefined && at(5) >= BigInt(st.minThresholdM));
+      return !jurisdictionOk || !is(2, st.configHash) || !thresholdOk;
     },
   ],
   [
@@ -383,12 +435,13 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       // The Oracle attestation is still live, and the proof was made while this evidence was
       // valid (its timestamp may trail issuedAt by the skew: prover vs provider clocks).
-      const { proof } = f.ctx;
+      const { publicInputs: words, attestation } = f.ctx.proof;
+      const timestamp = Number(BigInt(words[LAYOUTS[f.ev.artifact.proofType]!.timestamp]!));
       return (
-        proof.attestationRevoked ||
-        f.ctx.now > proof.attestationExpiresAt ||
-        proof.timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
-        proof.timestamp >= f.ev.expiresAt
+        attestation.revoked ||
+        f.ctx.now > attestation.expiresAt ||
+        timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
+        timestamp >= f.ev.expiresAt
       );
     },
   ],
@@ -585,8 +638,10 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
       ) {
         continue;
       }
-      // Every member runs under the case's consumer context, observation store included.
-      if (evaluate(doc(V.discovery, discovery), ev, { ...c.context, ...attempt }) === null) {
+      // Every member runs under the case's consumer context, observation store included, and
+      // its proof must prove the requirement's statement.
+      const ctx = { ...c.context, ...attempt, statement: c.requirement.statement };
+      if (evaluate(doc(V.discovery, discovery), ev, ctx) === null) {
         attestors.add(ev.deployment.attestorProviderId);
       }
     }

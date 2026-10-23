@@ -81,7 +81,7 @@
       "minItems": 1,
       "maxItems": 32,
       "items": {
-        "description": "A signing key of this trust domain. Rotation: publish the successor with notBefore at the rotation instant, then set the predecessor's notAfter and update the Oracle (setCredentialSigner; registerSignerPubkeyHash plus revokeSignerPubkeyHash of the predecessor) in the same change. The Oracle registry is authoritative over this list. A key never issues before the Oracle holds it.",
+        "description": "A signing key of this trust domain. The Oracle registry is authoritative over this list, and a key never issues before the Oracle holds it. Rotation (SPEC.md section 10.7): announce the predecessor's notAfter ahead and switch the Oracle at notAfter, not earlier. A credential-root successor's notBefore is that instant (setCredentialSigner then); a signed-signals successor's hash is registered first, so its notBefore may precede the predecessor's notAfter (an overlap in which evidence is re-issued), and the predecessor's hash is revoked at its notAfter.",
         "oneOf": [
           {
             "type": "object",
@@ -115,7 +115,7 @@
                 "maximum": 4294967295
               },
               "notAfter": {
-                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement: it stays acceptable until its own expiresAt while the Oracle still holds its credentialRoot valid (registered, unrevoked and inside the Oracle's 48-hour CREDENTIAL_ROOT_TTL from registration). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation, announced at least revocationCheckSeconds plus cache propagation ahead, and the Oracle is switched at notAfter, not earlier (SPEC.md section 10.7, Rotation). Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement (type 4 evidence lives only while the Oracle holds its root valid, 48 h from registration). A retired signed-signals key's evidence is refused from notAfter on: proof types 7-9 are signed per proof.",
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 4294967295
@@ -149,7 +149,7 @@
                 "const": "signed-signals"
               },
               "signerPubkeyHash": {
-                "description": "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId). Never the all-zero hash, which marks an inactive signer slot.",
+                "description": "The hash the Oracle holds registered to the attestor (signerProvider(hash) == attestorProviderId), from before notBefore until notAfter. Never the all-zero hash, which marks an inactive signer slot.",
                 "type": "string",
                 "pattern": "^0x[0-9a-f]{64}$",
                 "not": {
@@ -163,7 +163,7 @@
                 "maximum": 4294967295
               },
               "notAfter": {
-                "description": "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement: it stays acceptable until its own expiresAt while the Oracle still holds its credentialRoot valid (registered, unrevoked and inside the Oracle's 48-hour CREDENTIAL_ROOT_TTL from registration). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation, announced at least revocationCheckSeconds plus cache propagation ahead, and the Oracle is switched at notAfter, not earlier (SPEC.md section 10.7, Rotation). Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement (type 4 evidence lives only while the Oracle holds its root valid, 48 h from registration). A retired signed-signals key's evidence is refused from notAfter on: proof types 7-9 are signed per proof.",
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 4294967295

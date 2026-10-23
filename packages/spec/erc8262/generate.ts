@@ -19,6 +19,7 @@
 import fs, { realpathSync } from "fs";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
+import { concat, keccak256 } from "ethers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_BASE = "https://riddler.axol.io/spec/erc8262";
@@ -29,7 +30,9 @@ export const PROTOCOL_VERSION = 1;
 // Protocol limits (SPEC.md section 10), shipped in vectors.json `limits` so a runner reads
 // them rather than retyping them.
 const MAX_EVIDENCE_LIFETIME_SECONDS = 365 * 86400; // expiresAt - issuedAt
-const CLOCK_SKEW_SECONDS = 60; // issuedAt and discovery updatedAt may lead the clock by this
+// Tolerated disagreement between the consumer's, provider's and prover's clocks: only where a
+// check would refuse because another party's instant is ahead (steps 11, 22, 28, 31).
+const CLOCK_SKEW_SECONDS = 60;
 const MAX_LIST_ITEMS = 32; // deployments, keys, sources, claims per source
 const MAX_DISCOVERY_BYTES = 65536;
 const MAX_EVIDENCE_BYTES = 8192;
@@ -38,6 +41,10 @@ const MIN_REVOCATION_CHECK_SECONDS = 60;
 const MAX_REVOCATION_CHECK_SECONDS = 86400;
 const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
 const MAX_EVIDENCE_ID_LENGTH = 128;
+// Least per-trust-domain bound on revocation records: an announcer must know this many
+// revoked ids the provider issued (a 410 only for issued ids) to exhaust it, and at about
+// 200 bytes a record it costs a consumer some 2 MB per trust domain.
+const MIN_REVOCATION_RECORDS_PER_TRUST_DOMAIN = 10000;
 // Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
 // fails the schema instead of becoming a permanent "newest updatedAt", and every runner
 // language compares the values exactly.
@@ -138,7 +145,7 @@ const PROTOCOL_FIELDS = {
 const KEY_WINDOW = {
   notBefore: d("Unix seconds; first instant the key may issue.", UNIX),
   notAfter: d(
-    "Unix seconds, exclusive; set when the key is retired by rotation. Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement: it stays acceptable until its own expiresAt while the Oracle still holds its credentialRoot valid (registered, unrevoked and inside the Oracle's 48-hour CREDENTIAL_ROOT_TTL from registration). A retired signed-signals key ends at notAfter: proof types 7-9 are signed per proof, so evidence naming it is refused from then on and the provider revokes its hash on-chain in the same change.",
+    "Unix seconds, exclusive; set when the key is retired by rotation, announced at least revocationCheckSeconds plus cache propagation ahead, and the Oracle is switched at notAfter, not earlier (SPEC.md section 10.7, Rotation). Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement (type 4 evidence lives only while the Oracle holds its root valid, 48 h from registration). A retired signed-signals key's evidence is refused from notAfter on: proof types 7-9 are signed per proof.",
     UNIX,
   ),
   revokedAt: d(
@@ -149,7 +156,7 @@ const KEY_WINDOW = {
 const KEY_OPTIONAL = ["notAfter", "revokedAt"];
 
 const KEY = d(
-  "A signing key of this trust domain. Rotation: publish the successor with notBefore at the rotation instant, then set the predecessor's notAfter and update the Oracle (setCredentialSigner; registerSignerPubkeyHash plus revokeSignerPubkeyHash of the predecessor) in the same change. The Oracle registry is authoritative over this list. A key never issues before the Oracle holds it.",
+  "A signing key of this trust domain. The Oracle registry is authoritative over this list, and a key never issues before the Oracle holds it. Rotation (SPEC.md section 10.7): announce the predecessor's notAfter ahead and switch the Oracle at notAfter, not earlier. A credential-root successor's notBefore is that instant (setCredentialSigner then); a signed-signals successor's hash is registered first, so its notBefore may precede the predecessor's notAfter (an overlap in which evidence is re-issued), and the predecessor's hash is revoked at its notAfter.",
   {
     oneOf: [
       obj(
@@ -173,7 +180,7 @@ const KEY = d(
             const: "signed-signals",
           }),
           signerPubkeyHash: d(
-            "The hash registered on the Oracle (signerProvider(hash) == attestorProviderId). Never the all-zero hash, which marks an inactive signer slot.",
+            "The hash the Oracle holds registered to the attestor (signerProvider(hash) == attestorProviderId), from before notBefore until notAfter. Never the all-zero hash, which marks an inactive signer slot.",
             { ...HEX32, not: { const: ZERO_HASH } },
           ),
           ...KEY_WINDOW,
@@ -260,7 +267,7 @@ const CREDENTIAL_ARTIFACT = obj({
     maximum: 4,
   }),
   credentialRoot: d(
-    "The published root containing the subject's credential leaf. Valid only while the Oracle reports it registered to attestorProviderId, not revoked (revokeCredentialRoot is on-chain revocation) and inside its 48-hour CREDENTIAL_ROOT_TTL.",
+    "The published root containing the subject's credential leaf. Valid only while the Oracle reports it registered to attestorProviderId, not revoked (revokeCredentialRoot is on-chain revocation) and inside its 48-hour CREDENTIAL_ROOT_TTL from registration, so a provider sets expiresAt no later than the root's registration plus 48 h (SPEC.md section 10.7).",
     HEX32,
   ),
 });
@@ -270,7 +277,7 @@ const evidenceSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: `${SCHEMA_BASE}/provider-evidence.schema.json`,
   title: "ERC-8262 provider evidence",
-  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified, its public inputs match this document (SPEC.md section 10.5, proof_mismatch) and it is current (proof_stale). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
+  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified, is the one the Oracle recorded, matches this document and proves the consumer's statement (SPEC.md section 10.5, proof_mismatch) and is current (proof_stale). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
   ...obj(
     {
       ...PROTOCOL_FIELDS,
@@ -284,7 +291,7 @@ const evidenceSchema = {
         },
       ),
       status: d(
-        "Revocation: `active` or `revoked`, monotonic. Once a consumer records `revoked` (or a 410) for (trustDomainId, evidenceId), fetched from the allowlisted host after SPEC.md section 10.5 steps 1-3, it MUST NOT accept that evidenceId under that trust domain again, whatever a later response says. A revoked body from a relay, or for another id than announced, is not recorded. Expiry is computed from expiresAt, never signalled here.",
+        "Revocation: `active` or `revoked`, monotonic. Once a consumer records `revoked` (or a 410) for (fetch host, announced evidenceId) after SPEC.md section 10.5 steps 1-3, never keyed by this body's fields, it MUST NOT accept that evidenceId from that host again, whatever a later response says. A revoked body from a relay, or for another id than announced, is not recorded. Expiry is computed from expiresAt, never signalled here.",
         { enum: ["active", "revoked"] },
       ),
       revokedAt: d("Unix seconds; present iff status is `revoked`.", UNIX),
@@ -310,7 +317,7 @@ const evidenceSchema = {
         UNIX,
       ),
       artifact: d(
-        `What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on MUST match it: the same proofType and submitter == subject; type 4 provider_id == deployment.attestorProviderId, credential_type == credentialType and credential_root == credentialRoot; types 7/8 signer_pubkey_hash, and for type 9 one of the active signer slots, == the keyId key's signerPubkeyHash. Its timestamp lies in [issuedAt - ${CLOCK_SKEW_SECONDS} s, expiresAt), and its Oracle attestation is unrevoked and unexpired.`,
+        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on is the one the Oracle verified, matches this artifact, keyId and subject, proves the consumer's statement and is current: SPEC.md section 10.5, steps 30-31.",
         { oneOf: [CREDENTIAL_ARTIFACT, SIGNED_ARTIFACT] },
       ),
     },
@@ -397,6 +404,20 @@ const NATIVE_SIGNALS_HASH = "0x" + "6a".repeat(32);
 const SECOND_SIGNER = "0x976ea74026e726554db657fa54763abd0c3a0aa9";
 // Registered to no attestor: the stand-in for a proof's signer slot that matches no key.
 const UNREGISTERED_HASH = "0x" + "ee".repeat(32);
+// Attestor 12's signed-signals hash: a third provider's slot in proof type 9 proofs.
+const SECOND_SIGNALS_HASH = "0x" + "7a".repeat(32);
+// The gateway's successor signed-signals key, registered on the Oracle ahead of its notBefore.
+const GATEWAY_SIGNALS_HASH_NEXT = "0x" + "5c".repeat(32);
+// Fresh key material listed under a revoked keyId.
+const RELISTED_SIGNER = "0xa0ee7a142d267c1f36714e4a8f75612f20a79720";
+// Field-element fixtures for the signed circuits' config_hash and provider_set_hash inputs.
+const CONFIG_HASH = "0x" + "0c".repeat(32);
+const OTHER_CONFIG_HASH = "0x" + "0e".repeat(32);
+const PROVIDER_SET_HASH = "0x" + "0d".repeat(32);
+// ERC-8262 jurisdiction ids (JurisdictionConfig): 0 EU, 1 US, 4 UAE.
+const EU = 0;
+const US = 1;
+const UAE = 4;
 
 const ROOT_NATIVE_SEPOLIA_OLD = "0x" + "a0".repeat(32);
 const ROOT_NATIVE_SEPOLIA = "0x" + "a1".repeat(32);
@@ -699,6 +720,63 @@ const discovery: Record<string, Discovery> = {
         use: "credential-root",
         credentialSigner: GATEWAY_SIGNER_0,
         notBefore: T_2026,
+      },
+    ],
+  },
+  // The gateway listing the native attestor's public signer hash as its own gw-signals-2.
+  "gateway-foreign-signals-key": {
+    ...gatewayDiscovery,
+    keys: [
+      ...gatewayDiscovery.keys,
+      {
+        keyId: "gw-signals-2",
+        use: "signed-signals",
+        signerPubkeyHash: NATIVE_SIGNALS_HASH,
+        notBefore: T_ROTATE,
+      },
+    ],
+  },
+  // One second older than the gateway document a consumer has recorded.
+  "gateway-rolled-back-one-second": { ...gatewayDiscovery, updatedAt: T_ROTATE - 1 },
+  // Two Oracles on one chain with different attestors; the evidence's Oracle is listed second.
+  "native-two-oracles-two-attestors": {
+    ...nativeDiscovery,
+    deployments: [
+      { chainId: BASE_SEPOLIA, oracleAddress: ORACLE_BASE_SEPOLIA_NEXT, attestorProviderId: "9" },
+      ...nativeDiscovery.deployments,
+    ],
+  },
+  // A newer gateway document listing the revoked keyId gw-root-0 again, with fresh material
+  // and no revokedAt: revocation memory is by keyId as well as by material.
+  "gateway-revoked-key-id-relisted": {
+    ...gatewayDiscovery,
+    updatedAt: T_ROTATE + DAY,
+    keys: gatewayDiscovery.keys.map((key) =>
+      key.keyId === "gw-root-0"
+        ? {
+            keyId: "gw-root-0",
+            use: "credential-root",
+            credentialSigner: RELISTED_SIGNER,
+            notBefore: T_2026,
+          }
+        : key,
+    ),
+  },
+  // A signed-signals rotation in its overlap: the successor gw-signals-2 (its hash registered
+  // on the Oracle first) issues from a day ago, and gw-signals-1 serves until its announced
+  // notAfter in 30 days.
+  "gateway-signals-overlap": {
+    ...gatewayDiscovery,
+    updatedAt: NOW - 2 * DAY,
+    keys: [
+      ...gatewayDiscovery.keys.map((key) =>
+        key.keyId === "gw-signals-1" ? { ...key, notAfter: NOW + 30 * DAY } : key,
+      ),
+      {
+        keyId: "gw-signals-2",
+        use: "signed-signals",
+        signerPubkeyHash: GATEWAY_SIGNALS_HASH_NEXT,
+        notBefore: NOW - DAY,
       },
     ],
   },
@@ -1020,6 +1098,25 @@ const evidence: Record<string, Evidence> = {
     issuedAt: NOW + CLOCK_SKEW_SECONDS + 1,
     expiresAt: NOW + CLOCK_SKEW_SECONDS + 1 + MAX_EVIDENCE_LIFETIME_SECONDS + 1,
   },
+  "gateway-sumsub-foreign-signals-key": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_foreign_sig_w1"),
+    keyId: "gw-signals-2",
+  },
+  // Issued under the successor signed-signals key inside the rotation overlap.
+  "gateway-sumsub-signed-successor": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_signed_next_w1"),
+    keyId: "gw-signals-2",
+    issuedAt: NOW - 3600,
+    expiresAt: NOW + 100 * DAY,
+  },
+  "gateway-sumsub-too-long-unknown-key": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_long_key_w1"),
+    keyId: "gw-root-9",
+    expiresAt: gatewaySumsub.issuedAt + MAX_EVIDENCE_LIFETIME_SECONDS + 1,
+  },
 };
 
 // The Oracle reads a consumer makes, per deployment and attestor: isProviderDenied (denied),
@@ -1036,31 +1133,85 @@ type RegistryEntry = {
 // The consumer's pin for its deployment: each trust domain it relies on and the Oracle
 // attestor it onboarded that trust domain as.
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
-// The host a document was fetched from and the HTTP status of that fetch.
-type Fetch = { host: string; status: number };
+// The host a document was fetched from and the HTTP status of that fetch; null when no HTTP
+// response arrived at all (a timeout, a TLS or connection failure).
+type Fetch = { host: string; status: number | null };
 // An evidence id the consumer recorded as revoked (a 410 or a revoked body), keyed like
 // every observation.
 type Observed = { trustDomainId: string; evidenceId: string };
-// The public inputs of the Oracle-verified proof the evidence feeds, as the consumer reads
-// them (SPEC.md section 10.5, proof binding): submitter as the 20-byte address in lowercase
-// hex (the low 20 bytes of the input), provider_id as a canonical decimal string,
-// credential_type and timestamp as integers, roots and signer hashes as 32-byte lowercase
-// hex. Types 7/8 carry their one signer_pubkey_hash; type 9 its active (nonzero) signer
-// slots. attestationExpiresAt / attestationRevoked are the Oracle's record of the
-// verification (its expiresAt, and isAttestationRevoked).
-type ProofTiming = { timestamp: number; attestationExpiresAt: number; attestationRevoked: boolean };
-type Proof = ProofTiming &
-  (
-    | {
-        proofType: 4;
-        submitter: string;
-        providerId: string;
-        credentialType: number;
-        credentialRoot: string;
-      }
-    | { proofType: 7 | 8; submitter: string; signerPubkeyHash: string }
-    | { proofType: 9; submitter: string; signerPubkeyHashes: string[] }
-  );
+// The statement a consumer requires the proof to prove (SPEC.md section 10.5, step 30), per
+// proof type. Type 4 has none beyond the evidence's own credentialType (null).
+type Statement7 = { jurisdictionIds: number[]; configHash: string };
+type Statement8 = {
+  riskProofType: number;
+  direction: number;
+  boundLower: number;
+  boundUpper: number;
+  configHash: string;
+};
+type Statement9 = Statement7 & { minThresholdM: number };
+type Statement = null | Statement7 | Statement8 | Statement9;
+// The Oracle-verified proof the evidence feeds, authored by its public inputs (the ERC-8262
+// circuit names, camelCased; signerPubkeyHashes are type 9's active slots) and shipped by
+// encodeProof as the 32-byte words it was submitted with plus the Oracle's record of it.
+type ProofInputs =
+  | {
+      proofType: 4;
+      submitter: string;
+      providerId: string;
+      credentialType: number;
+      credentialRoot: string;
+    }
+  | {
+      proofType: 7;
+      submitter: string;
+      signerPubkeyHash: string;
+      jurisdictionId: number;
+      configHash: string;
+    }
+  | {
+      proofType: 8;
+      submitter: string;
+      signerPubkeyHash: string;
+      riskProofType: number;
+      direction: number;
+      boundLower: number;
+      boundUpper: number;
+      configHash: string;
+    }
+  | {
+      proofType: 9;
+      submitter: string;
+      signerPubkeyHashes: string[];
+      jurisdictionId: number;
+      configHash: string;
+      thresholdM: number;
+    };
+// The proof's timestamp input and the Oracle's record of the verification. By default the
+// record agrees with the inputs; a case breaks that to model inputs the Oracle never
+// verified: another subject or proof type on record, or a publicInputsHash computed over the
+// inputs with `hashedAs` applied.
+type ProofTiming = {
+  timestamp: number;
+  attestationExpiresAt: number;
+  attestationRevoked: boolean;
+  attestationSubject?: string;
+  attestationProofType?: number;
+  hashedAs?: Record<string, unknown>;
+};
+type Proof = ProofTiming & ProofInputs;
+// What a vector ships: the publicInputs words of the submitCompliance call, and the
+// attestation getHistoricalProof(proofHash) / isAttestationRevoked(proofHash) return.
+type ShippedProof = {
+  publicInputs: string[];
+  attestation: {
+    subject: string;
+    proofType: number;
+    publicInputsHash: string;
+    expiresAt: number;
+    revoked: boolean;
+  };
+};
 // What the consumer brings to every evaluation of a deployment, including its observation
 // store; a quorum case shares it across its members.
 type Consumer = {
@@ -1081,7 +1232,9 @@ type Attempt = {
   announcedEvidenceId: string;
   proof: Proof;
 };
-type Context = Consumer & Attempt;
+// What the consumer requires of the proof: an evaluation case states it; a quorum case's
+// requirement carries it for every member.
+type Context = Consumer & Attempt & { statement: Statement };
 
 const REGISTRY_BASE_SEPOLIA: RegistryEntry[] = [
   {
@@ -1103,7 +1256,7 @@ const REGISTRY_BASE_SEPOLIA: RegistryEntry[] = [
     denied: false,
     credentialSigner: SECOND_SIGNER,
     credentialRoots: [ROOT_SECOND_SEPOLIA],
-    signerPubkeyHashes: [],
+    signerPubkeyHashes: [SECOND_SIGNALS_HASH],
   },
 ];
 const REGISTRY_BASE: RegistryEntry[] = [
@@ -1126,6 +1279,9 @@ const REGISTRY_BASE: RegistryEntry[] = [
 const registryWith = (attestor: string, over: Partial<RegistryEntry>): RegistryEntry[] =>
   REGISTRY_BASE_SEPOLIA.map((r) => (r.attestorProviderId === attestor ? { ...r, ...over } : r));
 const gatewayRegistry = (over: Partial<RegistryEntry>) => registryWith("1", over);
+// Base Sepolia reads holding no registration at all for one attestor.
+const registryWithout = (attestor: string): RegistryEntry[] =>
+  REGISTRY_BASE_SEPOLIA.filter((r) => r.attestorProviderId !== attestor);
 
 const ALLOWLIST_BASE_SEPOLIA: AllowlistEntry[] = [
   { trustDomainId: NATIVE_HOST, attestorProviderId: "7" },
@@ -1150,12 +1306,13 @@ const SEPOLIA_CONSUMER: Consumer = {
   seenRevoked: [],
 };
 
-// A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id
-// and proof to the proof that matches the evidence, so a case states only what it varies.
-// The shipped vectors carry every field.
+// A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id,
+// statement to the consumer's statement for the evidence's proof type and proof to the proof
+// that matches both, so a case states only what it varies. The shipped vectors carry every
+// field.
 type ContextInput = Consumer &
   Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
-  Partial<Pick<Attempt, "announcedEvidenceId" | "proof">>;
+  Partial<Pick<Attempt, "announcedEvidenceId" | "proof">> & { statement?: Statement };
 const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
   ...SEPOLIA_CONSUMER,
   discoveryFetch: { host, status: 200 },
@@ -1188,8 +1345,71 @@ const live = (ev: Evidence, now = NOW): ProofTiming => ({
   attestationRevoked: false,
 });
 
-// The proof whose public inputs match an evidence (section 10.5, proof_mismatch): what a consumer
-// reads from the Oracle-verified proof the evidence feeds.
+// ERC-8262 signed-circuit constants: risk_score_signed proof_type and direction.
+const RISK_THRESHOLD = 1;
+const RISK_RANGE = 2;
+const DIRECTION_GT = 1;
+const DIRECTION_LT = 2;
+
+// The consumer's statements: types 7 and 9 under EU or US rules with one weight config,
+// type 9 by at least two signers, type 8 "score < 3000" under that config.
+const STATEMENT_7: Statement7 = { jurisdictionIds: [EU, US], configHash: CONFIG_HASH };
+const STATEMENT_8: Statement8 = {
+  riskProofType: RISK_THRESHOLD,
+  direction: DIRECTION_LT,
+  boundLower: 3000,
+  boundUpper: 0,
+  configHash: CONFIG_HASH,
+};
+const STATEMENT_9: Statement9 = { ...STATEMENT_7, minThresholdM: 2 };
+const statementFor = (proofType: number | undefined): Statement =>
+  proofType === 7
+    ? STATEMENT_7
+    : proofType === 8
+      ? STATEMENT_8
+      : proofType === 9
+        ? STATEMENT_9
+        : null;
+
+// Signed proofs that prove the consumer's statement, for `submitter`, varied per case.
+const signed7 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Proof> = {}) =>
+  ({
+    proofType: 7,
+    submitter: WALLET,
+    signerPubkeyHash,
+    jurisdictionId: EU,
+    configHash: CONFIG_HASH,
+    ...timing,
+    ...over,
+  }) as Proof;
+const signed8 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Proof> = {}) =>
+  ({
+    proofType: 8,
+    submitter: WALLET,
+    signerPubkeyHash,
+    riskProofType: STATEMENT_8.riskProofType,
+    direction: STATEMENT_8.direction,
+    boundLower: STATEMENT_8.boundLower,
+    boundUpper: STATEMENT_8.boundUpper,
+    configHash: CONFIG_HASH,
+    ...timing,
+    ...over,
+  }) as Proof;
+const signed9 = (signerPubkeyHashes: string[], timing: ProofTiming, over: Partial<Proof> = {}) =>
+  ({
+    proofType: 9,
+    submitter: WALLET,
+    signerPubkeyHashes,
+    jurisdictionId: EU,
+    configHash: CONFIG_HASH,
+    thresholdM: STATEMENT_9.minThresholdM,
+    ...timing,
+    ...over,
+  }) as Proof;
+
+// The proof whose public inputs match an evidence and prove the consumer's statement (section
+// 10.5, proof_mismatch): what a consumer reads from the Oracle-verified proof it feeds. A type
+// 9 proof carries the key's slot and another attestor's, meeting the two-signer floor.
 function matchingProof(disc: Discovery, ev: Evidence, now: number): Proof {
   const { artifact, subject } = ev;
   if (artifact.proofType === 4) {
@@ -1203,14 +1423,11 @@ function matchingProof(disc: Discovery, ev: Evidence, now: number): Proof {
     };
   }
   const hash = disc.keys.find((k) => k.keyId === ev.keyId)?.signerPubkeyHash ?? UNREGISTERED_HASH;
-  return artifact.proofType === 9
-    ? { proofType: 9, submitter: subject, signerPubkeyHashes: [hash], ...live(ev, now) }
-    : {
-        proofType: artifact.proofType,
-        submitter: subject,
-        signerPubkeyHash: hash,
-        ...live(ev, now),
-      };
+  const other = hash === NATIVE_SIGNALS_HASH ? GATEWAY_SIGNALS_HASH : NATIVE_SIGNALS_HASH;
+  const timing = live(ev, now);
+  if (artifact.proofType === 9) return signed9([hash, other], timing, { submitter: subject });
+  const build = artifact.proofType === 7 ? signed7 : signed8;
+  return build(hash, timing, { submitter: subject });
 }
 // native-kyc's matching proof, spelled out so mismatch cases vary one input at a time.
 const NATIVE_PROOF = {
@@ -1221,6 +1438,82 @@ const NATIVE_PROOF = {
   credentialRoot: ROOT_NATIVE_SEPOLIA,
   ...live(nativeEvidence),
 } as const satisfies Proof;
+
+// One 32-byte public-input word: an integer, address or hash, big-endian, zero-padded.
+const word = (value: string | number | bigint): string =>
+  "0x" + BigInt(value).toString(16).padStart(64, "0");
+// The publicInputs words in ERC-8262 order (circuits/*/src/main.nr; the per-type
+// validators of ERC8262Oracle.sol): the layout table of SPEC.md section 10.5. The
+// outcome inputs (is_valid, meets_threshold, result) are 1: the Oracle refuses anything else.
+function inputWords(p: Proof, chainId: number, oracleAddress: string): string[] {
+  const binding = [word(chainId), word(oracleAddress), word(p.submitter)];
+  switch (p.proofType) {
+    case 4:
+      return [
+        word(p.providerId),
+        word(p.credentialType),
+        word(1),
+        word(p.credentialRoot),
+        word(p.timestamp),
+        word(p.submitter),
+      ];
+    case 7:
+      return [
+        word(p.jurisdictionId),
+        word(PROVIDER_SET_HASH),
+        word(p.configHash),
+        word(p.timestamp),
+        word(1),
+        word(p.signerPubkeyHash),
+        ...binding,
+      ];
+    case 8:
+      return [
+        word(p.riskProofType),
+        word(p.direction),
+        word(p.boundLower),
+        word(p.boundUpper),
+        word(1),
+        word(p.configHash),
+        word(PROVIDER_SET_HASH),
+        word(p.timestamp),
+        word(p.signerPubkeyHash),
+        ...binding,
+      ];
+    case 9: {
+      const slots = [...p.signerPubkeyHashes];
+      while (slots.length < 5) slots.push(ZERO_HASH);
+      return [
+        word(p.jurisdictionId),
+        word(PROVIDER_SET_HASH),
+        word(p.configHash),
+        word(p.timestamp),
+        word(1),
+        word(p.thresholdM),
+        ...slots.map(word),
+        ...binding,
+      ];
+    }
+  }
+}
+// What the vector ships: the words, and the Oracle's record whose publicInputsHash is
+// keccak256 of the concatenated words it verified (ERC8262Oracle `_submitSingle`).
+function encodeProof(p: Proof, chainId: number, oracleAddress: string): ShippedProof {
+  const publicInputs = inputWords(p, chainId, oracleAddress);
+  const verified = p.hashedAs
+    ? inputWords({ ...p, ...p.hashedAs } as Proof, chainId, oracleAddress)
+    : publicInputs;
+  return {
+    publicInputs,
+    attestation: {
+      subject: p.attestationSubject ?? p.submitter,
+      proofType: p.attestationProofType ?? p.proofType,
+      publicInputsHash: keccak256(concat(verified)),
+      expiresAt: p.attestationExpiresAt,
+      revoked: p.attestationRevoked,
+    },
+  };
+}
 
 const evaluationCases: CaseInput[] = [
   {
@@ -1652,12 +1945,7 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc-multi",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: {
-        proofType: 9,
-        submitter: WALLET,
-        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, NATIVE_SIGNALS_HASH],
-        ...live(nativeEvidence),
-      },
+      proof: signed9([GATEWAY_SIGNALS_HASH, NATIVE_SIGNALS_HASH], live(nativeEvidence)),
     }),
     expected: accept,
   },
@@ -1715,12 +2003,7 @@ const evaluationCases: CaseInput[] = [
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: {
-        proofType: 9,
-        submitter: WALLET,
-        signerPubkeyHashes: [NATIVE_SIGNALS_HASH],
-        ...live(nativeEvidence),
-      },
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence)),
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1731,27 +2014,18 @@ const evaluationCases: CaseInput[] = [
     discovery: "gateway",
     evidence: "gateway-sumsub-signed",
     context: sepoliaContext(GATEWAY_HOST, {
-      proof: {
-        proofType: 7,
-        submitter: WALLET,
-        signerPubkeyHash: NATIVE_SIGNALS_HASH,
-        ...live(gatewaySignals),
-      },
+      proof: signed7(NATIVE_SIGNALS_HASH, live(gatewaySignals)),
     }),
     expected: refuse("proof_mismatch"),
   },
   {
     name: "proof-multi-signed-slots-omit-key",
-    description: "A proof type 9 proof whose active signer slots do not include the evidence key.",
+    description:
+      "A proof type 9 proof whose two active signer slots (attestors 1 and 12) do not include the evidence key.",
     discovery: "native",
     evidence: "native-kyc-multi",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: {
-        proofType: 9,
-        submitter: WALLET,
-        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH],
-        ...live(nativeEvidence),
-      },
+      proof: signed9([GATEWAY_SIGNALS_HASH, SECOND_SIGNALS_HASH], live(nativeEvidence)),
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1765,12 +2039,7 @@ const evaluationCases: CaseInput[] = [
       registry: gatewayRegistry({
         signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
       }),
-      proof: {
-        proofType: 7,
-        submitter: WALLET,
-        signerPubkeyHash: GATEWAY_SIGNALS_HASH_OLD,
-        ...live(gatewaySignals),
-      },
+      proof: signed7(GATEWAY_SIGNALS_HASH_OLD, live(gatewaySignals)),
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1784,12 +2053,7 @@ const evaluationCases: CaseInput[] = [
       registry: gatewayRegistry({
         signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, GATEWAY_SIGNALS_HASH],
       }),
-      proof: {
-        proofType: 9,
-        submitter: WALLET,
-        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH_OLD, NATIVE_SIGNALS_HASH],
-        ...live(gatewaySignals),
-      },
+      proof: signed9([GATEWAY_SIGNALS_HASH_OLD, NATIVE_SIGNALS_HASH], live(gatewaySignals)),
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -1818,14 +2082,300 @@ const evaluationCases: CaseInput[] = [
     discovery: "gateway",
     evidence: "gateway-sumsub-risk",
     context: sepoliaContext(GATEWAY_HOST, {
-      proof: {
-        proofType: 8,
-        submitter: WALLET,
-        signerPubkeyHash: GATEWAY_SIGNALS_HASH_OLD,
-        ...live(gatewaySignals),
-      },
+      proof: signed8(GATEWAY_SIGNALS_HASH_OLD, live(gatewaySignals)),
     }),
     expected: refuse("proof_mismatch"),
+  },
+
+  // --- Statement: the proof proves what the consumer requires (proof_mismatch) ---
+  {
+    name: "statement-signed-other-accepted-jurisdiction",
+    description:
+      "A proof type 7 proof under US rules, the second jurisdiction the consumer accepts, feeds the evidence.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { jurisdictionId: US }),
+    }),
+    expected: accept,
+  },
+  {
+    name: "statement-signed-jurisdiction-not-accepted",
+    description:
+      "A proof type 7 proof signed by the evidence key under a jurisdiction the consumer does not accept (UAE): the wallet chose a more lenient risk threshold, and the Oracle verified it.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { jurisdictionId: UAE }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-signed-config-differs",
+    description:
+      "A proof type 7 proof under another registered weight configuration (config_hash) than the consumer requires.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
+        configHash: OTHER_CONFIG_HASH,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-direction-differs",
+    description:
+      'A proof type 8 proof of "score > 3000" where the consumer requires "score < 3000": signed by the evidence key and verified by the Oracle, it proves the opposite.',
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { direction: DIRECTION_GT }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-bound-differs",
+    description:
+      'A proof type 8 proof of "score < 10000", which any score below the maximum meets and the Oracle accepts as non-trivial.',
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { boundLower: 10000 }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-range-not-threshold",
+    description:
+      "A proof type 8 range proof (score in [0, 3000]) where the consumer requires the threshold proof.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
+        riskProofType: RISK_RANGE,
+        boundLower: 0,
+        boundUpper: 3000,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-config-differs",
+    description: "A proof type 8 proof under another weight configuration (config_hash).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
+        configHash: OTHER_CONFIG_HASH,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-multi-signed-jurisdiction-not-accepted",
+    description: "A proof type 9 proof under a jurisdiction the consumer does not accept (UAE).",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence), {
+        jurisdictionId: UAE,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-multi-signed-config-differs",
+    description: "A proof type 9 proof under another weight configuration (config_hash).",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence), {
+        configHash: OTHER_CONFIG_HASH,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-multi-signed-threshold-below-floor",
+    description:
+      "A proof type 9 proof with threshold_m 1 where the consumer requires at least 2 signers, although two slots are active.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence), {
+        thresholdM: 1,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-multi-signed-threshold-above-floor",
+    description:
+      "A proof type 9 proof with threshold_m 3 over three attestors' slots meets a floor of 2.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9(
+        [NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH, SECOND_SIGNALS_HASH],
+        live(nativeEvidence),
+        { thresholdM: 3 },
+      ),
+    }),
+    expected: accept,
+  },
+
+  // --- Provenance: the inputs read are the ones the Oracle verified (proof_mismatch) ---
+  {
+    name: "provenance-inputs-not-verified-signed",
+    description:
+      "The wallet presents proof type 7 inputs under EU rules, but the Oracle verified the same proof's inputs under UAE rules: keccak256 of the presented words is not the attestation's publicInputsHash.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
+        hashedAs: { jurisdictionId: UAE },
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "provenance-inputs-not-verified-credential",
+    description:
+      "The presented proof type 4 inputs name the evidence's root; the Oracle verified a proof against the attestor's older root.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, hashedAs: { credentialRoot: ROOT_NATIVE_SEPOLIA_OLD } },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "provenance-attestation-subject-differs",
+    description:
+      "The Oracle's attestation was recorded for another wallet than the evidence's subject, whatever the presented submitter input says.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationSubject: OTHER_WALLET },
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "provenance-attestation-proof-type-differs",
+    description:
+      "The Oracle's attestation records proof type 8 for inputs presented as a proof type 7 proof.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { attestationProofType: 8 }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+
+  // --- Signed types: submitter, attestor registry, staleness ---
+  {
+    name: "proof-submitter-mismatch-signed",
+    description:
+      "A proof type 7 proof signed by the evidence key for another wallet: the signed payload binds the submitter, so it never feeds this subject's evidence.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { submitter: OTHER_WALLET }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-submitter-mismatch-risk",
+    description: "A proof type 8 proof signed by the evidence key for another wallet.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { submitter: OTHER_WALLET }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "proof-submitter-mismatch-multi-signed",
+    description: "A proof type 9 proof carrying the evidence key's slot, for another wallet.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence), {
+        submitter: OTHER_WALLET,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "signals-hash-registered-to-other-attestor",
+    description:
+      "The gateway lists gw-signals-2 with the native attestor's public signer hash: the Oracle registers that hash to attestor 7, not the pinned 1, so one signature cannot feed two attestors' evidence.",
+    discovery: "gateway-foreign-signals-key",
+    evidence: "gateway-sumsub-foreign-signals-key",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "registry-lacks-attestor-signed",
+    description:
+      "The Oracle holds no registration for attestor 1 at all: proof type 7 evidence is refused, never waved through.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { registry: registryWithout("1") }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "registry-lacks-attestor-risk",
+    description: "The same for proof type 8 evidence.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, { registry: registryWithout("1") }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "registry-lacks-attestor-multi-signed",
+    description: "The same for proof type 9 evidence.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-multi",
+    context: sepoliaContext(GATEWAY_HOST, { registry: registryWithout("1") }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "proof-stale-signed-attestation-revoked",
+    description: "The Oracle reports a proof type 7 attestation revoked.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed7(GATEWAY_SIGNALS_HASH, { ...live(gatewaySignals), attestationRevoked: true }),
+    }),
+    expected: refuse("proof_stale"),
+  },
+  {
+    name: "proof-stale-risk-attestation-expired",
+    description: "A proof type 8 attestation that expired one second ago.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, {
+        ...live(gatewaySignals),
+        attestationExpiresAt: NOW - 1,
+      }),
+    }),
+    expected: refuse("proof_stale"),
+  },
+  {
+    name: "proof-stale-multi-signed-before-issuance",
+    description: `A proof type 9 proof timestamped ${CLOCK_SKEW_SECONDS + 1} s before the evidence was issued.`,
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], {
+        ...live(nativeEvidence),
+        timestamp: nativeEvidence.issuedAt - CLOCK_SKEW_SECONDS - 1,
+      }),
+    }),
+    expected: refuse("proof_stale"),
   },
   {
     name: "proof-attestation-expires-now",
@@ -2055,6 +2605,165 @@ const evaluationCases: CaseInput[] = [
           evidenceId: evidence["native-kyc-retired-key-in-window"]!.evidenceId,
         },
       ],
+    }),
+    expected: accept,
+  },
+
+  // --- Where a revocation is recorded: (fetch host, announced id), never body fields ---
+  {
+    name: "revoked-body-names-other-trust-domain",
+    description:
+      "The allowlisted gateway serves a schema-valid revoked body naming the native trust domain and carrying the native evidence's id, which it was announced: refused at step 5 and recorded under the gateway host, never under the trustDomainId the body names.",
+    discovery: "gateway",
+    evidence: "native-kyc-revoked",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "revocation-from-other-host-not-applied",
+    description:
+      "The native evidence of that id is still accepted from its own host: the revocation the gateway caused is keyed by the gateway host.",
+    follows: "revoked-body-names-other-trust-domain",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["gateway"],
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: accept,
+  },
+  {
+    name: "recorded-revocation-looked-up-by-fetch-host",
+    description:
+      "The native host's revocation of an id is recorded; the gateway serves an active body naming the native trust domain under that id. Step 5 looks up (gateway host, announced id), finds nothing, and the body is refused for naming another trust domain.",
+    discovery: "gateway",
+    evidence: "native-kyc",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenRevoked: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: refuse("trust_domain_mismatch"),
+  },
+  {
+    name: "recorded-revocation-looked-up-by-announced-id",
+    description:
+      "A revocation is recorded for (gateway host, announced id); the host answers with an active body carrying another of its ids. Step 5 looks up the announced id, so it refuses before the body's id is compared.",
+    discovery: "gateway",
+    evidence: "gateway-persona",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: gatewaySumsub.evidenceId,
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "gone-from-host-not-allowed",
+    description: "A 410 from a host outside the allowlist: refused at step 1 and never recorded.",
+    discovery: "impostor",
+    evidence: "impostor-sumsub",
+    context: sepoliaContext(IMPOSTOR_HOST, {
+      evidenceFetch: { host: IMPOSTOR_HOST, status: 410 },
+    }),
+    expected: refuse("trust_domain_not_allowed"),
+  },
+  {
+    name: "gone-for-invalid-announced-id",
+    description:
+      "A 410 for an announced id that fails the evidenceId rule (a consumer never fetches it; a 410 changes nothing): refused at step 2 and never recorded.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      announcedEvidenceId: "ev_1",
+      evidenceFetch: { host: GATEWAY_HOST, status: 410 },
+    }),
+    expected: refuse("evidence_id_invalid"),
+  },
+  {
+    name: "recorded-revocation-evidence-not-found",
+    description:
+      "A revocation is recorded and the evidence fetch now answers 404: the recorded revocation refuses (step 5), not the unavailable fetch.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      evidenceFetch: { host: GATEWAY_HOST, status: 404 },
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "recorded-revocation-evidence-unavailable",
+    description: "The same with the evidence fetch answering 503.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      evidenceFetch: { host: GATEWAY_HOST, status: 503 },
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "recorded-revocation-evidence-timeout",
+    description: "The same with no HTTP response to the evidence fetch (a timeout).",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      evidenceFetch: { host: GATEWAY_HOST, status: null },
+      seenRevoked: [{ trustDomainId: GATEWAY_HOST, evidenceId: gatewaySumsub.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
+  },
+  {
+    name: "key-id-relisted-with-new-material",
+    description:
+      "After gw-root-0 was revoked, a newer document lists the keyId gw-root-0 again with fresh key material and no revokedAt: revocation is remembered by keyId as well as by material.",
+    discovery: "gateway-revoked-key-id-relisted",
+    evidence: "gateway-sumsub-revoked-key-late",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: ["gateway"],
+      registry: gatewayRegistry({ credentialSigner: RELISTED_SIGNER }),
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "discovery-rolled-back-one-second",
+    description:
+      "A document one second older than the one recorded is stale: staleness compares instants of the provider's one clock, with no skew.",
+    discovery: "gateway-rolled-back-one-second",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["gateway"] }),
+    expected: refuse("discovery_stale"),
+  },
+  {
+    name: "discovery-two-oracles-two-attestors",
+    description:
+      "Two Oracles on one chain with different attestors (9 on the other Oracle, listed first): step 14 reads the deployment of the evidence's (chainId, oracleAddress), never the first of its chainId.",
+    discovery: "native-two-oracles-two-attestors",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST),
+    expected: accept,
+  },
+  {
+    name: "signals-rotation-overlap-successor",
+    description:
+      "During a signed-signals rotation overlap, evidence issued under the successor (whose hash the Oracle holds next to the predecessor's) is accepted while the predecessor still serves.",
+    discovery: "gateway-signals-overlap",
+    evidence: "gateway-sumsub-signed-successor",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, GATEWAY_SIGNALS_HASH_NEXT],
+      }),
+    }),
+    expected: accept,
+  },
+  {
+    name: "signals-rotation-overlap-predecessor",
+    description:
+      "In the same overlap the predecessor's evidence is still accepted: it ends at the predecessor's notAfter.",
+    discovery: "gateway-signals-overlap",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, GATEWAY_SIGNALS_HASH_NEXT],
+      }),
     }),
     expected: accept,
   },
@@ -2623,6 +3332,15 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("evidence_id_conflict"),
   },
   {
+    name: "order-key-not-declared-before-too-long",
+    description:
+      "An undeclared keyId (key_not_declared, step 16) on evidence whose lifetime also exceeds 365 days (validity_too_long, step 27): the lifetime is checked after the key steps.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-too-long-unknown-key",
+    context: sepoliaContext(GATEWAY_HOST),
+    expected: refuse("key_not_declared"),
+  },
+  {
     name: "order-too-long-before-not-yet-valid",
     description:
       "A lifetime past 365 days (validity_too_long) starting in the future (not_yet_valid).",
@@ -2652,32 +3370,33 @@ const evaluationCases: CaseInput[] = [
 
 // A quorum member: one evidence fetched from its trust domain's own host, evaluated under
 // the case's consumer context and fed to `proof` (by default the proof that matches it).
+// Every quorum case runs on Base Sepolia.
 const member = (disc: string, ev: string, proof?: Proof) => {
   const host = discovery[disc]!.trustDomainId;
   const held = evidence[ev]!;
+  const fed = proof ?? matchingProof(discovery[disc]!, held, NOW);
   return {
     discovery: disc,
     evidence: ev,
     discoveryFetch: { host, status: 200 },
     evidenceFetch: { host, status: 200 },
     announcedEvidenceId: held.evidenceId,
-    proof: proof ?? matchingProof(discovery[disc]!, held, NOW),
+    proof: encodeProof(fed, SEPOLIA_CONSUMER.chainId, SEPOLIA_CONSUMER.oracleAddress),
   };
 };
 // One verified proof type 9 proof whose active slots carry both trust domains' signer hashes
-// feeds both multi-signed members.
-const MULTI_SIGNED_PROOF: Proof = {
-  proofType: 9,
-  submitter: WALLET,
-  signerPubkeyHashes: [NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH],
-  // Inside both evidences' windows: native-kyc-multi is issued after gateway-sumsub-multi.
-  ...live(nativeEvidence),
-};
+// feeds both multi-signed members. Inside both evidences' windows: native-kyc-multi is issued
+// after gateway-sumsub-multi.
+const MULTI_SIGNED_PROOF = signed9(
+  [NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH],
+  live(nativeEvidence),
+);
 
 const quorumContext = { threshold: 2, context: SEPOLIA_CONSUMER };
-// A requirement names one claim and the proof type it must feed.
-const KYC_ATTESTATION = { claimType: "kyc.individual", proofType: 4 };
-const KYC_MULTI_SIGNED = { claimType: "kyc.individual", proofType: 9 };
+// A requirement names one claim, the proof type it must feed and the statement that proof
+// must prove.
+const KYC_ATTESTATION = { claimType: "kyc.individual", proofType: 4, statement: null };
+const KYC_MULTI_SIGNED = { claimType: "kyc.individual", proofType: 9, statement: STATEMENT_9 };
 
 const quorumCases = [
   {
@@ -2791,6 +3510,39 @@ const quorumCases = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub", NATIVE_PROOF)],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "stale-member-not-counted",
+    description:
+      "The gateway member's proof matches its evidence, but the Oracle reports that attestation revoked: step 31 runs for every member, so it does not count.",
+    ...quorumContext,
+    requirement: KYC_ATTESTATION,
+    members: [
+      member("native", "native-kyc"),
+      member("gateway", "gateway-sumsub", {
+        ...matchingProof(gatewayDiscovery, gatewaySumsub, NOW),
+        attestationRevoked: true,
+      }),
+    ],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "statement-mismatched-member-not-counted",
+    description:
+      "The gateway member's proof type 9 proof carries its key's slot but was made under UAE rules, which the requirement's statement does not accept: it does not count.",
+    ...quorumContext,
+    requirement: KYC_MULTI_SIGNED,
+    members: [
+      member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
+      member(
+        "gateway",
+        "gateway-sumsub-multi",
+        signed9([NATIVE_SIGNALS_HASH, GATEWAY_SIGNALS_HASH], live(nativeEvidence), {
+          jurisdictionId: UAE,
+        }),
+      ),
+    ],
     expected: { attestors: ["7"], count: 1, satisfied: false },
   },
 ];
@@ -3026,6 +3778,7 @@ const LIMITS = {
   minEvidenceIdLength: MIN_EVIDENCE_ID_LENGTH,
   maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
   maxTimestamp: MAX_TIMESTAMP,
+  minRevocationRecordsPerTrustDomain: MIN_REVOCATION_RECORDS_PER_TRUST_DOMAIN,
 };
 const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceLifetimeSeconds: "Largest expiresAt - issuedAt (365 days).",
@@ -3040,6 +3793,8 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   minEvidenceIdLength: "Shortest evidenceId (128 bits of base64url).",
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
+  minRevocationRecordsPerTrustDomain:
+    "Least bound a consumer may set on revocation records per trust domain, and never fewer than the grants it holds there (SPEC.md section 10.7, Revocation bound).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -3123,9 +3878,11 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
 function finalize({ context, expected, ...c }: CaseInput) {
   const disc = resolve(discovery, "discovery", c.discovery);
   const ev = resolve(evidence, "evidence", c.evidence);
-  const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, ...consumer } = context;
+  const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, statement, ...consumer } =
+    context;
   const full: Context = {
     ...consumer,
+    statement: statement === undefined ? statementFor(ev.artifact?.proofType) : statement,
     discoveryFetch,
     evidenceFetch,
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
@@ -3133,7 +3890,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
   };
   return {
     ...c,
-    context: full,
+    context: { ...full, proof: encodeProof(full.proof, full.chainId, full.oracleAddress) },
     expected: { ...expected, records: recordsFor({ context, expected, ...c }, full, disc, ev) },
   };
 }
@@ -3141,7 +3898,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
 const vectors = {
   $schema: "./vectors.schema.json",
   description:
-    "ERC-8262 provider protocol vectors (SPEC.md section 10). Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. `discovery` and `evidence` documents all validate against their schemas; `schemaCases` all fail; `evaluationCases` and `quorumCases` reproduce the section 10.5 and 10.6 algorithms. An evaluation names its documents as fixtures, or as `{ schemaCase }`: a 200 whose body fails its schema. `context.allowlist` is the consumer's pin of each trust domain to its attestor; `context.registry` stands in for the consumer's Oracle reads; `context.seenDiscovery` / `context.seenEvidence` name documents in the consumer's observation store and `context.seenRevoked` the (trustDomainId, evidenceId) pairs it recorded as revoked from a 410 or from a revoked body (section 10.5 evidence_revoked, recorded even during a discovery outage); `context.announcedEvidenceId` is the id the consumer was given and requests; `context.discoveryFetch` / `context.evidenceFetch` give the host each document came from and the HTTP status (a non-200 evidence fetch evaluates no document); `context.proof` holds the public inputs of the Oracle-verified proof the evidence feeds. A quorum case's `context` is shared by its members, each of which adds its own fetches, announced id and proof. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
+    "ERC-8262 provider protocol vectors. Fixtures only: no Oracle is deployed, every address, root and signer hash is illustrative, and wallets are PUBLIC Hardhat/Anvil TEST addresses. What each field means and what a conformant consumer reproduces: SPEC.md section 10.8. `limits` carries the protocol constants; `refusals` lists the refusals in check order.",
   version: 1,
   protocol: PROTOCOL,
   protocolVersion: PROTOCOL_VERSION,
@@ -3182,7 +3939,10 @@ const ALLOWLIST = {
 };
 const FETCH = obj({
   host: { type: "string" },
-  status: { type: "integer", minimum: 100, maximum: 599 },
+  status: d(
+    "The HTTP status; null when no HTTP response arrived (a timeout, a TLS or connection failure).",
+    { oneOf: [{ type: "integer", minimum: 100, maximum: 599 }, { type: "null" }] },
+  ),
 });
 const CHAIN_ID = { type: "integer", minimum: 1 };
 const POSITIVE = { type: "integer", minimum: 1 };
@@ -3190,43 +3950,44 @@ const ANNOUNCED_EVIDENCE_ID = d(
   "The evidenceId the consumer was given (announcement or its own record). Not necessarily valid: the consumer checks it against the evidence schema's evidenceId rule before building the URL.",
   { type: "string" },
 );
-const PROOF_TIMING = {
-  timestamp: d("The proof's timestamp public input (Unix seconds, an integer).", UNIX),
-  attestationExpiresAt: d(
-    "The Oracle attestation's expiresAt: live while the consumer's clock is at or before it.",
-    UNIX,
-  ),
-  attestationRevoked: d("isAttestationRevoked(proofHash).", { type: "boolean" }),
-};
 const PROOF = d(
-  "Public inputs of the Oracle-verified proof the evidence feeds, plus the Oracle's record of the verification. Rendering: submitter is the 20-byte address in lowercase hex (the low 20 bytes of its bytes32 input); provider_id a canonical decimal string; credential_type and timestamp integers; credential_root and signer hashes 32-byte lowercase hex. Types 7/8 carry their signer_pubkey_hash; type 9 its active (nonzero) signer slots.",
+  "The Oracle-verified proof the evidence feeds, as the consumer reads it (SPEC.md section 10.5, steps 30-31). publicInputs: the publicInputs bytes of the submitCompliance call that verified it, as 32-byte lowercase hex words in ERC-8262 order (the section 10.5 layout table); the consumer accepts them only if keccak256 of their concatenation is attestation.publicInputsHash. attestation: what getHistoricalProof(proofHash) returns (subject, proofType, publicInputsHash, expiresAt) and isAttestationRevoked(proofHash) (revoked).",
+  obj({
+    publicInputs: { type: "array", minItems: 1, maxItems: 14, items: HEX32 },
+    attestation: obj({
+      subject: ADDRESS,
+      proofType: { type: "integer", minimum: 1, maximum: 9 },
+      publicInputsHash: HEX32,
+      expiresAt: d("Live while the consumer's clock is at or before it.", UNIX),
+      revoked: d("isAttestationRevoked(proofHash).", { type: "boolean" }),
+    }),
+  }),
+);
+const JURISDICTION_IDS = d("The ERC-8262 jurisdiction ids the consumer accepts.", {
+  type: "array",
+  minItems: 1,
+  uniqueItems: true,
+  items: { type: "integer", minimum: 0, maximum: 255 },
+});
+// risk_score_signed's bound_lower / bound_upper are u32.
+const U32 = { type: "integer", minimum: 0, maximum: 2 ** 32 - 1 };
+const STATEMENT = d(
+  "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30): null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type (1 threshold, 2 range), direction (1 GT, 2 LT), bound_lower, bound_upper and config_hash; for 9 those of 7 plus the least threshold_m.",
   {
     oneOf: [
+      { type: "null" },
+      obj({ jurisdictionIds: JURISDICTION_IDS, configHash: HEX32 }),
       obj({
-        proofType: { const: 4 },
-        submitter: ADDRESS,
-        providerId: ATTESTOR_PROVIDER_ID,
-        credentialType: { type: "integer", minimum: 1, maximum: 4 },
-        credentialRoot: HEX32,
-        ...PROOF_TIMING,
+        riskProofType: { enum: [1, 2] },
+        direction: { type: "integer", minimum: 0, maximum: 255 },
+        boundLower: U32,
+        boundUpper: U32,
+        configHash: HEX32,
       }),
       obj({
-        proofType: { enum: [7, 8] },
-        submitter: ADDRESS,
-        signerPubkeyHash: HEX32,
-        ...PROOF_TIMING,
-      }),
-      obj({
-        proofType: { const: 9 },
-        submitter: ADDRESS,
-        signerPubkeyHashes: {
-          type: "array",
-          minItems: 1,
-          maxItems: 5,
-          uniqueItems: true,
-          items: HEX32,
-        },
-        ...PROOF_TIMING,
+        jurisdictionIds: JURISDICTION_IDS,
+        configHash: HEX32,
+        minThresholdM: { type: "integer", minimum: 1, maximum: 5 },
       }),
     ],
   },
@@ -3269,7 +4030,7 @@ const OBSERVED_PAIR = obj({
   evidenceId: evidenceSchema.properties.evidenceId,
 });
 const RECORDS = d(
-  "What this evaluation writes to the observation store (SPEC.md section 10.7). discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (allowlisted host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass. null: nothing of that kind is written.",
+  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
   obj({
     discovery: {
       oneOf: [
@@ -3338,7 +4099,7 @@ const vectorsSchema = {
             "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the document the announced id names, and no document is evaluated.",
             DOC_REF,
           ),
-          context: obj({ ...CONSUMER_FIELDS, ...ATTEMPT_FIELDS }),
+          context: obj({ ...CONSUMER_FIELDS, statement: STATEMENT, ...ATTEMPT_FIELDS }),
           expected: {
             oneOf: [
               obj({ accepted: { const: true }, records: RECORDS }),
@@ -3355,9 +4116,15 @@ const vectorsSchema = {
       items: obj({
         name: NAME,
         description: { type: "string" },
-        threshold: { type: "integer", minimum: 1 },
+        threshold: d("Attestors the requirement needs: satisfied is count >= threshold.", {
+          type: "integer",
+          minimum: 1,
+        }),
         context: obj(CONSUMER_FIELDS),
-        requirement: obj({ claimType: CLAIM_TYPE, proofType: PROOF_TYPE }),
+        requirement: d(
+          "The multi-provider requirement (SPEC.md section 10.6): one claimType, the proof type it must feed, and the statement every member's proof must prove.",
+          obj({ claimType: CLAIM_TYPE, proofType: PROOF_TYPE, statement: STATEMENT }),
+        ),
         members: {
           type: "array",
           minItems: 1,
