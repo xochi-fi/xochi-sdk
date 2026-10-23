@@ -1478,17 +1478,19 @@ v2 digest). Rules:
   the reserve, and an `indicative` award is a `[PROPOSED]` **non-binding**
   award: declining it is never a broken commitment (§13.3).
 - The reserve bid is always `firm`.
-- **All `firm` bids decline in `feed_degraded`:** the venue re-auctions
-  **once**, in the same regime with the §13.1 stress multiplier applied to the
-  solver layer (so the widened reserve is the new floor), then the reserve
-  fills. The re-award reuses the order's `fillId` (ESCROW-RFC §9.4 derives
-  `fillSalt` from `orderId`, so every filler of one order gets the same
-  `fillId` and the destination single-shot still binds); it never mints a new
-  one. The taker is never returned an empty result (§2.1 price floor), except
-  on a shielded-Aztec leg, where the re-auction and the reserve fill apply
-  only before a `:winner` FillAuth is issued (§13.8). Both the retry and the
-  reserve fill are stamped in the award log (§13.4) so the failure is
-  counted, not hidden.
+- **An award declined or abandoned in `feed_degraded`:** the venue
+  re-auctions **once**, in the same regime and against the same reserve: the
+  re-auction's floor is the original `firm` reserve, never a reserve widened
+  for the retry, so a decline cannot lower what the taker gets (§2.1). If that
+  award fails too, the reserve fills at the original reserve. The re-award
+  reuses the order's `fillId` (ESCROW-RFC §9.4 derives `fillSalt` from
+  `orderId`, so every filler of one order gets the same `fillId` and the
+  destination single-shot still binds); it never mints a new one, and its
+  FillAuth waits for the declined one to expire (§13.3). The taker is never
+  returned an empty result (§2.1 price floor), except on a shielded-Aztec leg,
+  which is never re-auctioned or reserve-filled once awarded (§13.8). Both the
+  retry and the reserve fill are stamped in the award log (§13.4) so the
+  failure is counted, not hidden.
 
 ### 13.3 Decline on the wire; what "broken" means
 
@@ -1728,16 +1730,18 @@ admission requires a current one from P1.
 
 ### 13.8 Settlement statement (ESCROW-RFC)
 
-ESCROW-RFC gains, in §1, the sentence a counterparty will read first: *taker
-principal never leaves escrow without a proven fill; the solver carries the
-destination leg between its fill and its claim, bounded by `refundableAt`.* It is
-not PvP and MUST NOT be described as such. Beside it, a failure matrix naming
-outcome and bearer for: no-show before acceptance (abandoned → reserve fills),
+The settlement statement a counterparty reads first, and its failure matrix,
+live here, not in ESCROW-RFC: *taker principal never leaves escrow without a
+proven fill; the solver carries the destination leg between its fill and its
+claim, bounded by `refundableAt`.* It is not PvP and MUST NOT be described as
+such. The matrix names outcome and bearer for: decline or no-show before
+acceptance (reserve fills, after one re-auction in `feed_degraded`, §13.2),
 no-show after acceptance (slash → backstop), destination chain halt, claim
 revert, attestation window missed, origin reorg past `safe`. A
 shielded-Aztec (tier 1s) leg has its own rows, because ESCROW-RFC §5.1
 forbids a `:backstop` FillAuth while the winner's fill outcome is
-undisclosed, and every shielded award carries a `:winner` FillAuth:
+undisclosed, and every award is a `:winner` FillAuth (§13.3). A shielded order
+is therefore never re-auctioned:
 
 - **decline or no-show before acceptance:** no reserve fill, backstop or
   re-award, and no slash (no FillAcceptance to slash on); the order refunds
