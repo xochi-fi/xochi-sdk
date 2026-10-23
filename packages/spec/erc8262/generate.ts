@@ -41,10 +41,12 @@ const MIN_REVOCATION_CHECK_SECONDS = 60;
 const MAX_REVOCATION_CHECK_SECONDS = 86400;
 const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
 const MAX_EVIDENCE_ID_LENGTH = 128;
-// Least per-trust-domain bound on revocation records: an announcer must know this many
-// revoked ids the provider issued (a 410 only for issued ids) to exhaust it, and at about
-// 200 bytes a record it costs a consumer some 2 MB per trust domain.
-const MIN_REVOCATION_RECORDS_PER_TRUST_DOMAIN = 10000;
+// Least bound a consumer may set on the revocation records one wallet's announcements leave on
+// one trust domain, counting only ids it never granted on (SPEC.md section 10.7, Revocation
+// bound). An honest wallet announces one id per evidence it was issued, so 10 000 within the
+// 365-day retention is about 27 a day, every day; at about 200 bytes a record it caps one
+// wallet at some 2 MB per trust domain.
+const MIN_UNGRANTED_REVOCATIONS_PER_WALLET = 10000;
 // Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
 // fails the schema instead of becoming a permanent "newest updatedAt", and every runner
 // language compares the values exactly.
@@ -406,6 +408,10 @@ const SECOND_SIGNER = "0x976ea74026e726554db657fa54763abd0c3a0aa9";
 const UNREGISTERED_HASH = "0x" + "ee".repeat(32);
 // Attestor 12's signed-signals hash: a third provider's slot in proof type 9 proofs.
 const SECOND_SIGNALS_HASH = "0x" + "7a".repeat(32);
+// Signed-signals hashes of two more providers, outside the consumer's allowlist: they fill a
+// proof type 9 proof's slots so the evidence key can sit in the last one.
+const FOURTH_SIGNALS_HASH = "0x" + "8a".repeat(32);
+const FIFTH_SIGNALS_HASH = "0x" + "9a".repeat(32);
 // The gateway's successor signed-signals key, registered on the Oracle ahead of its notBefore.
 const GATEWAY_SIGNALS_HASH_NEXT = "0x" + "5c".repeat(32);
 // Fresh key material listed under a revoked keyId.
@@ -780,6 +786,21 @@ const discovery: Record<string, Discovery> = {
       },
     ],
   },
+  // The gateway listing the native attestor's public signer hash as its own gw-signals-2, with
+  // revokedAt: a host cannot revoke another attestor's key by naming its material.
+  "gateway-revokes-foreign-key": {
+    ...gatewayDiscovery,
+    keys: [
+      ...gatewayDiscovery.keys,
+      {
+        keyId: "gw-signals-2",
+        use: "signed-signals",
+        signerPubkeyHash: NATIVE_SIGNALS_HASH,
+        notBefore: T_ROTATE,
+        revokedAt: T_ROTATE + DAY,
+      },
+    ],
+  },
 };
 
 const id = (seed: string) => `ev_${seed}`.padEnd(26, "0");
@@ -1111,6 +1132,14 @@ const evidence: Record<string, Evidence> = {
     issuedAt: NOW - 3600,
     expiresAt: NOW + 100 * DAY,
   },
+  // Issued under the predecessor gw-signals-1 inside the same overlap: after the successor's
+  // notBefore and before the predecessor's notAfter.
+  "gateway-sumsub-signed-in-overlap": {
+    ...gatewaySignals,
+    evidenceId: id("gw_sumsub_signed_overlap_w1"),
+    issuedAt: NOW - 3600,
+    expiresAt: NOW + 100 * DAY,
+  },
   "gateway-sumsub-too-long-unknown-key": {
     ...gatewaySumsub,
     evidenceId: id("gw_sumsub_long_key_w1"),
@@ -1139,17 +1168,20 @@ type Fetch = { host: string; status: number | null };
 // An evidence id the consumer recorded as revoked (a 410 or a revoked body), keyed like
 // every observation.
 type Observed = { trustDomainId: string; evidenceId: string };
-// The statement a consumer requires the proof to prove (SPEC.md section 10.5, step 30), per
-// proof type. Type 4 has none beyond the evidence's own credentialType (null).
-type Statement7 = { jurisdictionIds: number[]; configHash: string };
-type Statement8 = {
-  riskProofType: number;
-  direction: number;
-  boundLower: number;
-  boundUpper: number;
+// The statement a consumer requires the proof to prove (SPEC.md section 10.5, step 30), tagged
+// with the proof type it is for. Type 4 has none beyond the evidence's own credentialType
+// (null). A type 8 statement names only what risk_score_signed constrains in its mode: the
+// direction for a threshold, bound_upper for a range.
+type Statement7 = { proofType: 7; jurisdictionIds: number[]; configHash: string };
+type Statement8 =
+  | { proofType: 8; riskProofType: 1; direction: number; boundLower: number; configHash: string }
+  | { proofType: 8; riskProofType: 2; boundLower: number; boundUpper: number; configHash: string };
+type Statement9 = {
+  proofType: 9;
+  jurisdictionIds: number[];
   configHash: string;
+  minThresholdM: number;
 };
-type Statement9 = Statement7 & { minThresholdM: number };
 type Statement = null | Statement7 | Statement8 | Statement9;
 // The Oracle-verified proof the evidence feeds, authored by its public inputs (the ERC-8262
 // circuit names, camelCased; signerPubkeyHashes are type 9's active slots) and shipped by
@@ -1221,6 +1253,8 @@ type Consumer = {
   now: number;
   allowlist: AllowlistEntry[];
   registry: RegistryEntry[];
+  // The weight configs the Oracle holds valid (isValidConfig), read at step 23 for 7/8/9.
+  validConfigs: string[];
   seenDiscovery: string[];
   seenEvidence: string[];
   seenRevoked: Observed[];
@@ -1301,6 +1335,7 @@ const SEPOLIA_CONSUMER: Consumer = {
   now: NOW,
   allowlist: ALLOWLIST_BASE_SEPOLIA,
   registry: REGISTRY_BASE_SEPOLIA,
+  validConfigs: [CONFIG_HASH, OTHER_CONFIG_HASH],
   seenDiscovery: [],
   seenEvidence: [],
   seenRevoked: [],
@@ -1352,16 +1387,33 @@ const DIRECTION_GT = 1;
 const DIRECTION_LT = 2;
 
 // The consumer's statements: types 7 and 9 under EU or US rules with one weight config,
-// type 9 by at least two signers, type 8 "score < 3000" under that config.
-const STATEMENT_7: Statement7 = { jurisdictionIds: [EU, US], configHash: CONFIG_HASH };
-const STATEMENT_8: Statement8 = {
+// type 9 by at least two signers, type 8 "score < 3000" (threshold) or "score in [1000,
+// 3000]" (range) under that config.
+const STATEMENT_7: Statement7 = {
+  proofType: 7,
+  jurisdictionIds: [EU, US],
+  configHash: CONFIG_HASH,
+};
+const STATEMENT_8 = {
+  proofType: 8,
   riskProofType: RISK_THRESHOLD,
   direction: DIRECTION_LT,
   boundLower: 3000,
-  boundUpper: 0,
   configHash: CONFIG_HASH,
+} as const satisfies Statement8;
+const STATEMENT_8_RANGE = {
+  proofType: 8,
+  riskProofType: RISK_RANGE,
+  boundLower: 1000,
+  boundUpper: 3000,
+  configHash: CONFIG_HASH,
+} as const satisfies Statement8;
+const STATEMENT_9: Statement9 = {
+  proofType: 9,
+  jurisdictionIds: STATEMENT_7.jurisdictionIds,
+  configHash: CONFIG_HASH,
+  minThresholdM: 2,
 };
-const STATEMENT_9: Statement9 = { ...STATEMENT_7, minThresholdM: 2 };
 const statementFor = (proofType: number | undefined): Statement =>
   proofType === 7
     ? STATEMENT_7
@@ -1382,6 +1434,8 @@ const signed7 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Pr
     ...timing,
     ...over,
   }) as Proof;
+// A type 8 proof in the SDK's encoding (@xochi/sdk buildRiskScoreSignedInputs): a threshold
+// proof sets the bound_upper the circuit leaves free to 0, a range proof the direction.
 const signed8 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Proof> = {}) =>
   ({
     proofType: 8,
@@ -1390,11 +1444,19 @@ const signed8 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Pr
     riskProofType: STATEMENT_8.riskProofType,
     direction: STATEMENT_8.direction,
     boundLower: STATEMENT_8.boundLower,
-    boundUpper: STATEMENT_8.boundUpper,
+    boundUpper: 0,
     configHash: CONFIG_HASH,
     ...timing,
     ...over,
   }) as Proof;
+const rangeSigned8 = (signerPubkeyHash: string, timing: ProofTiming, over: Partial<Proof> = {}) =>
+  signed8(signerPubkeyHash, timing, {
+    riskProofType: STATEMENT_8_RANGE.riskProofType,
+    direction: 0,
+    boundLower: STATEMENT_8_RANGE.boundLower,
+    boundUpper: STATEMENT_8_RANGE.boundUpper,
+    ...over,
+  });
 const signed9 = (signerPubkeyHashes: string[], timing: ProofTiming, over: Partial<Proof> = {}) =>
   ({
     proofType: 9,
@@ -1990,7 +2052,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "proof-submitter-mismatch",
-    description: "The proof was submitted by another wallet than the evidence's subject.",
+    description:
+      "The proof was submitted by another wallet than the evidence's subject: the Oracle recorded it for that wallet, so provenance (the record's subject) refuses it.",
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, { proof: { ...NATIVE_PROOF, submitter: OTHER_WALLET } }),
@@ -2148,15 +2211,11 @@ const evaluationCases: CaseInput[] = [
   {
     name: "statement-risk-range-not-threshold",
     description:
-      "A proof type 8 range proof (score in [0, 3000]) where the consumer requires the threshold proof.",
+      "A proof type 8 range proof (score in [0, 3000], the SDK's direction 0) where the consumer requires the threshold proof score < 3000.",
     discovery: "gateway",
     evidence: "gateway-sumsub-risk",
     context: sepoliaContext(GATEWAY_HOST, {
-      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
-        riskProofType: RISK_RANGE,
-        boundLower: 0,
-        boundUpper: 3000,
-      }),
+      proof: rangeSigned8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { boundLower: 0 }),
     }),
     expected: refuse("proof_mismatch"),
   },
@@ -2225,6 +2284,127 @@ const evaluationCases: CaseInput[] = [
     expected: accept,
   },
 
+  // --- Statement: one for the evidence's proof type is required (proof_mismatch) ---
+  {
+    name: "statement-missing-signed",
+    description:
+      "A consumer with no statement for proof type 7 refuses the evidence, though its proof matches: it cannot tell what the proof must prove.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { statement: null }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-missing-risk",
+    description: "As statement-missing-signed, for proof type 8.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, { statement: null }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-missing-multi-signed",
+    description: "As statement-missing-signed, for proof type 9.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, { statement: null }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-for-other-type",
+    description:
+      "The consumer's statement is for proof type 9 (at least two signers) and the evidence is proof type 7. The type 7 proof's jurisdiction and config_hash meet the statement's, but a statement for another proof type is no statement for this evidence.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { statement: STATEMENT_9 }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-on-credential-evidence",
+    description:
+      "The consumer requires a proof type 7 statement and is given proof type 4 evidence, whose matching proof proves only its credentialType.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { statement: STATEMENT_7 }),
+    expected: refuse("proof_mismatch"),
+  },
+
+  // --- Statement, type 8: only what the circuit constrains in the statement's mode ---
+  {
+    name: "statement-risk-threshold-free-upper",
+    description:
+      "A threshold proof (score < 3000) whose bound_upper is 5000 rather than the SDK's 0: risk_score_signed leaves bound_upper free in threshold mode, so it proves the statement and is accepted.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { boundUpper: 5000 }),
+    }),
+    expected: accept,
+  },
+  {
+    name: "statement-risk-range-accepted",
+    description:
+      "A range proof (score in [1000, 3000]) in the SDK's encoding (direction 0) proves a range statement.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_8_RANGE,
+      proof: rangeSigned8(GATEWAY_SIGNALS_HASH, live(gatewaySignals)),
+    }),
+    expected: accept,
+  },
+  {
+    name: "statement-risk-range-free-direction",
+    description:
+      "The same range proof with direction 2: risk_score_signed leaves direction free in range mode, so it is accepted.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_8_RANGE,
+      proof: rangeSigned8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { direction: DIRECTION_LT }),
+    }),
+    expected: accept,
+  },
+  {
+    name: "statement-risk-range-proof-type-differs",
+    description:
+      "A threshold proof (score < 1000, bound_upper 3000 left free) for a range statement [1000, 3000]: every bound word matches, only proof_type differs.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_8_RANGE,
+      proof: signed8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), {
+        boundLower: STATEMENT_8_RANGE.boundLower,
+        boundUpper: STATEMENT_8_RANGE.boundUpper,
+      }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-range-upper-differs",
+    description:
+      "A range proof [1000, 5000] for a range statement [1000, 3000]: only bound_upper differs.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_8_RANGE,
+      proof: rangeSigned8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { boundUpper: 5000 }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+  {
+    name: "statement-risk-range-lower-differs",
+    description:
+      "A range proof [500, 3000] for a range statement [1000, 3000]: only bound_lower differs.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_8_RANGE,
+      proof: rangeSigned8(GATEWAY_SIGNALS_HASH, live(gatewaySignals), { boundLower: 500 }),
+    }),
+    expected: refuse("proof_mismatch"),
+  },
+
   // --- Provenance: the inputs read are the ones the Oracle verified (proof_mismatch) ---
   {
     name: "provenance-inputs-not-verified-signed",
@@ -2277,7 +2457,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "proof-submitter-mismatch-signed",
     description:
-      "A proof type 7 proof signed by the evidence key for another wallet: the signed payload binds the submitter, so it never feeds this subject's evidence.",
+      "A proof type 7 proof signed by the evidence key for another wallet. The Oracle records a proof for its submitter, so the record's subject is that wallet and provenance refuses it before the submitter word is read (the two cannot disagree on-chain, SPEC.md section 10.5).",
     discovery: "gateway",
     evidence: "gateway-sumsub-signed",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2287,7 +2467,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "proof-submitter-mismatch-risk",
-    description: "A proof type 8 proof signed by the evidence key for another wallet.",
+    description:
+      "A proof type 8 proof signed by the evidence key for another wallet: refused by provenance (the record's subject), as proof-submitter-mismatch-signed.",
     discovery: "gateway",
     evidence: "gateway-sumsub-risk",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -2297,7 +2478,8 @@ const evaluationCases: CaseInput[] = [
   },
   {
     name: "proof-submitter-mismatch-multi-signed",
-    description: "A proof type 9 proof carrying the evidence key's slot, for another wallet.",
+    description:
+      "A proof type 9 proof carrying the evidence key's slot, for another wallet: refused by provenance (the record's subject), as proof-submitter-mismatch-signed.",
     discovery: "native",
     evidence: "native-kyc-multi",
     context: sepoliaContext(NATIVE_HOST, {
@@ -2766,6 +2948,112 @@ const evaluationCases: CaseInput[] = [
       }),
     }),
     expected: accept,
+  },
+  {
+    name: "signals-rotation-overlap-predecessor-issued-in-overlap",
+    description:
+      "Evidence the predecessor gw-signals-1 issued inside the overlap (after the successor's notBefore, before its own notAfter) is accepted: both keys issue until the predecessor's notAfter.",
+    discovery: "gateway-signals-overlap",
+    evidence: "gateway-sumsub-signed-in-overlap",
+    context: sepoliaContext(GATEWAY_HOST, {
+      registry: gatewayRegistry({
+        signerPubkeyHashes: [GATEWAY_SIGNALS_HASH, GATEWAY_SIGNALS_HASH_NEXT],
+      }),
+    }),
+    expected: accept,
+  },
+
+  // --- Key revocations across the trust domains pinned to one attestor ---
+  {
+    name: "key-revocation-shared-by-alias-host",
+    description:
+      "The consumer recorded the gateway's document revoking gw-root-1. The alias host, pinned to the same attestor, still lists that credentialSigner as current: the revocation applies to it by key material.",
+    discovery: "alias",
+    evidence: "alias-sumsub",
+    context: sepoliaContext(ALIAS_HOST, { seenDiscovery: ["gateway-key-revoked-future"] }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-not-shared-across-attestors",
+    description:
+      "The consumer recorded a gateway document that lists the native attestor's public signer hash as its own revoked gw-signals-2. The native trust domain is pinned to another attestor, so the gateway cannot revoke its key: accepted.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, { seenDiscovery: ["gateway-revokes-foreign-key"] }),
+    expected: accept,
+  },
+
+  // --- The weight config the statement names is still valid on the Oracle (step 23) ---
+  {
+    name: "config-revoked-on-oracle-signed",
+    description:
+      "The guardian revoked the config_hash the consumer's statement names (isValidConfig false): a proof type 7 evidence is refused at step 23 even though its proof verified before the revocation.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { validConfigs: [OTHER_CONFIG_HASH] }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "config-revoked-on-oracle-risk",
+    description: "As config-revoked-on-oracle-signed, for proof type 8.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, { validConfigs: [OTHER_CONFIG_HASH] }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "config-revoked-on-oracle-multi-signed",
+    description: "As config-revoked-on-oracle-signed, for proof type 9.",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, { validConfigs: [OTHER_CONFIG_HASH] }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "config-not-read-for-credential",
+    description:
+      "Proof type 4 carries no config_hash: an Oracle holding no config valid does not refuse it.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { validConfigs: [] }),
+    expected: accept,
+  },
+
+  // --- Type 9: every signer slot counts, the last one included ---
+  {
+    name: "proof-multi-signed-key-in-last-slot",
+    description:
+      "A proof type 9 proof with all five signer slots active carries the evidence key's hash in the last one (input 10, signer_pubkey_hash_4).",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: signed9(
+        [
+          GATEWAY_SIGNALS_HASH,
+          SECOND_SIGNALS_HASH,
+          FOURTH_SIGNALS_HASH,
+          FIFTH_SIGNALS_HASH,
+          NATIVE_SIGNALS_HASH,
+        ],
+        live(nativeEvidence),
+      ),
+    }),
+    expected: accept,
+  },
+
+  // --- A recorded revocation met again ---
+  {
+    name: "recorded-revocation-refetched-revoked",
+    description:
+      "The store already holds the revocation revocation-status-revoked recorded, and the host serves the revoked body again: refused, and the insert-if-absent revocation write still counts.",
+    follows: "revocation-status-revoked",
+    discovery: "native",
+    evidence: "native-kyc-revoked",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["native"],
+      seenRevoked: [{ trustDomainId: NATIVE_HOST, evidenceId: nativeEvidence.evidenceId }],
+    }),
+    expected: refuse("evidence_revoked"),
   },
 
   // --- Bodies that fail their schema, and discovery timestamps ---
@@ -3370,8 +3658,9 @@ const evaluationCases: CaseInput[] = [
 
 // A quorum member: one evidence fetched from its trust domain's own host, evaluated under
 // the case's consumer context and fed to `proof` (by default the proof that matches it).
-// Every quorum case runs on Base Sepolia.
-const member = (disc: string, ev: string, proof?: Proof) => {
+// `evidenceStatus` is the evidence fetch's HTTP status (200 unless a case varies it). Every
+// quorum case runs on Base Sepolia.
+const member = (disc: string, ev: string, proof?: Proof, evidenceStatus = 200) => {
   const host = discovery[disc]!.trustDomainId;
   const held = evidence[ev]!;
   const fed = proof ?? matchingProof(discovery[disc]!, held, NOW);
@@ -3379,7 +3668,7 @@ const member = (disc: string, ev: string, proof?: Proof) => {
     discovery: disc,
     evidence: ev,
     discoveryFetch: { host, status: 200 },
-    evidenceFetch: { host, status: 200 },
+    evidenceFetch: { host, status: evidenceStatus },
     announcedEvidenceId: held.evidenceId,
     proof: encodeProof(fed, SEPOLIA_CONSUMER.chainId, SEPOLIA_CONSUMER.oracleAddress),
   };
@@ -3542,6 +3831,44 @@ const quorumCases = [
           jurisdictionId: UAE,
         }),
       ),
+    ],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "multi-signed-no-statement-counts-none",
+    description:
+      "A proof type 9 requirement with no statement: every member is refused at step 30 (a consumer with no statement for 7, 8 or 9 refuses), so nothing counts.",
+    ...quorumContext,
+    requirement: { ...KYC_MULTI_SIGNED, statement: null },
+    members: [
+      member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
+      member("gateway", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
+    ],
+    expected: { attestors: [], count: 0, satisfied: false },
+  },
+  {
+    name: "key-revocation-shared-across-members",
+    description:
+      "Two gateway members fetched different copies of the gateway's discovery document: one revokes gw-root-1, the other does not. The revoked key that one member's evaluation records applies to every member before counting, so the gateway does not count on that key.",
+    ...quorumContext,
+    requirement: KYC_ATTESTATION,
+    members: [
+      member("native", "native-kyc"),
+      member("gateway-key-revoked-future", "gateway-persona"),
+      member("gateway", "gateway-sumsub"),
+    ],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "evidence-revocation-shared-across-members",
+    description:
+      "The gateway evidence is announced twice: one fetch answers 410, the other the active body. The revocation the 410 member records applies to every member before counting, so the active copy does not count.",
+    ...quorumContext,
+    requirement: KYC_ATTESTATION,
+    members: [
+      member("native", "native-kyc"),
+      member("gateway", "gateway-sumsub", undefined, 410),
+      member("gateway", "gateway-sumsub"),
     ],
     expected: { attestors: ["7"], count: 1, satisfied: false },
   },
@@ -3765,6 +4092,23 @@ const REFUSALS = [
   "proof_mismatch",
   "proof_stale",
 ];
+// SPEC.md section 10.7, Held grants: the refusals that end a held grant when they refuse its
+// re-evaluation. Each is final, recorded or fixed by time: the consumer no longer allowlists
+// the trust domain (1), the announcement itself (2, 3, which a re-evaluation of the recorded
+// id from the discovery host cannot meet), an evidence revocation (4, 5), a key revocation
+// (18), the evidence's expiry (29), and the attestation's revocation or expiry or the proof's
+// window (31). Every other refusal describes a provider document, an Oracle read or a
+// consumer setting that can change back, and suspends the grant.
+const ENDS_HELD_GRANT = [
+  "trust_domain_not_allowed",
+  "evidence_id_invalid",
+  "origin_mismatch",
+  "evidence_gone",
+  "evidence_revoked",
+  "key_revoked",
+  "expired",
+  "proof_stale",
+];
 
 const LIMITS = {
   maxEvidenceLifetimeSeconds: MAX_EVIDENCE_LIFETIME_SECONDS,
@@ -3778,7 +4122,7 @@ const LIMITS = {
   minEvidenceIdLength: MIN_EVIDENCE_ID_LENGTH,
   maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
   maxTimestamp: MAX_TIMESTAMP,
-  minRevocationRecordsPerTrustDomain: MIN_REVOCATION_RECORDS_PER_TRUST_DOMAIN,
+  minUngrantedRevocationsPerWallet: MIN_UNGRANTED_REVOCATIONS_PER_WALLET,
 };
 const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceLifetimeSeconds: "Largest expiresAt - issuedAt (365 days).",
@@ -3793,8 +4137,8 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   minEvidenceIdLength: "Shortest evidenceId (128 bits of base64url).",
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
-  minRevocationRecordsPerTrustDomain:
-    "Least bound a consumer may set on revocation records per trust domain, and never fewer than the grants it holds there (SPEC.md section 10.7, Revocation bound).",
+  minUngrantedRevocationsPerWallet:
+    "Least bound a consumer may set on the revocation records of ids it never granted on, per (trust domain, wallet the evaluation was for); revocations of ids it granted on are never bounded (SPEC.md section 10.7, Revocation bound).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -3891,7 +4235,15 @@ function finalize({ context, expected, ...c }: CaseInput) {
   return {
     ...c,
     context: { ...full, proof: encodeProof(full.proof, full.chainId, full.oracleAddress) },
-    expected: { ...expected, records: recordsFor({ context, expected, ...c }, full, disc, ev) },
+    expected: {
+      ...expected,
+      records: recordsFor({ context, expected, ...c }, full, disc, ev),
+      heldGrant: expected.accepted
+        ? "kept"
+        : ENDS_HELD_GRANT.includes(expected.refusal)
+          ? "ended"
+          : "suspended",
+    },
   };
 }
 
@@ -3972,19 +4324,27 @@ const JURISDICTION_IDS = d("The ERC-8262 jurisdiction ids the consumer accepts."
 // risk_score_signed's bound_lower / bound_upper are u32.
 const U32 = { type: "integer", minimum: 0, maximum: 2 ** 32 - 1 };
 const STATEMENT = d(
-  "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30): null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type (1 threshold, 2 range), direction (1 GT, 2 LT), bound_lower, bound_upper and config_hash; for 9 those of 7 plus the least threshold_m.",
+  "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30), tagged with the proof type it is for: null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type and config_hash with, for a threshold (1), its direction (1 GT, 2 LT) and bound_lower, or for a range (2), bound_lower and bound_upper (risk_score_signed leaves the other word free in each mode); for 9 those of 7 plus the least threshold_m.",
   {
     oneOf: [
       { type: "null" },
-      obj({ jurisdictionIds: JURISDICTION_IDS, configHash: HEX32 }),
+      obj({ proofType: { const: 7 }, jurisdictionIds: JURISDICTION_IDS, configHash: HEX32 }),
       obj({
-        riskProofType: { enum: [1, 2] },
-        direction: { type: "integer", minimum: 0, maximum: 255 },
+        proofType: { const: 8 },
+        riskProofType: { const: 1 },
+        direction: { enum: [1, 2] },
+        boundLower: U32,
+        configHash: HEX32,
+      }),
+      obj({
+        proofType: { const: 8 },
+        riskProofType: { const: 2 },
         boundLower: U32,
         boundUpper: U32,
         configHash: HEX32,
       }),
       obj({
+        proofType: { const: 9 },
         jurisdictionIds: JURISDICTION_IDS,
         configHash: HEX32,
         minThresholdM: { type: "integer", minimum: 1, maximum: 5 },
@@ -3999,6 +4359,10 @@ const CONSUMER_FIELDS = {
   now: UNIX,
   allowlist: ALLOWLIST,
   registry: REGISTRY,
+  validConfigs: d(
+    "Config hashes the Oracle holds valid: isValidConfig(configHash), read at step 23 for proof types 7, 8 and 9.",
+    { type: "array", items: HEX32 },
+  ),
   seenDiscovery: d("Discovery fixtures in the consumer's observation store.", {
     type: "array",
     items: NAME,
@@ -4049,6 +4413,9 @@ const RECORDS = d(
     evidence: { oneOf: [{ type: "null" }, OBSERVED_PAIR] },
   }),
 );
+
+const HELD_GRANT =
+  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31: final, recorded or fixed by time), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the evidence expires).";
 
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -4102,8 +4469,17 @@ const vectorsSchema = {
           context: obj({ ...CONSUMER_FIELDS, statement: STATEMENT, ...ATTEMPT_FIELDS }),
           expected: {
             oneOf: [
-              obj({ accepted: { const: true }, records: RECORDS }),
-              obj({ accepted: { const: false }, refusal: { enum: REFUSALS }, records: RECORDS }),
+              obj({
+                accepted: { const: true },
+                records: RECORDS,
+                heldGrant: d(HELD_GRANT, { const: "kept" }),
+              }),
+              obj({
+                accepted: { const: false },
+                refusal: { enum: REFUSALS },
+                records: RECORDS,
+                heldGrant: d(HELD_GRANT, { enum: ["suspended", "ended"] }),
+              }),
             ],
           },
         },

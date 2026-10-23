@@ -49,7 +49,7 @@
         "minEvidenceIdLength",
         "maxEvidenceIdLength",
         "maxTimestamp",
-        "minRevocationRecordsPerTrustDomain"
+        "minUngrantedRevocationsPerWallet"
       ],
       "additionalProperties": false,
       "properties": {
@@ -108,8 +108,8 @@
           "type": "integer",
           "minimum": 1
         },
-        "minRevocationRecordsPerTrustDomain": {
-          "description": "Least bound a consumer may set on revocation records per trust domain, and never fewer than the grants it holds there (SPEC.md section 10.7, Revocation bound).",
+        "minUngrantedRevocationsPerWallet": {
+          "description": "Least bound a consumer may set on the revocation records of ids it never granted on, per (trust domain, wallet the evaluation was for); revocations of ids it granted on are never bounded (SPEC.md section 10.7, Revocation bound).",
           "type": "integer",
           "minimum": 1
         }
@@ -253,6 +253,7 @@
               "now",
               "allowlist",
               "registry",
+              "validConfigs",
               "seenDiscovery",
               "seenEvidence",
               "seenRevoked",
@@ -353,6 +354,14 @@
                   }
                 }
               },
+              "validConfigs": {
+                "description": "Config hashes the Oracle holds valid: isValidConfig(configHash), read at step 23 for proof types 7, 8 and 9.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{64}$"
+                }
+              },
               "seenDiscovery": {
                 "description": "Discovery fixtures in the consumer's observation store.",
                 "type": "array",
@@ -397,7 +406,7 @@
                 }
               },
               "statement": {
-                "description": "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30): null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type (1 threshold, 2 range), direction (1 GT, 2 LT), bound_lower, bound_upper and config_hash; for 9 those of 7 plus the least threshold_m.",
+                "description": "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30), tagged with the proof type it is for: null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type and config_hash with, for a threshold (1), its direction (1 GT, 2 LT) and bound_lower, or for a range (2), bound_lower and bound_upper (risk_score_signed leaves the other word free in each mode); for 9 those of 7 plus the least threshold_m.",
                 "oneOf": [
                   {
                     "type": "null"
@@ -405,11 +414,15 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "jurisdictionIds",
                       "configHash"
                     ],
                     "additionalProperties": false,
                     "properties": {
+                      "proofType": {
+                        "const": 7
+                      },
                       "jurisdictionIds": {
                         "description": "The ERC-8262 jurisdiction ids the consumer accepts.",
                         "type": "array",
@@ -430,24 +443,53 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "riskProofType",
                       "direction",
+                      "boundLower",
+                      "configHash"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "proofType": {
+                        "const": 8
+                      },
+                      "riskProofType": {
+                        "const": 1
+                      },
+                      "direction": {
+                        "enum": [
+                          1,
+                          2
+                        ]
+                      },
+                      "boundLower": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "configHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "proofType",
+                      "riskProofType",
                       "boundLower",
                       "boundUpper",
                       "configHash"
                     ],
                     "additionalProperties": false,
                     "properties": {
-                      "riskProofType": {
-                        "enum": [
-                          1,
-                          2
-                        ]
+                      "proofType": {
+                        "const": 8
                       },
-                      "direction": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 255
+                      "riskProofType": {
+                        "const": 2
                       },
                       "boundLower": {
                         "type": "integer",
@@ -468,12 +510,16 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "jurisdictionIds",
                       "configHash",
                       "minThresholdM"
                     ],
                     "additionalProperties": false,
                     "properties": {
+                      "proofType": {
+                        "const": 9
+                      },
                       "jurisdictionIds": {
                         "description": "The ERC-8262 jurisdiction ids the consumer accepts.",
                         "type": "array",
@@ -618,7 +664,8 @@
                 "type": "object",
                 "required": [
                   "accepted",
-                  "records"
+                  "records",
+                  "heldGrant"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -747,6 +794,10 @@
                         ]
                       }
                     }
+                  },
+                  "heldGrant": {
+                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31: final, recorded or fixed by time), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the evidence expires).",
+                    "const": "kept"
                   }
                 }
               },
@@ -755,7 +806,8 @@
                 "required": [
                   "accepted",
                   "refusal",
-                  "records"
+                  "records",
+                  "heldGrant"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -919,6 +971,13 @@
                         ]
                       }
                     }
+                  },
+                  "heldGrant": {
+                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31: final, recorded or fixed by time), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the evidence expires).",
+                    "enum": [
+                      "suspended",
+                      "ended"
+                    ]
                   }
                 }
               }
@@ -964,6 +1023,7 @@
               "now",
               "allowlist",
               "registry",
+              "validConfigs",
               "seenDiscovery",
               "seenEvidence",
               "seenRevoked"
@@ -1059,6 +1119,14 @@
                   }
                 }
               },
+              "validConfigs": {
+                "description": "Config hashes the Oracle holds valid: isValidConfig(configHash), read at step 23 for proof types 7, 8 and 9.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{64}$"
+                }
+              },
               "seenDiscovery": {
                 "description": "Discovery fixtures in the consumer's observation store.",
                 "type": "array",
@@ -1130,7 +1198,7 @@
                 ]
               },
               "statement": {
-                "description": "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30): null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type (1 threshold, 2 range), direction (1 GT, 2 LT), bound_lower, bound_upper and config_hash; for 9 those of 7 plus the least threshold_m.",
+                "description": "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30), tagged with the proof type it is for: null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type and config_hash with, for a threshold (1), its direction (1 GT, 2 LT) and bound_lower, or for a range (2), bound_lower and bound_upper (risk_score_signed leaves the other word free in each mode); for 9 those of 7 plus the least threshold_m.",
                 "oneOf": [
                   {
                     "type": "null"
@@ -1138,11 +1206,15 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "jurisdictionIds",
                       "configHash"
                     ],
                     "additionalProperties": false,
                     "properties": {
+                      "proofType": {
+                        "const": 7
+                      },
                       "jurisdictionIds": {
                         "description": "The ERC-8262 jurisdiction ids the consumer accepts.",
                         "type": "array",
@@ -1163,24 +1235,53 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "riskProofType",
                       "direction",
+                      "boundLower",
+                      "configHash"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "proofType": {
+                        "const": 8
+                      },
+                      "riskProofType": {
+                        "const": 1
+                      },
+                      "direction": {
+                        "enum": [
+                          1,
+                          2
+                        ]
+                      },
+                      "boundLower": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "configHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "proofType",
+                      "riskProofType",
                       "boundLower",
                       "boundUpper",
                       "configHash"
                     ],
                     "additionalProperties": false,
                     "properties": {
-                      "riskProofType": {
-                        "enum": [
-                          1,
-                          2
-                        ]
+                      "proofType": {
+                        "const": 8
                       },
-                      "direction": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 255
+                      "riskProofType": {
+                        "const": 2
                       },
                       "boundLower": {
                         "type": "integer",
@@ -1201,12 +1302,16 @@
                   {
                     "type": "object",
                     "required": [
+                      "proofType",
                       "jurisdictionIds",
                       "configHash",
                       "minThresholdM"
                     ],
                     "additionalProperties": false,
                     "properties": {
+                      "proofType": {
+                        "const": 9
+                      },
                       "jurisdictionIds": {
                         "description": "The ERC-8262 jurisdiction ids the consumer accepts.",
                         "type": "array",

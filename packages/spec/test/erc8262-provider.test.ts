@@ -2,7 +2,8 @@
 // discovery and evidence schemas, plus a from-scratch runner for the section 10.5
 // evaluation and section 10.6 quorum algorithms. It reads only the shipped JSON, so it is
 // also the shape of what an external provider or consumer runs: no generator, no
-// Xochi code.
+// Xochi code. The last block holds SPEC.md's section 10.5 position table, and the runner's
+// LAYOUTS, to the public inputs of the circuits `@xochi/sdk` ships (synced from ERC-8262).
 
 import { describe, it, expect } from "vitest";
 import fs from "fs";
@@ -65,16 +66,14 @@ type Proof = {
     revoked: boolean;
   };
 };
-// What the consumer requires the proof to prove: null for type 4, else per proof type.
-type Statement = null | {
-  jurisdictionIds?: number[];
-  configHash?: string;
-  riskProofType?: number;
-  direction?: number;
-  boundLower?: number;
-  boundUpper?: number;
-  minThresholdM?: number;
-};
+// What the consumer requires the proof to prove, tagged with the proof type it is for: null for
+// type 4, else per proof type (type 8 per risk mode).
+type Statement =
+  | null
+  | { proofType: 7; jurisdictionIds: number[]; configHash: string }
+  | { proofType: 8; riskProofType: 1; direction: number; boundLower: number; configHash: string }
+  | { proofType: 8; riskProofType: 2; boundLower: number; boundUpper: number; configHash: string }
+  | { proofType: 9; jurisdictionIds: number[]; configHash: string; minThresholdM: number };
 type RegistryEntry = {
   attestorProviderId: string;
   denied: boolean;
@@ -91,6 +90,7 @@ type Consumer = {
   now: number;
   allowlist: AllowlistEntry[];
   registry: RegistryEntry[];
+  validConfigs: string[];
   seenDiscovery: string[];
   seenEvidence: string[];
   seenRevoked: { trustDomainId: string; evidenceId: string }[];
@@ -101,7 +101,11 @@ type Attempt = {
   announcedEvidenceId: string;
   proof: Proof;
 };
-type Context = Consumer & Attempt & { statement: Statement };
+// Revoked keys another quorum member's evaluation recorded (SPEC.md section 10.6), applied at
+// step 18 next to the store; empty outside a quorum's counting pass.
+type SharedKeyRevocation = { trustDomainId: string; keyId: string; material: string | undefined };
+type Context = Consumer &
+  Attempt & { statement: Statement; sharedKeyRevocations?: SharedKeyRevocation[] };
 type DocRef = string | { schemaCase: string };
 type Observed = { trustDomainId: string; evidenceId: string };
 // What one evaluation writes to the observation store (SPEC.md section 10.7).
@@ -115,7 +119,11 @@ type Records = {
   evidence: Observed | null;
 };
 type Vectors = {
-  limits: { maxEvidenceLifetimeSeconds: number; clockSkewSeconds: number };
+  limits: {
+    maxEvidenceLifetimeSeconds: number;
+    clockSkewSeconds: number;
+    minUngrantedRevocationsPerWallet: number;
+  };
   refusals: string[];
   discovery: Record<string, Discovery>;
   evidence: Record<string, Evidence>;
@@ -126,7 +134,12 @@ type Vectors = {
     evidence: DocRef;
     context: Context;
     follows?: string;
-    expected: { accepted: boolean; refusal?: string; records: Records };
+    expected: {
+      accepted: boolean;
+      refusal?: string;
+      records: Records;
+      heldGrant: "kept" | "suspended" | "ended";
+    };
   }[];
   quorumCases: {
     name: string;
@@ -317,14 +330,41 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   [
     "key_revoked",
     (f) => {
-      // Revocations in this document and in every recorded one, by keyId and by material.
       const key = f.key();
       if (key === undefined) return false;
-      return [f.disc, ...f.priorDiscovery()].some((d) =>
-        d.keys.some(
+      const keyMaterial = material(key);
+      if (
+        f.disc.keys.some(
           (k) =>
-            k.revokedAt !== undefined && (k.keyId === key.keyId || material(k) === material(key)),
-        ),
+            k.revokedAt !== undefined && (k.keyId === key.keyId || material(k) === keyMaterial),
+        )
+      ) {
+        return true;
+      }
+      // Recorded key revocations (and those another quorum member recorded): by keyId and
+      // material for this trust domain, by material for any other trust domain the consumer
+      // pins to the same attestor on this deployment, never for one pinned to another.
+      const pin = f.pinned()?.attestorProviderId;
+      const sameAttestor = new Set(
+        f.ctx.allowlist.filter((a) => a.attestorProviderId === pin).map((a) => a.trustDomainId),
+      );
+      const recorded = [
+        ...f.ctx.seenDiscovery.flatMap((name) => {
+          const d = doc(V.discovery, name);
+          return d.keys
+            .filter((k) => k.revokedAt !== undefined)
+            .map((k) => ({
+              trustDomainId: d.trustDomainId,
+              keyId: k.keyId,
+              material: material(k),
+            }));
+        }),
+        ...(f.ctx.sharedKeyRevocations ?? []),
+      ];
+      return recorded.some((r) =>
+        r.trustDomainId === f.disc.trustDomainId
+          ? r.keyId === key.keyId || r.material === keyMaterial
+          : sameAttestor.has(r.trustDomainId) && r.material === keyMaterial,
       );
     },
   ],
@@ -365,9 +405,13 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       const reg = f.registry();
       if (reg === undefined) return true;
       const art = f.ev.artifact;
-      return art.proofType === 4
-        ? !reg.credentialRoots.includes(art.credentialRoot)
-        : !reg.signerPubkeyHashes.includes(f.key()?.signerPubkeyHash ?? "");
+      if (art.proofType === 4) return !reg.credentialRoots.includes(art.credentialRoot);
+      // The keyId key's signer hash, and the weight config the statement names, still valid.
+      const st = f.ctx.statement;
+      return (
+        !reg.signerPubkeyHashes.includes(f.key()?.signerPubkeyHash ?? "") ||
+        (st !== null && !f.ctx.validConfigs.includes(st.configHash))
+      );
     },
   ],
   ["subject_mismatch", (f) => f.ev.subject !== f.ctx.subject],
@@ -402,8 +446,11 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
         value !== undefined && at(i) === BigInt(value);
       // Identity: the subject, then the attestor and artifact, or the keyId key's signer hash.
       if (!is(layout.submitter, f.ev.subject)) return true;
+      // Statement: one for this proof type (none for type 4, whose statement is identity).
+      const st = f.ctx.statement;
       if (art.proofType === 4) {
         return (
+          st !== null ||
           !is(0, f.ev.deployment.attestorProviderId) ||
           !is(1, art.credentialType) ||
           !is(3, art.credentialRoot)
@@ -411,22 +458,17 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       }
       const hash = f.key()?.signerPubkeyHash;
       if (hash === undefined || !layout.signers.some((i) => words[i] === hash)) return true;
-      // Statement: what the consumer requires the proof to prove.
-      const st = f.ctx.statement;
-      if (st === null) return true;
-      if (art.proofType === 8) {
-        return (
-          !is(0, st.riskProofType) ||
-          !is(1, st.direction) ||
-          !is(2, st.boundLower) ||
-          !is(3, st.boundUpper) ||
-          !is(5, st.configHash)
-        );
+      if (st === null || st.proofType !== art.proofType) return true;
+      if (st.proofType === 8) {
+        // Only what risk_score_signed constrains in the statement's mode: a threshold leaves
+        // bound_upper free, a range leaves direction free.
+        if (!is(0, st.riskProofType) || !is(2, st.boundLower) || !is(5, st.configHash)) {
+          return true;
+        }
+        return st.riskProofType === 1 ? !is(1, st.direction) : !is(3, st.boundUpper);
       }
-      const jurisdictionOk = st.jurisdictionIds?.some((j) => is(0, j)) === true;
-      const thresholdOk =
-        art.proofType !== 9 ||
-        (st.minThresholdM !== undefined && at(5) >= BigInt(st.minThresholdM));
+      const jurisdictionOk = st.jurisdictionIds.some((j) => is(0, j));
+      const thresholdOk = st.proofType !== 9 || at(5) >= BigInt(st.minThresholdM);
       return !jurisdictionOk || !is(2, st.configHash) || !thresholdOk;
     },
   ],
@@ -499,6 +541,19 @@ function recordsOf(disc: unknown, held: unknown, ctx: Context, refusal: string |
   };
 }
 
+// SPEC.md section 10.7, Held grants: a re-evaluation refused at one of these ends the grant
+// (final, recorded or fixed by time); refused at any other step it suspends the grant.
+const ENDS_HELD_GRANT: readonly string[] = [
+  "trust_domain_not_allowed",
+  "evidence_id_invalid",
+  "origin_mismatch",
+  "evidence_gone",
+  "evidence_revoked",
+  "key_revoked",
+  "expired",
+  "proof_stale",
+];
+
 const byNumericValue = (a: string, b: string): number =>
   BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0;
 
@@ -549,8 +604,12 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     const held = resolve(V.evidence, "evidence", c.evidence);
     const refusal = evaluate(disc, held, c.context);
     const records = recordsOf(disc, held, c.context, refusal);
+    const heldGrant =
+      refusal === null ? "kept" : ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended";
     expect(
-      refusal === null ? { accepted: true, records } : { accepted: false, refusal, records },
+      refusal === null
+        ? { accepted: true, records, heldGrant }
+        : { accepted: false, refusal, records, heldGrant },
     ).toEqual(c.expected);
   });
 
@@ -629,20 +688,38 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
 
 describe("erc8262 quorum (SPEC section 10.6)", () => {
   it.each(V.quorumCases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    const attestors = new Set<string>();
-    for (const { discovery, evidence, ...attempt } of c.members) {
+    // Evidence for another claim or proof type is not evaluated. Every other member runs under
+    // the case's consumer context, observation store included, and its proof must prove the
+    // requirement's statement.
+    const runs = c.members.flatMap(({ discovery, evidence, ...attempt }) => {
       const ev = doc(V.evidence, evidence);
-      if (
-        ev.claimType !== c.requirement.claimType ||
-        ev.artifact.proofType !== c.requirement.proofType
-      ) {
-        continue;
-      }
-      // Every member runs under the case's consumer context, observation store included, and
-      // its proof must prove the requirement's statement.
-      const ctx = { ...c.context, ...attempt, statement: c.requirement.statement };
-      if (evaluate(doc(V.discovery, discovery), ev, ctx) === null) {
-        attestors.add(ev.deployment.attestorProviderId);
+      return ev.claimType === c.requirement.claimType &&
+        ev.artifact.proofType === c.requirement.proofType
+        ? [
+            {
+              disc: doc(V.discovery, discovery),
+              ev,
+              ctx: { ...c.context, ...attempt, statement: c.requirement.statement },
+            },
+          ]
+        : [];
+    });
+    // What each member's evaluation against the snapshot records; its revocations (evidence and
+    // key) apply to every member before counting, which can only refuse.
+    const recorded = runs.map((r) => recordsOf(r.disc, r.ev, r.ctx, evaluate(r.disc, r.ev, r.ctx)));
+    const seenRevoked = [
+      ...c.context.seenRevoked,
+      ...recorded.flatMap((r) => (r.revocation ? [r.revocation] : [])),
+    ];
+    const sharedKeyRevocations = recorded.flatMap(({ discovery }) =>
+      discovery
+        ? discovery.revokedKeys.map((k) => ({ trustDomainId: discovery.trustDomainId, ...k }))
+        : [],
+    );
+    const attestors = new Set<string>();
+    for (const r of runs) {
+      if (evaluate(r.disc, r.ev, { ...r.ctx, seenRevoked, sharedKeyRevocations }) === null) {
+        attestors.add(r.ev.deployment.attestorProviderId);
       }
     }
     const sorted = [...attestors].sort(byNumericValue);
@@ -660,5 +737,42 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     expect(new Set(evs.map((e) => e.sourceId)).size).toBe(2);
     expect(new Set(evs.map((e) => e.trustDomainId)).size).toBe(1);
     expect(c.expected).toEqual({ attestors: ["1"], count: 1, satisfied: false });
+  });
+});
+
+describe("erc8262 position table (SPEC section 10.5)", () => {
+  const spec = fs.readFileSync(path.join(DIR, "../SPEC.md"), "utf8");
+  const circuits = {
+    4: "attestation",
+    7: "compliance_signed",
+    8: "risk_score_signed",
+    9: "compliance_multi_signed",
+  };
+  it.each(Object.entries(circuits))("proof type %s matches circuits/%s.json", (type, circuit) => {
+    const file = path.join(DIR, "../../sdk/circuits", `${circuit}.json`);
+    const { abi } = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      abi: { parameters: { name: string; visibility: string }[] };
+    };
+    const inputs = abi.parameters.filter((p) => p.visibility === "public").map((p) => p.name);
+    const row = new RegExp(`^\\| ${type} \\| (\\d+) \\| (.+) \\|$`, "m").exec(spec);
+    if (!row) throw new Error(`SPEC.md has no position-table row for proof type ${type}`);
+    expect(Number(row[1])).toBe(inputs.length);
+    for (const [, index, name] of row[2]!.matchAll(/(\d+) `([a-z_]+)`/g)) {
+      expect(inputs[Number(index)], `SPEC.md type ${type} index ${index}`).toBe(name);
+    }
+    const slots = /(\d+)-(\d+) the signer slots/.exec(row[2]!);
+    const signerSlots = inputs.flatMap((name, i) =>
+      /^signer_pubkey_hash_\d$/.test(name) ? [i] : [],
+    );
+    expect(slots ? [Number(slots[1]), Number(slots[2])] : [], `SPEC.md type ${type} slots`).toEqual(
+      signerSlots.length > 0 ? [signerSlots[0], signerSlots.at(-1)] : [],
+    );
+    const layout = LAYOUTS[Number(type)]!;
+    expect(layout.length).toBe(inputs.length);
+    expect(inputs[layout.submitter]).toBe("submitter");
+    expect(inputs[layout.timestamp]).toMatch(/^(current_)?timestamp$/);
+    expect(layout.signers.map((i) => inputs[i])).toEqual(
+      inputs.filter((name) => /^signer_pubkey_hash(_\d)?$/.test(name)),
+    );
   });
 });
