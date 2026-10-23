@@ -261,9 +261,10 @@ describe("execute: single attempt, structured backpressure errors", () => {
   });
 });
 
-// The Worker's explicit backpressure answer (503/429, `accepted: false`, the
-// executed `intent_id`): nothing was accepted, so the SAME request may be sent
-// again after `retryAfter`. Everything else stays in doubt.
+// The Worker's explicit backpressure answer (xochi#686: a 503, `accepted:
+// false`, the executed `intent_id`, a positive `retry_after`): nothing was
+// accepted, so the SAME request may be sent again after `retryAfter`.
+// Everything else stays in doubt, classified exactly as before the marker.
 describe("execute: the not-accepted refusal", () => {
   const notAccepted = (over: Record<string, unknown> = {}) => ({
     success: false,
@@ -276,18 +277,29 @@ describe("execute: the not-accepted refusal", () => {
   });
   const nowSec = () => Math.floor(Date.now() / 1000);
 
-  it("marks a 503 or 429 carrying the marker for the executed intent, single attempt", async () => {
-    for (const status of [503, 429]) {
-      const { c, calls } = client(() => json(notAccepted(), status, { "Retry-After": "5" }));
-      const err = (await rejection(c.execute(execRequest))) as ApiError;
-      expect(err, String(status)).toBeInstanceOf(ApiError);
-      expect(err.code, String(status)).toBe(status);
-      expect(err.notAccepted, String(status)).toBe(true);
-      // The header wins over the body's delta.
-      expect(err.retryAfter, String(status)).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
-      expect(err.retryAfter, String(status)).toBeLessThanOrEqual(nowSec() + 5 + 1);
-      expect(calls, String(status)).toHaveLength(1);
-    }
+  it("marks a 503 carrying the marker for the executed intent, single attempt", async () => {
+    const { c, calls } = client(() => json(notAccepted(), 503, { "Retry-After": "5" }));
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(503);
+    expect(err.notAccepted).toBe(true);
+    // The header wins over the body's delta.
+    expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
+    expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 5 + 1);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps a 429 carrying the marker in doubt, with its header countdown as before", async () => {
+    const { c, calls } = client(() => json(notAccepted(), 429, { "Retry-After": "5" }));
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    expect(err.code).toBe(429);
+    expect(err.notAccepted).toBe(false);
+    expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
+    expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 5 + 1);
+    expect(calls).toHaveLength(1);
+    // Without a readable header the body's delta is not read for it either.
+    const bare = client(() => json(notAccepted(), 429));
+    expect(((await rejection(bare.c.execute(execRequest))) as ApiError).retryAfter).toBeUndefined();
   });
 
   it("takes the delay from the body's retry_after when no header is readable", async () => {
@@ -296,12 +308,24 @@ describe("execute: the not-accepted refusal", () => {
     expect(err.notAccepted).toBe(true);
     expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 7 - 1);
     expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 7 + 1);
+  });
 
-    for (const retry_after of [0, -3, "7", null]) {
+  it("keeps a 503 without a usable retry_after in doubt", async () => {
+    for (const retry_after of [undefined, 0, -3, "7", null]) {
+      const label = String(retry_after);
+      // No readable header: no countdown at all, as before the marker existed.
       const bad = client(() => json(notAccepted({ retry_after }), 503));
       const e = (await rejection(bad.c.execute(execRequest))) as ApiError;
-      expect(e.notAccepted, String(retry_after)).toBe(true);
-      expect(e.retryAfter, String(retry_after)).toBeUndefined();
+      expect(e.code, label).toBe(503);
+      expect(e.notAccepted, label).toBe(false);
+      expect(e.retryAfter, label).toBeUndefined();
+      expect(bad.calls, label).toHaveLength(1);
+      // A readable header still gives the countdown, and still does not flag.
+      const headed = client(() => json(notAccepted({ retry_after }), 503, { "Retry-After": "5" }));
+      const h = (await rejection(headed.c.execute(execRequest))) as ApiError;
+      expect(h.notAccepted, label).toBe(false);
+      expect(h.retryAfter, label).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
+      expect(h.retryAfter, label).toBeLessThanOrEqual(nowSec() + 5 + 1);
     }
   });
 
@@ -313,7 +337,7 @@ describe("execute: the not-accepted refusal", () => {
       ["accepted 0", () => json(notAccepted({ accepted: 0 }), 503)],
       ["accepted null", () => json(notAccepted({ accepted: null }), 503)],
       ["another intent", () => json(notAccepted({ intent_id: "intent-2" }), 503)],
-      ["no intent", () => json(notAccepted({ intent_id: undefined }), 429)],
+      ["no intent", () => json(notAccepted({ intent_id: undefined }), 503)],
       ["500 with the marker", () => json(notAccepted(), 500)],
       ["502 with the marker", () => json(notAccepted(), 502)],
       ["409 with the marker", () => json(notAccepted(), 409)],

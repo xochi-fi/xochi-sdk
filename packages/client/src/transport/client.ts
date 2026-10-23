@@ -154,13 +154,15 @@ export class ApiError extends Error {
 }
 
 /**
- * The Worker's explicit backpressure answer to `POST /api/intent/execute`: a
- * 503 or 429 whose body is a JSON object with `accepted` the boolean `false`
- * and `intent_id` equal to the executed intent. The Worker sends it only after
+ * The Worker's explicit backpressure answer to `POST /api/intent/execute`
+ * (xochi#686): a 503 whose body is a JSON object with `accepted` the boolean
+ * `false`, `intent_id` equal to the executed intent, and `retry_after` a
+ * positive finite number (delta seconds). The Worker sends it only after
  * undoing its own claim on a solver refusal that provably ran before anything
- * was accepted. Anything else (another status, a missing or non-boolean
- * marker, another intent, a body that does not parse, one cut by the read cap)
- * is not it: fail closed, the failure stays in doubt.
+ * was accepted. Anything else (another status, 429 included, a missing or
+ * non-boolean marker, another intent, a missing, zero, negative or non-numeric
+ * `retry_after`, a body that does not parse, one cut by the read cap) is not
+ * it: fail closed, the failure stays in doubt.
  */
 function isNotAcceptedExecuteBody(
   status: number,
@@ -168,10 +170,13 @@ function isNotAcceptedExecuteBody(
   intentId: string,
 ): boolean {
   return (
-    (status === 503 || status === 429) &&
+    status === 503 &&
     body !== undefined &&
     body.accepted === false &&
-    body.intent_id === intentId
+    body.intent_id === intentId &&
+    typeof body.retry_after === "number" &&
+    Number.isFinite(body.retry_after) &&
+    body.retry_after > 0
   );
 }
 
