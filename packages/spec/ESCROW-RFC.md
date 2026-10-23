@@ -347,12 +347,17 @@ from the first independent solver:
    issued the `:winner` FillAuth for `orderId` (never the pending tip). Proven
    blocks are not pruned, so the bound survives an unproven-epoch prune. A
    note included at or below it is unproven: a fill cannot precede the award.
-   On the XSP path the bound is the lowest last-proven height across the
+   On the XSP path the lower bound is the lowest last-proven height across the
    Attestor's signing nodes' own Aztec nodes, recorded when the obligation is
    recorded `Open` (3.8a). A note landing between that proven height and the
    award passes this bound; on `RiddlerEscrow` the fill tag (Order binding,
    below) refuses it, because no tx can carry the tag before the award, and
-   the XSP path keeps this residual until 3.8a adopts the tag.
+   the XSP path keeps this residual until 3.8a adopts the tag. The upper
+   bound is `fillDeadline`: the timestamp of that block, as the venue's own
+   node reports it at step 5's finality, is at most `fillDeadline` (on the
+   XSP path, the obligation's fill deadline as 3.8a records it). A note
+   included later is refused on content (below): the window was the
+   winner's to fill in, never an option to hold past it.
 
 Steps 3–4 assume a **private-only** transaction: `noteIndex` is the position
 in the tx's note hashes ordered by side-effect counter, and the nonce comes
@@ -404,21 +409,32 @@ lockstep, and until it does the XSP path carries the unbound-note risk this
 paragraph closes.
 
 A failed step, a node error and an `unknown` result are all **unproven**, not
-"not filled". For §6 every received disclosure resolves, by `holdDeadline` at
-the latest, into exactly one class:
+"not filled". A disclosure's **receipt** is its attributable `POST
+/solver/fills` record (§11.0), timestamped by the venue on arrival. For §6
+every received disclosure resolves, by `holdDeadline` (Claim window, below)
+at the latest, into exactly one class:
 
 - **verified**: every release-predicate check (below) passed at finality;
 - **refused on content**, which counts as no disclosure (§6): a field
   mismatch, a missing fill tag, a payload the venue's node rejects as
-  malformed, a `txHash` that the venue's node, outside a venue outage, does
-  not show included at the corridor's finality by receipt + `T_final`
-  (`not_included`; `T_final` already covers a proving stall), or
-  `note_already_bound` (an existing entry is always fully verified, because
-  the registry is written only after every other check passes, below);
+  malformed, a note included after `fillDeadline` (step 6), `not_included`
+  (below), or `note_already_bound` (an existing entry is always fully
+  verified, because the registry is written only after every other check
+  passes, below);
 - **venue outage**: the venue's own Aztec or L1 node, its identity proof or
   the registry was failing for every disclosure on that corridor, by the
-  venue's own health record, not only for this one. Never grounds for a
-  slash; the order follows the outage residual (Claim window, below).
+  venue's own health record, not only for this one, or the venue's Aztec
+  node is lagging (below). Never grounds for a slash; the order follows the
+  outage residual (Claim window, below).
+
+`not_included` holds only when the venue node's finalized view covers every
+block that could validly include the tx and `txHash` is in none of them: its
+finalized L2 head, at the corridor's finality (step 5), has a timestamp later
+than `fillDeadline`, so no block step 6 admits is still unfinalized. A node
+whose finalized head has not passed `fillDeadline` by `fillDeadline +
+T_final` (`T_final` already covers a proving stall; Claim window, below) is
+lagging: a venue outage, never `not_included`. A fill still waiting in the
+mempool, or behind a slow venue node, is therefore never classed absent.
 
 A disclosure still unclassified at `holdDeadline` for any reason other than
 a venue outage is refused on content, so a fabricated or never-included
@@ -458,8 +474,9 @@ solver); a payload `solver` that differs is a refusal.
 `verify(orderId, proof) ⇒ payee = awardee` holds iff `networkIdentity` equals
 the digest recorded with the award and the venue's node proved it, `recipient`,
 `token` and `amount` match the committed `DestOpening` (`amount >= toAmount`;
-exact under §13.2), the inclusion, lower-bound and fill-tag checks (steps 5–6,
-Order binding) passed at finality, `(networkIdentity, unique)` was free in the
+exact under §13.2), the inclusion check, both of step 6's window bounds and
+the fill tag (steps 5–6, Order binding) passed at finality,
+`(networkIdentity, unique)` was free in the
 registry, no `not_received` hold is open, and the order's outcome record
 admits release (release/slash exclusivity, §6). Both custody paths keep C2:
 no destination locator reaches the origin chain.
@@ -571,8 +588,8 @@ The "never refund an unknown" rule below binds the venue's own actions only.
   fill outcome is undisclosed. The winner's non-disclosure is resolved by the
   refund path at `refundableAt` (§3, §13), never by a second `transfer`; a
   backstop for a shielded leg is a resend of an unknown outcome. A `:winner`
-  that discloses after `exclusiveUntil` for a `transfer` included before
-  `fillDeadline` is still verified under this subsection, subject to
+  that discloses after `exclusiveUntil` for a `transfer` included by
+  `fillDeadline` (step 6) is still verified under this subsection, subject to
   release/slash exclusivity (§6); refusing it does not undo the payout.
   `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil` rule needs this exemption
   for `aztec_note_preimage` when that kind lands in lockstep.
@@ -601,9 +618,8 @@ consumer in this tree parses it.
   principal, which returns only through `refund`. For tier 1s the attester
   attests "no `aztec_note_preimage` disclosure for this `orderId` **received**
   from the awardee by `fillDeadline + FILL_DEADLINE_GRACE`", never "no fill"
-  and never "not verified". Receipt is the attributable `POST /solver/fills`
-  record (§11.0), timestamped by the venue on arrival; the attester compares
-  that timestamp with `fillDeadline + FILL_DEADLINE_GRACE` on the same venue
+  and never "not verified". The attester compares the disclosure's receipt
+  timestamp (§5.1) with `fillDeadline + FILL_DEADLINE_GRACE` on the same venue
   clock, and the proposal is still gated on the bond chain's clock by
   `FillWindowOpen` (§6.1). A disclosure received in time is slash grounds
   only once §5.1 classes it **refused on content**; while it is verified,
@@ -624,7 +640,9 @@ consumer in this tree parses it.
   `T_dispute` term and before `holdDeadline`, else the order refunds. So at
   most one of a release artifact and an executed slash exists per `orderId`.
   The solver's dispute evidence is the venue's own §5.1 inclusion record for
-  that `orderId`, produced on request, not `filled(fillId)`. While Riddler is
+  that `orderId`, which includes step 6's `fillDeadline` bound (a note
+  included later is no evidence), produced on request, not `filled(fillId)`.
+  While Riddler is
   the only shielded panel member, venue equals solver, and the bond and
   dispute machinery are inert under `RiddlerEscrow` + `SolverBond` (Riddler
   runs the attesters); under the Depository + Ledger pair the independent
