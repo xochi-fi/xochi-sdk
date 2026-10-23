@@ -106,14 +106,6 @@
   Riddler `intent_status.ex` `@terminal_statuses`. 3.4 carries the current set.
   The entry is kept rather than rewritten so the history of what the server
   served when stays readable.
-- **Shielded corrections, no version bump and no wire change.** §3.2
-  reverses its `aztec_proof` guidance: it said to send the field for
-  `shielded` regardless, and now records that no producer or consumer uses
-  it and says not to send it (removing it from `ExecuteRequest` is a lockstep
-  wire change with Riddler). §5.1's shielded row, and §3.4's shielded status
-  fields, now read what is served: shielded is not offered, and the status
-  surfaces are the scalars `noteCommitment`, `nullifierHash` and `l2TxHash`,
-  not arrays. The served document did not move, so the version does not.
 - **Wire refresh against served `0.8.0` (2026-10-06), and the SPEC version does
   not move.** The served document gained the Canton destination (chain
   `253340876`, `vm_type: cvm`, `address_format: canton_party`, a third
@@ -149,6 +141,17 @@
   the server still advertises `0.8.0` and is moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
+- **Shielded corrections (2026-10-23), no version of their own and no wire
+  change.** §3.2 reverses its `aztec_proof` guidance: it said to send the
+  field for `shielded` regardless, and now records that no producer or
+  consumer uses it and says not to send it (removing it from `ExecuteRequest`
+  is a lockstep wire change with Riddler). §5.1's shielded row, and §3.4's
+  shielded status fields, now read what is served: shielded is not offered,
+  the status surfaces are the scalars `noteCommitment`, `nullifierHash` and
+  `l2TxHash`, not arrays, and §5.1 records that this intent-id read links an
+  intent to its Aztec transaction. The served document did not move, so these
+  corrections claim no version: they ship in the first spec release after
+  `0.8.1`, whichever version that release declares.
 - `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that the
   version string is new: `0.8.1` is declared only by commits that carry the
   second adversarial review's fixes, and the tarball's `wire/compare.mjs`
@@ -656,13 +659,21 @@ breakdown from the headline fee.
 |---|---|---|---|
 | `public` | plain address | ~30s | tx hashes |
 | `stealth` | ERC-5564 → ERC-4337 counterfactual account, gasless claim | ~60s | `stealthAddress`, `ephemeralPubKey`, `counterfactualAddress` |
-| `shielded` | Aztec note; not offered | ~120s | `noteCommitment`, `nullifierHash`, `l2TxHash` (scalars) |
+| `shielded` | Aztec note; not offered | — (not offered) | `noteCommitment`, `nullifierHash`, `l2TxHash` (scalars) |
 
 Shielded is not offered to takers today: the xochi Worker serves it as
 unavailable in `settlement_options` and refuses it as a `settlement_preference`
 while shielded is not offered by the venue (the Worker's
 `SHIELDED_SETTLEMENT_LIVE` flag). The served status surfaces are the three
 nullable scalars above; no array of note hashes or nullifiers is served.
+They are served on `GET /xochi/status/:intent_id`, a read by intent id that
+an integrator API key authorizes (§3.1), not the intent's owner, so they link
+the intent to its Aztec transaction for whoever holds that key.
+`ESCROW-RFC.md` §5.1 ("Recipient") keeps the tx hash off any such read for
+its `[PROPOSED]` shielded release, so before shielded is offered under it
+these fields leave that read or become owner-scoped there, in lockstep with
+Riddler.
+
 `nullifierHash` is misleading: it is the first protocol nullifier of the
 transaction, and a `transfer_to_private` spends a public balance and nullifies no
 note, so it is not the nullifier for the note the taker receives. A
