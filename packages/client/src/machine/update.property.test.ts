@@ -15,7 +15,12 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import type { IntentStatus } from "../shared/index.js";
-import { MAX_EXECUTE_RESENDS, POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
+import {
+  MAX_EXECUTE_RESENDS,
+  POLL_INFLIGHT_STATES,
+  QUOTE_BUSY_STATES,
+  STATUS_POLL_MS,
+} from "./decisions.js";
 import {
   holdsCurrentQuote,
   init,
@@ -490,9 +495,16 @@ describe("update properties", () => {
               // Never execute without the wallet's own signature in hand: from
               // the signature itself, or as the unchanged resend of a request
               // the server did not accept, never once its execute is in doubt.
-              if (t.msg.type === "TimerFired") {
+              if (t.msg.type === "TimerFired" || t.msg.type === "VisibilityChanged") {
                 const attempt = t.prev.sign?.execute;
-                expect(t.msg.timer).toBe("execute");
+                // The `execute` timer, or its backstop (a poll tick or a
+                // returning tab) a full poll interval past the resend time.
+                if (!(t.msg.type === "TimerFired" && t.msg.timer === "execute")) {
+                  expect(t.msg.type === "VisibilityChanged" || t.msg.timer === "poll").toBe(true);
+                  expect(t.msg.now).toBeGreaterThanOrEqual(
+                    (attempt?.resendAt ?? Infinity) + STATUS_POLL_MS,
+                  );
+                }
                 expect(typeof attempt?.resendAt).toBe("number");
                 expect(attempt?.resends).toBeLessThan(MAX_EXECUTE_RESENDS);
                 expect(e.call.request).toEqual(attempt?.request);
@@ -622,7 +634,7 @@ describe("update properties", () => {
         let landedQuoted = false;
         for (const t of run(actions)) {
           const executes = t.effects.some((e) => e.type === "Api" && e.call.op === "execute");
-          if (executes && t.msg.type === "TimerFired") {
+          if (executes && (t.msg.type === "TimerFired" || t.msg.type === "VisibilityChanged")) {
             // A resend keeps the ceremony it was dispatched from.
             expect(t.prev.intent.status).toBe("executing");
             expect(t.prev.sign?.stage).toBe("execute");

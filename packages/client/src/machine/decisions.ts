@@ -545,14 +545,11 @@ export type ExecuteResend =
   | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "deadline" };
 
 /**
- * After the server refused an execute before accepting anything (nothing
- * claimed, nothing sent), whether to send the SAME request again and when.
- * Resends only with a server-named `retryAfter` (unix seconds), fewer than
- * MAX_EXECUTE_RESENDS made, and `retryAfter` at least
- * EXECUTE_RESEND_MARGIN_SECS before `deadline` (unix seconds: the earliest
- * deadline the signed request carries; null when none is known, which never
- * resends). The wait is at least a second, so a past `retryAfter` cannot spin.
- * A give-up is the Retry view, not in doubt: the server said nothing happened.
+ * After the server refused an execute before accepting anything, whether to
+ * send the SAME request again and when (rules: README "Fund safety").
+ * `retryAfter` and `deadline` are unix seconds; a null `deadline` never
+ * resends, and the wait is at least a second, so a past `retryAfter` cannot
+ * spin.
  */
 export function decideExecuteResend(input: {
   resends: number;
@@ -570,6 +567,25 @@ export function decideExecuteResend(input: {
     return { kind: "give_up", reason: "deadline" };
   }
   return { kind: "resend", delayMs: sendAt - input.now };
+}
+
+/**
+ * The earliest deadline (unix seconds) a resent execute carries: the quote's
+ * expiry, the signed intent's `deadline` and the origin pull's `validBefore` /
+ * `deadline`. Null without a readable quote expiry, which never resends.
+ */
+export function executeDeadline(quote: QuoteResponse | null): number | null {
+  const expiryMs = quote ? new Date(quote.expiry).getTime() : NaN;
+  if (!quote || !Number.isFinite(expiryMs)) return null;
+  const signed = [
+    quote.eip712Data?.message?.deadline,
+    quote.pullAuthorization?.message?.validBefore,
+    quote.pullAuthorization?.message?.deadline,
+  ].flatMap((v) => {
+    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) ? [n] : [];
+  });
+  return Math.min(Math.floor(expiryMs / 1000), ...signed);
 }
 
 // ============================================================

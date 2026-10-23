@@ -261,10 +261,9 @@ describe("execute: single attempt, structured backpressure errors", () => {
   });
 });
 
-// The Worker's explicit backpressure answer (xochi#686: a 503, `accepted:
-// false`, the executed `intent_id`, a positive `retry_after`): nothing was
-// accepted, so the SAME request may be sent again after `retryAfter`.
-// Everything else stays in doubt, classified exactly as before the marker.
+// The Worker's not-accepted answer (xochi#686): nothing was accepted, so the
+// SAME request may be sent again after the wait its body names. Everything else
+// stays in doubt, classified exactly as before the marker.
 describe("execute: the not-accepted refusal", () => {
   const notAccepted = (over: Record<string, unknown> = {}) => ({
     success: false,
@@ -276,17 +275,43 @@ describe("execute: the not-accepted refusal", () => {
     ...over,
   });
   const nowSec = () => Math.floor(Date.now() / 1000);
+  /** Executes against `respond`; the error plus the clock read around the call (ms). */
+  const refused = async (respond: () => Response) => {
+    const { c, calls } = client(respond);
+    const before = Date.now();
+    const err = (await rejection(c.execute(execRequest))) as ApiError;
+    return { err, calls, before, after: Date.now() };
+  };
+  /** `retryAfter` is the first whole second at or after `wait` seconds from the call, never earlier. */
+  const expectWait = (r: { err: ApiError; before: number; after: number }, wait: number) => {
+    expect(r.err.retryAfter! * 1000).toBeGreaterThanOrEqual(r.before + wait * 1000);
+    expect(r.err.retryAfter! * 1000).toBeLessThan(r.after + wait * 1000 + 1000);
+  };
 
   it("marks a 503 carrying the marker for the executed intent, single attempt", async () => {
-    const { c, calls } = client(() => json(notAccepted(), 503, { "Retry-After": "5" }));
-    const err = (await rejection(c.execute(execRequest))) as ApiError;
-    expect(err).toBeInstanceOf(ApiError);
-    expect(err.code).toBe(503);
-    expect(err.notAccepted).toBe(true);
-    // The header wins over the body's delta.
-    expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 5 - 1);
-    expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 5 + 1);
-    expect(calls).toHaveLength(1);
+    const r = await refused(() => json(notAccepted(), 503));
+    expect(r.err).toBeInstanceOf(ApiError);
+    expect(r.err.code).toBe(503);
+    expect(r.err.notAccepted).toBe(true);
+    expect(r.calls).toHaveLength(1);
+    // The body's retry_after is the wait, rounded up: never a second early.
+    expectWait(r, 7);
+    expectWait(await refused(() => json(notAccepted({ retry_after: 1.2 }), 503)), 1.2);
+  });
+
+  it("waits the body's retry_after: only a later readable Retry-After moves it", async () => {
+    // An earlier header is not the server's wait for this answer.
+    expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "2" })), 7);
+    expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "11" })), 11);
+    // Absolute hints, which lead the countdown of any other 429/503, never apply.
+    const reset = String(nowSec() + 300);
+    const r = await refused(() =>
+      json(notAccepted({ retryAfter: nowSec() + 300 }), 503, { "X-RateLimit-Reset": reset }),
+    );
+    expect(r.err.notAccepted).toBe(true);
+    expectWait(r, 7);
+    // Capped like every countdown.
+    expectWait(await refused(() => json(notAccepted({ retry_after: 1e9 }), 503)), 600);
   });
 
   it("keeps a 429 carrying the marker in doubt, with its header countdown as before", async () => {
@@ -300,14 +325,6 @@ describe("execute: the not-accepted refusal", () => {
     // Without a readable header the body's delta is not read for it either.
     const bare = client(() => json(notAccepted(), 429));
     expect(((await rejection(bare.c.execute(execRequest))) as ApiError).retryAfter).toBeUndefined();
-  });
-
-  it("takes the delay from the body's retry_after when no header is readable", async () => {
-    const { c } = client(() => json(notAccepted(), 503));
-    const err = (await rejection(c.execute(execRequest))) as ApiError;
-    expect(err.notAccepted).toBe(true);
-    expect(err.retryAfter).toBeGreaterThanOrEqual(nowSec() + 7 - 1);
-    expect(err.retryAfter).toBeLessThanOrEqual(nowSec() + 7 + 1);
   });
 
   it("keeps a 503 without a usable retry_after in doubt", async () => {
@@ -339,6 +356,18 @@ describe("execute: the not-accepted refusal", () => {
       ["another intent", () => json(notAccepted({ intent_id: "intent-2" }), 503)],
       ["no intent", () => json(notAccepted({ intent_id: undefined }), 503)],
       ["500 with the marker", () => json(notAccepted(), 500)],
+      // The Worker's lost-CAS answer: another writer moved the row, in doubt.
+      [
+        "still executing, reconciling",
+        () => json(notAccepted({ status: "executing", reconciling: true }), 503),
+      ],
+      ["success true", () => json(notAccepted({ success: true }), 503)],
+      ["success absent", () => json(notAccepted({ success: undefined }), 503)],
+      ["status absent", () => json(notAccepted({ status: undefined }), 503)],
+      [
+        "bare marker body",
+        () => json({ accepted: false, intent_id: "intent-1", retry_after: 7 }, 503),
+      ],
       ["502 with the marker", () => json(notAccepted(), 502)],
       ["409 with the marker", () => json(notAccepted(), 409)],
       ["not an object", () => json([notAccepted()], 503)],

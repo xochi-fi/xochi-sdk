@@ -33,6 +33,7 @@ import {
   buildResumedState,
   canSignQuote,
   computeRefreshDelayMs,
+  executeDeadline,
   decideExecuteResend,
   decideExecuteResult,
   decideSignPreflight,
@@ -560,8 +561,10 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       }
       // Mobile throttles timers while backgrounded (a wallet deep-link
       // round-trip), so snap the in-flight phase forward rather than wait out
-      // the interval. Off-interval: it spends no give-up budget.
-      if (next.poll && !next.poll.stopped) next = pollTick(next, fx, false);
+      // the interval. Off-interval: it spends no give-up budget. A pending
+      // resend reads no status; a return long past its time resends now.
+      if (awaitingResend(next)) next = resendBackstop(next, fx, msg.now);
+      else if (next.poll && !next.poll.stopped) next = pollTick(next, fx, false);
       return next;
     }
 
@@ -1157,6 +1160,7 @@ function onTimer(m: Model, fx: Effect[], timer: TimerName, now: number): Model {
       return tickExpiry(m, fx, now);
 
     case "poll":
+      if (awaitingResend(m)) return resendBackstop(m, fx, now);
       return m.poll && !m.poll.stopped ? pollTick(m, fx, true) : m;
 
     case "signPrompt":
@@ -1509,14 +1513,11 @@ function notAcceptedReport(result: Outcome<{ response: ExecuteReply }>): ErrorRe
 }
 
 /**
- * The server refused this execute before accepting anything: nothing was
- * claimed or sent, so it is not in doubt. Waits for the refusal's
- * `retryAfter` and sends the SAME request again (`resendExecute`), within
- * `decideExecuteResend`'s bounds; past them, the intent fails with the refusal
- * (Retry, with its countdown). Null, leaving the reply in doubt like any other
- * thrown execute, when anything else already says the funds may have moved:
- * this intent's execute was read as in doubt before (`executeInDoubt`, which
- * a refusal never clears), or the intent already shows in doubt.
+ * The server refused this execute before accepting anything: wait for the
+ * refusal's `retryAfter` and send the SAME request again (`resendExecute`)
+ * within `decideExecuteResend`'s bounds, else fail with the refusal. Null,
+ * leaving the reply in doubt like any other thrown execute, when anything
+ * already says the funds may have moved (rules: README "Fund safety").
  */
 function onNotAccepted(
   m: Model,
@@ -1565,7 +1566,7 @@ function onNotAccepted(
 
 /**
  * The not-accepted wait is over: send the held request again, unchanged, under
- * a new flow id. A timer that fires past the deadline (a throttled background
+ * a new flow id. A wait that ends past the deadline (a throttled background
  * tab) fails the intent with the refusal instead.
  */
 function resendExecute(m: Model, fx: Effect[], now: number): Model {
@@ -1592,28 +1593,23 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
   };
 }
 
+/**
+ * A poll tick while a resend waits reads no status (the server holds nothing
+ * to report). A tick a full poll interval past `resendAt` means the `execute`
+ * timer never fired (a host that does not schedule it), so it does that
+ * timer's work: resend, or past the deadline fail with the refusal.
+ */
+function resendBackstop(m: Model, fx: Effect[], now: number): Model {
+  const resendAt = m.sign?.execute?.resendAt;
+  if (typeof resendAt !== "number" || now < resendAt + STATUS_POLL_MS) return m;
+  log(fx, "warn", `${LOG} The execute timer never fired; resending from the poll timer`);
+  clearTimer(fx, "execute");
+  return resendExecute(m, fx, now);
+}
+
 /** A not-accepted execute is waiting for its resend: no request is in flight. */
 function awaitingResend(m: Model): boolean {
   return m.sign?.stage === "execute" && typeof m.sign.execute?.resendAt === "number";
-}
-
-/**
- * The earliest deadline (unix seconds) a resent execute carries: the quote's
- * expiry and the signed intent's and origin pull's own deadlines. Null without
- * a readable quote expiry, which never resends.
- */
-function executeDeadline(quote: QuoteResponse | null): number | null {
-  const expiryMs = quote ? new Date(quote.expiry).getTime() : NaN;
-  if (!quote || !Number.isFinite(expiryMs)) return null;
-  const signed = [
-    quote.eip712Data?.message?.deadline,
-    quote.pullAuthorization?.message?.validBefore,
-    quote.pullAuthorization?.message?.deadline,
-  ].flatMap((v) => {
-    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
-    return typeof n === "number" && Number.isFinite(n) ? [n] : [];
-  });
-  return Math.min(Math.floor(expiryMs / 1000), ...signed);
 }
 
 /** An execute reply as a host may actually send it: any status string, maybe a token. */
@@ -2040,15 +2036,17 @@ function armExpiry(m: Model, fx: Effect[], now: number): Model {
 /**
  * The status poll: armed per (intent, phase) while in flight. Re-armed PER
  * PHASE deliberately: the ceiling is sized from the phase being entered, and
- * the reconcile escalation counts polls within one phase. Disarmed while a
- * not-accepted execute waits for its resend: the server holds nothing to
- * report, and the resend re-arms it.
+ * the reconcile escalation counts polls within one phase. While a not-accepted
+ * execute waits for its resend it is armed under its own key and reads no
+ * status (the server holds nothing to report): its ticks only back up the
+ * `execute` timer (`resendBackstop`), and the resend re-arms the real poll.
  */
 function armPoll(m: Model, fx: Effect[], now: number): Model {
   const { intentId, status } = m.intent;
+  const waiting = awaitingResend(m);
   const key =
-    POLL_INFLIGHT_STATES.includes(status) && intentId && !awaitingResend(m)
-      ? `${intentId}:${status}`
+    POLL_INFLIGHT_STATES.includes(status) && intentId
+      ? `${intentId}:${status}${waiting ? ":resend" : ""}`
       : null;
   if (key === (m.poll?.key ?? null)) return m;
   if (m.poll && !m.poll.stopped) clearTimer(fx, "poll");
@@ -2072,5 +2070,5 @@ function armPoll(m: Model, fx: Effect[], now: number): Model {
     stopped: false,
   };
   setTimer(fx, "poll", STATUS_POLL_MS, true);
-  return pollTick({ ...next, poll }, fx, false);
+  return waiting ? { ...next, poll } : pollTick({ ...next, poll }, fx, false);
 }

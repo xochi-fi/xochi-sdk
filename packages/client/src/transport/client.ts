@@ -136,11 +136,10 @@ export class ApiError extends Error {
   readonly code: number;
   readonly retryAfter?: number;
   /**
-   * True only on an `execute` the server refused before accepting anything
-   * (`isNotAcceptedExecuteBody`): nothing was claimed or sent, so the SAME
-   * request may be sent again once `retryAfter` has passed. False on every
-   * other failure, which stays in doubt. Hand it to the machine as
-   * `ErrorReport.notAccepted`.
+   * True only on the Worker's not-accepted answer to `execute`
+   * (`isNotAcceptedExecuteBody`), whose `retryAfter` is the server's wait;
+   * false on every other failure, which stays in doubt. Hand it to the machine
+   * as `ErrorReport.notAccepted` (rules: README "Transport").
    */
   readonly notAccepted: boolean;
 
@@ -154,30 +153,40 @@ export class ApiError extends Error {
 }
 
 /**
- * The Worker's explicit backpressure answer to `POST /api/intent/execute`
- * (xochi#686): a 503 whose body is a JSON object with `accepted` the boolean
- * `false`, `intent_id` equal to the executed intent, and `retry_after` a
- * positive finite number (delta seconds). The Worker sends it only after
- * undoing its own claim on a solver refusal that provably ran before anything
- * was accepted. Anything else (another status, 429 included, a missing or
- * non-boolean marker, another intent, a missing, zero, negative or non-numeric
- * `retry_after`, a body that does not parse, one cut by the read cap) is not
- * it: fail closed, the failure stays in doubt.
+ * The Worker's not-accepted answer to `POST /api/intent/execute` (xochi#686),
+ * the server's statement that it undid its claim and the intent is `quoted`
+ * again. Fail closed: anything else stays in doubt (rules: README "Transport").
  */
 function isNotAcceptedExecuteBody(
   status: number,
   body: Record<string, unknown> | undefined,
   intentId: string,
-): boolean {
+): body is Record<string, unknown> & { retry_after: number } {
   return (
     status === 503 &&
     body !== undefined &&
+    body.success === false &&
+    body.status === "quoted" &&
     body.accepted === false &&
     body.intent_id === intentId &&
     typeof body.retry_after === "number" &&
     Number.isFinite(body.retry_after) &&
     body.retry_after > 0
   );
+}
+
+/**
+ * When a not-accepted execute may go again (ABSOLUTE unix seconds, rounded UP
+ * so it never lands before the server's wait): the body's `retry_after`
+ * (delta seconds, the wait the server chose), or a readable numeric
+ * `Retry-After` header only if it is later. Nothing else moves it. Capped at
+ * MAX_RETRY_WAIT_SEC.
+ */
+function notAcceptedRetryAt(headers: Headers, retryAfter: number): number {
+  const header = headers.get("Retry-After");
+  const headerDelta = header === null || header.trim() === "" ? NaN : Number(header);
+  const wait = Number.isFinite(headerDelta) && headerDelta > retryAfter ? headerDelta : retryAfter;
+  return Math.ceil((Date.now() + Math.min(wait, MAX_RETRY_WAIT_SEC) * 1000) / 1000);
 }
 
 /**
@@ -619,17 +628,6 @@ export function resolveRetryAfterSeconds(headers: Headers, body: string): number
   return Math.min(target, nowSec + MAX_RETRY_WAIT_SEC);
 }
 
-/**
- * The not-accepted execute answer's body `retry_after` (DELTA seconds, a
- * positive finite number) as an absolute target, clamped like
- * `resolveRetryAfterSeconds`. Read only when no header was readable.
- */
-function retryAfterFromDelta(delta: unknown): number | undefined {
-  if (typeof delta !== "number" || !Number.isFinite(delta) || delta <= 0) return undefined;
-  const nowSec = Math.floor(Date.now() / 1000);
-  return nowSec + Math.min(Math.ceil(delta), MAX_RETRY_WAIT_SEC);
-}
-
 function deriveRetryTarget(headers: Headers, body: string, nowSec: number): number | undefined {
   const retryAfterHeader = headers.get("Retry-After");
   if (retryAfterHeader !== null) {
@@ -1031,14 +1029,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               executedIntentId !== undefined &&
               isNotAcceptedExecuteBody(response.status, record, executedIntentId);
             // Structured failure: the numeric status plus, for backpressure
-            // (429/503), an absolute retry target for a countdown. A browser
-            // cannot read a `Retry-After` the server does not CORS-expose, so
-            // the not-accepted answer's own `retry_after` (delta seconds) is
-            // its fallback.
-            const retryAfter =
-              response.status === 429 || response.status === 503
-                ? (resolveRetryAfterSeconds(response.headers, errorBody) ??
-                  (notAccepted ? retryAfterFromDelta(record?.retry_after) : undefined))
+            // (429/503), an absolute retry target for a countdown. A
+            // not-accepted answer's target is the wait its body names
+            // (`notAcceptedRetryAt`), never an earlier source.
+            const retryAfter = notAccepted
+              ? notAcceptedRetryAt(response.headers, record.retry_after)
+              : response.status === 429 || response.status === 503
+                ? resolveRetryAfterSeconds(response.headers, errorBody)
                 : undefined;
             const error = new ApiError(
               `HTTP ${response.status}: ${redactErrorBody(errorBody, truncated) || response.statusText}`,

@@ -19,6 +19,7 @@ import {
   AMOUNT,
   ATTACKER,
   Session,
+  T0,
   TO_AMOUNT,
   USDC_BASE,
   WALLET,
@@ -609,9 +610,9 @@ describe("one signature (no origin pull)", () => {
   // solver refused before accepting anything, so nothing is in doubt and the
   // SAME signed request goes again after Retry-After, a bounded number of times.
   describe("an execute the server did not accept", () => {
-    const executing = () => {
+    const executing = (served = quote()) => {
       const s = new Session();
-      s.quoteWith(quote());
+      s.quoteWith(served);
       const prompt = signIntent(s);
       const exec = only(
         apiCalls(
@@ -651,11 +652,11 @@ describe("one signature (no origin pull)", () => {
       const { s, exec } = executing();
       const retryAt = nowSec(s) + 5;
       const fx = s.send(busy(exec.flow, retryAt));
-      // Not in doubt: no latch, no reconciling, no poll while nothing is accepted.
+      // Not in doubt: no latch, no reconciling, no status read while nothing is accepted.
       expect(s.intent.status).toBe("executing");
       expect(s.intent.reconciling).toBe(false);
       expect(s.model.executeInDoubt).toBeNull();
-      expect(s.model.poll).toBeNull();
+      expect(apiCalls(fx, "status")).toEqual([]);
       expect(timers(fx)).toContain("clear:poll");
       expect(s.receipt.phase).toBe("submitting");
       expect(s.receipt.signing).toEqual({ kind: "busy", retryAt, resend: 1, of: 3 });
@@ -736,6 +737,36 @@ describe("one signature (no origin pull)", () => {
       expect(unhinted.s.receipt.phase).toBe("failed");
     });
 
+    it("resends from the poll timer when the host never fires the execute timer", () => {
+      const { s, exec } = executing();
+      const fx = s.send(busy(exec.flow, nowSec(s) + 5));
+      expect(timerSet(fx, "poll")).toEqual([STATUS_POLL_MS]);
+      const delay = only(timerSet(fx, "execute"));
+      // The host drops `execute`. Its poll ticks read no status, and wait out a
+      // full poll interval past the resend time, so a live timer always wins.
+      const early = s.send({ type: "TimerFired", timer: "poll" }, delay);
+      expect(apiCalls(early, "execute")).toEqual([]);
+      expect(apiCalls(early, "status")).toEqual([]);
+      const late = s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS);
+      expect(only(apiCalls(late, "execute")).request).toEqual(exec.request);
+      expect(timers(late)).toContain("clear:execute");
+      expect(only(apiCalls(late, "status")).intentId).toBe("xi_1");
+      expect(s.receipt.signing).toEqual({ kind: "submitted" });
+      // The dropped timer firing after all sends nothing more.
+      expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }), "execute")).toEqual([]);
+
+      // A tab returning past the deadline with no timer ever fired: Retry, not a wait forever.
+      const away = executing();
+      away.s.send(busy(away.exec.flow, nowSec(away.s) + 5));
+      away.s.hidden = true;
+      away.s.send({ type: "VisibilityChanged" });
+      away.s.hidden = false;
+      const back = away.s.send({ type: "VisibilityChanged" }, 70_000);
+      expect(apiCalls(back, "execute")).toEqual([]);
+      expect(away.s.intent.status).toBe("failed");
+      expect(away.s.receipt.phase).toBe("failed");
+    });
+
     it("stays in doubt unless the flag is exactly true", () => {
       for (const flag of ["true", 1, false, null]) {
         const { s, exec } = executing();
@@ -773,7 +804,6 @@ describe("one signature (no origin pull)", () => {
       );
       const fx = s.send(busy(second.flow, nowSec(s) + 5));
       expect(timerSet(fx, "execute")).toEqual([]);
-      expect(logs(fx, "warn").join()).toMatch(/kept in doubt/);
       expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: false });
       expect(s.intent.status).toBe("executing");
       expect(s.intent.reconciling).toBe(true);
@@ -788,6 +818,32 @@ describe("one signature (no origin pull)", () => {
         result: { ok: true, status: statusData({ status: "failed", terminal: true }) },
       });
       expect(s.receipt.phase).toBe("pending");
+    });
+
+    it("never resends once the poll escalated the execute to reconciling", () => {
+      // A quote that outlives the escalation, so only the in-doubt guard stops a resend.
+      const { s, exec } = executing(quote({ expiry: new Date(T0 + 600_000).toISOString() }));
+      for (let attempt = 1; attempt < RECONCILE_AFTER_ATTEMPTS; attempt++) {
+        const tick = only(
+          apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+        );
+        s.send({
+          type: "StatusReplied",
+          gen: tick.gen,
+          attempt: tick.attempt,
+          result: { ok: true, status: statusData() },
+        });
+      }
+      expect(s.intent.reconciling).toBe(true);
+      expect(s.model.executeInDoubt).toBeNull();
+      const fx = s.send(busy(exec.flow, nowSec(s) + 5));
+      expect(timerSet(fx, "execute")).toEqual([]);
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(true);
+      expect(s.receipt.phase).toBe("pending");
+      expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute")).toEqual(
+        [],
+      );
     });
 
     it("drops the pending resend when the intent moves on or the user resets", () => {

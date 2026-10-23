@@ -4,6 +4,7 @@ import {
   computeRefreshDelayMs,
   decideSignPreflight,
   decideExecuteResult,
+  executeDeadline,
   decideExecuteResend,
   EXECUTE_RESEND_MARGIN_SECS,
   MAX_EXECUTE_RESENDS,
@@ -31,6 +32,7 @@ import {
   type IntentStatus,
 } from "../shared/index.js";
 import type { ExecuteResponse, IntentWebSocketMessage } from "./wire.js";
+import { T0, erc3009Pull, intentTypedData, quote } from "./test/session.js";
 
 describe("buildQuoteRequest", () => {
   const base = {
@@ -274,6 +276,40 @@ describe("decideExecuteResend (a not-accepted execute)", () => {
       reason: "deadline",
     });
     expect(decideExecuteResend({ ...ok, deadline: null }).kind).toBe("give_up");
+  });
+});
+
+describe("executeDeadline (the earliest deadline a resent execute carries)", () => {
+  const expirySec = Math.floor(T0 / 1000) + 60;
+  const held = quote({ eip712Data: intentTypedData({ deadline: expirySec + 600 }) });
+
+  it("is the quote expiry when every signed deadline is later", () => {
+    expect(executeDeadline(held)).toBe(expirySec);
+  });
+
+  it("is the signed intent's deadline when earlier, decimal string or number", () => {
+    for (const deadline of [expirySec - 20, String(expirySec - 20)]) {
+      expect(executeDeadline({ ...held, eip712Data: intentTypedData({ deadline }) })).toBe(
+        expirySec - 20,
+      );
+    }
+    // Neither a number nor a decimal string: not a deadline.
+    expect(executeDeadline({ ...held, eip712Data: intentTypedData({ deadline: "soon" }) })).toBe(
+      expirySec,
+    );
+  });
+
+  it("is the origin pull's validBefore (ERC-3009) or deadline (Permit2) when earlier", () => {
+    const pull = erc3009Pull();
+    const erc3009 = { ...pull, message: { ...pull.message, validBefore: expirySec - 30 } };
+    expect(executeDeadline({ ...held, pullAuthorization: erc3009 })).toBe(expirySec - 30);
+    const permit2 = { ...pull, message: { deadline: String(expirySec - 40) } };
+    expect(executeDeadline({ ...held, pullAuthorization: permit2 })).toBe(expirySec - 40);
+  });
+
+  it("is null without a quote or a readable expiry, which never resends", () => {
+    expect(executeDeadline(null)).toBeNull();
+    expect(executeDeadline({ ...held, expiry: "not a date" })).toBeNull();
   });
 });
 
