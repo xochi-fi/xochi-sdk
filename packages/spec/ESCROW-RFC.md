@@ -396,13 +396,12 @@ payment to a shared or custodial recipient (an exchange deposit address)
 cannot evidence this order. The tag puts no origin value on Aztec (C1):
 `fillSalt` is keyed by the venue. Residual: the extra nullifier makes a fill
 tx distinguishable by shape from a plain `transfer`, which narrows the
-anonymity set (§9.6); a leaked `fillSalt` (the venue's or the awardee's
-fault) lets its holder tag a tx for the order, or burn the tag first so the
-awardee's tagged transfer cannot land (the payee is still the authenticated
-awardee); `FillTag` is net-new and unbuilt. The XSP path has no `fillSalt`:
-3.8a must adopt an equivalent Attestor-issued per-obligation tag input in
-lockstep, and until it does the XSP path carries the unbound-note risk this
-paragraph closes.
+anonymity set (§9.6); a leaked `fillSalt` lets its holder tag a tx for the
+order (the payee is still the authenticated awardee) or burn the tag first
+(Burned tag, below); `FillTag` is net-new and unbuilt. The XSP path has no
+`fillSalt`: 3.8a must adopt an equivalent Attestor-issued per-obligation tag
+input in lockstep, and until it does the XSP path carries the unbound-note
+risk this paragraph closes.
 
 A failed step, a node error and an `unknown` result are all **unproven**, not
 "not filled". A disclosure's **receipt** is its attributable `POST
@@ -437,6 +436,24 @@ a venue outage is refused on content, so a fabricated or never-included
 `txHash` cannot keep a no-show unslashable. On the XSP path, until 3.8a adopts
 the fill tag, `note_already_bound` is never slash grounds: an untagged note
 can be bound first by another awardee who knows its preimage.
+
+**Burned tag (normative).** Before treating a disclosure refused on content,
+or the absence of any disclosure, as slash grounds (§6), the venue checks on
+its own node, at the corridor's finality, whether the order's siloed tag is
+already a nullifier emitted by a tx other than the disclosed `txHash` (with
+no disclosure, by any tx). If it is, the tag was burned: a holder of
+`fillSalt` (the venue, its attester or the awardee, §9.4) emitted it first,
+and the awardee's tagged `transfer` can no longer land. The venue records
+`tag_burned` on the order and classes it a venue-attributable fault, never
+slash grounds for the awardee. The user's path is the permissionless
+`refund` at `refundableAt` (§3), with no backstop (MUST NOT, below); the
+venue investigates how `fillSalt` leaked, treating a leak at the venue or
+its attester as a possible `venueKey` compromise (§9.4). Residual: a private
+tx hides its sender, so an awardee can burn its own tag to escape the no-show
+slash, and the venue cannot tell that from a leak. The user then waits to
+`refundableAt` with no slash payment, as with a winner that never accepts
+(§6); repeated `tag_burned` on one awardee is grounds for panel removal, like
+`winner_abandoned` (§6.1).
 
 **Registry.** Only after every other check of the release predicate has
 passed (network binding, steps 1–6, the fill tag, the payee and the
@@ -613,32 +630,52 @@ consumer in this tree parses it.
   applies to tier 1s (§5.1) the same way and pays the user; it never covers
   principal, which returns only through `refund`. For tier 1s the attester
   attests "no `aztec_note_preimage` disclosure for this `orderId` **received**
-  from the awardee by `fillDeadline + FILL_DEADLINE_GRACE`", never "no fill"
-  and never "not verified". The attester compares the disclosure's receipt
-  timestamp (§5.1) with `fillDeadline + FILL_DEADLINE_GRACE` on the same venue
-  clock, and the proposal is still gated on the bond chain's clock by
-  `FillWindowOpen` (§6.1). A disclosure received in time is slash grounds
-  only once §5.1 classes it **refused on content**; while it is verified,
-  unclassified or a venue outage it is not, and §5.1 classes every disclosure
-  by `holdDeadline`, so a junk disclosure delays the slash but cannot dodge
-  it.
+  from the awardee by `fillDeadline + FILL_DEADLINE_GRACE` and not refused on
+  content", never "no fill" and never "not verified". **Blocking rule (the
+  only one):** a disclosure blocks the slash iff its receipt (§5.1) is
+  recorded by `fillDeadline + FILL_DEADLINE_GRACE` on the venue clock and
+  §5.1 has not refused it on content (one still unclassified at
+  `holdDeadline` other than by a venue outage counts as refused, §5.1). A
+  junk disclosure therefore delays the slash to `holdDeadline` at the latest
+  but cannot dodge it, and one received later never blocks it (it is dispute
+  evidence, below). A burned fill tag (§5.1) is never slash grounds. The
+  proposal is still gated on the bond chain's clock by `FillWindowOpen`
+  (§6.1).
+
+  **Withdrawal (tier 1s).** `SolverBond` cannot see orders:
+  `requestWithdrawal` takes the amount out of eligibility at once and
+  `completeWithdrawal` pays it out after the deployed `unbondingPeriod`, less
+  any slash already proposed (a proposal reserves funds still unbonding), so
+  nothing on chain holds a withdrawal for an open shielded outcome. The venue
+  holds it instead: it MUST NOT issue a shielded `:winner` FillAuth to a
+  solver with any amount unbonding (`accounts(solver).unbonding > 0`), nor
+  one whose `refundableAt` (§5.1), plus the time to land a slash proposal on
+  the bond chain, is not inside `unbondingPeriod` from the issue (the
+  reserve fills instead, §6.1). A withdrawal requested after the award is
+  then still unbonding when the latest slash proposal (a disclosure refused
+  at `holdDeadline`) lands.
 
   **Release/slash exclusivity (per `orderId`).** The attester keeps one
   outcome record per `orderId`, moved only by atomic compare-and-set along
-  `open → released`, `open → slash_proposed → slash_executed`,
-  `slash_proposed → slash_voided → released`, and `→ refunded` from any
-  unreleased state once `refund` lands. A release artifact is signed only
-  from `open` or `slash_voided`; a slash only from `open`, and never while a
-  received disclosure is unclassified or verified. A disclosure whose receipt
-  is recorded before the `open → slash_proposed` transition blocks the slash;
-  one recorded after it (§5.1's late `:winner`) is the solver's dispute
-  evidence, and release follows only from `slash_voided`, inside §5.1's
-  `T_dispute` term and before `holdDeadline`, else the order refunds. So at
-  most one of a release artifact and an executed slash exists per `orderId`.
-  The solver's dispute evidence is the venue's own §5.1 inclusion record for
-  that `orderId`, which includes step 6's `fillDeadline` bound (a note
-  included later is no evidence), produced on request, not `filled(fillId)`.
-  While Riddler is
+  these edges and no others: `open → released`, `open → slash_proposed`,
+  `open → refunded`; `slash_proposed → slash_executed`, `slash_proposed →
+  slash_voided`; `slash_voided → released`, `slash_voided → refunded`; and
+  `released → refunded`, a correction for a signed release artifact that
+  never landed before `refund` did (it can no longer pay). A release
+  artifact is signed only from `open` or `slash_voided`; a slash is proposed
+  only from `open`, under the blocking rule above. A landed `refund` moves
+  `open`, `slash_voided` and `released` to `refunded` and never moves a
+  slash: a proposed slash survives the refund and resolves on the bond chain
+  to `slash_executed` or `slash_voided` (a slash never covers principal, so
+  the two are independent), and one voided after the refund has landed ends
+  at `refunded`. A disclosure received after the grace end (§5.1's late
+  `:winner`) is the solver's dispute evidence: release follows only from
+  `slash_voided`, inside §5.1's `T_dispute` term and before `holdDeadline`,
+  else the order refunds. So at most one of a release artifact that can pay
+  and an executed slash exists per `orderId`. The solver's dispute evidence
+  is the venue's own §5.1 inclusion record for that `orderId`, which
+  includes step 6's `fillDeadline` bound (a note included later is no
+  evidence), produced on request, not `filled(fillId)`. While Riddler is
   the only shielded panel member, venue equals solver, and the bond and
   dispute machinery are inert under `RiddlerEscrow` + `SolverBond` (Riddler
   runs the attesters); under the Depository + Ledger pair the independent
