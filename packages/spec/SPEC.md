@@ -110,6 +110,14 @@
   Riddler `intent_status.ex` `@terminal_statuses`. 3.4 carries the current set.
   The entry is kept rather than rewritten so the history of what the server
   served when stays readable.
+- **Shielded corrections, no version bump and no wire change.** §3.2
+  reverses its `aztec_proof` guidance: it said to send the field for
+  `shielded` regardless, and now records that no producer or consumer uses
+  it and says not to send it (removing it from `ExecuteRequest` is a lockstep
+  wire change with Riddler). §5.1's shielded row, and §3.4's shielded status
+  fields, now read what is served: shielded is not offered, and the status
+  surfaces are the scalars `noteCommitment`, `nullifierHash` and `l2TxHash`,
+  not arrays. The served document did not move, so the version does not.
 - **Wire refresh against served `0.8.0` (2026-10-06), and the SPEC version does
   not move.** The served document gained the Canton destination (chain
   `253340876`, `vm_type: cvm`, `address_format: canton_party`, a third
