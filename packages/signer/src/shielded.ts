@@ -199,12 +199,26 @@ function environmentHash(environment: string): Hex {
 // NetworkIdentity and the salted domain
 // ---------------------------------------------------------------------------
 
+/**
+ * The approved Aztec network a shielded corridor runs on (xochi `shielded-execution.md` §7;
+ * `NETWORK_IDENTITY_TYPE_STRING`). `ESCROW-RFC.md` §5.1 "Network binding" says how a venue
+ * proves its node serves it.
+ */
 export interface NetworkIdentity {
+  /**
+   * The chain id every tx on the Aztec network carries in its context (`TxContext.chainId`).
+   * Aztec networks take it from their L1, so it equals `l1ChainId` on current networks (as in
+   * the vector). It is not the settlement-type label `XSP_AZTEC_CHAIN_ID`.
+   */
   aztecChainId: UintLike;
+  /** The numeric Aztec rollup version (`TxContext.version`). */
   protocolVersion: UintLike;
-  rollupAddress: string; // L1 address
+  /** The rollup contract on L1. */
+  rollupAddress: string;
+  /** The L1 chain the rollup contract lives on. */
   l1ChainId: UintLike;
-  genesisOrNetworkDigest: string; // bytes32
+  /** bytes32: the network's genesis digest or a network digest; never zero. */
+  genesisOrNetworkDigest: string;
 }
 
 /** `network_identity_digest`: the EIP-712 hashStruct of NetworkIdentity. */
