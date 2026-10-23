@@ -1835,32 +1835,63 @@ v2 digest). Rules:
 
 ### 13.3 Decline on the wire; what "broken" means
 
+An **award** is the venue's issue of the `:winner` FillAuth (§5.3): `awardedAt`
+is that instant, in unix milliseconds on the venue clock (comparable with
+`validUntilMs`), the award feed event carries that FillAuth, and no award
+exists without one. "Award" means this instant throughout §13.
+
 `POST /solver/awards/:auctionId/decline` carries
-`{ fillId, reason, signature }` where `reason` is one of the
-`EscrowRefusalError` codes `@xochi/solver-sdk` already raises from the §7.1
-re-gate (`insufficient_inventory`, `claims_paused`, `accept_window_closed`,
-`bond_mismatch`, …) plus `price_source_down` and `other`. The venue accepts a
-decline only from the awardee: the panel-authenticated `solverId` MUST be the
-award's, and `signature` MUST recover to the award's `fillAuth.filler` (the
-bid signer) over
+`{ fillId, fillAuthDigest, reason, signature }`. `fillAuthDigest` is the
+EIP-712 digest of the `:winner` FillAuth being declined under `RiddlerFiller`'s
+domain (ESCROW-RFC §9.4; the value a FillAcceptance carries as `fillAuth`).
+`reason` is one of the `EscrowRefusal` codes `@xochi/solver-sdk` raises from
+the §7.1 re-gate (`escrow-verify.ts`) plus `price_source_down` and `other`.
+The venue accepts a decline only from the awardee: the panel-authenticated
+`solverId` MUST be the award's, and `signature` MUST recover to the award's
+`fillAuth.filler` (the bid signer) over
 
 ```
-SolverDecline(string auctionId,bytes32 fillId,string reason)
+SolverDecline(string auctionId,bytes32 fillId,bytes32 fillAuthDigest,string reason)
 ```
 
 under the domain `{ name: "RiddlerSolverDecline", version: "1" }`, distinct
 from SolverBid's `RiddlerSolver` and FillAcceptance's `RiddlerSolverBond`, so
 no signature over one verifies as another; its vector set is generated when it
 is built. Any other decline is refused `403` and changes nothing: a panel
-member cannot decline a rival's award. A decline is refused `409` and changes
-nothing once a FillAcceptance for that award is recorded or after its
-`acceptBy`: an accepted award is owed (§5.3) and is never moved to the
-reserve, so its only failure outcome is the slashable no-show below. The SDK
-MUST post a decline when the re-gate refuses an award it received, instead of
-letting `acceptBy` lapse silently; a lapse with no decline is still
-`winner_abandoned` (§5.3) and is recorded as `reason: "no_response"`. On a
-shielded-Aztec leg a decline is recorded and scored but re-awards nothing
-(§13.8).
+member cannot decline a rival's award. A decline whose `fillAuthDigest` is not
+the digest of the FillAuth the venue issued for this award is refused `422`
+and changes nothing. A re-award's FillAuth always has a later `deadline` than
+the declined one (below), so its digest differs and a decline cannot be
+replayed onto a later award of the same `fillId`, even to the same solver.
+
+Acceptance and decline of one award are a single compare-and-set on the
+venue's shared order store, on every API node: whichever is recorded first
+wins, and the other is refused `409` and changes nothing. A decline is also
+refused `409` after `acceptBy`. An accepted award is owed (§5.3) and is never
+moved to the reserve, so its only failure outcome is the slashable no-show
+below; a refused acceptance is never stored, so the slash attester cannot act
+on it (ESCROW-RFC §6.1 `no_fill_acceptance`). The SDK MUST post a decline when
+the re-gate refuses an award it received, instead of letting `acceptBy` lapse
+silently; a lapse with no decline is still `winner_abandoned` (§5.3) and is
+recorded as `reason: "no_response"`. On a shielded-Aztec leg a decline is
+recorded and scored but re-awards nothing (§13.8).
+
+**A declined FillAuth stays live.** RiddlerFiller fills a `fillId` at most
+once and cannot revoke a FillAuth (ESCROW-RFC §4, §9.4), so the decliner can
+still fill under its FillAuth until that FillAuth's `deadline`. The venue
+therefore issues a re-award to another panel solver (§13.2's `feed_degraded`
+re-auction) only once a finalized destination block after that `deadline`
+shows `filled(fillId)` false; if it shows a fill, that fill settles the order
+and nothing is re-awarded. The reserve's FillAuth is issued without waiting,
+as for an abandoned award (ESCROW-RFC §6.1: at most one fill lands). Whichever
+fill comes second reverts, and the slash attester never attests no fill while
+`filled(fillId)` is true for any filler, so a solver whose FillAcceptance
+cannot be honoured because the `fillId` was already filled is never slashed.
+A decline stays scored as a decline even if its own FillAuth later fills.
+Residual: in `feed_degraded` a decline re-auctions no sooner than a no-show
+would (the declined bid's exclusivity runs out first), and when the escrow
+node cannot then grant a `:winner` inside the backstop budget it refuses one
+(ESCROW-RFC §6.1) and the reserve fills.
 
 Three outcomes, kept distinct in the award log. Broken versus lapsed is
 decided by when the venue **issued** the award (`awardedAt`, the `:winner`
@@ -1882,14 +1913,18 @@ delivered later, or never, is lapsed:
 Enforcement of a broken commitment starts as **scoring** (§13.5, §13.7).
 Extending SolverBond slashing to a `firm` decline inside validity is P2 and
 waits on enough award-log history to set a threshold an honest stress-event
-inventory miss does not trip.
+inventory miss does not trip. P2 needs a `SolverDecline` domain version that
+binds `chainId` and `verifyingContract` (the bond chain and SolverBond), and
+acts only on a solver-attributable decline whose `fillAuthDigest` names a
+FillAuth the escrow node signed (ESCROW-RFC §6.1).
 
 ### 13.4 Award log
 
 The venue persists one record per award: `auctionId`, `intentId`, `solverId`,
 `output`, `validUntilMs`, `commitmentClass`, `regimeAtAward`, a realized-vol
-bucket, `awardedAt`, `deliveredAt`, `acceptBy`, the §13.3 outcome and
-`reason`, fill result, `settledAt`. This is the raw material for the honored
+bucket, `awardedAt`, `deliveredAt` and whether the awardee was live then,
+`acceptBy`, the §13.3 outcome, `reason` and decline `fillAuthDigest`, fill
+result, `settledAt`. This is the raw material for the honored
 rate, the §13.7 tiers and the §13.9 telemetry; it is venue-internal and never
 served per record.
 Settlement latency is `awardedAt → settledAt`, published as p50/p95 by rail and
