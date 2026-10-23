@@ -1551,20 +1551,62 @@ node cannot then grant a `:winner` inside the backstop budget it refuses one
 (ESCROW-RFC §6.1) and the reserve fills.
 
 Three outcomes, kept distinct in the award log. Broken versus lapsed is
-decided by when the venue **issued** the award (`awardedAt`, the `:winner`
-FillAuth's issue time in unix milliseconds on the venue clock, comparable
-with `validUntilMs`), never by when the solver declined or abandoned it, so
-waiting out `validUntilMs` cannot turn a broken firm commitment into a lapse.
-A venue delivery failure is not the solver's: an award counts only once
-delivered (`deliveredAt`, unix ms, when the awardee's feed read returned it)
-with at least `minAcceptBudgetMs` (served in capabilities) left before
-`acceptBy` (unix seconds, so compared as `acceptBy × 1000`); an award
-delivered later, or never, is lapsed:
+decided by `awardedAt`, never by when the solver declined or abandoned the
+award, so waiting out `validUntilMs` cannot turn a broken firm commitment
+into a lapse. Delivery is decided venue-side, never by when the solver chose
+to read:
+
+- `deliveredAt` (unix ms, venue clock) is when the award was appended to the
+  awardee's feed. The awardee was **live** then if it held a parked long-poll
+  (§4.1) on the feed or its last feed read returned within `feedLivenessMs`
+  before the append. `feedLivenessMs` and `minAcceptBudgetMs` are served in
+  `GET /solver/capabilities`. A live awardee's next read returns the award, so
+  when it reads is its own.
+- An awardee that was not live, while holding a `firm` bid inside validity,
+  had stopped reading while committed: its award counts as delivered at
+  `deliveredAt`, and with no FillAcceptance by `acceptBy` it is Broken
+  (`no_response`). The reference `SolverClient.run` awaits each event's
+  handler before its next read, so a solver whose `fill` runs long is not
+  live meanwhile and owns any award appended then.
+- Only a venue-side feed failure is lapsed: an append made with less than
+  `minAcceptBudgetMs` left before `acceptBy` (unix seconds, so compared as
+  `acceptBy × 1000`) or never made, or a feed that, by the venue's own feed
+  log, answered the awardee's reads with errors or without the award between
+  `deliveredAt` and `acceptBy × 1000 − minAcceptBudgetMs`.
+
+`minAcceptBudgetMs` MUST be at least 15 000, the SDK's default
+`acceptBudgetSec` (`escrow-gateway.ts`), so a default-configured solver
+delivered with that much left passes its own `accept_window_closed` check. A
+solver that configures a larger budget, or a larger `fillInclusionSec`, owns
+the declines it causes.
+
+The reason decides the rest. A decline for a venue-attributable reason is
+lapsed once the venue confirms the reason from the FillAuth `fillAuthDigest`
+names, its own award record and chain reads; one it cannot confirm is scored
+as a solver reason and counted against the conduct statement's truthful
+reasons (§13.7):
+
+- **Venue-attributable:** `malformed_award`, `wrong_escrow`,
+  `order_id_mismatch`, `announcement_mismatch`, `fill_auth_mismatch`,
+  `not_final` (an award is issued only once the open is final, §13.2),
+  `opened_mismatch`, `lock_not_open`, `already_filled`, `bond_mismatch`,
+  `claims_paused`.
+- **Timing:** `auth_expired` and `window_closed` are venue-attributable only
+  when the award, at `deliveredAt`, fails the check at the SDK's default
+  budgets (`fillInclusionSec` 60 s plus `acceptBudgetSec` 15 s before the
+  FillAuth `deadline`; the same plus `ATTESTATION_LATENCY_SEC` and
+  `SAFETY_MARGIN_SEC` before `refundableAt`, `escrow-verify.ts`) and the
+  shortfall does not come from the solver's own `minExclusiveMs`.
+  `accept_window_closed` is decided by the delivery rule above alone.
+- **Solver's:** every other code (`insufficient_inventory`,
+  `insufficient_allowance`, `insufficient_claim_gas`, `simulation_failed`,
+  `in_doubt`, `wrong_chain`, `not_evm_fillable`), `price_source_down`
+  (§13.1) and `other`.
 
 | Outcome | Condition | Scored as |
 | --- | --- | --- |
-| **Broken commitment** | `firm` award with `awardedAt ≤ validUntilMs` and `acceptBy × 1000 − deliveredAt ≥ minAcceptBudgetMs`, declined or abandoned (no FillAcceptance by `acceptBy`) | counts against the honored rate |
-| **Lapsed** | `awardedAt > validUntilMs`, or delivered with less than `minAcceptBudgetMs` left, or never delivered | not counted; a venue defect (§5.1 forbids issuing late; delivery is the venue's) |
+| **Broken commitment** | `firm` award with `awardedAt ≤ validUntilMs`, appended with at least `minAcceptBudgetMs` left and no venue-side feed failure, then declined for a reason not confirmed venue-attributable or abandoned (no FillAcceptance by `acceptBy`) | counts against the honored rate |
+| **Lapsed** | `awardedAt > validUntilMs`, a venue-side feed failure, or a decline for a confirmed venue-attributable reason | not counted; a venue defect (§5.1 forbids issuing late; delivery and the award's content are the venue's) |
 | **Slashable no-show** | FillAcceptance sent, no fill by `fillAuth.deadline` | §5.3 / ESCROW-RFC §6.1, unchanged |
 
 Enforcement of a broken commitment starts as **scoring** (§13.5, §13.7).
