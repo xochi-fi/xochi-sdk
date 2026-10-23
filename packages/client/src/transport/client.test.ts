@@ -1039,7 +1039,7 @@ describe("intent read capability", () => {
   });
 });
 
-describe("a read token never follows a redirect (real loopback servers)", () => {
+describe("a read token never leaves the origin (real loopback servers)", () => {
   const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
 
   /** A real HTTP server on 127.0.0.1 recording each request's path and headers. */
@@ -1101,18 +1101,16 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
     ["native fetch", undefined],
     ["a Workers-like fetch", workersFetch],
   ] as const) {
-    it(`refuses a cross-origin 302 and polls on anonymously (${runtime}); the target never sees the token`, async () => {
+    it(`refuses a cross-origin 302 and never adopts the target's answer (${runtime})`, async () => {
       const { origin, target, close } = await redirectPair();
       try {
         const { c, logged } = recordingClient(origin.url, fetch);
         const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
         expect(err.message).toMatch(/redirect/);
+        // The anonymous re-read is refused too: a transient failure, so the poll runs on.
         for (let poll = 0; poll < 2; poll++) {
-          expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toMatchObject({
-            status: "settling",
-          });
+          expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
         }
-        // Each poll tries the token first, then reads anonymously through the redirect.
         expect(origin.seen.map((r) => r.headers["x-xochi-read-token"])).toEqual([
           READ_TOKEN,
           READ_TOKEN,
@@ -1120,8 +1118,7 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
           READ_TOKEN,
           undefined,
         ]);
-        expect(target.seen).toHaveLength(2);
-        for (const r of target.seen) expect(r.headers).not.toHaveProperty("x-xochi-read-token");
+        expect(target.seen).toHaveLength(0);
         expect(logged.filter((l) => /redirected/.test(l))).toHaveLength(1);
         expect(logged.join("\n")).not.toContain(READ_TOKEN);
       } finally {
@@ -1129,6 +1126,48 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
       }
     });
   }
+
+  it("follows one same-origin redirect with the token, and refuses a second hop", async () => {
+    const api = await loopback((req, res) => {
+      const hop: Record<string, string> = {
+        "/api/intent/xi_1/status": "/v2/intent/xi_1/status",
+        "/api/intent/xi_2/status": "/hop/xi_2",
+        "/hop/xi_2": "/v2/intent/xi_2/status",
+      };
+      const location = hop[req.url ?? ""];
+      if (location !== undefined) {
+        res.writeHead(req.url === "/hop/xi_2" ? 302 : 308, { Location: location });
+        res.end();
+        return;
+      }
+      const owner = req.headers["x-xochi-read-token"] === READ_TOKEN;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify(
+          owner
+            ? { status: "settling", settlement_tx_hash: "0xfill" }
+            : { status: "settling", legs_withheld: true },
+        ),
+      );
+    });
+    try {
+      const { c } = recordingClient(api.url);
+      const owner = await c.getIntentStatus("xi_1", { readToken: READ_TOKEN });
+      expect(owner).toMatchObject({ status: "settling", settlementTxHash: "0xfill" });
+      expect(owner).not.toHaveProperty("legsWithheld");
+      expect(await c.getIntentStatus("xi_2", { readToken: READ_TOKEN })).toBeNull();
+      expect(api.seen.map((r) => [r.url, r.headers["x-xochi-read-token"]])).toEqual([
+        ["/api/intent/xi_1/status", READ_TOKEN],
+        ["/v2/intent/xi_1/status", READ_TOKEN],
+        ["/api/intent/xi_2/status", READ_TOKEN],
+        ["/hop/xi_2", READ_TOKEN],
+        ["/api/intent/xi_2/status", undefined],
+        ["/hop/xi_2", undefined],
+      ]);
+    } finally {
+      await api.close();
+    }
+  });
 
   it("sends the token on a read that is not redirected, under a Workers-like fetch", async () => {
     const { target, close } = await redirectPair();
@@ -1151,9 +1190,7 @@ describe("a read token never follows a redirect (real loopback servers)", () => 
       const { c } = recordingClient(origin.url, following);
       const err = (await rejection(c.getIntent("xi_1", { readToken: READ_TOKEN }))) as Error;
       expect(err.message).toMatch(/redirect/);
-      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toMatchObject({
-        status: "settling",
-      });
+      expect(await c.getIntentStatus("xi_1", { readToken: READ_TOKEN })).toBeNull();
     } finally {
       await close();
     }

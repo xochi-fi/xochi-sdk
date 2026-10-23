@@ -370,11 +370,33 @@ function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, s
 
 const MALFORMED_READ_TOKEN = `readToken is not a read_token (${READ_TOKEN_LENGTH} unpadded base64url characters)`;
 
-/** A read-token request answered by a redirect, or by a response from another origin. */
-class ReadTokenRedirectRefused extends Error {
+/** A pinned request answered by a redirect it may not follow, or by a response from another origin. */
+class RedirectRefused extends Error {
   constructor(path: string) {
-    super(`Refused a redirect on a read-token request (${path})`);
-    this.name = "ReadTokenRedirectRefused";
+    super(`Refused a redirect (${path})`);
+    this.name = "RedirectRefused";
+  }
+}
+
+/** The statuses whose `Location` a pinned GET may follow by hand (once, same origin). */
+const FOLLOWABLE_REDIRECT: Readonly<Record<number, true>> = {
+  301: true,
+  302: true,
+  303: true,
+  307: true,
+  308: true,
+};
+
+/**
+ * `url` resolved against `base`, else against the page (a browser resolves a
+ * relative `baseUrl` against it; elsewhere there is none), or undefined when
+ * it does not resolve.
+ */
+function resolveUrl(url: string, base?: string): URL | undefined {
+  try {
+    return new URL(url, base ?? (typeof location === "undefined" ? undefined : location.href));
+  } catch {
+    return undefined;
   }
 }
 
@@ -386,13 +408,23 @@ class ReadTokenRedirectRefused extends Error {
  */
 function staysOnOrigin(responseUrl: string, requestUrl: string): boolean {
   if (!responseUrl) return true;
-  // A browser resolves a relative `baseUrl` against the page; elsewhere there is none.
-  const page = typeof location === "undefined" ? undefined : location.href;
-  try {
-    return new URL(responseUrl).origin === new URL(requestUrl, page).origin;
-  } catch {
-    return false;
-  }
+  const request = resolveUrl(requestUrl);
+  return request !== undefined && resolveUrl(responseUrl)?.origin === request.origin;
+}
+
+/**
+ * Where a pinned request may follow `fetched` to: a plain redirect status from
+ * the request's origin whose `Location` stays on it. Undefined for anything
+ * else, an `opaqueredirect` included (a browser hides its `Location`).
+ */
+function sameOriginRedirectTarget(fetched: Response, requestUrl: string): string | undefined {
+  if (!FOLLOWABLE_REDIRECT[fetched.status] || fetched.redirected) return undefined;
+  if (!staysOnOrigin(fetched.url, requestUrl)) return undefined;
+  const request = resolveUrl(requestUrl);
+  const location = fetched.headers.get("Location");
+  if (request === undefined || location === null) return undefined;
+  const target = resolveUrl(location, request.href);
+  return target?.origin === request.origin ? target.href : undefined;
 }
 
 // ============================================================
@@ -476,14 +508,18 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    * same as a stalled connect, whether or not the injected `fetch` honours the
    * signal on its body.
    *
-   * A request carrying the read capability is sent with `redirect: "manual"`
-   * and refused (`ReadTokenRedirectRefused`) on any 3xx or `opaqueredirect`,
-   * on `redirected`, or on a `response.url` off the request's origin. fetch
-   * drops `Authorization` on a cross-origin hop but forwards a custom header,
-   * so following would hand the bearer secret to whatever host the `Location`
-   * names. `"manual"`, not `"error"`: Cloudflare Workers throws on `"error"`,
-   * and the status/url checks also catch an injected `fetch` that followed
-   * anyway (the token has then left already; its response is still refused).
+   * A request carrying the read capability, or asking for `redirect: "manual"`
+   * itself (the anonymous re-read of a refused status poll), is pinned to the
+   * request's origin: sent with `redirect: "manual"`, it may follow one plain
+   * redirect whose `Location` stays on that origin, by hand and with the same
+   * headers (a path migration keeps the token). Anything else is refused
+   * (`RedirectRefused`): a further 3xx, an `opaqueredirect`, `redirected`, or a
+   * `response.url` off the origin. fetch drops `Authorization` on a
+   * cross-origin hop but forwards a custom header, so following would hand the
+   * bearer secret to whatever host the `Location` names, and that host's body
+   * would become the intent's status. `"manual"`, not `"error"`: Cloudflare
+   * Workers throws on `"error"`. The guard holds only for an injected `fetch`
+   * that honours `redirect: "manual"` (README "Transport").
    */
   async function send<T>(
     path: string,
@@ -495,7 +531,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     const headers = new Headers(init.headers);
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
-    const carriesReadToken = headers.has(READ_TOKEN_HEADER);
+    const pinned = headers.has(READ_TOKEN_HEADER) || init.redirect === "manual";
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -503,21 +539,32 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     // even while a `read` holds the (locked) body it was re-wrapped into.
     let source: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const attempt = async (): Promise<T> => {
-      const fetched = await doFetch(`${baseUrl}${path}`, {
+      const requestUrl = `${baseUrl}${path}`;
+      const requestInit: RequestInit = {
         ...init,
         headers,
         signal: controller.signal,
-        ...(carriesReadToken ? { redirect: "manual" as const } : {}),
-      });
-      if (
-        carriesReadToken &&
-        (fetched.type === "opaqueredirect" ||
+        ...(pinned ? { redirect: "manual" as const } : {}),
+      };
+      let fetched = await doFetch(requestUrl, requestInit);
+      if (pinned) {
+        const target =
+          (init.method ?? "GET") === "GET"
+            ? sameOriginRedirectTarget(fetched, requestUrl)
+            : undefined;
+        if (target !== undefined) {
+          cancelBody(fetched);
+          fetched = await doFetch(target, requestInit);
+        }
+        if (
+          fetched.type === "opaqueredirect" ||
           (fetched.status >= 300 && fetched.status < 400) ||
           fetched.redirected ||
-          !staysOnOrigin(fetched.url, `${baseUrl}${path}`))
-      ) {
-        cancelBody(fetched);
-        throw new ReadTokenRedirectRefused(path);
+          !staysOnOrigin(fetched.url, requestUrl)
+        ) {
+          cancelBody(fetched);
+          throw new RedirectRefused(path);
+        }
       }
       let response = fetched;
       if (fetched.body) {
@@ -848,10 +895,12 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
      * A read token never stops the poll. A malformed one is not sent, and a
-     * token-bearing read answered by a redirect (`ReadTokenRedirectRefused`)
-     * is read again without it: either way the poll gets the anonymous
-     * status-only view and the problem is reported once per intent, without
-     * echoing the token.
+     * token-bearing read answered by a redirect (`RedirectRefused`) is read
+     * again without it: either way the poll gets the anonymous status-only
+     * view and the problem is reported once per intent, without echoing the
+     * token. That re-read stays pinned to the origin like the token read, so a
+     * redirect refused again is a transient failure (`null`): no other host's
+     * answer ever becomes the intent's status.
      */
     async getIntentStatus(intentId, opts) {
       const warnOnce = (message: string) => {
@@ -866,15 +915,15 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         headers = {};
       }
       const path = `/api/intent/${encodeURIComponent(intentId)}/status`;
-      const read = (h: Record<string, string>) =>
-        send(path, { method: "GET", headers: h }, timeouts.requestTimeoutMs, readOkJson);
+      const read = (init: RequestInit) =>
+        send(path, { method: "GET", ...init }, timeouts.requestTimeoutMs, readOkJson);
       try {
-        const { response, body } = await read(headers).catch((err: unknown) => {
-          if (!(err instanceof ReadTokenRedirectRefused)) throw err;
+        const { response, body } = await read({ headers }).catch((err: unknown) => {
+          if (!(err instanceof RedirectRefused)) throw err;
           warnOnce(
             `[xochi-client] status read for ${intentId} was redirected; polling it without the read token`,
           );
-          return read({});
+          return read({ headers: {}, redirect: "manual" });
         });
         if (!response.ok) {
           // Logged, distinctly for a 404, once per id: a 404 leaves an in-flight
