@@ -1402,8 +1402,8 @@ types are the contract.
 
 Everything in this section is net-new and MUST be built server-side before it
 is real (legend, top of file). Nothing here changes a shipped digest: §13.2 is a
-SolverBid **v3** with its own vector set. Not every clause is additive for a
-deployed `@xochi/solver-sdk`, which refuses what it does not parse: SolverBid
+SolverBid **v3** with its own vector set. Not every clause is additive for an
+existing `@xochi/solver-sdk`, which refuses what it does not parse: SolverBid
 v3 (§13.2), the announcement's size bins and the `lost` feed event (§13.6)
 change what it signs or parses, so each lands with an `rfcVersion` bump (§12)
 under the rollout gate stated in §13.6. §13.1's capability and announcement
@@ -1667,21 +1667,16 @@ first award-log record so the decision is made on data.
 - **Losers.** A panel member whose bid lost receives a `lost` feed event with its
   rank and `regimeAtAward`, never the winning `output` (§5.2 stays: awards are
   addressed). Rank + regime is enough to calibrate; the winning price is what
-  teaches a non-committed bidder to shade. **Rollout gate:** a deployed
-  `@xochi/solver-sdk` parses feed events as a closed union of `announcement`
-  and `award`, so an unknown `type` throws, `SolverClient.run` rethrows without
-  `onInvalidEvent`, and the cursor never moves past the batch: every
-  redelivery crash-loops and the awards in that batch are never processed.
-  `lost` therefore lands with an `rfcVersion` bump (§12), never inside the
-  current version: the SDK refuses a venue whose `rfcVersion` differs from its
-  own `SOLVER_RFC_VERSION` before it consumes the first feed event, so no SDK
-  that predates `lost` ever reads a feed carrying it. The venue MUST NOT emit
-  `lost` (or any new feed event type) under an `rfcVersion` whose SDK release
-  has not shipped, and that release MUST also skip and report an unknown
-  event type and advance the cursor past it. No opt-in field is needed: the
-  version gate is the opt-in. A new event type carries its payload under its
-  own key (`lost`), never `announcement` or `award`: the SDK fails closed on an
-  unknown type that carries a known payload key or normalizes to a known type.
+  teaches a non-committed bidder to shade. **Rollout gate:** `lost` lands with
+  an `rfcVersion` bump (§12), and the venue MUST NOT emit `lost`, or any new
+  feed event type, under the current `rfcVersion`. No opt-in field is needed:
+  the version gate is the opt-in. A new event type carries its payload under
+  its own key (`lost`), never `announcement` or `award`. History:
+  `@xochi/solver-sdk` before xochi-fi/xochi-sdk#47 parsed feed events as a
+  closed union and crash-looped on an unknown `type`; since #47 it skips and
+  reports an unknown type, advances the cursor, re-checks the venue's
+  `rfcVersion` before the next event, and fails closed on a type that carries
+  a known payload key or folds to a known type.
 - **Size bins.** This is §2.1's D1b. The announcement's `fromAmount` /
   `outputAmount` becomes a bin from a **published fixed-USD ladder** (decided
   2026-10-17; e.g. `<1k, 1–5k, 5–25k, 25–100k, 100–500k, 500k+`, finalized with
