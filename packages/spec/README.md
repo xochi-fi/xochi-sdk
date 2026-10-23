@@ -105,9 +105,8 @@ sum of independently floored layers.
 
 Wire: check `openapi.json` against `openapi.sha256`; compare a served document with `compare.mjs`.
 
-ERC-8262 providers: every `discovery` / `evidence` document in `erc8262/vectors.json` validates
-against its schema and every `schemaCases` document fails it; a consumer reproduces each
-`evaluationCases` and `quorumCases` outcome (SPEC §10.5/§10.6). The reference runner is
+ERC-8262 providers: what a provider or consumer reproduces from `erc8262/vectors.json` is SPEC
+§10.8. The reference runner is
 [`packages/spec/test/erc8262-provider.test.ts`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/test/erc8262-provider.test.ts).
 
 Reference runners live in the repo:
