@@ -430,6 +430,21 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
+    it("keeps a self-contradicting 'failed' in doubt (no Retry)", () => {
+      for (const response of [
+        { success: true, intentId: "xi_1", status: "failed" },
+        { success: false, intentId: "xi_1", status: "failed", reconciling: true },
+      ] as const) {
+        const { s, flow } = executing();
+        s.send({ type: "ExecuteReplied", flow, result: { ok: true, response } });
+        const label = JSON.stringify(response);
+        expect(s.intent.status, label).toBe("executing");
+        expect(s.intent.reconciling, label).toBe(true);
+        expect(s.intent.error, label).toBeNull();
+        expect(s.receipt.phase, label).toBe("pending");
+      }
+    });
+
     it("cannot be handed a host-built verdict in place of the response", () => {
       const { s, flow } = executing();
       // A host that decided "failed" itself would have offered Retry on a swap

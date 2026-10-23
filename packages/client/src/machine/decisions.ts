@@ -497,15 +497,18 @@ export type ExecuteDecision =
  * the worker returns HTTP 200 `{success:false}` for BOTH a genuine failure
  * (status "failed" -- terminal, retryable) AND a fail-closed downgrade (a
  * non-failure status like "settling" with reconciling -- the origin pull already
- * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only status
- * "failed" is a real failure; anything else advances and keeps polling.
+ * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only a
+ * consistent failure (`success:false`, status "failed", `reconciling` not true)
+ * is a real failure; anything else advances and keeps polling. A contradictory
+ * "failed" (`success:true`, or `reconciling:true`) is in doubt: it moves to the
+ * in-flight `executing` with reconciling on, never to the Retry view.
  * `reconciling` is the server's flag when it sends one, else on whenever the
  * server withheld success (`reconciling ?? !success`), so a withheld success
  * shows the safe-to-close "Still confirming" path with no Retry (an in-session
  * retry of a funds-moved swap would be a double execution).
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
-  if (!result.success && result.status === "failed") {
+  if (!result.success && result.status === "failed" && result.reconciling !== true) {
     return { kind: "failed", error: result.error || "Execution failed" };
   }
 
@@ -518,6 +521,9 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
 
   if (result.status === "completed") {
     return { kind: "transition", status: "completed", updates: { ...base, reconciling: false } };
+  }
+  if (result.status === "failed") {
+    return { kind: "transition", status: "executing", updates: { ...base, reconciling: true } };
   }
   return {
     kind: "transition",
