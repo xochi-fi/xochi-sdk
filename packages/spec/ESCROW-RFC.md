@@ -297,10 +297,14 @@ rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)`, and
 `networkIdentity` is its EIP-712 hashStruct (`@xochi/signer`
 `hashNetworkIdentity`; vectors in `conformance/shielded.json`,
 `networkIdentity`). Its `aztecChainId` is the Aztec network's own chain id and
-need not equal `XSP_AZTEC_CHAIN_ID`. Each shielded corridor records exactly
-one approved identity, and the venue records that digest with the `:winner`
-FillAuth; a payload whose `networkIdentity` differs from the recorded one is
-unproven. Before step 3 below, the venue proves that its own node serves that
+need not equal `XSP_AZTEC_CHAIN_ID`. The **network key** is
+`(aztecChainId, rollupAddress, l1ChainId)`: two digests can name one network
+(`genesisOrNetworkDigest` admits either a genesis or a network digest), so
+the venue approves exactly one `NetworkIdentity` digest per network key
+across all corridors, and every shielded corridor on that network records
+that one digest. The venue records it with the `:winner` FillAuth; a payload
+whose `networkIdentity` differs from the recorded one is unproven. Before
+step 3 below, the venue proves that its own node serves that
 identity: the node's reported chain id and rollup version equal
 `aztecChainId` and `protocolVersion`, its L1 rollup contract equals
 `rollupAddress` on `l1ChainId` as read through the venue's own L1 node, and
@@ -352,12 +356,12 @@ from the first independent solver:
    recorded `Open` (3.8a). A note landing between that proven height and the
    award passes this bound; on `RiddlerEscrow` the fill tag (Order binding,
    below) refuses it, because no tx can carry the tag before the award, and
-   the XSP path keeps this residual until 3.8a adopts the tag. The upper
-   bound is `fillDeadline`: the timestamp of that block, as the venue's own
-   node reports it at step 5's finality, is at most `fillDeadline` (on the
-   XSP path, the obligation's fill deadline as 3.8a records it). A note
-   included later is refused on content (below): the window was the
-   winner's to fill in, never an option to hold past it.
+   tier-1s release on the XSP path waits for 3.8a to adopt the tag (Order
+   binding). The upper bound is `fillDeadline`: the timestamp of that block,
+   as the venue's own node reports it at step 5's finality, is at most
+   `fillDeadline` (on the XSP path, the obligation's fill deadline as 3.8a
+   records it). A note included later is refused on content (below): the
+   window was the winner's to fill in, never an option to hold past it.
 
 Steps 3–4 assume a **private-only** transaction: `noteIndex` is the position
 in the tx's note hashes ordered by side-effect counter, and the nonce comes
@@ -383,9 +387,10 @@ class: each approved `networkIdentity` records exactly one `FillTag` address
 (in the corridor configuration, beside the bounds of the claim window below),
 because a nullifier is siloed by the address that emits it and uniqueness
 holds per address only; a tag emitted from any other address is absent.
-`FILL_TAG` is `[RESERVED]`: the separator constant is fixed by the pinned
-`FillTag` class when it is built and published with the corridor, a change
-to it versions this `kind`, and until then no value is valid. At step 3 the
+`FILL_TAG` is `[PROPOSED]`, its value open: the separator constant is fixed
+by the pinned `FillTag` class when it is built and published with the
+corridor, a change to it versions this `kind`, and until then no value is
+valid. At step 3 the
 venue recomputes `fillSalt` from `orderId` (§9.4), computes
 `compute_siloed_nullifier(FillTag address, tag)` and checks that it is a
 nullifier in `txHash`'s effects; absent or different is unproven. The
@@ -403,9 +408,8 @@ tx distinguishable by shape from a plain `transfer`, which narrows the
 anonymity set (§9.6); a leaked `fillSalt` lets its holder tag a tx for the
 order (the payee is still the authenticated awardee) or burn the tag first
 (Burned tag, below); `FillTag` is net-new and unbuilt. The XSP path has no
-`fillSalt`: 3.8a must adopt an equivalent Attestor-issued per-obligation tag
-input in lockstep, and until it does the XSP path carries the unbound-note
-risk this paragraph closes.
+`fillSalt`, so tier-1s release MUST NOT be enabled on the XSP path until 3.8a
+adopts an equivalent Attestor-issued per-obligation tag input in lockstep.
 
 A failed step, a node error and an `unknown` result are all **unproven**, not
 "not filled". A disclosure's **receipt** is its attributable `POST
@@ -437,9 +441,7 @@ mempool, or behind a slow venue node, is therefore never classed absent.
 
 A disclosure still unclassified at `holdDeadline` for any reason other than
 a venue outage is refused on content, so a fabricated or never-included
-`txHash` cannot keep a no-show unslashable. On the XSP path, until 3.8a adopts
-the fill tag, `note_already_bound` is never slash grounds: an untagged note
-can be bound first by another awardee who knows its preimage.
+`txHash` cannot keep a no-show unslashable.
 
 **Burned tag (normative).** Before treating a disclosure refused on content,
 or the absence of any disclosure, as slash grounds (§6), the venue checks on
@@ -462,15 +464,15 @@ slash, and the venue cannot tell that from a leak. The user then waits to
 **Registry.** Only after every other check of the release predicate has
 passed (network binding, steps 1–6, the fill tag, the payee and the
 `DestOpening` match), and never before, the venue records
-`(networkIdentity, unique) -> HMAC_k(orderId)` (on the XSP path
+`(network key, unique) -> HMAC_k(orderId)` (on the XSP path
 `HMAC_k(obligationId)`) as an atomic insert-if-absent keyed by
-`(networkIdentity, unique)`. `k` is a venue-held key; retired key
+`(network key, unique)`. `k` is a venue-held key; retired key
 versions are retained for lookup, and the plaintext id lives only in the
 bounded-retention operation record. A write that finds a different bound
 commitment is refused (`note_already_bound`), permanently for that payload:
 with standard-size orders one note would otherwise evidence two fills. The
-registry is partitioned by the approved `networkIdentity` digest (Network
-binding, above), not by corridor or `chainId`, because a note hash is
+registry is partitioned by the network key (Network binding, above), not by
+identity digest, corridor or `chainId`, because a note hash is
 network-global, and it is permanent (a note
 hash is a leaf for the life of the chain): an entry MUST never expire or be
 pruned. It is an append-only log with periodic signed checkpoint digests; a
@@ -493,7 +495,7 @@ the digest recorded with the award and the venue's node proved it, `recipient`,
 `token` and `amount` match the committed `DestOpening` (`amount >= toAmount`;
 exact under §13.2), the inclusion check, both of step 6's window bounds and
 the fill tag (steps 5–6, Order binding) passed at finality,
-`(networkIdentity, unique)` was free in the
+`(network key, unique)` was free in the
 registry, no `not_received` hold is open, and the order's outcome record
 admits release (release/slash exclusivity, §6). Both custody paths keep C2:
 no destination locator reaches the origin chain.
@@ -510,7 +512,7 @@ no destination locator reaches the origin chain.
   the same `fillCommitment`. `evidenceUsed` enforces one commitment per
   obligation, but because the salt is per obligation it cannot catch one note
   reused across obligations: the Attestor's registry, keyed by
-  `(networkIdentity, uniqueNoteHash)`, is what enforces one note, one
+  `(network key, uniqueNoteHash)`, is what enforces one note, one
   obligation. `destChainId` and `solver` in `ObligationFilled` remain public,
   so the Ledger still reveals the settlement type and the solver per
   obligation.
