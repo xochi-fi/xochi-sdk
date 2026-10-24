@@ -693,6 +693,8 @@ a winner can never take the window the venue's backstop needs to fill at the
 reserve. If that cap is below `now + ceil(minExclusiveMs / 1000)` the winner is
 refused (`exclusive_window_unavailable`) and the reserve fills. A solver that
 demands more than the order can spare simply does not win it.
+A shielded-Aztec leg has no backstop and so no such cap: its `deadline` is
+ESCROW-RFC §5.1's fill window end (§5.2).
 
 **Sizing rule:** `minExclusiveMs = (fillInclusionSec + award-to-accept latency +
 accept headroom) × 1000` -- everything between the FillAuth being issued and the
@@ -820,9 +822,11 @@ Every escrow uint is a decimal string. An escrowed award is **published only onc
 the lock is final** on the origin, which is when exclusivity starts and the
 `fillAuth` is issued (its `deadline` is the exclusivity end, capped at
 `fillDeadline − 120 − 300` rounded **down** to a 300s grid -- not
-`refundableAt − 420`, which is looser by the whole `claimWindow`). That
-`fillDeadline` is the one hashed into `orderId`: Riddler issues no FillAuth, for
-any role, for an order whose stored terms do not hash to its `orderId`
+`refundableAt − 420`, which is looser by the whole `claimWindow`; a
+shielded-Aztec leg's `deadline` is ESCROW-RFC §5.1's fill window end
+instead). That `fillDeadline` is the one hashed into `orderId`: Riddler
+issues no FillAuth, for any role, for an order whose stored terms do not hash
+to its `orderId`
 (`order_unbound`, Riddler#1243), so a deadline cannot be moved by rewriting the
 venue's record of the order.
 `destOpening` is the plaintext of the lock's `destCommitment`; §7.1 is what a
@@ -990,7 +994,9 @@ plus accept budget always has a target it can size for -- the SDK example's
 After it the venue refuses the acceptance (`409 auction_window_closed`) and the order is
 abandoned to the reserve: a `:backstop` FillAuth for the SAME `fillId`, admitted
 before the winner deadline only in that case, so at most one fill can land
-on-chain. A missed window is not a slash -- no acceptance was recorded -- but the
+on-chain (§13.2 first re-auctions a `firm` award selected in `feed_degraded`;
+§13.8 covers a shielded-Aztec leg, which gets no `:backstop`). A missed window
+is not a slash -- no acceptance was recorded -- but the
 award is lost. The venue records it as abandoned (`winner_abandoned` on the
 order, the `[:riddler, :escrow, :award, :abandoned]` event and the
 `riddler_escrow_award_abandoned_total` metric), and repeated abandonment is the
@@ -1398,6 +1404,584 @@ types are the contract.
 
 ---
 
+## 13. Firm liquidity: regimes, commitment class, award log  `[PROPOSED]`
+
+Everything in this section is net-new and MUST be built server-side before it
+is real (legend, top of file). Nothing here changes a shipped digest: §13.2 is a
+SolverBid **v3** with its own vector set. Not every clause is additive for an
+existing `@xochi/solver-sdk`, which refuses what it does not parse: SolverBid
+v3 (§13.2), the announcement's size bins and the `lost` feed event (§13.6)
+change what it signs or parses, so each lands with an `rfcVersion` bump (§12)
+under the rollout gate stated in §13.6. §13.1's capability and announcement
+fields, §13.2's and §13.3's capability fields, §13.3's decline endpoint and
+§13.4's award log are additive (the SDK parses every feed and capability
+object with `.passthrough()`). The FX-market measurements each clause rests
+on, and where the FX analogy stops applying, are in §13.10; everything else
+here is protocol. Work is tracked in xochi-fi/xochi-sdk#31.
+
+The goal is one property, stated so it can be measured: **an awarded bid is
+honored**. §5.1 already makes the bid's expiry verifiable (`validUntilMs` is in
+the digest) and §5.3 already makes a sent FillAcceptance slashable. What is
+missing is the class of commitment a bid makes, the reason an award is declined,
+a record from which an honored rate can be computed, and the market regime
+against which that rate is bucketed.
+
+Terms used throughout §13, one name per instant (all on the venue clock):
+
+- **Selection** is the venue picking the winning bid after `closesAt` (§5.1);
+  `selectionTime` (unix ms) is that instant. Eligibility (§13.2), scoring
+  (§13.5) and the regime an outcome is bucketed under (`regimeAtSelection`,
+  §13.1) are decided at `selectionTime`. `regimeAtSelection` also governs
+  §13.2's path for a declined or abandoned award and its `:backstop` price
+  rule; the regime at the decline, at `acceptBy` or at the `:backstop`'s
+  issue plays no part.
+- An **award** is the venue's issue of the `:winner` FillAuth (§5.2) to the
+  selected bid's solver, in an escrowed award (§5.2 `escrow` envelope);
+  `awardedAt` (unix ms, comparable with `validUntilMs`) is that instant and
+  the award feed event carries that FillAuth. It follows selection by as much
+  as the taker's execute plus origin finality, since the FillAuth is issued
+  only once the open is final (§5.2). An award without an `escrow` envelope
+  (§5.2), such as P0's reserve-sentinel award, carries no FillAuth, so there
+  is nothing to accept or decline: §13.3 and §13.4 apply to escrowed awards
+  only.
+  A shielded-Aztec leg is never announced (§2.2), so until §2.4 re-admits
+  private flow its `:winner` FillAuth goes to the venue's own solver with no
+  sealed round: that award is not selected or scored (§13.3, §13.5), and
+  §13.8 states its outcomes.
+- **FillAuth roles** (§5.2, §5.3; ESCROW-RFC §6.1): `:winner` is the
+  awardee's; `:reserve` is the venue's reserve solver's when no `:winner` is
+  issued (the reserve won the selection, or the escrow node refused the
+  `:winner`); `:backstop` is the reserve solver's after a `:winner` was issued
+  and then declined, abandoned or not filled. All three name the order's one
+  `fillId`, and RiddlerFiller lands at most one fill per `fillId`.
+
+### 13.1 Regime, price sources, regime-indexed solver layer
+
+- `GET /solver/capabilities` gains `regime: { state, asOf, pairs? }`, `state ∈
+  {calm, elevated, stress, feed_degraded}`, computed by the venue from its own
+  **reference sources** for each quoted pair: oracle aggregates and
+  multi-venue CEX trade or book aggregates, prices no panel member can move
+  cheaply. A single DEX pool, any other price a panel member can move with its
+  own trades, and every solver-declared source (below) are never reference
+  sources. Realized volatility is the median across a pair's fresh
+  reference sources (a stale one is left out, so it never reads as zero
+  volatility), so one source cannot push the pair to `elevated` or `stress`.
+  `feed_degraded` is set only when at least `k` of the pair's `n` reference
+  sources are stale or diverge from the rest, with `k ≥ 2`, or when the pair
+  has `n ≤ k` reference sources, too few to tell `k` failing sources from
+  the rest. The detector's thresholds, the source list, `n` and `k` are
+  published here when built.
+  `pairs`, when present, overrides `state` per pair.
+- `IntentAnnouncement` gains `regime` (the state at `opensAt`); `Award` gains
+  `regimeAtSelection` (the state at `selectionTime`). A solver MAY read them;
+  the venue MUST stamp them.
+- `SolverCapabilities` gains `priceSources: [{ kind: "oracle" | "cex" | "dex" |
+  "internal", id: string, weight: number }]`, weights summing to 1. The venue
+  computes, per pair, the fraction of active solver weight on each `id` and
+  publishes it (§13.9). Declared sources feed that telemetry only and MUST NOT
+  move the regime: `feed_degraded` is set only from the venue's reference
+  sources (above), never because a solver-declared source is
+  degraded, since a solver that declares a source it controls could otherwise
+  degrade it to make its awards non-binding (§13.2).
+  A solver whose own declared source is down declines with
+  `price_source_down`, which is the solver's reason (§13.3).
+- The solver layer of `fee/schedule.json` (`SPEC.md` §4) gains a served
+  multiplier per regime: `calm = 1.0`, the others published beside the
+  schedule. **Only the solver layer widens**; the venue and routing layers are
+  regime-invariant. The multiplier is applied to the reserve bid too, so the
+  taker floor widens in step and a third party still wins only by strictly
+  beating it (§2.1).
+
+### 13.2 Commitment class (SolverBid v3)
+
+`BidDraft` / `Bid` gain `commitmentClass: "firm" | "indicative"`, signed into the
+bid. The v3 type string is
+
+```
+SolverBid(bytes32 orderId,string auctionId,string intentId,uint256 output,uint64 validUntilMs,uint64 minExclusiveMs,uint8 commitmentClass)
+```
+
+with `firm = 1`, `indicative = 2`, domain version `"3"`, vectors in
+`conformance/solver-bid-v3.json` (v2 vectors stay as the pinned history of the
+v2 digest). Rules:
+
+- A `firm` bid MUST satisfy `validUntilMs − closesAt ≥ minFirmValidityMs`, a
+  venue constant served in capabilities; below it the bid is rejected `422`
+  (admissibility, same class as `minOutput`). **Decided 2026-10-17: 15 000 ms.**
+  It excludes pure latency quoting (FX non-bank order life is 1.6–3 s) and
+  stays inside typical origin-finality budgets, so cross-chain inventory risk
+  is priced rather than refused. It is served, not hard-coded, so it can move
+  without a wire change. It is the venue-wide floor: capabilities also serve
+  `minFirmValidityMsByOrigin: { [originChainId: string]: number }`, each
+  value at least that origin's quote TTL plus finality budget (§5.1 sizing
+  rule) and never below the floor, because the `:winner` FillAuth is issued
+  only once the open is final and never past `validUntilMs`, so a bid below
+  its origin's value could never be awarded: it is rejected `422` like one
+  below the floor. An origin absent from the map uses the floor.
+- A `firm` bid commits to its award when `awardedAt ≤ validUntilMs`, through
+  that award's `acceptBy` (§5.3), which may fall after `validUntilMs`; size
+  validity knowing that.
+- Only `firm` bids are eligible at `selectionTime` in `calm` / `elevated` /
+  `stress`. In `feed_degraded` an `indicative` bid is eligible after every
+  `firm` bid above the reserve, and an `indicative` award is a `[PROPOSED]`
+  **non-binding** award: declining it is never a broken commitment (§13.3).
+- The reserve bid is always `firm`.
+- **An award declined or abandoned.** `regimeAtSelection` decides the path
+  (§13 terms). For an `indicative` award, and for any award selected outside
+  `feed_degraded`, the reserve fills under a `:backstop` FillAuth issued at
+  once: on the decline, or at `acceptBy` for an abandoned award (§5.3,
+  §13.3). The declined or abandoned `:winner` FillAuth can still fill and
+  races it; the second fill reverts (§13.3). So an `indicative` award holds
+  its exclusive window only until its decline or `acceptBy`, plus the
+  `:backstop`'s inclusion, never through a re-auction wait: it is not a free
+  option against the reserve (§5.3). A `firm` award selected in
+  `feed_degraded` is first re-auctioned **once**, in that regime and against
+  the same reserve: the re-auction's floor is the original `firm` reserve,
+  never a reserve widened for the retry, so a decline cannot lower what the
+  taker gets (§2.1). This amends ESCROW-RFC §6.1's abandonment rule (an
+  abandoned `:winner` goes to a `:backstop` for the same `fillId`) for that
+  case only. The re-award reuses the order's `fillId` (ESCROW-RFC §9.4
+  derives `fillSalt` from `orderId`, so every filler of one order gets the
+  same `fillId` and the destination single-shot still binds); it never mints
+  a new one, and its FillAuth waits for the declined one to expire (§13.3).
+- **The re-auction runs only if it fits.** When such a `firm` award is
+  declined, or at `acceptBy` when it is abandoned, the venue adds up the
+  declined FillAuth's `deadline`, the destination's finality, one sealed
+  round (the original announcement's `closesAt − opensAt`, §4.2), one
+  acceptance window (`ESCROW_ACCEPTANCE_WINDOW_SECONDS`, §5.3) and the
+  shortest exclusive window the escrow node grants a `:winner`
+  (`max(exclusiveWindowSec, fillLatencySec(toChain))`, §5.1). The re-auction
+  fits only if that sum is at most the winner-deadline cap (`maxDeadline −
+  backstopBudget`, §5.1; ESCROW-RFC §6.1); otherwise the venue skips it and
+  issues the `:backstop` at once. If the re-award fails too (declined,
+  abandoned, refused by the escrow node or not filled), the `:backstop`
+  follows it at once, and in any case no later than that cap. When
+  `regimeAtSelection` is `feed_degraded`, a `:backstop` that follows a failed
+  award pays the reserve re-quoted at its issue and never less than the
+  original `firm` reserve, so neither the wait nor a move in the market
+  lowers what the taker gets. The taker is never returned an empty result
+  (§2.1 price floor), except on a shielded-Aztec leg, which is never
+  re-auctioned or reserve-filled once awarded (§13.8). The retry, a skipped
+  retry and the reserve fill are stamped in the award log (§13.4) so the
+  failure is counted, not hidden.
+
+### 13.3 Decline on the wire; what "broken" means
+
+`POST /solver/awards/:auctionId/decline` carries
+`{ fillId, fillAuthDigest, reason, signature }`. `fillAuthDigest` is the
+EIP-712 digest of the `:winner` FillAuth being declined under `RiddlerFiller`'s
+domain (ESCROW-RFC §9.4; the value a FillAcceptance carries as `fillAuth`).
+`reason` is one of the 21 `EscrowRefusal` codes (`escrow-verify.ts`) the
+pre-acceptance re-gate (§5.3, §7.1) can raise, each listed by class below,
+plus `price_source_down` and `other`; any other value is refused `422` and
+changes nothing. The other three codes (`attestation_mismatch`,
+`already_claimed`, `not_accepted`) arise only after acceptance or at claim,
+when a decline is refused `409` anyway (below).
+The venue accepts a decline only from the awardee: the panel-authenticated
+`solverId` MUST be the award's, and `signature` MUST recover to the award's
+`fillAuth.filler` (the bid signer) over
+
+```
+SolverDecline(string auctionId,bytes32 fillId,bytes32 fillAuthDigest,string reason)
+```
+
+under the domain `{ name: "RiddlerSolverDecline", version: "1" }`, distinct
+from SolverBid's `RiddlerSolver` and FillAcceptance's `RiddlerSolverBond`, so
+no signature over one verifies as another; its vector set is generated when it
+is built. The domain binds no `chainId` or `verifyingContract`, which suffices
+for scoring: `fillAuthDigest` already binds the RiddlerFiller deployment
+(`fillAuth.chainId`, `fillAuth.fillerContract`) and the `fillId`, so a decline
+replays across venues or environments that share a panel key only if
+`auctionId`, `fillId` and `fillAuthDigest` all collide; P2 needs more
+(below). Any other decline is refused `403` and changes nothing: a panel
+member cannot decline a rival's award. A decline whose `fillAuthDigest` is not
+the digest of the FillAuth the venue issued for this award is refused `422`
+and changes nothing. A re-award's FillAuth always has a later `deadline` than
+the declined one (below), so its digest differs and a decline cannot be
+replayed onto a later award of the same `fillId`, even to the same solver.
+
+Acceptance and decline of one award are a single compare-and-set on the
+venue's shared order store, on every API node: whichever is recorded first
+wins, and the other is refused `409` and changes nothing. A decline is also
+refused `409` after `acceptBy`. An accepted award is owed (§5.3) and is never
+moved to the reserve, so its only failure outcome is the slashable no-show
+below; a refused acceptance is never stored, so the slash attester cannot act
+on it (ESCROW-RFC §6.1 `no_fill_acceptance`). A solver MUST post a decline
+when its re-gate refuses an award it received, instead of letting `acceptBy`
+pass silently; an award abandoned with no decline is still `winner_abandoned`
+(§5.3), and the award log records it with `reason: "no_response"`, a value
+the venue records and a solver never sends. On a shielded-Aztec leg a decline
+is recorded but not scored, and re-awards nothing (§13 terms, §13.8).
+
+**A declined FillAuth stays fillable.** RiddlerFiller fills a `fillId` at most
+once and cannot revoke a FillAuth (ESCROW-RFC §4, §9.4), so the decliner can
+still fill under its FillAuth until that FillAuth's `deadline`. The venue
+therefore issues a re-award to another panel solver (§13.2's `feed_degraded`
+re-auction) only once a finalized destination block after that `deadline`
+shows `filled(fillId)` false; if it shows a fill, that fill settles the order
+and nothing is re-awarded. A `:backstop` FillAuth is issued without that wait
+(§13.2; ESCROW-RFC §6.1: at most one fill lands). Whichever fill comes second
+reverts, and the slash attester never attests no fill while `filled(fillId)`
+is true for any filler, so a solver whose FillAcceptance cannot be honoured
+because the `fillId` was already filled is never slashed.
+A decline stays scored as a decline even if its own FillAuth later fills.
+Residual: a `feed_degraded` re-award waits out the declined FillAuth's
+`deadline` plus destination finality, minutes on an L1 destination, so the
+taker waits at least that long for the second auction; §13.2's fit test caps
+the wait at what still leaves the backstop its budget, and the `:backstop`
+fills at once when the re-auction cannot fit.
+
+Four outcomes are kept distinct in the award log (table below). An award the
+awardee did not decline whose `fillId` was filled under its own `:winner`
+FillAuth is honored, whether or not an acceptance was recorded (the fill
+result, §13.4), and is never Broken; a declined one stays scored as a
+decline (above). Every other award is judged in three steps, in order:
+
+1. **Binding.** A `firm` award binds when `awardedAt ≤ validUntilMs` (§13.2);
+   `awardedAt > validUntilMs` scores Lapsed. The moment the solver declined
+   or abandoned plays no part in this step, so waiting out `validUntilMs` cannot
+   turn a broken firm commitment into a Lapsed one. An `indicative` award
+   never binds (§13.2), and a shielded-Aztec leg's award is never selected
+   (§13 terms): declined or abandoned, either is recorded with its reason and
+   Unscored.
+2. **Delivery.** A venue-side delivery failure (below) scores Lapsed.
+3. **Reason.** A decline for a confirmed venue-attributable reason (below)
+   scores Lapsed. Any other decline, and no FillAcceptance by `acceptBy`
+   (`no_response`), scores Broken.
+
+`minAcceptBudgetMs` and `awardToAcceptAllowanceMs` are served in
+`GET /solver/capabilities` (absent means 15 000 and 10 000) and MUST be at
+least those values. `minAcceptBudgetMs` covers the reference SDK's default
+`acceptBudgetSec` (15 s, `escrow-gateway.ts`); `awardToAcceptAllowanceMs` is
+§5.3's award-to-accept allowance (the SDK example's 10 s), the time the SDK
+spends before its `accept_window_closed` check: `prepare`'s re-gate reads,
+the wait for its per-`(chain, token)` accept slot, and the gap between the
+venue clock and the chain time it checks against. So a default-SDK solver
+whose award is delivered by `deliveryCutoffMs` (below), and whose `prepare`
+and accept-slot wait stay inside the allowance, passes that check. While
+§13.3 scoring is served, the venue refuses to boot unless its acceptance
+window (`ESCROW_ACCEPTANCE_WINDOW_SECONDS`, §5.3) is at least
+`minAcceptBudgetMs + awardToAcceptAllowanceMs + deliverySlackMs`, where
+`deliverySlackMs` (served beside them, above zero) is the venue's own bound
+from issuing the `:winner` FillAuth to appending its award, so
+`deliveryCutoffMs` never falls before an award can be appended (at the
+floors and the default 30 s window, a slack of at most 5 000).
+`minAcceptBudgetMs` is its own floor: it is unrelated to
+`minFirmValidityMs`'s 15 000 ms (§13.2), and either moves without the other.
+A solver that configures a larger `acceptBudgetSec` or `fillInclusionSec`, or
+whose `prepare` and accept-slot wait exceed the allowance, owns the declines
+it causes.
+
+**Delivery.** It is decided from the venue's feed log (below), never by when
+the solver chose to read. `deliveredAt` (unix ms) is when the award was first
+appended to the awardee's feed; from then the award is the awardee's to read,
+and it stays readable until `acceptBy`: the retention ring (§4.1) never drops
+it before then, or the venue keeps awards in a per-awardee queue outside the
+ring, so no read counts an award in `dropped`. `deliveryCutoffMs = acceptBy ×
+1000 − minAcceptBudgetMs − awardToAcceptAllowanceMs` (`acceptBy` is unix
+seconds). A **read** is one long-poll request (§4.1), or one SSE connection
+(§4.1, `[PROPOSED]`) for as long as it stays open. A read is **well-formed**
+for an award when it is authenticated as the awardee and its cursor (for SSE,
+the cursor it resumed from) is one the feed log issued to the awardee, at a
+position before the award's. A read **returned** the award when the venue
+wrote the award's event in its response or onto its stream, whether or not
+the client was still there: a long-poll response the venue wrote counts even
+if the client went away, and on SSE a write the client's own flow control
+holds back counts as written. An acceptance is **well-formed** when it is
+authenticated as the awardee, its signature verifies against the stored
+`:winner` FillAuth as §5.3 requires, and it arrives before `acceptBy`. The
+venue-side delivery failures, and the only ones, are:
+
+- the append was never made, or was made after `deliveryCutoffMs`;
+- between `deliveredAt` and `deliveryCutoffMs`, a well-formed read was
+  answered with a 5xx, left unanswered past `longPollHoldMs` (the venue's
+  long-poll hold, §4.1, served in `GET /solver/capabilities`), answered with
+  `reset`, or answered with a cursor past the award's position without the
+  award; on SSE, a well-formed connection the venue ended, or whose writes
+  the venue stopped, with the award unwritten (one the client closed or
+  reset is the solver's);
+- a well-formed acceptance was answered with a 5xx or not at all, and not
+  stored;
+- the feed log's record for the award or for an acceptance is missing or
+  incomplete (below).
+
+A read answered `4xx` is not a delivery failure (a malformed or foreign cursor,
+bad credentials and rate limits are the solver's), nor is a bounded page that
+ends before the award's position (§4.1: a solver behind the head catches up
+one page per read). Any read that returned the award at or before
+`deliveryCutoffMs` rules out the second case, whatever other reads in the
+window were answered.
+
+**Feed log.** The venue records each cursor it issues to a solver, each
+award's append (`deliveredAt`, the award's position) before serving it,
+every read by the awardee between `deliveredAt` and `acceptBy` on arrival,
+before answering it (its cursor, the venue's answer, status or none by the
+end of the hold, and which awards it returned), and every acceptance POST
+for the award the same way (whether it is well-formed, the venue's answer,
+status or none, and whether it was stored). The feed log is shared by every
+API node and durable across a node crash, a restart and a blue/green cutover,
+as the order store the compare-and-set above runs on is. A missing or
+incomplete record is the last delivery failure above, so a lost append, a
+lost acceptance or a feed restart never makes an honest solver Broken.
+
+**Reading while committed.** A solver MUST keep reading its feed, and MUST
+accept or decline each award, while any fill or other award of its own is in
+flight. The reference `SolverClient.run` (`@xochi/solver-sdk`) does not meet
+this: it awaits each event's handler before its next read, including an
+earlier award's whole `fill` (acceptance, then inclusion), so a second award
+appended meanwhile can be read after its `acceptBy` and score Broken. §13.3
+scoring therefore MUST NOT leave `[PROPOSED]` until `@xochi/solver-sdk` (a)
+reads the feed and accepts or declines each award without waiting on an
+earlier award's fill, (b) posts the decline its re-gate requires, and (c) pins
+by a test that, with both floors above served, an award delivered at
+`deliveryCutoffMs` passes its `accept_window_closed` check at its default
+`acceptBudgetSec` after a `prepare` and accept-slot wait the test bounds,
+with a margin the test asserts left before `acceptBy`; a test that only
+checks the default equals the floor does not count.
+
+**Reasons.** A decline for a venue-attributable reason scores Lapsed once the
+venue confirms the reason from the FillAuth `fillAuthDigest` names, its own
+award record, its own canonical deployment registry and chain reads; one it
+cannot confirm is scored as a solver reason and counted against the conduct
+statement's truthful reasons (§13.7). The 21 codes split as follows:
+
+- **Venue-attributable (11):** `malformed_award`, `wrong_escrow`,
+  `order_id_mismatch`, `announcement_mismatch`, `fill_auth_mismatch`,
+  `not_final` (an award is issued only once the open is final, §5.2),
+  `opened_mismatch`, `lock_not_open`, `already_filled`, `bond_mismatch`,
+  `claims_paused`. `wrong_escrow` and `bond_mismatch` are confirmed only when
+  the award names a RiddlerEscrow, RiddlerFiller or SolverBond outside the
+  venue's canonical deployment registry, never against the set the solver
+  says it trusts: a solver that trusts a different set declines for its own
+  reason.
+- **Timing (2):** `window_closed` is venue-attributable when the award fails
+  that check at `deliveredAt` at the SDK's default budgets (`fillInclusionSec`
+  60 s plus `acceptBudgetSec` 15 s plus `ATTESTATION_LATENCY_SEC` and
+  `SAFETY_MARGIN_SEC` before `refundableAt`, `escrow-verify.ts`).
+  `auth_expired` is venue-attributable when the award fails that check at
+  `deliveredAt` at the default budgets (60 s plus 15 s before the FillAuth
+  `deadline`) and the bid's `minExclusiveMs` is at least 75 000, those
+  budgets' sum; with a smaller `minExclusiveMs` the solver asked for a window
+  the default budgets cannot use, and the decline is its own.
+- **Solver's (8):** `insufficient_inventory`, `insufficient_allowance`,
+  `insufficient_claim_gas`, `simulation_failed`, `in_doubt`, `wrong_chain`,
+  `not_evm_fillable`, `accept_window_closed` (a delivery too late to accept
+  is already Lapsed at step 2), plus `price_source_down` (§13.1) and `other`.
+
+| Outcome | Condition | Scored as |
+| --- | --- | --- |
+| **Broken commitment** | binding `firm` award (`awardedAt ≤ validUntilMs`), no venue-side delivery failure, then declined for a reason the venue does not confirm venue-attributable, or no FillAcceptance by `acceptBy` (`no_response`) and no fill under its own `:winner` FillAuth | counts against the honored rate |
+| **Lapsed** | `awardedAt > validUntilMs`, a venue-side delivery failure (feed read or acceptance POST), or a decline for a confirmed venue-attributable reason | not counted; a venue defect (§5.1 forbids issuing late; delivery, acceptance intake and the award's content are the venue's) |
+| **Unscored** | an `indicative` award declined or abandoned (§13.2); a shielded-Aztec leg's award declined or abandoned (§13 terms) | recorded with its reason, never counted |
+| **Slashable no-show** | FillAcceptance sent, no fill by `fillAuth.deadline`; on a shielded-Aztec leg, ESCROW-RFC §6's shielded slash predicate instead | §5.3 / ESCROW-RFC §6.1, unchanged; shielded legs: ESCROW-RFC §5.1 fill window and §6 |
+
+Enforcement of a broken commitment starts as **scoring** (§13.5, §13.7).
+Extending SolverBond slashing to a `firm` decline inside validity is P2 and
+waits on enough award-log history to set a threshold an honest stress-event
+inventory miss does not trip. P2 needs a `SolverDecline` domain version that
+binds `chainId` and `verifyingContract` (the bond chain and SolverBond), and
+acts only on a solver-attributable decline whose `fillAuthDigest` names a
+FillAuth the escrow node signed (ESCROW-RFC §6.1).
+
+### 13.4 Award log
+
+The venue persists one record per award (an escrowed award, §13 terms):
+`auctionId`, `intentId`, `solverId`, `output`, `validUntilMs`,
+`commitmentClass`, `selectionTime`, `regimeAtSelection`, a realized-vol
+bucket, `awardedAt`, `deliveredAt`, `acceptBy`, the feed-log determination
+(§13.3 delivery, acceptance POSTs included), the §13.3 outcome, `reason` and
+decline `fillAuthDigest`, whether the §13.2 re-auction ran, was skipped or
+does not apply, fill result and the FillAuth role that filled, `settledAt`.
+This is the raw material for
+the honored rate, the §13.7 tiers and the §13.9 telemetry; it is
+venue-internal and never served per record.
+Settlement latency is `awardedAt → settledAt`, published as p50/p95 by rail and
+regime.
+
+### 13.5 Scored selection, tie-break, concentration
+
+Amends §2.1 "best output wins" to **best scored output above the reserve**:
+
+```
+score = output × honoredRate(solverId, regime)
+```
+
+where `honoredRate` is the solver's trailing honored-award rate in the regime
+at `selectionTime`, past awards bucketed by their `regimeAtSelection` (§13.3
+definition), with a published prior for a solver with no history.
+The reserve floor and `minOutput` admissibility are unchanged, so the §11
+auctioneer rule (never settle below the reserve or `minOutput`) still holds; a
+scored selection can only pick, among bids that already beat the reserve, one
+whose output is not the maximum. The formula and prior are published here; an
+opaque score reads as venue discretion.
+
+Tie-break at equal score: reputation (§8) first, then **rotation** among solvers
+of equal reputation. Above **60 % award share over a trailing 30-day window**
+(decided 2026-10-17; a two-solver panel can settle before it bites, a
+three-solver panel cannot stay single-dealer past it), the dominant solver's
+score is discounted at equal output until its share falls; the threshold and
+the venue's HHI are published (§13.9). The reserve solver is exempt only as
+winner-of-last-resort: a reserve win counts in its share.
+
+First-price stays the settle rule. The §2.1 Vickrey option is revisited when
+the trailing-30-day **median count of `firm` bids above the reserve per
+auction reaches 5** (decided 2026-10-17; measured bids, not registered
+solvers: three externals at median plus the reserve gives a second price that
+survives one withdrawal). Shading is instrumented (bid vs. next-best) from the
+first award-log record so the decision is made on data.
+
+### 13.6 Disclosure: loser feedback, size bins, probing
+
+- **Losers.** A panel member whose bid lost receives a `lost` feed event with its
+  rank and `regimeAtSelection`, never the winning `output` (§5.2 stays: awards
+  are addressed). Rank + regime is enough to calibrate; the winning price is what
+  teaches a non-committed bidder to shade. **Rollout gate:** `lost` lands with
+  an `rfcVersion` bump (§12), and the venue MUST NOT emit `lost`, or any new
+  feed event type, under the current `rfcVersion`. No opt-in field is needed:
+  the version gate is the opt-in. A new event type carries its payload under
+  its own key (`lost`), never `announcement` or `award`. History:
+  `@xochi/solver-sdk` before xochi-fi/xochi-sdk#47 parsed feed events as a
+  closed union and crash-looped on an unknown `type`; since #47 it skips and
+  reports an unknown type, advances the cursor, re-checks the venue's
+  `rfcVersion` before the next event, and fails closed on a type that carries
+  a known payload key or folds to a known type.
+- **Size bins.** This is §2.1's D1b. The announcement's `fromAmount` /
+  `outputAmount` becomes a bin from a **published fixed-USD ladder** (decided
+  2026-10-17; e.g. `<1k, 1–5k, 5–25k, 25–100k, 100–500k, 500k+`, finalized with
+  the schedule); the exact amount travels in the award. A bin hides the exact
+  size from the panel. It does not restore reserve uncertainty: the
+  announcement still carries the exact `minOutput`, which inverts to the
+  reserve through the public announce margin (§4.2), so this RFC still claims
+  only that the reserve is not disclosed (§2.1). Binning `minOutput` too is the
+  alternative, and the interaction with `minOutput` MUST be restated here with
+  the final ladder.
+- **Probing.** The venue keeps a coarse trailing execute-rate class per taker
+  **venue-side only**; it is never announced, since a per-taker class in the
+  announcement is a quasi-identifier on the same argument `trustScore` was
+  removed for (Changes in `0.3.0-draft`) and would let solvers
+  price-discriminate by taker behaviour. The venue rate-limits intents that
+  reach the sealed round without executing, per taker, scaled by trust tier.
+
+### 13.7 Reputation extensions, conduct statement
+
+§8 `SolverReputation` gains `honoredRateByRegime`, `committedSizeStressOverCalm`
+(`order_bounds_usd` upper bound in `stress` ÷ in `calm`, from capability
+snapshots) and `responseRate` (bids ÷ eligible announcements). Tiers are
+computed from these on a published cadence with published thresholds, so a
+solver can compute its own tier from its own data. Tier feeds the §13.5 weight,
+telemetry access and a **venue-fee share** (decided 2026-10-17): a published
+fraction of the venue layer (`SPEC.md` §4; never the solver layer, so the
+taker price is unchanged) is rebated to the winning solver per tier, e.g.
+tier 1 50 %, tier 2 25 %, tier 3 0 %, finalized with the tier thresholds. It
+is paid only on `firm` fills honored inside validity, and never on a
+`:reserve` or `:backstop` fill, so the venue's own solver cannot earn it.
+
+A **conduct statement** (firm bids are binding, decline reasons are truthful,
+`priceSources` is complete, no probing of the sealed round) is signed with the
+solver key as EIP-712
+`SolverConductStatement(string solverId,bytes32 statementHash,uint64 signedAtMs,uint64 expiresAtMs)`,
+`statementHash` the keccak256 of the published statement text, under the
+domain `{ name: "RiddlerSolverConduct", version: "1" }`, distinct from every
+other domain this key signs under (SolverBid, FillAcceptance,
+SolverDecline), so the statement cannot be replayed as, or obtained in place
+of, a signature the protocol acts on. It counts only while `now <
+expiresAtMs` and while its signer is the solver's current key: a key
+rotation or a new statement text requires a fresh statement, and a statement
+signed by a retired or compromised key admits nothing. It is held as a
+solver-scoped attestation on this RFC's §10 substrate; `SolverDirectory`
+admission requires a current one from P1.
+
+### 13.8 Settlement statement (ESCROW-RFC)
+
+The settlement statement a counterparty reads first, and its failure matrix,
+live here, not in ESCROW-RFC: *taker principal never leaves escrow without a
+proven fill; the solver carries the destination leg between its fill and its
+claim, bounded by `refundableAt`.* It is not PvP and MUST NOT be described as
+such. The matrix names outcome and bearer for: decline or no-show before
+acceptance (`:backstop` fills; for a `firm` award selected in
+`feed_degraded`, after one re-auction when it fits, §13.2), no-show after
+acceptance (slash → `:backstop`), destination chain halt, claim revert,
+attestation window missed, origin reorg past `safe`. A shielded-Aztec (tier
+1s) leg has its own rows: once a `:winner`
+FillAuth is issued for a shielded leg's `fillId`, ESCROW-RFC §5.1 issues no
+FillAuth of any role but that original `:winner` (no `:reserve`, no
+`:backstop`, no re-award), and every award is a `:winner` FillAuth (§13
+terms), so a shielded order is never re-auctioned once awarded. Its instants
+(the fill window end, the grace end, `refundableAt`) and its slash predicate
+are ESCROW-RFC §5.1's and §6's and are not restated here:
+
+- **decline or no-show before acceptance:** no reserve fill, `:backstop` or
+  re-award, and no slash (no FillAcceptance to slash on); the order refunds
+  through the permissionless `refund`, and the taker bears the full shielded
+  `claimWindow` uncompensated (ESCROW-RFC §6 residual);
+- **no-show or misfill after acceptance:** slashed on ESCROW-RFC §6's shielded
+  slash predicate, plus `refund`, never a second `transfer`.
+
+Known limit, open until §2.4 re-admits shielded flow to the panel: the first
+row costs a declining awardee nothing but the record (no FillAcceptance, so
+no slash) while the taker waits out the whole `claimWindow`. Today the
+awardee is always the venue's own solver (§13 terms). Before any other solver
+can be one, a decline before acceptance must end the order early in the
+venue's books (`refund` itself cannot move earlier), or shielded admission
+must require a minimum honored record.
+
+For XIP-1/XIP-2 plans, whether a sub-trade failure unwinds the plan or only
+the leg is stated and shown to the taker before signing.
+
+### 13.9 Telemetry
+
+Monthly, aggregated at tier × regime (never per solver or per taker), with a
+published minimum cell count and a one-cycle delay: honored rate; median and
+p10 declared `validUntilMs − closesAt`; committed size stress ÷ calm; fill rate
+in `feed_degraded` windows per declared source; settlement p50/p95 by rail and
+regime; top-solver share and HHI; price improvement vs. `minOutput`; declined
+and lapsed awards by reason. A scheduled **outage drill** marks a declared
+source degraded in a test window and records who keeps bidding; its result is a
+row in the same report.
+
+### 13.10 Evidence and limits of the FX analogy
+
+The target is the spot-FX **bank tier** as measured by venue operators and
+central banks, not as self-described: quotes that live minutes, size that stays
+through a shock, pricing that survives the loss of a reference feed. The
+non-bank tier is the failure mode each clause above is built against. Sources
+are the CME/LSEG presentation to the ECB FX Contact Group and the FXCG minutes
+(both 2026-06-25), the BIS 2025 triennial settlement follow-up and the SNB
+study of the 2025-11-28 CME outage, as reported by FX Markets (Feb–Oct 2026);
+each clause names the row it rests on.
+
+| Measurement | Number | Clause |
+| --- | --- | --- |
+| Median order life, banks vs non-banks | 290 s / 181 s (EBS / Matching) vs 2.95 s / 1.64 s | 13.2 `minFirmValidityMs`, 13.3 broken vs lapsed |
+| BOJ intervention 2026-04-30 (USD/JPY 159.35 → 155.50, 385 pips, $77 bn) | non-banks refreshed at the touch and cancelled within seconds; banks rested bids down to 155.50 before spot arrived | 13.3, 13.5 honored rate over headline output |
+| Maker/taker ratio through the 2026-03-03 shock | banks 55:45 → 70:30 and kept resting size; non-banks 33:67 → 30:70 and left the book | 13.1 regime, solver-layer-only multiplier; 13.7 stress ÷ calm committed size |
+| CME outage 2025-11-28 (~11 h) | futures ~2 % of spot+forwards volume, yet spreads 2–4×, non-bank LPs up to 124× (SNB: EUR/USD 8×, non-bank PTFs ~30×) | 13.1 `priceSources` and `feed_degraded`; 13.9 outage drill |
+| EBS LP mix 60/40 bank/non-bank | the data feed requires making markets on 40 % of weekly volume and $200 m/day; LSEG Matching non-bank share 20 % → 33 % (2022 → 2026) with no such rule | 13.5 scored selection, 13.7 behaviour-earned tiers |
+| Cboe FX, 2023 | every LP on the anonymous spot platform signs an FX Global Code statement of commitment | 13.7 conduct statement |
+| ECB FXCG verdict | non-bank liquidity is conditional, small-size, concentrated, with limited end-user transparency and untested resilience if a dominant firm withdraws | 13.5 concentration handicap + HHI, 13.9 telemetry |
+| FX HedgePool | >$4 tn matched since 2020, bought by LMAX for $20 m in 2024, then stalled: thin pools → few matches → deeper participants stay away; surviving P2P venues (Cürex, Siege FX, LoopFX) added bank axes as fallback | 13.2 re-auction-then-reserve; the reserve bid (§2.1) is the fallback liquidity |
+| PvP settlement share | 56 % today vs 54 % in 2006; non-banks < 50 % of gross obligations PvP, large dealers ~75 % | 13.8 settlement statement |
+| Banks internalising | dealers left primary venues for internal matching after resting quotes were picked off | 13.6 `lost` without the winning output, size bins, anti-probing |
+
+**Where the analogy stops.** The FX data is from continuous central limit
+order books in deliverable G10 spot; this is a sealed RFQ settling cross-chain
+stablecoins. "Order life" maps to validity window plus honored rate, not to
+resting liquidity (nothing here asks for resting orders). Last look is removed
+by the sealed round, so the only withdrawal path is the post-award decline,
+which is why 13.3 is about that gate. Crypto reference prices (oracles, CEX
+books, pools) fail differently and sometimes together, so the 13.1 detector is
+built for depegs, chain halts and liquidation cascades, not borrowed from FX;
+settlement and pricing risk arrive together, which is why the drill matters
+more here. Cross-chain fills force destination inventory, so a solver cannot be
+as capital-light as an FX HFT: it pushes toward bank-like behaviour and raises
+the onboarding bar. Agent takers (`raxol_payments`) have no human on the desk;
+retry storms and probing are their own problem that 13.6 only begins on.
+Sample size: CME and LSEG have decades and dozens of LPs; every threshold in
+§13 is set from the award log once it exists, with the FX numbers as priors,
+not targets.
+
+---
+
 ## Appendix A — Implementation status summary
 
 | Area | Status | Where |
@@ -1419,10 +2003,18 @@ types are the contract.
 | Bonds / slashing / permissioning P1–P3 | `[RESERVED]` | gated on the escrow (§7, M6); `SolverBond` helpers in `@xochi/solver-sdk` |
 | Non-custodial escrow boundary | `[RESERVED]` | `SPEC.md` §5.2 (M6); solver side `OnchainEscrowGateway` (§7.1) |
 | `GET /solver/attestations/:orderId` | `[PROPOSED]` | §6 (escrow-attest) |
+| Regime (reference sources, `k`-of-`n` `feed_degraded`) / `priceSources` / regime-indexed solver layer | `[PROPOSED]` | §13.1 |
+| SolverBid v3 `commitmentClass`, `minFirmValidityMs`, `minFirmValidityMsByOrigin` | `[PROPOSED]` | §13.2 (new vector set) |
+| `GET /solver/capabilities` §13 fields: `regime`, `minFirmValidityMs`, `minFirmValidityMsByOrigin`, `minAcceptBudgetMs`, `awardToAcceptAllowanceMs`, `deliverySlackMs`, `longPollHoldMs` | `[PROPOSED]` | §13.1–§13.3 |
+| `POST /solver/awards/:auctionId/decline`, shared durable feed log, award log, scored selection, `lost` event, size bins, telemetry | `[PROPOSED]` | §13.3–§13.9; §13.3 scoring also waits on a `@xochi/solver-sdk` change (§13.3 "Reading while committed") |
 
 ## Appendix B — Glossary
 
 Sealed RFQ, reserve bid, exclusive window, backstop, first-price vs Vickrey,
 committed/encrypted bid, frequent batch auction (FBA), `FillProof`,
 `SolverDirectory`, `SolverReputation`, permissioning phase (P0–P3), escrow
-gateway (`lock`/`release`/`void`), dark-pool panel confidentiality.
+gateway (`lock`/`release`/`void`), dark-pool panel confidentiality, regime
+(`calm` / `elevated` / `stress` / `feed_degraded`), commitment class
+(`firm` / `indicative`), selection vs award (`selectionTime` / `awardedAt`),
+FillAuth roles (`:winner` / `:reserve` / `:backstop`), honored rate (broken
+vs lapsed), feed log, award log, concentration handicap (§13).
