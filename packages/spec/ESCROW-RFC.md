@@ -508,13 +508,22 @@ release, but without its complete refusal record it is never slash grounds
 
 **Burned tag (normative).** Before §6's slash predicate is judged, the venue
 runs the **burn check** on its own node: whether the order's siloed tag is
-already a nullifier emitted by a tx other than the disclosed `txHash` (with
-no disclosure, by any tx). The check completes only when the venue's node,
-not lagging (above), answers it from a finalized head with a timestamp
-later than `fillDeadline` (the coverage `not_included` needs, above), so no
-block in which a burn could have stopped the awardee's fill is unread. The
-venue then records the answer on the order: `tag_burned` if the nullifier
-exists, `tag_unburned` if it does not. A node error, an `unknown` result, a
+a nullifier that a tx other than the disclosed `txHash` (with no
+disclosure, any tx) emitted in a block whose timestamp is at most
+`fillDeadline`. A tag first emitted later is no burn: it cannot have
+stopped a fill inside the window, so it never trades a no-show's slash
+for a strike. The check completes only when the venue's node, not lagging
+(above), answers it from a finalized head with a timestamp later than
+`fillDeadline` (the coverage `not_included` needs, above), so no block in
+which a burn could have stopped the awardee's fill is unread. The venue
+then records the answer on the order, `tag_burned` if such a nullifier
+exists and `tag_unburned` if it does not, as a **burn record**: the
+answer, the siloed tag it queried, the finalized head it read (number,
+hash, timestamp), the last block at or before `fillDeadline` it judged,
+the burning tx and its block for `tag_burned`, and the node's reported
+version. The burn record is kept with the preimage under the same rule
+(Preimage handling, below) and produced to the solver and the arbiter on
+request, like a refusal record. A node error, an `unknown` result, a
 lagging node or a check not yet run records nothing, and an order with
 nothing recorded is never slashed (§6's predicate, condition (2)): a burn
 check that never completes, by `refundableAt + T_slash` (§6), leaves the
@@ -527,48 +536,104 @@ private tx hides which one did, so a burned tag is nobody's provable fault.
 It is therefore never slash grounds: otherwise any venue-side holder could
 frame an awardee for a no-show slash, which §6.1 rules out.
 
-It is sanctioned per award instead. Each `tag_burned` order is its own
-**strike** on the awardee, unless the venue has recorded a **`fillSalt`
-exposure** on its own side covering the order (a `venueKey` or attester
-leak, handled as a possible `venueKey` compromise, §9.4): strikes are
-recorded per order and never folded, so N tags burned at once are N
-strikes. A strike is not a bond haircut, because a haircut is a slash on
-the bond chain, which a venue-side burner could then cause. A strike
-suspends the awardee from shielded awards: the venue MUST NOT issue it
-another shielded `:winner` FillAuth until the operator has reviewed every
-strike it holds. A review clears a strike only by recording a venue-side
-`fillSalt` exposure covering that order; every other strike stands, and an
-awardee with `shieldedStrikeLimit` standing strikes (a configured count) is
-removed from the shielded panel. The venue also MUST NOT issue a shielded
-`:winner` FillAuth to an awardee that already holds
-`maxOpenShieldedAwards` **open shielded awards** (`:winner` FillAuths for
-orders neither released nor refunded), a configured count recorded with
-the in-flight notional cap (Claim window, below), and configuration MUST
-refuse a `maxOpenShieldedAwards` above `shieldedStrikeLimit`. So an
-awardee can burn at most `maxOpenShieldedAwards` tags in one batch, and a
-full batch ends its shielded panel membership: burning its own tags spares
-it the slash on those orders (each user waits the full `claimWindow` with
-no slash payment, as §6's Residual for an abandoned shielded `:winner`)
-but costs it a strike per order. A framed awardee loses eligibility, not
-bond, until the review clears the framer's strikes. Residual: an awardee
-already leaving the panel (its bond unbonding, §6 Withdrawal) or acting
-once loses nothing from strikes; the cap bounds what it can burn to
-`maxOpenShieldedAwards` orders. The awardee's own undisclosed fill (a
-preimage not journaled) is a strike the same way and is never a leak alarm
-by itself. Binding the tag to a secret only the awardee holds, so that a
-burn is provably its own, needs that secret committed in the
-`FillAcceptance` (§6.1), which changes that signed type and its vectors
-(`conformance/fill-acceptance.json`); it waits for the version that
-changes them.
+The awardee's **burn proof** is the evidence it holds for a burn: its
+`fillSalt`, and the tx and block, with a timestamp at most `fillDeadline`,
+in whose effects the siloed tag recomputed from that `fillSalt` is a
+nullifier. Anyone can check it on a node of the approved network, each
+checker on its own (the venue never on one the solver names): the arbiter
+checks `fillSalt` against the `fillId` of the FillAuth preimage it
+receives (§6.1) and the nullifier on a node of its own. It is produced
+only after the fill window end, when holding `fillSalt` can no longer burn
+the tag in time to stop a fill. Against a slash proposed on a
+`tag_unburned` record it is dispute evidence (§6): a wrong `tag_unburned`
+(a node bug, a compromised attester) never stands against a solver that
+can show the burn.
+
+A burn is sanctioned per award instead, by a strike that only evidence
+makes stand. Each `tag_burned` order opens a **pending strike** on its
+awardee; strikes are per order and never folded, so N tags burned at once
+are N pending strikes. A strike is not a bond haircut, because a haircut
+is a slash on the bond chain, which a venue-side burner could then cause.
+The venue sends the awardee each pending strike with its burn record over
+the authenticated solver channel. While it holds a pending strike the
+awardee is **suspended**: the venue MUST NOT issue it another shielded
+`:winner` FillAuth.
+
+Review is default-innocent. The operator reviews each pending strike by
+its **review deadline**, `shieldedStrikeReviewPeriod` after its burn
+record. The strike **stands** only if the operator records evidence that
+attributes the burning tx to the awardee, beyond the burn itself (which
+every `fillSalt` holder could have made); otherwise it **clears**. It
+clears at once when the venue has recorded a **`fillSalt` exposure**
+covering the order (its own record that a venue-side path, a `venueKey`
+or attester leak say, held that order's `fillSalt`), and every pending
+strike still unreviewed at its review deadline clears then. Until that
+deadline the awardee may submit evidence, its burn proof (above)
+included, and the review record lists what was weighed. A standing
+strike **counts** for `shieldedStrikeWindow` from its burn record and
+then decays: it stays on the record and no longer counts. An awardee is
+removed from the shielded panel at the review that leaves
+`shieldedStrikeLimit` strikes counting at once; with fewer counting it is
+not, and once none of its strikes is pending its suspension lifts.
+
+The venue also MUST NOT issue a shielded `:winner` FillAuth to an awardee
+that already holds `maxOpenShieldedAwards` **open shielded awards**,
+counted per awardee across every corridor. A shielded `:winner` FillAuth
+is open from its issue until its order's outcome record (§6) reaches
+`released` or the venue clock passes `refundableAt + T_slash` (§6),
+whichever comes first. So a slot never waits for anyone to land `refund`,
+and a burned order (which cannot release) stays open until its burn check
+has recorded, if it ever does (above). So when a pending strike suspends
+the awardee, every order of its that can still open a strike is open, and
+one **batch** (the strikes opened by orders issued before one suspension)
+is at most `maxOpenShieldedAwards`. The bound is exact: inside one
+`shieldedStrikeWindow`, an awardee is removed after at most
+`shieldedStrikeLimit − 1 + maxOpenShieldedAwards` attributed burns (the
+batch that reaches the limit can overshoot it by `maxOpenShieldedAwards −
+1`), and fewer than `shieldedStrikeLimit` attributed burns per window
+never remove it. An honest awardee's concurrency is
+`maxOpenShieldedAwards`, independent of the strike limit; raising it
+widens only that overshoot.
+
+`shieldedStrikeLimit` (≥ 1), `maxOpenShieldedAwards` (≥ 1),
+`shieldedStrikeReviewPeriod` (> 0) and `shieldedStrikeWindow` (longer
+than `shieldedStrikeReviewPeriod`, so a strike stood at its review still
+counts) are venue-wide panel configuration, one value each for every
+awardee and corridor, with no defaults: configuration MUST refuse to admit
+a solver other than the venue's own to shielded awards without all four
+set within those floors.
+
+Residual: a burn the review cannot attribute costs its awardee only the
+suspension, so an awardee that burns its own tags without attributable
+evidence spares itself the slash on up to `maxOpenShieldedAwards` orders
+per batch and is never removed; each such user waits the full
+`claimWindow` with no slash payment, as §6's Residual for an abandoned
+shielded `:winner`. The cap and the suspension bound its rate, not its
+total. An awardee already leaving the panel (its bond unbonding, §6
+Withdrawal) or acting once loses nothing from strikes. A framed awardee
+loses no bond and is suspended until its review deadline at most. The
+awardee's own undisclosed fill (a preimage not journaled) burns the tag
+the same way; its user keeps the note and refunds, so the awardee loses
+that order's payout whatever the review finds. Binding the tag to a
+secret only the awardee holds, so that a burn is provably its own, needs
+that secret committed in the `FillAcceptance` (§6.1), which changes that
+signed type and its vectors (`conformance/fill-acceptance.json`); it
+waits for the version that changes them.
 
 While the venue's own solver is the only shielded awardee (Riddler, the
 only shielded panel member), the venue and the awardee are one party, so
-every `tag_burned` is a venue-side event: the venue records it as a
-`fillSalt` exposure (§9.4), and its suspension of its own solver is a
-**shielded halt**, listed with the others (Exposure stops, Claim window,
-below): no shielded `:winner` is issued on any corridor until the operator
-records the burn's cause. Strikes and `maxOpenShieldedAwards` bind once
-another solver can hold a shielded award.
+every `tag_burned` is a venue-side event. It opens no strike (the venue
+does not review itself) and needs no suspension: the venue records the
+burn as a `fillSalt` exposure (above) whose path is not yet known, and
+its **cause** is the operator's later record of that path. While any
+exposure's cause is unrecorded the venue is in **shielded halt**, listed
+with the other stops (Exposure stops, Claim window, below): no shielded
+`:winner` is issued on any corridor.
+Recording a cause does not by itself rotate `venueKey`: a rotation
+re-derives every `fillSalt` (§9.4), so it answers only a cause that is a
+key leak, and this RFC does not specify it. Strikes, their review and
+`maxOpenShieldedAwards` bind once another solver can hold a shielded
+award.
 
 **Registry.** Only after every other check of the release predicate has
 passed (network binding, steps 1–6, the fill tag, the payee and the
@@ -593,8 +658,8 @@ re-sign from memory.
 disclosed preimage, stores it encrypted at rest, retains it under the bounded
 resolved-record rule (xochi `settlement-protocol.md` 3.8a), and logs every
 access to it. On `RiddlerEscrow` that rule never discards the preimage, the
-order's inclusion record (Recipient, below) or its refusal records (above)
-before
+order's inclusion record (Recipient, below), its refusal records or its
+burn record (above) before
 
 ```
 fillDeadline + MAX_SLASH_DELAY + disputeWindow + RESOLUTION_TIMEOUT + FILL_DEADLINE_GRACE
@@ -670,8 +735,11 @@ never appear in origin calldata, events or escrow state (C2).
   owner acts through a SIWE session only. Its SIWE sign-in is itself
   verified through `isValidSignature`, and the account's signers can change
   after it, so before accepting each action of a contract-account session
-  the venue re-verifies that sign-in through `isValidSignature` at its
-  node's latest block: a session whose sign-in no longer verifies (a signer
+  the venue re-verifies that sign-in through `isValidSignature` on the
+  order's origin chain (`OrderTerms.fromChainId`, the chain on which
+  Riddler asks the account about its `XochiIntent` signature, the quote's
+  `from_chain_id` in `signature_verifier.ex`), at its own node's latest
+  block for that chain: a session whose sign-in no longer verifies (a signer
   rotated out, say) acts no more, and one the node cannot read is refused
   for that action and may retry, which delays only that owner's action.
   The venue accepts a signed action only if it recovers to the order's
@@ -684,13 +752,17 @@ never appear in origin calldata, events or escrow state (C2).
   an acknowledge is refused: nothing has been delivered to acknowledge, and
   an acknowledgement signed at order time would end the owner's hold right
   before delivery. An action posted through a SIWE session carries no
-  `issuedAt`; it follows the same transitions, and the venue clock at its
-  acceptance stands as its `issuedAt`. The watermark is the `issuedAt` of
-  the last action accepted for that `orderId`, signed or SIWE. The recipient
-  state, the watermark and the last accepted action live in the shared
-  order store beside the outcome record (§6), moved by atomic
-  compare-and-set, so every venue node sees one sequence. No state is
-  entered twice, so each signature moves the state at most once; equal
+  `issuedAt`; it follows the same transitions, is never refused for the
+  watermark, and stands with the later of the venue clock at its
+  acceptance and the current watermark as its `issuedAt`, so the
+  watermark never moves back (a signed action dated up to 60 s ahead
+  cannot make an honest SIWE action wait, and a SIWE action cannot lower
+  it to readmit a saved signature dated earlier). The watermark is the
+  `issuedAt` of the last action accepted for that `orderId`, signed or
+  SIWE. The recipient state, the watermark and the last accepted action
+  live in the shared order store beside the outcome record (§6), moved by
+  atomic compare-and-set, so every venue node sees one sequence. No state
+  is entered twice, so each signature moves the state at most once; equal
   `issuedAt` is allowed because no transition accepts one action twice, so a
   `not_received` and a withdraw signed in the same second both land in
   order. A re-sent action that already took effect is answered, not
@@ -801,8 +873,8 @@ its registry is halted, while its Aztec node for the corridor is lagging
 (above), while a disclosure on it whose verification has been due for
 `T_hold` is neither refused on content nor backed by both venue records
 (Recipient, above), or, while the venue's own solver is the only shielded
-awardee, while a `tag_burned` order's cause is unrecorded (Burned tag,
-above: the suspension of the only awardee is a halt on every corridor).
+awardee, while a `fillSalt` exposure's cause is unrecorded (the shielded
+halt, Burned tag, above), on every corridor.
 Since every payload and tx-shape failure is refused on content once the
 venue's node answers (above), only the venue's own node, identity-proof,
 layout-pin or registry failures leave a due disclosure so. Each is the
@@ -875,15 +947,17 @@ consumer in this tree parses it.
   venue clock records by the grace end, or §5.1 has refused on content
   every such one (its classes, including its `holdDeadline` rule), each with
   its complete refusal record (§5.1); (2) the venue has recorded
-  `tag_unburned` on the order: its burn check completed on its own node and
-  found no burn (Burned tag, §5.1). A missing record never permits a slash:
-  a check that has not completed (node error, lagging node, not yet run)
-  blocks the proposal, and `tag_burned` is a strike, never a slash; and
-  (3) the order's outcome record admits a proposal (below). It attests
+  `tag_unburned` on the order in a complete burn record: its burn check
+  completed on its own node and found no burn at or before `fillDeadline`
+  (Burned tag, §5.1). A missing record never permits a slash: a check that
+  has not completed (node error, lagging node, not yet run) blocks the
+  proposal, and `tag_burned` opens a pending strike (§5.1), never a slash;
+  and (3) the order's outcome record admits a proposal (below). It attests
   exactly that, never "no fill" and never "not verified". A junk disclosure
   therefore delays the slash to `holdDeadline` at the latest but cannot
-  dodge it, a burned tag trades it for a strike, and a disclosure received
-  after the grace end never blocks it (it is dispute evidence, below). On
+  dodge it, a burned tag trades it for a pending strike, and a disclosure
+  received after the grace end never blocks it (it is dispute evidence,
+  below). On
   the bond chain the proposal is also gated by `FillWindowOpen` (§6.1),
   which opens at the grace end because a shielded FillAuth's `deadline` is
   `fillDeadline` (§5.1).
@@ -904,12 +978,12 @@ consumer in this tree parses it.
   Configuration MUST refuse a shielded corridor whose longest
   quote-to-`fillDeadline` span plus `claimWindow` plus `T_slash` exceeds the
   deployed `unbondingPeriod`, since this rule would then refuse every
-  shielded `:winner` on it; whose `claimWindow` plus `T_slash` plus
-  `FILL_DEADLINE_GRACE` exceeds `MAX_SLASH_DELAY` (§6.1), since a proposal
-  from `refunded` could then never land (the added grace is the clock-skew
-  margin, §6.1); or whose `SolverBond` deploy lacks `SlashTooLate` (§6.1,
-  `[PROPOSED]`, not in the built contract), since §5.1's evidence retention
-  rests on it.
+  shielded `:winner` on it; whose latest slash proposal breaks §6.1's
+  `MAX_SLASH_DELAY` bound (stated once there; on a shielded leg it reads
+  `claimWindow + T_slash + FILL_DEADLINE_GRACE ≤ MAX_SLASH_DELAY`, else a
+  proposal from `refunded` could never land); or whose `SolverBond` deploy
+  lacks `SlashTooLate` (§6.1, `[PROPOSED]`, not in the built contract),
+  since §5.1's evidence retention rests on it.
 
   **Release/slash exclusivity (per `orderId`).** The attester keeps one
   outcome record per `orderId`: a state and a `refundLanded` fact, set when
@@ -948,7 +1022,10 @@ consumer in this tree parses it.
   solver's dispute evidence is the venue's own §5.1 inclusion record for
   that `orderId`, which includes step 6's fill-window-end bound (a note
   included later is no evidence), or, against a refusal on content, its
-  §5.1 refusal record, each produced on request, not `filled(fillId)`.
+  §5.1 refusal record, each produced on request, not `filled(fillId)`;
+  against a slash proposed on a `tag_unburned` record, it is also the
+  solver's own burn proof (§5.1 Burned tag), which voids the slash, with
+  the burn record the venue produces on request.
   While Riddler is the only shielded panel member, venue equals solver, and
   the bond and dispute machinery are inert under `RiddlerEscrow` +
   `SolverBond` (Riddler runs the attesters); under the Depository + Ledger
@@ -1037,10 +1114,19 @@ MAX_SLASH_DELAY − FILL_DEADLINE_GRACE` (`c.deadline` is read on the bond
 chain's clock, `a.deadline` on the destination's, so the grace is the
 skew margin on this bound as on `FillWindowOpen`'s), and configuration
 MUST refuse a corridor, public or shielded, whose latest slash proposal
-(`refundableAt + T_slash` on a shielded leg, §6) can need a later one. So
-`MAX_SLASH_DELAY` exceeds `FILL_DEADLINE_GRACE` by more than any corridor's
-`T_slash`; a value at or below `FILL_DEADLINE_GRACE` would make
-`FillWindowOpen` and `SlashTooLate` refuse every proposal together. The
+can need a later one. A corridor's **latest slash proposal** is the latest
+instant at which its attester may still land a proposal for an order:
+`refundableAt + T_slash` on a shielded leg (§6), and on any other leg the
+end of its attester's slash horizon, which this RFC leaves to that
+attester's policy but which is never earlier than `a.deadline +
+FILL_DEADLINE_GRACE + T_slash` (a proposal made at the grace end lands
+within `T_slash`). Every corridor, public ones included, configures its
+`T_slash` (§6 Withdrawal). Proposals land only in (`a.deadline +
+FILL_DEADLINE_GRACE`, `a.deadline + MAX_SLASH_DELAY −
+FILL_DEADLINE_GRACE`], so `MAX_SLASH_DELAY` is at least `2 ×
+FILL_DEADLINE_GRACE` plus the largest `T_slash` of any corridor on that
+bond; at or below `2 × FILL_DEADLINE_GRACE` the interval is empty and
+`FillWindowOpen` with the attester's cap refuses every proposal. The
 acceptance digest is emitted with the proposal as dispute evidence. The bond
 proves the solver ACCEPTED that FillAuth; it does not prove no fill. Only the
 attester attests no fill, and a slash on a filled order is a valid proposal the
@@ -1720,12 +1806,16 @@ confidentiality tier (linked / unlinked / confidential), anonymity set, note
 preimage registry (`note_already_bound`), recipient hold (`not_received`),
 hold deadline (`holdDeadline`), network identity (`networkIdentity`), network
 key, fill tag (`FillTag`), burn check and burned tag (`tag_burned`,
-`tag_unburned`), strike (`shieldedStrikeLimit`, suspension), open shielded
-awards (`maxOpenShieldedAwards`), layout pin, refusal record, fill
+`tag_unburned`, burn record, burn proof), strike (pending, standing,
+cleared; suspension, review deadline, `shieldedStrikeLimit`,
+`shieldedStrikeReviewPeriod`, `shieldedStrikeWindow`), `fillSalt` exposure
+and shielded halt, open shielded awards (`maxOpenShieldedAwards`, batch),
+layout pin, refusal record, fill
 commitment (`fillCommitment`), outcome record (release/slash exclusivity,
 `refundLanded`), fill window end and grace end, recipient capability,
 mailbox (forwarding record), inclusion record, `RecipientAction` (recipient
 state, action watermark), lagging node, health record, in-flight notional
-cap, `MAX_SLASH_DELAY`, `RESOLUTION_TIMEOUT`, shielded bounds (`T_final`,
+cap, `MAX_SLASH_DELAY` (latest slash proposal), `RESOLUTION_TIMEOUT`,
+shielded bounds (`T_final`,
 `T_verify`, `T_hold`, `T_registry`, `T_dispute`, `T_arbiter`, `T_release`,
 `T_slash`).
