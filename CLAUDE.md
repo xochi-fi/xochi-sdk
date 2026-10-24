@@ -88,7 +88,7 @@ npm run format:check -w @xochi/client
 
 `@xochi/signer` resolves to `packages/signer` and must be built first (`npm run build -w @xochi/signer`): the client reads its `dist/` `.d.ts`.
 
-Transport rules (schema validation, timeout/body handling, the single quote-cache TTL): `packages/client/README.md` "Transport". Machine fund-safety and lifecycle rules (preview/`eip712` checks, `canSignQuote` / `holdsCurrentQuote`, quote-flight drops, the sign ceremony, escrow refusal, the deposit window, foreign `StreamStatus` frames): "State machine" and "Fund safety" there.
+Transport rules (schema validation, timeout/body handling, the single quote-cache TTL, `ApiError.notAccepted` / `inDoubt`): `packages/client/README.md` "Transport". Machine fund-safety and lifecycle rules (preview/`eip712` checks, `canSignQuote` / `holdsCurrentQuote`, quote-flight drops, the sign ceremony, escrow refusal, the deposit window, foreign `StreamStatus` frames, the not-accepted execute resend, the in-doubt hold and its persistence): "State machine" and "Fund safety" there.
 
 ### `packages/widget-lib` (`@xochi/widget-lib`)
 

@@ -509,6 +509,22 @@ export const QuoteResponseSchema = z
   })
   .strict();
 
+/**
+ * Length of an intent read capability (`read_token` on the execute response,
+ * xochi#563): 32 random bytes as unpadded base64url.
+ */
+export const READ_TOKEN_LENGTH = 43;
+
+/** Shape of an intent read capability: exactly `READ_TOKEN_LENGTH` base64url characters. */
+export const READ_TOKEN_PATTERN = new RegExp(`^[A-Za-z0-9_-]{${READ_TOKEN_LENGTH}}$`);
+
+/**
+ * The request header that carries a `read_token` on `GET /api/intent/:id` and
+ * `GET /api/intent/:id/status`. A header and never a query parameter: the token
+ * must not land in URLs, logs or referrers.
+ */
+export const READ_TOKEN_HEADER = "X-Xochi-Read-Token";
+
 /** Mirrors `ExecuteResponse` in public/openapi.yaml. */
 export const ExecuteResponseSchema = z
   .object({
@@ -533,8 +549,41 @@ export const ExecuteResponseSchema = z
     ephemeral_pub_key: z.string().optional(),
     view_tag: z.number().int().optional(),
     error: z.string().optional(),
+    // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
+    // padding. Served once, by the execute that admits the intent; present it as
+    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain
+    // legs of a non-public intent. Older servers omit it. The one declared field
+    // that never fails the body: a malformed token is dropped, because this body
+    // reports an execute that may already have moved funds, and failing it would
+    // turn a settled swap into an in-doubt one over a privacy-only field.
+    read_token: z
+      .string()
+      .regex(READ_TOKEN_PATTERN)
+      .optional()
+      .catch(undefined)
+      .describe(
+        "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
+          "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
+          "on-chain legs of a stealth or shielded intent. Never put it in a URL.",
+      ),
   })
   .strict();
+
+/**
+ * Automatic resends of one execute after its not-accepted answer. Mirrors
+ * `MAX_EXECUTE_RESENDS` in xochi's `@xochi/shared` `schemas.ts`, the budget
+ * the Worker enforces too: the refusal that follows this many un-claims
+ * finishes the intent `failed` instead.
+ */
+export const MAX_EXECUTE_RESENDS = 3;
+
+/**
+ * A resend must reach the Worker at least this many seconds before the
+ * earliest deadline the signed request carries. Mirrors
+ * `EXECUTE_RESEND_MARGIN_SECS` in xochi's `@xochi/shared` `schemas.ts`, the
+ * margin the Worker applies before it un-claims.
+ */
+export const EXECUTE_RESEND_MARGIN_SECS = 5;
 
 // Response wire types (snake_case). The canonical agent contract.
 export type Eip712TypedDataWire = z.infer<typeof Eip712TypedDataSchema>;

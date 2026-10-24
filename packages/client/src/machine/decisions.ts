@@ -9,8 +9,10 @@
 
 import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
 import {
+  EXECUTE_RESEND_MARGIN_SECS,
   EXTENDED_CHAIN_NAMES,
   IntentStatusFrameSchema,
+  MAX_EXECUTE_RESENDS,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -494,17 +496,28 @@ export type ExecuteDecision =
 
 /**
  * Interpret an /execute response, preserving the in-doubt distinction (#226):
- * the worker returns HTTP 200 `{success:false}` for BOTH a genuine failure
- * (status "failed" -- terminal, retryable) AND a fail-closed downgrade (a
- * non-failure status like "settling" with reconciling -- the origin pull already
- * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only status
- * "failed" is a real failure; anything else advances and keeps polling, forcing
- * `reconciling` on when the server withheld success so the UI shows the
- * safe-to-close "Still confirming" path with no Retry (an in-session retry of a
- * funds-moved swap would be a double execution).
+ * the worker returns `{success:false}` for BOTH a genuine failure AND a
+ * fail-closed downgrade (the origin pull already moved funds but the
+ * settlement is unconfirmed inline, so IN-DOUBT). `reconciling` is the
+ * server's flag when it sends one, else on whenever the server withheld
+ * success (`reconciling ?? !success`). The verdicts, in order:
+ * - `failed` with `success: false` and `reconciling` off by that rule (the
+ *   server sent `reconciling: false`) is the one real failure (Retry).
+ * - `completed` completes with reconciling off, whatever the reply says: a
+ *   completion leaves nothing to reconcile.
+ * - Any other `failed` (`success: true`, or `reconciling` on, the absent flag
+ *   included) is in doubt: it moves to the in-flight `executing` with
+ *   reconciling on, never to the Retry view.
+ * - Anything else advances to its status with reconciling by that rule, so a
+ *   withheld success shows the safe-to-close "Still confirming" path with no
+ *   Retry (an in-session retry of a funds-moved swap would be a double
+ *   execution).
+ * `onExecuted` also shows an unmapped or granular-failure status in doubt,
+ * and keeps an in-doubt reply in doubt until a refund or completion.
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
-  if (!result.success && result.status === "failed") {
+  const reconciling = result.reconciling ?? !result.success;
+  if (result.status === "failed" && !result.success && !reconciling) {
     return { kind: "failed", error: result.error || "Execution failed" };
   }
 
@@ -518,11 +531,74 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   if (result.status === "completed") {
     return { kind: "transition", status: "completed", updates: { ...base, reconciling: false } };
   }
-  return {
-    kind: "transition",
-    status: result.status,
-    updates: { ...base, reconciling: result.reconciling ?? !result.success },
-  };
+  if (result.status === "failed") {
+    return { kind: "transition", status: "executing", updates: { ...base, reconciling: true } };
+  }
+  return { kind: "transition", status: result.status, updates: { ...base, reconciling } };
+}
+
+export type ExecuteResend =
+  | { kind: "resend"; delayMs: number }
+  | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "deadline" };
+
+/**
+ * How far before `now` a not-accepted `retryAfter` may lie and still be read
+ * as the absolute target it must be. The transport rounds the target up from
+ * the moment it read the refusal, so a real one is never older than the
+ * report's dispatch delay; a minute is past any quote's life (30 s), so no
+ * resend is lost to it. An older value is a delta passed where the absolute
+ * target belongs (`retry_after: 7` read as 1970), which would resend at once
+ * and ignore the server's wait.
+ */
+const RETRY_AFTER_MAX_AGE_SECS = 60;
+
+/**
+ * After the server refused an execute before accepting anything, whether to
+ * send the SAME request again and when (rules: README "Fund safety").
+ * `retryAfter` and `deadline` are unix seconds, `now` the host's clock; a null
+ * `deadline` never resends, a `retryAfter` older than
+ * `RETRY_AFTER_MAX_AGE_SECS` gives up, and the wait is at least a second, so
+ * a slightly past `retryAfter` cannot spin.
+ */
+export function decideExecuteResend(input: {
+  resends: number;
+  retryAfter: number | undefined;
+  deadline: number | null;
+  now: number;
+}): ExecuteResend {
+  if (input.resends >= MAX_EXECUTE_RESENDS) return { kind: "give_up", reason: "exhausted" };
+  const { retryAfter, deadline } = input;
+  if (
+    retryAfter === undefined ||
+    !Number.isFinite(retryAfter) ||
+    retryAfter * 1000 < input.now - RETRY_AFTER_MAX_AGE_SECS * 1000
+  ) {
+    return { kind: "give_up", reason: "no_retry_after" };
+  }
+  const sendAt = Math.max(retryAfter * 1000, input.now + 1000);
+  if (deadline === null || sendAt > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {
+    return { kind: "give_up", reason: "deadline" };
+  }
+  return { kind: "resend", delayMs: sendAt - input.now };
+}
+
+/**
+ * The earliest deadline (unix seconds) a resent execute carries: the quote's
+ * expiry, the signed intent's `deadline` and the origin pull's `validBefore` /
+ * `deadline`. Null without a readable quote expiry, which never resends.
+ */
+export function executeDeadline(quote: QuoteResponse | null): number | null {
+  const expiryMs = quote ? new Date(quote.expiry).getTime() : NaN;
+  if (!quote || !Number.isFinite(expiryMs)) return null;
+  const signed = [
+    quote.eip712Data?.message?.deadline,
+    quote.pullAuthorization?.message?.validBefore,
+    quote.pullAuthorization?.message?.deadline,
+  ].flatMap((v) => {
+    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) ? [n] : [];
+  });
+  return Math.min(Math.floor(expiryMs / 1000), ...signed);
 }
 
 // ============================================================

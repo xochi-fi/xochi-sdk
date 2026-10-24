@@ -4,6 +4,8 @@ import {
   computeRefreshDelayMs,
   decideSignPreflight,
   decideExecuteResult,
+  executeDeadline,
+  decideExecuteResend,
   mapStatusUpdate,
   mapStatusFrame,
   mergeSameStatusReceipt,
@@ -24,10 +26,13 @@ import {
 import { INITIAL_INTENT_STATE, type IntentState } from "./state.js";
 import {
   buildIntentStatusFrame,
+  EXECUTE_RESEND_MARGIN_SECS,
   getRefundReasonLabel,
+  MAX_EXECUTE_RESENDS,
   type IntentStatus,
 } from "../shared/index.js";
 import type { ExecuteResponse, IntentWebSocketMessage } from "./wire.js";
+import { T0, erc3009Pull, intentTypedData, quote } from "./test/session.js";
 
 describe("buildQuoteRequest", () => {
   const base = {
@@ -196,9 +201,20 @@ describe("decideExecuteResult (in-doubt vs failure)", () => {
     ...over,
   });
 
-  it("treats success:false + status 'failed' as a real, terminal failure", () => {
-    const d = decideExecuteResult(res({ success: false, status: "failed", error: "bad sig" }));
+  it("treats success:false + status 'failed' + reconciling:false as a real, terminal failure", () => {
+    const d = decideExecuteResult(
+      res({ success: false, status: "failed", reconciling: false, error: "bad sig" }),
+    );
     expect(d).toEqual({ kind: "failed", error: "bad sig" });
+  });
+
+  it("reads an absent reconciling flag on a failed reply as on (reconciling ?? !success)", () => {
+    const d = decideExecuteResult(res({ success: false, status: "failed", error: "bad sig" }));
+    expect(d.kind).toBe("transition");
+    if (d.kind === "transition") {
+      expect(d.status).toBe("executing");
+      expect(d.updates.reconciling).toBe(true);
+    }
   });
 
   it("does NOT fail a success:false downgrade (funds moved, in-doubt) -- advances + reconciles", () => {
@@ -220,6 +236,91 @@ describe("decideExecuteResult (in-doubt vs failure)", () => {
       expect(d.updates.reconciling).toBe(false);
       expect(d.updates.txHash).toBe("0xtx");
     }
+  });
+});
+
+describe("decideExecuteResend (a not-accepted execute)", () => {
+  const now = 1_000_000_000_000;
+  const nowSec = now / 1000;
+  const ok = { resends: 0, retryAfter: nowSec + 5, deadline: nowSec + 60, now };
+
+  it("resends at retryAfter while resends and the deadline leave room", () => {
+    expect(decideExecuteResend(ok)).toEqual({ kind: "resend", delayMs: 5000 });
+    expect(decideExecuteResend({ ...ok, resends: MAX_EXECUTE_RESENDS - 1 }).kind).toBe("resend");
+    // At the margin exactly: still in time.
+    const edge = nowSec + 60 - EXECUTE_RESEND_MARGIN_SECS;
+    expect(decideExecuteResend({ ...ok, retryAfter: edge }).kind).toBe("resend");
+  });
+
+  it("waits at least a second for a retryAfter already past", () => {
+    expect(decideExecuteResend({ ...ok, retryAfter: nowSec - 30 })).toEqual({
+      kind: "resend",
+      delayMs: 1000,
+    });
+  });
+
+  it("gives up on a delta passed as the absolute retryAfter, never resending at once", () => {
+    // The body's `retry_after: 7` (a delta) where the absolute target belongs.
+    for (const retryAfter of [7, 90, nowSec - 61]) {
+      expect(decideExecuteResend({ ...ok, retryAfter }), String(retryAfter)).toEqual({
+        kind: "give_up",
+        reason: "no_retry_after",
+      });
+    }
+    expect(decideExecuteResend({ ...ok, retryAfter: nowSec - 60 }).kind).toBe("resend");
+  });
+
+  it("gives up when exhausted, unhinted, or past the deadline", () => {
+    expect(decideExecuteResend({ ...ok, resends: MAX_EXECUTE_RESENDS })).toEqual({
+      kind: "give_up",
+      reason: "exhausted",
+    });
+    for (const retryAfter of [undefined, NaN, Infinity]) {
+      expect(decideExecuteResend({ ...ok, retryAfter })).toEqual({
+        kind: "give_up",
+        reason: "no_retry_after",
+      });
+    }
+    const late = nowSec + 60 - EXECUTE_RESEND_MARGIN_SECS + 1;
+    expect(decideExecuteResend({ ...ok, retryAfter: late })).toEqual({
+      kind: "give_up",
+      reason: "deadline",
+    });
+    expect(decideExecuteResend({ ...ok, deadline: null }).kind).toBe("give_up");
+  });
+});
+
+describe("executeDeadline (the earliest deadline a resent execute carries)", () => {
+  const expirySec = Math.floor(T0 / 1000) + 60;
+  const held = quote({ eip712Data: intentTypedData({ deadline: expirySec + 600 }) });
+
+  it("is the quote expiry when every signed deadline is later", () => {
+    expect(executeDeadline(held)).toBe(expirySec);
+  });
+
+  it("is the signed intent's deadline when earlier, decimal string or number", () => {
+    for (const deadline of [expirySec - 20, String(expirySec - 20)]) {
+      expect(executeDeadline({ ...held, eip712Data: intentTypedData({ deadline }) })).toBe(
+        expirySec - 20,
+      );
+    }
+    // Neither a number nor a decimal string: not a deadline.
+    expect(executeDeadline({ ...held, eip712Data: intentTypedData({ deadline: "soon" }) })).toBe(
+      expirySec,
+    );
+  });
+
+  it("is the origin pull's validBefore (ERC-3009) or deadline (Permit2) when earlier", () => {
+    const pull = erc3009Pull();
+    const erc3009 = { ...pull, message: { ...pull.message, validBefore: expirySec - 30 } };
+    expect(executeDeadline({ ...held, pullAuthorization: erc3009 })).toBe(expirySec - 30);
+    const permit2 = { ...pull, message: { deadline: String(expirySec - 40) } };
+    expect(executeDeadline({ ...held, pullAuthorization: permit2 })).toBe(expirySec - 40);
+  });
+
+  it("is null without a quote or a readable expiry, which never resends", () => {
+    expect(executeDeadline(null)).toBeNull();
+    expect(executeDeadline({ ...held, expiry: "not a date" })).toBeNull();
   });
 });
 

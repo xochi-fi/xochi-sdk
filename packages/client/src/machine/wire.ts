@@ -24,6 +24,7 @@ import type {
 import {
   ExecuteResponseSchema,
   QuoteResponseSchema,
+  READ_TOKEN_PATTERN,
   isSettlementType,
   isIntentStatus,
 } from "../shared/index.js";
@@ -236,7 +237,24 @@ export interface ExecuteResponse {
   stealthAddress?: string;
   ephemeralPubKey?: string;
   viewTag?: number;
+  /**
+   * Per-intent read capability (xochi#563), served once and only by a server
+   * that issues it. Keep it with the intent and pass it as `readToken` to
+   * `getIntent` / `getIntentStatus`: without it a stealth or shielded intent's
+   * status reads without its on-chain legs. A bearer secret: never log it or
+   * put it in a URL.
+   */
+  readToken?: string;
 }
+
+/**
+ * An execute response as the machine receives it in `ExecuteReplied`: the
+ * bearer `readToken` removed (`const { readToken, ...response } = ...`) and
+ * kept outside the machine, so no message, model, effect or replay log holds
+ * it. The machine derives the fund-safety verdict (#226) from this response
+ * itself; a host relays it and never decides it.
+ */
+export type ExecuteReply = Omit<ExecuteResponse, "readToken"> & { readToken?: never };
 
 // ============================================================
 // Intent Status Messages
@@ -418,6 +436,12 @@ export function mapExecuteResponse(w: ExecuteResponseWire): ExecuteResponse {
     stealthAddress: w.stealth_address,
     ephemeralPubKey: w.ephemeral_pub_key,
     viewTag: w.view_tag,
+    // The decoders read the raw body, not the parse output, so the schema's
+    // drop of a malformed token does not reach here: check it again.
+    readToken:
+      typeof w.read_token === "string" && READ_TOKEN_PATTERN.test(w.read_token)
+        ? w.read_token
+        : undefined,
   };
 }
 
@@ -485,6 +509,31 @@ export const GRANULAR_WIRE_STATUS: Readonly<Record<string, IntentStatus>> = {
 };
 
 /**
+ * The granular failures that follow an origin pull, which may have moved the
+ * user's funds: the refund is pending or failed. `pull_failed` is one of them
+ * (Riddler's `OriginPullsStore`: a pull that timed out may still land, and
+ * moves on to `refunding`).
+ */
+const FUNDS_MAY_HAVE_MOVED: Readonly<Record<string, true>> = {
+  pull_failed: true,
+  fill_failed: true,
+  refund_failed: true,
+};
+
+/**
+ * Whether a served status says the funds may have moved although it decodes
+ * to `failed`: the status itself, or the solver substatus the Worker passes
+ * through (it buckets the granular failures to `failed`), names one of the
+ * granular failures `FUNDS_MAY_HAVE_MOVED` lists.
+ */
+export function fundsMayHaveMoved(status: unknown, substatus: unknown): boolean {
+  return (
+    (typeof status === "string" && FUNDS_MAY_HAVE_MOVED[status] === true) ||
+    (typeof substatus === "string" && FUNDS_MAY_HAVE_MOVED[substatus] === true)
+  );
+}
+
+/**
  * A raw `/status` value, decoded.
  *
  * `mapped` is a status this build models: a union member, or one of Riddler's
@@ -529,6 +578,13 @@ export interface IntentStatusData {
    * is only the in-flight bucket (`decodeWireStatus`). Absent means mapped.
    */
   unmapped?: boolean;
+  /**
+   * Present (true) on a `failed` status whose wire status or substatus is a
+   * granular failure that follows the origin pull (`fundsMayHaveMoved`): the
+   * funds may have moved, so the machine never offers Retry on it and keeps
+   * polling for the refund.
+   */
+  fundsMayHaveMoved?: true;
   txHash: string | null;
   receivingTxHash: string | null;
   /** Public fill receipt (Riddler #632) + its chain; the receipt CTA keys off these. */
@@ -550,6 +606,22 @@ export interface IntentStatusData {
    */
   substatus: string | null;
   terminal: boolean;
+  /**
+   * Present (true) when the server withheld the on-chain legs of a stealth or
+   * shielded intent from this read (xochi#563): the read carried no valid
+   * `readToken` and no owner session. The tx hashes and `settlementChainId` are
+   * then null because they were withheld, not because they do not exist; the
+   * read token or a wallet SIWE session for the intent's wallet reads them.
+   */
+  legsWithheld?: true;
+  /**
+   * Present only with `legsWithheld`: true once the destination fill receipt
+   * exists, standing in for the withheld `settlementTxHash`; never true on a
+   * terminal failure (`withheldSettlementConfirmed`). The machine shows it
+   * exactly as `substatus: "filled"` (delivered); it does not move `status` or
+   * `terminal`.
+   */
+  settlementConfirmed?: boolean;
 }
 
 /**
@@ -576,6 +648,27 @@ export const TERMINAL_INTENT_STATUSES: Readonly<Partial<Record<IntentStatus, tru
 
 export function isTerminalIntentStatus(status: IntentStatus): boolean {
   return TERMINAL_INTENT_STATUSES[status] === true;
+}
+
+/**
+ * Whether an anonymous read's `settlement_confirmed` (xochi#563) counts as a
+ * delivered fill. Only on a read that withheld the legs (the marker stands in
+ * for the withheld receipt), and only when `status` decodes (`decodeWireStatus`)
+ * to a status this build models that is not a terminal failure and not part of
+ * a refund: never on `refunded` / `failed` / `expired`, on a granular status
+ * bucketed to one (`fill_failed`, `refund_failed`), on any `refund*` status
+ * (`refunding`, `refund_pending`), or on an unmapped or absent status.
+ */
+export function withheldSettlementConfirmed(read: {
+  status: unknown;
+  legsWithheld: unknown;
+  settlementConfirmed: unknown;
+}): boolean {
+  if (read.legsWithheld !== true || read.settlementConfirmed !== true) return false;
+  const decoded = decodeWireStatus(read.status);
+  if (decoded.kind !== "mapped") return false;
+  if (typeof read.status === "string" && read.status.startsWith("refund")) return false;
+  return !(isTerminalIntentStatus(decoded.status) && decoded.status !== "completed");
 }
 
 // ============================================================
@@ -606,6 +699,37 @@ export interface IntentRecord {
   updatedAt: string;
   error?: string;
   destinationType?: DestinationType;
+  /** Never true on a full record: see `WithheldIntentRecord`. */
+  legsWithheld?: false;
+}
+
+/**
+ * `GET /api/intent/:id` for a stealth or shielded intent read without the read
+ * token or an owner session (xochi#563): the server's status-only view. Tokens,
+ * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
+ * so they are absent here rather than defaulted; read with the token, or a
+ * wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
+ */
+export interface WithheldIntentRecord {
+  legsWithheld: true;
+  id: string;
+  /**
+   * The served status decoded (`decodeWireStatus`): a granular one
+   * (`fill_failed`) as its bucket, an unmodelled one as `executing` with
+   * `unmapped: true`.
+   */
+  status: IntentStatus;
+  /** True when the served status was outside this build's vocabulary. Absent means mapped. */
+  unmapped?: true;
+  fromChainId?: ChainId;
+  toChainId?: ChainId;
+  settlementType?: SettlementType;
+  error?: string;
+  /**
+   * True once the destination fill receipt exists (it is withheld itself);
+   * never on a terminal failure (`withheldSettlementConfirmed`).
+   */
+  settlementConfirmed: boolean;
 }
 
 export interface IntentRecordWire {
@@ -629,6 +753,32 @@ export interface IntentRecordWire {
   created_at?: string;
   updated_at?: string;
   error?: string;
+  legs_withheld?: boolean;
+  settlement_confirmed?: boolean;
+}
+
+/**
+ * One `GET /api/intent/:id` body: the status-only `WithheldIntentRecord` when
+ * the server says it withheld the legs, else the full record.
+ */
+export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldIntentRecord {
+  if (w.legs_withheld !== true) return mapIntentRecord(w);
+  const decoded = decodeWireStatus(w.status);
+  return {
+    legsWithheld: true,
+    id: w.id,
+    status: decoded.status,
+    ...(decoded.kind === "unmapped" ? { unmapped: true as const } : {}),
+    fromChainId: w.from_chain_id,
+    toChainId: w.to_chain_id,
+    settlementType: w.settlement_type,
+    error: w.error,
+    settlementConfirmed: withheldSettlementConfirmed({
+      status: w.status,
+      legsWithheld: w.legs_withheld,
+      settlementConfirmed: w.settlement_confirmed,
+    }),
+  };
 }
 
 export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
