@@ -121,7 +121,7 @@ npm run build:workspaces          # @xochi/signer first, then every workspace wi
 npm run typecheck:workspaces
 npm run test:workspaces
 npm run generate:conformance && npm run generate:fee && npm run generate:erc8262 && git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/ packages/spec/erc8262/
-npm run generate:solver-bid-v2 && npm run generate:escrow && git diff --exit-code packages/spec/conformance/
+npm run generate:solver-bid-v2 && npm run generate:escrow && npm run generate:shielded -w @xochi/spec && git diff --exit-code packages/spec/conformance/
 (cd packages/spec/wire && shasum -a 256 -c <(echo "$(cat openapi.sha256)  openapi.json"))
 ```
 
