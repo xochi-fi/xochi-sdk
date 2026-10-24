@@ -41,12 +41,14 @@ const MIN_REVOCATION_CHECK_SECONDS = 60;
 const MAX_REVOCATION_CHECK_SECONDS = 86400;
 const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
 const MAX_EVIDENCE_ID_LENGTH = 128;
-// Least bound a consumer may set on the revocation records one announcing party (as the
-// consumer authenticated it, never the subject wallet an announcement names) leaves on one
-// trust domain, counting only ids it never granted on (SPEC.md section 10.7, Revocation
-// bound). An honest party announces one id per evidence it was issued, so 10 000 within the
-// 365-day retention is about 27 a day, every day; at about 200 bytes a record it caps one
-// party at some 2 MB per trust domain.
+// Least bound a consumer may set on one kind of record: an evidence revocation (a 410 or a
+// revoked body) of an id no grant rests on, per (trust domain, announcing party as the
+// consumer authenticated it, never the subject wallet an announcement names), and on the
+// unattributed announcements of one trust domain (SPEC.md section 10.7, Revocation bound).
+// The trust domain's own callback or push is not charged to it. A wallet or session announces
+// one id per evidence it was issued, so 10 000 within the 365-day retention is about 27 a day,
+// every day; at about 200 bytes a record it caps one party at some 2 MB per trust domain.
+// Reaching it only leaves further such records unwritten: nothing becomes unavailable.
 const MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER = 10000;
 // Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
 // fails the schema instead of becoming a permanent "newest updatedAt", and every runner
@@ -819,6 +821,17 @@ const discovery: Record<string, Discovery> = {
       },
     ],
   },
+  // The gateway after the consumer re-pinned it to attestor 5 on Base Sepolia: a newer document
+  // naming 5, whose gw-root-1 carries no revokedAt (the Oracle moved the gateway's signer and
+  // root to attestor 5).
+  "gateway-re-pinned": {
+    ...gatewayDiscovery,
+    updatedAt: T_ROTATE + DAY,
+    deployments: [
+      { chainId: BASE_SEPOLIA, oracleAddress: ORACLE_BASE_SEPOLIA, attestorProviderId: "5" },
+      gatewayDiscovery.deployments[1]!,
+    ],
+  },
 };
 
 const id = (seed: string) => `ev_${seed}`.padEnd(26, "0");
@@ -1164,6 +1177,12 @@ const evidence: Record<string, Evidence> = {
     keyId: "gw-root-9",
     expiresAt: gatewaySumsub.issuedAt + MAX_EVIDENCE_LIFETIME_SECONDS + 1,
   },
+  // gateway-sumsub under the gateway's new attestor 5, from gw-root-1.
+  "gateway-sumsub-re-pinned": {
+    ...gatewaySumsub,
+    evidenceId: id("gw_sumsub_repin_w1"),
+    deployment: { ...gatewaySumsub.deployment, attestorProviderId: "5" },
+  },
 };
 
 // The Oracle reads a consumer makes, per deployment and attestor: isProviderDenied (denied),
@@ -1262,10 +1281,12 @@ type ShippedProof = {
     revoked: boolean;
   };
 };
-// A discovery document in the observation store, with the attestor the consumer pinned its
-// trust domain to on the deployment when it recorded the document: the attestor its key
-// revocations stay recorded under (SPEC.md section 10.7, Revocation).
-type SeenDiscovery = { discovery: string; attestorProviderId: string };
+// A discovery document in the observation store, with the attestor its key revocations were
+// recorded under (SPEC.md section 10.7, Revocation): the one the consumer pinned its trust
+// domain to on the deployment when it recorded the document, if the document's own entry for
+// the deployment named that attestor; null otherwise, and then they apply to that trust domain
+// alone.
+type SeenDiscovery = { discovery: string; attestorProviderId: string | null };
 // What the consumer brings to every evaluation of a deployment, including its observation
 // store; a quorum case shares it across its members.
 type Consumer = {
@@ -1288,9 +1309,19 @@ type Attempt = {
   announcedEvidenceId: string;
   proof: Proof;
 };
+// The revocation and denial reads (steps 21, 23 and 31's isAttestationRevoked) at the latest
+// block, where they differ from the finalized reads the rest of the context gives (SPEC.md
+// section 10.5, Oracle reads). The latest registry's credentialSigner is never read: step 22
+// reads only at the finalized block.
+type LatestReads = {
+  registry: RegistryEntry[];
+  validConfigs: string[];
+  attestationRevoked: boolean;
+};
 // What the consumer requires of the proof: an evaluation case states it; a quorum case's
-// requirement carries it for every member.
-type Context = Consumer & Attempt & { statement: Statement };
+// requirement carries it for every member. An evaluation case also states its latest-block
+// reads (null: the same as finalized); a quorum's members read the same at both blocks.
+type Context = Consumer & Attempt & { statement: Statement; latest: LatestReads | null };
 
 const REGISTRY_BASE_SEPOLIA: RegistryEntry[] = [
   {
@@ -1349,6 +1380,16 @@ const ALLOWLIST_BASE: AllowlistEntry[] = [
   { trustDomainId: NATIVE_HOST, attestorProviderId: "3" },
   { trustDomainId: GATEWAY_HOST, attestorProviderId: "2" },
 ];
+// Base Sepolia's allowlist with one trust domain pinned to another attestor.
+const allowlistWith = (host: string, attestor: string): AllowlistEntry[] =>
+  ALLOWLIST_BASE_SEPOLIA.map((a) =>
+    a.trustDomainId === host ? { ...a, attestorProviderId: attestor } : a,
+  );
+// Base Sepolia reads after the gateway's credential signer, root and signer hash moved from
+// attestor 1 to attestor 5 (a signer hash or root is registered to one attestor at a time).
+const GATEWAY_RE_PINNED_REGISTRY: RegistryEntry[] = REGISTRY_BASE_SEPOLIA.map((r) =>
+  r.attestorProviderId === "1" ? { ...r, attestorProviderId: "5" } : r,
+);
 
 const SEPOLIA_CONSUMER: Consumer = {
   chainId: BASE_SEPOLIA,
@@ -1365,13 +1406,18 @@ const SEPOLIA_CONSUMER: Consumer = {
 
 // A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id,
 // statement to the consumer's statement for the evidence's proof type, proof to the proof
-// that matches both, and a seenDiscovery entry given by name to the attestor the case's
-// allowlist pins its trust domain to, so a case states only what it varies. The shipped
-// vectors carry every field.
+// that matches both, latest to null (the latest block reads the same as the finalized one;
+// a partial latest takes the rest from the finalized reads), and a seenDiscovery entry given
+// by name to the attestor it was recorded under: the one the case's allowlist pins its trust
+// domain to, if the document names that attestor for the case's deployment, else null. A case
+// states only what it varies; the shipped vectors carry every field.
 type ContextInput = Omit<Consumer, "seenDiscovery"> & {
   seenDiscovery: (string | SeenDiscovery)[];
 } & Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
-  Partial<Pick<Attempt, "announcedEvidenceId" | "proof">> & { statement?: Statement };
+  Partial<Pick<Attempt, "announcedEvidenceId" | "proof">> & {
+    statement?: Statement;
+    latest?: Partial<LatestReads>;
+  };
 const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
   ...SEPOLIA_CONSUMER,
   discoveryFetch: { host, status: 200 },
@@ -1390,7 +1436,11 @@ type CaseInput = {
   discovery: DocRef;
   evidence: DocRef;
   context: ContextInput;
-  expected: { accepted: true } | { accepted: false; refusal: string };
+  // heldGrant is derived from the refusal (ENDS_HELD_GRANT) unless a case states it: a step-31
+  // refusal seen only at the latest block suspends rather than ends.
+  expected:
+    | { accepted: true }
+    | { accepted: false; refusal: string; heldGrant?: "suspended" | "ended" };
 };
 const accept = { accepted: true } as const;
 const refuse = (refusal: string) => ({ accepted: false, refusal }) as const;
@@ -2776,6 +2826,94 @@ const evaluationCases: CaseInput[] = [
     context: sepoliaContext(GATEWAY_HOST, { registry: gatewayRegistry({ denied: true }) }),
     expected: refuse("attestor_denied"),
   },
+
+  // --- Oracle reads at two blocks: the revocation and denial reads also at the latest block ---
+  {
+    name: "latest-block-attestor-denied",
+    description:
+      "denyProvider(7) is included but not yet finalized: the finalized reads still show attestor 7 allowed, the latest block shows it denied. A refusal at either block refuses (a held grant is suspended).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      latest: { registry: registryWith("7", { denied: true }) },
+    }),
+    expected: refuse("attestor_denied"),
+  },
+  {
+    name: "finalized-block-attestor-denied-lifted-at-latest",
+    description:
+      "undenyProvider(7) is included but not yet finalized: the latest block shows attestor 7 allowed, the finalized reads still show it denied. Acceptance rests on the finalized reads, so it is refused.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      registry: registryWith("7", { denied: true }),
+      latest: { registry: REGISTRY_BASE_SEPOLIA },
+    }),
+    expected: refuse("attestor_denied"),
+  },
+  {
+    name: "latest-block-root-revoked",
+    description:
+      "revokeCredentialRoot on the evidence's root is included but not yet finalized: refused at step 23 from the latest block.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      latest: { registry: registryWith("7", { credentialRoots: [ROOT_NATIVE_SEPOLIA_OLD] }) },
+    }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "finalized-block-root-not-yet-registered",
+    description:
+      "The evidence's root is registered at the latest block but not yet at the finalized one: acceptance rests on the finalized reads, so it is refused at step 23.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      registry: registryWith("7", { credentialRoots: [ROOT_NATIVE_SEPOLIA_OLD] }),
+      latest: { registry: REGISTRY_BASE_SEPOLIA },
+    }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "latest-block-signer-hash-revoked",
+    description:
+      "revokeSignerPubkeyHash on the key's signer hash is included but not yet finalized: a proof type 7 evidence is refused at step 23 from the latest block.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, {
+      latest: { registry: gatewayRegistry({ signerPubkeyHashes: [] }) },
+    }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "latest-block-config-revoked",
+    description:
+      "revokeConfig on the config_hash the statement names is included but not yet finalized: refused at step 23 from the latest block.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { latest: { validConfigs: [OTHER_CONFIG_HASH] } }),
+    expected: refuse("not_registered_on_oracle"),
+  },
+  {
+    name: "latest-block-attestation-revoked",
+    description:
+      "invalidateAttestation on the proof is included but not yet finalized: refused at step 31 from the latest block. A held grant is suspended, not ended, until the revocation is read at the finalized block (a reorganization can still drop it).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { latest: { attestationRevoked: true } }),
+    expected: { ...refuse("proof_stale"), heldGrant: "suspended" },
+  },
+  {
+    name: "latest-block-credential-signer-not-read",
+    description:
+      "A setCredentialSigner for attestor 7 is included but not yet finalized. Step 22 compares a rotation, not a revocation, and reads only at the finalized block, which still holds the key's credentialSigner: accepted.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      latest: { registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }) },
+    }),
+    expected: accept,
+  },
   {
     name: "revocation-gone-not-reversible",
     description:
@@ -3019,9 +3157,9 @@ const evaluationCases: CaseInput[] = [
     expected: refuse("key_revoked"),
   },
   {
-    name: "key-revocation-shared-to-domain-pinned-later",
+    name: "key-revocation-shared-to-any-domain-pinned-to-attestor",
     description:
-      "After recording the gateway's revocation of gw-root-1 under attestor 1, the consumer pins a further host to attestor 1. That host lists the same credentialSigner as current: a recorded key revocation applies to every trust domain pinned to its attestor now, including one pinned after it was recorded.",
+      "The consumer recorded the gateway's revocation of gw-root-1 under attestor 1 and pins a further host, the impostor, to attestor 1; its document names attestor 1 and lists the same credentialSigner as current. A recorded key revocation applies to every trust domain pinned to its attestor now. The store holds no pin history, so this case reads the same whether the host was pinned before or after the recording: SPEC.md section 10.7 makes the rule time-free, and this vector holds only that it reaches a host other than the operator's own alias.",
     discovery: "impostor",
     evidence: "impostor-sumsub",
     context: sepoliaContext(IMPOSTOR_HOST, {
@@ -3032,6 +3170,54 @@ const evaluationCases: CaseInput[] = [
       seenDiscovery: ["gateway-key-revoked-future"],
     }),
     expected: refuse("key_revoked"),
+  },
+  {
+    name: "gateway-re-pinned-accepted",
+    description:
+      "The consumer re-pinned the gateway to attestor 5, which now holds the gateway's credential signer and root; its newer document names 5 and lists gw-root-1 as current. With no key revocation recorded, the gateway's evidence under attestor 5 is accepted.",
+    discovery: "gateway-re-pinned",
+    evidence: "gateway-sumsub-re-pinned",
+    context: sepoliaContext(GATEWAY_HOST, {
+      allowlist: allowlistWith(GATEWAY_HOST, "5"),
+      registry: GATEWAY_RE_PINNED_REGISTRY,
+    }),
+    expected: accept,
+  },
+  {
+    name: "key-revocation-kept-by-recorder-after-re-pin",
+    description:
+      "As gateway-re-pinned-accepted, but the consumer recorded the gateway's earlier document revoking gw-root-1 while it pinned the gateway to attestor 1. A trust domain's own key revocation applies to it whatever attestor it is pinned to now: re-pinning never forgets it, and the newer document that lists gw-root-1 without revokedAt does not restore it.",
+    discovery: "gateway-re-pinned",
+    evidence: "gateway-sumsub-re-pinned",
+    context: sepoliaContext(GATEWAY_HOST, {
+      allowlist: allowlistWith(GATEWAY_HOST, "5"),
+      registry: GATEWAY_RE_PINNED_REGISTRY,
+      seenDiscovery: [{ discovery: "gateway-key-revoked-future", attestorProviderId: "1" }],
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-not-recorded-under-disputed-pin",
+    description:
+      "The consumer mis-pins the gateway to attestor 7 (the native host's). The gateway's document names attestor 1 and lists the native host's signer hash as its own revoked gw-signals-2. The evaluation is refused at attestor_mismatch; the document is still recorded, but its key revocations are recorded under no attestor (attestorProviderId null), because the document does not name the pin: a mis-pinned host never revokes the pinned attestor's material.",
+    discovery: "gateway-revokes-foreign-key",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { allowlist: allowlistWith(GATEWAY_HOST, "7") }),
+    expected: refuse("attestor_mismatch"),
+  },
+  {
+    name: "key-revocation-of-mis-pinned-host-not-shared",
+    description:
+      "The store holds what key-revocation-not-recorded-under-disputed-pin recorded, and the gateway is still pinned to attestor 7. The native host, pinned to 7, lists that signer hash as its current nk-signals-1: a revocation recorded under no attestor applies to its own trust domain alone, so the native evidence is accepted.",
+    follows: "key-revocation-not-recorded-under-disputed-pin",
+    discovery: "native",
+    evidence: "native-kyc-multi",
+    context: sepoliaContext(NATIVE_HOST, {
+      allowlist: allowlistWith(GATEWAY_HOST, "7"),
+      seenDiscovery: ["gateway-revokes-foreign-key"],
+      seenEvidence: ["gateway-sumsub"],
+    }),
+    expected: accept,
   },
   {
     name: "key-revocation-colliding-key-id-not-shared",
@@ -3956,6 +4142,19 @@ const quorumCases = [
     ],
     expected: { attestors: ["1", "7"], count: 2, satisfied: true },
   },
+  {
+    name: "key-revocation-of-mis-pinned-member-not-shared",
+    description:
+      "The consumer mis-pins the gateway to attestor 7, the native host's. The gateway member is refused at attestor_mismatch (its document and evidence name attestor 1), and the revoked gw-signals-2 its document lists, the native host's signer hash, is recorded under no attestor because the document does not name the pin. It applies to the gateway alone, so the native member still counts.",
+    threshold: 2,
+    context: { ...SEPOLIA_CONSUMER, allowlist: allowlistWith(GATEWAY_HOST, "7") },
+    requirement: KYC_MULTI_SIGNED,
+    members: [
+      member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
+      member("gateway-revokes-foreign-key", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
+    ],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
 ];
 
 // Documents that MUST fail their schema. Each breaks one rule of an otherwise valid
@@ -4180,11 +4379,13 @@ const REFUSALS = [
 // re-evaluation: the consumer's own decision to stop relying on the trust domain (1), an
 // evidence revocation (4, 5) and a key revocation (18), recorded and final, the evidence's
 // expiry (29), and the attestation's revocation or expiry or the proof's window (31), fixed
-// on-chain or by time. Steps 2 and 3 are listed for completeness: a re-evaluation of the
-// recorded id from the discovery host cannot meet them. Every other refusal is unrecorded and
-// mostly reversible (a provider document, an Oracle read, the consumer's requirement), and
-// suspends the grant; one that is not (a root or config revoked on the Oracle, a retired
-// signed-signals key at step 20) keeps it suspended until it ends at its expiry.
+// on-chain or by time; a step-31 refusal seen only at the latest block (an attestation
+// revocation not yet finalized) suspends instead, and the case states it. Steps 2 and 3 are
+// listed for completeness: a re-evaluation of the recorded id from the discovery host cannot
+// meet them. Every other refusal is unrecorded and mostly reversible (a provider document, an
+// Oracle read, the consumer's requirement), and suspends the grant; one that is not (a root or
+// config revoked on the Oracle, a retired signed-signals key at step 20) keeps it suspended
+// until it ends at its expiry.
 const ENDS_HELD_GRANT = [
   "trust_domain_not_allowed",
   "evidence_id_invalid",
@@ -4224,7 +4425,7 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
   minUngrantedRevocationsPerAnnouncer:
-    "Least bound a consumer may set on the revocation records of ids it never granted on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet; revocations of ids it granted on are never bounded or dropped (SPEC.md section 10.7, Revocation bound).",
+    "Least bound a consumer may set on the evidence revocations (a 410 or a revoked body) it records for ids no grant rests on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet, and on one trust domain's unattributed announcements; the trust domain's own callback or push is not charged to it. No other record counts, revocations of granted ids are never bounded or dropped, and over the bound such a revocation is refused but not recorded: no announcement becomes unavailable (SPEC.md section 10.7, Revocation bound).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -4240,20 +4441,34 @@ function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
 
 // What one evaluation writes to the observation store (SPEC.md section 10.7): the discovery
 // document (its updatedAt and every revoked key, by keyId and material, under the attestor
-// the allowlist pins its trust domain to) when it passes the discovery steps evaluated on
-// their own; the revocation of (allowlisted host, announced id) from a 410 or a revoked body
-// once steps 1-3 pass; the active evidence document when the case's expected outcome passes
-// steps 1-9.
+// the allowlist pins its trust domain to if the document names it for the deployment, else
+// under none) when it passes the discovery steps evaluated on their own; the revocation of
+// (allowlisted host, announced id) from a 410 or a revoked body once steps 1-3 pass; the
+// active evidence document when the case's expected outcome passes steps 1-9.
 type Records = {
   discovery: null | {
     trustDomainId: string;
-    attestorProviderId: string;
+    attestorProviderId: string | null;
     updatedAt: number;
     revokedKeys: { keyId: string; material: string }[];
   };
   revocation: null | { trustDomainId: string; evidenceId: string };
   evidence: null | { trustDomainId: string; evidenceId: string };
 };
+// The attestor a discovery document's key revocations are recorded under (SPEC.md section
+// 10.7, Revocation): the pin, when the document's own entry for the deployment names it (the
+// discovery half of step 14); otherwise none, so a host mis-pinned to an attestor its document
+// does not claim never revokes that attestor's material for other trust domains.
+function recordingAttestor(
+  disc: Discovery,
+  deployment: { chainId: number; oracleAddress: string },
+  pin: string,
+): string | null {
+  const declared = disc.deployments.find(
+    (d) => d.chainId === deployment.chainId && d.oracleAddress === deployment.oracleAddress,
+  );
+  return declared?.attestorProviderId === pin ? pin : null;
+}
 const EVIDENCE_ID_RULE = new RegExp(
   `^[A-Za-z0-9_-]{${MIN_EVIDENCE_ID_LENGTH},${MAX_EVIDENCE_ID_LENGTH}}$`,
 );
@@ -4291,7 +4506,7 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
     discovery: discoveryRecorded
       ? {
           trustDomainId: disc.trustDomainId,
-          attestorProviderId: pin!,
+          attestorProviderId: recordingAttestor(disc, ctx, pin!),
           updatedAt: disc.updatedAt,
           revokedKeys: disc.keys
             .filter((k) => k.revokedAt !== undefined)
@@ -4312,36 +4527,65 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
 function finalize({ context, expected, ...c }: CaseInput) {
   const disc = resolve(discovery, "discovery", c.discovery);
   const ev = resolve(evidence, "evidence", c.evidence);
-  const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, statement, ...consumer } =
-    context;
-  // A store entry given by name was recorded under the attestor the allowlist pins it to now.
+  const {
+    discoveryFetch,
+    evidenceFetch,
+    announcedEvidenceId,
+    proof,
+    statement,
+    latest,
+    ...consumer
+  } = context;
+  // A store entry given by name was recorded under the attestor it would be recorded under
+  // now (the pin, if the document names it); one given in full must be a state a consumer can
+  // reach: recorded under the attestor the document names for the deployment, or under none.
   const seenDiscovery = consumer.seenDiscovery.map((s) => {
-    if (typeof s !== "string") return s;
-    const host = discovery[s]!.trustDomainId;
-    const pin = consumer.allowlist.find((a) => a.trustDomainId === host)?.attestorProviderId;
+    const name = typeof s === "string" ? s : s.discovery;
+    const doc = discovery[name]!;
+    if (typeof s !== "string") {
+      const reachable =
+        s.attestorProviderId === null ||
+        recordingAttestor(doc, consumer, s.attestorProviderId) !== null;
+      if (!reachable)
+        throw new Error(`${c.name}: ${name} cannot be recorded under ${s.attestorProviderId}`);
+      return s;
+    }
+    const pin = consumer.allowlist.find(
+      (a) => a.trustDomainId === doc.trustDomainId,
+    )?.attestorProviderId;
     if (pin === undefined) throw new Error(`${c.name}: ${s} was recorded from an unlisted host`);
-    return { discovery: s, attestorProviderId: pin };
+    return { discovery: s, attestorProviderId: recordingAttestor(doc, consumer, pin) };
   });
   const full: Context = {
     ...consumer,
     seenDiscovery,
     statement: statement === undefined ? statementFor(ev.artifact?.proofType) : statement,
+    latest:
+      latest === undefined
+        ? null
+        : {
+            registry: latest.registry ?? consumer.registry,
+            validConfigs: latest.validConfigs ?? consumer.validConfigs,
+            attestationRevoked: latest.attestationRevoked ?? proof?.attestationRevoked === true,
+          },
     discoveryFetch,
     evidenceFetch,
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
     proof: proof ?? matchingProof(disc, ev, consumer.now),
   };
+  const outcome = expected.accepted
+    ? { accepted: true as const }
+    : { accepted: false as const, refusal: expected.refusal };
   return {
     ...c,
     context: { ...full, proof: encodeProof(full.proof, full.chainId, full.oracleAddress) },
     expected: {
-      ...expected,
+      ...outcome,
       records: recordsFor({ context, expected, ...c }, full, disc, ev),
       heldGrant: expected.accepted
         ? "kept"
-        : ENDS_HELD_GRANT.includes(expected.refusal)
-          ? "ended"
-          : "suspended",
+        : (expected.heldGrant ??
+          (ENDS_HELD_GRANT.includes(expected.refusal) ? "ended" : "suspended")),
     },
   };
 }
@@ -4464,10 +4708,13 @@ const CONSUMER_FIELDS = {
     { type: "array", items: HEX32 },
   ),
   seenDiscovery: d(
-    "Discovery fixtures in the consumer's observation store, each with the attestorProviderId the consumer pinned its trust domain to on this deployment when it recorded it: its key revocations stay recorded under that attestor.",
+    "Discovery fixtures in the consumer's observation store, each with the attestorProviderId its key revocations were recorded under: the attestor the consumer pinned its trust domain to on this deployment when it recorded it, if the document's own entry for this deployment named that attestor; null otherwise (they then apply to that trust domain alone, SPEC.md section 10.7, Revocation).",
     {
       type: "array",
-      items: obj({ discovery: NAME, attestorProviderId: ATTESTOR_PROVIDER_ID }),
+      items: obj({
+        discovery: NAME,
+        attestorProviderId: { oneOf: [ATTESTOR_PROVIDER_ID, { type: "null" }] },
+      }),
     },
   ),
   seenEvidence: d("Active evidence fixtures in the consumer's observation store.", {
@@ -4491,20 +4738,33 @@ const ATTEMPT_FIELDS = {
   announcedEvidenceId: ANNOUNCED_EVIDENCE_ID,
   proof: PROOF,
 };
+const LATEST = d(
+  "The revocation and denial reads at the latest block (SPEC.md section 10.5, Oracle reads), where they differ from the finalized reads the rest of the context gives; null when they are the same. registry: isProviderDenied (step 21) and the roots and signer hashes registered to each attestor (step 23); its credentialSigner is never read, since step 22 reads only at the finalized block. validConfigs: isValidConfig (step 23). attestationRevoked: isAttestationRevoked of the proof (step 31). A refusal at either block refuses; a step-31 revocation seen only here suspends a held grant rather than ending it.",
+  {
+    oneOf: [
+      { type: "null" },
+      obj({
+        registry: REGISTRY,
+        validConfigs: { type: "array", items: HEX32 },
+        attestationRevoked: { type: "boolean" },
+      }),
+    ],
+  },
+);
 
 const OBSERVED_PAIR = obj({
   trustDomainId: TRUST_DOMAIN_ID,
   evidenceId: evidenceSchema.properties.evidenceId,
 });
 const RECORDS = d(
-  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), under the attestorProviderId the allowlist pins its trust domain to, when the discovery steps pass on their own, whatever the evidence; revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
+  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
   obj({
     discovery: {
       oneOf: [
         { type: "null" },
         obj({
           trustDomainId: TRUST_DOMAIN_ID,
-          attestorProviderId: ATTESTOR_PROVIDER_ID,
+          attestorProviderId: { oneOf: [ATTESTOR_PROVIDER_ID, { type: "null" }] },
           updatedAt: UNIX,
           revokedKeys: {
             type: "array",
@@ -4519,7 +4779,7 @@ const RECORDS = d(
 );
 
 const HELD_GRANT =
-  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
+  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step, or that step-31 case: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
 
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -4570,7 +4830,12 @@ const vectorsSchema = {
             "The evidence fixture (or schema case); when context.evidenceFetch.status is not 200 it is the document the announced id names, and no document is evaluated.",
             DOC_REF,
           ),
-          context: obj({ ...CONSUMER_FIELDS, statement: STATEMENT, ...ATTEMPT_FIELDS }),
+          context: obj({
+            ...CONSUMER_FIELDS,
+            statement: STATEMENT,
+            latest: LATEST,
+            ...ATTEMPT_FIELDS,
+          }),
           expected: {
             oneOf: [
               obj({

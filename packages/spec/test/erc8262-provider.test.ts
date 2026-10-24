@@ -82,8 +82,9 @@ type RegistryEntry = {
   signerPubkeyHashes: string[];
 };
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
-// A recorded discovery document and the attestor its trust domain was pinned to when recorded.
-type SeenDiscovery = { discovery: string; attestorProviderId: string };
+// A recorded discovery document and the attestor its key revocations were recorded under: the
+// pin when recorded, if the document named it for the deployment; null otherwise (not shared).
+type SeenDiscovery = { discovery: string; attestorProviderId: string | null };
 type Fetch = { host: string; status: number | null };
 type Consumer = {
   chainId: number;
@@ -107,19 +108,30 @@ type Attempt = {
 // step 18 next to the store; empty outside a quorum's counting pass.
 type SharedKeyRevocation = {
   trustDomainId: string;
-  attestorProviderId: string;
+  attestorProviderId: string | null;
   keyId: string;
   material: string | undefined;
 };
+// The revocation and denial reads at the latest block (steps 21, 23, 31's
+// isAttestationRevoked); null or absent when they equal the finalized reads.
+type LatestReads = {
+  registry: RegistryEntry[];
+  validConfigs: string[];
+  attestationRevoked: boolean;
+};
 type Context = Consumer &
-  Attempt & { statement: Statement; sharedKeyRevocations?: SharedKeyRevocation[] };
+  Attempt & {
+    statement: Statement;
+    latest?: LatestReads | null;
+    sharedKeyRevocations?: SharedKeyRevocation[];
+  };
 type DocRef = string | { schemaCase: string };
 type Observed = { trustDomainId: string; evidenceId: string };
 // What one evaluation writes to the observation store (SPEC.md section 10.7).
 type Records = {
   discovery: null | {
     trustDomainId: string;
-    attestorProviderId: string;
+    attestorProviderId: string | null;
     updatedAt: number;
     revokedKeys: { keyId: string; material: string }[];
   };
@@ -215,9 +227,17 @@ const LAYOUTS: Record<
   9: { length: 14, submitter: 13, timestamp: 3, signers: [6, 7, 8, 9, 10] },
 };
 
+// The Oracle reads at one block, for the evidence's attestor.
+type Reads = {
+  registry: RegistryEntry | undefined;
+  validConfigs: string[];
+  attestationRevoked: boolean;
+};
+
 /**
  * What a step reads. Each derived value is computed on demand, so a step reads only what
  * the steps before it have established (a document is read only after it validated).
+ * `reads()` is the finalized block's reads, then the latest block's when they differ.
  */
 type Facts = {
   disc: Discovery;
@@ -227,7 +247,7 @@ type Facts = {
   pinned: () => AllowlistEntry | undefined;
   priorDiscovery: () => Discovery[];
   key: () => Key | undefined;
-  registry: () => RegistryEntry | undefined;
+  reads: () => Reads[];
   priorEvidence: () => Evidence[];
 };
 function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
@@ -240,13 +260,22 @@ function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
       .map((s) => doc(V.discovery, s.discovery))
       .filter((p) => p.trustDomainId === disc.trustDomainId);
   const key = () => disc.keys.find((k) => k.keyId === ev.keyId);
-  const registry = () =>
-    ctx.registry.find((r) => r.attestorProviderId === ev.deployment.attestorProviderId);
+  const at = (registry: RegistryEntry[], validConfigs: string[], attestationRevoked: boolean) => ({
+    registry: registry.find((r) => r.attestorProviderId === ev.deployment.attestorProviderId),
+    validConfigs,
+    attestationRevoked,
+  });
+  const reads = () => [
+    at(ctx.registry, ctx.validConfigs, ctx.proof.attestation.revoked),
+    ...(ctx.latest
+      ? [at(ctx.latest.registry, ctx.latest.validConfigs, ctx.latest.attestationRevoked)]
+      : []),
+  ];
   const priorEvidence = () =>
     ctx.seenEvidence
       .map((name) => doc(V.evidence, name))
       .filter((p) => p.trustDomainId === ev.trustDomainId && p.evidenceId === ev.evidenceId);
-  return { disc, ev, ctx, signed, pinned, priorDiscovery, key, registry, priorEvidence };
+  return { disc, ev, ctx, signed, pinned, priorDiscovery, key, reads, priorEvidence };
 }
 
 // A 200 whose body validates, carries the announced id and says revoked: final, and recorded
@@ -350,9 +379,10 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
         return true;
       }
       // Recorded key revocations (and those another quorum member recorded): by keyId and
-      // material for this trust domain; by material alone for another trust domain, when it was
-      // recorded under the attestor this trust domain is pinned to now (whether or not its
-      // recorder is still listed), never under another attestor.
+      // material for this trust domain, whatever attestor they were recorded under (or none)
+      // and whatever it is pinned to now; by material alone for another trust domain, when
+      // they were recorded under the attestor this trust domain is pinned to now (whether or
+      // not its recorder is still listed), never under another attestor or under none.
       const pin = f.pinned()?.attestorProviderId;
       const recorded: SharedKeyRevocation[] = [
         ...f.ctx.seenDiscovery.flatMap((seen) => {
@@ -393,7 +423,8 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       return f.signed() && notAfter !== undefined && f.ctx.now >= notAfter;
     },
   ],
-  ["attestor_denied", (f) => f.registry()?.denied === true],
+  // A denial or revocation refuses at either block (SPEC.md section 10.5, Oracle reads).
+  ["attestor_denied", (f) => f.reads().some((r) => r.registry?.denied === true)],
   [
     "credential_signer_mismatch",
     (f) => {
@@ -403,26 +434,25 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       // consumer whose clock lags the provider's never compares against a switched Oracle.
       const current =
         key.notAfter === undefined || f.ctx.now < key.notAfter - V.limits.clockSkewSeconds;
-      return current && f.registry()?.credentialSigner !== key.credentialSigner;
+      // A rotation, not a revocation: read at the finalized block only.
+      return current && f.reads()[0]!.registry?.credentialSigner !== key.credentialSigner;
     },
   ],
   [
     "not_registered_on_oracle",
-    (f) => {
-      const reg = f.registry();
-      if (reg === undefined) return true;
-      const art = f.ev.artifact;
-      if (art.proofType === 4) return !reg.credentialRoots.includes(art.credentialRoot);
-      // The keyId key's signer hash, and the weight config named by the statement for this
-      // evidence's proof type, still valid (another statement is refused at step 30).
-      const st = f.ctx.statement;
-      return (
-        !reg.signerPubkeyHashes.includes(f.key()?.signerPubkeyHash ?? "") ||
-        (st !== null &&
-          st.proofType === art.proofType &&
-          !f.ctx.validConfigs.includes(st.configHash))
-      );
-    },
+    (f) =>
+      f.reads().some(({ registry: reg, validConfigs }) => {
+        if (reg === undefined) return true;
+        const art = f.ev.artifact;
+        if (art.proofType === 4) return !reg.credentialRoots.includes(art.credentialRoot);
+        // The keyId key's signer hash, and the weight config named by the statement for this
+        // evidence's proof type, still valid (another statement is refused at step 30).
+        const st = f.ctx.statement;
+        return (
+          !reg.signerPubkeyHashes.includes(f.key()?.signerPubkeyHash ?? "") ||
+          (st !== null && st.proofType === art.proofType && !validConfigs.includes(st.configHash))
+        );
+      }),
   ],
   ["subject_mismatch", (f) => f.ev.subject !== f.ctx.subject],
   [
@@ -485,12 +515,13 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
   [
     "proof_stale",
     (f) => {
-      // The Oracle attestation is still live, and the proof was made while this evidence was
-      // valid (its timestamp may trail issuedAt by the skew: prover vs provider clocks).
+      // The Oracle attestation is still live (not revoked at either block), and the proof was
+      // made while this evidence was valid (its timestamp may trail issuedAt by the skew:
+      // prover vs provider clocks).
       const { publicInputs: words, attestation } = f.ctx.proof;
       const timestamp = Number(BigInt(words[LAYOUTS[f.ev.artifact.proofType]!.timestamp]!));
       return (
-        attestation.revoked ||
+        f.reads().some((r) => r.attestationRevoked) ||
         f.ctx.now > attestation.expiresAt ||
         timestamp < f.ev.issuedAt - V.limits.clockSkewSeconds ||
         timestamp >= f.ev.expiresAt
@@ -532,11 +563,17 @@ function recordsOf(disc: unknown, held: unknown, ctx: Context, refusal: string |
     !refuses("origin_mismatch", f);
   const revoked = preconditions && (ctx.evidenceFetch.status === 410 || revokedBody(f));
   const passedStep9 = refusal === null || stepIndex(refusal) > stepIndex("evidence_id_mismatch");
+  // Key revocations are shared under the pin only when the document itself names the pinned
+  // attestor for the consumer's deployment (the discovery half of step 14); else under none.
+  const declared = f.disc.deployments?.find(
+    (d) => d.chainId === ctx.chainId && d.oracleAddress === ctx.oracleAddress,
+  )?.attestorProviderId;
+  const pin = f.pinned()?.attestorProviderId;
   return {
     discovery: discoveryPasses
       ? {
           trustDomainId: f.disc.trustDomainId,
-          attestorProviderId: f.pinned()!.attestorProviderId,
+          attestorProviderId: declared === pin ? pin! : null,
           updatedAt: f.disc.updatedAt,
           revokedKeys: f.disc.keys
             .filter((k) => k.revokedAt !== undefined)
@@ -564,6 +601,17 @@ const ENDS_HELD_GRANT: readonly string[] = [
   "expired",
   "proof_stale",
 ];
+
+// What a refusal does to a held grant. A step-31 refusal ends it only when the finalized reads
+// refuse too: an attestation revocation read only at the latest block can still be reorganized
+// away, so it suspends.
+function heldGrantAfter(refusal: string | null, disc: unknown, ev: unknown, ctx: Context) {
+  if (refusal === null) return "kept";
+  if (refusal === "proof_stale" && evaluate(disc, ev, { ...ctx, latest: null }) !== refusal) {
+    return "suspended";
+  }
+  return ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended";
+}
 
 const byNumericValue = (a: string, b: string): number =>
   BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0;
@@ -615,8 +663,7 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     const held = resolve(V.evidence, "evidence", c.evidence);
     const refusal = evaluate(disc, held, c.context);
     const records = recordsOf(disc, held, c.context, refusal);
-    const heldGrant =
-      refusal === null ? "kept" : ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended";
+    const heldGrant = heldGrantAfter(refusal, disc, held, c.context);
     expect(
       refusal === null
         ? { accepted: true, records, heldGrant }
@@ -650,13 +697,22 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
   );
 
   it("observation stores hold only reachable states", () => {
-    // A revoked body stops at step 5 and is recorded as a revocation, never as a document.
+    // A revoked body stops at step 5 and is recorded as a revocation, never as a document. A
+    // discovery document's key revocations are recorded under an attestor only when the
+    // document names it for the deployment (a mis-pin records them under none).
     const stores = [
       ...V.evaluationCases.map((c) => c.context),
       ...V.quorumCases.map((c) => c.context),
     ];
     for (const store of stores) {
       for (const name of store.seenEvidence) expect(doc(V.evidence, name).status).toBe("active");
+      for (const seen of store.seenDiscovery) {
+        if (seen.attestorProviderId === null) continue;
+        const declared = doc(V.discovery, seen.discovery).deployments.find(
+          (d) => d.chainId === store.chainId && d.oracleAddress === store.oracleAddress,
+        );
+        expect(declared?.attestorProviderId, seen.discovery).toBe(seen.attestorProviderId);
+      }
     }
   });
 

@@ -2120,6 +2120,103 @@
       ],
       "revocationCheckSeconds": 900,
       "updatedAt": 1767225600
+    },
+    "gateway-re-pinned": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "trustDomainId": "gateway.xochi.test",
+      "mode": "gateway",
+      "operator": "Xochi gateway (fixture)",
+      "deployments": [
+        {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "5"
+        },
+        {
+          "chainId": 8453,
+          "oracleAddress": "0x8262000000000000000000000000000000008453",
+          "attestorProviderId": "2"
+        }
+      ],
+      "keys": [
+        {
+          "keyId": "gw-root-0",
+          "use": "credential-root",
+          "credentialSigner": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+          "notBefore": 1735689600,
+          "notAfter": 1767225600,
+          "revokedAt": 1769817600
+        },
+        {
+          "keyId": "gw-root-1",
+          "use": "credential-root",
+          "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+          "notBefore": 1767225600
+        },
+        {
+          "keyId": "gw-signals-0",
+          "use": "signed-signals",
+          "signerPubkeyHash": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+          "notBefore": 1767225600,
+          "notAfter": 1788220800
+        },
+        {
+          "keyId": "gw-signals-1",
+          "use": "signed-signals",
+          "signerPubkeyHash": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "notBefore": 1788220800
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "human-tech",
+          "claims": [
+            {
+              "claimType": "personhood.unique",
+              "policyId": "human-tech/passport-score-20/v1",
+              "proofType": 4
+            }
+          ]
+        },
+        {
+          "sourceId": "persona",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "persona/government-id/v1",
+              "proofType": 4
+            }
+          ]
+        },
+        {
+          "sourceId": "sumsub",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 4
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 7
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 8
+            },
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 9
+            }
+          ]
+        }
+      ],
+      "revocationCheckSeconds": 900,
+      "updatedAt": 1788307200
     }
   },
   "evidence": {
@@ -3273,6 +3370,30 @@
       "keyId": "gw-root-9",
       "issuedAt": 1789257600,
       "expiresAt": 1820793601,
+      "artifact": {
+        "proofType": 4,
+        "credentialType": 1,
+        "credentialRoot": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    },
+    "gateway-sumsub-re-pinned": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "evidenceId": "ev_gw_sumsub_repin_w100000",
+      "status": "active",
+      "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "sourceId": "sumsub",
+      "claimType": "kyc.individual",
+      "policyId": "sumsub/basic-kyc-level/v1",
+      "trustDomainId": "gateway.xochi.test",
+      "deployment": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "attestorProviderId": "5"
+      },
+      "keyId": "gw-root-1",
+      "issuedAt": 1789257600,
+      "expiresAt": 1820793600,
       "artifact": {
         "proofType": 4,
         "credentialType": 1,
@@ -4972,6 +5093,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -5065,6 +5187,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -5187,6 +5310,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -5309,6 +5433,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -5438,6 +5563,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -5563,6 +5689,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -5680,6 +5807,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -5799,6 +5927,7 @@
         ],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -5918,6 +6047,7 @@
         ],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6045,6 +6175,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6167,6 +6298,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6289,6 +6421,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.impostor.test",
           "status": 200
@@ -6399,6 +6532,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6519,6 +6653,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -6629,6 +6764,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6752,6 +6888,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6872,6 +7009,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -6992,6 +7130,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -7102,6 +7241,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -7222,6 +7362,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -7335,6 +7476,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -7448,6 +7590,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -7566,6 +7709,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -7679,6 +7823,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -7802,6 +7947,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -7835,7 +7981,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
-            "attestorProviderId": "7",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -7920,6 +8066,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -8042,6 +8189,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.impostor.test",
           "status": 200
@@ -8075,7 +8223,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "kyc.impostor.test",
-            "attestorProviderId": "9",
+            "attestorProviderId": null,
             "updatedAt": 1767225600,
             "revokedKeys": []
           },
@@ -8160,6 +8308,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8283,6 +8432,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8406,6 +8556,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8529,6 +8680,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8652,6 +8804,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8775,6 +8928,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -8903,6 +9057,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -9021,6 +9176,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -9147,6 +9303,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -9273,6 +9430,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -9396,6 +9554,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -9524,6 +9683,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -9650,6 +9810,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -9770,6 +9931,7 @@
         ],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -9888,6 +10050,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10017,6 +10180,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10132,6 +10296,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -10255,6 +10420,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -10378,6 +10544,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -10501,6 +10668,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -10632,6 +10800,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10757,6 +10926,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10875,6 +11045,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -10993,6 +11164,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -11111,6 +11283,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -11229,6 +11402,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -11347,6 +11521,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -11480,6 +11655,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -11614,6 +11790,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -11748,6 +11925,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -11883,6 +12061,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12021,6 +12200,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12153,6 +12333,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12287,6 +12468,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12423,6 +12605,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12555,6 +12738,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12688,6 +12872,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12820,6 +13005,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -12955,6 +13141,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -13090,6 +13277,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -13225,6 +13413,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -13362,6 +13551,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -13496,6 +13686,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -13630,6 +13821,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -13764,6 +13956,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -13889,6 +14082,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14015,6 +14209,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14144,6 +14339,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -14278,6 +14474,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14411,6 +14608,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -14535,6 +14733,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14669,6 +14868,7 @@
           "boundUpper": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14803,6 +15003,7 @@
           "boundUpper": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -14937,6 +15138,7 @@
           "boundUpper": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15072,6 +15274,7 @@
           "boundUpper": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15207,6 +15410,7 @@
           "boundUpper": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15343,6 +15547,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15469,6 +15674,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -15587,6 +15793,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -15712,6 +15919,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15845,6 +16053,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -15977,6 +16186,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16114,6 +16324,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -16247,6 +16458,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16369,6 +16581,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16490,6 +16703,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16616,6 +16830,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16754,6 +16969,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -16886,6 +17102,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -17023,6 +17240,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17149,6 +17367,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17266,6 +17485,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17384,6 +17604,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17502,6 +17723,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17619,6 +17841,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17737,6 +17960,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17855,6 +18079,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -17973,6 +18198,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18093,6 +18319,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18213,6 +18440,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18333,6 +18561,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18453,6 +18682,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18573,6 +18803,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18698,6 +18929,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18816,6 +19048,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -18939,6 +19172,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -19066,6 +19300,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -19183,6 +19418,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -19308,6 +19544,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -19360,6 +19597,1318 @@
           }
         },
         "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-attestor-denied",
+      "description": "denyProvider(7) is included but not yet finalized: the finalized reads still show attestor 7 allowed, the latest block shows it denied. A refusal at either block refuses (a held grant is suspended).",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": true,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "attestor_denied",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "finalized-block-attestor-denied-lifted-at-latest",
+      "description": "undenyProvider(7) is included but not yet finalized: the latest block shows attestor 7 allowed, the finalized reads still show it denied. Acceptance rests on the finalized reads, so it is refused.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": true,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "attestor_denied",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-root-revoked",
+      "description": "revokeCredentialRoot on the evidence's root is included but not yet finalized: refused at step 23 from the latest block.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "finalized-block-root-not-yet-registered",
+      "description": "The evidence's root is registered at the latest block but not yet at the finalized one: acceptance rests on the finalized reads, so it is refused at step 23.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-signer-hash-revoked",
+      "description": "revokeSignerPubkeyHash on the key's signer hash is included but not yet finalized: a proof type 7 evidence is refused at step 23 from the latest block.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": {
+          "proofType": 7,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        },
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": []
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_signed_w10000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "0x0000000000000000000000008262000000000000000000000000000000084532",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 7,
+            "publicInputsHash": "0xcf30418a9cba92d3450d24d0a7a54b26958e8e401e95611e9129afd8a6c50dc1",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-config-revoked",
+      "description": "revokeConfig on the config_hash the statement names is included but not yet finalized: refused at step 23 from the latest block.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": {
+          "proofType": 7,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        },
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_signed_w10000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "0x0000000000000000000000008262000000000000000000000000000000084532",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 7,
+            "publicInputsHash": "0xcf30418a9cba92d3450d24d0a7a54b26958e8e401e95611e9129afd8a6c50dc1",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "not_registered_on_oracle",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-attestation-revoked",
+      "description": "invalidateAttestation on the proof is included but not yet finalized: refused at step 31 from the latest block. A held grant is suspended, not ended, until the revocation is read at the finalized block (a reorganization can still drop it).",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": true
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_stale",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "latest-block-credential-signer-not-read",
+      "description": "A setCredentialSigner for attestor 7 is included but not yet finalized. Step 22 compares a rotation, not a revocation, and reads only at the finalized block, which still holds the key's credentialSigner: accepted.",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": {
+          "registry": [
+            {
+              "attestorProviderId": "1",
+              "denied": false,
+              "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+              "credentialRoots": [
+                "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+              ],
+              "signerPubkeyHashes": [
+                "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+              ]
+            },
+            {
+              "attestorProviderId": "7",
+              "denied": false,
+              "credentialSigner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+              "credentialRoots": [
+                "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+                "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              ],
+              "signerPubkeyHashes": [
+                "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              ]
+            },
+            {
+              "attestorProviderId": "12",
+              "denied": false,
+              "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+              "credentialRoots": [
+                "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+              ],
+              "signerPubkeyHashes": [
+                "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+              ]
+            }
+          ],
+          "validConfigs": [
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+          ],
+          "attestationRevoked": false
+        },
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "kept"
       }
     },
     {
@@ -19439,6 +20988,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -19559,6 +21109,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -19681,6 +21232,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -19798,6 +21350,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -19932,6 +21485,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -20054,6 +21608,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20179,6 +21734,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20299,6 +21855,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.impostor.test",
           "status": 200
@@ -20409,6 +21966,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20534,6 +22092,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20659,6 +22218,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20784,6 +22344,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -20909,6 +22470,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -21032,6 +22594,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -21145,6 +22708,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -21270,6 +22834,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -21403,6 +22968,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -21536,6 +23102,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -21666,6 +23233,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -21797,6 +23365,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -21923,6 +23492,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -21970,8 +23540,8 @@
       }
     },
     {
-      "name": "key-revocation-shared-to-domain-pinned-later",
-      "description": "After recording the gateway's revocation of gw-root-1 under attestor 1, the consumer pins a further host to attestor 1. That host lists the same credentialSigner as current: a recorded key revocation applies to every trust domain pinned to its attestor now, including one pinned after it was recorded.",
+      "name": "key-revocation-shared-to-any-domain-pinned-to-attestor",
+      "description": "The consumer recorded the gateway's revocation of gw-root-1 under attestor 1 and pins a further host, the impostor, to attestor 1; its document names attestor 1 and lists the same credentialSigner as current. A recorded key revocation applies to every trust domain pinned to its attestor now. The store holds no pin history, so this case reads the same whether the host was pinned before or after the recording: SPEC.md section 10.7 makes the rule time-free, and this vector holds only that it reaches a host other than the operator's own alias.",
       "discovery": "impostor",
       "evidence": "impostor-sumsub",
       "context": {
@@ -22050,6 +23620,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.impostor.test",
           "status": 200
@@ -22094,6 +23665,528 @@
           }
         },
         "heldGrant": "ended"
+      }
+    },
+    {
+      "name": "gateway-re-pinned-accepted",
+      "description": "The consumer re-pinned the gateway to attestor 5, which now holds the gateway's credential signer and root; its newer document names 5 and lists gw-root-1 as current. With no key revocation recorded, the gateway's evidence under attestor 5 is accepted.",
+      "discovery": "gateway-re-pinned",
+      "evidence": "gateway-sumsub-re-pinned",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "5"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "5",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_repin_w100000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000005",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0xa780a8471a83249e249b0ee33f45d1ecb9453c508e2f6bccf9b7df728bc4ef53",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "5",
+            "updatedAt": 1788307200,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_repin_w100000"
+          }
+        },
+        "heldGrant": "kept"
+      }
+    },
+    {
+      "name": "key-revocation-kept-by-recorder-after-re-pin",
+      "description": "As gateway-re-pinned-accepted, but the consumer recorded the gateway's earlier document revoking gw-root-1 while it pinned the gateway to attestor 1. A trust domain's own key revocation applies to it whatever attestor it is pinned to now: re-pinning never forgets it, and the newer document that lists gw-root-1 without revokedAt does not restore it.",
+      "discovery": "gateway-re-pinned",
+      "evidence": "gateway-sumsub-re-pinned",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "5"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "5",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "gateway-key-revoked-future",
+            "attestorProviderId": "1"
+          }
+        ],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_repin_w100000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000005",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0xa780a8471a83249e249b0ee33f45d1ecb9453c508e2f6bccf9b7df728bc4ef53",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "5",
+            "updatedAt": 1788307200,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_repin_w100000"
+          }
+        },
+        "heldGrant": "ended"
+      }
+    },
+    {
+      "name": "key-revocation-not-recorded-under-disputed-pin",
+      "description": "The consumer mis-pins the gateway to attestor 7 (the native host's). The gateway's document names attestor 1 and lists the native host's signer hash as its own revoked gw-signals-2. The evaluation is refused at attestor_mismatch; the document is still recorded, but its key revocations are recorded under no attestor (attestorProviderId null), because the document does not name the pin: a mis-pinned host never revokes the pinned attestor's material.",
+      "discovery": "gateway-revokes-foreign-key",
+      "evidence": "gateway-sumsub",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_w100000000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0xcb001833c8551476d8c0fae759365ae5e31e74ab6fc8988fb19508adfd111eab",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "attestor_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": null,
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              },
+              {
+                "keyId": "gw-signals-2",
+                "material": "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_w100000000000"
+          }
+        },
+        "heldGrant": "suspended"
+      }
+    },
+    {
+      "name": "key-revocation-of-mis-pinned-host-not-shared",
+      "description": "The store holds what key-revocation-not-recorded-under-disputed-pin recorded, and the gateway is still pinned to attestor 7. The native host, pinned to 7, lists that signer hash as its current nk-signals-1: a revocation recorded under no attestor applies to its own trust domain alone, so the native evidence is accepted.",
+      "follows": "key-revocation-not-recorded-under-disputed-pin",
+      "discovery": "native",
+      "evidence": "native-kyc-multi",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "gateway-revokes-foreign-key",
+            "attestorProviderId": null
+          }
+        ],
+        "seenEvidence": [
+          "gateway-sumsub"
+        ],
+        "seenRevoked": [],
+        "statement": {
+          "proofType": 9,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "minThresholdM": 2
+        },
+        "latest": null,
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_multi_w10000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
+            "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "0x0000000000000000000000008262000000000000000000000000000000084532",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 9,
+            "publicInputsHash": "0x99e3a0317a2483d825d49e40c75ed008eb03d9a90082afc8c42ecc7974495373",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_multi_w10000"
+          }
+        },
+        "heldGrant": "kept"
       }
     },
     {
@@ -22180,6 +24273,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -22311,6 +24405,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -22442,6 +24537,7 @@
           "boundLower": 3000,
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -22578,6 +24674,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -22701,6 +24798,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -22824,6 +24922,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -22961,6 +25060,7 @@
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "minThresholdM": 2
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -23097,6 +25197,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -23217,6 +25318,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -23329,6 +25431,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -23441,6 +25544,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -23556,6 +25660,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -23678,6 +25783,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -23791,6 +25897,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -23914,6 +26021,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -23947,7 +26055,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
-            "attestorProviderId": "7",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -24032,6 +26140,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -24065,7 +26174,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
-            "attestorProviderId": "7",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -24155,6 +26264,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -24282,6 +26392,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -24399,6 +26510,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -24516,6 +26628,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -24634,6 +26747,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -24751,6 +26865,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -24877,6 +26992,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25011,6 +27127,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25136,6 +27253,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25169,7 +27287,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
-            "attestorProviderId": "1",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -25266,6 +27384,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25392,6 +27511,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -25510,6 +27630,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -25627,6 +27748,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.impostor.test",
           "status": 200
@@ -25737,6 +27859,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25857,6 +27980,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -25977,6 +28101,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -26092,6 +28217,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -26211,6 +28337,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -26331,6 +28458,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -26450,6 +28578,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -26562,6 +28691,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -26675,6 +28805,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -26785,6 +28916,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -26907,6 +29039,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 503
@@ -27019,6 +29152,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -27134,6 +29268,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -27249,6 +29384,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -27372,6 +29508,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 503
@@ -27482,6 +29619,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "kyc.gateway-alias.test",
           "status": 200
@@ -27592,6 +29730,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -27712,6 +29851,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -27822,6 +29962,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -27940,6 +30081,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28058,6 +30200,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28171,6 +30314,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -28204,7 +30348,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
-            "attestorProviderId": "7",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -28289,6 +30433,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28322,7 +30467,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
-            "attestorProviderId": "9",
+            "attestorProviderId": null,
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28412,6 +30557,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28542,6 +30688,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28668,6 +30815,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28798,6 +30946,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -28932,6 +31081,7 @@
           ],
           "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
         },
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -29058,6 +31208,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -29176,6 +31327,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -29299,6 +31451,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -29424,6 +31577,7 @@
         ],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -29549,6 +31703,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "attest.native-kyc.test",
           "status": 200
@@ -29669,6 +31824,7 @@
           }
         ],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -29791,6 +31947,7 @@
         ],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -29914,6 +32071,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -30037,6 +32195,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -30160,6 +32319,7 @@
         "seenEvidence": [],
         "seenRevoked": [],
         "statement": null,
+        "latest": null,
         "discoveryFetch": {
           "host": "gateway.xochi.test",
           "status": 200
@@ -33041,6 +35201,176 @@
         ],
         "count": 2,
         "satisfied": true
+      }
+    },
+    {
+      "name": "key-revocation-of-mis-pinned-member-not-shared",
+      "description": "The consumer mis-pins the gateway to attestor 7, the native host's. The gateway member is refused at attestor_mismatch (its document and evidence name attestor 1), and the revoked gw-signals-2 its document lists, the native host's signer hash, is recorded under no attestor because the document does not name the pin. It applies to the gateway alone, so the native member still counts.",
+      "threshold": 2,
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": []
+      },
+      "requirement": {
+        "claimType": "kyc.individual",
+        "proofType": 9,
+        "statement": {
+          "proofType": 9,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "minThresholdM": 2
+        }
+      },
+      "members": [
+        {
+          "discovery": "native",
+          "evidence": "native-kyc-multi",
+          "discoveryFetch": {
+            "host": "attest.native-kyc.test",
+            "status": 200
+          },
+          "evidenceFetch": {
+            "host": "attest.native-kyc.test",
+            "status": 200
+          },
+          "announcedEvidenceId": "ev_native_kyc_multi_w10000",
+          "proof": {
+            "publicInputs": [
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+              "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+              "0x000000000000000000000000000000000000000000000000000000006ab07380",
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000014a34",
+              "0x0000000000000000000000008262000000000000000000000000000000084532",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+            ],
+            "attestation": {
+              "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "proofType": 9,
+              "publicInputsHash": "0x99e3a0317a2483d825d49e40c75ed008eb03d9a90082afc8c42ecc7974495373",
+              "expiresAt": 1793577600,
+              "revoked": false
+            }
+          }
+        },
+        {
+          "discovery": "gateway-revokes-foreign-key",
+          "evidence": "gateway-sumsub-multi",
+          "discoveryFetch": {
+            "host": "gateway.xochi.test",
+            "status": 200
+          },
+          "evidenceFetch": {
+            "host": "gateway.xochi.test",
+            "status": 200
+          },
+          "announcedEvidenceId": "ev_gw_sumsub_multi_w100000",
+          "proof": {
+            "publicInputs": [
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+              "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+              "0x000000000000000000000000000000000000000000000000000000006ab07380",
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000014a34",
+              "0x0000000000000000000000008262000000000000000000000000000000084532",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+            ],
+            "attestation": {
+              "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "proofType": 9,
+              "publicInputsHash": "0x99e3a0317a2483d825d49e40c75ed008eb03d9a90082afc8c42ecc7974495373",
+              "expiresAt": 1793577600,
+              "revoked": false
+            }
+          }
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "7"
+        ],
+        "count": 1,
+        "satisfied": false
       }
     }
   ]

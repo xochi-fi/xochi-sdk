@@ -89,8 +89,8 @@ widget's private `embedParams.ts`, so integrators cannot use any of it and
 
 1. Publish the first versions from main: `@xochi/spec` at the version its
    `package.json` carries when the tag is cut (`release.yml` refuses a tag
-   that differs from it), which is 0.8.1 today and 0.9.0 once xochi-sdk#43
-   merges; signer 0.5.1, client 0.1.1 with the neutral referral line,
+   that differs from it), which is 0.9.0 (it folds in the never-published
+   0.8.1); signer 0.5.1, client 0.1.1 with the neutral referral line,
    widget-lib 0.1.1. Riddler advertises the published spec version in
    lockstep, or the nightly spec-version probe reports drift.
 2. Merge xochi-widget#53 and xochi#611 against the published versions.
