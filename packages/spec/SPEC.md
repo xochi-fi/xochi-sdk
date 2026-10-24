@@ -149,9 +149,10 @@
   shielded status fields, now read what is served: shielded is not offered,
   the status surfaces are the scalars `noteCommitment`, `nullifierHash` and
   `l2TxHash`, not arrays, and §5.1 records that this intent-id read links an
-  intent to its Aztec transaction. The served document did not move, so these
-  corrections claim no version: they ship in the first spec release after
-  `0.8.1`, whichever version that release declares.
+  intent to its Aztec transaction and that the Worker's read-token intent
+  read gives that link only to the owner. The served document did not move,
+  so these corrections claim no version: they ship in the first spec release
+  after `0.8.1`, whichever version that release declares.
 - `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that the
   version string is new: `0.8.1` is declared only by commits that carry the
   second adversarial review's fixes, and the tarball's `wire/compare.mjs`
@@ -672,7 +673,12 @@ the intent to its Aztec transaction for whoever holds that key.
 `ESCROW-RFC.md` §5.1 ("Recipient") keeps the tx hash off any such read for
 its `[PROPOSED]` shielded release, so before shielded is offered under it
 these fields leave that read or become owner-scoped there, in lockstep with
-Riddler.
+Riddler. The same holds for the xochi Worker's intent read
+(`GET /api/intent/:id` and its `/status`), which a bearer read token
+(`@xochi/client`'s `X-Xochi-Read-Token`) authorizes for whoever presents it:
+before shielded is offered, that read returns a shielded leg's Aztec tx hash
+or block only to an owner-authenticated request, in lockstep with the
+Worker.
 
 `nullifierHash` is misleading: it is the first protocol nullifier of the
 transaction, and a `transfer_to_private` spends a public balance and nullifies no
