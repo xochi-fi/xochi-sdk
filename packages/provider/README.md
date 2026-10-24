@@ -28,9 +28,11 @@ represents one stable key identity; rotation creates a new object. The adapter e
 with low S. `signDigest` may perform remote I/O; the adapter owns custody authentication, timeout,
 cancellation, retry, DER decoding and low-S normalization. Adapter failures propagate to the
 caller. The package validates the signature against one copied identity snapshot and derives the
-Ethereum recovery bit before returning it. No private-key bytes cross this interface. `label` is a
-non-secret diagnostic identifier recorded in private daemon audit failures; do not put secrets in
-it.
+Ethereum recovery bit before returning it. No private-key bytes cross this interface. A
+`DigestSigner` signs any 32 bytes it is given, so the KMS/HSM key behind it is a raw-digest signing
+oracle: dedicate it to provider signing and never let another application or protocol sign with
+it. `label` is a non-secret diagnostic identifier recorded in private daemon audit failures; do not
+put secrets in it.
 
 `PrivateKeyLoader`, `RawPrivateKeyLoader`, `HexPrivateKeyLoader` and `loadLocalSigner` are the
 explicitly extractable-key path for tests, development and the reference daemon, not production
