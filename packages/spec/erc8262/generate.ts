@@ -41,12 +41,13 @@ const MIN_REVOCATION_CHECK_SECONDS = 60;
 const MAX_REVOCATION_CHECK_SECONDS = 86400;
 const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
 const MAX_EVIDENCE_ID_LENGTH = 128;
-// Least bound a consumer may set on the revocation records one wallet's announcements leave on
-// one trust domain, counting only ids it never granted on (SPEC.md section 10.7, Revocation
-// bound). An honest wallet announces one id per evidence it was issued, so 10 000 within the
+// Least bound a consumer may set on the revocation records one announcing party (as the
+// consumer authenticated it, never the subject wallet an announcement names) leaves on one
+// trust domain, counting only ids it never granted on (SPEC.md section 10.7, Revocation
+// bound). An honest party announces one id per evidence it was issued, so 10 000 within the
 // 365-day retention is about 27 a day, every day; at about 200 bytes a record it caps one
-// wallet at some 2 MB per trust domain.
-const MIN_UNGRANTED_REVOCATIONS_PER_WALLET = 10000;
+// party at some 2 MB per trust domain.
+const MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER = 10000;
 // Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
 // fails the schema instead of becoming a permanent "newest updatedAt", and every runner
 // language compares the values exactly.
@@ -279,7 +280,7 @@ const evidenceSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: `${SCHEMA_BASE}/provider-evidence.schema.json`,
   title: "ERC-8262 provider evidence",
-  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified, is the one the Oracle recorded, matches this document and proves the consumer's statement (SPEC.md section 10.5, proof_mismatch) and is current (proof_stale). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
+  description: `Served at GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId} (SPEC.md section 10.4). Unsigned: fetching from the allowlisted trust domain's host over https, without redirects, is the authentication, and a callback or push only announces an evidenceId. Acceptance authorizes nothing until the on-chain proof it feeds has verified, is the one the Oracle recorded, matches this document and proves the consumer's statement (SPEC.md section 10.5, proof_mismatch) and is live (proof_stale). Carries identifiers and bindings only: no PII, documents, applicant ids or provider payloads. Every field except status and revokedAt is immutable per (trustDomainId, evidenceId). Body at most ${MAX_EVIDENCE_BYTES} bytes.`,
   ...obj(
     {
       ...PROTOCOL_FIELDS,
@@ -319,7 +320,7 @@ const evidenceSchema = {
         UNIX,
       ),
       artifact: d(
-        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on is the one the Oracle verified, matches this artifact, keyId and subject, proves the consumer's statement and is current: SPEC.md section 10.5, steps 30-31.",
+        "What the claim feeds on-chain. Type 4 names its credential root; types 7-9 are signed per proof by the key named in keyId. The proof a consumer relies on is the one the Oracle verified, matches this artifact, keyId and subject, proves the consumer's statement and is live: SPEC.md section 10.5, steps 30-31.",
         { oneOf: [CREDENTIAL_ARTIFACT, SIGNED_ARTIFACT] },
       ),
     },
@@ -416,6 +417,8 @@ const FIFTH_SIGNALS_HASH = "0x" + "9a".repeat(32);
 const GATEWAY_SIGNALS_HASH_NEXT = "0x" + "5c".repeat(32);
 // Fresh key material listed under a revoked keyId.
 const RELISTED_SIGNER = "0xa0ee7a142d267c1f36714e4a8f75612f20a79720";
+// The alias host's own signed-signals material, listed under a keyId the gateway also uses.
+const ALIAS_SIGNALS_HASH = "0x" + "5d".repeat(32);
 // Field-element fixtures for the signed circuits' config_hash and provider_set_hash inputs.
 const CONFIG_HASH = "0x" + "0c".repeat(32);
 const OTHER_CONFIG_HASH = "0x" + "0e".repeat(32);
@@ -796,6 +799,21 @@ const discovery: Record<string, Discovery> = {
         keyId: "gw-signals-2",
         use: "signed-signals",
         signerPubkeyHash: NATIVE_SIGNALS_HASH,
+        notBefore: T_ROTATE,
+        revokedAt: T_ROTATE + DAY,
+      },
+    ],
+  },
+  // The alias host revoking its own signed-signals key under the keyId gw-signals-1, which the
+  // gateway uses for other material: across trust domains a revocation matches material only.
+  "alias-revokes-colliding-key-id": {
+    ...aliasDiscovery,
+    keys: [
+      ...aliasDiscovery.keys,
+      {
+        keyId: "gw-signals-1",
+        use: "signed-signals",
+        signerPubkeyHash: ALIAS_SIGNALS_HASH,
         notBefore: T_ROTATE,
         revokedAt: T_ROTATE + DAY,
       },
@@ -1244,6 +1262,10 @@ type ShippedProof = {
     revoked: boolean;
   };
 };
+// A discovery document in the observation store, with the attestor the consumer pinned its
+// trust domain to on the deployment when it recorded the document: the attestor its key
+// revocations stay recorded under (SPEC.md section 10.7, Revocation).
+type SeenDiscovery = { discovery: string; attestorProviderId: string };
 // What the consumer brings to every evaluation of a deployment, including its observation
 // store; a quorum case shares it across its members.
 type Consumer = {
@@ -1255,7 +1277,7 @@ type Consumer = {
   registry: RegistryEntry[];
   // The weight configs the Oracle holds valid (isValidConfig), read at step 23 for 7/8/9.
   validConfigs: string[];
-  seenDiscovery: string[];
+  seenDiscovery: SeenDiscovery[];
   seenEvidence: string[];
   seenRevoked: Observed[];
 };
@@ -1342,11 +1364,13 @@ const SEPOLIA_CONSUMER: Consumer = {
 };
 
 // A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id,
-// statement to the consumer's statement for the evidence's proof type and proof to the proof
-// that matches both, so a case states only what it varies. The shipped vectors carry every
-// field.
-type ContextInput = Consumer &
-  Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
+// statement to the consumer's statement for the evidence's proof type, proof to the proof
+// that matches both, and a seenDiscovery entry given by name to the attestor the case's
+// allowlist pins its trust domain to, so a case states only what it varies. The shipped
+// vectors carry every field.
+type ContextInput = Omit<Consumer, "seenDiscovery"> & {
+  seenDiscovery: (string | SeenDiscovery)[];
+} & Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
   Partial<Pick<Attempt, "announcedEvidenceId" | "proof">> & { statement?: Statement };
 const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
   ...SEPOLIA_CONSUMER,
@@ -2982,6 +3006,42 @@ const evaluationCases: CaseInput[] = [
     context: sepoliaContext(NATIVE_HOST, { seenDiscovery: ["gateway-revokes-foreign-key"] }),
     expected: accept,
   },
+  {
+    name: "key-revocation-shared-after-recorder-unlisted",
+    description:
+      "The consumer recorded the gateway's document revoking gw-root-1 under attestor 1, then removed the gateway from its allowlist. The revocation stays recorded under the attestor pinned when it was recorded, so it still applies to the alias host pinned to attestor 1.",
+    discovery: "alias",
+    evidence: "alias-sumsub",
+    context: sepoliaContext(ALIAS_HOST, {
+      allowlist: ALLOWLIST_BASE_SEPOLIA.filter((a) => a.trustDomainId !== GATEWAY_HOST),
+      seenDiscovery: [{ discovery: "gateway-key-revoked-future", attestorProviderId: "1" }],
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-shared-to-domain-pinned-later",
+    description:
+      "After recording the gateway's revocation of gw-root-1 under attestor 1, the consumer pins a further host to attestor 1. That host lists the same credentialSigner as current: a recorded key revocation applies to every trust domain pinned to its attestor now, including one pinned after it was recorded.",
+    discovery: "impostor",
+    evidence: "impostor-sumsub",
+    context: sepoliaContext(IMPOSTOR_HOST, {
+      allowlist: [
+        ...ALLOWLIST_BASE_SEPOLIA,
+        { trustDomainId: IMPOSTOR_HOST, attestorProviderId: "1" },
+      ],
+      seenDiscovery: ["gateway-key-revoked-future"],
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-colliding-key-id-not-shared",
+    description:
+      "The consumer recorded the alias host's document revoking its own key gw-signals-1, whose material differs from the gateway's gw-signals-1. Across trust domains a revocation matches key material only, never a keyId: the gateway's evidence under its gw-signals-1 is accepted.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-signed",
+    context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["alias-revokes-colliding-key-id"] }),
+    expected: accept,
+  },
 
   // --- The weight config the statement names is still valid on the Oracle (step 23) ---
   {
@@ -3017,6 +3077,18 @@ const evaluationCases: CaseInput[] = [
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, { validConfigs: [] }),
     expected: accept,
+  },
+  {
+    name: "config-of-statement-for-other-type-not-read",
+    description:
+      "The consumer's statement is for proof type 7 and names a config_hash the Oracle no longer holds valid; the evidence is proof type 8. Step 23 reads only the statement for the evidence's proof type, so this evidence is refused at step 30 (a statement for another type), not at step 23.",
+    discovery: "gateway",
+    evidence: "gateway-sumsub-risk",
+    context: sepoliaContext(GATEWAY_HOST, {
+      statement: STATEMENT_7,
+      validConfigs: [OTHER_CONFIG_HASH],
+    }),
+    expected: refuse("proof_mismatch"),
   },
 
   // --- Type 9: every signer slot counts, the last one included ---
@@ -3872,6 +3944,18 @@ const quorumCases = [
     ],
     expected: { attestors: ["7"], count: 1, satisfied: false },
   },
+  {
+    name: "key-revocation-not-shared-across-attestors-in-quorum",
+    description:
+      "The gateway member's discovery document lists the native attestor's public signer hash as its own revoked gw-signals-2. Shared revocations keep their keying: a key revocation reaches a member of another trust domain only when that one is pinned to the attestor it was recorded under, so the native member still counts.",
+    ...quorumContext,
+    requirement: KYC_MULTI_SIGNED,
+    members: [
+      member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
+      member("gateway-revokes-foreign-key", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
+    ],
+    expected: { attestors: ["1", "7"], count: 2, satisfied: true },
+  },
 ];
 
 // Documents that MUST fail their schema. Each breaks one rule of an otherwise valid
@@ -4093,12 +4177,14 @@ const REFUSALS = [
   "proof_stale",
 ];
 // SPEC.md section 10.7, Held grants: the refusals that end a held grant when they refuse its
-// re-evaluation. Each is final, recorded or fixed by time: the consumer no longer allowlists
-// the trust domain (1), the announcement itself (2, 3, which a re-evaluation of the recorded
-// id from the discovery host cannot meet), an evidence revocation (4, 5), a key revocation
-// (18), the evidence's expiry (29), and the attestation's revocation or expiry or the proof's
-// window (31). Every other refusal describes a provider document, an Oracle read or a
-// consumer setting that can change back, and suspends the grant.
+// re-evaluation: the consumer's own decision to stop relying on the trust domain (1), an
+// evidence revocation (4, 5) and a key revocation (18), recorded and final, the evidence's
+// expiry (29), and the attestation's revocation or expiry or the proof's window (31), fixed
+// on-chain or by time. Steps 2 and 3 are listed for completeness: a re-evaluation of the
+// recorded id from the discovery host cannot meet them. Every other refusal is unrecorded and
+// mostly reversible (a provider document, an Oracle read, the consumer's requirement), and
+// suspends the grant; one that is not (a root or config revoked on the Oracle, a retired
+// signed-signals key at step 20) keeps it suspended until it ends at its expiry.
 const ENDS_HELD_GRANT = [
   "trust_domain_not_allowed",
   "evidence_id_invalid",
@@ -4122,7 +4208,7 @@ const LIMITS = {
   minEvidenceIdLength: MIN_EVIDENCE_ID_LENGTH,
   maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
   maxTimestamp: MAX_TIMESTAMP,
-  minUngrantedRevocationsPerWallet: MIN_UNGRANTED_REVOCATIONS_PER_WALLET,
+  minUngrantedRevocationsPerAnnouncer: MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER,
 };
 const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceLifetimeSeconds: "Largest expiresAt - issuedAt (365 days).",
@@ -4137,8 +4223,8 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   minEvidenceIdLength: "Shortest evidenceId (128 bits of base64url).",
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
-  minUngrantedRevocationsPerWallet:
-    "Least bound a consumer may set on the revocation records of ids it never granted on, per (trust domain, wallet the evaluation was for); revocations of ids it granted on are never bounded (SPEC.md section 10.7, Revocation bound).",
+  minUngrantedRevocationsPerAnnouncer:
+    "Least bound a consumer may set on the revocation records of ids it never granted on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet; revocations of ids it granted on are never bounded or dropped (SPEC.md section 10.7, Revocation bound).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -4153,13 +4239,15 @@ function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
 }
 
 // What one evaluation writes to the observation store (SPEC.md section 10.7): the discovery
-// document (its updatedAt and every revoked key, by keyId and material) when it passes the
-// discovery steps evaluated on their own; the revocation of (allowlisted host, announced id)
-// from a 410 or a revoked body once steps 1-3 pass; the active evidence document when the
-// case's expected outcome passes steps 1-9.
+// document (its updatedAt and every revoked key, by keyId and material, under the attestor
+// the allowlist pins its trust domain to) when it passes the discovery steps evaluated on
+// their own; the revocation of (allowlisted host, announced id) from a 410 or a revoked body
+// once steps 1-3 pass; the active evidence document when the case's expected outcome passes
+// steps 1-9.
 type Records = {
   discovery: null | {
     trustDomainId: string;
+    attestorProviderId: string;
     updatedAt: number;
     revokedKeys: { keyId: string; material: string }[];
   };
@@ -4171,10 +4259,11 @@ const EVIDENCE_ID_RULE = new RegExp(
 );
 function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): Records {
   const host = ctx.discoveryFetch.host;
-  const allowed = ctx.allowlist.some((a) => a.trustDomainId === host);
+  const pin = ctx.allowlist.find((a) => a.trustDomainId === host)?.attestorProviderId;
+  const allowed = pin !== undefined;
   const unique = (values: string[]) => new Set(values).size === values.length;
   const recordedNewer = ctx.seenDiscovery
-    .map((n) => discovery[n]!)
+    .map((s) => discovery[s.discovery]!)
     .some((p) => p.trustDomainId === disc.trustDomainId && p.updatedAt > disc.updatedAt);
   const discoveryRecorded =
     allowed &&
@@ -4202,6 +4291,7 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
     discovery: discoveryRecorded
       ? {
           trustDomainId: disc.trustDomainId,
+          attestorProviderId: pin!,
           updatedAt: disc.updatedAt,
           revokedKeys: disc.keys
             .filter((k) => k.revokedAt !== undefined)
@@ -4224,8 +4314,17 @@ function finalize({ context, expected, ...c }: CaseInput) {
   const ev = resolve(evidence, "evidence", c.evidence);
   const { discoveryFetch, evidenceFetch, announcedEvidenceId, proof, statement, ...consumer } =
     context;
+  // A store entry given by name was recorded under the attestor the allowlist pins it to now.
+  const seenDiscovery = consumer.seenDiscovery.map((s) => {
+    if (typeof s !== "string") return s;
+    const host = discovery[s]!.trustDomainId;
+    const pin = consumer.allowlist.find((a) => a.trustDomainId === host)?.attestorProviderId;
+    if (pin === undefined) throw new Error(`${c.name}: ${s} was recorded from an unlisted host`);
+    return { discovery: s, attestorProviderId: pin };
+  });
   const full: Context = {
     ...consumer,
+    seenDiscovery,
     statement: statement === undefined ? statementFor(ev.artifact?.proofType) : statement,
     discoveryFetch,
     evidenceFetch,
@@ -4321,8 +4420,9 @@ const JURISDICTION_IDS = d("The ERC-8262 jurisdiction ids the consumer accepts."
   uniqueItems: true,
   items: { type: "integer", minimum: 0, maximum: 255 },
 });
-// risk_score_signed's bound_lower / bound_upper are u32.
-const U32 = { type: "integer", minimum: 0, maximum: 2 ** 32 - 1 };
+// risk_score_signed's bound_lower / bound_upper: the Oracle refuses a bound above
+// MAX_RISK_SCORE_BPS (10000), so no statement it can verify names one.
+const RISK_BOUND = { type: "integer", minimum: 0, maximum: 10000 };
 const STATEMENT = d(
   "The statement the consumer requires the proof to prove (SPEC.md section 10.5, step 30), tagged with the proof type it is for: null for proof type 4 (the evidence's credentialType is the statement); for 7 the accepted jurisdiction ids and the config_hash; for 8 the risk proof_type and config_hash with, for a threshold (1), its direction (1 GT, 2 LT) and bound_lower, or for a range (2), bound_lower and bound_upper (risk_score_signed leaves the other word free in each mode); for 9 those of 7 plus the least threshold_m.",
   {
@@ -4333,14 +4433,14 @@ const STATEMENT = d(
         proofType: { const: 8 },
         riskProofType: { const: 1 },
         direction: { enum: [1, 2] },
-        boundLower: U32,
+        boundLower: RISK_BOUND,
         configHash: HEX32,
       }),
       obj({
         proofType: { const: 8 },
         riskProofType: { const: 2 },
-        boundLower: U32,
-        boundUpper: U32,
+        boundLower: RISK_BOUND,
+        boundUpper: RISK_BOUND,
         configHash: HEX32,
       }),
       obj({
@@ -4360,13 +4460,16 @@ const CONSUMER_FIELDS = {
   allowlist: ALLOWLIST,
   registry: REGISTRY,
   validConfigs: d(
-    "Config hashes the Oracle holds valid: isValidConfig(configHash), read at step 23 for proof types 7, 8 and 9.",
+    "Config hashes the Oracle holds valid: isValidConfig(configHash), read at step 23 for the configHash of a statement for the evidence's proof type (7, 8 or 9).",
     { type: "array", items: HEX32 },
   ),
-  seenDiscovery: d("Discovery fixtures in the consumer's observation store.", {
-    type: "array",
-    items: NAME,
-  }),
+  seenDiscovery: d(
+    "Discovery fixtures in the consumer's observation store, each with the attestorProviderId the consumer pinned its trust domain to on this deployment when it recorded it: its key revocations stay recorded under that attestor.",
+    {
+      type: "array",
+      items: obj({ discovery: NAME, attestorProviderId: ATTESTOR_PROVIDER_ID }),
+    },
+  ),
   seenEvidence: d("Active evidence fixtures in the consumer's observation store.", {
     type: "array",
     items: NAME,
@@ -4394,13 +4497,14 @@ const OBSERVED_PAIR = obj({
   evidenceId: evidenceSchema.properties.evidenceId,
 });
 const RECORDS = d(
-  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence; revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
+  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), under the attestorProviderId the allowlist pins its trust domain to, when the discovery steps pass on their own, whatever the evidence; revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
   obj({
     discovery: {
       oneOf: [
         { type: "null" },
         obj({
           trustDomainId: TRUST_DOMAIN_ID,
+          attestorProviderId: ATTESTOR_PROVIDER_ID,
           updatedAt: UNIX,
           revokedKeys: {
             type: "array",
@@ -4415,7 +4519,7 @@ const RECORDS = d(
 );
 
 const HELD_GRANT =
-  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31: final, recorded or fixed by time), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the evidence expires).";
+  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31), or suspended (refused at any other step: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
 
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",

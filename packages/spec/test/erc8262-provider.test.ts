@@ -82,6 +82,8 @@ type RegistryEntry = {
   signerPubkeyHashes: string[];
 };
 type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
+// A recorded discovery document and the attestor its trust domain was pinned to when recorded.
+type SeenDiscovery = { discovery: string; attestorProviderId: string };
 type Fetch = { host: string; status: number | null };
 type Consumer = {
   chainId: number;
@@ -91,7 +93,7 @@ type Consumer = {
   allowlist: AllowlistEntry[];
   registry: RegistryEntry[];
   validConfigs: string[];
-  seenDiscovery: string[];
+  seenDiscovery: SeenDiscovery[];
   seenEvidence: string[];
   seenRevoked: { trustDomainId: string; evidenceId: string }[];
 };
@@ -103,7 +105,12 @@ type Attempt = {
 };
 // Revoked keys another quorum member's evaluation recorded (SPEC.md section 10.6), applied at
 // step 18 next to the store; empty outside a quorum's counting pass.
-type SharedKeyRevocation = { trustDomainId: string; keyId: string; material: string | undefined };
+type SharedKeyRevocation = {
+  trustDomainId: string;
+  attestorProviderId: string;
+  keyId: string;
+  material: string | undefined;
+};
 type Context = Consumer &
   Attempt & { statement: Statement; sharedKeyRevocations?: SharedKeyRevocation[] };
 type DocRef = string | { schemaCase: string };
@@ -112,6 +119,7 @@ type Observed = { trustDomainId: string; evidenceId: string };
 type Records = {
   discovery: null | {
     trustDomainId: string;
+    attestorProviderId: string;
     updatedAt: number;
     revokedKeys: { keyId: string; material: string }[];
   };
@@ -122,7 +130,7 @@ type Vectors = {
   limits: {
     maxEvidenceLifetimeSeconds: number;
     clockSkewSeconds: number;
-    minUngrantedRevocationsPerWallet: number;
+    minUngrantedRevocationsPerAnnouncer: number;
   };
   refusals: string[];
   discovery: Record<string, Discovery>;
@@ -229,7 +237,7 @@ function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
   const pinned = () => ctx.allowlist.find((a) => a.trustDomainId === ctx.discoveryFetch.host);
   const priorDiscovery = () =>
     ctx.seenDiscovery
-      .map((name) => doc(V.discovery, name))
+      .map((s) => doc(V.discovery, s.discovery))
       .filter((p) => p.trustDomainId === disc.trustDomainId);
   const key = () => disc.keys.find((k) => k.keyId === ev.keyId);
   const registry = () =>
@@ -342,19 +350,18 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
         return true;
       }
       // Recorded key revocations (and those another quorum member recorded): by keyId and
-      // material for this trust domain, by material for any other trust domain the consumer
-      // pins to the same attestor on this deployment, never for one pinned to another.
+      // material for this trust domain; by material alone for another trust domain, when it was
+      // recorded under the attestor this trust domain is pinned to now (whether or not its
+      // recorder is still listed), never under another attestor.
       const pin = f.pinned()?.attestorProviderId;
-      const sameAttestor = new Set(
-        f.ctx.allowlist.filter((a) => a.attestorProviderId === pin).map((a) => a.trustDomainId),
-      );
-      const recorded = [
-        ...f.ctx.seenDiscovery.flatMap((name) => {
-          const d = doc(V.discovery, name);
+      const recorded: SharedKeyRevocation[] = [
+        ...f.ctx.seenDiscovery.flatMap((seen) => {
+          const d = doc(V.discovery, seen.discovery);
           return d.keys
             .filter((k) => k.revokedAt !== undefined)
             .map((k) => ({
               trustDomainId: d.trustDomainId,
+              attestorProviderId: seen.attestorProviderId,
               keyId: k.keyId,
               material: material(k),
             }));
@@ -364,7 +371,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       return recorded.some((r) =>
         r.trustDomainId === f.disc.trustDomainId
           ? r.keyId === key.keyId || r.material === keyMaterial
-          : sameAttestor.has(r.trustDomainId) && r.material === keyMaterial,
+          : r.attestorProviderId === pin && r.material === keyMaterial,
       );
     },
   ],
@@ -406,11 +413,14 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       if (reg === undefined) return true;
       const art = f.ev.artifact;
       if (art.proofType === 4) return !reg.credentialRoots.includes(art.credentialRoot);
-      // The keyId key's signer hash, and the weight config the statement names, still valid.
+      // The keyId key's signer hash, and the weight config named by the statement for this
+      // evidence's proof type, still valid (another statement is refused at step 30).
       const st = f.ctx.statement;
       return (
         !reg.signerPubkeyHashes.includes(f.key()?.signerPubkeyHash ?? "") ||
-        (st !== null && !f.ctx.validConfigs.includes(st.configHash))
+        (st !== null &&
+          st.proofType === art.proofType &&
+          !f.ctx.validConfigs.includes(st.configHash))
       );
     },
   ],
@@ -526,6 +536,7 @@ function recordsOf(disc: unknown, held: unknown, ctx: Context, refusal: string |
     discovery: discoveryPasses
       ? {
           trustDomainId: f.disc.trustDomainId,
+          attestorProviderId: f.pinned()!.attestorProviderId,
           updatedAt: f.disc.updatedAt,
           revokedKeys: f.disc.keys
             .filter((k) => k.revokedAt !== undefined)
@@ -628,10 +639,11 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
         ).toContainEqual(evidence);
       }
       if (discovery) {
-        const newest = store.seenDiscovery
-          .map((n) => doc(V.discovery, n))
-          .filter((d) => d.trustDomainId === discovery.trustDomainId)
-          .map((d) => d.updatedAt);
+        const recorded = store.seenDiscovery.filter(
+          (s) => doc(V.discovery, s.discovery).trustDomainId === discovery.trustDomainId,
+        );
+        expect(recorded.map((s) => s.attestorProviderId)).toContain(discovery.attestorProviderId);
+        const newest = recorded.map((s) => doc(V.discovery, s.discovery).updatedAt);
         expect(Math.max(...newest)).toBeGreaterThanOrEqual(discovery.updatedAt);
       }
     },
@@ -713,7 +725,11 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     ];
     const sharedKeyRevocations = recorded.flatMap(({ discovery }) =>
       discovery
-        ? discovery.revokedKeys.map((k) => ({ trustDomainId: discovery.trustDomainId, ...k }))
+        ? discovery.revokedKeys.map((k) => ({
+            trustDomainId: discovery.trustDomainId,
+            attestorProviderId: discovery.attestorProviderId,
+            ...k,
+          }))
         : [],
     );
     const attestors = new Set<string>();

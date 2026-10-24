@@ -16,7 +16,7 @@
     "minEvidenceIdLength": 22,
     "maxEvidenceIdLength": 128,
     "maxTimestamp": 4294967295,
-    "minUngrantedRevocationsPerWallet": 10000
+    "minUngrantedRevocationsPerAnnouncer": 10000
   },
   "refusals": [
     "trust_domain_not_allowed",
@@ -2077,6 +2077,49 @@
       ],
       "revocationCheckSeconds": 900,
       "updatedAt": 1788220800
+    },
+    "alias-revokes-colliding-key-id": {
+      "protocol": "erc8262-provider",
+      "protocolVersion": 1,
+      "trustDomainId": "kyc.gateway-alias.test",
+      "mode": "gateway",
+      "operator": "Gateway alias (fixture)",
+      "deployments": [
+        {
+          "chainId": 84532,
+          "oracleAddress": "0x8262000000000000000000000000000000084532",
+          "attestorProviderId": "1"
+        }
+      ],
+      "keys": [
+        {
+          "keyId": "gw-root-1",
+          "use": "credential-root",
+          "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+          "notBefore": 1767225600
+        },
+        {
+          "keyId": "gw-signals-1",
+          "use": "signed-signals",
+          "signerPubkeyHash": "0x5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+          "notBefore": 1788220800,
+          "revokedAt": 1788307200
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "sumsub",
+          "claims": [
+            {
+              "claimType": "kyc.individual",
+              "policyId": "sumsub/basic-kyc-level/v1",
+              "proofType": 4
+            }
+          ]
+        }
+      ],
+      "revocationCheckSeconds": 900,
+      "updatedAt": 1767225600
     }
   },
   "evidence": {
@@ -4961,6 +5004,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -5053,6 +5097,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "2",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -5174,6 +5219,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -5295,6 +5341,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -5426,6 +5473,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -5547,6 +5595,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1",
             "updatedAt": 1767225600,
             "revokedKeys": []
           },
@@ -5663,6 +5712,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -5781,6 +5831,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -5899,6 +5950,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -5985,7 +6037,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway-rolled-back"
+          {
+            "discovery": "gateway-rolled-back",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -6022,6 +6077,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -6143,6 +6199,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -6375,6 +6432,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -6604,6 +6662,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -6726,6 +6785,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -6845,6 +6905,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -7074,6 +7135,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -7496,7 +7558,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -7647,6 +7712,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -7769,6 +7835,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -7886,6 +7953,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -8007,6 +8075,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "kyc.impostor.test",
+            "attestorProviderId": "9",
             "updatedAt": 1767225600,
             "revokedKeys": []
           },
@@ -8124,6 +8193,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8246,6 +8316,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8368,6 +8439,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8490,6 +8562,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8612,6 +8685,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8734,6 +8808,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -8820,7 +8895,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -8858,6 +8936,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788307200,
             "revokedKeys": []
           },
@@ -8975,6 +9054,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -9103,6 +9183,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -9225,6 +9306,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -9347,6 +9429,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -9477,6 +9560,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -9599,6 +9683,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -9718,6 +9803,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -9835,6 +9921,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -9917,7 +10004,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "native"
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [
@@ -9960,6 +10050,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -10074,6 +10165,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -10196,6 +10288,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -10318,6 +10411,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -10440,6 +10534,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -10577,6 +10672,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -10694,6 +10790,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -10811,6 +10908,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -10928,6 +11026,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -11045,6 +11144,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -11162,6 +11262,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -11287,6 +11388,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -11414,6 +11516,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -11552,6 +11655,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -11680,6 +11784,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -11819,6 +11924,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -11951,6 +12057,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12084,6 +12191,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12218,6 +12326,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12349,6 +12458,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12481,6 +12591,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12613,6 +12724,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12747,6 +12859,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -12881,6 +12994,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -13015,6 +13129,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -13149,6 +13264,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -13287,6 +13403,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -13420,6 +13537,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -13553,6 +13671,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -13685,6 +13804,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -13805,6 +13925,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -13933,6 +14054,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14063,6 +14185,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -14191,6 +14314,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14320,6 +14444,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -14448,6 +14573,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14581,6 +14707,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14714,6 +14841,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14848,6 +14976,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -14982,6 +15111,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -15116,6 +15246,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -15248,6 +15379,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -15370,6 +15502,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -15487,6 +15620,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -15614,6 +15748,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -15746,6 +15881,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -15880,6 +16016,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16018,6 +16155,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -16145,6 +16283,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16266,6 +16405,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16389,6 +16529,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16516,6 +16657,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16648,6 +16790,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16782,6 +16925,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -16920,6 +17064,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17036,6 +17181,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17153,6 +17299,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17270,6 +17417,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17386,6 +17534,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17503,6 +17652,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17620,6 +17770,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17737,6 +17888,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -17854,6 +18006,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -17973,6 +18126,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18092,6 +18246,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18211,6 +18366,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18330,6 +18486,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18449,6 +18606,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18532,7 +18690,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -18570,6 +18731,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788307200,
             "revokedKeys": []
           },
@@ -18687,6 +18849,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18809,6 +18972,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -18934,6 +19098,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19051,6 +19216,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19178,6 +19344,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -19305,6 +19472,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19423,6 +19591,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19544,6 +19713,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19661,6 +19831,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -19748,7 +19919,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [
@@ -19790,6 +19964,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -19912,6 +20087,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20036,6 +20212,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20265,6 +20442,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20389,6 +20567,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20513,6 +20692,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20637,6 +20817,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -20720,7 +20901,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -20758,6 +20942,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788307200,
             "revokedKeys": []
           },
@@ -20839,7 +21024,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -20989,6 +21177,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -21116,6 +21305,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1793318400,
             "revokedKeys": [
               {
@@ -21248,6 +21438,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1793318400,
             "revokedKeys": [
               {
@@ -21380,6 +21571,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1793318400,
             "revokedKeys": [
               {
@@ -21466,7 +21658,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway-key-revoked-future"
+          {
+            "discovery": "gateway-key-revoked-future",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -21504,6 +21699,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1",
             "updatedAt": 1767225600,
             "revokedKeys": []
           },
@@ -21585,7 +21781,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway-revokes-foreign-key"
+          {
+            "discovery": "gateway-revokes-foreign-key",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -21638,6 +21837,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -21645,6 +21845,389 @@
           "evidence": {
             "trustDomainId": "attest.native-kyc.test",
             "evidenceId": "ev_native_kyc_multi_w10000"
+          }
+        },
+        "heldGrant": "kept"
+      }
+    },
+    {
+      "name": "key-revocation-shared-after-recorder-unlisted",
+      "description": "The consumer recorded the gateway's document revoking gw-root-1 under attestor 1, then removed the gateway from its allowlist. The revocation stays recorded under the attestor pinned when it was recorded, so it still applies to the alias host pinned to attestor 1.",
+      "discovery": "alias",
+      "evidence": "alias-sumsub",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "gateway-key-revoked-future",
+            "attestorProviderId": "1"
+          }
+        ],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "discoveryFetch": {
+          "host": "kyc.gateway-alias.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "kyc.gateway-alias.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_alias_sumsub_w100000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0xcb001833c8551476d8c0fae759365ae5e31e74ab6fc8988fb19508adfd111eab",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1767225600,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "evidenceId": "ev_alias_sumsub_w100000000"
+          }
+        },
+        "heldGrant": "ended"
+      }
+    },
+    {
+      "name": "key-revocation-shared-to-domain-pinned-later",
+      "description": "After recording the gateway's revocation of gw-root-1 under attestor 1, the consumer pins a further host to attestor 1. That host lists the same credentialSigner as current: a recorded key revocation applies to every trust domain pinned to its attestor now, including one pinned after it was recorded.",
+      "discovery": "impostor",
+      "evidence": "impostor-sumsub",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          },
+          {
+            "trustDomainId": "kyc.impostor.test",
+            "attestorProviderId": "1"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "gateway-key-revoked-future",
+            "attestorProviderId": "1"
+          }
+        ],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": null,
+        "discoveryFetch": {
+          "host": "kyc.impostor.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "kyc.impostor.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_impostor_sumsub_w100000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0xcb001833c8551476d8c0fae759365ae5e31e74ab6fc8988fb19508adfd111eab",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "key_revoked",
+        "records": {
+          "discovery": {
+            "trustDomainId": "kyc.impostor.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1767225600,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "kyc.impostor.test",
+            "evidenceId": "ev_impostor_sumsub_w100000"
+          }
+        },
+        "heldGrant": "ended"
+      }
+    },
+    {
+      "name": "key-revocation-colliding-key-id-not-shared",
+      "description": "The consumer recorded the alias host's document revoking its own key gw-signals-1, whose material differs from the gateway's gw-signals-1. Across trust domains a revocation matches key material only, never a keyId: the gateway's evidence under its gw-signals-1 is accepted.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-signed",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "alias-revokes-colliding-key-id",
+            "attestorProviderId": "1"
+          }
+        ],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": {
+          "proofType": 7,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        },
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_signed_w10000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "0x0000000000000000000000008262000000000000000000000000000000084532",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 7,
+            "publicInputsHash": "0xcf30418a9cba92d3450d24d0a7a54b26958e8e401e95611e9129afd8a6c50dc1",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_signed_w10000"
           }
         },
         "heldGrant": "kept"
@@ -21764,6 +22347,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -21897,6 +22481,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -22034,6 +22619,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -22147,6 +22733,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -22157,6 +22744,141 @@
           }
         },
         "heldGrant": "kept"
+      }
+    },
+    {
+      "name": "config-of-statement-for-other-type-not-read",
+      "description": "The consumer's statement is for proof type 7 and names a config_hash the Oracle no longer holds valid; the evidence is proof type 8. Step 23 reads only the statement for the evidence's proof type, so this evidence is refused at step 30 (a statement for another type), not at step 23.",
+      "discovery": "gateway",
+      "evidence": "gateway-sumsub-risk",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": [],
+        "statement": {
+          "proofType": 7,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c"
+        },
+        "discoveryFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "gateway.xochi.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_gw_sumsub_risk_w1000000",
+        "proof": {
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
+            "0x0000000000000000000000000000000000000000000000000000000000000bb8",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "0x000000000000000000000000000000000000000000000000000000006aa5e780",
+            "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+            "0x0000000000000000000000000000000000000000000000000000000000014a34",
+            "0x0000000000000000000000008262000000000000000000000000000000084532",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 8,
+            "publicInputsHash": "0xeab6926cb7308e86ccc9dce6e8e45b319adce6026ab68eb0c6cb5d6214a98547",
+            "expiresAt": 1793577600,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_mismatch",
+        "records": {
+          "discovery": {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
+            "updatedAt": 1788220800,
+            "revokedKeys": [
+              {
+                "keyId": "gw-root-0",
+                "material": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65"
+              }
+            ]
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "gateway.xochi.test",
+            "evidenceId": "ev_gw_sumsub_risk_w1000000"
+          }
+        },
+        "heldGrant": "suspended"
       }
     },
     {
@@ -22279,6 +23001,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -22361,7 +23084,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "native"
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [
@@ -22404,6 +23130,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -22747,6 +23474,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -22860,6 +23588,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1793491260,
             "revokedKeys": [
               {
@@ -23095,6 +23824,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -23217,6 +23947,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -23334,6 +24065,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -23415,7 +24147,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -23452,6 +24187,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -23538,7 +24274,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -23575,6 +24314,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1",
             "updatedAt": 1767225600,
             "revokedKeys": []
           },
@@ -23691,6 +24431,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -23808,6 +24549,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -23924,6 +24666,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -24041,6 +24784,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -24169,6 +24913,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -24301,6 +25046,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -24423,6 +25169,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -24555,6 +25302,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -24677,6 +25425,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -24793,6 +25542,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -25020,6 +25770,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -25139,6 +25890,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -25492,6 +26244,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -26065,6 +26818,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -26298,6 +27052,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -26527,6 +27282,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -26869,6 +27625,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -27175,7 +27932,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -27290,7 +28050,10 @@
           "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
         ],
         "seenDiscovery": [
-          "gateway"
+          {
+            "discovery": "gateway",
+            "attestorProviderId": "1"
+          }
         ],
         "seenEvidence": [],
         "seenRevoked": [],
@@ -27441,6 +28204,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -27558,6 +28322,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "9",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -27680,6 +28445,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -27812,6 +28578,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -27934,6 +28701,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28066,6 +28834,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28199,6 +28968,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28321,6 +29091,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -28438,6 +29209,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28560,6 +29332,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -28684,6 +29457,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -28808,6 +29582,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
             "updatedAt": 1788220800,
             "revokedKeys": []
           },
@@ -28927,6 +29702,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -29048,6 +29824,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -29170,6 +29947,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -29292,6 +30070,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -29414,6 +30193,7 @@
         "records": {
           "discovery": {
             "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1",
             "updatedAt": 1788220800,
             "revokedKeys": [
               {
@@ -32090,6 +32870,177 @@
         ],
         "count": 1,
         "satisfied": false
+      }
+    },
+    {
+      "name": "key-revocation-not-shared-across-attestors-in-quorum",
+      "description": "The gateway member's discovery document lists the native attestor's public signer hash as its own revoked gw-signals-2. Shared revocations keep their keying: a key revocation reaches a member of another trust domain only when that one is pinned to the attestor it was recorded under, so the native member still counts.",
+      "threshold": 2,
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [],
+        "seenEvidence": [],
+        "seenRevoked": []
+      },
+      "requirement": {
+        "claimType": "kyc.individual",
+        "proofType": 9,
+        "statement": {
+          "proofType": 9,
+          "jurisdictionIds": [
+            0,
+            1
+          ],
+          "configHash": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "minThresholdM": 2
+        }
+      },
+      "members": [
+        {
+          "discovery": "native",
+          "evidence": "native-kyc-multi",
+          "discoveryFetch": {
+            "host": "attest.native-kyc.test",
+            "status": 200
+          },
+          "evidenceFetch": {
+            "host": "attest.native-kyc.test",
+            "status": 200
+          },
+          "announcedEvidenceId": "ev_native_kyc_multi_w10000",
+          "proof": {
+            "publicInputs": [
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+              "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+              "0x000000000000000000000000000000000000000000000000000000006ab07380",
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000014a34",
+              "0x0000000000000000000000008262000000000000000000000000000000084532",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+            ],
+            "attestation": {
+              "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "proofType": 9,
+              "publicInputsHash": "0x99e3a0317a2483d825d49e40c75ed008eb03d9a90082afc8c42ecc7974495373",
+              "expiresAt": 1793577600,
+              "revoked": false
+            }
+          }
+        },
+        {
+          "discovery": "gateway-revokes-foreign-key",
+          "evidence": "gateway-sumsub-multi",
+          "discoveryFetch": {
+            "host": "gateway.xochi.test",
+            "status": 200
+          },
+          "evidenceFetch": {
+            "host": "gateway.xochi.test",
+            "status": 200
+          },
+          "announcedEvidenceId": "ev_gw_sumsub_multi_w100000",
+          "proof": {
+            "publicInputs": [
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+              "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+              "0x000000000000000000000000000000000000000000000000000000006ab07380",
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "0x0000000000000000000000000000000000000000000000000000000000014a34",
+              "0x0000000000000000000000008262000000000000000000000000000000084532",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+            ],
+            "attestation": {
+              "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "proofType": 9,
+              "publicInputsHash": "0x99e3a0317a2483d825d49e40c75ed008eb03d9a90082afc8c42ecc7974495373",
+              "expiresAt": 1793577600,
+              "revoked": false
+            }
+          }
+        }
+      ],
+      "expected": {
+        "attestors": [
+          "1",
+          "7"
+        ],
+        "count": 2,
+        "satisfied": true
       }
     }
   ]
