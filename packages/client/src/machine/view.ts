@@ -62,12 +62,12 @@ function signingSlot(model: Model): SigningSlot {
 }
 
 export function view(model: Model): Receipt {
-  const { status, reconciling, mayHaveMoved, quote, quotedSettlement } = model.intent;
+  const { status, reconciling, mayHaveMoved, notSent, quote, quotedSettlement } = model.intent;
   // A held quote is disclosed under the settlement it was requested (and is
   // signed) under, not whatever the form says now.
   const settlement = (quote && quotedSettlement) || model.ctx.settlementPreference;
   return {
-    phase: phaseFromStatus(status, { reconciling, mayHaveMoved }),
+    phase: phaseFromStatus(status, { reconciling, mayHaveMoved, notSent }),
     quote: quoteSlot(model),
     payout: payoutOf(quote),
     cost: costOf(quote),

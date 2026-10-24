@@ -453,6 +453,32 @@ describe("refusals the server cannot switch off", () => {
     expect(s.intent.status).toBe("awaiting_deposit");
   });
 
+  it("ends a failed deposit route as may have moved unless it is marked not_executed", async () => {
+    // The deposit may have been sent while the poll never saw it detected.
+    for (const [substatus, phase] of [
+      [undefined, "may-have-moved"],
+      ["not_executed", "failed"],
+    ] as const) {
+      const fields = signedFields();
+      const s = new Session(depositCtx(), DEPOSIT_CONFIG);
+      allocate(s, depositQuote(fields, await attest(fields)));
+      s.send({ type: "SignRequested" });
+      expect(s.intent.status).toBe("awaiting_deposit");
+      s.send({
+        type: "StreamStatus",
+        message: {
+          type: "intent_status",
+          intentId: "xi_dep1",
+          status: "failed",
+          ...(substatus ? { substatus } : {}),
+          timestamp: "t",
+        },
+      });
+      expect(s.intent.status, String(substatus)).toBe("failed");
+      expect(s.receipt.phase, String(substatus)).toBe(phase);
+    }
+  });
+
   it("refuses a new allocation on a settled deposit, never reopening its route", async () => {
     const fields = signedFields();
     const s = new Session(depositCtx(), DEPOSIT_CONFIG);

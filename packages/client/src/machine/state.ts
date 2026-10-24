@@ -127,12 +127,23 @@ export interface IntentState {
    */
   pollExhausted: boolean;
   /**
-   * Set on a `failed` read after an execute that does not carry the Worker's
-   * nothing-moved marker (`failureMayHaveMoved`): the order did not complete
-   * and the funds may have moved. Terminal and never offered Retry: the phase
-   * is `may-have-moved`, the poll is stopped, and no quote starts until Reset.
+   * Set on a `failed` read after an execute (or a revealed deposit address)
+   * that does not carry the Worker's nothing-moved marker
+   * (`failureMayHaveMoved`): the order did not complete and the funds may have
+   * moved. Terminal and never offered Retry: the phase is `may-have-moved`, the
+   * poll is stopped, and no quote starts until Reset.
    */
   mayHaveMoved: boolean;
+  /**
+   * Set when this client stops resending an execute the Worker answered
+   * not-accepted (`decideExecuteResend` gives up): the order was not sent, but
+   * the signed request stays executable until its deadline, so there is no
+   * Retry yet. The status stays `executing`, the phase is `not-sent`, and the
+   * poll runs on until the Worker finishes the intent `failed` (Retry only
+   * with `NOT_EXECUTED_SUBSTATUS`). Cleared by any read other than `quoted`
+   * (another execute claimed it: shown in doubt) and by leaving `executing`.
+   */
+  notSent: boolean;
   /**
    * Set when a sign ceremony was refused before the funds-moving signature
    * (see SignRefusal). The intent is `quoted` so the quote stays on screen; a
@@ -163,5 +174,6 @@ export const INITIAL_INTENT_STATE: IntentState = {
   attestedDeposit: null,
   pollExhausted: false,
   mayHaveMoved: false,
+  notSent: false,
   refusal: null,
 };

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { STATUS_POLL_MS } from "./decisions.js";
+import { STATUS_POLL_MS, unexecutedFinishAt } from "./decisions.js";
 import {
   RECONCILE_AFTER_ATTEMPTS,
   SIGN_PROMPT_TIMEOUT_MS,
@@ -39,6 +39,27 @@ const signIntent = (s: Session) =>
 
 const timers = (fx: Effect[]) =>
   fx.flatMap((e) => (e.type === "Timer" ? [`${e.call.op}:${e.call.timer}`] : []));
+
+/**
+ * Run up to `ticks` poll intervals, each answered with `data`; returns how
+ * many ran before the poll stopped asking.
+ */
+const pollReads = (s: Session, data: IntentStatusData, ticks: number): number => {
+  for (let i = 0; i < ticks; i++) {
+    const asked = apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status");
+    if (asked.length === 0) return i;
+    const { gen, attempt } = only(asked);
+    s.send({ type: "StatusReplied", gen, attempt, result: { ok: true, status: data } });
+  }
+  return ticks;
+};
+
+/** Unix ms of the Worker's finish of the fixture quote's unclaimed intent. */
+const workerFinishMs = (s: Session): number => {
+  const finish = unexecutedFinishAt(s.intent.quote);
+  if (finish === null) throw new Error("no finish time");
+  return finish * 1000;
+};
 
 describe("preview and connect", () => {
   it("quotes a walletless visitor as an unsignable preview", () => {
@@ -446,6 +467,24 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
+    it("keeps a reconciling `quoted` reply in doubt and polls it", () => {
+      // The Worker un-claimed a marked refusal it could not finish: a later
+      // read finishes the intent, so this is neither Retry nor an edit.
+      const { s, flow } = executing();
+      s.send({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: true,
+          response: { success: false, intentId: "xi_1", status: "quoted", reconciling: true },
+        },
+      });
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.reconciling).toBe(true);
+      expect(s.receipt.phase).toBe("pending");
+      expect(s.model.poll?.stopped).toBe(false);
+    });
+
     // The poll answers with what the transport decodes: a granular
     // `fill_failed` arrives as `failed`, a status the server calls terminal.
     const pollReply = (s: Session, status: IntentStatusData) => {
@@ -603,6 +642,8 @@ describe("one signature (no origin pull)", () => {
       expect(s.receipt.phase).toBe("may-have-moved");
       for (const msg of [
         { type: "RefreshRequested" },
+        // Clearing the amount is no way out either.
+        { type: "QuoteRequested", amount: "" },
         { type: "QuoteRequested", amount: "2000000" },
         { type: "TimerFired", timer: "debounce" },
         { type: "VisibilityChanged" },
@@ -683,6 +724,43 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
+    it("polls an execute that never reached the Worker until its finish, then offers Retry", () => {
+      // A refused redirect or a timeout before any answer: the row stays
+      // `quoted`, and the Worker's read past the signed deadline plus grace
+      // finishes it `failed` with `not_executed`.
+      for (const error of ["Refused a redirect (/api/intent/execute)", "AbortError"]) {
+        const { s, flow } = executing();
+        const report = { rejected: false, value: error, detail: error };
+        s.send({ type: "ExecuteReplied", flow, result: { ok: false, error: report } });
+        expect(s.receipt.phase, error).toBe("pending");
+        // Every `quoted` read until the finish keeps polling, past the flat
+        // ten-minute ceiling, and never offers Retry.
+        const ticks = Math.ceil((workerFinishMs(s) - s.now) / STATUS_POLL_MS);
+        expect(ticks, error).toBeGreaterThan(150);
+        expect(pollReads(s, statusData({ status: "quoted" }), ticks), error).toBe(ticks);
+        expect(s.now, error).toBeGreaterThanOrEqual(workerFinishMs(s));
+        expect(s.intent.pollExhausted, error).toBe(false);
+        expect(s.intent.status, error).toBe("executing");
+        expect(s.receipt.phase, error).toBe("pending");
+        pollReads(
+          s,
+          statusData({ status: "failed", terminal: true, substatus: "not_executed" }),
+          1,
+        );
+        expect(s.intent.status, error).toBe("failed");
+        expect(s.intent.mayHaveMoved, error).toBe(false);
+        expect(s.receipt.phase, error).toBe("failed");
+      }
+      // `quoted` is no progress: past the finish the ceiling still stops the poll.
+      const { s, flow } = executing();
+      const report = { rejected: false, value: "x", detail: "x" };
+      s.send({ type: "ExecuteReplied", flow, result: { ok: false, error: report } });
+      const ran = pollReads(s, statusData({ status: "quoted" }), 5000);
+      expect(ran).toBeLessThan(5000);
+      expect(s.now).toBeGreaterThan(workerFinishMs(s));
+      expect(s.intent.pollExhausted).toBe(true);
+    });
+
     it("treats a reply for another intent as in doubt", () => {
       const { s, flow } = executing();
       s.send({
@@ -754,6 +832,18 @@ describe("one signature (no origin pull)", () => {
       fx.flatMap((e) =>
         e.type === "Timer" && e.call.op === "set" && e.call.timer === timer ? [e.call.ms] : [],
       );
+    // Every give-up of this client: "not sent yet", no Retry, still polling,
+    // since the Worker un-claimed the intent and the signed request stays
+    // executable until its deadline.
+    const expectNotSent = (s: Session, label = "") => {
+      expect(s.intent.status, label).toBe("executing");
+      expect(s.intent.notSent, label).toBe(true);
+      expect(s.intent.reconciling, label).toBe(false);
+      expect(s.receipt.phase, label).toBe("not-sent");
+      expect(s.model.sign, label).toBeNull();
+      expect(s.model.poll?.stopped, label).toBe(false);
+      expect(s.model.poll?.key, label).toBe("xi_1:executing");
+    };
 
     it("waits for Retry-After, then resends the same signed request once", () => {
       const { s, exec } = executing();
@@ -790,7 +880,7 @@ describe("one signature (no origin pull)", () => {
       expect(s.model.sign).toBeNull();
     });
 
-    it("stops after three resends: the Retry view with the countdown", () => {
+    it("stops after three resends: not sent yet, still polling, no Retry", () => {
       const { s, exec } = executing();
       let flow = exec.flow;
       for (let resend = 1; resend <= 3; resend++) {
@@ -804,16 +894,18 @@ describe("one signature (no origin pull)", () => {
         expect(call.request).toEqual(exec.request);
         flow = call.flow;
       }
+      // A 4th refusal the client sees need not be the Worker's budget (its
+      // wallet rate limit counts none), so the row may still be executable.
       const retryAfter = nowSec(s) + 5;
       const fx = s.send(busy(flow, retryAfter));
       expect(timerSet(fx, "execute")).toEqual([]);
-      expect(s.intent.status).toBe("failed");
+      expectNotSent(s);
       expect(s.intent.error).toEqual({ message: "HTTP 503: Solver busy", code: 503, retryAfter });
-      expect(s.intent.reconciling).toBe(false);
-      expect(s.receipt.phase).toBe("failed");
-      expect(s.model.sign).toBeNull();
       expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute")).toEqual(
         [],
+      );
+      expect(only(apiCalls(s.send({ type: "TimerFired", timer: "poll" }), "status")).intentId).toBe(
+        "xi_1",
       );
     });
 
@@ -851,29 +943,34 @@ describe("one signature (no origin pull)", () => {
       expect(s.receipt.phase).toBe("failed");
     });
 
-    it("never resends past the quote deadline", () => {
+    it("never resends past the quote deadline: not sent yet instead", () => {
       // Retry-After lands after the quote expires (60 s after it was served).
       const late = executing();
       const retryAfter = nowSec(late.s) + 120;
       const fx = late.s.send(busy(late.exec.flow, retryAfter));
       expect(timerSet(fx, "execute")).toEqual([]);
-      expect(late.s.intent.status).toBe("failed");
+      expectNotSent(late.s, "late");
       expect(late.s.intent.error).toMatchObject({ code: 503, retryAfter });
-      expect(late.s.receipt.phase).toBe("failed");
 
       // A wait that was in time, but whose timer fires past the deadline.
       const throttled = executing();
       throttled.s.send(busy(throttled.exec.flow, nowSec(throttled.s) + 5));
       const fired = throttled.s.send({ type: "TimerFired", timer: "execute" }, 70_000);
       expect(apiCalls(fired, "execute")).toEqual([]);
-      expect(throttled.s.intent.status).toBe("failed");
+      // Off the resend wait: the real poll re-arms and reads at once.
+      expect(only(apiCalls(fired, "status")).intentId).toBe("xi_1");
+      expectNotSent(throttled.s, "throttled");
       expect(throttled.s.intent.error).toMatchObject({ code: 503 });
 
-      // No Retry-After: nothing to wait for, so Retry rather than a guess.
-      const unhinted = executing();
-      unhinted.s.send(busy(unhinted.exec.flow, undefined));
-      expect(unhinted.s.intent.status).toBe("failed");
-      expect(unhinted.s.receipt.phase).toBe("failed");
+      // No Retry-After, or one older than a minute: nothing to wait for.
+      for (const [label, retryAt] of [
+        ["no retry_after", undefined],
+        ["stale retry_after", T0 / 1000 - 3600],
+      ] as const) {
+        const unhinted = executing();
+        unhinted.s.send(busy(unhinted.exec.flow, retryAt));
+        expectNotSent(unhinted.s, label);
+      }
     });
 
     it("resends from the poll timer when the host never fires the execute timer", () => {
@@ -894,7 +991,8 @@ describe("one signature (no origin pull)", () => {
       // The dropped timer firing after all sends nothing more.
       expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }), "execute")).toEqual([]);
 
-      // A tab returning past the deadline with no timer ever fired: Retry, not a wait forever.
+      // A tab returning past the deadline with no timer ever fired: not sent
+      // yet, polling, rather than a wait forever.
       const away = executing();
       away.s.send(busy(away.exec.flow, nowSec(away.s) + 5));
       away.s.hidden = true;
@@ -902,8 +1000,58 @@ describe("one signature (no origin pull)", () => {
       away.s.hidden = false;
       const back = away.s.send({ type: "VisibilityChanged" }, 70_000);
       expect(apiCalls(back, "execute")).toEqual([]);
-      expect(away.s.intent.status).toBe("failed");
-      expect(away.s.receipt.phase).toBe("failed");
+      expectNotSent(away.s);
+    });
+
+    it("after a give-up, polls `quoted` until the Worker's finish: Retry only on not_executed", () => {
+      const givenUp = () => {
+        const { s, exec } = executing();
+        s.send(busy(exec.flow, undefined));
+        expectNotSent(s);
+        // No Retry while the row reads `quoted`, for as long as the Worker
+        // may still let the signed request execute (past the flat ceiling).
+        const ticks = Math.ceil((workerFinishMs(s) - s.now) / STATUS_POLL_MS);
+        expect(pollReads(s, statusData({ status: "quoted" }), ticks)).toBe(ticks);
+        expect(s.intent.pollExhausted).toBe(false);
+        expectNotSent(s);
+        return s;
+      };
+      const finished = givenUp();
+      pollReads(
+        finished,
+        statusData({ status: "failed", terminal: true, substatus: "not_executed" }),
+        1,
+      );
+      expect(finished.intent.status).toBe("failed");
+      expect(finished.intent.notSent).toBe(false);
+      expect(finished.intent.mayHaveMoved).toBe(false);
+      expect(finished.receipt.phase).toBe("failed");
+
+      // A `failed` without the marker: something else executed it.
+      const unmarked = givenUp();
+      pollReads(unmarked, statusData({ status: "failed", terminal: true }), 1);
+      expect(unmarked.intent.notSent).toBe(false);
+      expect(unmarked.receipt.phase).toBe("may-have-moved");
+
+      // Another execute claimed it (the host resent the signed request):
+      // no longer "not sent", and in doubt.
+      const claimed = givenUp();
+      pollReads(claimed, statusData({ status: "executing" }), 1);
+      expect(claimed.intent.notSent).toBe(false);
+      expect(claimed.intent.reconciling).toBe(true);
+      expect(claimed.receipt.phase).toBe("pending");
+    });
+
+    it("holds not sent yet when the amount is cleared, and on a stream `quoted` frame", () => {
+      const { s, exec } = executing();
+      s.send(busy(exec.flow, undefined));
+      s.send({ type: "QuoteRequested", amount: "" });
+      expectNotSent(s);
+      s.send({
+        type: "StreamStatus",
+        message: { type: "intent_status", intentId: "xi_1", status: "quoted", timestamp: "t" },
+      });
+      expectNotSent(s);
     });
 
     it("stays in doubt unless the flag is exactly true", () => {

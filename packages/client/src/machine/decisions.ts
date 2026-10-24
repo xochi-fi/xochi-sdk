@@ -14,6 +14,7 @@ import {
   IntentStatusFrameSchema,
   MAX_EXECUTE_RESENDS,
   NOT_EXECUTED_SUBSTATUS,
+  QUOTED_EXPIRY_GRACE_SECS,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -55,7 +56,12 @@ export const WALLET_INTERRUPTIBLE_STATES: IntentStatus[] = [
   "failed",
 ];
 
-/** The status poll runs while in one of these in-flight states. */
+/**
+ * The status poll runs while in one of these in-flight states. Each follows an
+ * execute or a revealed deposit address, so a `failed` read from one is Retry
+ * only on the Worker's nothing-moved marker (`failureMayHaveMoved`): a deposit
+ * route's `failed` can follow a deposit the poll never saw.
+ */
 export const POLL_INFLIGHT_STATES: IntentStatus[] = [
   "awaiting_deposit",
   "executing",
@@ -64,20 +70,34 @@ export const POLL_INFLIGHT_STATES: IntentStatus[] = [
 ];
 
 /**
- * States that follow an execute (or, on a deposit route, a detected deposit):
- * a `failed` read from one of them is Retry only on the Worker's nothing-moved
- * marker (`failureMayHaveMoved`).
- */
-export const EXECUTE_SENT_STATES: IntentStatus[] = ["executing", "bridging", "settling"];
-
-/**
- * Whether a `failed` after an execute may have moved funds: every one but the
- * Worker's own nothing-moved finish (`substatus` `NOT_EXECUTED_SUBSTATUS`).
- * The machine shows it as the terminal "may have moved" view (no Retry, no
- * poll, Reset only); rules: README "Fund safety".
+ * Whether a `failed` after an execute (or a revealed deposit address) may have
+ * moved funds: every one but the Worker's nothing-moved finish (`substatus`
+ * `NOT_EXECUTED_SUBSTATUS`, whose sources that constant lists). The machine
+ * shows it as the terminal "may have moved" view (no Retry, no poll, Reset
+ * only); rules: README "Fund safety".
  */
 export function failureMayHaveMoved(substatus: unknown): boolean {
   return substatus !== NOT_EXECUTED_SUBSTATUS;
+}
+
+/**
+ * When (unix seconds) the Worker finishes this quote's intent `failed` with
+ * `NOT_EXECUTED_SUBSTATUS` if no execute ever claimed it: the next read past
+ * its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS`. The signed deadline is
+ * the served `eip712` message's `deadline`; the later of it and the quote's
+ * `expiry` is taken, so the poll never stops short of the Worker's clock. Null
+ * without a readable deadline.
+ */
+export function unexecutedFinishAt(quote: QuoteResponse | null): number | null {
+  if (!quote) return null;
+  const expiryMs = new Date(quote.expiry).getTime();
+  const raw = quote.eip712Data?.message?.deadline;
+  const signed = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : raw;
+  const candidates = [
+    Number.isFinite(expiryMs) ? Math.floor(expiryMs / 1000) : NaN,
+    typeof signed === "number" ? signed : NaN,
+  ].filter((v) => Number.isFinite(v));
+  return candidates.length > 0 ? Math.max(...candidates) + QUOTED_EXPIRY_GRACE_SECS : null;
 }
 
 // ============================================================
@@ -143,6 +163,13 @@ export const POLL_CEILING_MAX_MS = 2 * 60 * 60_000;
  * modal, so a swap that had actually settled sat on a spinner, and the user was
  * then told their funds were coming back and to start again.
  *
+ * `executing` lasts at least until the Worker finishes an intent no execute
+ * claimed (`unexecutedFinishAt`, passed as `unexecutedFinishSecs`) plus one
+ * poll: an execute that never reached the Worker (a timeout, a refused
+ * redirect) or that this client stopped resending reads `quoted`, which is no
+ * progress, until the read that finishes it `failed` with
+ * `NOT_EXECUTED_SUBSTATUS` offers Retry.
+ *
  * Bounded below by the flat ceiling (never poll less than before), and above by
  * POLL_CEILING_MAX_MS.
  */
@@ -152,11 +179,15 @@ export function pollCeilingAttempts(
   nowMs: number,
   pollMs: number,
   flatCeilingMs: number,
+  unexecutedFinishSecs?: number,
 ): number {
   const flat = Math.ceil(flatCeilingMs / pollMs);
-  if (status !== "awaiting_deposit" || !depositDeadlineSecs) return flat;
-
-  const windowMs = depositDeadlineSecs * 1000 - nowMs + DEPOSIT_POLL_GRACE_MS;
+  let windowMs = NaN;
+  if (status === "awaiting_deposit" && depositDeadlineSecs) {
+    windowMs = depositDeadlineSecs * 1000 - nowMs + DEPOSIT_POLL_GRACE_MS;
+  } else if (status === "executing" && unexecutedFinishSecs) {
+    windowMs = unexecutedFinishSecs * 1000 - nowMs + pollMs;
+  }
   if (!Number.isFinite(windowMs) || windowMs <= 0) return flat;
 
   return Math.max(flat, Math.ceil(Math.min(windowMs, POLL_CEILING_MAX_MS) / pollMs));
@@ -579,7 +610,10 @@ const RETRY_AFTER_MAX_AGE_SECS = 60;
  * `retryAfter` and `deadline` are unix seconds, `now` the host's clock; a null
  * `deadline` never resends, a `retryAfter` older than
  * `RETRY_AFTER_MAX_AGE_SECS` gives up, and the wait is at least a second, so
- * a slightly past `retryAfter` cannot spin.
+ * a slightly past `retryAfter` cannot spin. A give-up offers no Retry: the
+ * signed request stays executable until its deadline, so the machine shows
+ * "not sent yet" (`IntentState.notSent`) and polls until the Worker finishes
+ * the intent.
  */
 export function decideExecuteResend(input: {
   resends: number;

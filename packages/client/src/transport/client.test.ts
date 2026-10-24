@@ -458,8 +458,22 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
         () => json({ success: false, error: "Internal server error" }, 500),
         true,
       ],
-      // Another request holds the claim and may move funds.
+      // Another request holds or held the claim and may move funds: the 409
+      // its claim answers, and the 400 its fast path answers before the claim.
       ["a 409", () => json({ success: false, error: "Intent already being executed" }, 409), true],
+      ...["executing", "settling", "failed"].map((status): [string, () => Response, boolean] => [
+        `the 400 for an intent in ${status} status`,
+        () => json({ success: false, error: `Cannot execute intent in ${status} status` }, 400),
+        true,
+      ]),
+      // The Worker's plain 429 also answers an intent another request holds.
+      ["a 429", () => json({ success: false, error: "Rate limit exceeded" }, 429), true],
+      // A pre-claim status never outweighs `reconciling: true`.
+      [
+        "a 400 marked reconciling",
+        () => json({ success: false, error: "refused", reconciling: true }, 400),
+        true,
+      ],
       // A solver rejection the Worker does not mark: it cannot vouch for it.
       [
         "an unmarked failed 502",
@@ -474,13 +488,42 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
       ],
       ["the marker on a 500", () => json({ ...marked, substatus: "not_executed" }, 500), true],
       ["another substatus", () => json({ ...marked, substatus: "fill_failed" }, 502), true],
+      // The marked 502 vouches only as the Worker's own failure body.
+      ...[undefined, true, "false"].map((success): [string, () => Response, boolean] => [
+        `the marker with success ${String(success)}`,
+        () => json({ ...marked, success, substatus: "not_executed" }, 502),
+        true,
+      ]),
+      [
+        "a 409 promo refusal marked reconciling",
+        () =>
+          json(
+            { success: false, error: "x", error_category: "promo_unavailable", reconciling: true },
+            409,
+          ),
+        true,
+      ],
       // The Worker's own nothing-moved answers.
       ["the marked 502", () => json({ ...marked, substatus: "not_executed" }, 502), false],
-      ...[400, 401, 403, 404, 422, 429].map((status): [string, () => Response, boolean] => [
+      ...[400, 401, 403, 404, 422].map((status): [string, () => Response, boolean] => [
         `a ${status}`,
         () => json({ success: false, error: "refused" }, status),
         false,
       ]),
+      // Its promo refusal runs before the claim: the intent stays `quoted`.
+      [
+        "the 409 promo refusal",
+        () =>
+          json(
+            {
+              success: false,
+              error: "This quote's promo code can no longer be used. Request a new quote.",
+              error_category: "promo_unavailable",
+            },
+            409,
+          ),
+        false,
+      ],
       ["a 400 not in JSON", () => new Response("bad request", { status: 400 }), false],
       [
         "a 400 carrying a token",
@@ -560,6 +603,24 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
         label,
       ).toEqual(["manual"]);
     }
+  });
+
+  it("says once, on the first answer, that the injected fetch rebuilds responses", async () => {
+    // A wrapper like `new Response(r.body, r)`: every answer names no url.
+    const { c, logged } = client(() => {
+      const res = okQuote();
+      Object.defineProperty(res, "url", { value: "" });
+      return res;
+    });
+    // The first call is a quote, which reads fine: the host hears of it there,
+    // before any execute is refused and its read token lost.
+    await c.getQuote(req);
+    const said = logged.filter((l) => /naming no url/.test(l.message));
+    expect(said).toEqual([{ level: "error", message: expect.stringMatching(/rebuilt/) }]);
+    const err = (await rejection(c.execute(execRequest))) as Error;
+    expect(err).toBeInstanceOf(RedirectRefused);
+    expect(err.message).toMatch(/naming no url.*\(\/api\/intent\/execute\)$/);
+    expect(logged.filter((l) => /naming no url/.test(l.message))).toHaveLength(1);
   });
 });
 
@@ -1523,6 +1584,7 @@ describe("a real read token through the real error path", () => {
     // Raw in the `<pre>` body; JSON escapes (`\n`, `\r\n`, `\t`) in a JSON one.
     "15 + 15 + 13, line feeds": pieces.join("\n"),
     "15 + 15 + 13, CRLF": pieces.join("\r\n"),
+    "15 + 15 + 13, lone CRs": pieces.join("\r"),
     "15 + 15 + 13, tabs": pieces.join("\t"),
     // Pieces too short to join across a space: only `RUN_JOINER` rejoins them,
     // so a fold of the no-break space (NFKD of it, or of the whole string) leaks.
@@ -1584,7 +1646,7 @@ describe("a real read token through the real error path", () => {
   });
 
   it("reads a JSON string escape between token pieces as the character it encodes", async () => {
-    for (const escape of ["\\n", "\\r\\n", "\\t", "\\/"]) {
+    for (const escape of ["\\n", "\\r\\n", "\\r", "\\t", "\\b", "\\f", "\\/"]) {
       for (const served of [false, true]) {
         const shape = `${escape}, ${served ? "served" : "unserved"}`;
         const token = served ? `,"read_token":"${TOKEN}"` : "";
@@ -1719,6 +1781,44 @@ describe("a real read token through the real error path", () => {
     const text =
       "PermitWitnessTransferFrom TokenPermissions abc123 ReceiveWithAuthorization mismatch";
     expect(await refusedWith(text)).toBe(`HTTP 400: ${text}`);
+  });
+
+  it("joins name-shaped pieces in any chain that holds a token piece", async () => {
+    // 11 + 11 + 11 + 10 random characters; the middle two both read as CamelCase.
+    const camel = ["zuq-DzUzWzw", "CvvxcpxUqcv", "AsdfgHjklzx", "ucOgpe6QuA"];
+    // 9 + 9 + 26: two snake_case pieces side by side, then a token piece.
+    const snake = ["abc_defgh", "hij_klmno", "Zx9_aB3dE5fG7hJ9kL1mN3pQr8"];
+    for (const pieces of [camel, snake]) {
+      const message = await refusedWith(`upstream ${pieces.join(" ")} end`);
+      for (const piece of pieces) expect(message, pieces.join(" ")).not.toContain(piece);
+    }
+    // Names with no token piece in their chain stay readable, however many.
+    const names =
+      "PermitWitnessTransferFrom TokenPermissions ReceiveWithAuthorization: zuq-DzUzWzw end";
+    expect(await refusedWith(names)).toBe(`HTTP 400: ${names}`);
+    // A hard-wrap tail follows only a token piece, never a name.
+    const wrapped = "rejected zuq-DzUzWzw-xY9 PermitWitnessTransferFrom\nsignature mismatch";
+    expect(await refusedWith(wrapped)).toBe(`HTTP 400: ${wrapped}`);
+  });
+
+  it("reads an escaped backslash as a pair, so the token after it keeps its first character", async () => {
+    for (const first of ["n", "r", "t", "b", "f"]) {
+      const token = `${first}${TOKEN.slice(1)}`;
+      for (const [shape, body] of [
+        ["JSON", JSON.stringify({ success: false, error: `C:\\keys\\${token}` })],
+        ["raw", `error at C:\\keys\\${token}`],
+      ]) {
+        const message = await refusedWith(body);
+        expect(rejoinable(message), `${shape}, ${first}`).toBeUndefined();
+        // Raw `\b` / `\f` decode to controls, so `keys` joins the token run.
+        expect(message, `${shape}, ${first}`).toContain("C:\\");
+      }
+    }
+    // Backslashes as text stay as written: never halved, never [redacted].
+    for (const error of ["pattern ^a\\\\/b$ rejected", "pattern ^a\\/b$ rejected"]) {
+      const body = JSON.stringify({ success: false, error });
+      expect(await refusedWith(body)).toBe(`HTTP 400: ${body}`);
+    }
   });
 
   it("reads exactly 8 KiB, and counts a complete body that fills it as cut", async () => {

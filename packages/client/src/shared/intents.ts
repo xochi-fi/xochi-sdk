@@ -78,16 +78,28 @@ export function isIntentStatus(value: unknown): value is IntentStatus {
 }
 
 /**
- * The `substatus` the worker puts on a `failed` it wrote itself knowing nothing
- * moved: the quote sweep finishing an execute the solver never accepted, the
- * resend budget's finish after the solver's not-accepted refusals, and an
- * execute refused because no solver is configured. Served on every intent read,
- * on the stream frame of that transition, and on the execute 502 that reports
- * it. A solver-reported `failed` (which may follow an origin pull) never carries
- * it, and neither does a `failed` the worker cannot vouch for. Mirrors
- * `NOT_EXECUTED_SUBSTATUS` in xochi's `@xochi/shared` `intents.ts`. After an
- * execute the machine offers Retry only on a `failed` with this marker; any
- * other `failed` ends "may have moved" (README "Fund safety").
+ * The `substatus` the worker puts on a `failed` where nothing moved. This is
+ * the one list of its sources; every other doc in this package points here:
+ * - a read (`GET /api/intent/:id` or the status poll; the stream only carries
+ *   the frame such a read publishes) of an intent still `quoted` with no
+ *   execute claim past its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS` (an
+ *   execute that never reached the Worker, or that this client stopped
+ *   resending), finished by that read;
+ * - the quote sweep finishing an execute the solver never accepted;
+ * - the resend budget's finish after the solver's not-accepted refusals;
+ * - an execute refused because no solver is configured;
+ * - a solver refusal of the execute whose body says
+ *   `details.funds_moved === false` (refused before this request's claim and
+ *   before any pull).
+ * Served on every intent read, on the stream frame of that transition, and on
+ * the execute 502 that reports it. Any other solver-reported `failed` (which
+ * may follow an origin pull) never carries it, and neither does a `failed`
+ * nothing vouches for. The Worker vouches for a finish on `accepted: false`
+ * alone because it is the sole caller of the solver's execute for its quotes
+ * (enforced by the solver's ownership check). Mirrors `NOT_EXECUTED_SUBSTATUS`
+ * in xochi's `@xochi/shared` `intents.ts`. After an execute (or a revealed
+ * deposit address) the machine offers Retry only on a `failed` with this
+ * marker; any other `failed` ends "may have moved" (README "Fund safety").
  */
 export const NOT_EXECUTED_SUBSTATUS = "not_executed";
 

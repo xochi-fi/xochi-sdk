@@ -55,7 +55,7 @@ import {
   POLL_INFLIGHT_STATES,
   ALLOCATABLE_STATES,
   ENDED_STATES,
-  EXECUTE_SENT_STATES,
+  unexecutedFinishAt,
   QUOTE_BUSY_STATES,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
@@ -267,9 +267,12 @@ export type MsgBody =
       owner: string;
       depositDeadline: number | null;
       /**
-       * The stored record's `substatus` (`IntentRecord.substatus`). A resumed
-       * `failed` offers Retry only with `NOT_EXECUTED_SUBSTATUS`; any other,
-       * or none, resumes as "may have moved" (README "Fund safety").
+       * The record's `substatus` as `getIntent` returns it now
+       * (`IntentRecord.substatus`). A resumed `failed` offers Retry only with
+       * `NOT_EXECUTED_SUBSTATUS`; any other, or none, resumes as "may have
+       * moved" (README "Fund safety"). Read it from the Worker at resume, never
+       * from host storage: the machine trusts it as it trusts every reply the
+       * host relays, and a stored copy can be stale or altered.
        */
       substatus?: string | null;
     }
@@ -461,6 +464,12 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       const kept = msg.amount === m.amount ? m : supersedeFlights(m, fx);
       const next = { ...kept, allocationKey: null, amount: msg.amount, refresh: null };
       if (!msg.amount || msg.amount === "0") {
+        // "May have moved" holds until Reset, and "not sent yet" until the
+        // Worker finishes the intent: clearing the amount is no way out of
+        // either.
+        if ((m.intent.status === "failed" && m.intent.mayHaveMoved) || m.intent.notSent) {
+          return next;
+        }
         // Including any half-finished two-step signing: the next quote must not
         // inherit "Sign 2 of 2" or a held intent signature.
         return abandonSign({ ...next, intent: INITIAL_INTENT_STATE }, fx);
@@ -673,7 +682,8 @@ function transition(
     return m;
   }
   const from = m.intent.status;
-  let next: Model = { ...m, intent };
+  // "Not sent yet" describes an `executing` this client stopped resending.
+  let next: Model = { ...m, intent: intent.notSent ? { ...intent, notSent: false } : intent };
   if (QUOTE_BUSY_STATES.includes(to) && !QUOTE_BUSY_STATES.includes(from)) {
     next = supersedeFlights(next, fx);
   }
@@ -1532,9 +1542,10 @@ function notAcceptedReport(result: Outcome<{ response: ExecuteReply }>): ErrorRe
 /**
  * The server refused this execute before accepting anything: wait for the
  * refusal's `retryAfter` and send the SAME request again (`resendExecute`)
- * within `decideExecuteResend`'s bounds, else fail with the refusal. Null,
- * leaving the reply in doubt like any other thrown execute, when the intent
- * already reads in doubt (rules: README "Fund safety").
+ * within `decideExecuteResend`'s bounds, else stop resending
+ * (`stopResending`). Null, leaving the reply in doubt like any other thrown
+ * execute, when the intent already reads in doubt (rules: README "Fund
+ * safety").
  */
 function onNotAccepted(
   m: Model,
@@ -1564,7 +1575,7 @@ function onNotAccepted(
   });
   if (decision.kind === "give_up") {
     log(fx, "warn", `${LOG} Execute not accepted; not resending (${decision.reason})`);
-    return transition(endSignFlow({ ...m, pendingIntentSig: null }, flow), fx, "failed", { error });
+    return stopResending({ ...m, pendingIntentSig: null }, flow, error);
   }
   log(
     fx,
@@ -1583,7 +1594,7 @@ function onNotAccepted(
 /**
  * The not-accepted wait is over: send the held request again, unchanged, under
  * a new flow id. A wait that ends past the deadline (a throttled background
- * tab) fails the intent with the refusal instead.
+ * tab) stops resending instead (`stopResending`).
  */
 function resendExecute(m: Model, fx: Effect[], now: number): Model {
   const flow = m.sign;
@@ -1592,9 +1603,7 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
   const deadline = executeDeadline(m.intent.quote);
   if (deadline === null || now > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {
     log(fx, "warn", `${LOG} Execute not accepted; the deadline passed before the resend`);
-    return transition(endSignFlow(m, flow), fx, "failed", {
-      error: attempt.error ?? "The solver is busy. Try again.",
-    });
+    return stopResending(m, flow, attempt.error ?? "The solver is busy. Try again.");
   }
   const [id, next] = nextId(m, "s");
   fx.push({ type: "Api", call: { op: "execute", flow: id, request: attempt.request } });
@@ -1607,6 +1616,23 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
       execute: { ...attempt, resends: attempt.resends + 1, resendAt: null, error: null },
     },
   };
+}
+
+/**
+ * This client gives up resending a not-accepted execute. No Retry: the
+ * Worker un-claimed the intent, so it reads `quoted` and the signed request
+ * stays executable until its deadline (by anyone holding it). The intent
+ * stays `executing`, marked `notSent` ("not sent yet"), and the poll, re-armed
+ * off the resend wait, runs until the Worker finishes the intent past that
+ * deadline (`unexecutedFinishAt`): `failed` with `NOT_EXECUTED_SUBSTATUS` is
+ * Retry; any other read ends the mark (`applyStatusUpdate`).
+ */
+function stopResending(
+  m: Model,
+  flow: SignFlow,
+  error: NonNullable<ExecuteAttempt["error"]>,
+): Model {
+  return patch(endSignFlow(m, flow), { notSent: true, error });
 }
 
 /**
@@ -1760,9 +1786,11 @@ function signFlowFailed(m: Model, fx: Effect[], report: ErrorReport): Model {
  * discard the receipt hashes it carries (xochi#353) -- so its receipt fields
  * merge directly. An UNMAPPED wire status (`decodeWireStatus`) never reads as
  * progress: the intent shows "Still confirming" (reconciling), never success.
- * A `failed` after an execute (`EXECUTE_SENT_STATES`) is Retry only with the
- * Worker's nothing-moved marker; any other ends "may have moved"
- * (`failureMayHaveMoved`), and either way the poll stops.
+ * A `failed` after an execute or a revealed deposit address (any
+ * `POLL_INFLIGHT_STATES`) is Retry only with the Worker's nothing-moved
+ * marker; any other ends "may have moved" (`failureMayHaveMoved`), and either
+ * way the poll stops. "Not sent yet" (`notSent`) holds only while the intent
+ * reads `quoted`: any other read means an execute reached it, shown in doubt.
  */
 function applyStatusUpdate(
   m: Model,
@@ -1778,13 +1806,16 @@ function applyStatusUpdate(
     next = updates ? patch(m, updates) : m;
   } else {
     const updates =
-      plan.status === "failed" && EXECUTE_SENT_STATES.includes(m.intent.status)
+      plan.status === "failed" && POLL_INFLIGHT_STATES.includes(m.intent.status)
         ? { ...plan.updates, mayHaveMoved: failureMayHaveMoved(msg.substatus) }
         : plan.updates;
     next = transition(m, fx, plan.status, updates);
   }
   if (unmapped && POLL_INFLIGHT_STATES.includes(next.intent.status) && !next.intent.reconciling) {
     next = patch(next, { reconciling: true });
+  }
+  if (next.intent.notSent && plan.status !== "quoted") {
+    next = patch(next, { notSent: false, reconciling: true });
   }
   return next;
 }
@@ -1815,10 +1846,13 @@ function onStatus(
   const id = poll.intentId;
   let next = m;
 
+  // A slow execute escalates to "Still confirming"; one not sent (`notSent`)
+  // has nothing in flight to confirm.
   if (
     attempt >= RECONCILE_AFTER_ATTEMPTS &&
     next.intent.intentId === id &&
-    !next.intent.reconciling
+    !next.intent.reconciling &&
+    !next.intent.notSent
   ) {
     next = patch(next, { reconciling: true });
   }
@@ -1873,8 +1907,10 @@ function onStatus(
       next = patch(next, { legsWithheld });
     }
     // The server owns the active-polling decision; a phase change refills the
-    // give-up budget, so the ceiling bounds a swap that is not moving.
-    verdict = s.terminal ? "stop" : s.status === previous ? undefined : "progress";
+    // give-up budget, so the ceiling bounds a swap that is not moving. A read
+    // the intent cannot move to (`quoted` after an execute) is no change: the
+    // ceiling, sized past the Worker's finish (`pollCeilingAttempts`), holds.
+    verdict = s.terminal ? "stop" : next.intent.status === previous ? undefined : "progress";
   }
 
   // Terminal beats the ceiling: a swap that settles on the ceiling tick is
@@ -2058,14 +2094,16 @@ function armPoll(m: Model, fx: Effect[], now: number): Model {
     gen,
     polls: 0,
     spent: 0,
-    // Read once at arm time: the deadline is fixed for the life of a phase, and
-    // it comes from the INTENT (a resumed swap has no quote).
+    // Read once at arm time: the deadlines are fixed for the life of a phase.
+    // The deposit deadline comes from the INTENT (a resumed swap has no
+    // quote); the Worker's finish of an unclaimed intent from the quote.
     max: pollCeilingAttempts(
       status,
       m.intent.depositDeadline ?? undefined,
       now,
       STATUS_POLL_MS,
       STATUS_POLL_FLAT_CEILING_MS,
+      unexecutedFinishAt(m.intent.quote) ?? undefined,
     ),
     stopped: false,
   };

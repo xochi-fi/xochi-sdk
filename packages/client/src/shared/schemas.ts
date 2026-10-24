@@ -554,7 +554,7 @@ export const ExecuteResponseSchema = z
       .literal(NOT_EXECUTED_SUBSTATUS)
       .optional()
       .describe(
-        "`not_executed` on a 502 `failed` the worker wrote knowing nothing moved (the resend budget's finish, or no solver configured): safe to re-quote. Absent on a solver-reported failure.",
+        "`not_executed` on a 502 `failed` where nothing moved (the resend budget's finish, no solver configured, or a solver refusal carrying `details.funds_moved: false`): safe to re-quote. Absent on any other failure.",
       ),
     // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
     // padding. Served once, by the execute that admits the intent; present it as
@@ -591,6 +591,16 @@ export const MAX_EXECUTE_RESENDS = 3;
  * margin the Worker applies before it un-claims.
  */
 export const EXECUTE_RESEND_MARGIN_SECS = 5;
+
+/**
+ * How long past a never-claimed intent's signed deadline the Worker waits
+ * before a read of it (`GET /api/intent/:id` or the status poll, never the
+ * stream) finishes it `failed` with `NOT_EXECUTED_SUBSTATUS`: clock skew
+ * between the Worker and the solver. Mirrors `QUOTED_EXPIRY_GRACE_SECS` in
+ * xochi's `@xochi/shared` `schemas.ts`. The machine polls an execute at least
+ * this long past the quote's deadline (`unexecutedFinishAt`).
+ */
+export const QUOTED_EXPIRY_GRACE_SECS = 60;
 
 // Response wire types (snake_case). The canonical agent contract.
 export type Eip712TypedDataWire = z.infer<typeof Eip712TypedDataSchema>;

@@ -22,6 +22,7 @@ import {
   STATUS_POLL_MS,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_FLAT_CEILING_ATTEMPTS,
+  unexecutedFinishAt,
 } from "./decisions.js";
 import { INITIAL_INTENT_STATE, type IntentState } from "./state.js";
 import {
@@ -29,9 +30,10 @@ import {
   EXECUTE_RESEND_MARGIN_SECS,
   getRefundReasonLabel,
   MAX_EXECUTE_RESENDS,
+  QUOTED_EXPIRY_GRACE_SECS,
   type IntentStatus,
 } from "../shared/index.js";
-import type { ExecuteResponse, IntentWebSocketMessage } from "./wire.js";
+import type { ExecuteResponse, IntentWebSocketMessage, QuoteResponse } from "./wire.js";
 import { T0, erc3009Pull, intentTypedData, quote } from "./test/session.js";
 
 describe("buildQuoteRequest", () => {
@@ -809,5 +811,35 @@ describe("pollCeilingAttempts (deposit window vs the flat ceiling)", () => {
   it("falls back to the flat ceiling when the solver stated no deadline", () => {
     expect(ceiling("awaiting_deposit", undefined)).toBe(FLAT_ATTEMPTS);
     expect(ceiling("awaiting_deposit", NaN)).toBe(FLAT_ATTEMPTS);
+  });
+
+  it("polls an execute past the Worker's finish of an unclaimed intent, bounded", () => {
+    const finish = NOW / 1000 + 1800;
+    const attempts = pollCeilingAttempts("executing", undefined, NOW, POLL_MS, FLAT_MS, finish);
+    expect(attempts * POLL_MS).toBeGreaterThanOrEqual(1_800_000 + POLL_MS);
+    // Only `executing`: an execute never left reads `quoted` there alone.
+    expect(pollCeilingAttempts("settling", undefined, NOW, POLL_MS, FLAT_MS, finish)).toBe(
+      FLAT_ATTEMPTS,
+    );
+    // Never less than the flat ceiling, never past the absolute one.
+    expect(pollCeilingAttempts("executing", undefined, NOW, POLL_MS, FLAT_MS, NOW / 1000)).toBe(
+      FLAT_ATTEMPTS,
+    );
+    expect(
+      pollCeilingAttempts("executing", undefined, NOW, POLL_MS, FLAT_MS, NOW / 1000 + 86_400),
+    ).toBe(Math.ceil(POLL_CEILING_MAX_MS / POLL_MS));
+  });
+
+  it("finds the Worker's finish at the later of the signed deadline and the expiry, plus grace", () => {
+    const expiry = new Date(NOW + 30_000).toISOString();
+    const signed = (deadline: unknown) =>
+      ({ expiry, eip712Data: { message: { deadline } } }) as unknown as QuoteResponse;
+    const expirySecs = Math.floor((NOW + 30_000) / 1000);
+    expect(unexecutedFinishAt(signed(String(expirySecs + 300)))).toBe(
+      expirySecs + 300 + QUOTED_EXPIRY_GRACE_SECS,
+    );
+    expect(unexecutedFinishAt(signed(expirySecs - 10))).toBe(expirySecs + QUOTED_EXPIRY_GRACE_SECS);
+    expect(unexecutedFinishAt(signed(undefined))).toBe(expirySecs + QUOTED_EXPIRY_GRACE_SECS);
+    expect(unexecutedFinishAt(null)).toBeNull();
   });
 });

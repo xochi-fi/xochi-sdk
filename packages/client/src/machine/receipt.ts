@@ -73,12 +73,13 @@ export type SigningSlot =
   | { kind: "awaiting_second" }
   | { kind: "submitted" }
   /**
-   * The solver refused the execute before accepting anything (busy): nothing
-   * moved, and the same signed request is sent again automatically at
-   * `retryAt` (unix seconds). This is resend `resend` of at most `of`. The
-   * phase stays `submitting`. The copy the app and widget render: "Solver
-   * busy. Nothing has moved yet. Resending in Ns (retry r of n)." with "Keep
-   * this tab open. If it closes, this tab will not resend the order."
+   * The Worker answered the execute not-accepted (the solver is busy), and the
+   * same signed request is sent again automatically at `retryAt` (unix
+   * seconds). This is resend `resend` of at most `of`. The phase stays
+   * `submitting`. Suggested copy, which makes no funds claim (the signed
+   * request stays executable during the wait): "Solver busy. Resending in Ns
+   * (retry r of n)." with "Keep this tab open. If it closes, this tab will not
+   * resend the order."
    */
   | { kind: "busy"; retryAt: number; resend: number; of: number }
   /** The sign ceremony was refused before funds could move; the quote is still on screen. */

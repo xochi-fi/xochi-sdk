@@ -245,9 +245,10 @@ export interface ExecuteResponse {
   /**
    * Per-intent read capability (xochi#563), served once and only by a server
    * that issues it. Keep it with the intent and pass it as `readToken` to
-   * `getIntent` / `getIntentStatus`: without it a stealth or shielded intent's
-   * status reads without its on-chain legs. A bearer secret: never log it or
-   * put it in a URL.
+   * `getIntent` / `getIntentStatus`: without it a stealth intent's status
+   * reads without its on-chain legs (a shielded leg's Aztec identifiers never
+   * come with it: `IntentReadOptions`). A bearer secret: never log it or put
+   * it in a URL.
    */
   readToken?: string;
 }
