@@ -45,11 +45,18 @@ const MAX_EVIDENCE_ID_LENGTH = 128;
 // revoked body) of an id no grant rests on, per (trust domain, announcing party as the
 // consumer authenticated it, never the subject wallet an announcement names), and on the
 // unattributed announcements of one trust domain (SPEC.md section 10.7, Revocation bound).
-// The trust domain's own callback or push is not charged to it. A wallet or session announces
-// one id per evidence it was issued, so 10 000 within the 365-day retention is about 27 a day,
-// every day; at about 200 bytes a record it caps one party at some 2 MB per trust domain.
+// The trust domain's own callback or push, authenticated as the provider's by a credential
+// the consumer set up with it (never a source address or a host header), is not charged to it.
+// A wallet or session announces one id per evidence it was issued, so 10 000 within the
+// 365-day retention is about 27 a day, every day; at about 200 bytes a record it caps one
+// party at some 2 MB per trust domain.
 // Reaching it only leaves further such records unwritten: nothing becomes unavailable.
 const MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER = 10000;
+// How long an evaluation re-resolves the block tags when one resolves below the deployment's
+// block floor (SPEC.md section 10.5, Block floor) before it is unavailable (a held grant's
+// re-evaluation is deferred, never suspended). A load-balanced RPC's replicas trail by a block
+// or two, which this covers on any chain with blocks at most 12 s apart.
+const BLOCK_FLOOR_WAIT_SECONDS = 30;
 // Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
 // fails the schema instead of becoming a permanent "newest updatedAt", and every runner
 // language compares the values exactly.
@@ -1318,10 +1325,34 @@ type LatestReads = {
   validConfigs: string[];
   attestationRevoked: boolean;
 };
+// The block pair an evaluation (or a quorum) resolved before its first Oracle read (SPEC.md
+// section 10.5, Block floor): the node's eth_chainId and each tag's number and timestamp,
+// after any re-resolving below the floor. The floor is the deployment's, from the store.
+type BlockRef = { number: number; timestamp: number };
+type Blocks = { chainId: number; finalized: BlockRef; latest: BlockRef };
+type BlockFloor = { finalized: number; latest: number };
+const FINALIZED_BLOCK = 30_000_000;
+// About 15 minutes of 2 s blocks past finality, the latest block two seconds before the
+// case's clock.
+const LATEST_BLOCK = FINALIZED_BLOCK + 450;
+const blocksOn = (chainId: number, now = NOW): Blocks => ({
+  chainId,
+  finalized: { number: FINALIZED_BLOCK, timestamp: now - 900 },
+  latest: { number: LATEST_BLOCK, timestamp: now - 2 },
+});
+// The deployment's floor as an evaluation of some other evidence a minute ago left it: the
+// same finalized block, a latest block 30 blocks back.
+const BLOCK_FLOOR: BlockFloor = { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK - 30 };
 // What the consumer requires of the proof: an evaluation case states it; a quorum case's
-// requirement carries it for every member. An evaluation case also states its latest-block
-// reads (null: the same as finalized); a quorum's members read the same at both blocks.
-type Context = Consumer & Attempt & { statement: Statement; latest: LatestReads | null };
+// requirement carries it for every member. Every case also states its latest-block reads
+// (null: the same as finalized), its block pair and the deployment's block floor.
+type Context = Consumer &
+  Attempt & {
+    statement: Statement;
+    latest: LatestReads | null;
+    blocks: Blocks;
+    blockFloor: BlockFloor | null;
+  };
 
 const REGISTRY_BASE_SEPOLIA: RegistryEntry[] = [
   {
@@ -1407,16 +1438,19 @@ const SEPOLIA_CONSUMER: Consumer = {
 // A case's context before finalize(): announcedEvidenceId defaults to the evidence's own id,
 // statement to the consumer's statement for the evidence's proof type, proof to the proof
 // that matches both, latest to null (the latest block reads the same as the finalized one;
-// a partial latest takes the rest from the finalized reads), and a seenDiscovery entry given
-// by name to the attestor it was recorded under: the one the case's allowlist pins its trust
-// domain to, if the document names that attestor for the case's deployment, else null. A case
-// states only what it varies; the shipped vectors carry every field.
+// a partial latest takes the rest from the finalized reads), blocks to a valid pair on the
+// consumer's chain above BLOCK_FLOOR, blockFloor to BLOCK_FLOOR, and a seenDiscovery entry
+// given by name to the attestor it was recorded under: the one the case's allowlist pins its
+// trust domain to, if the document names that attestor for the case's deployment, else null.
+// A case states only what it varies; the shipped vectors carry every field.
 type ContextInput = Omit<Consumer, "seenDiscovery"> & {
   seenDiscovery: (string | SeenDiscovery)[];
 } & Pick<Attempt, "discoveryFetch" | "evidenceFetch"> &
   Partial<Pick<Attempt, "announcedEvidenceId" | "proof">> & {
     statement?: Statement;
     latest?: Partial<LatestReads>;
+    blocks?: Blocks;
+    blockFloor?: BlockFloor | null;
   };
 const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
   ...SEPOLIA_CONSUMER,
@@ -1436,14 +1470,21 @@ type CaseInput = {
   discovery: DocRef;
   evidence: DocRef;
   context: ContextInput;
-  // heldGrant is derived from the refusal (ENDS_HELD_GRANT) unless a case states it: a step-31
-  // refusal seen only at the latest block suspends rather than ends.
+  // heldGrant is derived from the outcome unless a case states it: ENDS_HELD_GRANT ends, a
+  // step-31 refusal seen only at the latest block suspends rather than ends, an invalid block
+  // pair suspends (the re-evaluation cannot complete) and a pair below the floor defers
+  // (unchanged).
   expected:
     | { accepted: true }
-    | { accepted: false; refusal: string; heldGrant?: "suspended" | "ended" };
+    | { accepted: false; refusal: string; heldGrant?: "suspended" | "ended" }
+    | { accepted: false; unavailable: Unavailable };
 };
+// SPEC.md section 10.5, Block floor: why an evaluation that reached step 21 cannot complete.
+type Unavailable = "blocks_invalid" | "below_block_floor";
+const UNAVAILABLE: Unavailable[] = ["blocks_invalid", "below_block_floor"];
 const accept = { accepted: true } as const;
 const refuse = (refusal: string) => ({ accepted: false, refusal }) as const;
+const unavailable = (why: Unavailable) => ({ accepted: false, unavailable: why }) as const;
 
 // A live Oracle attestation for a proof made while the evidence was valid: the proof's
 // timestamp is the evidence's issuedAt (or now, if issuedAt is still ahead within the skew),
@@ -2906,11 +2947,182 @@ const evaluationCases: CaseInput[] = [
   {
     name: "latest-block-credential-signer-not-read",
     description:
-      "A setCredentialSigner for attestor 7 is included but not yet finalized. Step 22 compares a rotation, not a revocation, and reads only at the finalized block, which still holds the key's credentialSigner: accepted.",
+      "A setCredentialSigner for attestor 7 is included but not yet finalized. Step 22 compares a rotation, not a revocation, and reads only at the finalized block, which still holds the key's credentialSigner: accepted. (The Oracle switches the signer as soon as the call is included; an emergency switch reaches step 22 only once finalized, SPEC.md section 10.5.)",
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
       latest: { registry: registryWith("7", { credentialSigner: NATIVE_SIGNER_A }) },
+    }),
+    expected: accept,
+  },
+  {
+    name: "attestation-revoked-at-both-blocks-ends",
+    description:
+      "invalidateAttestation on the proof is finalized: the attestation reads revoked at both blocks. A step-31 revocation read at the finalized block ends a held grant, whatever the latest block also reads.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationRevoked: true },
+      latest: { attestationRevoked: true },
+    }),
+    expected: refuse("proof_stale"),
+  },
+  {
+    name: "attestation-expired-latest-reads-differ-ends",
+    description:
+      "The Oracle attestation expired a second ago while the latest block's reads differ from the finalized ones on something else (attestor 12 denied at the latest block). The expiry is a finalized-block step-31 cause, so a held grant ends: only an attestation revocation read at the latest block alone suspends.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW - 1 },
+      latest: { registry: registryWith("12", { denied: true }) },
+    }),
+    expected: refuse("proof_stale"),
+  },
+
+  // --- The block pair and the deployment's block floor (SPEC.md section 10.5, Block floor) ---
+  {
+    name: "block-floor-none-yet-accepted",
+    description:
+      "No evaluation has read this deployment's Oracle yet (no floor): the valid pair is used and its numbers become the floor.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { blockFloor: null }),
+    expected: accept,
+  },
+  {
+    name: "block-floor-at-floor-accepted",
+    description:
+      "Both tags resolve exactly to the deployment's floor: at the floor is not below it, so the evaluation completes.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blockFloor: { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK },
+    }),
+    expected: accept,
+  },
+  {
+    name: "block-floor-new-evidence-id-below-deployment-floor",
+    description:
+      "The floor is the deployment's: an evaluation of other evidence read latest block N + 1, and this evidence id has never been evaluated. Its latest tag still resolves to N after the re-resolving wait (a replica one block behind). It reaches no Oracle read: unavailable, never accepted, so a stale replica cannot grant a fresh id past a denial included at N + 1. A held grant is deferred (unchanged), not suspended.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blockFloor: { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK + 1 },
+    }),
+    expected: unavailable("below_block_floor"),
+  },
+  {
+    name: "block-floor-finalized-below",
+    description:
+      "The finalized tag resolves one block below the deployment's finalized floor (the latest tag is above its own): below the floor, unavailable, a held grant deferred.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blockFloor: { finalized: FINALIZED_BLOCK + 1, latest: LATEST_BLOCK - 30 },
+    }),
+    expected: unavailable("below_block_floor"),
+  },
+  {
+    name: "block-floor-stale-read-never-refuses",
+    description:
+      "Below the floor, the stale latest block still shows attestor 7 denied (undenyProvider was included at the floor's block). A read below the floor is not used at all: no refusal at step 21, unavailable, a held grant deferred rather than suspended.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blockFloor: { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK + 1 },
+      latest: { registry: registryWith("7", { denied: true }) },
+    }),
+    expected: unavailable("below_block_floor"),
+  },
+  {
+    name: "block-floor-steps-before-oracle-reads-still-refuse",
+    description:
+      "As key-revocation-not-reversible, on a pair below the floor. Steps 1-20 read no block, so the key revocation refuses at step 18 and ends a held grant; no Oracle read is made and no floor is written.",
+    discovery: "gateway-revocation-dropped",
+    evidence: "gateway-sumsub-revoked-key",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: ["gateway"],
+      blockFloor: { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK + 1 },
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "block-pair-other-chain",
+    description:
+      "The node answers for Base (chain 8453) while the consumer's deployment is on Base Sepolia, where the Oracle could sit at the same address: the pair is invalid, so the evaluation is unavailable, writes no floor, and a held grant's re-evaluation cannot complete (suspended).",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, { blocks: blocksOn(BASE) }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "block-pair-invalid-before-floor",
+    description:
+      "The node answers for Base and its latest block is also below the floor: the validity checks come first, so blocks_invalid (a held grant suspended), not below_block_floor.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: {
+        ...blocksOn(BASE),
+        latest: { number: LATEST_BLOCK - 100, timestamp: NOW - 2 },
+      },
+    }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "block-pair-finalized-after-latest",
+    description:
+      "The finalized tag resolves to a higher number than the latest tag: no node on one chain answers that, so the pair is invalid and never raises the floor.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: {
+        ...blocksOn(BASE_SEPOLIA),
+        finalized: { number: LATEST_BLOCK + 1, timestamp: NOW - 900 },
+      },
+    }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "block-pair-finalized-timestamp-after-latest",
+    description:
+      "The numbers are in order but the finalized block's timestamp is after the latest block's: the pair is invalid.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: {
+        ...blocksOn(BASE_SEPOLIA),
+        finalized: { number: FINALIZED_BLOCK, timestamp: NOW - 1 },
+      },
+    }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "block-pair-from-the-future",
+    description:
+      "The latest block's timestamp is 61 s after the consumer's clock (a fabricated or mis-parsed head, or a node on another network): the pair is invalid, so one bad high read never raises the floor.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: {
+        ...blocksOn(BASE_SEPOLIA),
+        latest: { number: LATEST_BLOCK, timestamp: NOW + CLOCK_SKEW_SECONDS + 1 },
+      },
+    }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "block-pair-timestamp-within-skew-accepted",
+    description:
+      "The latest block's timestamp is exactly 60 s after the consumer's clock: within the skew, so the pair is valid and the evaluation completes.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: {
+        ...blocksOn(BASE_SEPOLIA),
+        latest: { number: LATEST_BLOCK, timestamp: NOW + CLOCK_SKEW_SECONDS },
+      },
     }),
     expected: accept,
   },
@@ -3227,6 +3439,95 @@ const evaluationCases: CaseInput[] = [
     evidence: "gateway-sumsub-signed",
     context: sepoliaContext(GATEWAY_HOST, { seenDiscovery: ["alias-revokes-colliding-key-id"] }),
     expected: accept,
+  },
+
+  // --- A trust domain's own key revocations recorded under no attestor still apply to it ---
+  {
+    name: "key-revocation-under-none-not-reversible",
+    description:
+      "As key-revocation-not-reversible, but the consumer recorded the gateway's document revoking gw-root-0 while it mis-pinned the gateway to attestor 7, so under no attestor (null). The pin is since corrected to 1. A revocation recorded under none still applies to its own trust domain, whatever it is pinned to: the newer document that drops gw-root-0's revokedAt does not restore it.",
+    discovery: "gateway-revocation-dropped",
+    evidence: "gateway-sumsub-revoked-key",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: [{ discovery: "gateway", attestorProviderId: null }],
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-under-none-by-key-id",
+    description:
+      "As key-id-relisted-with-new-material, with gw-root-0's revocation recorded under no attestor (a mis-pin since corrected). For its own trust domain a revocation recorded under none applies by keyId as well as by material: the keyId relisted with fresh material is refused.",
+    discovery: "gateway-revoked-key-id-relisted",
+    evidence: "gateway-sumsub-revoked-key-late",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: [{ discovery: "gateway", attestorProviderId: null }],
+      registry: gatewayRegistry({ credentialSigner: RELISTED_SIGNER }),
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-under-none-by-material",
+    description:
+      "As key-material-relisted-under-new-id, with gw-root-0's revocation recorded under no attestor (a mis-pin since corrected). For its own trust domain a revocation recorded under none applies by material as well as by keyId: the material relisted as gw-root-2 is refused.",
+    discovery: "gateway-material-relisted",
+    evidence: "gateway-sumsub-material-relisted",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: [{ discovery: "gateway", attestorProviderId: null }],
+      registry: gatewayRegistry({ credentialSigner: GATEWAY_SIGNER_0 }),
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-recorded-under-none-while-mis-pinned",
+    description:
+      "The consumer mis-pins the gateway to attestor 7. The gateway's document names attestor 1 and revokes gw-root-1: refused at attestor_mismatch, and the document is recorded with its revoked keys under no attestor (null).",
+    discovery: "gateway-key-revoked-future",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, { allowlist: allowlistWith(GATEWAY_HOST, "7") }),
+    expected: refuse("attestor_mismatch"),
+  },
+  {
+    name: "key-revocation-under-none-not-shared-with-alias",
+    description:
+      "The store holds what key-revocation-recorded-under-none-while-mis-pinned recorded, and the gateway is still mis-pinned. The alias host, pinned to attestor 1, lists gw-root-1's credentialSigner as current: a revocation recorded under none reaches no other trust domain, so the alias evidence is accepted.",
+    follows: "key-revocation-recorded-under-none-while-mis-pinned",
+    discovery: "alias",
+    evidence: "alias-sumsub",
+    context: sepoliaContext(ALIAS_HOST, {
+      allowlist: allowlistWith(GATEWAY_HOST, "7"),
+      seenDiscovery: [{ discovery: "gateway-key-revoked-future", attestorProviderId: null }],
+      seenEvidence: ["gateway-sumsub"],
+    }),
+    expected: accept,
+  },
+  {
+    name: "key-revocation-re-recorded-after-pin-corrected",
+    description:
+      "The store holds what key-revocation-recorded-under-none-while-mis-pinned recorded; the consumer then corrects the gateway's pin to attestor 1 and fetches the same document again. It revokes gw-root-1, so the evidence is refused at key_revoked, and the document's revoked keys are now recorded under attestor 1, beside the record under none: a key revocation record is keyed by (trustDomainId, recording attestor or none, keyId, material), so the one under none never stops this insert.",
+    follows: "key-revocation-recorded-under-none-while-mis-pinned",
+    discovery: "gateway-key-revoked-future",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      seenDiscovery: [{ discovery: "gateway-key-revoked-future", attestorProviderId: null }],
+      seenEvidence: ["gateway-sumsub"],
+    }),
+    expected: refuse("key_revoked"),
+  },
+  {
+    name: "key-revocation-shared-after-pin-corrected",
+    description:
+      "The store holds both records of gw-root-1's revocation: under none (written while mis-pinned) and under attestor 1 (key-revocation-re-recorded-after-pin-corrected). The one under attestor 1 is shared: the alias host, pinned to 1 and listing that credentialSigner as current, is refused. A store that let the record under none block the later one would accept here.",
+    follows: "key-revocation-re-recorded-after-pin-corrected",
+    discovery: "alias",
+    evidence: "alias-sumsub",
+    context: sepoliaContext(ALIAS_HOST, {
+      seenDiscovery: [
+        { discovery: "gateway-key-revoked-future", attestorProviderId: null },
+        { discovery: "gateway-key-revoked-future", attestorProviderId: "1" },
+      ],
+      seenEvidence: ["gateway-sumsub"],
+    }),
+    expected: refuse("key_revoked"),
   },
 
   // --- The weight config the statement names is still valid on the Oracle (step 23) ---
@@ -3918,7 +4219,10 @@ const evaluationCases: CaseInput[] = [
 // the case's consumer context and fed to `proof` (by default the proof that matches it).
 // `evidenceStatus` is the evidence fetch's HTTP status (200 unless a case varies it). Every
 // quorum case runs on Base Sepolia.
-const member = (disc: string, ev: string, proof?: Proof, evidenceStatus = 200) => {
+type QuorumMember = { discovery: string; evidence: string } & Omit<Attempt, "proof"> & {
+    proof: ShippedProof;
+  };
+const member = (disc: string, ev: string, proof?: Proof, evidenceStatus = 200): QuorumMember => {
   const host = discovery[disc]!.trustDomainId;
   const held = evidence[ev]!;
   const fed = proof ?? matchingProof(discovery[disc]!, held, NOW);
@@ -3945,7 +4249,7 @@ const quorumContext = { threshold: 2, context: SEPOLIA_CONSUMER };
 const KYC_ATTESTATION = { claimType: "kyc.individual", proofType: 4, statement: null };
 const KYC_MULTI_SIGNED = { claimType: "kyc.individual", proofType: 9, statement: STATEMENT_9 };
 
-const quorumCases = [
+const quorumCases: QuorumInput[] = [
   {
     name: "gateway-two-sources-one-trust-domain",
     description:
@@ -4154,6 +4458,52 @@ const quorumCases = [
       member("gateway-revokes-foreign-key", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
     ],
     expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "latest-block-denial-in-quorum",
+    description:
+      "denyProvider(1) is included but not yet finalized: the quorum's one latest block shows the gateway's attestor denied. Steps 21, 23 and 31 read both blocks for every member, so the gateway member is refused and does not count.",
+    threshold: 2,
+    context: { ...SEPOLIA_CONSUMER, latest: { registry: registryWith("1", { denied: true }) } },
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: ["7"], count: 1, satisfied: false },
+  },
+  {
+    name: "latest-block-root-revoked-in-quorum",
+    description:
+      "revokeCredentialRoot on the native evidence's root is included but not yet finalized: refused at step 23 from the quorum's latest block, so the native member does not count.",
+    threshold: 2,
+    context: {
+      ...SEPOLIA_CONSUMER,
+      latest: { registry: registryWith("7", { credentialRoots: [ROOT_NATIVE_SEPOLIA_OLD] }) },
+    },
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: ["1"], count: 1, satisfied: false },
+  },
+  {
+    name: "quorum-below-block-floor",
+    description:
+      "The quorum's one block pair is resolved and checked against the deployment's floor once, when it starts; its latest tag still resolves one block below the floor. The whole quorum is unavailable: it counts no member and writes no floor.",
+    threshold: 2,
+    context: {
+      ...SEPOLIA_CONSUMER,
+      blockFloor: { finalized: FINALIZED_BLOCK, latest: LATEST_BLOCK + 1 },
+    },
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: [], count: 0, satisfied: false, unavailable: "below_block_floor" },
+  },
+  {
+    name: "quorum-block-pair-invalid",
+    description:
+      "The quorum's node answers for another chain: its one block pair is invalid, so the quorum is unavailable and counts no member.",
+    threshold: 2,
+    context: { ...SEPOLIA_CONSUMER, blocks: blocksOn(BASE) },
+    requirement: KYC_ATTESTATION,
+    members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
+    expected: { attestors: [], count: 0, satisfied: false, unavailable: "blocks_invalid" },
   },
 ];
 
@@ -4410,6 +4760,7 @@ const LIMITS = {
   maxEvidenceIdLength: MAX_EVIDENCE_ID_LENGTH,
   maxTimestamp: MAX_TIMESTAMP,
   minUngrantedRevocationsPerAnnouncer: MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER,
+  blockFloorWaitSeconds: BLOCK_FLOOR_WAIT_SECONDS,
 };
 const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceLifetimeSeconds: "Largest expiresAt - issuedAt (365 days).",
@@ -4425,7 +4776,9 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
   minUngrantedRevocationsPerAnnouncer:
-    "Least bound a consumer may set on the evidence revocations (a 410 or a revoked body) it records for ids no grant rests on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet, and on one trust domain's unattributed announcements; the trust domain's own callback or push is not charged to it. No other record counts, revocations of granted ids are never bounded or dropped, and over the bound such a revocation is refused but not recorded: no announcement becomes unavailable (SPEC.md section 10.7, Revocation bound).",
+    "Least bound a consumer may set on the evidence revocations (a 410 or a revoked body) it records for ids no grant rests on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet, and on one trust domain's unattributed announcements; the trust domain's own callback or push is not charged to it only when the consumer authenticates it as the provider's (a credential set up with the provider, never a source address or host header). No other record counts, revocations of granted ids are never bounded or dropped, and over the bound such a revocation is refused but not recorded: no announcement becomes unavailable (SPEC.md section 10.7, Revocation bound).",
+  blockFloorWaitSeconds:
+    "Longest an evaluation re-resolves the finalized and latest tags while either resolves below the deployment's block floor; still below it, the evaluation is unavailable and a held grant's re-evaluation is deferred (SPEC.md section 10.5, Block floor).",
 };
 
 function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
@@ -4444,7 +4797,9 @@ function resolve<T>(map: Record<string, T>, kind: string, ref: DocRef): T {
 // the allowlist pins its trust domain to if the document names it for the deployment, else
 // under none) when it passes the discovery steps evaluated on their own; the revocation of
 // (allowlisted host, announced id) from a 410 or a revoked body once steps 1-3 pass; the
-// active evidence document when the case's expected outcome passes steps 1-9.
+// active evidence document when the case's expected outcome passes steps 1-9; the block pair's
+// numbers to the deployment's floor when the evaluation read the Oracle at them (it passed
+// steps 1-20 on a valid pair at or above the floor).
 type Records = {
   discovery: null | {
     trustDomainId: string;
@@ -4454,6 +4809,7 @@ type Records = {
   };
   revocation: null | { trustDomainId: string; evidenceId: string };
   evidence: null | { trustDomainId: string; evidenceId: string };
+  blockFloor: BlockFloor | null;
 };
 // The attestor a discovery document's key revocations are recorded under (SPEC.md section
 // 10.7, Revocation): the pin, when the document's own entry for the deployment names it (the
@@ -4499,9 +4855,15 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
         typeof c.evidence === "string" &&
         ev.evidenceId === ctx.announcedEvidenceId &&
         ev.status === "revoked"));
+  const { expected } = c;
   const passedStep9 =
-    c.expected.accepted ||
-    REFUSALS.indexOf(c.expected.refusal) > REFUSALS.indexOf("evidence_id_mismatch");
+    expected.accepted ||
+    "unavailable" in expected ||
+    REFUSALS.indexOf(expected.refusal) > REFUSALS.indexOf("evidence_id_mismatch");
+  const readOracle =
+    expected.accepted ||
+    ("refusal" in expected &&
+      REFUSALS.indexOf(expected.refusal) >= REFUSALS.indexOf("attestor_denied"));
   return {
     discovery: discoveryRecorded
       ? {
@@ -4520,6 +4882,9 @@ function recordsFor(c: CaseInput, ctx: Context, disc: Discovery, ev: Evidence): 
       ? { trustDomainId: host, evidenceId: ctx.announcedEvidenceId }
       : null,
     evidence: passedStep9 ? { trustDomainId: ev.trustDomainId, evidenceId: ev.evidenceId } : null,
+    blockFloor: readOracle
+      ? { finalized: ctx.blocks.finalized.number, latest: ctx.blocks.latest.number }
+      : null,
   };
 }
 
@@ -4534,6 +4899,8 @@ function finalize({ context, expected, ...c }: CaseInput) {
     proof,
     statement,
     latest,
+    blocks,
+    blockFloor,
     ...consumer
   } = context;
   // A store entry given by name was recorded under the attestor it would be recorded under
@@ -4568,6 +4935,8 @@ function finalize({ context, expected, ...c }: CaseInput) {
             validConfigs: latest.validConfigs ?? consumer.validConfigs,
             attestationRevoked: latest.attestationRevoked ?? proof?.attestationRevoked === true,
           },
+    blocks: blocks ?? blocksOn(consumer.chainId, consumer.now),
+    blockFloor: blockFloor === undefined ? BLOCK_FLOOR : blockFloor,
     discoveryFetch,
     evidenceFetch,
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
@@ -4575,18 +4944,62 @@ function finalize({ context, expected, ...c }: CaseInput) {
   };
   const outcome = expected.accepted
     ? { accepted: true as const }
-    : { accepted: false as const, refusal: expected.refusal };
+    : "unavailable" in expected
+      ? { accepted: false as const, unavailable: expected.unavailable }
+      : { accepted: false as const, refusal: expected.refusal };
+  const heldGrant = expected.accepted
+    ? "kept"
+    : "unavailable" in expected
+      ? expected.unavailable === "below_block_floor"
+        ? "unchanged"
+        : "suspended"
+      : (expected.heldGrant ??
+        (ENDS_HELD_GRANT.includes(expected.refusal) ? "ended" : "suspended"));
   return {
     ...c,
     context: { ...full, proof: encodeProof(full.proof, full.chainId, full.oracleAddress) },
     expected: {
       ...outcome,
       records: recordsFor({ context, expected, ...c }, full, disc, ev),
-      heldGrant: expected.accepted
-        ? "kept"
-        : (expected.heldGrant ??
-          (ENDS_HELD_GRANT.includes(expected.refusal) ? "ended" : "suspended")),
+      heldGrant,
     },
+  };
+}
+
+// A quorum case spelled out like an evaluation case: its one latest-block reads (null: the
+// same as finalized; registry and configs only, each member's attestation reading the same at
+// both blocks), its one block pair and the deployment's floor, and whether that pair leaves
+// the quorum unavailable (null: it does not).
+type QuorumInput = {
+  name: string;
+  description: string;
+  threshold: number;
+  context: Consumer & {
+    latest?: Partial<Omit<LatestReads, "attestationRevoked">>;
+    blocks?: Blocks;
+    blockFloor?: BlockFloor | null;
+  };
+  requirement: { claimType: string; proofType: number; statement: Statement };
+  members: QuorumMember[];
+  expected: { attestors: string[]; count: number; satisfied: boolean; unavailable?: Unavailable };
+};
+function finalizeQuorum({ context, expected, ...c }: QuorumInput) {
+  const { latest, blocks, blockFloor, ...consumer } = context;
+  return {
+    ...c,
+    context: {
+      ...consumer,
+      latest:
+        latest === undefined
+          ? null
+          : {
+              registry: latest.registry ?? consumer.registry,
+              validConfigs: latest.validConfigs ?? consumer.validConfigs,
+            },
+      blocks: blocks ?? blocksOn(consumer.chainId, consumer.now),
+      blockFloor: blockFloor === undefined ? BLOCK_FLOOR : blockFloor,
+    },
+    expected: { ...expected, unavailable: expected.unavailable ?? null },
   };
 }
 
@@ -4603,7 +5016,7 @@ const vectors = {
   evidence,
   schemaCases,
   evaluationCases: evaluationCases.map(finalize),
-  quorumCases,
+  quorumCases: quorumCases.map(finalizeQuorum),
 };
 
 // --- Vector-set schema ------------------------------------------------------------
@@ -4751,13 +5164,37 @@ const LATEST = d(
     ],
   },
 );
+// A quorum's latest-block reads: the registry and configs every member reads; each member's
+// attestation reads the same at both blocks.
+const QUORUM_LATEST = d(
+  "The quorum's latest-block reads (SPEC.md section 10.6), where they differ from the finalized reads the rest of the context gives; null when they are the same. registry and validConfigs as in an evaluation case's latest; each member's isAttestationRevoked reads the same at both blocks.",
+  {
+    oneOf: [
+      { type: "null" },
+      obj({ registry: REGISTRY, validConfigs: { type: "array", items: HEX32 } }),
+    ],
+  },
+);
+const BLOCK_REF = obj({ number: { type: "integer", minimum: 0 }, timestamp: UNIX });
+const BLOCKS = d(
+  "The block pair the evaluation (or the quorum) resolved before its first Oracle read, after any re-resolving below the floor (SPEC.md section 10.5, Block floor): the node's eth_chainId and the finalized and latest blocks' number and timestamp. Invalid when chainId is not the deployment's, the finalized block is after the latest one (number or timestamp), or the latest block's timestamp is more than clockSkewSeconds after the consumer's clock.",
+  obj({ chainId: CHAIN_ID, finalized: BLOCK_REF, latest: BLOCK_REF }),
+);
+const BLOCK_FLOOR_NUMBERS = obj({
+  finalized: { type: "integer", minimum: 0 },
+  latest: { type: "integer", minimum: 0 },
+});
+const BLOCK_FLOOR_FIELD = d(
+  "The deployment's block floor in the observation store (SPEC.md section 10.5): the highest finalized and latest block numbers at which an evaluation that can grant read this deployment's Oracle, whatever evidence it was for; null when none has. A pair with either number below its floor is below the floor.",
+  { oneOf: [{ type: "null" }, BLOCK_FLOOR_NUMBERS] },
+);
 
 const OBSERVED_PAIR = obj({
   trustDomainId: TRUST_DOMAIN_ID,
   evidenceId: evidenceSchema.properties.evidenceId,
 });
 const RECORDS = d(
-  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
+  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first); blockFloor: the block pair's numbers, as atomic maxima of the deployment's floor, when the evaluation read the Oracle at them (it passed steps 1-20 on a valid pair at or above the floor, whatever steps 21-31 decide).",
   obj({
     discovery: {
       oneOf: [
@@ -4775,11 +5212,16 @@ const RECORDS = d(
     },
     revocation: { oneOf: [{ type: "null" }, OBSERVED_PAIR] },
     evidence: { oneOf: [{ type: "null" }, OBSERVED_PAIR] },
+    blockFloor: { oneOf: [{ type: "null" }, BLOCK_FLOOR_NUMBERS] },
   }),
 );
 
 const HELD_GRANT =
-  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step, or that step-31 case: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
+  "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), suspended (refused at any other step, that step-31 case, or unavailable on an invalid block pair: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt), or unchanged (deferred below the block floor: the grant stays kept or suspended as it was, and the re-evaluation runs again).";
+const UNAVAILABLE_FIELD = d(
+  "Why the evaluation cannot complete although steps 1-20 passed (SPEC.md section 10.5, Block floor): blocks_invalid (the block pair fails the validity checks) or below_block_floor (a tag still resolves below the deployment's floor). Unavailable, not refused, and it writes no block floor.",
+  { enum: UNAVAILABLE },
+);
 
 const vectorsSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -4822,7 +5264,7 @@ const vectorsSchema = {
           name: NAME,
           description: { type: "string" },
           follows: d(
-            "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked).",
+            "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked, and a blockFloor at or above its block floor record).",
             NAME,
           ),
           discovery: DOC_REF,
@@ -4834,6 +5276,8 @@ const vectorsSchema = {
             ...CONSUMER_FIELDS,
             statement: STATEMENT,
             latest: LATEST,
+            blocks: BLOCKS,
+            blockFloor: BLOCK_FLOOR_FIELD,
             ...ATTEMPT_FIELDS,
           }),
           expected: {
@@ -4848,6 +5292,12 @@ const vectorsSchema = {
                 refusal: { enum: REFUSALS },
                 records: RECORDS,
                 heldGrant: d(HELD_GRANT, { enum: ["suspended", "ended"] }),
+              }),
+              obj({
+                accepted: { const: false },
+                unavailable: UNAVAILABLE_FIELD,
+                records: RECORDS,
+                heldGrant: d(HELD_GRANT, { enum: ["suspended", "unchanged"] }),
               }),
             ],
           },
@@ -4865,7 +5315,12 @@ const vectorsSchema = {
           type: "integer",
           minimum: 1,
         }),
-        context: obj(CONSUMER_FIELDS),
+        context: obj({
+          ...CONSUMER_FIELDS,
+          latest: QUORUM_LATEST,
+          blocks: BLOCKS,
+          blockFloor: BLOCK_FLOOR_FIELD,
+        }),
         requirement: d(
           "The multi-provider requirement (SPEC.md section 10.6): one claimType, the proof type it must feed, and the statement every member's proof must prove.",
           obj({ claimType: CLAIM_TYPE, proofType: PROOF_TYPE, statement: STATEMENT }),
@@ -4882,6 +5337,10 @@ const vectorsSchema = {
           }),
           count: { type: "integer", minimum: 0 },
           satisfied: { type: "boolean" },
+          unavailable: d(
+            "null, or why the quorum cannot complete: its one block pair is invalid or below the deployment's floor (SPEC.md section 10.6). It then counts no member: attestors is empty and satisfied false.",
+            { oneOf: [{ type: "null" }, { enum: UNAVAILABLE }] },
+          ),
         }),
       }),
     },

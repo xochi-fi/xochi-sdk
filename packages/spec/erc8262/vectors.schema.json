@@ -49,7 +49,8 @@
         "minEvidenceIdLength",
         "maxEvidenceIdLength",
         "maxTimestamp",
-        "minUngrantedRevocationsPerAnnouncer"
+        "minUngrantedRevocationsPerAnnouncer",
+        "blockFloorWaitSeconds"
       ],
       "additionalProperties": false,
       "properties": {
@@ -109,7 +110,12 @@
           "minimum": 1
         },
         "minUngrantedRevocationsPerAnnouncer": {
-          "description": "Least bound a consumer may set on the evidence revocations (a 410 or a revoked body) it records for ids no grant rests on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet, and on one trust domain's unattributed announcements; the trust domain's own callback or push is not charged to it. No other record counts, revocations of granted ids are never bounded or dropped, and over the bound such a revocation is refused but not recorded: no announcement becomes unavailable (SPEC.md section 10.7, Revocation bound).",
+          "description": "Least bound a consumer may set on the evidence revocations (a 410 or a revoked body) it records for ids no grant rests on, per (trust domain, announcing party as the consumer authenticated it), never per subject wallet, and on one trust domain's unattributed announcements; the trust domain's own callback or push is not charged to it only when the consumer authenticates it as the provider's (a credential set up with the provider, never a source address or host header). No other record counts, revocations of granted ids are never bounded or dropped, and over the bound such a revocation is refused but not recorded: no announcement becomes unavailable (SPEC.md section 10.7, Revocation bound).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "blockFloorWaitSeconds": {
+          "description": "Longest an evaluation re-resolves the finalized and latest tags while either resolves below the deployment's block floor; still below it, the evaluation is unavailable and a held grant's re-evaluation is deferred (SPEC.md section 10.5, Block floor).",
           "type": "integer",
           "minimum": 1
         }
@@ -197,7 +203,7 @@
             "type": "string"
           },
           "follows": {
-            "description": "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked).",
+            "description": "An earlier evaluation case: everything it records (expected.records) is already in this case's observation store (context.seenDiscovery / seenEvidence / seenRevoked, and a blockFloor at or above its block floor record).",
             "type": "string",
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
@@ -259,6 +265,8 @@
               "seenRevoked",
               "statement",
               "latest",
+              "blocks",
+              "blockFloor",
               "discoveryFetch",
               "evidenceFetch",
               "announcedEvidenceId",
@@ -644,6 +652,86 @@
                   }
                 ]
               },
+              "blocks": {
+                "description": "The block pair the evaluation (or the quorum) resolved before its first Oracle read, after any re-resolving below the floor (SPEC.md section 10.5, Block floor): the node's eth_chainId and the finalized and latest blocks' number and timestamp. Invalid when chainId is not the deployment's, the finalized block is after the latest one (number or timestamp), or the latest block's timestamp is more than clockSkewSeconds after the consumer's clock.",
+                "type": "object",
+                "required": [
+                  "chainId",
+                  "finalized",
+                  "latest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "chainId": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "finalized": {
+                    "type": "object",
+                    "required": [
+                      "number",
+                      "timestamp"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "timestamp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    }
+                  },
+                  "latest": {
+                    "type": "object",
+                    "required": [
+                      "number",
+                      "timestamp"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "timestamp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    }
+                  }
+                }
+              },
+              "blockFloor": {
+                "description": "The deployment's block floor in the observation store (SPEC.md section 10.5): the highest finalized and latest block numbers at which an evaluation that can grant read this deployment's Oracle, whatever evidence it was for; null when none has. A pair with either number below its floor is below the floor.",
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "finalized",
+                      "latest"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "finalized": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "latest": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                ]
+              },
               "discoveryFetch": {
                 "type": "object",
                 "required": [
@@ -773,12 +861,13 @@
                     "const": true
                   },
                   "records": {
-                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first); blockFloor: the block pair's numbers, as atomic maxima of the deployment's floor, when the evaluation read the Oracle at them (it passed steps 1-20 on a valid pair at or above the floor, whatever steps 21-31 decide).",
                     "type": "object",
                     "required": [
                       "discovery",
                       "revocation",
-                      "evidence"
+                      "evidence",
+                      "blockFloor"
                     ],
                     "additionalProperties": false,
                     "properties": {
@@ -906,11 +995,36 @@
                             }
                           }
                         ]
+                      },
+                      "blockFloor": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "finalized",
+                              "latest"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "finalized": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "latest": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
+                          }
+                        ]
                       }
                     }
                   },
                   "heldGrant": {
-                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step, or that step-31 case: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).",
+                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), suspended (refused at any other step, that step-31 case, or unavailable on an invalid block pair: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt), or unchanged (deferred below the block floor: the grant stays kept or suspended as it was, and the re-evaluation runs again).",
                     "const": "kept"
                   }
                 }
@@ -964,12 +1078,13 @@
                     ]
                   },
                   "records": {
-                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first); blockFloor: the block pair's numbers, as atomic maxima of the deployment's floor, when the evaluation read the Oracle at them (it passed steps 1-20 on a valid pair at or above the floor, whatever steps 21-31 decide).",
                     "type": "object",
                     "required": [
                       "discovery",
                       "revocation",
-                      "evidence"
+                      "evidence",
+                      "blockFloor"
                     ],
                     "additionalProperties": false,
                     "properties": {
@@ -1097,14 +1212,231 @@
                             }
                           }
                         ]
+                      },
+                      "blockFloor": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "finalized",
+                              "latest"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "finalized": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "latest": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
+                          }
+                        ]
                       }
                     }
                   },
                   "heldGrant": {
-                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step, or that step-31 case: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).",
+                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), suspended (refused at any other step, that step-31 case, or unavailable on an invalid block pair: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt), or unchanged (deferred below the block floor: the grant stays kept or suspended as it was, and the re-evaluation runs again).",
                     "enum": [
                       "suspended",
                       "ended"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "accepted",
+                  "unavailable",
+                  "records",
+                  "heldGrant"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "unavailable": {
+                    "description": "Why the evaluation cannot complete although steps 1-20 passed (SPEC.md section 10.5, Block floor): blocks_invalid (the block pair fails the validity checks) or below_block_floor (a tag still resolves below the deployment's floor). Unavailable, not refused, and it writes no block floor.",
+                    "enum": [
+                      "blocks_invalid",
+                      "below_block_floor"
+                    ]
+                  },
+                  "records": {
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first); blockFloor: the block pair's numbers, as atomic maxima of the deployment's floor, when the evaluation read the Oracle at them (it passed steps 1-20 on a valid pair at or above the floor, whatever steps 21-31 decide).",
+                    "type": "object",
+                    "required": [
+                      "discovery",
+                      "revocation",
+                      "evidence",
+                      "blockFloor"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "discovery": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "attestorProviderId",
+                              "updatedAt",
+                              "revokedKeys"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "attestorProviderId": {
+                                "oneOf": [
+                                  {
+                                    "description": "The ERC-8262 Oracle `providerId` (uint256: nonzero and at most 2^256 - 1) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+                                    "type": "string",
+                                    "maxLength": 78,
+                                    "pattern": "^(?:[1-9][0-9]{0,76}|1[0-0][0-9]{76}|11[0-4][0-9]{75}|115[0-6][0-9]{74}|1157[0-8][0-9]{73}|11579[0-1][0-9]{72}|1157920[0-7][0-9]{70}|11579208[0-8][0-9]{69}|115792089[0-1][0-9]{68}|1157920892[0-2][0-9]{67}|11579208923[0-6][0-9]{66}|115792089237[0-2][0-9]{65}|1157920892373[0-0][0-9]{64}|11579208923731[0-5][0-9]{63}|115792089237316[0-0][0-9]{62}|1157920892373161[0-8][0-9]{61}|11579208923731619[0-4][0-9]{60}|115792089237316195[0-3][0-9]{59}|1157920892373161954[0-1][0-9]{58}|11579208923731619542[0-2][0-9]{57}|115792089237316195423[0-4][0-9]{56}|1157920892373161954235[0-6][0-9]{55}|115792089237316195423570[0-8][0-9]{53}|1157920892373161954235709[0-7][0-9]{52}|11579208923731619542357098[0-4][0-9]{51}|11579208923731619542357098500[0-7][0-9]{48}|115792089237316195423570985008[0-5][0-9]{47}|1157920892373161954235709850086[0-7][0-9]{46}|11579208923731619542357098500868[0-6][0-9]{45}|115792089237316195423570985008687[0-8][0-9]{44}|11579208923731619542357098500868790[0-6][0-9]{42}|115792089237316195423570985008687907[0-7][0-9]{41}|1157920892373161954235709850086879078[0-4][0-9]{40}|11579208923731619542357098500868790785[0-2][0-9]{39}|115792089237316195423570985008687907853[0-1][0-9]{38}|1157920892373161954235709850086879078532[0-5][0-9]{37}|11579208923731619542357098500868790785326[0-8][0-9]{36}|115792089237316195423570985008687907853269[0-8][0-9]{35}|1157920892373161954235709850086879078532699[0-7][0-9]{34}|11579208923731619542357098500868790785326998[0-3][0-9]{33}|115792089237316195423570985008687907853269984[0-5][0-9]{32}|1157920892373161954235709850086879078532699846[0-5][0-9]{31}|11579208923731619542357098500868790785326998466[0-4][0-9]{30}|115792089237316195423570985008687907853269984665[0-5][0-9]{29}|1157920892373161954235709850086879078532699846656[0-3][0-9]{28}|115792089237316195423570985008687907853269984665640[0-4][0-9]{26}|1157920892373161954235709850086879078532699846656405[0-5][0-9]{25}|11579208923731619542357098500868790785326998466564056[0-3][0-9]{24}|1157920892373161954235709850086879078532699846656405640[0-2][0-9]{22}|11579208923731619542357098500868790785326998466564056403[0-8][0-9]{21}|115792089237316195423570985008687907853269984665640564039[0-3][0-9]{20}|1157920892373161954235709850086879078532699846656405640394[0-4][0-9]{19}|11579208923731619542357098500868790785326998466564056403945[0-6][0-9]{18}|115792089237316195423570985008687907853269984665640564039457[0-4][0-9]{17}|1157920892373161954235709850086879078532699846656405640394575[0-7][0-9]{16}|11579208923731619542357098500868790785326998466564056403945758[0-3][0-9]{15}|11579208923731619542357098500868790785326998466564056403945758400[0-6][0-9]{12}|115792089237316195423570985008687907853269984665640564039457584007[0-8][0-9]{11}|1157920892373161954235709850086879078532699846656405640394575840079[0-0][0-9]{10}|11579208923731619542357098500868790785326998466564056403945758400791[0-2][0-9]{9}|115792089237316195423570985008687907853269984665640564039457584007913[0-0][0-9]{8}|1157920892373161954235709850086879078532699846656405640394575840079131[0-1][0-9]{7}|11579208923731619542357098500868790785326998466564056403945758400791312[0-8][0-9]{6}|115792089237316195423570985008687907853269984665640564039457584007913129[0-5][0-9]{5}|1157920892373161954235709850086879078532699846656405640394575840079131296[0-2][0-9]{4}|11579208923731619542357098500868790785326998466564056403945758400791312963[0-8][0-9]{3}|115792089237316195423570985008687907853269984665640564039457584007913129639[0-8][0-9]{2}|1157920892373161954235709850086879078532699846656405640394575840079131296399[0-2][0-9]{1}|11579208923731619542357098500868790785326998466564056403945758400791312963993[0-4]|115792089237316195423570985008687907853269984665640564039457584007913129639935)$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "updatedAt": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 4294967295
+                              },
+                              "revokedKeys": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "keyId",
+                                    "material"
+                                  ],
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "keyId": {
+                                      "description": "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
+                                      "type": "string",
+                                      "maxLength": 64,
+                                      "pattern": "^[A-Za-z0-9._-]+$"
+                                    },
+                                    "material": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "revocation": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "evidence": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "trustDomainId",
+                              "evidenceId"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "trustDomainId": {
+                                "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+                                "type": "string",
+                                "maxLength": 253,
+                                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+                              },
+                              "evidenceId": {
+                                "description": "Replay: an unguessable capability (at least 128 bits, base64url), unique for the provider's lifetime and never reused. A consumer validates an announced id against this rule before using it, requests exactly `https://{trustDomainId}/v1/erc8262/evidence/` followed by the id, and refuses a body whose evidenceId differs (exact comparison). It keys what it has observed by (trustDomainId, evidenceId). Re-delivery with identical immutable fields is idempotent and counts once; any differing immutable field is refused. Renewal is a new evidenceId.",
+                                "type": "string",
+                                "minLength": 22,
+                                "maxLength": 128,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "blockFloor": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "finalized",
+                              "latest"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "finalized": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "latest": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "heldGrant": {
+                    "description": "What happens to a grant the consumer holds on this evidence when this evaluation is its re-evaluation (SPEC.md section 10.7, Held grants): kept (accepted; a suspension is lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), suspended (refused at any other step, that step-31 case, or unavailable on an invalid block pair: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt), or unchanged (deferred below the block floor: the grant stays kept or suspended as it was, and the re-evaluation runs again).",
+                    "enum": [
+                      "suspended",
+                      "unchanged"
                     ]
                   }
                 }
@@ -1154,7 +1486,10 @@
               "validConfigs",
               "seenDiscovery",
               "seenEvidence",
-              "seenRevoked"
+              "seenRevoked",
+              "latest",
+              "blocks",
+              "blockFloor"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1320,6 +1655,158 @@
                     }
                   }
                 }
+              },
+              "latest": {
+                "description": "The quorum's latest-block reads (SPEC.md section 10.6), where they differ from the finalized reads the rest of the context gives; null when they are the same. registry and validConfigs as in an evaluation case's latest; each member's isAttestationRevoked reads the same at both blocks.",
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "registry",
+                      "validConfigs"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "registry": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "attestorProviderId",
+                            "denied",
+                            "credentialSigner",
+                            "credentialRoots",
+                            "signerPubkeyHashes"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "attestorProviderId": {
+                              "description": "The ERC-8262 Oracle `providerId` (uint256: nonzero and at most 2^256 - 1) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+                              "type": "string",
+                              "maxLength": 78,
+                              "pattern": "^(?:[1-9][0-9]{0,76}|1[0-0][0-9]{76}|11[0-4][0-9]{75}|115[0-6][0-9]{74}|1157[0-8][0-9]{73}|11579[0-1][0-9]{72}|1157920[0-7][0-9]{70}|11579208[0-8][0-9]{69}|115792089[0-1][0-9]{68}|1157920892[0-2][0-9]{67}|11579208923[0-6][0-9]{66}|115792089237[0-2][0-9]{65}|1157920892373[0-0][0-9]{64}|11579208923731[0-5][0-9]{63}|115792089237316[0-0][0-9]{62}|1157920892373161[0-8][0-9]{61}|11579208923731619[0-4][0-9]{60}|115792089237316195[0-3][0-9]{59}|1157920892373161954[0-1][0-9]{58}|11579208923731619542[0-2][0-9]{57}|115792089237316195423[0-4][0-9]{56}|1157920892373161954235[0-6][0-9]{55}|115792089237316195423570[0-8][0-9]{53}|1157920892373161954235709[0-7][0-9]{52}|11579208923731619542357098[0-4][0-9]{51}|11579208923731619542357098500[0-7][0-9]{48}|115792089237316195423570985008[0-5][0-9]{47}|1157920892373161954235709850086[0-7][0-9]{46}|11579208923731619542357098500868[0-6][0-9]{45}|115792089237316195423570985008687[0-8][0-9]{44}|11579208923731619542357098500868790[0-6][0-9]{42}|115792089237316195423570985008687907[0-7][0-9]{41}|1157920892373161954235709850086879078[0-4][0-9]{40}|11579208923731619542357098500868790785[0-2][0-9]{39}|115792089237316195423570985008687907853[0-1][0-9]{38}|1157920892373161954235709850086879078532[0-5][0-9]{37}|11579208923731619542357098500868790785326[0-8][0-9]{36}|115792089237316195423570985008687907853269[0-8][0-9]{35}|1157920892373161954235709850086879078532699[0-7][0-9]{34}|11579208923731619542357098500868790785326998[0-3][0-9]{33}|115792089237316195423570985008687907853269984[0-5][0-9]{32}|1157920892373161954235709850086879078532699846[0-5][0-9]{31}|11579208923731619542357098500868790785326998466[0-4][0-9]{30}|115792089237316195423570985008687907853269984665[0-5][0-9]{29}|1157920892373161954235709850086879078532699846656[0-3][0-9]{28}|115792089237316195423570985008687907853269984665640[0-4][0-9]{26}|1157920892373161954235709850086879078532699846656405[0-5][0-9]{25}|11579208923731619542357098500868790785326998466564056[0-3][0-9]{24}|1157920892373161954235709850086879078532699846656405640[0-2][0-9]{22}|11579208923731619542357098500868790785326998466564056403[0-8][0-9]{21}|115792089237316195423570985008687907853269984665640564039[0-3][0-9]{20}|1157920892373161954235709850086879078532699846656405640394[0-4][0-9]{19}|11579208923731619542357098500868790785326998466564056403945[0-6][0-9]{18}|115792089237316195423570985008687907853269984665640564039457[0-4][0-9]{17}|1157920892373161954235709850086879078532699846656405640394575[0-7][0-9]{16}|11579208923731619542357098500868790785326998466564056403945758[0-3][0-9]{15}|11579208923731619542357098500868790785326998466564056403945758400[0-6][0-9]{12}|115792089237316195423570985008687907853269984665640564039457584007[0-8][0-9]{11}|1157920892373161954235709850086879078532699846656405640394575840079[0-0][0-9]{10}|11579208923731619542357098500868790785326998466564056403945758400791[0-2][0-9]{9}|115792089237316195423570985008687907853269984665640564039457584007913[0-0][0-9]{8}|1157920892373161954235709850086879078532699846656405640394575840079131[0-1][0-9]{7}|11579208923731619542357098500868790785326998466564056403945758400791312[0-8][0-9]{6}|115792089237316195423570985008687907853269984665640564039457584007913129[0-5][0-9]{5}|1157920892373161954235709850086879078532699846656405640394575840079131296[0-2][0-9]{4}|11579208923731619542357098500868790785326998466564056403945758400791312963[0-8][0-9]{3}|115792089237316195423570985008687907853269984665640564039457584007913129639[0-8][0-9]{2}|1157920892373161954235709850086879078532699846656405640394575840079131296399[0-2][0-9]{1}|11579208923731619542357098500868790785326998466564056403945758400791312963993[0-4]|115792089237316195423570985008687907853269984665640564039457584007913129639935)$"
+                            },
+                            "denied": {
+                              "description": "isProviderDenied(attestorProviderId).",
+                              "type": "boolean"
+                            },
+                            "credentialSigner": {
+                              "description": "getCredentialSigner(attestorProviderId).",
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            },
+                            "credentialRoots": {
+                              "description": "Roots the Oracle holds valid (isValidCredentialRoot) and registered to the attestor (getCredentialRoot(root).providerId).",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^0x[0-9a-f]{64}$"
+                              }
+                            },
+                            "signerPubkeyHashes": {
+                              "description": "Hashes with signerProvider(hash) == attestorProviderId.",
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^0x[0-9a-f]{64}$"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "validConfigs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{64}$"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "blocks": {
+                "description": "The block pair the evaluation (or the quorum) resolved before its first Oracle read, after any re-resolving below the floor (SPEC.md section 10.5, Block floor): the node's eth_chainId and the finalized and latest blocks' number and timestamp. Invalid when chainId is not the deployment's, the finalized block is after the latest one (number or timestamp), or the latest block's timestamp is more than clockSkewSeconds after the consumer's clock.",
+                "type": "object",
+                "required": [
+                  "chainId",
+                  "finalized",
+                  "latest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "chainId": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "finalized": {
+                    "type": "object",
+                    "required": [
+                      "number",
+                      "timestamp"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "timestamp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    }
+                  },
+                  "latest": {
+                    "type": "object",
+                    "required": [
+                      "number",
+                      "timestamp"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "number": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "timestamp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    }
+                  }
+                }
+              },
+              "blockFloor": {
+                "description": "The deployment's block floor in the observation store (SPEC.md section 10.5): the highest finalized and latest block numbers at which an evaluation that can grant read this deployment's Oracle, whatever evidence it was for; null when none has. A pair with either number below its floor is below the floor.",
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "finalized",
+                      "latest"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "finalized": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "latest": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                ]
               }
             }
           },
@@ -1632,7 +2119,8 @@
             "required": [
               "attestors",
               "count",
-              "satisfied"
+              "satisfied",
+              "unavailable"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1652,6 +2140,20 @@
               },
               "satisfied": {
                 "type": "boolean"
+              },
+              "unavailable": {
+                "description": "null, or why the quorum cannot complete: its one block pair is invalid or below the deployment's floor (SPEC.md section 10.6). It then counts no member: attestors is empty and satisfied false.",
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "blocks_invalid",
+                      "below_block_floor"
+                    ]
+                  }
+                ]
               }
             }
           }
