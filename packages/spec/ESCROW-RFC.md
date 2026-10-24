@@ -19,6 +19,8 @@
 
 - **`[IMPLEMENTED]`** — exists in the Riddler server/contracts today.
 - **`[PROPOSED]`** — net-new; MUST be built before it is real.
+- **`[BUILT, UNDEPLOYED]`** — code exists in Riddler, is not deployed and is
+  gated off; a section header keeps the status of its least-built part.
 - **`[RESERVED]`** — pinned here, inert until M6 ships behind the escrow
   capability flag (`SPEC.md` §6).
 
@@ -216,36 +218,636 @@ the property §9.4 must preserve when it changes the key. The solver spends its 
 inventory here; it is made whole only by a later `claim` on the origin escrow
 (§3).
 
-## 5. Proof-of-fill `[PROPOSED]` (no verifier exists; substrate is orphaned clients — §11.0)
+## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[BUILT, UNDEPLOYED]`, §11.0; tiers 1, 1s and 2 unbuilt, Appendix A)
 
 A pluggable `IProofOfFill` verifier, tiered per corridor and swapped via
 `setProofVerifier(destChainId, …)` **with zero change to the user signature**.
 Tiers map onto the `ProofReceipt.proof_tier` (`SPEC.md` §5.2.3) and the
 `FillProof` union (`SOLVER-RFC.md` §6):
 
-| Tier | `proof_tier` | `FillProof.kind`                               | Trust                                                        |
-| ---- | ------------ | ---------------------------------------------- | ------------------------------------------------------------ |
-| 0    | `attested`   | `tx_hash` / `oracle_attestation`               | venue oracle watch (`[PROPOSED]` — must be built; see §11.0) |
-| 1    | `optimistic` | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                  |
-| 2    | `verified`   | `light_client` / `zk`                          | trust-minimized                                              |
+| Tier | `proof_tier`           | `FillProof.kind`                               | Trust                                                                                                                       |
+| ---- | ---------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (attesters `[BUILT, UNDEPLOYED]`; see §11.0)                                                             |
+| 1    | `optimistic`           | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                                                                                 |
+| 1s   | `optimistic_disclosed` | `aztec_note_preimage`                          | venue verifies note inclusion on its own node from a solver-disclosed preimage; bonded; recipient hold (§5.1, `[PROPOSED]`) |
+| 2    | `verified`             | `light_client` / `zk`                          | trust-minimized                                                                                                             |
 
 A verifier MUST treat an **unknown proof kind as unproven (fail closed)** — the
 reference `StubEscrowGateway` (`@xochi/solver-sdk`) enforces exactly this.
-EVM↔EVM corridors can reach tier 2; Tron / shielded-Aztec legs stay tier 0–1
-(bonded, disclosed) because their finality is not verifiable from an origin EVM
-chain: accepted as bounded trust, and disclosed rather than hidden.
+EVM↔EVM corridors can reach tier 2; Tron legs stay tier 0–1 and shielded-Aztec
+legs are tier 1s only (§5.1): bonded and disclosed, because their finality is
+not verifiable from an origin EVM chain. Accepted as bounded trust, and
+disclosed rather than hidden.
+
+### 5.1 Shielded-Aztec fill proof `[PROPOSED]`
+
+**Authority.** This subsection is normative for counterparties (solvers,
+venues, verifiers). xochi `docs/architecture/settlement-protocol.md` 3.8a
+binds the Attestor of the XSP path (the Xochi Settlement Protocol's
+Depository + Ledger custody pair, §13) to the same rule; xochi planning docs
+summarise both and defer to them.
+
+The release rule for shielded-Aztec legs, decided 2026-10-17 with B-panel
+(xochi `docs/planning/shielded-execution.md` §4 "B-panel", D7–D9). Nothing in
+this subsection is built. A shielded leg is filled by the standard Aztec
+Token's private-to-private `transfer` from the solver's private inventory. That
+call emits no L2-to-L1 message and delivers the recipient note
+`onchain_unconstrained`, so no origin-chain verifier and no venue watcher can
+observe the fill: the only evidence is the note's preimage. That preimage
+(including `randomness`) exists only in the solver's proving result
+(`PrivateExecutionResult.newNotes`); the solver's PXE does not retain notes it
+does not own, so the sender MUST journal the preimage durably before
+broadcast. A payout whose preimage was not journaled is an unknown outcome:
+held, never resent. Tier 1s makes the disclosure the proof. It is
+`optimistic` in trust (bonded; no verifier on the origin chain) and
+`disclosed` because the venue learns the fill in full. It is not tier 2 and
+MUST be advertised as `optimistic_disclosed` (C5).
+
+**Payload.** The solver submits, over the authenticated solver channel
+(`POST /solver/fills`, `SOLVER-RFC.md` §6) and never on any chain:
+
+```
+FillProof { kind:            "aztec_note_preimage",
+            chainId:         number,   // OrderTerms.toChainId: a settlement-type label, not the network (below)
+            networkIdentity: string,   // bytes32 hashNetworkIdentity of the corridor's approved Aztec network
+            txHash:          string,   // L2 tx hash of the `transfer`
+            noteIndex:       number,   // the recipient note's index in the tx's note hashes
+            token:           string,   // pinned Token (AztecAddress) = DestOpening.toToken
+            recipient:       string,   // note owner (AztecAddress) = DestOpening.recipient
+            amount:          string,   // note value (u128, decimal) >= DestOpening.toAmount
+            randomness:      string,   // the note's randomness (Field)
+            solver:          string }  // the bonded solver account; MUST equal the authenticated awardee
+```
+
+`chainId` is a settlement-type label, not a network identity. The XSP path
+pins it as `XSP_AZTEC_CHAIN_ID = 0x41A7EC` (4302828; xochi
+`docs/architecture/settlement-protocol.md`, `Evidence.destChainId`), and the
+`RiddlerEscrow` `OrderTerms.toChainId` for an Aztec leg is `[RESERVED]` to the
+same value until M6.1's vectors pin it; no `orderId` vector covers it yet.
+Two Aztec networks (a testnet and mainnet, or one rollup redeployed) can
+share the label, so it never selects a node, a registry partition or a
+release.
+
+**Network binding (normative).** The network is the approved
+`NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address
+rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)`, and
+`networkIdentity` is its EIP-712 hashStruct (`@xochi/signer`
+`hashNetworkIdentity`; vectors in `conformance/shielded.json`,
+`networkIdentity`). Its `aztecChainId` is the chain id every tx on that Aztec
+network carries in its context (`TxContext.chainId`, the "chain id" the node
+reports below). Aztec networks take it from their L1, so on every current
+network it equals `l1ChainId` (as in the vector); the encoding keeps both
+because they are separate protocol values. Either way it need not equal
+`XSP_AZTEC_CHAIN_ID`. The **network key** is
+`(aztecChainId, rollupAddress, l1ChainId)`: two digests can name one network
+(`genesisOrNetworkDigest` admits either a genesis or a network digest), so
+the venue approves exactly one `NetworkIdentity` digest per network key
+across all corridors, and every shielded corridor on that network records
+that one digest. The venue records it with the `:winner` FillAuth; a payload
+whose `networkIdentity` differs from the recorded one is refused on content
+(below). Before step 3 below, the venue proves that its own node serves that
+identity: the node's reported chain id and rollup version equal
+`aztecChainId` and `protocolVersion`, its L1 rollup contract equals
+`rollupAddress` on `l1ChainId` as read through the venue's own L1 node, and
+its genesis (or network) digest equals `genesisOrNetworkDigest`. A member the
+node cannot report, or any mismatch, is a node error (unproven), never a
+fallback to `chainId`. A rollup redeploy is a new identity: a new corridor
+approval and a new registry partition.
+
+The note fields are the pinned token's note preimage and nothing more. At
+aztec-packages v5.1.0 the Token's balance note is `UintNote { value: u128 }`.
+Its hash is two Poseidon2 rounds: a partial commitment
+`H_sep([owner, randomness], PARTIAL_NOTE_COMMITMENT)`, completed as
+`H_sep([storage_slot, commitment, value], NOTE_HASH)`, so `owner`,
+`storage_slot`, `randomness` **and `value`** are all bound; `storage_slot` is
+derived from the token's private balance map and `owner`
+(`noir-projects/aztec-nr/uint-note/src/uint_note.nr`, `compute_note_hash` /
+`compute_complete_note_hash`). An implementation pins the token's contract
+class; a payload whose fields do not match the pinned layout is refused on
+content (below), and a layout change versions this `kind`.
+
+**Fill window (normative).** A shielded leg's fill window ends at
+`fillDeadline` (`OrderTerms.fillDeadline`; on the XSP path
+`XochiObligation.deadline`, §13.1), the **fill window end**; its **grace
+end** is `fillDeadline + FILL_DEADLINE_GRACE` (§6.1). A shielded `:winner`
+FillAuth carries `deadline = fillDeadline`, and the award's `exclusiveUntil`
+is the same instant. The `SOLVER-RFC.md` caps on a winner's deadline (§5.2's
+`fillDeadline − 120 − 300` on a 300 s grid, §5.1's backstop budget) bound
+an EVM fill that `RiddlerFiller` checks and keep room for a backstop; a
+shielded leg has neither (MUST NOT, below), so neither cap applies, while
+that RFC's `minExclusiveMs` floor (§5.1 there) still does. Step 6's upper
+bound, the FillAuth and `FillAcceptance` `deadline` and `exclusiveUntil` are
+therefore one instant, and `FillWindowOpen` (`a.deadline +
+FILL_DEADLINE_GRACE`, §6.1) opens at the grace end.
+
+**Venue recomputation (normative).** The venue derives every hash itself. It
+MUST NOT accept a solver-supplied note hash, siloed hash, unique hash, nonce or
+inclusion witness, and MUST NOT read the chain through the solver's PXE or any
+node the solver names. While venue equals solver (Riddler is the only shielded
+panel member, §6) the node rule is inert in the same way as the bond; it binds
+from the first independent solver:
+
+1. `note_hash = UintNote::compute_note_hash(owner = recipient, storage_slot,
+   randomness)` with `value = amount`, per the pinned token class;
+2. `siloed = compute_siloed_note_hash(token, note_hash)`;
+3. fetch the tx effects of `txHash` from the venue's **own** Aztec node;
+   `first_nullifier` is the tx's first (protocol) nullifier;
+   `note_nonce = compute_note_hash_nonce(first_nullifier, noteIndex)`;
+4. `unique = compute_unique_note_hash(note_nonce, siloed)`. Steps 2–4 are
+   `noir-protocol-circuits/crates/types/src/hash.nr` at v5.1.0:
+   <https://github.com/AztecProtocol/aztec-packages/blob/v5.1.0/noir-projects/noir-protocol-circuits/crates/types/src/hash.nr#L54-L110>;
+5. check that `unique` is a leaf of the note-hash tree on the venue's own node
+   at the corridor's required finality (Aztec `finalized` plus the corridor's
+   configured L1 finality policy; never `pending`, `proposed`, `checkpointed`
+   or `proven` alone), and that it is the leaf `txHash` inserted with the
+   nonce computed from `noteIndex` (step 3);
+6. check that the L2 block including `txHash` is strictly greater than the
+   **last proven** Aztec L2 block height the venue's own node reported when it
+   issued the `:winner` FillAuth for `orderId` (never the pending tip). Proven
+   blocks are not pruned, so the bound survives an unproven-epoch prune. A
+   note included at or below it is refused on content (below): a fill cannot
+   precede the award.
+   On the XSP path the lower bound is the lowest last-proven height across the
+   Attestor's signing nodes' own Aztec nodes, recorded when the obligation is
+   recorded `Open` (3.8a). A note landing between that proven height and the
+   award passes this bound; on `RiddlerEscrow` the fill tag (Order binding,
+   below) refuses it, because no tx can carry the tag before the award, and
+   the XSP path carries no tier-1s order until 3.8a adopts the tag (Order
+   binding). The upper bound is the fill window end: the timestamp of that
+   block, as the venue's own node reports it at step 5's finality, is at
+   most `fillDeadline`. A note included later is refused on content (below):
+   the window was the winner's to fill in, never an option to hold past it.
+
+Steps 3–4 assume a **private-only** transaction: `noteIndex` is the position
+in the tx's note hashes ordered by side-effect counter, and the nonce comes
+from the protocol (first) nullifier. Token `transfer` and the PrivateFPC fee
+path enqueue no public call, so this holds; a solver account or fee path that
+enqueues a public call changes the revertible-half numbering and is refused
+on content (below) under this `kind`.
+
+**Tagging (normative).** The solver's sender PXE MUST install the
+address-derived tagging hook and MUST NOT fall back to the non-interactive
+handshake, which publishes the recipient. The venue refuses on content a fill
+whose tx carries a non-interactive handshake log. Without this rule §9.5's
+"`to` hidden" does not hold.
+
+**Order binding (normative).** The note hash binds owner, slot, randomness
+and value; it binds neither the order nor the sender, and a private tx hides
+`msg_sender`. The `transfer` tx MUST therefore also carry a fill tag that the
+venue verifies in that tx's own effects: a private call, in the same tx, to
+the corridor's pinned `FillTag` instance, which emits the nullifier
+`tag = H_sep([hi(fillSalt), lo(fillSalt)], FILL_TAG)` (`fillSalt` per §9.4,
+split into two 128-bit limbs). The instance is pinned by **address**, not by
+class: each approved `networkIdentity` records exactly one `FillTag` address
+(in the corridor configuration, beside the bounds of the claim window below),
+because a nullifier is siloed by the address that emits it and uniqueness
+holds per address only; a tag emitted from any other address is absent.
+`FILL_TAG` is `[PROPOSED]`, its value open: the separator constant is fixed
+by the pinned `FillTag` class when it is built and published with the
+corridor, a change to it versions this `kind`, and until then no value is
+valid. At step 3 the
+venue recomputes `fillSalt` from `orderId` (§9.4), computes
+`compute_siloed_nullifier(FillTag address, tag)` and checks that it is a
+nullifier in `txHash`'s effects; absent or different is refused on content. The
+`FillTag` call emits no note hash and enqueues no public call, so step 3's
+numbering holds. The tag input is `fillSalt`, not `fillId`: `fillId` also
+reaches the attester and the slash arbiter in the FillAuth preimage (§6.1),
+while `fillSalt` is held only by the venue (its attesters included, which
+are venue services under `RiddlerEscrow`, §6) and by the awardee, which
+receives it only with the award (§9.4). So no tagged tx can predate the
+award, and the protocol's nullifier uniqueness admits one tagged tx per
+order on that address. A note from an unrelated transfer, a third party's
+payment, or a payment to a shared or custodial recipient (an exchange
+deposit address) cannot evidence this order. The tag puts no origin value
+on Aztec (C1): `fillSalt` is keyed by the venue. Residual: the extra
+nullifier makes a fill tx distinguishable by shape from a plain `transfer`,
+which narrows the anonymity set (§9.6); a leaked `fillSalt` lets its holder
+tag a tx for the order (the payee is still the authenticated awardee) or burn
+the tag first (Burned tag, below); `FillTag` is net-new and unbuilt. The XSP
+path has no `fillSalt`, so it MUST NOT carry tier 1s at all until 3.8a
+adopts an equivalent Attestor-issued per-obligation tag input in lockstep: no
+shielded obligation is recorded `Open`, so no XSP disclosure is ever judged,
+refused for a tag it could not carry, or slashed on (§6). Every XSP rule in
+this subsection describes that path once the tag lands.
+
+A node error and an `unknown` result are **unproven**, not "not filled": they
+leave the disclosure unclassified. Only the venue's own Aztec or L1 node, its
+identity proof (Network binding, above) or its registry can make a
+disclosure unproven. A check that fails on the payload or on the disclosed
+tx's own effects, which the awardee controls, is never unproven: it is
+refused on content as soon as the venue's own node has answered the read it
+needs (at once, for a check on the payload alone). A disclosure's
+**receipt** is its attributable `POST /solver/fills` record (§11.0),
+timestamped by the venue on arrival. For §6 every received disclosure
+resolves, by `holdDeadline` (Claim window, below) at the latest, into
+exactly one class:
+
+- **verified**: every release-predicate check (below) passed at finality;
+- **refused on content**, which counts as no disclosure (§6): a
+  `networkIdentity` other than the recorded digest; a payload `solver` other
+  than the awardee; a `token`, `recipient` or `amount` that does not match
+  the `DestOpening`; fields that do not fit the pinned layout; a payload the
+  venue's node rejects as malformed; a tx that carries a non-interactive
+  handshake log, enqueues a public call or lacks the fill tag; a `unique`
+  that is not the leaf `txHash` inserted with `noteIndex`'s nonce once
+  `txHash` is included at finality (step 5); a note included at or below
+  step 6's lower bound or after the fill window end; `not_included` (below);
+  or `note_already_bound` (an existing entry is always fully verified,
+  because the registry is written only after every other check passes,
+  below);
+- **venue outage**: the venue's own Aztec or L1 node, its identity proof or
+  the registry was failing for every disclosure on that corridor, not only
+  for this one, by the venue's **health record** (its own timestamped log of
+  node, identity-proof and registry checks per corridor), or the venue's
+  Aztec node is lagging (below). Never grounds for a slash; the order
+  follows the outage residual (Claim window, below).
+
+The venue's Aztec node for a corridor is **lagging** while the timestamp of
+its finalized L2 head, at the corridor's finality (step 5), trails the venue
+clock by more than `T_final` (which already covers a proving stall; Claim
+window, below). `not_included` holds only when the venue node's finalized
+view covers every block that could validly include the tx and `txHash` is in
+none of them: its finalized head has a timestamp later than `fillDeadline`,
+so no block step 6 admits is still unfinalized. Until then the disclosure is
+unclassified, never `not_included`, and a node whose finalized head has not
+passed `fillDeadline` by `fillDeadline + T_final` is lagging; so a fill still
+waiting in the mempool, or behind a slow venue node, is never classed absent.
+
+A disclosure still unclassified at `holdDeadline` for any reason other than
+a venue outage is refused on content, so a fabricated or never-included
+`txHash` cannot keep a no-show unslashable.
+
+**Burned tag (normative).** Before §6's slash predicate is judged, the venue
+checks on its own node, at the corridor's finality, whether the order's
+siloed tag is already a nullifier emitted by a tx other than the disclosed
+`txHash` (with no disclosure, by any tx). If it is, the venue records
+`tag_burned` on the order: the awardee's tagged `transfer` can no longer
+land, and the user's path is the permissionless `refund` at `refundableAt`
+(§3), with no other FillAuth (MUST NOT, below). Every holder of `fillSalt`
+(Order binding, above) can emit the tag, the venue side as well as the
+awardee, and a private tx hides which one did, so a burned tag is nobody's
+provable fault. It is therefore never slash grounds (§6's predicate,
+condition (2)): otherwise any venue-side holder could frame an awardee for a
+no-show slash, which §6.1 rules out. It suspends the awardee from shielded
+awards instead: the venue MUST NOT issue it another shielded `:winner`
+FillAuth until the operator lifts the suspension, unless the venue has
+recorded a **`fillSalt` exposure** on its own side covering the order (a
+`venueKey` or attester leak, handled as a possible `venueKey` compromise,
+§9.4). So burning its own tag still spares an awardee the slash on that
+order, or hides a misfill, but costs it every shielded award while it is
+suspended, which outweighs one slash for any solver that wants shielded
+flow; a framed awardee loses eligibility, not bond. The
+awardee's own undisclosed fill (a preimage not journaled) suspends it the
+same way and is never a leak alarm by itself. Binding the tag to a secret
+only the awardee holds, so that a burn is provably its own, needs that
+secret committed in the `FillAcceptance` (§6.1), which changes that signed
+type and its vectors (`conformance/fill-acceptance.json`); it waits for the
+version that changes them.
+
+**Registry.** Only after every other check of the release predicate has
+passed (network binding, steps 1–6, the fill tag, the payee and the
+`DestOpening` match), and never before, the venue records
+`(network key, unique) -> HMAC_k(orderId)` (on the XSP path
+`HMAC_k(obligationId)`) as an atomic insert-if-absent keyed by
+`(network key, unique)`. `k` is a venue-held key; retired key
+versions are retained for lookup, and the plaintext id lives only in the
+bounded-retention operation record. A write that finds a different bound
+commitment is refused (`note_already_bound`), permanently for that payload:
+with standard-size orders one note would otherwise evidence two fills. The
+registry is partitioned by the network key (Network binding, above), not by
+identity digest, corridor or `chainId`, because a note hash is
+network-global, and it is permanent (a note
+hash is a leaf for the life of the chain): an entry MUST never expire or be
+pruned. It is an append-only log with periodic signed checkpoint digests; a
+restore is complete only when its replay reproduces the latest checkpoint
+digest. An incomplete restore, or loss, halts shielded release; never
+re-sign from memory.
+
+**Preimage handling.** The venue (and the XSP Attestor) never logs the
+disclosed preimage, stores it encrypted at rest, retains it under the bounded
+resolved-record rule (xochi `settlement-protocol.md` 3.8a), and logs every
+access to it. On `RiddlerEscrow` that rule never discards the preimage or
+the order's inclusion record (Recipient, below) before `fillDeadline +
+MAX_SLASH_DELAY + disputeWindow` (§6.1): no slash on the order can land
+later, so none can be disputed later.
+
+**Release predicate.** Release of the depositor's origin principal to the
+payee follows the recomputation, the registry write and the absence of an open
+recipient hold (below), and nothing else. The payee is the authenticated
+awardee (the `:winner` FillAuth solver; on the XSP path the Ledger-assigned
+solver); a payload `solver` that differs is refused on content (above).
+`verify(orderId, proof) ⇒ payee = awardee` holds iff `networkIdentity` equals
+the digest recorded with the award and the venue's node proved it, `recipient`,
+`token` and `amount` match the committed `DestOpening` (`amount >= toAmount`;
+exact under §13.2), the inclusion check, both of step 6's window bounds and
+the fill tag (steps 5–6, Order binding) passed at finality,
+`(network key, unique)` was free in the
+registry, no `not_received` hold is open, and the order's outcome record
+admits release (release/slash exclusivity, §6). Both custody paths keep C2:
+no destination locator reaches the origin chain.
+
+- On `RiddlerEscrow` the origin artifact is the custody contract's own release
+  artifact, as for tier 0: `FillAttestation(orderId, payee)` (§9.4).
+- On the XSP path (D9's target pair, §13) it is a blinded single-use
+  commitment (xochi `settlement-protocol.md` 3.8a):
+  `fillCommitment = keccak256(abi.encode(uniqueNoteHash, attestorSalt))`,
+  where `attestorSalt` is a fresh random 32-byte value per obligation, held by
+  the Attestor and never published. The evidence is
+  `Evidence(XSP_AZTEC_CHAIN_ID, txHash = fillCommitment, logIndex = 0,
+  blockNumber = 0, blockHash = 0)`, and `ObligationFilled.fillTxHash` carries
+  the same `fillCommitment`. `evidenceUsed` enforces one commitment per
+  obligation, but because the salt is per obligation it cannot catch one note
+  reused across obligations: the Attestor's registry, keyed by
+  `(network key, uniqueNoteHash)`, is what enforces one note, one
+  obligation. `destChainId` and `solver` in `ObligationFilled` remain public,
+  so the Ledger still reveals the settlement type and the solver per
+  obligation.
+
+The preimage, `txHash`, `noteIndex` and every unblinded hash derived from them
+never appear in origin calldata, events or escrow state (C2).
+
+**Recipient.**
+
+- The **recipient capability** is owner-bound: a request authenticated as the
+  order's owner, the wallet that signed the `XochiIntent` (`SPEC.md` §2.1),
+  by a SIWE (EIP-4361) session for that wallet or by that wallet's
+  `RecipientAction` signature (below). A bearer intent read token (such as
+  the `X-Xochi-Read-Token` `@xochi/client` sends) never qualifies: whoever
+  holds it, an embedding host included, can present it, so it is read-only
+  and never authorizes a hold, an acknowledgement or a withdrawal.
+- The recipient's **authenticated channel** is its **mailbox**: a per-`orderId`
+  record that only the venue writes and that the venue serves only to a
+  request holding the recipient capability. A **mailbox write** is complete
+  once the venue has durably recorded it, timestamped and attributable like
+  a disclosure's receipt (above); whether or when the owner reads it does
+  not matter, so it needs no owner session or other owner action to exist.
+- **`RecipientAction` (`[PROPOSED]`).** A signed owner request is the EIP-712
+  struct `RecipientAction(bytes32 orderId,uint8 action,uint64 issuedAt)`
+  under its own domain `{ name: "Xochi Recipient Action", version: "1",
+  chainId: OrderTerms.fromChainId }`, with no `verifyingContract` (the venue
+  verifies it off-chain), and `action` 1 = `not_received`, 2 = acknowledge,
+  3 = withdraw. The venue accepts one only if it recovers (ecrecover) to the
+  order's owner, `orderId` is that order's, `|now − issuedAt| ≤ 60 s` on the
+  venue clock, `issuedAt` is not earlier than that of the last action
+  accepted for that `orderId`, and the order's **recipient state** allows the
+  action: `none → held` by `not_received`, `held → withdrawn` by withdraw,
+  and `none`, `held` or `withdrawn` `→ acknowledged` by acknowledge; nothing
+  else (`acknowledged` is final). The same transitions bind an action posted
+  through a SIWE session. The recipient state and the last accepted
+  `issuedAt` live in the shared order store beside the outcome record (§6),
+  moved by atomic compare-and-set, so every venue node sees one sequence. No
+  state is entered twice, so each signature is single-use; equal `issuedAt`
+  is allowed because no transition accepts one action twice, so a
+  `not_received` and a withdraw signed in the same second both land in
+  order. The 60 s bound absorbs wallet clock skew and transit, and is all the
+  delay a holder of the signature (an embedding host, say) gets: a
+  signature dated ahead, or held, is refused once that minute has passed, so
+  it cannot be saved to undo a later action. An owner that is a contract
+  account (ERC-1271) acts through a SIWE session only: `RecipientAction` is
+  never checked through `isValidSignature`, so no hold waits on a chain read.
+  The venue MUST NOT accept any other signature for these actions (an
+  EIP-191 `personal_sign` over free text included), so the wallet never
+  signs one under another protocol's domain. The domain and type are fixed
+  with their vectors when built; until then no signature is valid.
+- Recipient acknowledgement is a **completion** predicate: it closes the
+  order's status and MUST NOT release, advance, or stand in for inclusion.
+- A recipient `not_received` assertion holds release for that `orderId`. It
+  is posted through the recipient capability (above), as are
+  acknowledgement and withdrawal; an unauthenticated assertion is ignored.
+  Resolution is evidence, never time. The hold lifts when (a) the recipient
+  acknowledges or withdraws, or (b) an operator records that the venue holds
+  its own two records: the **inclusion record** (every check of the release
+  predicate except the hold, passed at finality, for the recomputed note
+  hash) and the **forwarding record**, the mailbox write (above) of the L2 tx
+  hash and block, never a status field another caller can read by intent id
+  (such as `SPEC.md` §5.1's `l2TxHash` on `/xochi/status`). The venue makes
+  that mailbox write as soon as it has the inclusion record, whether or not a
+  hold is open. The recipient's PXE observation is added if offered and never
+  required. The recipient cannot veto (b): both records are the venue's own
+  writes, and declining to read the mailbox or to sync a delivered note is
+  not a failure to receive it. Escalation pages the operator when the hold
+  opens; the hold itself resolves by `holdDeadline` (Claim window, below) on
+  the evidence (b) names, never on time alone.
+- Because `transfer` delivers `onchain_unconstrained`, inclusion proves the note
+  exists, not that the recipient's PXE discovered it. No v5.1.0 wallet API
+  imports a note from its preimage. The remedy is re-discovery: the mailbox
+  write (above) gives the recipient the L2 tx hash and block; the wallet
+  confirms the solver is registered as an address-derived sender and
+  re-syncs over a widened unconstrained window. The preimage may be shown
+  for manual verification only. Never a second `transfer`, never a refund.
+
+**Claim window and hold deadline (normative).** On `RiddlerEscrow`, `refund`
+is permissionless after `refundableAt = fillDeadline + claimWindow` (§3), and
+no hold rule here can withhold it: a contract-level hold would give a venue
+key the power to defer the depositor's principal, which §1 forbids. Release
+and refund are made exclusive by bounding every wait a shielded release can
+depend on, and a corridor carrying any shielded order MUST set
+
+```
+claimWindow >= T_final + T_verify + T_hold + T_registry + T_dispute + T_release
+```
+
+where `T_final` is Aztec `finalized` plus the configured L1 policy, including
+the rollup's proof-submission window (the longest a block can stay unproven
+before it is pruned, so a proving stall resolves inside it, proven or
+pruned); `T_verify` is the venue's verification latency; `T_hold` is the
+operator's hold-resolution budget, the least time a hold opened at
+verification gets before `holdDeadline` (below); `T_registry` is the
+registry recovery bound (a restore that has not reproduced its checkpoint
+digest within it stays halted); `T_dispute` is the longest a late
+`:winner`'s release can wait for a slash proposed at the grace end to be
+voided (§6),
+
+```
+T_dispute = FILL_DEADLINE_GRACE + T_slash + max(disputeWindow, T_final + T_verify) + T_arbiter
+```
+
+because the proposal lands within `T_slash` (§6), the SolverBond
+`disputeWindow` (§6.1) then runs while the solver's evidence, the venue's
+inclusion record, takes up to `T_final + T_verify` to exist, and `T_arbiter`
+bounds the arbiter's decision and the void landing on the bond chain at its
+finality; and `T_release` is the time to land the release artifact on the
+origin chain at its finality. Each is a per-corridor configured bound,
+recorded in the corridor configuration beside its approved
+`networkIdentity` and `FillTag` address.
+
+Every hold on a disclosed fill (a `not_received` assertion, a pending
+operator record, an `unknown` verification) resolves by
+`holdDeadline = refundableAt − T_release`, by default on the evidence already
+held, never on time alone: if the venue's inclusion and forwarding records
+(Recipient, above) exist, the hold lifts and release proceeds; otherwise
+nothing is released and the order refunds at `refundableAt`. A
+`not_received` assertion received after `holdDeadline` is recorded for
+completion and escalation and holds nothing. So no taker can keep a
+delivered note and also make the hold refund its principal: both records
+need nothing from the taker, and once they exist the hold cannot stop
+release; only a venue outage past its bound can (Residual, below).
+
+Exposure stops before a bound is spent. A disclosure's verification is
+**due** at `T_verify` after the later of its receipt and `fillDeadline +
+T_final`: by then a venue whose node is not lagging has classed it (above).
+The venue MUST NOT issue a shielded `:winner` FillAuth for a corridor while
+its registry is halted, while its Aztec node for the corridor is lagging
+(above), or while a disclosure on it whose verification has been due for
+`T_hold` is neither refused on content nor backed by both venue records
+(Recipient, above). Since every payload and tx-shape failure is refused on
+content once the venue's node answers (above), only the venue's own node,
+identity-proof or registry errors leave a due disclosure so. Each is the
+venue's own state, which no counterparty can bring about: an awardee's
+early or junk `txHash` is not due before `fillDeadline + T_final +
+T_verify` and is `not_included` by then, the shape of the awardee's own tx
+is refused on content, and a `not_received` assertion, signed or not and
+with or without a session, changes neither record. Residual: an outage
+longer than its bound on an in-flight order (registry, venue nodes or
+operator) lets `refund` return the principal while the recipient keeps a
+delivered note. The solver bears that
+loss (Riddler, while it is the only shielded panel member), bounded by the
+corridor's **in-flight notional cap**: a configured ceiling on the summed
+`toAmount` of its shielded orders neither released nor refunded, recorded in
+the corridor configuration, past which the venue MUST NOT issue a shielded
+`:winner`. The "never refund an unknown" rule below binds the venue's own
+actions only.
+
+**MUST NOT.**
+
+- MUST NOT trust any solver-supplied hash, nonce or inclusion witness (above).
+- MUST NOT release on the expiry of any window (claim, challenge,
+  acknowledgement, dispute) without preimage-verified inclusion.
+- MUST NOT resend or refund (by the venue's own action) an outcome that is
+  unknown; an unresolved `transfer` stays held until reconciled against the
+  venue's own node. The permissionless `refund` is bounded by the claim-window
+  floor above, not by this rule.
+- MUST NOT, once a `:winner` FillAuth is issued for a shielded leg's
+  `fillId`, issue a FillAuth of any role but the original `:winner` for it
+  (no `:reserve`, no `:backstop`, no re-award). The winner's non-disclosure
+  is resolved by the refund path at `refundableAt` (§3; on the XSP path,
+  §13), never by a second `transfer`: any other FillAuth for a shielded leg
+  is a resend of an unknown outcome. A `:winner` that discloses after the
+  fill window end for a `transfer` included by it (step 6) is still verified
+  under this subsection, subject to release/slash exclusivity (§6); refusing
+  it does not undo the payout. `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil`
+  rule needs this exemption for `aztec_note_preimage` when that kind lands in
+  lockstep.
+- MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
+  silently or as a remedy.
+- MUST NOT advertise this tier as `verified`, nor as confidentiality tier 2
+  (C5) until C4's `k` for the corridor is published (§9.5).
+
+**Wire.** `optimistic_disclosed` (`ProofReceipt.proof_tier`, `SPEC.md`
+§5.2.3) and `aztec_note_preimage` (`FillProof.kind`, `SOLVER-RFC.md` §6) are
+proposed additions to those enums. They land with Riddler in lockstep, not
+here; until then every consumer fails closed on the unknown `FillProof.kind`
+(`@xochi/solver-sdk`'s discriminated union); `proof_tier` is descriptive and no
+consumer in this tree parses it.
 
 ## 6. Bonds, exclusivity, backstop `[PROPOSED]`
 
 - **`SolverBond`** sizes max in-flight exposure (admission control), slashes a
-  no-show (pays the backstop) and a misfill (pays the challenger). A higher ZKSAR
-  trust tier lowers `collateralFactor` and shrinks the challenge window.
+  no-show and a misfill; both slashes pay the affected user (the built
+  `SolverBond.sol`, Riddler ADR-0015 row 15), at 2% of the fill with a $10
+  minimum as deploy defaults (`BOND_SLASH_BPS` / `BOND_MIN_SLASH` env defaults
+  in Riddler `contracts/riddler-escrow/script/DeployBond.s.sol:49-50`), not
+  contract constants. A higher ZKSAR trust tier lowers `collateralFactor` and
+  shrinks the challenge window. The no-show slash
+  applies to tier 1s (§5.1) the same way and pays the user; it never covers
+  principal, which returns only through `refund`.
+
+  **Shielded slash predicate (the only statement).** For tier 1s a misfill
+  is a disclosure refused on content, so one predicate covers both slashes.
+  After the grace end (§5.1 Fill window), the attester signs a
+  `SlashAttestation` for `orderId` iff all three hold: (1) the awardee made
+  no `aztec_note_preimage` disclosure for `orderId` whose receipt (§5.1) the
+  venue clock records by the grace end, or §5.1 has refused on content
+  every such one (its classes, including its `holdDeadline` rule);
+  (2) the venue has not recorded `tag_burned` on the order (Burned tag,
+  §5.1: a burn suspends the awardee, never slashes it); and (3) the order's
+  outcome record admits a proposal (below). It attests exactly that, never
+  "no fill" and never "not verified". A junk disclosure therefore delays the
+  slash to `holdDeadline` at the latest but cannot dodge it, a burned tag
+  trades it for suspension, and a disclosure received after the grace end
+  never blocks it (it is dispute evidence, below). On the bond chain the
+  proposal is also gated by `FillWindowOpen` (§6.1), which opens at the
+  grace end because a shielded FillAuth's `deadline` is `fillDeadline`
+  (§5.1).
+
+  **Withdrawal (tier 1s).** `SolverBond` cannot see orders:
+  `requestWithdrawal` takes the amount out of eligibility at once and
+  `completeWithdrawal` pays it out after the deployed `unbondingPeriod`, less
+  any slash already proposed (a proposal reserves funds still unbonding), so
+  nothing on chain holds a withdrawal for an open shielded outcome. The venue
+  holds it instead: it MUST NOT issue a shielded `:winner` FillAuth to a
+  solver with any amount unbonding (`accounts(solver).unbonding > 0`), nor
+  one whose `refundableAt` (§3) plus `T_slash` is not inside
+  `unbondingPeriod` from the issue (the reserve fills instead, §6.1).
+  `T_slash` is the corridor's configured bound on landing a slash proposal
+  on the bond chain at its finality, recorded with §5.1's other `T_*`
+  bounds. A withdrawal requested after the award is then still unbonding
+  when the latest slash proposal (one from `refunded`, below) lands.
+  Configuration MUST refuse a shielded corridor whose longest
+  quote-to-`fillDeadline` span plus `claimWindow` plus `T_slash` exceeds the
+  deployed `unbondingPeriod`, since this rule would then refuse every
+  shielded `:winner` on it, or whose `claimWindow` plus `T_slash` exceeds
+  SolverBond v2's `MAX_SLASH_DELAY` (§6.1), since a proposal from `refunded`
+  could then never land.
+
+  **Release/slash exclusivity (per `orderId`).** The attester keeps one
+  outcome record per `orderId`: a state and a `refundLanded` fact, set when
+  a `refund` lands, in any state, and never cleared. The state moves only by
+  atomic compare-and-set along these edges and no others: `open →
+  released`, `open → slash_proposed`, `open → refunded`; `refunded →
+  slash_proposed`, only for an order the refund moved from `open` (never
+  released, never slashed) and only until `refundableAt + T_slash` (every
+  shielded `SlashAttestation` carries a `deadline` no later than that, so
+  v1's `AttestationExpired` refuses a later proposal on the bond chain;
+  after it the record is final); `slash_proposed → slash_executed`,
+  `slash_proposed → slash_voided`; `slash_voided → released`, `slash_voided
+  → refunded`; and `released → refunded`, a correction for a signed release
+  artifact that never landed before `refund` did (it can no longer pay).
+  Every edge into `released` requires `refundLanded` unset, so once a
+  refund has landed `slash_voided`'s only exit is `refunded`. A release
+  artifact is signed from `open` only for a disclosure received by the grace
+  end, otherwise only from `slash_voided`; a slash is proposed only from
+  `open`, or from `refunded` as above, under the slash predicate (above). A
+  landed `refund` sets `refundLanded`, moves `open`, `slash_voided` and
+  `released` to `refunded`, and never moves a slash: a proposed slash
+  survives the refund and resolves on the bond chain to `slash_executed` or
+  `slash_voided` (a slash never covers principal, so the two are
+  independent), and one voided after the refund has landed ends at
+  `refunded`. The `refunded → slash_proposed` edge exists because anyone can
+  land the permissionless `refund` at `refundableAt`, `T_release` after a
+  disclosure is refused at `holdDeadline`; an attester that has not proposed
+  by then still can until `refundableAt + T_slash`, so attester lag up to
+  `T_slash` never lets a no-show escape, and the proposal still finds the
+  funds the withdrawal rule (above) keeps unbonding. A
+  disclosure received after the grace end (§5.1's late `:winner`) is the
+  solver's dispute evidence: the slash is proposed (the predicate holds) and
+  release follows its voiding, inside §5.1's `T_dispute` term and before
+  `holdDeadline`, else the order refunds. So at most one of a release
+  artifact that can pay and an executed slash exists per `orderId`. The
+  solver's dispute evidence is the venue's own §5.1 inclusion record for
+  that `orderId`, which includes step 6's fill-window-end bound (a note
+  included later is no evidence), produced on request, not `filled(fillId)`.
+  While Riddler is the only shielded panel member, venue equals solver, and
+  the bond and dispute machinery are inert under `RiddlerEscrow` +
+  `SolverBond` (Riddler runs the attesters); under the Depository + Ledger
+  pair, once the XSP path carries tier 1s (§5.1 Order binding), the
+  independent Attestor's slash applies to Riddler like any solver (D9).
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
   reserve under its own FillAuth and the defaulter is slashed (`SOLVER-RFC.md`
-  §2.1). `claim` itself is permissionless and pays the payee the attestation
-  names. Reuses the existing WAL / reorg-guard / no-double-pay discipline.
+  §2.1). Shielded legs are exempt from the backstop: once a `:winner` is
+  issued, no FillAuth of another role (§5.1 MUST NOT), so a shielded winner
+  that accepted and then did not fill resolves by slash plus `refund`,
+  never by a second `transfer`. A shielded winner that never sends a
+  FillAcceptance faces neither: the attester has no acceptance to slash on
+  (`no_fill_acceptance`, §6.1) and no backstop may fill, so the user's only
+  path is the permissionless `refund` at `refundableAt`. Residual: that user
+  waits the full shielded `claimWindow` (§5.1) with no slash payment; the
+  venue records `winner_abandoned`, and repeated `winner_abandoned` is
+  grounds for panel removal (§6.1). `claim` itself is permissionless and
+  pays the payee the attestation names. Reuses the existing WAL /
+  reorg-guard / no-double-pay discipline.
 
 ### 6.1 Slash proof on solver signatures (SolverBond v2)
 
@@ -266,8 +868,10 @@ signatures, both by the solver's one key (bid signer = FillAuth `filler` =
    from the bid's `minExclusiveMs` (never from the API node's `exclusiveUntil`)
    and refuses `:winner` -- the reserve fills -- if it cannot grant it, or if
    granting it would cut into the backstop's budget (`maxDeadline −
-   fillLatency − backstop margin`). The winner's `amount` is the bid's `output`,
-   never an API-writable order field.
+   fillLatency − backstop margin`); on a shielded leg the deadline is
+   `fillDeadline` and only the `minExclusiveMs` check applies (§5.1 Fill
+   window). The winner's `amount` is the bid's `output`, never an
+   API-writable order field.
 2. **FillAcceptance** (`SOLVER-RFC.md` §5.3), signed only once the solver holds
    a FillAuth it has checked it can fill in time, and verified on-chain:
 
@@ -288,11 +892,17 @@ proposeSlash(SlashClaim c, bytes attesterSig, FillAcceptance a, bytes solverSig)
 //   a.orderId == c.orderId && a.originChainId == c.originChainId && a.escrow == c.escrow   (AcceptanceMismatch)
 //   a.filler == c.solver                                                                   (AcceptanceMismatch)
 //   block.timestamp > a.deadline + FILL_DEADLINE_GRACE                                     (FillWindowOpen)
+//   c.deadline <= a.deadline + MAX_SLASH_DELAY                                             (SlashTooLate)
 //   ECDSA.recover(acceptanceDigest(a), solverSig) == c.solver                              (BadSolverSignature; EOA only)
 ```
 
 `deadline` is a destination-chain timestamp compared on the bond chain, so a
-constant grace of minutes (`FILL_DEADLINE_GRACE`) absorbs clock skew. The
+constant grace of minutes (`FILL_DEADLINE_GRACE`) absorbs clock skew.
+`MAX_SLASH_DELAY` is a deploy-time constant like it: with v1's
+`AttestationExpired` (`block.timestamp > c.deadline`), no proposal lands
+after `a.deadline + MAX_SLASH_DELAY`, whatever `deadline` an attester signs,
+so a buggy or compromised attester cannot slash a long-closed order after
+the solver's evidence retention (§5.1) has run out. The
 acceptance digest is emitted with the proposal as dispute evidence. The bond
 proves the solver ACCEPTED that FillAuth; it does not prove no fill. Only the
 attester attests no fill, and a slash on a filled order is a valid proposal the
@@ -306,8 +916,10 @@ one for a window it chose.
 
 The solver's obligation starts when it SENDS the acceptance, not when the venue
 acknowledges it, and the venue enforces an acceptance window: a `:winner` with
-no verified acceptance by `issued_at + acceptance window` is abandoned to a
-`:backstop` FillAuth for the same `fillId` (at most one fill can land). The
+no verified acceptance by its `acceptBy` (`SOLVER-RFC.md` §5.3) is abandoned to a
+`:backstop` FillAuth for the same `fillId` (at most one fill can land),
+except on a shielded leg, which gets no backstop and refunds at
+`refundableAt` (§5.1 MUST NOT, §6). The
 venue records the award as abandoned (`winner_abandoned` on the order), and
 repeated abandonment is the operator's grounds for removing the solver from the
 panel directory (`SOLVER-RFC.md` §5.3).
@@ -575,13 +1187,25 @@ fill once, claim) are normative in `SOLVER-RFC.md` §7.1.
 | 2    | `confidential` | that a fill occurred; not `to`, `token` or `amount`                           | shielded destination only             |
 
 **The inversion (normative note).** Tier 0 proofs (`tx_hash`) are structurally
-incompatible with confidentiality tier ≥ 1 by C2. §5 confines Tron and
-shielded-Aztec legs to proof tiers 0–1 because their finality is not verifiable
-from an origin EVM chain. Shielded-Aztec is also the _only_ corridor that can
-reach confidentiality tier 2. So the corridor carrying the strongest privacy
-promise is the one whose available proofs most restrict privacy. Resolving that
-is a precondition for offering tier 2 over escrow, and it is **not resolved
-here**.
+incompatible with confidentiality tier ≥ 1 by C2. §5 confines Tron legs to
+proof tiers 0–1 and shielded-Aztec legs to tier 1s because their finality is
+not verifiable from an origin EVM chain. Shielded-Aztec is also the _only_
+corridor that can reach confidentiality tier 2. So the corridor carrying the
+strongest privacy promise is the one whose available proofs most restrict
+privacy. §5.1 now specifies (not builds) the shielded release path: a disclosed
+proof the venue verifies on its own node. Both custody paths keep C2: on
+`RiddlerEscrow` the origin artifact is `FillAttestation(orderId, payee)`; on
+the XSP path it is the blinded `fillCommitment` (xochi
+`settlement-protocol.md` 3.8a); neither carries a destination locator. The
+cost is the venue learning the fill in full, and the XSP Ledger still reveals
+settlement type and solver per obligation (`ObligationFilled.destChainId`,
+`solver`). Proof tier 2 for that corridor remains unreached, and what tier 1s
+hides is the Aztec side only: `to`, `token` and `amount` are hidden from the
+public Aztec observer, while the source debit stays public and bounds
+`amount` (§9.1, §9.6). The origin-chain time of release (`FillAttestation`)
+or `ObligationFilled` bounds when the Aztec tx landed: a timing correlation,
+not a locator. Offering confidentiality tier 2 over escrow still requires
+C4's `k` for the corridor; nothing here waives it.
 
 ### 9.6 Amount correlation (residual)
 
@@ -593,15 +1217,17 @@ standard bridge-correlation result and it is not defeated by identifier hygiene.
 
 Mitigations, by descending effect and ascending cost to somebody:
 
-| Mitigation           | Effect                              | Paid by                              |
-| -------------------- | ----------------------------------- | ------------------------------------ |
-| shielded destination | removes the event entirely (tier 2) | corridor availability                |
-| netting / batching   | collapses opposing flow             | only works with bidirectional volume |
-| amount binning       | widens the candidate set            | the taker, in residue                |
-| decoy fills          | widens the candidate set            | the solver, in capital               |
+| Mitigation           | Effect                                                                                         | Paid by                              |
+| -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------ |
+| shielded destination | hides `to`, `token`, `amount` on Aztec (B-panel private `transfer` only; not design A); confidentiality tier 2 only once C4's `k` is published (§9.5); the public source debit still bounds `amount` | corridor availability                |
+| netting / batching   | collapses opposing flow                                                                        | only works with bidirectional volume |
+| amount binning       | widens the candidate set                                                                       | the taker, in residue                |
+| decoy fills          | widens the candidate set                                                                       | the solver, in capital               |
 
 None is sufficient alone at current flow. This is why C4 requires `k` to be
-published and recomputable from public logs rather than assumed.
+published and recomputable from public logs rather than assumed. On a
+shielded leg the origin-chain release time adds a timing residual: it bounds
+when the Aztec tx landed (§9.5).
 
 ### 9.7 Out of scope
 
@@ -645,6 +1271,12 @@ today and a `@xochi/spec` MAJOR plus a redeploy after M6.2 (§10, §11.1).
   `witnessOrderId`, the `OriginPullWitness` orderId the user signs, which must
   equal the recomputed `orderId`. A binding missing either throws. No
   preimage, digest or vector changes.
+- `0.5.0-draft` (docs only, no version bump; this draft's policy is that
+  `[PROPOSED]` text versions with its wire landing): proof tier 1s
+  (`optimistic_disclosed` / `aztec_note_preimage`) for shielded-Aztec legs,
+  normative in §5.1, with its slash, withdrawal and outcome-record rules in
+  §6; the legend gains `[BUILT, UNDEPLOYED]`. No preimage, digest or vector
+  changes.
 
 ---
 
@@ -669,8 +1301,11 @@ taker quote path is untouched until an operator opts in twice:
 | `POST /solver/fills` intake: attributable receipts, unknown kinds fail closed     | the input side of the release predicate, already running              |
 | `computeOrderId` / `assertEscrowBinding` (`@xochi/signer`), `StubEscrowGateway` | the client guard (§7) and the interface the real gateway must satisfy |
 
-**The tier-0 verifier substrate does not exist.** Nothing in the server submits
-or verifies a proof of fill today; the oracle orchestration was removed.
+**Nothing deployed verifies a fill, and the third-party oracle substrate does
+not exist.** The tier-0 attesters (Riddler `lib/riddler/solver/escrow/*`) are
+`[BUILT, UNDEPLOYED]` and gated off, so nothing in the deployed server submits
+or verifies a proof of fill today; the third-party oracle orchestration (the
+`oracle_attestation` watch) was removed (riddler #766).
 
 What remains is the per-protocol API clients (`Riddler.Integrations.{Polymer,
 Wormhole,Hyperlane}`) with **zero callers**. The expensive parts survived
@@ -918,14 +1553,16 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 
 | Area                                            | Status          | Where                                                                                                     |
 | ----------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| Fill oracles (attested fills)                   | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (§11.0) |
+| Third-party fill oracles (`oracle_attestation`) | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (§11.0) |
 | `OrderTerms` / `orderId` / `OpenAuth` reference | `[RESERVED]`    | `@xochi/signer` `computeDestCommitment`, `computeOrderId`, `openAuthDigest` + §2, §12                   |
 | Escrow-binding client guard                     | `[RESERVED]`    | `@xochi/signer` `assertEscrowBinding` + §7                                                              |
 | `EscrowGateway` stub (fund-safety)              | `[RESERVED]`    | `@xochi/solver-sdk` `StubEscrowGateway` + §1/§5                                                         |
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
-| `RiddlerEscrow` / `RiddlerFiller`               | `[PROPOSED]`    | — (M6.2, out-of-repo contracts)                                                                           |
-| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (tier 0 is also unbuilt; §11.0)                                                                         |
-| `SolverBond` / slashing                         | `[PROPOSED]`    | — (P2/M7, explicitly not M6; §11.1)                                                                       |
+| `RiddlerEscrow` / `RiddlerFiller`               | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/*.sol`; M6.2)                                      |
+| `IProofOfFill` tier 0 (venue attesters)         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `lib/riddler/solver/escrow/*`; §11.0)                                            |
+| `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (unbuilt; §5)                                                                                           |
+| `IProofOfFill` tier 1s (shielded-Aztec preimage) | `[PROPOSED]`   | — (unbuilt; §5.1, xochi `shielded-execution.md` D9; no verifier, registry, fill tag or recipient hold exists) |
+| `SolverBond` / slashing                         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §11.1)                            |
 | Sealed-bid auction, award, allowlist            | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (`SOLVER-RFC.md` §§4–5)                                                    |
 | Fill-receipt intake (recorded, not settled)     | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (§11.0)                                                      |
 | Award gated on escrow envelope, not config      | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/award.ex` `for_panel/6` (§11.0)                                               |
@@ -937,7 +1574,16 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 ## Appendix B — Glossary
 
 `OrderTerms`, `DestOpening`, `destCommitment`, `orderId`, `OpenAuth`, `RiddlerEscrow`, `RiddlerFiller`, `IProofOfFill`,
-proof-of-fill tier (attested / optimistic / verified), `SolverBond`, exclusivity
-window, backstop, permissionless refund, fund-safety invariant, escrow gateway
-(`lock`/`release`/`void`), `fillId`, `fillSalt`, confidentiality tier (linked /
-unlinked / confidential), anonymity set.
+proof-of-fill tier (attested / optimistic / optimistic_disclosed / verified),
+`SolverBond`, exclusivity window, backstop, permissionless refund, fund-safety
+invariant, escrow gateway (`lock`/`release`/`void`), `fillId`, `fillSalt`,
+confidentiality tier (linked / unlinked / confidential), anonymity set, note
+preimage registry (`note_already_bound`), recipient hold (`not_received`),
+hold deadline (`holdDeadline`), network identity (`networkIdentity`), network
+key, fill tag (`FillTag`), burned tag (`tag_burned`, suspension), fill
+commitment (`fillCommitment`), outcome record (release/slash exclusivity,
+`refundLanded`), fill window end and grace end, recipient capability,
+mailbox (forwarding record), inclusion record, `RecipientAction` (recipient
+state), lagging node, health record, in-flight notional cap,
+`MAX_SLASH_DELAY`, shielded bounds (`T_final`, `T_verify`, `T_hold`,
+`T_registry`, `T_dispute`, `T_arbiter`, `T_release`, `T_slash`).

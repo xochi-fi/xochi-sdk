@@ -17,10 +17,13 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 - Takes `Promise.withResolvers` from `ES2024.Promise`; built with TypeScript 6. `package.json` gains description, keywords and homepage.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `client-v*` tag.
 - The tarball ships this `CHANGELOG.md`.
+- `IntentRecordWire.aztec_note_hash` is `string | null` (optional), matching the Worker, which serves `null` unless the intent settled shielded; `mapIntentRecord` maps `null` to an absent `aztecNoteHash`.
+- The `settlementType` description states served shielded behaviour: unavailable while `SHIELDED_SETTLEMENT_LIVE` is off, and when offered recipient-private only (amount, token, solver, timing and source activity public or inferable). `IntentRecordWire.aztec_note_hash` is documented as the Worker's intents-row field (not `/xochi/*`).
 
 ### Removed
 
 - `QUOTE_CACHE_TTL_MS` / `TRADING.quoteCacheTtlMs` (30 s, the value the transport's 15 s default avoids).
+- `ExecuteRequest.aztecProof` and the `aztec_proof` key of the `execute` body. Nothing set it, so the body always serialized it as undefined (omitted); no producer or consumer reads it (SPEC.md §3.2). The exported `ExecuteRequest` type stays; a caller passing `aztecProof` in an object literal now gets a TypeScript excess-property error.
 
 ### Fixed
 

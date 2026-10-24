@@ -12,6 +12,7 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
   - pattern layout: `timestamp` is appended as input 7; `settlement_root` stays input 6, so `SettlementRegistry.finalizeTrade` is unchanged. `PatternInput` gains optional `timestamp` (default now). It is the proof time, not a transaction time (`timestamps`).
   - **`decodeTierProofClaim` returns `{ threshold, timestamp }`** (new type `DecodedTierProofClaim`), was the threshold alone. Migrate: `decodeTierProofClaim(pi, exp).threshold`. `timestamp` is the proof's own time (unix seconds): bound its age against it (`assertProofRecent`), never against an Oracle attestation's `timestamp`, which is the block time. Decoding rejects a timestamp at or above 2^40.
   - `TierProof` gains `timestamp` (the bound value; `createdAt` / `expiresAt` stay unbound bookkeeping, and the Oracle refuses a tier proof an hour after `timestamp` whatever `expiresAt` says). `TierProofVerification` gains `timestamp` (0 when invalid). `verifyTierProof` does not check age.
+- **`PxeBridgeClient` is removed** (`src/pxe-bridge-client.ts`, with `CreateNoteParams` / `CreateNoteResult`, all exported from the 0.4.0 main entry). It called `pxe_createNote` / `pxe_getVersion` with an object param while pxe-bridge serves `aztec_createNote` / `aztec_getVersion` with array params, so it never worked against the bridge; it had no retry safety and no consumer. Shielded settlement is off everywhere (decision record: xochi `docs/planning/shielded-execution.md` §4, D7–D9).
 
 ### Added
 

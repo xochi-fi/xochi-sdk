@@ -141,6 +141,18 @@
   the server still advertises `0.8.0` and is moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
+- **Shielded corrections (2026-10-23), no version of their own and no wire
+  change.** §3.2 reverses its `aztec_proof` guidance: it said to send the
+  field for `shielded` regardless, and now records that no producer or
+  consumer uses it and says not to send it (removing it from `ExecuteRequest`
+  is a lockstep wire change with Riddler). §5.1's shielded row, and §3.4's
+  shielded status fields, now read what is served: shielded is not offered,
+  the status surfaces are the scalars `noteCommitment`, `nullifierHash` and
+  `l2TxHash`, not arrays, and §5.1 records that this intent-id read links an
+  intent to its Aztec transaction and that the Worker's read-token intent
+  read gives that link only to the owner. The served document did not move,
+  so these corrections claim no version: they ship in the first spec release
+  after `0.8.1`, whichever version that release declares.
 - `0.8.1`: PATCH, no wire, signature or vector change. Bumped so that the
   version string is new: `0.8.1` is declared only by commits that carry the
   second adversarial review's fixes, and the tarball's `wire/compare.mjs`
@@ -360,23 +372,22 @@ server-parity list in §2.1.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ reserved `escrow` envelope when advertised, §5.2) |
-| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `503` transient (§3.5) |
+| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (the declared `aztec_proof` is unused; see below); MAY echo `escrow.address`/`order_id` (§5.2). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `503` transient (§3.5) |
 | GET | `/xochi/status/:intent_id` | Poll settlement status |
 | POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` → returns `userOpHash` |
 | POST | `/xochi/claim/submit` | Submit `{signature, user_op_hash}` |
 | GET | `/xochi/chains` · `/routes` · `/capabilities` | Discovery (§6) |
 | GET | `/xochi/openapi.json` · `/health` | Schema + health |
 
-`aztec_proof` is a **documented sink with no documented source**: `ExecuteRequest`
-declares it, and the served `QuoteResponse` declares no field carrying it. Clients
-read it off the quote, so shielded settlement rests on an undeclared response field
-until the server declares one.
-
-Note that `ExecuteRequest.required` is `["intent_id", "quote_id", "signature"]`:
-`aztec_proof` is OPTIONAL in the schema, and "required for `shielded`" is stated
-only in that property's `description`. A requirement carried by prose is one no
-schema check can enforce and one the wire probe deliberately never compares, so
-treat it as normative here and send it for `shielded` regardless.
+`aztec_proof` is **unused by every producer and consumer**: `ExecuteRequest`
+declares it (optional; `ExecuteRequest.required` is
+`["intent_id", "quote_id", "signature"]`, and "required for `shielded`" lives
+only in that property's `description`), but the served `QuoteResponse` declares
+no field carrying it, `@xochi/client` never sends it, the xochi Worker accepts
+it and never forwards it, and Riddler parses it as optional and never reads it.
+Do not send it. It stays in the vendored `wire/openapi.json` until it leaves the
+served schema; removing it from `ExecuteRequest` is a lockstep wire change with
+Riddler (then `npm run generate:wire`), and this paragraph goes with it.
 
 ### 3.3 Quote request fields
 
@@ -417,7 +428,8 @@ refund, and one that treats `refund_pending` as terminal stops polling one hop
 early. Status MAY carry
 `settlementType`, `settlementConfirmed`, `txHash`/`receivingTxHash`/`refundTxHash`,
 `refundReason`/`substatus`, and stealth (`stealthAddress`, `ephemeralPubKey`,
-`counterfactualAddress`) / shielded (`noteHashes`, `nullifiers`, `l2TxHash`)
+`counterfactualAddress`) / shielded (scalars `noteCommitment`, `nullifierHash`,
+`l2TxHash`; §5.1)
 fields. When escrow is active (§5.2, M6) status MAY also carry the reserved
 `escrow.address`/`order_id` and a `proof_receipt` (§5.2.3); until then these are
 absent.
@@ -648,13 +660,31 @@ breakdown from the headline fee.
 |---|---|---|---|
 | `public` | plain address | ~30s | tx hashes |
 | `stealth` | ERC-5564 → ERC-4337 counterfactual account, gasless claim | ~60s | `stealthAddress`, `ephemeralPubKey`, `counterfactualAddress` |
-| `shielded` | Aztec note (testnet; launch-pending) | ~120s | `noteHashes`, `nullifiers`, `l2TxHash` |
+| `shielded` | Aztec note; not offered | — (not offered) | `noteCommitment`, `nullifierHash`, `l2TxHash` (scalars) |
 
-A `transfer_to_private` emits two note hashes and three nullifiers, so the
-shielded surfaces are arrays. `noteCommitment` and `nullifierHash` remain as
-deprecated aliases for index 0 of each. `nullifierHash` is misleading: it is the
-protocol nullifier, and the transfer spends a public balance and nullifies no
-note, so it is not the nullifier for the note the taker receives.
+Shielded is not offered to takers today: the xochi Worker serves it as
+unavailable in `settlement_options` and refuses it as a `settlement_preference`
+while shielded is not offered by the venue (the Worker's
+`SHIELDED_SETTLEMENT_LIVE` flag). The served status surfaces are the three
+nullable scalars above; no array of note hashes or nullifiers is served.
+They are served on `GET /xochi/status/:intent_id`, a read by intent id that
+an integrator API key authorizes (§3.1), not the intent's owner, so they link
+the intent to its Aztec transaction for whoever holds that key.
+`ESCROW-RFC.md` §5.1 ("Recipient") keeps the tx hash off any such read for
+its `[PROPOSED]` shielded release, so before shielded is offered under it
+these fields leave that read or become owner-scoped there, in lockstep with
+Riddler. The same holds for the xochi Worker's intent read
+(`GET /api/intent/:id` and its `/status`), which a bearer read token
+(`@xochi/client`'s `X-Xochi-Read-Token`) authorizes for whoever presents it:
+before shielded is offered, that read returns a shielded leg's Aztec tx hash
+or block only to an owner-authenticated request, in lockstep with the
+Worker.
+
+`nullifierHash` is misleading: it is the first protocol nullifier of the
+transaction, and a `transfer_to_private` spends a public balance and nullifies no
+note, so it is not the nullifier for the note the taker receives. A
+transaction-centric receipt replaces these scalars, with no scalar aliases, when
+Riddler serves it; it is written here then, not before.
 
 ### 5.2 Non-custodial escrow envelope — RESERVED
 
