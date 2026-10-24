@@ -69,8 +69,8 @@ describe("proof type <-> circuit name mappings", () => {
 describe("PUBLIC_INPUT_COUNTS", () => {
   it("matches Noir circuit public input counts", () => {
     expect(PUBLIC_INPUT_COUNTS[0x01]).toBe(6); // compliance (+ submitter)
-    expect(PUBLIC_INPUT_COUNTS[0x02]).toBe(8); // risk_score (+ submitter)
-    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(7); // pattern (+ submitter, settlement_root from audit H-1)
+    expect(PUBLIC_INPUT_COUNTS[0x02]).toBe(9); // risk_score (+ timestamp, submitter)
+    expect(PUBLIC_INPUT_COUNTS[0x03]).toBe(8); // pattern (+ submitter, settlement_root from audit H-1, timestamp)
     expect(PUBLIC_INPUT_COUNTS[0x04]).toBe(6); // attestation (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x05]).toBe(5); // membership (+ submitter)
     expect(PUBLIC_INPUT_COUNTS[0x06]).toBe(5); // non_membership (+ submitter)

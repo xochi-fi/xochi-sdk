@@ -4,6 +4,11 @@ All notable changes to `@xochi/provider` are documented here. Format follows [Ke
 
 ## [Unreleased]
 
+### Security
+
+- The README's custody section now states that the KMS/HSM key behind a `DigestSigner` is a
+  raw-digest signing oracle and must be dedicated to provider signing.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

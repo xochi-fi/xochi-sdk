@@ -39,6 +39,17 @@ export interface PatternInput {
    * the proof and pass that value here.
    */
   settlementRoot: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock), not a transaction
+   * time. Public input 7, after `settlement_root`; the Oracle rejects it when
+   * after `block.timestamp` (`ProofTimestampInFuture`) or more than
+   * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
+   * clock ahead of the chain makes the default revert. Prefer
+   * `await chainProofTimestamp(client)` (the chain's latest block time). The
+   * circuit requires every active transaction timestamp to lie in
+   * `[timestamp - timeWindow, timestamp]`.
+   */
+  timestamp?: string;
 }
 
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
@@ -60,6 +71,8 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
 
   validateReportingThreshold(opts.reportingThreshold);
   validateSubmitter(opts.submitter);
+  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  validateTimestamp(Number(timestamp));
 
   if (opts.timeWindow < PATTERN_TIME_WINDOW_MIN) {
     throw new Error(
@@ -72,12 +85,26 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     );
   }
 
+  // Mirrors circuits/pattern: every active transaction lies in the window ending
+  // at the proof timestamp, [timestamp - timeWindow, timestamp]. Failing here
+  // saves a proof generation the circuit would reject.
+  const proofTs = Number(timestamp);
   for (let i = 0; i < opts.numTransactions; i++) {
     if (opts.amounts[i] <= 0) {
       throw new Error(`Amount[${String(i)}] must be > 0 for active transaction`);
     }
     if (opts.timestamps[i] <= 0) {
       throw new Error(`Timestamp[${String(i)}] must be > 0 for active transaction`);
+    }
+    if (opts.timestamps[i] > proofTs) {
+      throw new Error(
+        `Timestamp[${String(i)}] ${String(opts.timestamps[i])} is after the proof timestamp ${timestamp}`,
+      );
+    }
+    if (proofTs - opts.timestamps[i] > opts.timeWindow) {
+      throw new Error(
+        `Timestamp[${String(i)}] ${String(opts.timestamps[i])} is outside the ${String(opts.timeWindow)}s window ending at ${timestamp}`,
+      );
     }
   }
 
@@ -98,5 +125,6 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
     tx_set_hash: opts.txSetHash,
     submitter: opts.submitter,
     settlement_root: opts.settlementRoot,
+    timestamp,
   };
 }

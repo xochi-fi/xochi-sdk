@@ -62,6 +62,43 @@ export class ProofTimestampStaleError extends ERC8262ContractError {
   }
 }
 
+export class ProofTimestampInFutureError extends ERC8262ContractError {
+  readonly proofTimestamp: bigint;
+  readonly blockTimestamp: bigint;
+  constructor(proofTimestamp: bigint, blockTimestamp: bigint) {
+    super(
+      "ProofTimestampInFuture",
+      [proofTimestamp, blockTimestamp],
+      `Proof timestamp ${String(proofTimestamp)} is ahead of block ${String(blockTimestamp)}; ` +
+        "re-prove with a timestamp at or before the chain clock",
+    );
+    this.proofTimestamp = proofTimestamp;
+    this.blockTimestamp = blockTimestamp;
+  }
+}
+
+/**
+ * The per-(subject, jurisdiction, proof type) ratchet already holds a newer
+ * proof timestamp. Not retryable as-is: concurrently generated proofs of one
+ * type must be submitted in non-decreasing timestamp order, and an older one
+ * must be re-proved with a current timestamp (RISK_SCORE threshold and range
+ * proofs share one slot).
+ */
+export class ProofTimestampNotMonotonicError extends ERC8262ContractError {
+  readonly proofTimestamp: bigint;
+  readonly lastTimestamp: bigint;
+  constructor(proofTimestamp: bigint, lastTimestamp: bigint) {
+    super(
+      "ProofTimestampNotMonotonic",
+      [proofTimestamp, lastTimestamp],
+      `Proof timestamp ${String(proofTimestamp)} is older than the last accepted ` +
+        `${String(lastTimestamp)} for this proof type; re-prove with a current timestamp`,
+    );
+    this.proofTimestamp = proofTimestamp;
+    this.lastTimestamp = lastTimestamp;
+  }
+}
+
 export class TimeWindowTooSmallError extends ERC8262ContractError {
   readonly timeWindow: bigint;
   readonly minimum: bigint;
@@ -73,6 +110,20 @@ export class TimeWindowTooSmallError extends ERC8262ContractError {
     );
     this.timeWindow = timeWindow;
     this.minimum = minimum;
+  }
+}
+
+export class TimeWindowTooLargeError extends ERC8262ContractError {
+  readonly timeWindow: bigint;
+  readonly maximum: bigint;
+  constructor(timeWindow: bigint, maximum: bigint) {
+    super(
+      "TimeWindowTooLarge",
+      [timeWindow, maximum],
+      `Pattern time_window ${String(timeWindow)} above maximum ${String(maximum)}`,
+    );
+    this.timeWindow = timeWindow;
+    this.maximum = maximum;
   }
 }
 
@@ -314,8 +365,14 @@ export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractErro
       return new ProofAlreadyUsedError(args[0] as string);
     case "ProofTimestampStale":
       return new ProofTimestampStaleError(args[0] as bigint, args[1] as bigint);
+    case "ProofTimestampInFuture":
+      return new ProofTimestampInFutureError(args[0] as bigint, args[1] as bigint);
+    case "ProofTimestampNotMonotonic":
+      return new ProofTimestampNotMonotonicError(args[0] as bigint, args[1] as bigint);
     case "TimeWindowTooSmall":
       return new TimeWindowTooSmallError(args[0] as bigint, args[1] as bigint);
+    case "TimeWindowTooLarge":
+      return new TimeWindowTooLargeError(args[0] as bigint, args[1] as bigint);
     case "EmptyBatch":
       return new EmptyBatchError();
     case "BatchTooLarge":

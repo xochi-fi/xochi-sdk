@@ -32,6 +32,13 @@ export interface NonMembershipInput {
   highPath: string[];
   merkleRoot: string;
   setId: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock). The Oracle rejects
+   * it when after `block.timestamp` (`ProofTimestampInFuture`) or more than
+   * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
+   * clock ahead of the chain makes the default revert. Prefer
+   * `await chainProofTimestamp(client)` (the chain's latest block time).
+   */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;

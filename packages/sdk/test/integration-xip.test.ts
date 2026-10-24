@@ -44,6 +44,7 @@ const riskScoreInput: RiskScoreInput = {
   threshold: 5000,
   direction: "gt",
   providerSetHash: PROVIDER_SET_HASH,
+  timestamp: "1700000000",
   submitter: SUBMITTER_PADDED,
 };
 
@@ -98,6 +99,8 @@ describe("XIP-1: proveBatch", () => {
         entry.proofResult.publicInputs,
       );
       expect(valid).toBe(true);
+      // The batch's proof timestamp is public input 7 of every sub-trade proof.
+      expect(BigInt(entry.proofResult.publicInputs[7])).toBe(1700000000n);
     }
   });
 

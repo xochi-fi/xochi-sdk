@@ -16,7 +16,12 @@ export {
 } from "./encoding.js";
 
 // Recency
-export { isProofRecent, assertProofRecent, DEFAULT_MAX_PROOF_AGE } from "./recency.js";
+export {
+  isProofRecent,
+  assertProofRecent,
+  chainProofTimestamp,
+  DEFAULT_MAX_PROOF_AGE,
+} from "./recency.js";
 
 // Constants & proof type mappings
 export {
@@ -45,7 +50,10 @@ export {
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,
+  ProofTimestampInFutureError,
+  ProofTimestampNotMonotonicError,
   TimeWindowTooSmallError,
+  TimeWindowTooLargeError,
   EmptyBatchError,
   BatchTooLargeError,
   BatchLengthMismatchError,
@@ -139,7 +147,12 @@ export type {
   AssetClass,
   FeeLayers,
 } from "./tiers.js";
-export type { TierProof, TierProofVerification, TierProofExpectations } from "./tier-proofs.js";
+export type {
+  DecodedTierProofClaim,
+  TierProof,
+  TierProofVerification,
+  TierProofExpectations,
+} from "./tier-proofs.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,

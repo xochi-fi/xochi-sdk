@@ -16,9 +16,10 @@
 // NOT here, because §7 leaves them open: ShieldedTermsV1 (no member names or types are
 // fixed, and `fee_breakdown` has no typed shape), the manifestDigest struct (its identity
 // fields are listed but not typed), the descriptorDigest encoding, and the recipient
-// message wrapper, field reduction and acknowledgement structs (they wait on the
-// recipient account class). A vector for any of them would be a guess other
-// implementations are then held to.
+// message wrapper, field reduction and acknowledgement structs (selecting the recipient
+// account class, §7 "Recipient authorization", is a prerequisite, not their
+// specification). A vector for any of them would be a guess other implementations are
+// then held to.
 //
 // Every hash is built by hand from `abi.encode`, so the vector suite can cross-check it
 // against ethers' TypedDataEncoder as an independent implementation.

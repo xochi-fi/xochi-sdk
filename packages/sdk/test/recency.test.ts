@@ -51,6 +51,15 @@ describe("assertProofRecent", () => {
     expect(() => assertProofRecent(Number.NaN)).toThrow("must be a non-negative integer");
     expect(() => assertProofRecent(now - 0.5)).toThrow("must be a non-negative integer");
   });
+
+  it("measures against an explicit reference time (e.g. the chain's block time)", () => {
+    const chainNow = 1_700_000_000;
+    expect(() => assertProofRecent(chainNow - 3600, 3600, chainNow)).not.toThrow();
+    expect(() => assertProofRecent(chainNow - 3601, 3600, chainNow)).toThrow("Proof is too old");
+    expect(() => assertProofRecent(chainNow + 1, 3600, chainNow)).toThrow("is in the future");
+    expect(isProofRecent(chainNow, 3600, chainNow)).toBe(true);
+    expect(() => assertProofRecent(chainNow, 3600, Number.NaN)).toThrow("Reference time");
+  });
 });
 
 describe("DEFAULT_MAX_PROOF_AGE", () => {

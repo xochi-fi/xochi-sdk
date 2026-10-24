@@ -113,6 +113,7 @@ import {
   type Solver,
   type SolverCapabilities,
   type TxOutcome,
+  UnknownSolverEventError,
 } from "../src/index";
 import { assertKeyShape, assertVenueUrl, envInt, requireEnv } from "./env";
 import { errorText, type FillStateFile, type PersistedFill } from "./fill-state-file";
@@ -853,13 +854,17 @@ function venueTransport(cfg: Config): HttpSolverTransport {
     baseUrl: cfg.baseUrl,
     apiKey: cfg.apiKey,
     solverId: new ethers.Wallet(cfg.solverKey).address,
-    // A gap is intents this solver will never see; a malformed entry is skipped.
+    // A gap is intents this solver will never see. A skipped entry is either a
+    // kind this SDK does not know (a newer venue's) or a malformed one.
     onFeedGap: (gap) =>
       say(
         `GAP   dropped=${gap.dropped} reset=${gap.reset} (${gap.requestedCursor}, ${gap.cursor}]`,
       ),
     onInvalidEvent: (err) =>
-      say(`skip  malformed feed entry: ${err instanceof Error ? err.message : String(err)}`),
+      say(
+        `skip  ${err instanceof UnknownSolverEventError ? "unknown-type" : "malformed"} feed ` +
+          `entry: ${err instanceof Error ? err.message : String(err)}`,
+      ),
   });
 }
 

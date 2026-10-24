@@ -34,7 +34,7 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 - **src/inputs/validate.ts**: shared validation (signal range, weights, timestamps, credential types, submitter non-zero)
 - **src/inputs/field-bytes.ts**: `@xochi/sdk`'s own `fieldToBytes` / `bytesToHexField`, so the signed builders take `@xochi/provider`'s byte bundles without depending on it (`@xochi/provider` is a devDependency for tests only)
 - **src/abis.ts**: full Solidity ABIs for Oracle, Verifier and SettlementRegistry (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when the sibling ERC-8262 `out/` or `ERC_8262_PATH` exists)
-- **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 21 subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 24 subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: pinned `EXPECTED_NOIR_VERSION` + `assertCompatibleNoirVersion` (used by both loaders)
 
 #### Trust & Compliance
@@ -73,7 +73,7 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 
 ### `packages/provider` (`@xochi/provider`)
 
-Compliance-data provider signing: `signSignals` (0x07/0x08), `signSlotPayload` (one 0x09 slot), `signCredentialRoot` (EIP-712 `CredentialRootPublication`, parity-pinned to ERC-8262 `EIP712CredentialRoot.sol`), `KeyLoader` (`RawKeyLoader`/`HexKeyLoader` for tests and the daemon; KMS/HSM in production), `ReplayDb`/`MemoryReplayDb` and the `*WithReplayProtection` wrappers. Pedersen digests are pinned to ERC-8262's Noir parity tests. Depends on `@aztec/bb.js` and `@noble/curves`; `viem` peer. It moves no funds; `@xochi/sdk` never imports it at runtime. The reference daemon lives in `daemon/` ([Reference Signing Daemon](#reference-signing-daemon)). CI job `provider`; `npm run typecheck -w @xochi/provider` also typechecks the daemon. See `packages/provider/README.md`.
+Compliance-data provider signing: `signSignals` (0x07/0x08), `signSlotPayload` (one 0x09 slot), `signCredentialRoot` (EIP-712 `CredentialRootPublication`, parity-pinned to ERC-8262 `EIP712CredentialRoot.sol`), production `DigestSigner` custody (only 32-byte digests cross into a KMS/HSM adapter; one signer object represents one stable key identity), explicitly extractable `PrivateKeyLoader` + `loadLocalSigner` for tests/development/the reference daemon, `ReplayDb`/`MemoryReplayDb` and the `*WithReplayProtection` wrappers. Custody and replay-retention rules: `packages/provider/README.md` ("Install", "Rules") and the `src/keystore.ts` / `src/replay-db.ts` headers. Pedersen digests are pinned to ERC-8262's Noir parity tests. Depends on `@aztec/bb.js` and `@noble/curves`; `viem` peer. It moves no funds; `@xochi/sdk` never imports it at runtime. The reference daemon lives in `daemon/` ([Reference Signing Daemon](#reference-signing-daemon)). CI job `provider`; `npm run typecheck -w @xochi/provider` also typechecks the daemon. See `packages/provider/README.md`.
 
 ### `packages/client` (`@xochi/client`)
 

@@ -37,9 +37,13 @@ export interface TierProof {
   /** keccak256(abi.encodePacked(uint256 score, bytes32 blindingFactor)); reveals neither */
   scoreCommitment: Hex;
   /**
-   * Prover-side bookkeeping only. risk_score has no timestamp public input, so
-   * these are not bound to the proof: `verifyTierProof` ignores them and a
-   * verifier must track freshness from its own verification time.
+   * Proof timestamp (unix seconds), bound as risk_score public input 7. The
+   * Oracle refuses the proof once it is older than `MAX_PROOF_AGE` (1 hour).
+   */
+  timestamp: number;
+  /**
+   * Prover-side bookkeeping only, not bound to the proof: `verifyTierProof`
+   * ignores them. Bound freshness with `timestamp` instead.
    */
   createdAt: number;
   expiresAt: number;
@@ -54,6 +58,8 @@ export interface TierProofVerification {
   /** Threshold the public inputs prove (0 when invalid); never the caller's label. */
   threshold: TierThreshold;
   tierName: TierName;
+  /** Proof timestamp (unix seconds) read from the public inputs (0 when invalid). */
+  timestamp: number;
   error?: string;
 }
 
@@ -62,6 +68,19 @@ export interface TierProofExpectations {
   submitter: Address;
   /** Config hash the proof must commit to (default DEFAULT_CONFIG_HASH). */
   configHash?: Hex;
+}
+
+/** Tier claim decoded from risk_score public inputs. */
+export interface DecodedTierProofClaim {
+  /** Proven threshold (25, 50, 75 or 100). */
+  threshold: TierThreshold;
+  /**
+   * Proof timestamp (unix seconds), public input 7. Prover-chosen: it bounds
+   * how long the proof can be used, not when the score was observed. Bound its
+   * age against this value (e.g. `assertProofRecent`), never against an
+   * attestation's block time.
+   */
+  timestamp: number;
 }
 
 type ProvableTierThreshold = Exclude<TierThreshold, 0>;
@@ -89,7 +108,11 @@ const PI_BOUND_UPPER = 3;
 const PI_RESULT = 4;
 const PI_CONFIG_HASH = 5;
 const PI_PROVIDER_SET_HASH = 6;
-const PI_SUBMITTER = 7;
+const PI_TIMESTAMP = 7;
+const PI_SUBMITTER = 8;
+
+/** Exclusive upper bound of the circuit's `validate_timestamp` (2^40). */
+const MAX_TIMESTAMP = 1n << 40n;
 
 const RISK_PROOF_THRESHOLD = 1n;
 const DIRECTION_GT = 1n;
@@ -113,6 +136,7 @@ interface TierClaim {
   threshold: ProvableTierThreshold;
   configHash: bigint;
   providerSetHash: bigint;
+  timestamp: number;
   submitter: bigint;
 }
 
@@ -150,10 +174,16 @@ function readTierClaim(publicInputs: readonly string[]): TierClaim | { error: st
     };
   }
 
+  const timestamp = pi[PI_TIMESTAMP];
+  if (timestamp >= MAX_TIMESTAMP) {
+    return { error: `timestamp ${String(timestamp)} is not below 2^40` };
+  }
+
   return {
     threshold,
     configHash: pi[PI_CONFIG_HASH],
     providerSetHash: pi[PI_PROVIDER_SET_HASH],
+    timestamp: Number(timestamp),
     submitter: pi[PI_SUBMITTER],
   };
 }
@@ -164,7 +194,8 @@ function readTierClaim(publicInputs: readonly string[]): TierClaim | { error: st
  * Requires the exact tier-proof encoding (threshold proof, direction GT,
  * result true, bound_upper 0, bound_lower = T*100 - 1), the fixed tier-proof
  * provider set, and the expected config hash and submitter. Returns the proven
- * threshold; throws describing the first mismatch.
+ * threshold and the proof timestamp; throws describing the first mismatch.
+ * Does not check the timestamp's age: that is the caller's policy.
  *
  * Does NOT verify the proof itself. Pair it with `verifyTierProof`, or with an
  * on-chain verification whose `publicInputs` it reads (`OracleLite.verifyProof`).
@@ -172,7 +203,7 @@ function readTierClaim(publicInputs: readonly string[]): TierClaim | { error: st
 export function decodeTierProofClaim(
   publicInputs: readonly string[],
   expected: TierProofExpectations,
-): TierThreshold {
+): DecodedTierProofClaim {
   validateSubmitter(expected.submitter);
   const claim = readTierClaim(publicInputs);
   if ("error" in claim) throw new Error(claim.error);
@@ -187,7 +218,7 @@ export function decodeTierProofClaim(
   if (claim.submitter !== BigInt(expected.submitter)) {
     throw new Error(`submitter does not match the expected ${expected.submitter}`);
   }
-  return claim.threshold;
+  return { threshold: claim.threshold, timestamp: claim.timestamp };
 }
 
 // ============================================================
@@ -260,6 +291,9 @@ export async function generateTierProof(
   const { Noir } = await import("@noir-lang/noir_js");
   const { Barretenberg, UltraHonkBackend } = await import("@aztec/bb.js");
 
+  const now = Date.now();
+  const timestamp = Math.floor(now / 1000);
+
   // Single-provider risk_score witness: signals[0] = score, weights[0] = 100,
   // threshold proof (proof_type 1), direction GT, bound_lower = T*100 - 1.
   const inputs = {
@@ -275,6 +309,7 @@ export async function generateTierProof(
     result: "1",
     config_hash: configHash ?? DEFAULT_CONFIG_HASH,
     provider_set_hash: TIER_PROVIDER_SET_HASH,
+    timestamp: String(timestamp),
     submitter,
   };
   const circuit = await loader.load("risk_score");
@@ -291,7 +326,6 @@ export async function generateTierProof(
     });
 
     const commitment = createScoreCommitment(Math.floor(score));
-    const now = Date.now();
 
     return {
       threshold,
@@ -301,6 +335,7 @@ export async function generateTierProof(
       proof: proofData.proof,
       publicInputs: proofData.publicInputs,
       scoreCommitment: commitment.commitment,
+      timestamp,
       createdAt: now,
       expiresAt: now + TIER_PROOF_EXPIRY_MS,
     };
@@ -335,8 +370,10 @@ export async function generateHighestTierProof(
  * Valid only when the public inputs encode a tier claim bound to
  * `expected.submitter` and `expected.configHash` (see decodeTierProofClaim),
  * the proof's `threshold` label equals the proven threshold, and bb.js accepts
- * the proof. The returned threshold and tier are the prover's self-attested
- * claim, read from the public inputs. `createdAt` / `expiresAt` are ignored (not bound to the proof).
+ * the proof. The returned threshold, tier and timestamp are the prover's
+ * self-attested claim, read from the public inputs. The proof's age is not
+ * checked: bound the returned `timestamp`. `proof.timestamp`, `createdAt` and
+ * `expiresAt` are ignored.
  */
 export async function verifyTierProof(
   loader: CircuitLoader,
@@ -347,15 +384,17 @@ export async function verifyTierProof(
     valid: false,
     threshold: 0,
     tierName: getTierName(0),
+    timestamp: 0,
     error,
   });
 
-  let threshold: TierThreshold;
+  let claim: DecodedTierProofClaim;
   try {
-    threshold = decodeTierProofClaim(proof.publicInputs, expected);
+    claim = decodeTierProofClaim(proof.publicInputs, expected);
   } catch (err) {
     return invalid(err instanceof Error ? err.message : String(err));
   }
+  const { threshold, timestamp } = claim;
   if (proof.threshold !== threshold) {
     return invalid(
       `Proof is labelled threshold ${String(proof.threshold)} but proves ${String(threshold)}`,
@@ -378,6 +417,7 @@ export async function verifyTierProof(
         valid: true,
         threshold,
         tierName: getTierName(threshold),
+        timestamp,
       };
     } finally {
       await api.destroy();
