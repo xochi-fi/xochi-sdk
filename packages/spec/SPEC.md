@@ -815,11 +815,13 @@ Riddler. The same holds for the xochi Worker's intent read
 (`GET /api/intent/:id` and its `/status`), which a bearer read token
 (`@xochi/client`'s `X-Xochi-Read-Token`) authorizes for whoever presents it:
 before shielded is offered, that read returns a shielded leg's Aztec
-identifiers (its note hash or commitment, nullifier, tx hash and block,
-under whatever names the Worker serves them) only to an owner-authenticated
-request, in lockstep with the Worker. Each of them identifies the
-transaction (a note hash and a nullifier are public effects in its block),
-so scoping only the tx hash would leave the link.
+identifiers (its note hash or commitment, nullifier, tx hash, block and the
+leg's timestamps, under whatever names the Worker serves them) only to an
+owner-authenticated request, in lockstep with the Worker. Each of them
+identifies the transaction or narrows it to a few (a note hash and a
+nullifier are public effects in its block, and a leg timestamp narrows the
+block as a block number does), so scoping only the tx hash would leave the
+link. The read token never unlocks them.
 
 `nullifierHash` is misleading: it is the first protocol nullifier of the
 transaction, and a `transfer_to_private` spends a public balance and nullifies no
