@@ -6,8 +6,6 @@ import {
   decideExecuteResult,
   executeDeadline,
   decideExecuteResend,
-  EXECUTE_RESEND_MARGIN_SECS,
-  MAX_EXECUTE_RESENDS,
   mapStatusUpdate,
   mapStatusFrame,
   mergeSameStatusReceipt,
@@ -28,7 +26,9 @@ import {
 import { INITIAL_INTENT_STATE, type IntentState } from "./state.js";
 import {
   buildIntentStatusFrame,
+  EXECUTE_RESEND_MARGIN_SECS,
   getRefundReasonLabel,
+  MAX_EXECUTE_RESENDS,
   type IntentStatus,
 } from "../shared/index.js";
 import type { ExecuteResponse, IntentWebSocketMessage } from "./wire.js";
@@ -257,6 +257,17 @@ describe("decideExecuteResend (a not-accepted execute)", () => {
       kind: "resend",
       delayMs: 1000,
     });
+  });
+
+  it("gives up on a delta passed as the absolute retryAfter, never resending at once", () => {
+    // The body's `retry_after: 7` (a delta) where the absolute target belongs.
+    for (const retryAfter of [7, 90, nowSec - 61]) {
+      expect(decideExecuteResend({ ...ok, retryAfter }), String(retryAfter)).toEqual({
+        kind: "give_up",
+        reason: "no_retry_after",
+      });
+    }
+    expect(decideExecuteResend({ ...ok, retryAfter: nowSec - 60 }).kind).toBe("resend");
   });
 
   it("gives up when exhausted, unhinted, or past the deadline", () => {

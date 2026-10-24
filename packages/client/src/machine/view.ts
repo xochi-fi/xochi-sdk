@@ -2,7 +2,8 @@
  * view(model) -> Receipt. Pure; the renderer draws this and nothing it derives
  * on its own from the raw quote.
  */
-import { canSignQuote, MAX_EXECUTE_RESENDS } from "./decisions.js";
+import { MAX_EXECUTE_RESENDS } from "../shared/index.js";
+import { canSignQuote } from "./decisions.js";
 import { holdsCurrentQuote, type Model } from "./machine.js";
 import { phaseFromStatus } from "./phase.js";
 import {

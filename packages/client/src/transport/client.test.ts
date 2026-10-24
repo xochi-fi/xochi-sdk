@@ -397,6 +397,126 @@ describe("execute: the not-accepted refusal", () => {
   });
 });
 
+describe("execute: an answer that says funds may have moved", () => {
+  const token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+  const failedWith = async (respond: () => Response) =>
+    rejection(client(respond).c.execute(execRequest));
+
+  it("is in doubt with a read token or reconciling for this intent, or a 5xx not in JSON", async () => {
+    const cases: [string, () => Response, boolean][] = [
+      // The Worker's two 502s where funds may have moved (xochi#563).
+      [
+        "post-claim 502",
+        () =>
+          json(
+            {
+              success: false,
+              intent_id: "intent-1",
+              status: "executing",
+              reconciling: true,
+              error: "Execution outcome unknown; keep polling this intent",
+              read_token: token,
+            },
+            502,
+          ),
+        true,
+      ],
+      [
+        "another writer decided it",
+        () =>
+          json({ success: false, intent_id: "intent-1", status: "failed", read_token: token }, 502),
+        true,
+      ],
+      [
+        "reconciling without a token",
+        () => json({ success: false, intent_id: "intent-1", reconciling: true }, 502),
+        true,
+      ],
+      ["a gateway page", () => new Response("<html>502 Bad Gateway</html>", { status: 502 }), true],
+      ["an empty 504", () => new Response(null, { status: 504 }), true],
+      // The Worker's clean rejection: nothing moved, Retry stays.
+      [
+        "clean 502",
+        () =>
+          json({ success: false, intent_id: "intent-1", status: "failed", error: "rejected" }, 502),
+        false,
+      ],
+      [
+        "reconciling for another intent",
+        () => json({ success: false, intent_id: "intent-2", reconciling: true }, 502),
+        false,
+      ],
+      ["a 409", () => json({ success: false, error: "Intent already being executed" }, 409), false],
+      ["a 400 not in JSON", () => new Response("bad request", { status: 400 }), false],
+    ];
+    for (const [label, respond, inDoubt] of cases) {
+      const err = (await failedWith(respond)) as ApiError;
+      expect(err, label).toBeInstanceOf(ApiError);
+      expect(err.inDoubt, label).toBe(inDoubt);
+    }
+  });
+
+  it("never reads a not-accepted answer that also carries a read token as resendable", async () => {
+    const body = {
+      success: false,
+      intent_id: "intent-1",
+      status: "quoted",
+      accepted: false,
+      retry_after: 7,
+      read_token: token,
+    };
+    const err = (await failedWith(() => json(body, 503))) as ApiError;
+    expect(err.notAccepted).toBe(false);
+    expect(err.inDoubt).toBe(true);
+  });
+
+  it("sends execute with redirect: manual and refuses every redirect unread", async () => {
+    const completed = (url: string, redirected: boolean) => {
+      const res = json({
+        success: true,
+        intent_id: "intent-1",
+        status: "completed",
+        read_token: token,
+      });
+      Object.defineProperty(res, "url", { value: url });
+      Object.defineProperty(res, "redirected", { value: redirected });
+      return res;
+    };
+    const opaque = () => {
+      const res = new Response(null, { status: 302 });
+      Object.defineProperty(res, "type", { value: "opaqueredirect" });
+      Object.defineProperty(res, "status", { value: 0 });
+      return res;
+    };
+    const cases: Record<string, () => Response> = {
+      "a 307 to another host": () =>
+        new Response(null, {
+          status: 307,
+          headers: { Location: "https://evil.test/api/intent/execute" },
+        }),
+      "a 308 on the origin": () =>
+        new Response(null, { status: 308, headers: { Location: "/v2/intent/execute" } }),
+      "an opaque redirect": opaque,
+      "a followed redirect to another host": () =>
+        completed("https://evil.test/api/intent/execute", true),
+      "a followed redirect on the origin": () =>
+        completed("https://api.example.test/v2/intent/execute", true),
+      "another host's answer": () => completed("https://evil.test/api/intent/execute", false),
+    };
+    for (const [label, respond] of Object.entries(cases)) {
+      const { c, calls } = client(respond);
+      const err = await rejection(c.execute(execRequest));
+      // Not an ApiError: in doubt, and no token or result taken from it.
+      expect(err, label).toBeInstanceOf(RedirectRefused);
+      expect(takeApiErrorReadToken(err), label).toBeUndefined();
+      expect(
+        calls.map((r) => r.init.redirect),
+        label,
+      ).toEqual(["manual"]);
+    }
+  });
+});
+
 // The quote path is idempotent, so unlike execute it does retry, but only a
 // transient GATEWAY status. A 500 is an unhandled exception in the worker, so
 // re-POSTing it just multiplies the error rate.
@@ -734,6 +854,26 @@ describe("getIntentStatus", () => {
     expect(granular).toMatchObject({ status: "settling", terminal: false });
     expect(refunded).toMatchObject({ status: "refunded", terminal: true });
     expect(unknown).toMatchObject({ status: "executing", unmapped: true, terminal: false });
+  });
+
+  it("flags a failure that follows the pull, as the status or the Worker's substatus", async () => {
+    const bodies = [
+      { status: "fill_failed" },
+      { status: "refund_failed" },
+      { status: "pull_failed" },
+      { status: "failed", substatus: "fill_failed" },
+      { status: "failed" },
+      { status: "failed", substatus: "pulling" },
+      { status: "refunded", substatus: "refund_failed" },
+    ];
+    const { c } = client((call) => json(bodies[call - 1]));
+    const flags = [];
+    for (const body of bodies) {
+      const read = await c.getIntentStatus("a");
+      if (!read || "notFound" in read) throw new Error(`expected data for ${body.status}`);
+      flags.push(read.fundsMayHaveMoved ?? false);
+    }
+    expect(flags).toEqual([true, true, true, true, false, false, false]);
   });
 });
 
@@ -1278,11 +1418,13 @@ describe("a real read token through the real error path", () => {
    * separator ignored: what a reader could rejoin from `text`.
    */
   const rejoinable = (text: string): string | undefined => {
+    // Fullwidth `Ａ` reads `A` to a person: compare the plain characters.
+    const plain = text.normalize("NFKD");
     const keep = (alphabet: RegExp, s: string) => [...s].filter((c) => alphabet.test(c)).join("");
-    const hexText = keep(/[0-9a-f]/, text.toLowerCase().replace(/0x(?=[0-9a-f])/g, ""));
+    const hexText = keep(/[0-9a-f]/, plain.toLowerCase().replace(/0x(?=[0-9a-f])/g, ""));
     for (const [form, haystack] of [
-      [TOKEN, keep(/[A-Za-z0-9_-]/, text)],
-      [Buffer.from(TOKEN, "base64url").toString("base64"), keep(/[A-Za-z0-9+/]/, text)],
+      [TOKEN, keep(/[A-Za-z0-9_-]/, plain)],
+      [Buffer.from(TOKEN, "base64url").toString("base64"), keep(/[A-Za-z0-9+/]/, plain)],
       [bytes.join(""), hexText],
       [charsHex.join(""), hexText],
     ]) {
@@ -1312,6 +1454,11 @@ describe("a real read token through the real error path", () => {
   const splits: Record<string, string> = {
     "15 + 15 + 13, spaces": pieces.join(" "),
     "15 + 15 + 13, dots": pieces.join("."),
+    "15 + 15 + 13, commas": pieces.join(","),
+    "15 + 15 + 13, semicolons": pieces.join(";"),
+    "15 + 15 + 13, pipes": pieces.join("|"),
+    "15 + 15 + 13, slashes": pieces.join("/"),
+    fullwidth: [...TOKEN].map((ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).join(""),
     "no-break spaces": pieces.join("\u00a0"),
     "line separators": pieces.join("\u2028"),
     "combining marks": pieces.join("\u0301"),
@@ -1384,6 +1531,15 @@ describe("a real read token through the real error path", () => {
       ["two intent ids", `${id("intent-1")},"intent_id":"intent-2",${token}`, undefined],
       ["two tokens", `${id("intent-1")},${token},${token}`, undefined],
       ["a short token", `${id("intent-1")},"read_token":"${TOKEN.slice(1)}"`, undefined],
+      // Only the keys of the body object itself, never of a value nested in it.
+      ["the token of a nested value", `${id("intent-1")},"previous":{${token}}`, undefined],
+      ["the id of a nested value", `"previous":{${id("intent-1")}},${token}`, undefined],
+      ["the id inside an array", `"ids":[{${id("intent-1")}}],${token}`, undefined],
+      [
+        "both after a nested value closes",
+        `"previous":{"a":[1,{"b":"}"}]},${id("intent-1")},${token}`,
+        TOKEN,
+      ],
     ];
     for (const [shape, fields, expected] of cases) {
       const { c, logged } = loggingClient(() => long(fields));
@@ -1397,6 +1553,98 @@ describe("a real read token through the real error path", () => {
     const cut = `{${id("intent-1")},"pad":"${"x".repeat(8130)}",${token}}`;
     const { c } = loggingClient(() => new Response(cut, { status: 502 }));
     expect(takeApiErrorReadToken(await rejection(c.execute(execRequest)))).toBeUndefined();
+    // A prefix that does not open a JSON object is no body to read keys from.
+    for (const open of ["x{", "[{"]) {
+      const body = `${open}${id("intent-1")},${token},"error":"${"x".repeat(9000)}"}`;
+      const { c: unopened } = loggingClient(() => new Response(body, { status: 502 }));
+      const err = await rejection(unopened.execute(execRequest));
+      expect(takeApiErrorReadToken(err), open).toBeUndefined();
+    }
+  });
+
+  /** The message of an execute refused with `body` (a 400: one attempt, no token taken). */
+  const refusedWith = async (body: string) =>
+    (
+      (await rejection(
+        loggingClient(() => new Response(body, { status: 400 })).c.execute(execRequest),
+      )) as ApiError
+    ).message;
+
+  it("joins split pieces of 8 characters or more, never shorter ones", async () => {
+    // 43 characters no read-token key names: only the join can find it.
+    const unserved = "Zq7wX2rT9kLm4Np8Vb3Hc6Jd1Fg5Ks0Ty7Ux2Wz9Qa4R".slice(0, 43);
+    const cut = (ends: number[]) => ends.map((end, i) => unserved.slice(ends[i - 1] ?? 0, end));
+    const eights = cut([8, 20, 32, 43]);
+    const joined = await refusedWith(`rejected ${eights.join(" ")} end`);
+    for (const piece of eights) expect(joined).not.toContain(piece);
+    expect(joined).toContain("rejected");
+    // A 7-character first piece leaves 36 joinable characters: not a token.
+    const sevens = cut([7, 19, 31, 43]);
+    expect(await refusedWith(`rejected ${sevens.join(" ")} end`)).toBe(
+      `HTTP 400: rejected ${sevens.join(" ")} end`,
+    );
+  });
+
+  it("hides every 16-character fragment of a token, and leaves a 15-character one", async () => {
+    const echo = (fragment: string) =>
+      JSON.stringify({
+        success: false,
+        intent_id: "intent-1",
+        error: `echo !${fragment}! end`,
+        read_token: TOKEN,
+      });
+    const sixteen = await refusedWith(echo(TOKEN.slice(1, 17)));
+    expect(sixteen).not.toContain(TOKEN.slice(1, 17));
+    expect(sixteen).toContain("echo !");
+    expect(await refusedWith(echo(TOKEN.slice(1, 16)))).toContain(`!${TOKEN.slice(1, 16)}!`);
+  });
+
+  it("decodes escapes nested three deep, and shows a fourth level as [redacted] alone", async () => {
+    // Each character of an unserved token percent-encoded `depth` times.
+    const nested = (depth: number) => each((hex) => `%${"25".repeat(depth - 1)}${hex}`);
+    const three = await refusedWith(`upstream ${nested(3)} end`);
+    expect(three).toBe("HTTP 400: upstream [redacted] end");
+    expect(await refusedWith(`upstream ${nested(4)} end`)).toBe("HTTP 400: [redacted]");
+  });
+
+  it("keeps EIP-712 type names and snake_case codes readable", async () => {
+    for (const text of [
+      "PermitWitnessTransferFrom TokenPermissions ReceiveWithAuthorization mismatch",
+      "invalid_signature_format pull_authorization_already_used",
+    ]) {
+      expect(await refusedWith(text)).toBe(`HTTP 400: ${text}`);
+    }
+  });
+
+  it("reads exactly 8 KiB, and counts a complete body that fills it as cut", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(new Uint8Array([0x78]));
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    await rejection(
+      loggingClient(() => new Response(body, { status: 502 })).c.execute(execRequest),
+    );
+    expect(pulled).toBe(8 * 1024);
+
+    // The Worker's not-accepted answer, padded to the cap and one byte under it.
+    const notAccepted = (bytes: number) => {
+      const fields = `{"success":false,"intent_id":"intent-1","status":"quoted","accepted":false,"retry_after":5,"pad":"`;
+      return `${fields}${"x".repeat(bytes - fields.length - 2)}"}`;
+    };
+    for (const [bytes, marked] of [
+      [8 * 1024, false],
+      [8 * 1024 - 1, true],
+    ] as const) {
+      const { c } = loggingClient(() => new Response(notAccepted(bytes), { status: 503 }));
+      const err = (await rejection(c.execute(execRequest))) as ApiError;
+      expect(err.notAccepted, String(bytes)).toBe(marked);
+    }
   });
 
   it("stops reading an error body once the cap is full, without waiting for the rest", async () => {
@@ -1453,17 +1701,20 @@ describe("a real read token through the real error path", () => {
   });
 
   it("pins a token-less read to the origin too", async () => {
-    const foreign = () => {
+    const foreign = (url: string) => () => {
       const res = json({ id: "xi_1", intent_id: "xi_1", status: "completed", terminal: true });
-      Object.defineProperty(res, "url", { value: "https://evil.test/api/intent/xi_1/status" });
+      Object.defineProperty(res, "url", { value: url });
       Object.defineProperty(res, "redirected", { value: true });
       return res;
     };
-    const { c, calls } = client(foreign);
-    expect(await c.getIntentStatus("xi_1")).toBeNull();
-    expect(await rejection(c.getIntent("xi_1"))).toBeInstanceOf(RedirectRefused);
-    expect(calls).toHaveLength(2);
-    for (const call of calls) expect(call.init.redirect).toBeUndefined();
+    // A followed redirect that names no final URL is refused too.
+    for (const url of ["https://evil.test/api/intent/xi_1/status", ""]) {
+      const { c, calls } = client(foreign(url));
+      expect(await c.getIntentStatus("xi_1"), url).toBeNull();
+      expect(await rejection(c.getIntent("xi_1")), url).toBeInstanceOf(RedirectRefused);
+      expect(calls, url).toHaveLength(2);
+      for (const call of calls) expect(call.init.redirect, url).toBeUndefined();
+    }
   });
 
   it("decodes a withheld record's status rather than casting it", async () => {

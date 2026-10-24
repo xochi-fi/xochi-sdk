@@ -509,6 +509,31 @@ export const GRANULAR_WIRE_STATUS: Readonly<Record<string, IntentStatus>> = {
 };
 
 /**
+ * The granular failures that follow an origin pull, which may have moved the
+ * user's funds: the refund is pending or failed. `pull_failed` is one of them
+ * (Riddler's `OriginPullsStore`: a pull that timed out may still land, and
+ * moves on to `refunding`).
+ */
+const FUNDS_MAY_HAVE_MOVED: Readonly<Record<string, true>> = {
+  pull_failed: true,
+  fill_failed: true,
+  refund_failed: true,
+};
+
+/**
+ * Whether a served status says the funds may have moved although it decodes
+ * to `failed`: the status itself, or the solver substatus the Worker passes
+ * through (it buckets the granular failures to `failed`), names one of the
+ * granular failures `FUNDS_MAY_HAVE_MOVED` lists.
+ */
+export function fundsMayHaveMoved(status: unknown, substatus: unknown): boolean {
+  return (
+    (typeof status === "string" && FUNDS_MAY_HAVE_MOVED[status] === true) ||
+    (typeof substatus === "string" && FUNDS_MAY_HAVE_MOVED[substatus] === true)
+  );
+}
+
+/**
  * A raw `/status` value, decoded.
  *
  * `mapped` is a status this build models: a union member, or one of Riddler's
@@ -553,6 +578,13 @@ export interface IntentStatusData {
    * is only the in-flight bucket (`decodeWireStatus`). Absent means mapped.
    */
   unmapped?: boolean;
+  /**
+   * Present (true) on a `failed` status whose wire status or substatus is a
+   * granular failure that follows the origin pull (`fundsMayHaveMoved`): the
+   * funds may have moved, so the machine never offers Retry on it and keeps
+   * polling for the refund.
+   */
+  fundsMayHaveMoved?: true;
   txHash: string | null;
   receivingTxHash: string | null;
   /** Public fill receipt (Riddler #632) + its chain; the receipt CTA keys off these. */

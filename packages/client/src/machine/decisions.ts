@@ -9,8 +9,10 @@
 
 import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
 import {
+  EXECUTE_RESEND_MARGIN_SECS,
   EXTENDED_CHAIN_NAMES,
   IntentStatusFrameSchema,
+  MAX_EXECUTE_RESENDS,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -535,21 +537,28 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   return { kind: "transition", status: result.status, updates: { ...base, reconciling } };
 }
 
-/** Automatic resends of an execute the server did not accept (`ErrorReport.notAccepted`). */
-export const MAX_EXECUTE_RESENDS = 3;
-/** A resend must reach the server at least this long before the first deadline it carries. */
-export const EXECUTE_RESEND_MARGIN_SECS = 5;
-
 export type ExecuteResend =
   | { kind: "resend"; delayMs: number }
   | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "deadline" };
 
 /**
+ * How far before `now` a not-accepted `retryAfter` may lie and still be read
+ * as the absolute target it must be. The transport rounds the target up from
+ * the moment it read the refusal, so a real one is never older than the
+ * report's dispatch delay; a minute is past any quote's life (30 s), so no
+ * resend is lost to it. An older value is a delta passed where the absolute
+ * target belongs (`retry_after: 7` read as 1970), which would resend at once
+ * and ignore the server's wait.
+ */
+const RETRY_AFTER_MAX_AGE_SECS = 60;
+
+/**
  * After the server refused an execute before accepting anything, whether to
  * send the SAME request again and when (rules: README "Fund safety").
- * `retryAfter` and `deadline` are unix seconds; a null `deadline` never
- * resends, and the wait is at least a second, so a past `retryAfter` cannot
- * spin.
+ * `retryAfter` and `deadline` are unix seconds, `now` the host's clock; a null
+ * `deadline` never resends, a `retryAfter` older than
+ * `RETRY_AFTER_MAX_AGE_SECS` gives up, and the wait is at least a second, so
+ * a slightly past `retryAfter` cannot spin.
  */
 export function decideExecuteResend(input: {
   resends: number;
@@ -559,7 +568,11 @@ export function decideExecuteResend(input: {
 }): ExecuteResend {
   if (input.resends >= MAX_EXECUTE_RESENDS) return { kind: "give_up", reason: "exhausted" };
   const { retryAfter, deadline } = input;
-  if (retryAfter === undefined || !Number.isFinite(retryAfter)) {
+  if (
+    retryAfter === undefined ||
+    !Number.isFinite(retryAfter) ||
+    retryAfter * 1000 < input.now - RETRY_AFTER_MAX_AGE_SECS * 1000
+  ) {
     return { kind: "give_up", reason: "no_retry_after" };
   }
   const sendAt = Math.max(retryAfter * 1000, input.now + 1000);

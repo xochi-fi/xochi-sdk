@@ -27,7 +27,12 @@ import type {
   SelectableChainId,
   SettlementType,
 } from "../shared/index.js";
-import { canTransitionTo, isChainId } from "../shared/index.js";
+import {
+  canTransitionTo,
+  EXECUTE_RESEND_MARGIN_SECS,
+  isChainId,
+  MAX_EXECUTE_RESENDS,
+} from "../shared/index.js";
 import {
   buildQuoteRequest,
   buildResumedState,
@@ -50,8 +55,6 @@ import {
   ALLOCATABLE_STATES,
   ENDED_STATES,
   QUOTE_BUSY_STATES,
-  EXECUTE_RESEND_MARGIN_SECS,
-  MAX_EXECUTE_RESENDS,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
   WALLET_INTERRUPTIBLE_STATES,
@@ -242,6 +245,12 @@ export interface ErrorReport {
    * `true` leaves a failed execute in doubt.
    */
   notAccepted?: boolean;
+  /**
+   * Execute only: whether the funds may have moved. Anything but `false`
+   * holds the intent in doubt (`executeInDoubt`); how to build it: README
+   * "Fund safety".
+   */
+  inDoubt?: boolean;
 }
 
 export type Outcome<T> = ({ ok: true } & T) | { ok: false; error: ErrorReport };
@@ -261,6 +270,11 @@ export type MsgBody =
       status: IntentStatus;
       owner: string;
       depositDeadline: number | null;
+      /**
+       * The host's persisted `executeInDoubt` verdict for this intent (README
+       * "Fund safety"): `true` holds every failed status, as before the reload.
+       */
+      executeInDoubt?: boolean;
     }
   | { type: "VisibilityChanged" }
   | { type: "StreamStatus"; message: IntentWebSocketMessage }
@@ -371,10 +385,11 @@ export interface Model {
   clientFillMs: number | null;
   notFoundReported: string | null;
   /**
-   * The intent whose execute reply the machine read as in doubt
-   * (`onExecuted`), and whether a failed status has been held for it since
-   * (`holdFailure`). Keyed by intent id, so a new quote's intent never
-   * inherits it; a fresh `init` (a reload) clears it.
+   * The intent whose execute the machine holds in doubt (`onExecuted`, a
+   * granular failure poll, `ResumeRequested.executeInDoubt`), and whether a
+   * failed status has been held for it since (`holdFailure`). Keyed by intent
+   * id, so a new quote's intent never inherits it; a fresh `init` (a reload)
+   * clears it, so the host persists it (README "Fund safety").
    */
   executeInDoubt: { intentId: string; failureHeld: boolean } | null;
   seq: number;
@@ -524,10 +539,15 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       };
 
     case "ResumeRequested": {
+      // A persisted in-doubt verdict holds the intent as it did before the
+      // reload: a failed status in flight, shown in doubt, polled until a
+      // refund or completion.
+      const inDoubt = msg.executeInDoubt === true;
+      const held = inDoubt && msg.status === "failed";
       const intent = buildResumedState(
         m.intent,
         msg.intentId,
-        msg.status,
+        held ? "executing" : msg.status,
         msg.owner,
         msg.depositDeadline,
       );
@@ -541,7 +561,15 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       // A quote already in the air (a Tron allocation waiting on sign-in) would
       // land over the resumed intent the same way, so it goes too.
       clearTimer(fx, "debounce");
-      return { ...supersedeFlights(m, fx), intent };
+      const resumed: Model = supersedeFlights(m, fx);
+      if (!inDoubt) return { ...resumed, intent };
+      return {
+        ...resumed,
+        intent: POLL_INFLIGHT_STATES.includes(intent.status)
+          ? { ...intent, reconciling: true }
+          : intent,
+        executeInDoubt: { intentId: msg.intentId, failureHeld: held },
+      };
     }
 
     case "VisibilityChanged": {
@@ -577,6 +605,10 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
           current: m.intent.intentId,
         });
         return m;
+      }
+      // The poll's rule (`onStatus`): an intent held in doubt is never failed.
+      if (msg.message.status === "failed" && m.executeInDoubt?.intentId === msg.message.intentId) {
+        return holdFailure(m, fx, msg.message.intentId);
       }
       return applyStatusUpdate(m, fx, msg.message, false);
 
@@ -1477,10 +1509,18 @@ function onExecuted(
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
   // may have moved funds): flag reconciling and let the poll resolve it (#226).
-  // A reply that cannot be read says nothing about the funds, so the poll
-  // resolves it exactly like a thrown execute, a failed status included.
+  // Only a failure reported `inDoubt: false` (a server answer that does not
+  // say funds may have moved) lets a later failed status offer Retry; any
+  // other failure, and a reply that cannot be read as this intent's execute
+  // response, is held in doubt like an in-doubt reply (`holdFailure`).
   const reply = executeResponseUnlessInDoubt(fx, result, next.intent.intentId);
-  if (!reply) return patch(next, { reconciling: true });
+  if (!reply) {
+    const reconciling = patch(next, { reconciling: true });
+    const intentId = next.intent.intentId;
+    return reportedNotInDoubt(result) || intentId === null
+      ? reconciling
+      : { ...reconciling, executeInDoubt: { intentId, failureHeld: false } };
+  }
   const decision = decideExecuteResult(reply.response);
   if (decision.kind === "failed") return transition(next, fx, "failed", { error: decision.error });
   // An unmapped or granular-failure status is applied as an in-flight bucket
@@ -1502,6 +1542,12 @@ function onExecuted(
   // A refused move (the reply names the status the intent is already in, or
   // one it cannot reach) must not drop an in-doubt verdict with it.
   return moved.intent === timed.intent ? patch(latched, { reconciling: true }) : latched;
+}
+
+/** A thrown execute's report with `inDoubt: false` (nothing else), read defensively. */
+function reportedNotInDoubt(result: Outcome<{ response: ExecuteReply }>): boolean {
+  const reply = result as { ok?: unknown; error?: Partial<ErrorReport> } | null | undefined;
+  return reply?.ok === false && reply.error?.inDoubt === false;
 }
 
 /** A thrown execute's report carrying the not-accepted flag (`true`, nothing else), read defensively. */
@@ -1595,14 +1641,15 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
 
 /**
  * A poll tick while a resend waits reads no status (the server holds nothing
- * to report). A tick a full poll interval past `resendAt` means the `execute`
- * timer never fired (a host that does not schedule it), so it does that
- * timer's work: resend, or past the deadline fail with the refusal.
+ * to report). The first tick (or returning tab) at or after `resendAt` with
+ * the resend still pending does the `execute` timer's work, in case the host
+ * never scheduled it: `resendExecute` resends, or past the deadline fails with
+ * the refusal. The poll interval bounds how late that is (`STATUS_POLL_MS`).
  */
 function resendBackstop(m: Model, fx: Effect[], now: number): Model {
   const resendAt = m.sign?.execute?.resendAt;
-  if (typeof resendAt !== "number" || now < resendAt + STATUS_POLL_MS) return m;
-  log(fx, "warn", `${LOG} The execute timer never fired; resending from the poll timer`);
+  if (typeof resendAt !== "number" || now < resendAt) return m;
+  log(fx, "warn", `${LOG} The resend is due and still pending; resending from the poll timer`);
   clearTimer(fx, "execute");
   return resendExecute(m, fx, now);
 }
@@ -1761,22 +1808,23 @@ function applyStatusUpdate(
 }
 
 /**
- * A failed status (literal or granular, `decodeWireStatus`) for an intent
- * whose execute reply was in doubt (`onExecuted`): that reply said the funds
- * may have moved, so this is not a failure to offer Retry on (a retry would be
- * a double execution). The intent keeps its in-flight status, shown in doubt
- * ("Still confirming"); only a refund or a completion resolves it, or the
- * poll's ceiling stops it (`pollExhausted`). Reported once per intent.
+ * A failed status for an intent whose funds may have moved: its execute is
+ * held in doubt (`executeInDoubt`), or the status is a granular failure that
+ * follows the pull (`fundsMayHaveMoved`), which latches it from then on. Not a
+ * failure to offer Retry on (a retry would be a double execution): the intent
+ * keeps its in-flight status, shown in doubt ("Still confirming"); only a
+ * refund or a completion resolves it, or the poll's ceiling stops it
+ * (`pollExhausted`). Reported once per intent.
  */
 function holdFailure(m: Model, fx: Effect[], id: string): Model {
   let next = m;
-  if (next.executeInDoubt && !next.executeInDoubt.failureHeld) {
+  if (next.executeInDoubt?.intentId !== id || !next.executeInDoubt.failureHeld) {
     log(
       fx,
       "warn",
-      `${LOG} status poll reads ${id} as failed after an in-doubt execute; holding it in doubt until a refund or completion`,
+      `${LOG} status reads ${id} as failed while its funds may have moved; holding it in doubt until a refund or completion`,
     );
-    next = { ...next, executeInDoubt: { ...next.executeInDoubt, failureHeld: true } };
+    next = { ...next, executeInDoubt: { intentId: id, failureHeld: true } };
   }
   return next.intent.reconciling ? next : patch(next, { reconciling: true });
 }
@@ -1831,7 +1879,9 @@ function onStatus(
     const s = result.status;
     const previous = next.intent.status;
     const held =
-      s.status === "failed" && next.executeInDoubt?.intentId === id && next.intent.intentId === id;
+      s.status === "failed" &&
+      next.intent.intentId === id &&
+      (next.executeInDoubt?.intentId === id || s.fundsMayHaveMoved === true);
     next = held
       ? holdFailure(next, fx, id)
       : applyStatusUpdate(

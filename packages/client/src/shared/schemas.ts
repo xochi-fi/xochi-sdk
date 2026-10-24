@@ -569,6 +569,22 @@ export const ExecuteResponseSchema = z
   })
   .strict();
 
+/**
+ * Automatic resends of one execute after its not-accepted answer. Mirrors
+ * `MAX_EXECUTE_RESENDS` in xochi's `@xochi/shared` `schemas.ts`, the budget
+ * the Worker enforces too: the refusal that follows this many un-claims
+ * finishes the intent `failed` instead.
+ */
+export const MAX_EXECUTE_RESENDS = 3;
+
+/**
+ * A resend must reach the Worker at least this many seconds before the
+ * earliest deadline the signed request carries. Mirrors
+ * `EXECUTE_RESEND_MARGIN_SECS` in xochi's `@xochi/shared` `schemas.ts`, the
+ * margin the Worker applies before it un-claims.
+ */
+export const EXECUTE_RESEND_MARGIN_SECS = 5;
+
 // Response wire types (snake_case). The canonical agent contract.
 export type Eip712TypedDataWire = z.infer<typeof Eip712TypedDataSchema>;
 export type SettlementOptionWire = z.infer<typeof SettlementOptionSchema>;

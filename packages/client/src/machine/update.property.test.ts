@@ -14,13 +14,8 @@
 
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import type { IntentStatus } from "../shared/index.js";
-import {
-  MAX_EXECUTE_RESENDS,
-  POLL_INFLIGHT_STATES,
-  QUOTE_BUSY_STATES,
-  STATUS_POLL_MS,
-} from "./decisions.js";
+import { MAX_EXECUTE_RESENDS, type IntentStatus } from "../shared/index.js";
+import { POLL_INFLIGHT_STATES, QUOTE_BUSY_STATES } from "./decisions.js";
 import {
   holdsCurrentQuote,
   init,
@@ -498,12 +493,10 @@ describe("update properties", () => {
               if (t.msg.type === "TimerFired" || t.msg.type === "VisibilityChanged") {
                 const attempt = t.prev.sign?.execute;
                 // The `execute` timer, or its backstop (a poll tick or a
-                // returning tab) a full poll interval past the resend time.
+                // returning tab) never before the resend time.
                 if (!(t.msg.type === "TimerFired" && t.msg.timer === "execute")) {
                   expect(t.msg.type === "VisibilityChanged" || t.msg.timer === "poll").toBe(true);
-                  expect(t.msg.now).toBeGreaterThanOrEqual(
-                    (attempt?.resendAt ?? Infinity) + STATUS_POLL_MS,
-                  );
+                  expect(t.msg.now).toBeGreaterThanOrEqual(attempt?.resendAt ?? Infinity);
                 }
                 expect(typeof attempt?.resendAt).toBe("number");
                 expect(attempt?.resends).toBeLessThan(MAX_EXECUTE_RESENDS);

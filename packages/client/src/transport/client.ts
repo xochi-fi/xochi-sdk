@@ -19,6 +19,7 @@ import { READ_TOKEN_HEADER, READ_TOKEN_LENGTH, READ_TOKEN_PATTERN } from "../sha
 import type { PreparedClaim } from "@xochi/signer";
 import {
   decodeWireStatus,
+  fundsMayHaveMoved,
   isExecuteResponseWire,
   isQuoteResponseWire,
   isTerminalIntentStatus,
@@ -138,18 +139,47 @@ export class ApiError extends Error {
   /**
    * True only on the Worker's not-accepted answer to `execute`
    * (`isNotAcceptedExecuteBody`), whose `retryAfter` is the server's wait;
-   * false on every other failure, which stays in doubt. Hand it to the machine
+   * false on every other failure, which is never resent. Hand it to the machine
    * as `ErrorReport.notAccepted` (rules: README "Transport").
    */
   readonly notAccepted: boolean;
+  /**
+   * True only on a failed `execute` whose answer says funds may have moved
+   * (`isInDoubtExecuteAnswer`); a failed `execute` that is not an `ApiError`
+   * is in doubt too. Hand it to the machine as `ErrorReport.inDoubt` (rules:
+   * README "Transport", "Fund safety").
+   */
+  readonly inDoubt: boolean;
 
-  constructor(message: string, code: number, retryAfter?: number, notAccepted = false) {
+  constructor(
+    message: string,
+    code: number,
+    retryAfter?: number,
+    notAccepted = false,
+    inDoubt = false,
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.retryAfter = retryAfter;
     this.notAccepted = notAccepted;
+    this.inDoubt = inDoubt;
   }
+}
+
+/**
+ * A failed answer to `POST /api/intent/execute` that says funds may have
+ * moved, so the intent is never offered Retry (rules: README "Transport").
+ */
+function isInDoubtExecuteAnswer(
+  status: number,
+  body: Record<string, unknown> | undefined,
+  intentId: string,
+  servedToken: string | undefined,
+): boolean {
+  if (servedToken !== undefined) return true;
+  if (body === undefined) return status >= 500;
+  return body.intent_id === intentId && body.reconciling === true;
 }
 
 /**
@@ -268,8 +298,18 @@ const INVISIBLE = /(?![\t\n\r])[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu
  */
 const RUN_JOINER =
   /(?<=[A-Za-z0-9_-])[\p{M}\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+(?=[A-Za-z0-9_-])/gu;
-/** What may sit between two pieces of a split token: one space, tab or `.`, or a line break. */
-const PIECE_GAP = /^(?:[ \t.]|\r?\n[ \t]*)$/;
+/**
+ * What `normalizeOnce` folds with NFKD, one character at a time: every
+ * non-ASCII character but a space, so fullwidth `Ａ１` reads `A1`. Spaces are
+ * left for `RUN_JOINER` (NFKD would turn a no-break space into U+0020, which
+ * splits a token), and NFKC is not used, since it would compose a combining
+ * mark that splits a token into one letter outside base64url.
+ */
+const COMPATIBILITY_FOLDED = /[^\x00-\x7f\p{Zs}]/gu;
+/** What may sit between two pieces of a split token: one space, tab, `.`, `,`, `;`, `|` or `/`, or a line break. */
+const PIECE_GAP = /^(?:[ \t.,;|/]|\r?\n[ \t]*)$/;
+/** A name, never a token piece: CamelCase (`PermitWitnessTransferFrom`) or snake_case (`pull_failed`). */
+const IDENTIFIER = /^(?:(?:[A-Z][a-z]+)+|[a-z]+(?:_[a-z]+)+)$/;
 /** Complete markup: an element tag (`<p>`, `</b>`, `<a href=…>`), `<!…>` or `<?…>`; never a bare `<`. */
 const MARKUP_TAG = /<(?:\/?[A-Za-z][^<>]*|[!?][^<>]*)>/g;
 const UNCLOSED_TRAILING_TAG = /<(?:\/?[A-Za-z]|[!?])[^<>]*$/;
@@ -331,8 +371,9 @@ function codePointOr(escape: string, codePoint: number): string {
 /**
  * One linear normalization pass: decode `\u{…}`, `\uXXXX`, `\xXX`, `%XX` and
  * numeric character references (any number of leading zeros, `;` optional),
- * then drop invisible characters and complete markup tags, so a token split by
- * either reads whole again.
+ * fold every non-ASCII character but a space to its compatibility form
+ * (`COMPATIBILITY_FOLDED`), then drop invisible characters and complete markup
+ * tags, so a token split or disguised by any of these reads whole again.
  */
 function normalizeOnce(text: string): string {
   return text
@@ -347,19 +388,21 @@ function normalizeOnce(text: string): string {
       (ref: string, hex: string | undefined, dec: string | undefined) =>
         codePointOr(ref, hex === undefined ? Number(dec) : parseInt(hex, 16)),
     )
+    .replace(COMPATIBILITY_FOLDED, (char: string) => char.normalize("NFKD"))
     .replace(INVISIBLE, "")
     .replace(MARKUP_TAG, "");
 }
 
 /**
- * Whether a base64url run may be a piece of a random token rather than a word
- * or a hex value: at least 8 characters, not hex, holding a digit, `-` or `_`,
- * or mixing cases past its first character.
+ * Whether a base64url run may be a piece of a random token rather than a word,
+ * a name (`IDENTIFIER`) or a hex value: at least 8 characters, holding a
+ * digit, `-` or `_`, or mixing cases past its first character.
  */
 function tokenPiece(run: string): boolean {
   return (
     run.length >= 8 &&
     !HEX_RUN.test(run) &&
+    !IDENTIFIER.test(run) &&
     (/[0-9_-]/.test(run) || (/[a-z]/.test(run) && /[A-Z]/.test(run.slice(1))))
   );
 }
@@ -553,18 +596,45 @@ const PREFIX_READ_TOKEN = new RegExp(
 );
 
 /**
+ * The object/array nesting depth at `index` of a JSON prefix, counted outside
+ * strings, or -1 when `index` lies inside a string or past the close of the
+ * value the prefix opens.
+ */
+function jsonDepthAt(prefix: string, index: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < index; i++) {
+    const c = prefix[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') {
+      inString = true;
+    } else if (c === "{" || c === "[") {
+      depth++;
+    } else if ((c === "}" || c === "]") && --depth === 0) {
+      return -1;
+    }
+  }
+  return inString ? -1 : depth;
+}
+
+/**
  * The `read_token` a cut JSON error body carries for `intentId`, read by strict
  * match from the prefix that `readCappedText` kept (a cut body does not parse).
  * Only from a prefix that opens a JSON object and names exactly one
  * `intent_id`, equal to `intentId`, and exactly one `read_token` key, whose
- * value is a whole token followed by its closing quote.
+ * value is a whole token followed by its closing quote, both keys of that
+ * object itself (depth 1), never of a value nested in it.
  */
 function readTokenFromPrefix(prefix: string, intentId: string): string | undefined {
   if (!/^\s*\{/.test(prefix)) return undefined;
   const ids = [...prefix.matchAll(PREFIX_INTENT_ID)];
   if (ids.length !== 1 || ids[0][1] !== intentId) return undefined;
+  if (jsonDepthAt(prefix, ids[0].index) !== 1) return undefined;
   if ([...prefix.matchAll(PREFIX_READ_TOKEN_KEY)].length !== 1) return undefined;
-  return PREFIX_READ_TOKEN.exec(prefix)?.[1];
+  const token = PREFIX_READ_TOKEN.exec(prefix);
+  return token && jsonDepthAt(prefix, token.index) === 1 ? token[1] : undefined;
 }
 
 /**
@@ -702,11 +772,11 @@ function readTokenHeaders(opts: IntentReadOptions | undefined): Record<string, s
 const MALFORMED_READ_TOKEN = `readToken is not a read_token (${READ_TOKEN_LENGTH} unpadded base64url characters)`;
 
 /**
- * An intent read answered by a redirect it may not follow, or by a response
- * from another origin (rules: README "Transport"). `getIntent` and
- * `getIntentHistory` reject with it; `getIntentStatus` reports it once per
- * intent and reads again without the token, or returns null when that read is
- * refused too.
+ * An intent read or an `execute` answered by a redirect it may not follow, or
+ * by a response from another origin (rules: README "Transport"). `getIntent`,
+ * `getIntentHistory` and `execute` reject with it (an execute refused this way
+ * is in doubt); `getIntentStatus` reports it once per intent and reads again
+ * without the token, or returns null when that read is refused too.
  */
 export class RedirectRefused extends Error {
   constructor(path: string) {
@@ -848,8 +918,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    * same as a stalled connect, whether or not the injected `fetch` honours the
    * signal on its body.
    *
-   * Every GET (the intent reads) is pinned to the request's origin, so no
-   * other host's answer becomes an intent's status or record:
+   * Every GET (the intent reads) and `execute` are pinned to the request's
+   * origin, so no other host's answer becomes an intent's status, record or
+   * execute result:
    * - A request carrying the read capability is sent with `redirect:
    *   "manual"`. It may follow one plain redirect whose `Location` stays on
    *   that origin, by hand and with the same headers (a path migration keeps
@@ -861,9 +932,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    *   `Location` names. `"manual"`, not `"error"`: Cloudflare Workers throws
    *   on `"error"`. The guard holds only for an injected `fetch` that honours
    *   `redirect: "manual"` (README "Transport").
-   * - A GET without it carries no secret, so fetch follows its redirects, and
-   *   the answer is refused (`RedirectRefused`) unless its `response.url` is
-   *   on the origin.
+   * - `execute` arrives with `redirect: "manual"` in `init` and follows
+   *   nothing: every redirect shape above is refused unread, so a redirect
+   *   never re-posts the signed request and no other host's answer or token
+   *   is taken.
+   * - A GET without the token carries no secret, so fetch follows its
+   *   redirects, and the answer is refused (`RedirectRefused`) unless its
+   *   `response.url` is on the origin; a `redirected` answer must name it.
    */
   async function send<T>(
     path: string,
@@ -876,6 +951,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
     const carriesToken = headers.has(READ_TOKEN_HEADER);
+    const manual = carriesToken || init.redirect === "manual";
     const isGet = (init.method ?? "GET") === "GET";
 
     const controller = new AbortController();
@@ -892,8 +968,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         ...(carriesToken ? { redirect: "manual" as const } : {}),
       };
       let fetched = await doFetch(requestUrl, requestInit);
-      if (carriesToken) {
-        const target = isGet ? sameOriginRedirectTarget(fetched, requestUrl) : undefined;
+      if (manual) {
+        const target =
+          isGet && carriesToken ? sameOriginRedirectTarget(fetched, requestUrl) : undefined;
         if (target !== undefined) {
           cancelBody(fetched);
           fetched = await doFetch(target, requestInit);
@@ -909,7 +986,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         }
       } else if (
         isGet &&
-        (fetched.type === "opaqueredirect" || !staysOnOrigin(fetched.url, requestUrl))
+        (fetched.type === "opaqueredirect" ||
+          (fetched.redirected && !fetched.url) ||
+          !staysOnOrigin(fetched.url, requestUrl))
       ) {
         cancelBody(fetched);
         throw new RedirectRefused(path);
@@ -1025,8 +1104,20 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
             }
             // A cut body does not parse, so it never carries the marker.
             const record = truncated ? undefined : parseJsonObject(errorBody);
+            // A cut body does not parse: its token is read from the prefix kept.
+            const servedToken =
+              executedIntentId === undefined
+                ? undefined
+                : truncated
+                  ? readTokenFromPrefix(errorBody, executedIntentId)
+                  : readTokenForIntent(record, executedIntentId);
+            const inDoubt =
+              executedIntentId !== undefined &&
+              isInDoubtExecuteAnswer(response.status, record, executedIntentId, servedToken);
+            // An answer that also says funds may have moved is never resent.
             const notAccepted =
               executedIntentId !== undefined &&
+              !inDoubt &&
               isNotAcceptedExecuteBody(response.status, record, executedIntentId);
             // Structured failure: the numeric status plus, for backpressure
             // (429/503), an absolute retry target for a countdown. A
@@ -1042,14 +1133,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               response.status,
               retryAfter,
               notAccepted,
+              inDoubt,
             );
-            // A cut body does not parse: its token is read from the prefix kept.
-            const servedToken =
-              executedIntentId === undefined
-                ? undefined
-                : truncated
-                  ? readTokenFromPrefix(errorBody, executedIntentId)
-                  : readTokenForIntent(record, executedIntentId);
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
             throw error;
           }
@@ -1236,6 +1321,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Pinned to the origin and never followed (`send`).
+          redirect: "manual",
           body: JSON.stringify({
             intent_id: request.intentId,
             quote_id: request.quoteId,
@@ -1357,6 +1444,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           intentId: d.intent_id ?? null,
           status,
           ...(decoded.kind === "unmapped" ? { unmapped: true } : {}),
+          ...(status === "failed" && fundsMayHaveMoved(d.status, d.substatus)
+            ? { fundsMayHaveMoved: true }
+            : {}),
           txHash: d.tx_hash ?? null,
           receivingTxHash: d.receiving_tx_hash ?? null,
           settlementTxHash: d.settlement_tx_hash ?? null,
