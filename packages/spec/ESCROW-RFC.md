@@ -304,8 +304,8 @@ because they are separate protocol values. Either way it need not equal
 the venue approves exactly one `NetworkIdentity` digest per network key
 across all corridors, and every shielded corridor on that network records
 that one digest. The venue records it with the `:winner` FillAuth; a payload
-whose `networkIdentity` differs from the recorded one is unproven. Before
-step 3 below, the venue proves that its own node serves that
+whose `networkIdentity` differs from the recorded one is refused on content
+(below). Before step 3 below, the venue proves that its own node serves that
 identity: the node's reported chain id and rollup version equal
 `aztecChainId` and `protocolVersion`, its L1 rollup contract equals
 `rollupAddress` on `l1ChainId` as read through the venue's own L1 node, and
@@ -323,8 +323,8 @@ Its hash is two Poseidon2 rounds: a partial commitment
 derived from the token's private balance map and `owner`
 (`noir-projects/aztec-nr/uint-note/src/uint_note.nr`, `compute_note_hash` /
 `compute_complete_note_hash`). An implementation pins the token's contract
-class; a payload whose fields do not match the pinned layout is unproven, and
-a layout change versions this `kind`.
+class; a payload whose fields do not match the pinned layout is refused on
+content (below), and a layout change versions this `kind`.
 
 **Fill window (normative).** A shielded leg's fill window ends at
 `fillDeadline` (`OrderTerms.fillDeadline`; on the XSP path
@@ -365,7 +365,8 @@ from the first independent solver:
    **last proven** Aztec L2 block height the venue's own node reported when it
    issued the `:winner` FillAuth for `orderId` (never the pending tip). Proven
    blocks are not pruned, so the bound survives an unproven-epoch prune. A
-   note included at or below it is unproven: a fill cannot precede the award.
+   note included at or below it is refused on content (below): a fill cannot
+   precede the award.
    On the XSP path the lower bound is the lowest last-proven height across the
    Attestor's signing nodes' own Aztec nodes, recorded when the obligation is
    recorded `Open` (3.8a). A note landing between that proven height and the
@@ -381,12 +382,12 @@ Steps 3–4 assume a **private-only** transaction: `noteIndex` is the position
 in the tx's note hashes ordered by side-effect counter, and the nonce comes
 from the protocol (first) nullifier. Token `transfer` and the PrivateFPC fee
 path enqueue no public call, so this holds; a solver account or fee path that
-enqueues a public call changes the revertible-half numbering and is unproven
-under this `kind`.
+enqueues a public call changes the revertible-half numbering and is refused
+on content (below) under this `kind`.
 
 **Tagging (normative).** The solver's sender PXE MUST install the
 address-derived tagging hook and MUST NOT fall back to the non-interactive
-handshake, which publishes the recipient. The venue refuses (unproven) a fill
+handshake, which publishes the recipient. The venue refuses on content a fill
 whose tx carries a non-interactive handshake log. Without this rule §9.5's
 "`to` hidden" does not hold.
 
@@ -407,7 +408,7 @@ corridor, a change to it versions this `kind`, and until then no value is
 valid. At step 3 the
 venue recomputes `fillSalt` from `orderId` (§9.4), computes
 `compute_siloed_nullifier(FillTag address, tag)` and checks that it is a
-nullifier in `txHash`'s effects; absent or different is unproven. The
+nullifier in `txHash`'s effects; absent or different is refused on content. The
 `FillTag` call emits no note hash and enqueues no public call, so step 3's
 numbering holds. The tag input is `fillSalt`, not `fillId`: `fillId` also
 reaches the attester and the slash arbiter in the FillAuth preimage (§6.1),
@@ -429,19 +430,31 @@ shielded obligation is recorded `Open`, so no XSP disclosure is ever judged,
 refused for a tag it could not carry, or slashed on (§6). Every XSP rule in
 this subsection describes that path once the tag lands.
 
-A failed step, a node error and an `unknown` result are all **unproven**, not
-"not filled". A disclosure's **receipt** is its attributable `POST
-/solver/fills` record (§11.0), timestamped by the venue on arrival. For §6
-every received disclosure resolves, by `holdDeadline` (Claim window, below)
-at the latest, into exactly one class:
+A node error and an `unknown` result are **unproven**, not "not filled": they
+leave the disclosure unclassified. Only the venue's own Aztec or L1 node, its
+identity proof (Network binding, above) or its registry can make a
+disclosure unproven. A check that fails on the payload or on the disclosed
+tx's own effects, which the awardee controls, is never unproven: it is
+refused on content as soon as the venue's own node has answered the read it
+needs (at once, for a check on the payload alone). A disclosure's
+**receipt** is its attributable `POST /solver/fills` record (§11.0),
+timestamped by the venue on arrival. For §6 every received disclosure
+resolves, by `holdDeadline` (Claim window, below) at the latest, into
+exactly one class:
 
 - **verified**: every release-predicate check (below) passed at finality;
-- **refused on content**, which counts as no disclosure (§6): a field
-  mismatch, a missing fill tag, a payload the venue's node rejects as
-  malformed, a note included after the fill window end (step 6), `not_included`
-  (below), or `note_already_bound` (an existing entry is always fully
-  verified, because the registry is written only after every other check
-  passes, below);
+- **refused on content**, which counts as no disclosure (§6): a
+  `networkIdentity` other than the recorded digest; a payload `solver` other
+  than the awardee; a `token`, `recipient` or `amount` that does not match
+  the `DestOpening`; fields that do not fit the pinned layout; a payload the
+  venue's node rejects as malformed; a tx that carries a non-interactive
+  handshake log, enqueues a public call or lacks the fill tag; a `unique`
+  that is not the leaf `txHash` inserted with `noteIndex`'s nonce once
+  `txHash` is included at finality (step 5); a note included at or below
+  step 6's lower bound or after the fill window end; `not_included` (below);
+  or `note_already_bound` (an existing entry is always fully verified,
+  because the registry is written only after every other check passes,
+  below);
 - **venue outage**: the venue's own Aztec or L1 node, its identity proof or
   the registry was failing for every disclosure on that corridor, not only
   for this one, by the venue's **health record** (its own timestamped log of
@@ -470,15 +483,26 @@ siloed tag is already a nullifier emitted by a tx other than the disclosed
 `txHash` (with no disclosure, by any tx). If it is, the venue records
 `tag_burned` on the order: the awardee's tagged `transfer` can no longer
 land, and the user's path is the permissionless `refund` at `refundableAt`
-(§3), with no other FillAuth (MUST NOT, below). Only a holder of `fillSalt`
-(Order binding, above) can emit the tag, and a private tx hides which one,
-so `tag_burned` is the **awardee's** fault and, like the no-show it amounts
-to, slash grounds under §6's predicate. Its one exemption, condition (2)
-there, is a **`fillSalt` exposure** the venue has recorded on its own side
-(a `venueKey` or attester leak, handled as a possible `venueKey` compromise,
-§9.4). So burning its own tag neither spares an awardee the no-show slash
-nor hides a misfill, and the awardee's own undisclosed fill (a preimage not
-journaled) is its fault too, never a leak alarm by itself.
+(§3), with no other FillAuth (MUST NOT, below). Every holder of `fillSalt`
+(Order binding, above) can emit the tag, the venue side as well as the
+awardee, and a private tx hides which one did, so a burned tag is nobody's
+provable fault. It is therefore never slash grounds (§6's predicate,
+condition (2)): otherwise any venue-side holder could frame an awardee for a
+no-show slash, which §6.1 rules out. It suspends the awardee from shielded
+awards instead: the venue MUST NOT issue it another shielded `:winner`
+FillAuth until the operator lifts the suspension, unless the venue has
+recorded a **`fillSalt` exposure** on its own side covering the order (a
+`venueKey` or attester leak, handled as a possible `venueKey` compromise,
+§9.4). So burning its own tag still spares an awardee the slash on that
+order, or hides a misfill, but costs it every shielded award while it is
+suspended, which outweighs one slash for any solver that wants shielded
+flow; a framed awardee loses eligibility, not bond. The
+awardee's own undisclosed fill (a preimage not journaled) suspends it the
+same way and is never a leak alarm by itself. Binding the tag to a secret
+only the awardee holds, so that a burn is provably its own, needs that
+secret committed in the `FillAcceptance` (§6.1), which changes that signed
+type and its vectors (`conformance/fill-acceptance.json`); it waits for the
+version that changes them.
 
 **Registry.** Only after every other check of the release predicate has
 passed (network binding, steps 1–6, the fill tag, the payee and the
@@ -502,13 +526,16 @@ re-sign from memory.
 **Preimage handling.** The venue (and the XSP Attestor) never logs the
 disclosed preimage, stores it encrypted at rest, retains it under the bounded
 resolved-record rule (xochi `settlement-protocol.md` 3.8a), and logs every
-access to it.
+access to it. On `RiddlerEscrow` that rule never discards the preimage or
+the order's inclusion record (Recipient, below) before `fillDeadline +
+MAX_SLASH_DELAY + disputeWindow` (§6.1): no slash on the order can land
+later, so none can be disputed later.
 
 **Release predicate.** Release of the depositor's origin principal to the
 payee follows the recomputation, the registry write and the absence of an open
 recipient hold (below), and nothing else. The payee is the authenticated
 awardee (the `:winner` FillAuth solver; on the XSP path the Ledger-assigned
-solver); a payload `solver` that differs is a refusal.
+solver); a payload `solver` that differs is refused on content (above).
 `verify(orderId, proof) ⇒ payee = awardee` holds iff `networkIdentity` equals
 the digest recorded with the award and the venue's node proved it, `recipient`,
 `token` and `amount` match the committed `DestOpening` (`amount >= toAmount`;
@@ -555,22 +582,33 @@ never appear in origin calldata, events or escrow state (C2).
   a disclosure's receipt (above); whether or when the owner reads it does
   not matter, so it needs no owner session or other owner action to exist.
 - **`RecipientAction` (`[PROPOSED]`).** A signed owner request is the EIP-712
-  struct `RecipientAction(bytes32 orderId,uint8 action,uint64 issuedAt,uint64
-  expiresAt)` under its own domain `{ name: "Xochi Recipient Action",
-  version: "1", chainId: OrderTerms.fromChainId }`, with no
-  `verifyingContract` (the venue verifies it off-chain), and `action` 1 =
-  `not_received`, 2 = acknowledge, 3 = withdraw. The venue accepts one only
-  if it recovers (ecrecover, as the `XochiIntent` does) to the order's owner,
-  `orderId` is that order's, `action` is one of the three, `issuedAt − 60 s ≤
-  now ≤ expiresAt` on the venue clock, `expiresAt − issuedAt ≤ 900 s`, and
-  `issuedAt` is later than that of every action already accepted for that
-  `orderId`. The last rule makes each signature single-use and stops an
-  older, unused one (held by an embedding host, say) from undoing a newer
-  action, which a nonce alone would not. The venue MUST NOT accept any other
-  signature for these actions (an EIP-191 `personal_sign` over free text
-  included), so the wallet never signs one under another protocol's domain.
-  The domain and type are fixed with their vectors when built; until then no
-  signature is valid.
+  struct `RecipientAction(bytes32 orderId,uint8 action,uint64 issuedAt)`
+  under its own domain `{ name: "Xochi Recipient Action", version: "1",
+  chainId: OrderTerms.fromChainId }`, with no `verifyingContract` (the venue
+  verifies it off-chain), and `action` 1 = `not_received`, 2 = acknowledge,
+  3 = withdraw. The venue accepts one only if it recovers (ecrecover) to the
+  order's owner, `orderId` is that order's, `|now − issuedAt| ≤ 60 s` on the
+  venue clock, `issuedAt` is not earlier than that of the last action
+  accepted for that `orderId`, and the order's **recipient state** allows the
+  action: `none → held` by `not_received`, `held → withdrawn` by withdraw,
+  and `none`, `held` or `withdrawn` `→ acknowledged` by acknowledge; nothing
+  else (`acknowledged` is final). The same transitions bind an action posted
+  through a SIWE session. The recipient state and the last accepted
+  `issuedAt` live in the shared order store beside the outcome record (§6),
+  moved by atomic compare-and-set, so every venue node sees one sequence. No
+  state is entered twice, so each signature is single-use; equal `issuedAt`
+  is allowed because no transition accepts one action twice, so a
+  `not_received` and a withdraw signed in the same second both land in
+  order. The 60 s bound absorbs wallet clock skew and transit, and is all the
+  delay a holder of the signature (an embedding host, say) gets: a
+  signature dated ahead, or held, is refused once that minute has passed, so
+  it cannot be saved to undo a later action. An owner that is a contract
+  account (ERC-1271) acts through a SIWE session only: `RecipientAction` is
+  never checked through `isValidSignature`, so no hold waits on a chain read.
+  The venue MUST NOT accept any other signature for these actions (an
+  EIP-191 `personal_sign` over free text included), so the wallet never
+  signs one under another protocol's domain. The domain and type are fixed
+  with their vectors when built; until then no signature is valid.
 - Recipient acknowledgement is a **completion** predicate: it closes the
   order's status and MUST NOT release, advance, or stand in for inclusion.
 - A recipient `not_received` assertion holds release for that `orderId`. It
@@ -616,13 +654,22 @@ pruned); `T_verify` is the venue's verification latency; `T_hold` is the
 operator's hold-resolution budget, the least time a hold opened at
 verification gets before `holdDeadline` (below); `T_registry` is the
 registry recovery bound (a restore that has not reproduced its checkpoint
-digest within it stays halted); `T_dispute` is `FILL_DEADLINE_GRACE` plus
-the SolverBond `disputeWindow` (§6.1), the longest a late `:winner`'s
-release can wait for a slash proposed at the grace end to be voided (§6);
-and `T_release` is the time to land the release artifact on the origin chain
-at its finality. Each is a per-corridor configured bound, recorded in the
-corridor configuration beside its approved `networkIdentity` and `FillTag`
-address.
+digest within it stays halted); `T_dispute` is the longest a late
+`:winner`'s release can wait for a slash proposed at the grace end to be
+voided (§6),
+
+```
+T_dispute = FILL_DEADLINE_GRACE + T_slash + max(disputeWindow, T_final + T_verify) + T_arbiter
+```
+
+because the proposal lands within `T_slash` (§6), the SolverBond
+`disputeWindow` (§6.1) then runs while the solver's evidence, the venue's
+inclusion record, takes up to `T_final + T_verify` to exist, and `T_arbiter`
+bounds the arbiter's decision and the void landing on the bond chain at its
+finality; and `T_release` is the time to land the release artifact on the
+origin chain at its finality. Each is a per-corridor configured bound,
+recorded in the corridor configuration beside its approved
+`networkIdentity` and `FillTag` address.
 
 Every hold on a disclosed fill (a `not_received` assertion, a pending
 operator record, an `unknown` verification) resolves by
@@ -643,13 +690,17 @@ The venue MUST NOT issue a shielded `:winner` FillAuth for a corridor while
 its registry is halted, while its Aztec node for the corridor is lagging
 (above), or while a disclosure on it whose verification has been due for
 `T_hold` is neither refused on content nor backed by both venue records
-(Recipient, above). Each is the venue's own state, which no counterparty can
-bring about: an awardee's early or junk `txHash` is not due before
-`fillDeadline + T_final + T_verify` and is `not_included` by then, and a
-`not_received` assertion, signed or not and with or without a session,
-changes neither record. Residual: an outage longer than its bound on an
-in-flight order (registry, venue nodes or operator) lets `refund` return the
-principal while the recipient keeps a delivered note. The solver bears that
+(Recipient, above). Since every payload and tx-shape failure is refused on
+content once the venue's node answers (above), only the venue's own node,
+identity-proof or registry errors leave a due disclosure so. Each is the
+venue's own state, which no counterparty can bring about: an awardee's
+early or junk `txHash` is not due before `fillDeadline + T_final +
+T_verify` and is `not_included` by then, the shape of the awardee's own tx
+is refused on content, and a `not_received` assertion, signed or not and
+with or without a session, changes neither record. Residual: an outage
+longer than its bound on an in-flight order (registry, venue nodes or
+operator) lets `refund` return the principal while the recipient keeps a
+delivered note. The solver bears that
 loss (Riddler, while it is the only shielded panel member), bounded by the
 corridor's **in-flight notional cap**: a configured ceiling on the summed
 `toAmount` of its shielded orders neither released nor refunded, recorded in
@@ -679,8 +730,8 @@ actions only.
   lockstep.
 - MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
   silently or as a remedy.
-- MUST NOT advertise this tier as `verified` or as confidentiality tier 2
-  (C5, §9.5).
+- MUST NOT advertise this tier as `verified`, nor as confidentiality tier 2
+  (C5) until C4's `k` for the corridor is published (§9.5).
 
 **Wire.** `optimistic_disclosed` (`ProofReceipt.proof_tier`, `SPEC.md`
 §5.2.3) and `aztec_note_preimage` (`FillProof.kind`, `SOLVER-RFC.md` §6) are
@@ -703,20 +754,21 @@ consumer in this tree parses it.
 
   **Shielded slash predicate (the only statement).** For tier 1s a misfill
   is a disclosure refused on content, so one predicate covers both slashes.
-  At or after the grace end (§5.1 Fill window), the attester signs a
+  After the grace end (§5.1 Fill window), the attester signs a
   `SlashAttestation` for `orderId` iff all three hold: (1) the awardee made
   no `aztec_note_preimage` disclosure for `orderId` whose receipt (§5.1) the
   venue clock records by the grace end, or §5.1 has refused on content
   every such one (its classes, including its `holdDeadline` rule);
-  (2) the venue has recorded no `fillSalt` exposure on its own side that
-  covers the order (Burned tag, §5.1); and (3) the order's outcome record
-  admits a proposal (below). It attests exactly that, never "no fill" and
-  never "not verified". A junk disclosure therefore delays the slash to
-  `holdDeadline` at the latest but cannot dodge it, a burned tag dodges it
-  only through (2), and a disclosure received after the grace end never
-  blocks it (it is dispute evidence, below). On the bond chain the proposal
-  is also gated by `FillWindowOpen` (§6.1), which opens at the grace end
-  because a shielded FillAuth's `deadline` is `fillDeadline` (§5.1).
+  (2) the venue has not recorded `tag_burned` on the order (Burned tag,
+  §5.1: a burn suspends the awardee, never slashes it); and (3) the order's
+  outcome record admits a proposal (below). It attests exactly that, never
+  "no fill" and never "not verified". A junk disclosure therefore delays the
+  slash to `holdDeadline` at the latest but cannot dodge it, a burned tag
+  trades it for suspension, and a disclosure received after the grace end
+  never blocks it (it is dispute evidence, below). On the bond chain the
+  proposal is also gated by `FillWindowOpen` (§6.1), which opens at the
+  grace end because a shielded FillAuth's `deadline` is `fillDeadline`
+  (§5.1).
 
   **Withdrawal (tier 1s).** `SolverBond` cannot see orders:
   `requestWithdrawal` takes the amount out of eligibility at once and
@@ -730,33 +782,43 @@ consumer in this tree parses it.
   `T_slash` is the corridor's configured bound on landing a slash proposal
   on the bond chain at its finality, recorded with §5.1's other `T_*`
   bounds. A withdrawal requested after the award is then still unbonding
-  when the latest slash proposal (a disclosure refused at `holdDeadline`)
-  lands. Configuration MUST refuse a shielded corridor whose longest
+  when the latest slash proposal (one from `refunded`, below) lands.
+  Configuration MUST refuse a shielded corridor whose longest
   quote-to-`fillDeadline` span plus `claimWindow` plus `T_slash` exceeds the
   deployed `unbondingPeriod`, since this rule would then refuse every
-  shielded `:winner` on it.
+  shielded `:winner` on it, or whose `claimWindow` plus `T_slash` exceeds
+  SolverBond v2's `MAX_SLASH_DELAY` (§6.1), since a proposal from `refunded`
+  could then never land.
 
   **Release/slash exclusivity (per `orderId`).** The attester keeps one
-  outcome record per `orderId`, moved only by atomic compare-and-set along
-  these edges and no others: `open → released`, `open → slash_proposed`,
-  `open → refunded`; `refunded → slash_proposed`, only for an order the
-  refund moved from `open` (never released, never slashed);
-  `slash_proposed → slash_executed`, `slash_proposed → slash_voided`;
-  `slash_voided → released`, `slash_voided → refunded`; and
-  `released → refunded`, a correction for a signed release artifact that
-  never landed before `refund` did (it can no longer pay). A release
+  outcome record per `orderId`: a state and a `refundLanded` fact, set when
+  a `refund` lands, in any state, and never cleared. The state moves only by
+  atomic compare-and-set along these edges and no others: `open →
+  released`, `open → slash_proposed`, `open → refunded`; `refunded →
+  slash_proposed`, only for an order the refund moved from `open` (never
+  released, never slashed) and only until `refundableAt + T_slash` (every
+  shielded `SlashAttestation` carries a `deadline` no later than that, so
+  v1's `AttestationExpired` refuses a later proposal on the bond chain;
+  after it the record is final); `slash_proposed → slash_executed`,
+  `slash_proposed → slash_voided`; `slash_voided → released`, `slash_voided
+  → refunded`; and `released → refunded`, a correction for a signed release
+  artifact that never landed before `refund` did (it can no longer pay).
+  Every edge into `released` requires `refundLanded` unset, so once a
+  refund has landed `slash_voided`'s only exit is `refunded`. A release
   artifact is signed from `open` only for a disclosure received by the grace
-  end, otherwise only from `slash_voided`, and never once a refund has
-  landed; a slash is proposed only from `open`, or from `refunded` as above,
-  under the slash predicate (above). A landed `refund` moves `open`,
-  `slash_voided` and `released` to `refunded` and never moves a slash: a
-  proposed slash survives the refund and resolves on the bond chain to
-  `slash_executed` or `slash_voided` (a slash never covers principal, so the
-  two are independent), and one voided after the refund has landed ends at
+  end, otherwise only from `slash_voided`; a slash is proposed only from
+  `open`, or from `refunded` as above, under the slash predicate (above). A
+  landed `refund` sets `refundLanded`, moves `open`, `slash_voided` and
+  `released` to `refunded`, and never moves a slash: a proposed slash
+  survives the refund and resolves on the bond chain to `slash_executed` or
+  `slash_voided` (a slash never covers principal, so the two are
+  independent), and one voided after the refund has landed ends at
   `refunded`. The `refunded → slash_proposed` edge exists because anyone can
   land the permissionless `refund` at `refundableAt`, `T_release` after a
   disclosure is refused at `holdDeadline`; an attester that has not proposed
-  by then still can, so attester lag never lets a no-show escape. A
+  by then still can until `refundableAt + T_slash`, so attester lag up to
+  `T_slash` never lets a no-show escape, and the proposal still finds the
+  funds the withdrawal rule (above) keeps unbonding. A
   disclosure received after the grace end (§5.1's late `:winner`) is the
   solver's dispute evidence: the slash is proposed (the predicate holds) and
   release follows its voiding, inside §5.1's `T_dispute` term and before
@@ -782,9 +844,10 @@ consumer in this tree parses it.
   (`no_fill_acceptance`, §6.1) and no backstop may fill, so the user's only
   path is the permissionless `refund` at `refundableAt`. Residual: that user
   waits the full shielded `claimWindow` (§5.1) with no slash payment; the
-  venue records `winner_abandoned`, which is grounds for panel removal
-  (§6.1). `claim` itself is permissionless and pays the payee the attestation
-  names. Reuses the existing WAL / reorg-guard / no-double-pay discipline.
+  venue records `winner_abandoned`, and repeated `winner_abandoned` is
+  grounds for panel removal (§6.1). `claim` itself is permissionless and
+  pays the payee the attestation names. Reuses the existing WAL /
+  reorg-guard / no-double-pay discipline.
 
 ### 6.1 Slash proof on solver signatures (SolverBond v2)
 
@@ -829,11 +892,17 @@ proposeSlash(SlashClaim c, bytes attesterSig, FillAcceptance a, bytes solverSig)
 //   a.orderId == c.orderId && a.originChainId == c.originChainId && a.escrow == c.escrow   (AcceptanceMismatch)
 //   a.filler == c.solver                                                                   (AcceptanceMismatch)
 //   block.timestamp > a.deadline + FILL_DEADLINE_GRACE                                     (FillWindowOpen)
+//   c.deadline <= a.deadline + MAX_SLASH_DELAY                                             (SlashTooLate)
 //   ECDSA.recover(acceptanceDigest(a), solverSig) == c.solver                              (BadSolverSignature; EOA only)
 ```
 
 `deadline` is a destination-chain timestamp compared on the bond chain, so a
-constant grace of minutes (`FILL_DEADLINE_GRACE`) absorbs clock skew. The
+constant grace of minutes (`FILL_DEADLINE_GRACE`) absorbs clock skew.
+`MAX_SLASH_DELAY` is a deploy-time constant like it: with v1's
+`AttestationExpired` (`block.timestamp > c.deadline`), no proposal lands
+after `a.deadline + MAX_SLASH_DELAY`, whatever `deadline` an attester signs,
+so a buggy or compromised attester cannot slash a long-closed order after
+the solver's evidence retention (§5.1) has run out. The
 acceptance digest is emitted with the proposal as dispute evidence. The bond
 proves the solver ACCEPTED that FillAuth; it does not prove no fill. Only the
 attester attests no fill, and a slash on a filled order is a valid proposal the
@@ -1511,9 +1580,10 @@ invariant, escrow gateway (`lock`/`release`/`void`), `fillId`, `fillSalt`,
 confidentiality tier (linked / unlinked / confidential), anonymity set, note
 preimage registry (`note_already_bound`), recipient hold (`not_received`),
 hold deadline (`holdDeadline`), network identity (`networkIdentity`), network
-key, fill tag (`FillTag`), burned tag (`tag_burned`), fill commitment
-(`fillCommitment`), outcome record (release/slash exclusivity), fill window
-end and grace end, recipient capability, mailbox (forwarding record),
-inclusion record, `RecipientAction`, lagging node, health record, in-flight
-notional cap, shielded bounds (`T_final`, `T_verify`, `T_hold`, `T_registry`,
-`T_dispute`, `T_release`, `T_slash`).
+key, fill tag (`FillTag`), burned tag (`tag_burned`, suspension), fill
+commitment (`fillCommitment`), outcome record (release/slash exclusivity,
+`refundLanded`), fill window end and grace end, recipient capability,
+mailbox (forwarding record), inclusion record, `RecipientAction` (recipient
+state), lagging node, health record, in-flight notional cap,
+`MAX_SLASH_DELAY`, shielded bounds (`T_final`, `T_verify`, `T_hold`,
+`T_registry`, `T_dispute`, `T_arbiter`, `T_release`, `T_slash`).
