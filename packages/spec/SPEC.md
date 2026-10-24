@@ -811,7 +811,12 @@ the intent to its Aztec transaction for whoever holds that key.
 `ESCROW-RFC.md` §5.1 ("Recipient") keeps the tx hash off any such read for
 its `[PROPOSED]` shielded release, so before shielded is offered under it
 these fields leave that read or become owner-scoped there, in lockstep with
-Riddler.
+Riddler. The same holds for the xochi Worker's intent read
+(`GET /api/intent/:id` and its `/status`), which a bearer read token
+(`@xochi/client`'s `X-Xochi-Read-Token`) authorizes for whoever presents it:
+before shielded is offered, that read returns a shielded leg's Aztec tx hash
+or block only to an owner-authenticated request, in lockstep with the
+Worker.
 
 `nullifierHash` is misleading: it is the first protocol nullifier of the
 transaction, and a `transfer_to_private` spends a public balance and nullifies no
