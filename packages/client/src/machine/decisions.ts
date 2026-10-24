@@ -13,6 +13,7 @@ import {
   EXTENDED_CHAIN_NAMES,
   IntentStatusFrameSchema,
   MAX_EXECUTE_RESENDS,
+  NOT_EXECUTED_SUBSTATUS,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -61,6 +62,23 @@ export const POLL_INFLIGHT_STATES: IntentStatus[] = [
   "bridging",
   "settling",
 ];
+
+/**
+ * States that follow an execute (or, on a deposit route, a detected deposit):
+ * a `failed` read from one of them is Retry only on the Worker's nothing-moved
+ * marker (`failureMayHaveMoved`).
+ */
+export const EXECUTE_SENT_STATES: IntentStatus[] = ["executing", "bridging", "settling"];
+
+/**
+ * Whether a `failed` after an execute may have moved funds: every one but the
+ * Worker's own nothing-moved finish (`substatus` `NOT_EXECUTED_SUBSTATUS`).
+ * The machine shows it as the terminal "may have moved" view (no Retry, no
+ * poll, Reset only); rules: README "Fund safety".
+ */
+export function failureMayHaveMoved(substatus: unknown): boolean {
+  return substatus !== NOT_EXECUTED_SUBSTATUS;
+}
 
 // ============================================================
 // Status poll cadence and ceilings
@@ -491,7 +509,7 @@ export function decideSignPreflight(input: {
 // ============================================================
 
 export type ExecuteDecision =
-  | { kind: "failed"; error: string }
+  | { kind: "failed"; error: string; mayHaveMoved: boolean }
   | { kind: "transition"; status: IntentStatus; updates: Partial<IntentState> };
 
 /**
@@ -502,23 +520,26 @@ export type ExecuteDecision =
  * server's flag when it sends one, else on whenever the server withheld
  * success (`reconciling ?? !success`). The verdicts, in order:
  * - `failed` with `success: false` and `reconciling` off by that rule (the
- *   server sent `reconciling: false`) is the one real failure (Retry).
+ *   server sent `reconciling: false`) is final: Retry only with the Worker's
+ *   nothing-moved marker, else "may have moved" (`failureMayHaveMoved`).
  * - `completed` completes with reconciling off, whatever the reply says: a
  *   completion leaves nothing to reconcile.
  * - Any other `failed` (`success: true`, or `reconciling` on, the absent flag
  *   included) is in doubt: it moves to the in-flight `executing` with
- *   reconciling on, never to the Retry view.
+ *   reconciling on, and the poll reads the final status.
  * - Anything else advances to its status with reconciling by that rule, so a
- *   withheld success shows the safe-to-close "Still confirming" path with no
- *   Retry (an in-session retry of a funds-moved swap would be a double
- *   execution).
- * `onExecuted` also shows an unmapped or granular-failure status in doubt,
- * and keeps an in-doubt reply in doubt until a refund or completion.
+ *   withheld success shows the "Still confirming" path with no Retry (an
+ *   in-session retry of a funds-moved swap would be a double execution).
+ * `onExecuted` also shows an unmapped status in doubt.
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   const reconciling = result.reconciling ?? !result.success;
   if (result.status === "failed" && !result.success && !reconciling) {
-    return { kind: "failed", error: result.error || "Execution failed" };
+    return {
+      kind: "failed",
+      error: result.error || "Execution failed",
+      mayHaveMoved: failureMayHaveMoved(result.substatus),
+    };
   }
 
   const base: Partial<IntentState> = {
@@ -539,7 +560,7 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
 
 export type ExecuteResend =
   | { kind: "resend"; delayMs: number }
-  | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "deadline" };
+  | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "stale_retry_after" | "deadline" };
 
 /**
  * How far before `now` a not-accepted `retryAfter` may lie and still be read
@@ -568,12 +589,11 @@ export function decideExecuteResend(input: {
 }): ExecuteResend {
   if (input.resends >= MAX_EXECUTE_RESENDS) return { kind: "give_up", reason: "exhausted" };
   const { retryAfter, deadline } = input;
-  if (
-    retryAfter === undefined ||
-    !Number.isFinite(retryAfter) ||
-    retryAfter * 1000 < input.now - RETRY_AFTER_MAX_AGE_SECS * 1000
-  ) {
+  if (retryAfter === undefined || !Number.isFinite(retryAfter)) {
     return { kind: "give_up", reason: "no_retry_after" };
+  }
+  if (retryAfter * 1000 < input.now - RETRY_AFTER_MAX_AGE_SECS * 1000) {
+    return { kind: "give_up", reason: "stale_retry_after" };
   }
   const sendAt = Math.max(retryAfter * 1000, input.now + 1000);
   if (deadline === null || sendAt > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {

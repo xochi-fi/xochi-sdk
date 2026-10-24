@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { ETH_ADDRESS_REGEX } from "./validators.js";
+import { NOT_EXECUTED_SUBSTATUS } from "./intents.js";
 
 // ============================================================
 // Primitives
@@ -549,6 +550,12 @@ export const ExecuteResponseSchema = z
     ephemeral_pub_key: z.string().optional(),
     view_tag: z.number().int().optional(),
     error: z.string().optional(),
+    substatus: z
+      .literal(NOT_EXECUTED_SUBSTATUS)
+      .optional()
+      .describe(
+        "`not_executed` on a 502 `failed` the worker wrote knowing nothing moved (the resend budget's finish, or no solver configured): safe to re-quote. Absent on a solver-reported failure.",
+      ),
     // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
     // padding. Served once, by the execute that admits the intent; present it as
     // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain

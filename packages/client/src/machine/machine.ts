@@ -42,6 +42,7 @@ import {
   decideExecuteResend,
   decideExecuteResult,
   decideSignPreflight,
+  failureMayHaveMoved,
   mapStatusUpdate,
   mergeSameStatusReceipt,
   notFoundDriftWarning,
@@ -54,6 +55,7 @@ import {
   POLL_INFLIGHT_STATES,
   ALLOCATABLE_STATES,
   ENDED_STATES,
+  EXECUTE_SENT_STATES,
   QUOTE_BUSY_STATES,
   STATUS_POLL_FLAT_CEILING_MS,
   STATUS_POLL_MS,
@@ -242,15 +244,9 @@ export interface ErrorReport {
    * Execute only, and only from `ApiError.notAccepted`: the server proved it
    * refused before accepting anything, so the machine may send the SAME
    * request again at `value.retryAfter` (`decideExecuteResend`). Anything but
-   * `true` leaves a failed execute in doubt.
+   * `true` is a thrown execute like any other: the poll decides it.
    */
   notAccepted?: boolean;
-  /**
-   * Execute only: whether the funds may have moved. Anything but `false`
-   * holds the intent in doubt (`executeInDoubt`); how to build it: README
-   * "Fund safety".
-   */
-  inDoubt?: boolean;
 }
 
 export type Outcome<T> = ({ ok: true } & T) | { ok: false; error: ErrorReport };
@@ -271,10 +267,11 @@ export type MsgBody =
       owner: string;
       depositDeadline: number | null;
       /**
-       * The host's persisted `executeInDoubt` verdict for this intent (README
-       * "Fund safety"): `true` holds every failed status, as before the reload.
+       * The stored record's `substatus` (`IntentRecord.substatus`). A resumed
+       * `failed` offers Retry only with `NOT_EXECUTED_SUBSTATUS`; any other,
+       * or none, resumes as "may have moved" (README "Fund safety").
        */
-      executeInDoubt?: boolean;
+      substatus?: string | null;
     }
   | { type: "VisibilityChanged" }
   | { type: "StreamStatus"; message: IntentWebSocketMessage }
@@ -384,14 +381,6 @@ export interface Model {
    */
   clientFillMs: number | null;
   notFoundReported: string | null;
-  /**
-   * The intent whose execute the machine holds in doubt (`onExecuted`, a
-   * granular failure poll, `ResumeRequested.executeInDoubt`), and whether a
-   * failed status has been held for it since (`holdFailure`). Keyed by intent
-   * id, so a new quote's intent never inherits it; a fresh `init` (a reload)
-   * clears it, so the host persists it (README "Fund safety").
-   */
-  executeInDoubt: { intentId: string; failureHeld: boolean } | null;
   seq: number;
   flights: QuoteFlight[];
   sign: SignFlow | null;
@@ -428,7 +417,6 @@ export function init(config: MachineConfig, ctx: Context, hidden = false): Model
     submittedAt: null,
     clientFillMs: null,
     notFoundReported: null,
-    executeInDoubt: null,
     seq: 0,
     flights: [],
     sign: null,
@@ -539,19 +527,20 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       };
 
     case "ResumeRequested": {
-      // A persisted in-doubt verdict holds the intent as it did before the
-      // reload: a failed status in flight, shown in doubt, polled until a
-      // refund or completion.
-      const inDoubt = msg.executeInDoubt === true;
-      const held = inDoubt && msg.status === "failed";
-      const intent = buildResumedState(
+      const resumed = buildResumedState(
         m.intent,
         msg.intentId,
-        held ? "executing" : msg.status,
+        msg.status,
         msg.owner,
         msg.depositDeadline,
       );
-      if (intent === m.intent) return m;
+      if (resumed === m.intent) return m;
+      // A stored failure is Retry only on the Worker's own nothing-moved marker:
+      // the reload cannot know whether this tab sent an execute for it.
+      const intent =
+        resumed.status === "failed"
+          ? { ...resumed, mayHaveMoved: failureMayHaveMoved(msg.substatus) }
+          : resumed;
       // The adopt supersedes any quote still queued for the form. The panel
       // restores the record's amount before it adopts (the adopt waits on the
       // stored deposit proof), and that amount change queues a debounced quote.
@@ -561,15 +550,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       // A quote already in the air (a Tron allocation waiting on sign-in) would
       // land over the resumed intent the same way, so it goes too.
       clearTimer(fx, "debounce");
-      const resumed: Model = supersedeFlights(m, fx);
-      if (!inDoubt) return { ...resumed, intent };
-      return {
-        ...resumed,
-        intent: POLL_INFLIGHT_STATES.includes(intent.status)
-          ? { ...intent, reconciling: true }
-          : intent,
-        executeInDoubt: { intentId: msg.intentId, failureHeld: held },
-      };
+      return { ...supersedeFlights(m, fx), intent };
     }
 
     case "VisibilityChanged": {
@@ -606,10 +587,8 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
         });
         return m;
       }
-      // The poll's rule (`onStatus`): an intent held in doubt is never failed.
-      if (msg.message.status === "failed" && m.executeInDoubt?.intentId === msg.message.intentId) {
-        return holdFailure(m, fx, msg.message.intentId);
-      }
+      // Applied by the poll's rule (`applyStatusUpdate`): a `failed` frame
+      // after an execute ends "may have moved" unless it carries the marker.
       return applyStatusUpdate(m, fx, msg.message, false);
 
     case "TimerFired":
@@ -741,6 +720,13 @@ function supersedeFlights(m: Model, fx: Effect[]): Model {
 }
 
 function startQuote(m: Model, fx: Effect[], now: number, opts: QuoteOpts): Model {
+  // "May have moved" holds until Reset: no quote lands over it and offers the
+  // trade again before the user has checked what the last order did.
+  if (m.intent.status === "failed" && m.intent.mayHaveMoved) {
+    log(fx, "debug", `${LOG} Ignoring quote request: the last order may have moved funds`);
+    endAllocation(fx, opts, false);
+    return m;
+  }
   const ctx = m.ctx;
   const address = ctx.wallet.address;
   const depositOrigin = !isChainId(ctx.fromChainId);
@@ -1509,45 +1495,30 @@ function onExecuted(
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
   // may have moved funds): flag reconciling and let the poll resolve it (#226).
-  // Only a failure reported `inDoubt: false` (a server answer that does not
-  // say funds may have moved) lets a later failed status offer Retry; any
-  // other failure, and a reply that cannot be read as this intent's execute
-  // response, is held in doubt like an in-doubt reply (`holdFailure`).
+  // So is a reply that cannot be read as this intent's execute response.
   const reply = executeResponseUnlessInDoubt(fx, result, next.intent.intentId);
-  if (!reply) {
-    const reconciling = patch(next, { reconciling: true });
-    const intentId = next.intent.intentId;
-    return reportedNotInDoubt(result) || intentId === null
-      ? reconciling
-      : { ...reconciling, executeInDoubt: { intentId, failureHeld: false } };
-  }
+  if (!reply) return patch(next, { reconciling: true });
   const decision = decideExecuteResult(reply.response);
-  if (decision.kind === "failed") return transition(next, fx, "failed", { error: decision.error });
-  // An unmapped or granular-failure status is applied as an in-flight bucket
-  // and shown in doubt, as an unmapped status poll is (`applyStatusUpdate`).
-  const updates = reply.inDoubt ? { ...decision.updates, reconciling: true } : decision.updates;
+  if (decision.kind === "failed") {
+    return transition(next, fx, "failed", {
+      error: decision.error,
+      mayHaveMoved: decision.mayHaveMoved,
+    });
+  }
+  // An unmapped status is applied as an in-flight bucket and shown in doubt,
+  // as an unmapped status poll is (`applyStatusUpdate`).
+  const updates = reply.unmapped ? { ...decision.updates, reconciling: true } : decision.updates;
   // Inline fill: the execute round-trip bounds submit -> filled exactly.
   const timed =
     decision.status === "completed" && next.submittedAt !== null
       ? { ...next, clientFillMs: now - next.submittedAt }
       : next;
   const moved = transition(timed, fx, decision.status, updates);
-  if (updates.reconciling !== true) return moved;
-  // The server's own reply said the funds may have moved: no later failed
-  // status may turn that into a Retry (`holdFailure`).
-  const latched: Model = {
-    ...moved,
-    executeInDoubt: { intentId: reply.response.intentId, failureHeld: false },
-  };
   // A refused move (the reply names the status the intent is already in, or
   // one it cannot reach) must not drop an in-doubt verdict with it.
-  return moved.intent === timed.intent ? patch(latched, { reconciling: true }) : latched;
-}
-
-/** A thrown execute's report with `inDoubt: false` (nothing else), read defensively. */
-function reportedNotInDoubt(result: Outcome<{ response: ExecuteReply }>): boolean {
-  const reply = result as { ok?: unknown; error?: Partial<ErrorReport> } | null | undefined;
-  return reply?.ok === false && reply.error?.inDoubt === false;
+  return updates.reconciling === true && moved.intent === timed.intent
+    ? patch(moved, { reconciling: true })
+    : moved;
 }
 
 /** A thrown execute's report carrying the not-accepted flag (`true`, nothing else), read defensively. */
@@ -1562,8 +1533,8 @@ function notAcceptedReport(result: Outcome<{ response: ExecuteReply }>): ErrorRe
  * The server refused this execute before accepting anything: wait for the
  * refusal's `retryAfter` and send the SAME request again (`resendExecute`)
  * within `decideExecuteResend`'s bounds, else fail with the refusal. Null,
- * leaving the reply in doubt like any other thrown execute, when anything
- * already says the funds may have moved (rules: README "Fund safety").
+ * leaving the reply in doubt like any other thrown execute, when the intent
+ * already reads in doubt (rules: README "Fund safety").
  */
 function onNotAccepted(
   m: Model,
@@ -1579,8 +1550,7 @@ function onNotAccepted(
     intentId === null ||
     attempt.request.intentId !== intentId ||
     m.intent.status !== "executing" ||
-    m.intent.reconciling ||
-    m.executeInDoubt?.intentId === intentId
+    m.intent.reconciling
   ) {
     log(fx, "warn", `${LOG} Execute not accepted, but kept in doubt: the intent already is`);
     return null;
@@ -1670,16 +1640,18 @@ type RelayedExecuteReply = Omit<ExecuteReply, "status" | "readToken"> & {
  * (`decodeWireStatus`), or null when the execute is in doubt: a reported
  * failure, or a reply the machine cannot read as an execute response for this
  * intent (malformed, or another intent's response; intent ids compare
- * exactly). Checked here rather than trusted from the host: the
- * failed-vs-in-doubt verdict decides whether Retry is offered on a swap whose
- * funds may have moved. Read defensively, since a replayed or foreign message
- * need not match its type.
+ * exactly). Checked here rather than trusted from the host: the verdict
+ * decides whether Retry is offered on a swap whose funds may have moved. A
+ * granular failure (`fill_failed`) decodes to `failed` with the granular
+ * status as its substatus, so it is never the Worker's nothing-moved marker.
+ * Read defensively, since a replayed or foreign message need not match its
+ * type.
  */
 function executeResponseUnlessInDoubt(
   fx: Effect[],
   result: Outcome<{ response: ExecuteReply }>,
   intentId: string | null,
-): { response: ExecuteResponse; inDoubt: boolean } | null {
+): { response: ExecuteResponse; unmapped: boolean } | null {
   const reply = result as
     | { ok?: unknown; error?: { detail?: unknown }; response?: unknown }
     | null
@@ -1706,12 +1678,14 @@ function executeResponseUnlessInDoubt(
     log(fx, "warn", `${LOG} Execute reply carried a readToken; keep it outside the machine`);
   }
   const decoded = decodeWireStatus(status);
-  // Only the literal `failed` is an execute failure (Retry). A granular one
-  // (`fill_failed`: the pull may already have moved funds) is left to the poll.
   const granularFailure = decoded.status === "failed" && status !== "failed";
   return {
-    response: { ...rest, status: granularFailure ? "executing" : decoded.status },
-    inDoubt: decoded.kind === "unmapped" || granularFailure,
+    response: {
+      ...rest,
+      status: decoded.status,
+      ...(granularFailure ? { substatus: status } : {}),
+    },
+    unmapped: decoded.kind === "unmapped",
   };
 }
 
@@ -1730,7 +1704,8 @@ function isRelayedExecuteReply(value: unknown): value is RelayedExecuteReply {
     optional(r.error, "string") &&
     optional(r.txHash, "string") &&
     optional(r.receivingTxHash, "string") &&
-    optional(r.settlementTxHash, "string")
+    optional(r.settlementTxHash, "string") &&
+    optional(r.substatus, "string")
   );
 }
 
@@ -1785,6 +1760,9 @@ function signFlowFailed(m: Model, fx: Effect[], report: ErrorReport): Model {
  * discard the receipt hashes it carries (xochi#353) -- so its receipt fields
  * merge directly. An UNMAPPED wire status (`decodeWireStatus`) never reads as
  * progress: the intent shows "Still confirming" (reconciling), never success.
+ * A `failed` after an execute (`EXECUTE_SENT_STATES`) is Retry only with the
+ * Worker's nothing-moved marker; any other ends "may have moved"
+ * (`failureMayHaveMoved`), and either way the poll stops.
  */
 function applyStatusUpdate(
   m: Model,
@@ -1799,34 +1777,16 @@ function applyStatusUpdate(
     const updates = mergeSameStatusReceipt(m.intent, msg);
     next = updates ? patch(m, updates) : m;
   } else {
-    next = transition(m, fx, plan.status, plan.updates);
+    const updates =
+      plan.status === "failed" && EXECUTE_SENT_STATES.includes(m.intent.status)
+        ? { ...plan.updates, mayHaveMoved: failureMayHaveMoved(msg.substatus) }
+        : plan.updates;
+    next = transition(m, fx, plan.status, updates);
   }
   if (unmapped && POLL_INFLIGHT_STATES.includes(next.intent.status) && !next.intent.reconciling) {
     next = patch(next, { reconciling: true });
   }
   return next;
-}
-
-/**
- * A failed status for an intent whose funds may have moved: its execute is
- * held in doubt (`executeInDoubt`), or the status is a granular failure that
- * follows the pull (`fundsMayHaveMoved`), which latches it from then on. Not a
- * failure to offer Retry on (a retry would be a double execution): the intent
- * keeps its in-flight status, shown in doubt ("Still confirming"); only a
- * refund or a completion resolves it, or the poll's ceiling stops it
- * (`pollExhausted`). Reported once per intent.
- */
-function holdFailure(m: Model, fx: Effect[], id: string): Model {
-  let next = m;
-  if (next.executeInDoubt?.intentId !== id || !next.executeInDoubt.failureHeld) {
-    log(
-      fx,
-      "warn",
-      `${LOG} status reads ${id} as failed while its funds may have moved; holding it in doubt until a refund or completion`,
-    );
-    next = { ...next, executeInDoubt: { intentId: id, failureHeld: true } };
-  }
-  return next.intent.reconciling ? next : patch(next, { reconciling: true });
 }
 
 function pollTick(m: Model, fx: Effect[], elapsedInterval: boolean): Model {
@@ -1878,40 +1838,34 @@ function onStatus(
   } else if (result.status) {
     const s = result.status;
     const previous = next.intent.status;
-    const held =
-      s.status === "failed" &&
-      next.intent.intentId === id &&
-      (next.executeInDoubt?.intentId === id || s.fundsMayHaveMoved === true);
-    next = held
-      ? holdFailure(next, fx, id)
-      : applyStatusUpdate(
-          next,
-          fx,
-          {
-            type: "intent_status",
-            intentId: id,
-            status: s.status,
-            txHash: s.txHash ?? undefined,
-            receivingTxHash: s.receivingTxHash ?? undefined,
-            settlementTxHash: s.settlementTxHash ?? undefined,
-            settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
-            // A confirmed fill whose receipt the server withheld (anonymous read,
-            // xochi#563) is delivered, exactly as a `filled` substatus, under the
-            // rule `withheldSettlementConfirmed` states. An unmapped status is only
-            // its in-flight bucket, so it never qualifies.
-            substatus: withheldSettlementConfirmed({
-              status: s.unmapped === true ? undefined : s.status,
-              legsWithheld: s.legsWithheld,
-              settlementConfirmed: s.settlementConfirmed,
-            })
-              ? "filled"
-              : (s.substatus ?? undefined),
-            error: s.error ?? undefined,
-            refundReason: s.refundReason ?? undefined,
-            timestamp: new Date(now).toISOString(),
-          },
-          s.unmapped === true,
-        );
+    next = applyStatusUpdate(
+      next,
+      fx,
+      {
+        type: "intent_status",
+        intentId: id,
+        status: s.status,
+        txHash: s.txHash ?? undefined,
+        receivingTxHash: s.receivingTxHash ?? undefined,
+        settlementTxHash: s.settlementTxHash ?? undefined,
+        settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
+        // A confirmed fill whose receipt the server withheld (anonymous read,
+        // xochi#563) is delivered, exactly as a `filled` substatus, under the
+        // rule `withheldSettlementConfirmed` states. An unmapped status is only
+        // its in-flight bucket, so it never qualifies.
+        substatus: withheldSettlementConfirmed({
+          status: s.unmapped === true ? undefined : s.status,
+          legsWithheld: s.legsWithheld,
+          settlementConfirmed: s.settlementConfirmed,
+        })
+          ? "filled"
+          : (s.substatus ?? undefined),
+        error: s.error ?? undefined,
+        refundReason: s.refundReason ?? undefined,
+        timestamp: new Date(now).toISOString(),
+      },
+      s.unmapped === true,
+    );
     // Each poll's own verdict: an anonymous read sets it, an owner read (no
     // marker) clears it, so the host knows when to offer SIWE recovery.
     const legsWithheld = s.legsWithheld === true;
@@ -1919,15 +1873,8 @@ function onStatus(
       next = patch(next, { legsWithheld });
     }
     // The server owns the active-polling decision; a phase change refills the
-    // give-up budget, so the ceiling bounds a swap that is not moving. A held
-    // failure is neither: the poll runs on, so a refund still lands.
-    verdict = held
-      ? undefined
-      : s.terminal
-        ? "stop"
-        : s.status === previous
-          ? undefined
-          : "progress";
+    // give-up budget, so the ceiling bounds a swap that is not moving.
+    verdict = s.terminal ? "stop" : s.status === previous ? undefined : "progress";
   }
 
   // Terminal beats the ceiling: a swap that settles on the ceiling tick is
@@ -2010,7 +1957,8 @@ function settle(model: Model, now: number, fx: Effect[]): Model {
 /**
  * A quote is bound to the account and chain it was produced under. If either
  * changes while a pre-execution quote is held, reset: the panel re-quotes for
- * the new wallet. An in-flight settlement is never yanked out from under.
+ * the new wallet. An in-flight settlement is never yanked out from under, and
+ * neither is a "may have moved" ending (it holds until Reset).
  */
 function watchWallet(m: Model, fx: Effect[]): Model {
   const { address, chainId } = m.ctx.wallet;
@@ -2022,7 +1970,9 @@ function watchWallet(m: Model, fx: Effect[]): Model {
   const accountChanged = !address || address.toLowerCase() !== quotedAddress.toLowerCase();
   const chainChanged = quotedChainId != null && chainId !== quotedChainId;
   if (!accountChanged && !chainChanged) return next;
-  if (!WALLET_INTERRUPTIBLE_STATES.includes(next.intent.status)) return next;
+  if (!WALLET_INTERRUPTIBLE_STATES.includes(next.intent.status) || next.intent.mayHaveMoved) {
+    return next;
+  }
   clearTimer(fx, "debounce");
   clearTimer(fx, "refresh");
   clearTimer(fx, "signPrompt");

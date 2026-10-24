@@ -38,13 +38,25 @@ interface Recorded {
   init: RequestInit;
 }
 
+/**
+ * `res` as a spec fetch returns it: naming the url it answered (a constructed
+ * `Response` names none, which the transport refuses on execute and token
+ * reads). A test that set its own `url` keeps it.
+ */
+function fetched(res: Response, url: string): Response {
+  if (!Object.prototype.hasOwnProperty.call(res, "url")) {
+    Object.defineProperty(res, "url", { value: url });
+  }
+  return res;
+}
+
 /** A Worker that answers every request with `respond`, recording what it was sent. */
 function worker(respond: (call: number, req: Recorded) => Response) {
   const calls: Recorded[] = [];
   const fetch = async (url: string, init: RequestInit): Promise<Response> => {
     const req = { url, init };
     calls.push(req);
-    return respond(calls.length, req);
+    return fetched(respond(calls.length, req), url);
   };
   return { calls, fetch };
 }
@@ -397,12 +409,13 @@ describe("execute: the not-accepted refusal", () => {
   });
 });
 
-describe("execute: an answer that says funds may have moved", () => {
+describe("execute: an answer that cannot vouch that nothing moved", () => {
   const token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
   const failedWith = async (respond: () => Response) =>
     rejection(client(respond).c.execute(execRequest));
 
-  it("is in doubt with a read token or reconciling for this intent, or a 5xx not in JSON", async () => {
+  it("is in doubt unless the answer is one of the Worker's nothing-moved shapes", async () => {
+    const marked = { success: false, intent_id: "intent-1", status: "failed", error: "busy" };
     const cases: [string, () => Response, boolean][] = [
       // The Worker's two 502s where funds may have moved (xochi#563).
       [
@@ -432,28 +445,59 @@ describe("execute: an answer that says funds may have moved", () => {
         () => json({ success: false, intent_id: "intent-1", reconciling: true }, 502),
         true,
       ],
-      ["a gateway page", () => new Response("<html>502 Bad Gateway</html>", { status: 502 }), true],
-      ["an empty 504", () => new Response(null, { status: 504 }), true],
-      // The Worker's clean rejection: nothing moved, Retry stays.
-      [
-        "clean 502",
-        () =>
-          json({ success: false, intent_id: "intent-1", status: "failed", error: "rejected" }, 502),
-        false,
-      ],
       [
         "reconciling for another intent",
         () => json({ success: false, intent_id: "intent-2", reconciling: true }, 502),
-        false,
+        true,
       ],
-      ["a 409", () => json({ success: false, error: "Intent already being executed" }, 409), false],
+      ["a gateway page", () => new Response("<html>502 Bad Gateway</html>", { status: 502 }), true],
+      ["an empty 504", () => new Response(null, { status: 504 }), true],
+      // The Worker's catch-all can answer after its call to the solver ran.
+      [
+        "the Worker's JSON 500",
+        () => json({ success: false, error: "Internal server error" }, 500),
+        true,
+      ],
+      // Another request holds the claim and may move funds.
+      ["a 409", () => json({ success: false, error: "Intent already being executed" }, 409), true],
+      // A solver rejection the Worker does not mark: it cannot vouch for it.
+      [
+        "an unmarked failed 502",
+        () =>
+          json({ success: false, intent_id: "intent-1", status: "failed", error: "rejected" }, 502),
+        true,
+      ],
+      [
+        "the marker for another intent",
+        () => json({ ...marked, intent_id: "intent-2", substatus: "not_executed" }, 502),
+        true,
+      ],
+      ["the marker on a 500", () => json({ ...marked, substatus: "not_executed" }, 500), true],
+      ["another substatus", () => json({ ...marked, substatus: "fill_failed" }, 502), true],
+      // The Worker's own nothing-moved answers.
+      ["the marked 502", () => json({ ...marked, substatus: "not_executed" }, 502), false],
+      ...[400, 401, 403, 404, 422, 429].map((status): [string, () => Response, boolean] => [
+        `a ${status}`,
+        () => json({ success: false, error: "refused" }, status),
+        false,
+      ]),
       ["a 400 not in JSON", () => new Response("bad request", { status: 400 }), false],
+      [
+        "a 400 carrying a token",
+        () => json({ success: false, intent_id: "intent-1", read_token: token }, 400),
+        true,
+      ],
     ];
     for (const [label, respond, inDoubt] of cases) {
       const err = (await failedWith(respond)) as ApiError;
       expect(err, label).toBeInstanceOf(ApiError);
       expect(err.inDoubt, label).toBe(inDoubt);
     }
+    // The not-accepted 503 is not in doubt, and is the one answer flagged for a resend.
+    const notAccepted = (await failedWith(() =>
+      json({ ...marked, status: "quoted", accepted: false, retry_after: 7 }, 503),
+    )) as ApiError;
+    expect([notAccepted.inDoubt, notAccepted.notAccepted]).toEqual([false, true]);
   });
 
   it("never reads a not-accepted answer that also carries a read token as resendable", async () => {
@@ -502,6 +546,8 @@ describe("execute: an answer that says funds may have moved", () => {
       "a followed redirect on the origin": () =>
         completed("https://api.example.test/v2/intent/execute", true),
       "another host's answer": () => completed("https://evil.test/api/intent/execute", false),
+      // What an injected fetch that followed and re-wrapped the answer returns.
+      "an answer naming no url": () => completed("", false),
     };
     for (const [label, respond] of Object.entries(cases)) {
       const { c, calls } = client(respond);
@@ -856,24 +902,24 @@ describe("getIntentStatus", () => {
     expect(unknown).toMatchObject({ status: "executing", unmapped: true, terminal: false });
   });
 
-  it("flags a failure that follows the pull, as the status or the Worker's substatus", async () => {
+  it("passes the Worker's not_executed marker through on a failed status", async () => {
     const bodies = [
-      { status: "fill_failed" },
-      { status: "refund_failed" },
-      { status: "pull_failed" },
-      { status: "failed", substatus: "fill_failed" },
+      { status: "failed", substatus: "not_executed" },
       { status: "failed" },
-      { status: "failed", substatus: "pulling" },
-      { status: "refunded", substatus: "refund_failed" },
+      { status: "fill_failed" },
     ];
     const { c } = client((call) => json(bodies[call - 1]));
-    const flags = [];
+    const reads = [];
     for (const body of bodies) {
       const read = await c.getIntentStatus("a");
       if (!read || "notFound" in read) throw new Error(`expected data for ${body.status}`);
-      flags.push(read.fundsMayHaveMoved ?? false);
+      reads.push([read.status, read.substatus]);
     }
-    expect(flags).toEqual([true, true, true, true, false, false, false]);
+    expect(reads).toEqual([
+      ["failed", "not_executed"],
+      ["failed", null],
+      ["failed", null],
+    ]);
   });
 });
 
@@ -896,6 +942,22 @@ describe("intent records", () => {
       settlementTxHash: undefined,
     });
     expect(await c.getIntent("xi_2")).toBeNull();
+  });
+
+  it("carries the not_executed marker on a full and a withheld record", async () => {
+    const { c } = client((call) =>
+      json({
+        id: "xi_1",
+        status: "failed",
+        substatus: "not_executed",
+        ...(call === 2 ? { legs_withheld: true } : {}),
+      }),
+    );
+    expect((await c.getIntent("xi_1"))?.substatus).toBe("not_executed");
+    expect(await c.getIntent("xi_1")).toMatchObject({
+      legsWithheld: true,
+      substatus: "not_executed",
+    });
   });
 
   it("reads history and throws on a failure rather than reporting an empty list", async () => {
@@ -1443,7 +1505,7 @@ describe("a real read token through the real error path", () => {
     const logged: unknown[] = [];
     const c = createXochiClient({
       baseUrl: "https://api.example.test",
-      fetch: async () => respond(logged.length),
+      fetch: async (url: string) => fetched(respond(logged.length), url),
       log: (...args) => logged.push(args),
       retry: { baseDelayMs: 0 },
       ...options,
@@ -1458,6 +1520,16 @@ describe("a real read token through the real error path", () => {
     "15 + 15 + 13, semicolons": pieces.join(";"),
     "15 + 15 + 13, pipes": pieces.join("|"),
     "15 + 15 + 13, slashes": pieces.join("/"),
+    // Raw in the `<pre>` body; JSON escapes (`\n`, `\r\n`, `\t`) in a JSON one.
+    "15 + 15 + 13, line feeds": pieces.join("\n"),
+    "15 + 15 + 13, CRLF": pieces.join("\r\n"),
+    "15 + 15 + 13, tabs": pieces.join("\t"),
+    // Pieces too short to join across a space: only `RUN_JOINER` rejoins them,
+    // so a fold of the no-break space (NFKD of it, or of the whole string) leaks.
+    "no-break spaces every 5 characters": TOKEN.replace(/.{5}(?=.)/g, "$&\u00a0"),
+    // Precomposed: NFKD splits the mark off and `RUN_JOINER` drops it; NFKC keeps
+    // the letter whole, outside base64url.
+    "accented letters": [...TOKEN].map((ch) => `${ch}\u0301`.normalize("NFC")).join(""),
     fullwidth: [...TOKEN].map((ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).join(""),
     "no-break spaces": pieces.join("\u00a0"),
     "line separators": pieces.join("\u2028"),
@@ -1511,6 +1583,24 @@ describe("a real read token through the real error path", () => {
     }
   });
 
+  it("reads a JSON string escape between token pieces as the character it encodes", async () => {
+    for (const escape of ["\\n", "\\r\\n", "\\t", "\\/"]) {
+      for (const served of [false, true]) {
+        const shape = `${escape}, ${served ? "served" : "unserved"}`;
+        const token = served ? `,"read_token":"${TOKEN}"` : "";
+        const body = `{"success":false,"intent_id":"intent-1","error":"stack: ${pieces.join(escape)}"${token}}`;
+        const { c, logged } = loggingClient(() => new Response(body, { status: 502 }));
+        const err = (await rejection(c.execute(execRequest))) as ApiError;
+        expect(err.code, shape).toBe(502);
+        for (const piece of pieces) {
+          expect(err.message, shape).not.toContain(piece);
+          expect(JSON.stringify(logged), shape).not.toContain(piece);
+        }
+        expect(err.message, shape).toContain("stack: ");
+      }
+    }
+  });
+
   it("keeps text that only looks like markup", async () => {
     const { c } = loggingClient(
       () => new Response("min amount < 5 USDC, got > 3 <b>USDC</b>", { status: 400 }),
@@ -1540,6 +1630,8 @@ describe("a real read token through the real error path", () => {
         `"previous":{"a":[1,{"b":"}"}]},${id("intent-1")},${token}`,
         TOKEN,
       ],
+      // A second top-level value: its keys are not the body's own.
+      ["both in a second object", `"a":1},{${id("intent-1")},${token}`, undefined],
     ];
     for (const [shape, fields, expected] of cases) {
       const { c, logged } = loggingClient(() => long(fields));
@@ -1614,6 +1706,19 @@ describe("a real read token through the real error path", () => {
     ]) {
       expect(await refusedWith(text)).toBe(`HTTP 400: ${text}`);
     }
+  });
+
+  it("joins a name-shaped piece only beside a token piece", async () => {
+    // 11 + 11 + 11 + 10 random characters; the second and the first read as CamelCase.
+    const named = ["zuq-DzUzWzw", "CvvxcpxUqcv", "bG2q4INF28l", "ucOgpe6QuA"];
+    for (const order of [named, [named[1], named[0], ...named.slice(2)]]) {
+      const message = await refusedWith(`upstream ${order.join(" ")} end`);
+      for (const piece of order) expect(message, order.join(" ")).not.toContain(piece);
+    }
+    // Names beside names, or beside a run too short to be a piece, stay readable.
+    const text =
+      "PermitWitnessTransferFrom TokenPermissions abc123 ReceiveWithAuthorization mismatch";
+    expect(await refusedWith(text)).toBe(`HTTP 400: ${text}`);
   });
 
   it("reads exactly 8 KiB, and counts a complete body that fills it as cut", async () => {

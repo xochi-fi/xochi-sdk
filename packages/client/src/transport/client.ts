@@ -15,11 +15,15 @@
  */
 
 import type { QuoteResponseWire, ExecuteResponseWire } from "../shared/index.js";
-import { READ_TOKEN_HEADER, READ_TOKEN_LENGTH, READ_TOKEN_PATTERN } from "../shared/index.js";
+import {
+  NOT_EXECUTED_SUBSTATUS,
+  READ_TOKEN_HEADER,
+  READ_TOKEN_LENGTH,
+  READ_TOKEN_PATTERN,
+} from "../shared/index.js";
 import type { PreparedClaim } from "@xochi/signer";
 import {
   decodeWireStatus,
-  fundsMayHaveMoved,
   isExecuteResponseWire,
   isQuoteResponseWire,
   isTerminalIntentStatus,
@@ -139,15 +143,18 @@ export class ApiError extends Error {
   /**
    * True only on the Worker's not-accepted answer to `execute`
    * (`isNotAcceptedExecuteBody`), whose `retryAfter` is the server's wait;
-   * false on every other failure, which is never resent. Hand it to the machine
-   * as `ErrorReport.notAccepted` (rules: README "Transport").
+   * false on every other failure, which is never resent. Never true together
+   * with `inDoubt`: an answer that also says funds may have moved is not a
+   * not-accepted answer. Hand it to the machine as `ErrorReport.notAccepted`
+   * (rules: README "Transport").
    */
   readonly notAccepted: boolean;
   /**
-   * True only on a failed `execute` whose answer says funds may have moved
-   * (`isInDoubtExecuteAnswer`); a failed `execute` that is not an `ApiError`
-   * is in doubt too. Hand it to the machine as `ErrorReport.inDoubt` (rules:
-   * README "Transport", "Fund safety").
+   * Whether this failed `execute` answer cannot vouch that the execute moved
+   * nothing (`isInDoubtExecuteAnswer`): false only on the Worker's own
+   * nothing-moved answers, true on every other execute failure. For the host's
+   * own copy and logs; the machine never reads it (README "Transport"). False
+   * on every other call.
    */
   readonly inDoubt: boolean;
 
@@ -168,8 +175,28 @@ export class ApiError extends Error {
 }
 
 /**
- * A failed answer to `POST /api/intent/execute` that says funds may have
- * moved, so the intent is never offered Retry (rules: README "Transport").
+ * Statuses on which a failed `execute` was refused before the Worker claimed
+ * the intent: its own validation, auth, lookup and rate limit, or anything in
+ * front of it that never forwarded the request. 409 is not one: it answers an
+ * execute that lost the claim to another request, which may move funds.
+ */
+const PRE_CLAIM_REFUSAL: Readonly<Record<number, true>> = {
+  400: true,
+  401: true,
+  403: true,
+  404: true,
+  422: true,
+  429: true,
+};
+
+/**
+ * A failed answer to `POST /api/intent/execute` that cannot vouch that this
+ * execute moved nothing (rules: README "Transport"). Fail closed: in doubt
+ * unless the answer is a pre-claim refusal (`PRE_CLAIM_REFUSAL`), the
+ * Worker's not-accepted 503, or its 502 `failed` marked `not_executed` for
+ * the executed intent; and always in doubt when it carries a read token or
+ * `reconciling: true`. A JSON 5xx is in doubt like any other: the Worker's
+ * catch-all 500 can follow its call to the solver.
  */
 function isInDoubtExecuteAnswer(
   status: number,
@@ -177,9 +204,17 @@ function isInDoubtExecuteAnswer(
   intentId: string,
   servedToken: string | undefined,
 ): boolean {
-  if (servedToken !== undefined) return true;
-  if (body === undefined) return status >= 500;
-  return body.intent_id === intentId && body.reconciling === true;
+  if (servedToken !== undefined || body?.reconciling === true) return true;
+  if (PRE_CLAIM_REFUSAL[status]) return false;
+  if (isNotAcceptedExecuteBody(status, body, intentId)) return false;
+  return !(
+    status === 502 &&
+    body !== undefined &&
+    body.success === false &&
+    body.intent_id === intentId &&
+    body.status === "failed" &&
+    body.substatus === NOT_EXECUTED_SUBSTATUS
+  );
 }
 
 /**
@@ -308,7 +343,7 @@ const RUN_JOINER =
 const COMPATIBILITY_FOLDED = /[^\x00-\x7f\p{Zs}]/gu;
 /** What may sit between two pieces of a split token: one space, tab, `.`, `,`, `;`, `|` or `/`, or a line break. */
 const PIECE_GAP = /^(?:[ \t.,;|/]|\r?\n[ \t]*)$/;
-/** A name, never a token piece: CamelCase (`PermitWitnessTransferFrom`) or snake_case (`pull_failed`). */
+/** A name: CamelCase (`PermitWitnessTransferFrom`) or snake_case (`pull_failed`); a token piece only beside one (`splitTokens`). */
 const IDENTIFIER = /^(?:(?:[A-Z][a-z]+)+|[a-z]+(?:_[a-z]+)+)$/;
 /** Complete markup: an element tag (`<p>`, `</b>`, `<a href=…>`), `<!…>` or `<?…>`; never a bare `<`. */
 const MARKUP_TAG = /<(?:\/?[A-Za-z][^<>]*|[!?][^<>]*)>/g;
@@ -369,11 +404,29 @@ function codePointOr(escape: string, codePoint: number): string {
 }
 
 /**
- * One linear normalization pass: decode `\u{…}`, `\uXXXX`, `\xXX`, `%XX` and
- * numeric character references (any number of leading zeros, `;` optional),
- * fold every non-ASCII character but a space to its compatibility form
+ * What JSON's short escapes for a separator or a control character stand for.
+ * `\"` and `\\` stay as written: neither character joins or splits a token,
+ * and decoding `\\` would halve a run of backslashes on every pass.
+ */
+const JSON_SHORT_ESCAPE: Readonly<Record<string, string>> = {
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  b: "\b",
+  f: "\f",
+  "/": "/",
+};
+
+/**
+ * One linear normalization pass: decode `\u{…}`, `\uXXXX`, `\xXX`, the JSON
+ * escapes `\n`, `\r`, `\t`, `\b`, `\f` and `\/`, `%XX` and numeric character
+ * references (any number of leading zeros, `;` optional), fold every
+ * non-ASCII character but a space to its compatibility form
  * (`COMPATIBILITY_FOLDED`), then drop invisible characters and complete markup
- * tags, so a token split or disguised by any of these reads whole again.
+ * tags, so a token split or disguised by any of these reads whole again. A
+ * JSON error body writes every line break and tab in a string as an escape,
+ * so without them a token split across lines would read a letter (`n`)
+ * between its pieces, which no separator rule skips.
  */
 function normalizeOnce(text: string): string {
   return text
@@ -382,6 +435,7 @@ function normalizeOnce(text: string): string {
     )
     .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\([nrtbf/])/g, (_, char: string) => JSON_SHORT_ESCAPE[char])
     .replace(/(?:%[0-9a-fA-F]{2})+/g, decodePercentRun)
     .replace(
       /&#(?:[xX]0*([0-9a-fA-F]{1,6})|0*([0-9]{1,7}));?/g,
@@ -394,49 +448,78 @@ function normalizeOnce(text: string): string {
 }
 
 /**
- * Whether a base64url run may be a piece of a random token rather than a word,
- * a name (`IDENTIFIER`) or a hex value: at least 8 characters, holding a
- * digit, `-` or `_`, or mixing cases past its first character.
+ * Whether a base64url run has the shape of a piece of a random token: at
+ * least 8 characters, not hex, holding a digit, `-` or `_`, or mixing cases
+ * past its first character. One that reads as a name (`IDENTIFIER`) is a
+ * token piece only beside one that does not (`splitTokens`).
  */
-function tokenPiece(run: string): boolean {
+function pieceShaped(run: string): boolean {
   return (
     run.length >= 8 &&
     !HEX_RUN.test(run) &&
-    !IDENTIFIER.test(run) &&
     (/[0-9_-]/.test(run) || (/[a-z]/.test(run) && /[A-Z]/.test(run.slice(1))))
   );
 }
 
 /**
- * Tokens split by ASCII separators, joined: chains of token pieces
- * (`tokenPiece`), one `PIECE_GAP` apart, at least a token long together.
- * After a line break that follows a piece of `TOKEN_FRAGMENT_CHARS` or more (a
- * hard wrap), the run that ends the chain may be of any shape.
+ * Tokens split by ASCII separators, joined: chains of piece-shaped runs
+ * (`pieceShaped`), one `PIECE_GAP` apart, at least a token long together. A
+ * run that reads as a name (`IDENTIFIER`) joins only when one of its linked
+ * neighbours is a piece-shaped run that does not: a real name is not flanked
+ * by random text, and a random piece that happens to read as CamelCase must
+ * not break the chain it sits in. After a line break that follows a piece of
+ * `TOKEN_FRAGMENT_CHARS` or more (a hard wrap), the run that ends the chain
+ * may be of any shape.
  */
 function splitTokens(text: string): string[] {
-  const found: string[] = [];
-  let chain: string[] = [];
+  const runs: { run: string; piece: boolean; name: boolean; linked: boolean; wrap: boolean }[] = [];
   let end = 0;
-  const flush = () => {
-    const joined = chain.join("");
-    if (chain.length > 1 && joined.length >= READ_TOKEN_LENGTH) found.push(joined);
-    chain = [];
-  };
   for (const match of text.matchAll(BASE64URL_RUN)) {
     const [run] = match;
     const gap = text.slice(end, match.index);
     end = match.index + run.length;
-    const prev = chain[chain.length - 1];
-    const joins =
-      prev !== undefined &&
-      tokenPiece(prev) &&
-      PIECE_GAP.test(gap) &&
-      (tokenPiece(run) || (gap.includes("\n") && prev.length >= TOKEN_FRAGMENT_CHARS));
-    if (joins) {
+    const shaped = pieceShaped(run);
+    const name = IDENTIFIER.test(run);
+    runs.push({
+      run,
+      piece: shaped && !name,
+      name: shaped && name,
+      linked: PIECE_GAP.test(gap),
+      wrap: gap.includes("\n"),
+    });
+  }
+  const joinable = (i: number): boolean => {
+    const { piece, name, linked } = runs[i];
+    const next = runs[i + 1];
+    return (
+      piece ||
+      (name && ((linked && runs[i - 1]?.piece === true) || (next?.linked === true && next.piece)))
+    );
+  };
+  const found: string[] = [];
+  let chain: string[] = [];
+  // Whether the chain may take another run: a hard-wrap tail ends it.
+  let open = false;
+  const flush = () => {
+    const joined = chain.join("");
+    if (chain.length > 1 && joined.length >= READ_TOKEN_LENGTH) found.push(joined);
+    chain = [];
+    open = false;
+  };
+  for (let i = 0; i < runs.length; i++) {
+    const { run, linked, wrap } = runs[i];
+    const prev = runs[i - 1];
+    if (open && linked && joinable(i)) {
       chain.push(run);
+    } else if (open && linked && wrap && prev.piece && prev.run.length >= TOKEN_FRAGMENT_CHARS) {
+      chain.push(run);
+      open = false;
     } else {
       flush();
-      if (tokenPiece(run)) chain = [run];
+      if (joinable(i)) {
+        chain = [run];
+        open = true;
+      }
     }
   }
   flush();
@@ -926,12 +1009,14 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
    *   that origin, by hand and with the same headers (a path migration keeps
    *   the token). Anything else is refused (`RedirectRefused`): a further 3xx,
    *   an `opaqueredirect` (a browser's answer to every manual redirect: it
-   *   hides the `Location`), `redirected`, or a `response.url` off the origin.
-   *   fetch drops `Authorization` on a cross-origin hop but forwards a custom
-   *   header, so following would hand the bearer secret to whatever host the
-   *   `Location` names. `"manual"`, not `"error"`: Cloudflare Workers throws
-   *   on `"error"`. The guard holds only for an injected `fetch` that honours
-   *   `redirect: "manual"` (README "Transport").
+   *   hides the `Location`), `redirected`, a `response.url` off the origin, or
+   *   none at all (a response the injected fetch built, which may be a
+   *   followed redirect re-wrapped). fetch drops `Authorization` on a
+   *   cross-origin hop but forwards a custom header, so following would hand
+   *   the bearer secret to whatever host the `Location` names. `"manual"`, not
+   *   `"error"`: Cloudflare Workers throws on `"error"`. The guard holds only
+   *   for an injected `fetch` that honours `redirect: "manual"` (README
+   *   "Transport").
    * - `execute` arrives with `redirect: "manual"` in `init` and follows
    *   nothing: every redirect shape above is refused unread, so a redirect
    *   never re-posts the signed request and no other host's answer or token
@@ -975,10 +1060,14 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           cancelBody(fetched);
           fetched = await doFetch(target, requestInit);
         }
+        // A spec fetch names the url of every network answer; an empty one is
+        // a response the injected fetch built itself, which may stand for a
+        // redirect it followed and re-wrapped (`url` and `redirected` lost).
         if (
           fetched.type === "opaqueredirect" ||
           (fetched.status >= 300 && fetched.status < 400) ||
           fetched.redirected ||
+          !fetched.url ||
           !staysOnOrigin(fetched.url, requestUrl)
         ) {
           cancelBody(fetched);
@@ -1444,9 +1533,6 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           intentId: d.intent_id ?? null,
           status,
           ...(decoded.kind === "unmapped" ? { unmapped: true } : {}),
-          ...(status === "failed" && fundsMayHaveMoved(d.status, d.substatus)
-            ? { fundsMayHaveMoved: true }
-            : {}),
           txHash: d.tx_hash ?? null,
           receivingTxHash: d.receiving_tx_hash ?? null,
           settlementTxHash: d.settlement_tx_hash ?? null,

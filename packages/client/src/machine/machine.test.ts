@@ -459,152 +459,170 @@ describe("one signature (no origin pull)", () => {
       });
     };
     const failedPoll = statusData({ status: "failed", terminal: true, error: "Fill failed" });
-
-    it("keeps an in-doubt reply in doubt through failed polls until a refund", () => {
-      for (const response of [
-        { success: true, intentId: "xi_1", status: "failed" },
-        { success: false, intentId: "xi_1", status: "failed", reconciling: true },
-        { success: false, intentId: "xi_1", status: "failed" },
-        { success: false, intentId: "xi_1", status: "fill_failed" },
-        { success: false, intentId: "xi_1", status: "settling" },
-        { success: true, intentId: "xi_1", status: "some_future_state" },
-      ]) {
-        const label = JSON.stringify(response);
-        const { s, flow } = executing();
-        s.send(foreign(flow, { ok: true, response }));
-        const held = s.intent.status;
-        expect(s.receipt.phase, label).toBe("pending");
-
-        const first = pollReply(s, failedPoll);
-        expect(s.intent.status, label).toBe(held);
-        expect(s.intent.reconciling, label).toBe(true);
-        expect(s.receipt.phase, label).toBe("pending");
-        // Not a terminal for this intent: the poll runs on, so a refund still lands.
-        expect(timers(first), label).not.toContain("clear:poll");
-        expect(s.model.poll?.stopped, label).toBe(false);
-        expect(logs(first, "warn").join(), label).toMatch(/in doubt/);
-
-        const second = pollReply(s, failedPoll);
-        expect(s.receipt.phase, label).toBe("pending");
-        expect(logs(second, "warn"), label).toHaveLength(0);
-
-        pollReply(s, statusData({ status: "refunded", terminal: true, refundReason: "fill" }));
-        expect(s.intent.status, label).toBe("refunded");
-        expect(s.receipt.phase, label).toBe("refunded");
-      }
+    const notExecutedPoll = statusData({
+      status: "failed",
+      terminal: true,
+      substatus: "not_executed",
+      error: "Solver busy",
     });
+    // Every execute outcome that leaves the intent in flight, in doubt, polled.
+    const thrown = (error: Record<string, unknown>) => ({ ok: false, error });
+    const inFlight: Record<string, unknown> = {
+      // Any thrown `ApiError` (a 502 with or without the read token, a 409, a
+      // JSON 500): the poll decides it, whatever `ApiError.inDoubt` said.
+      "a thrown 502": thrown({ rejected: false, value: "HTTP 502", detail: "502" }),
+      // The 120 s timeout, an abort, a reset connection, a refused redirect.
+      "timed out": thrown({ rejected: false, value: "aborted", detail: "AbortError" }),
+      // A 2xx whose body failed validation: the server accepted something.
+      "invalid 2xx": thrown({
+        rejected: false,
+        value: "Invalid response format",
+        detail: "Invalid response format",
+      }),
+      "a reply the machine cannot read": {
+        ok: true,
+        response: { success: true, intentId: "xi_1", status: 7 },
+      },
+      "success withheld": {
+        ok: true,
+        response: { success: false, intentId: "xi_1", status: "failed" },
+      },
+      "failed but reconciling": {
+        ok: true,
+        response: { success: false, intentId: "xi_1", status: "failed", reconciling: true },
+      },
+      "self-contradicting": {
+        ok: true,
+        response: { success: true, intentId: "xi_1", status: "failed" },
+      },
+      "granular, reconciling": {
+        ok: true,
+        response: { success: false, intentId: "xi_1", status: "fill_failed" },
+      },
+      "withheld settling": {
+        ok: true,
+        response: { success: false, intentId: "xi_1", status: "settling" },
+      },
+      "an unmapped status": {
+        ok: true,
+        response: { success: true, intentId: "xi_1", status: "some_future_state" },
+      },
+      // Accepted: in flight, not in doubt.
+      accepted: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
+    };
 
-    it("lets a poll fail an execute only when the server's answer said nothing moved", () => {
-      // The Worker's clean-rejection 502 (no read token): `ApiError.inDoubt` false.
-      const clean502 = executing();
-      clean502.s.send({
-        type: "ExecuteReplied",
-        flow: clean502.flow,
-        result: {
-          ok: false,
-          error: { rejected: false, value: "HTTP 502", detail: "502", inDoubt: false },
-        },
-      });
-      expect(clean502.s.model.executeInDoubt).toBeNull();
-      pollReply(clean502.s, failedPoll);
-      expect(clean502.s.intent.status).toBe("failed");
-      expect(clean502.s.receipt.phase).toBe("failed");
+    /** The terminal "may have moved" view: no Retry, no poll, no quote until Reset. */
+    const expectMayHaveMoved = (s: Session, fx: Effect[], label: string) => {
+      expect(s.intent.status, label).toBe("failed");
+      expect(s.intent.mayHaveMoved, label).toBe(true);
+      expect(s.intent.reconciling, label).toBe(false);
+      expect(s.receipt.phase, label).toBe("may-have-moved");
+      expect(timers(fx), label).toContain("clear:poll");
+      expect(s.model.poll, label).toBeNull();
+    };
 
-      const clean = executing();
-      clean.s.send({
-        type: "ExecuteReplied",
-        flow: clean.flow,
-        result: {
-          ok: true,
-          response: { success: false, intentId: "xi_1", status: "failed", reconciling: false },
-        },
-      });
-      expect(clean.s.intent.status).toBe("failed");
-      expect(clean.s.receipt.phase).toBe("failed");
-    });
-
-    it("holds every other failed execute in doubt through failed polls until a refund", () => {
-      const thrown = (error: Record<string, unknown>) => ({ ok: false, error });
-      const cases: Record<string, unknown> = {
-        // The Worker's 502 carrying the read token: funds may have moved.
-        "502 with the read token": thrown({
-          rejected: false,
-          value: "HTTP 502",
-          detail: "502",
-          inDoubt: true,
-        }),
-        // The 120 s timeout, an abort, a reset connection: not an ApiError.
-        "timed out": thrown({
-          rejected: false,
-          value: "aborted",
-          detail: "AbortError",
-          inDoubt: true,
-        }),
-        // A 2xx whose body failed validation: the server accepted something.
-        "invalid 2xx": thrown({
-          rejected: false,
-          value: "Invalid response format",
-          detail: "Invalid response format",
-          inDoubt: true,
-        }),
-        "a report without the flag": thrown({ rejected: false, value: "HTTP 502", detail: "502" }),
-        "a reply the machine cannot read": {
-          ok: true,
-          response: { success: true, intentId: "xi_1", status: 7 },
-        },
-      };
-      for (const [label, result] of Object.entries(cases)) {
+    it("ends every failed after an execute as may have moved, unless it is marked not_executed", () => {
+      for (const [label, result] of Object.entries(inFlight)) {
         const { s, flow } = executing();
         s.send(foreign(flow, result));
-        expect(s.model.executeInDoubt, label).toEqual({ intentId: "xi_1", failureHeld: false });
-        expect(s.receipt.phase, label).toBe("pending");
-
-        const first = pollReply(s, failedPoll);
-        expect(s.intent.status, label).toBe("executing");
-        expect(s.intent.reconciling, label).toBe(true);
-        expect(s.receipt.phase, label).toBe("pending");
-        expect(timers(first), label).not.toContain("clear:poll");
-        expect(s.model.poll?.stopped, label).toBe(false);
-
-        pollReply(s, statusData({ status: "refunded", terminal: true, refundReason: "fill" }));
-        expect(s.receipt.phase, label).toBe("refunded");
+        expect(s.receipt.phase, label).not.toBe("failed");
+        // A bare `failed`, a granular one (the transport buckets `fill_failed`
+        // to `failed`), and one carrying a solver substatus: all at once.
+        for (const [shape, poll] of Object.entries({
+          bare: failedPoll,
+          granular: statusData({ status: "failed", terminal: true, substatus: "fill_failed" }),
+          "solver substatus": statusData({
+            status: "failed",
+            terminal: true,
+            substatus: "pulling",
+          }),
+        })) {
+          const again = executing();
+          again.s.send(foreign(again.flow, result));
+          expectMayHaveMoved(again.s, pollReply(again.s, poll), `${label}, ${shape}`);
+        }
+        // The Worker's own nothing-moved finish: Retry.
+        const fx = pollReply(s, notExecutedPoll);
+        expect(s.intent.status, label).toBe("failed");
+        expect(s.intent.mayHaveMoved, label).toBe(false);
+        expect(s.receipt.phase, label).toBe("failed");
+        expect(timers(fx), label).toContain("clear:poll");
       }
     });
 
-    it("holds a granular failure after an accepted execute, and every failed after it", () => {
-      const { s, flow } = executing();
-      s.send({
-        type: "ExecuteReplied",
-        flow,
-        result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
-      });
-      expect(s.model.executeInDoubt).toBeNull();
-      // `fill_failed` (as the status or the Worker's substatus): the pull went through.
-      const first = pollReply(
-        s,
-        statusData({ status: "failed", terminal: true, fundsMayHaveMoved: true }),
-      );
-      expect(s.intent.status).toBe("settling");
-      expect(s.intent.reconciling).toBe(true);
-      expect(s.receipt.phase).toBe("pending");
-      expect(timers(first)).not.toContain("clear:poll");
-      expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: true });
-      // Latched: a later bare `failed` is held too.
-      pollReply(s, failedPoll);
-      expect(s.receipt.phase).toBe("pending");
-      pollReply(s, statusData({ status: "refunded", terminal: true, refundReason: "fill" }));
-      expect(s.receipt.phase).toBe("refunded");
+    it("ends a final failed execute reply at once: Retry only with the marker", () => {
+      const reply = (response: Record<string, unknown>) => {
+        const { s, flow } = executing();
+        const fx = s.send(foreign(flow, { ok: true, response }));
+        return { s, fx };
+      };
+      const final = { success: false, intentId: "xi_1", reconciling: false };
+      for (const status of ["failed", "fill_failed", "refund_failed", "pull_failed"]) {
+        const { s, fx } = reply({ ...final, status });
+        expectMayHaveMoved(s, fx, status);
+      }
+      // A granular status names what the pull did, whatever substatus rides with it.
+      const granular = reply({ ...final, status: "fill_failed", substatus: "not_executed" });
+      expectMayHaveMoved(granular.s, granular.fx, "granular with the marker");
+      const marked = reply({ ...final, status: "failed", substatus: "not_executed" });
+      expect(marked.s.intent.status).toBe("failed");
+      expect(marked.s.intent.mayHaveMoved).toBe(false);
+      expect(marked.s.receipt.phase).toBe("failed");
     });
 
-    it("holds a failed stream frame for an intent held in doubt", () => {
+    it("applies the same rule to a failed stream frame", () => {
+      for (const [label, result] of Object.entries(inFlight)) {
+        for (const [shape, substatus, phase] of [
+          ["bare", undefined, "may-have-moved"],
+          ["granular", "fill_failed", "may-have-moved"],
+          ["marked", "not_executed", "failed"],
+        ] as const) {
+          const { s, flow } = executing();
+          s.send(foreign(flow, result));
+          const fx = s.send({
+            type: "StreamStatus",
+            message: {
+              type: "intent_status",
+              intentId: "xi_1",
+              status: "failed",
+              ...(substatus ? { substatus } : {}),
+              timestamp: "t",
+            },
+          });
+          expect(s.intent.status, `${label}, ${shape}`).toBe("failed");
+          expect(s.receipt.phase, `${label}, ${shape}`).toBe(phase);
+          expect(timers(fx), `${label}, ${shape}`).toContain("clear:poll");
+        }
+      }
+    });
+
+    it("holds may have moved until Reset: no quote, no wallet reset, no Retry", () => {
       const { s, flow } = executing();
-      s.send(foreign(flow, { ok: false, error: { rejected: false, value: null, detail: "x" } }));
+      s.send(foreign(flow, inFlight["timed out"]));
+      pollReply(s, failedPoll);
+      expect(s.receipt.phase).toBe("may-have-moved");
+      for (const msg of [
+        { type: "RefreshRequested" },
+        { type: "QuoteRequested", amount: "2000000" },
+        { type: "TimerFired", timer: "debounce" },
+        { type: "VisibilityChanged" },
+      ] as MsgBody[]) {
+        expect(apiCalls(s.send(msg), "quote"), msg.type).toEqual([]);
+        expect(s.receipt.phase, msg.type).toBe("may-have-moved");
+      }
       s.send({
-        type: "StreamStatus",
-        message: { type: "intent_status", intentId: "xi_1", status: "failed", timestamp: "t" },
+        type: "ContextChanged",
+        ctx: {
+          ...s.model.ctx,
+          wallet: { ...s.model.ctx.wallet, address: "0x2222222222222222222222222222222222222222" },
+        },
       });
-      expect(s.intent.status).toBe("executing");
-      expect(s.receipt.phase).toBe("pending");
+      expect(s.receipt.phase).toBe("may-have-moved");
+      s.send({ type: "ResetRequested" });
+      expect(s.intent.status).toBe("idle");
+      expect(s.intent.mayHaveMoved).toBe(false);
+      s.send({ type: "QuoteRequested", amount: "1000000" });
+      expect(apiCalls(s.send({ type: "TimerFired", timer: "debounce" }), "quote")).toHaveLength(1);
     });
 
     it("cannot be handed a host-built verdict in place of the response", () => {
@@ -741,10 +759,9 @@ describe("one signature (no origin pull)", () => {
       const { s, exec } = executing();
       const retryAt = nowSec(s) + 5;
       const fx = s.send(busy(exec.flow, retryAt));
-      // Not in doubt: no latch, no reconciling, no status read while nothing is accepted.
+      // Not in doubt: no reconciling, no status read while nothing is accepted.
       expect(s.intent.status).toBe("executing");
       expect(s.intent.reconciling).toBe(false);
-      expect(s.model.executeInDoubt).toBeNull();
       expect(apiCalls(fx, "status")).toEqual([]);
       expect(timers(fx)).toContain("clear:poll");
       expect(s.receipt.phase).toBe("submitting");
@@ -793,7 +810,6 @@ describe("one signature (no origin pull)", () => {
       expect(s.intent.status).toBe("failed");
       expect(s.intent.error).toEqual({ message: "HTTP 503: Solver busy", code: 503, retryAfter });
       expect(s.intent.reconciling).toBe(false);
-      expect(s.model.executeInDoubt).toBeNull();
       expect(s.receipt.phase).toBe("failed");
       expect(s.model.sign).toBeNull();
       expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute")).toEqual(
@@ -812,14 +828,12 @@ describe("one signature (no origin pull)", () => {
         );
         flow = only(apiCalls(next, "execute")).flow;
       }
-      // The Worker's 4th refusal: its clean-rejection 502, `ApiError.inDoubt` false.
+      // The Worker's 4th refusal: its budget finish, a 502 `failed` marked
+      // `not_executed`; thrown like any other, so the poll decides it.
       s.send({
         type: "ExecuteReplied",
         flow,
-        result: {
-          ok: false,
-          error: { rejected: false, value: "HTTP 502", detail: "502", inDoubt: false },
-        },
+        result: { ok: false, error: { rejected: false, value: "HTTP 502", detail: "502" } },
       });
       expect(s.receipt.phase).toBe("pending");
       const poll = s.model.poll;
@@ -828,7 +842,10 @@ describe("one signature (no origin pull)", () => {
         type: "StatusReplied",
         gen: poll.gen,
         attempt: poll.polls,
-        result: { ok: true, status: statusData({ status: "failed", terminal: true }) },
+        result: {
+          ok: true,
+          status: statusData({ status: "failed", terminal: true, substatus: "not_executed" }),
+        },
       });
       expect(s.intent.status).toBe("failed");
       expect(s.receipt.phase).toBe("failed");
@@ -900,48 +917,6 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
-    it("never clears an in-doubt verdict for the same intent", () => {
-      const { s, exec } = executing();
-      s.send({
-        type: "ExecuteReplied",
-        flow: exec.flow,
-        result: { ok: true, response: { success: false, intentId: "xi_1", status: "settling" } },
-      });
-      expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: false });
-      // The same intent id served again and executed: a refusal now says
-      // nothing about the execute that was already in doubt.
-      s.send({ type: "ResetRequested" });
-      s.quoteWith(quote());
-      const prompt = signIntent(s);
-      const second = only(
-        apiCalls(
-          s.send({
-            type: "SignReplied",
-            flow: prompt.flow,
-            purpose: "intent",
-            result: { ok: true, signature: "0xsig" },
-          }),
-          "execute",
-        ),
-      );
-      const fx = s.send(busy(second.flow, nowSec(s) + 5));
-      expect(timerSet(fx, "execute")).toEqual([]);
-      expect(s.model.executeInDoubt).toEqual({ intentId: "xi_1", failureHeld: false });
-      expect(s.intent.status).toBe("executing");
-      expect(s.intent.reconciling).toBe(true);
-      expect(s.receipt.phase).toBe("pending");
-
-      const poll = s.model.poll;
-      if (!poll) throw new Error("no poll armed");
-      s.send({
-        type: "StatusReplied",
-        gen: poll.gen,
-        attempt: poll.polls,
-        result: { ok: true, status: statusData({ status: "failed", terminal: true }) },
-      });
-      expect(s.receipt.phase).toBe("pending");
-    });
-
     it("never resends once the poll escalated the execute to reconciling", () => {
       // A quote that outlives the escalation, so only the in-doubt guard stops a resend.
       const { s, exec } = executing(quote({ expiry: new Date(T0 + 600_000).toISOString() }));
@@ -957,7 +932,6 @@ describe("one signature (no origin pull)", () => {
         });
       }
       expect(s.intent.reconciling).toBe(true);
-      expect(s.model.executeInDoubt).toBeNull();
       const fx = s.send(busy(exec.flow, nowSec(s) + 5));
       expect(timerSet(fx, "execute")).toEqual([]);
       expect(s.intent.status).toBe("executing");
@@ -1251,7 +1225,29 @@ describe("status", () => {
     return { s, poll: only(apiCalls(fx, "status")) };
   };
 
-  it("holds failed statuses after a reload when the host resumes with its in-doubt verdict", () => {
+  it("resumes a stored failed as Retry only with the not_executed marker", () => {
+    const resume = (substatus?: string | null) => {
+      const s = new Session();
+      const fx = s.send({
+        type: "ResumeRequested",
+        intentId: "xi_1",
+        status: "failed",
+        owner: WALLET,
+        depositDeadline: null,
+        ...(substatus === undefined ? {} : { substatus }),
+      });
+      // Terminal either way: nothing to poll.
+      expect(apiCalls(fx, "status"), String(substatus)).toEqual([]);
+      return s;
+    };
+    for (const substatus of [undefined, null, "fill_failed", "pulling"]) {
+      const s = resume(substatus);
+      expect(s.intent.status, String(substatus)).toBe("failed");
+      expect(s.receipt.phase, String(substatus)).toBe("may-have-moved");
+    }
+    expect(resume("not_executed").receipt.phase).toBe("failed");
+
+    // Resumed in flight, the poll's `failed` follows the same rule.
     const reply = (s: Session, status: IntentStatusData) => {
       const poll = s.model.poll;
       if (!poll) throw new Error("no poll armed");
@@ -1262,32 +1258,12 @@ describe("status", () => {
         result: { ok: true, status },
       });
     };
-    const failed = statusData({ status: "failed", terminal: true });
-    for (const status of ["executing", "failed"] as const) {
-      const s = new Session();
-      const fx = s.send({
-        type: "ResumeRequested",
-        intentId: "xi_1",
-        status,
-        owner: WALLET,
-        depositDeadline: null,
-        executeInDoubt: true,
-      });
-      // A persisted `failed` reads as it did before the reload: in doubt, polled.
-      expect(apiCalls(fx, "status"), status).toHaveLength(1);
-      expect(s.intent.status, status).toBe("executing");
-      expect(s.receipt.phase, status).toBe("pending");
-      reply(s, failed);
-      expect(s.receipt.phase, status).toBe("pending");
-      expect(s.model.poll?.stopped, status).toBe(false);
-      reply(s, statusData({ status: "completed", terminal: true }));
-      expect(s.receipt.phase, status).toBe("success");
-    }
-
-    // Without the verdict a reload cannot know, and a failed poll fails.
-    const { s } = resumed("executing");
-    reply(s, failed);
-    expect(s.receipt.phase).toBe("failed");
+    const bare = resumed("executing").s;
+    reply(bare, statusData({ status: "failed", terminal: true }));
+    expect(bare.receipt.phase).toBe("may-have-moved");
+    const marked = resumed("settling").s;
+    reply(marked, statusData({ status: "failed", terminal: true, substatus: "not_executed" }));
+    expect(marked.receipt.phase).toBe("failed");
   });
 
   it("decodes an unmapped Riddler status to Still confirming, never completed", () => {

@@ -77,6 +77,20 @@ export function isIntentStatus(value: unknown): value is IntentStatus {
   return typeof value === "string" && INTENT_STATUSES.includes(value as IntentStatus);
 }
 
+/**
+ * The `substatus` the worker puts on a `failed` it wrote itself knowing nothing
+ * moved: the quote sweep finishing an execute the solver never accepted, the
+ * resend budget's finish after the solver's not-accepted refusals, and an
+ * execute refused because no solver is configured. Served on every intent read,
+ * on the stream frame of that transition, and on the execute 502 that reports
+ * it. A solver-reported `failed` (which may follow an origin pull) never carries
+ * it, and neither does a `failed` the worker cannot vouch for. Mirrors
+ * `NOT_EXECUTED_SUBSTATUS` in xochi's `@xochi/shared` `intents.ts`. After an
+ * execute the machine offers Retry only on a `failed` with this marker; any
+ * other `failed` ends "may have moved" (README "Fund safety").
+ */
+export const NOT_EXECUTED_SUBSTATUS = "not_executed";
+
 /** Status transitions for the market order intent state machine */
 export const INTENT_STATUS_TRANSITIONS: Record<IntentStatus, IntentStatus[]> = {
   idle: ["quoting", "pending"],

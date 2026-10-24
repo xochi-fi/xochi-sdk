@@ -502,7 +502,6 @@ describe("update properties", () => {
                 expect(attempt?.resends).toBeLessThan(MAX_EXECUTE_RESENDS);
                 expect(e.call.request).toEqual(attempt?.request);
                 expect(t.prev.intent.reconciling).toBe(false);
-                expect(t.prev.executeInDoubt?.intentId).not.toBe(t.prev.intent.intentId);
               } else {
                 expect(t.msg.type).toBe("SignReplied");
                 expect(t.msg.type === "SignReplied" && t.msg.result.ok).toBe(true);

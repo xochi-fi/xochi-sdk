@@ -75,8 +75,10 @@ export type SigningSlot =
   /**
    * The solver refused the execute before accepting anything (busy): nothing
    * moved, and the same signed request is sent again automatically at
-   * `retryAt` (unix seconds). This is resend `resend` of at most `of`. Render
-   * "Solver busy, retrying in Ns"; the phase stays `submitting`.
+   * `retryAt` (unix seconds). This is resend `resend` of at most `of`. The
+   * phase stays `submitting`. The copy the app and widget render: "Solver
+   * busy. Nothing has moved yet. Resending in Ns (retry r of n)." with "Keep
+   * this tab open. If it closes, this tab will not resend the order."
    */
   | { kind: "busy"; retryAt: number; resend: number; of: number }
   /** The sign ceremony was refused before funds could move; the quote is still on screen. */

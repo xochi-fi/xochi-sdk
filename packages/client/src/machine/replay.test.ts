@@ -44,10 +44,14 @@ function worker() {
       const body = url.endsWith("/api/intent/execute")
         ? { success: true, intent_id: "xi_1", status: "settling", read_token: READ_TOKEN }
         : { intent_id: "xi_1", status: "settling", substatus: "filling", terminal: false };
-      return new Response(JSON.stringify(body), {
+      const res = new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+      // As a spec fetch answers: naming the url (the transport refuses an
+      // execute or token read whose answer names none).
+      Object.defineProperty(res, "url", { value: String(url) });
+      return res;
     },
   });
   return { xochi, requests };

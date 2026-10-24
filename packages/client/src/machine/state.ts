@@ -127,6 +127,13 @@ export interface IntentState {
    */
   pollExhausted: boolean;
   /**
+   * Set on a `failed` read after an execute that does not carry the Worker's
+   * nothing-moved marker (`failureMayHaveMoved`): the order did not complete
+   * and the funds may have moved. Terminal and never offered Retry: the phase
+   * is `may-have-moved`, the poll is stopped, and no quote starts until Reset.
+   */
+  mayHaveMoved: boolean;
+  /**
    * Set when a sign ceremony was refused before the funds-moving signature
    * (see SignRefusal). The intent is `quoted` so the quote stays on screen; a
    * new quote, a successful Confirm or a reset clears it.
@@ -155,5 +162,6 @@ export const INITIAL_INTENT_STATE: IntentState = {
   depositDeadline: null,
   attestedDeposit: null,
   pollExhausted: false,
+  mayHaveMoved: false,
   refusal: null,
 };

@@ -201,11 +201,23 @@ describe("decideExecuteResult (in-doubt vs failure)", () => {
     ...over,
   });
 
-  it("treats success:false + status 'failed' + reconciling:false as a real, terminal failure", () => {
-    const d = decideExecuteResult(
-      res({ success: false, status: "failed", reconciling: false, error: "bad sig" }),
-    );
-    expect(d).toEqual({ kind: "failed", error: "bad sig" });
+  it("treats success:false + status 'failed' + reconciling:false as final: may have moved unless marked", () => {
+    const final = {
+      success: false,
+      status: "failed",
+      reconciling: false,
+      error: "bad sig",
+    } as const;
+    expect(decideExecuteResult(res(final))).toEqual({
+      kind: "failed",
+      error: "bad sig",
+      mayHaveMoved: true,
+    });
+    expect(decideExecuteResult(res({ ...final, substatus: "not_executed" }))).toEqual({
+      kind: "failed",
+      error: "bad sig",
+      mayHaveMoved: false,
+    });
   });
 
   it("reads an absent reconciling flag on a failed reply as on (reconciling ?? !success)", () => {
@@ -264,7 +276,7 @@ describe("decideExecuteResend (a not-accepted execute)", () => {
     for (const retryAfter of [7, 90, nowSec - 61]) {
       expect(decideExecuteResend({ ...ok, retryAfter }), String(retryAfter)).toEqual({
         kind: "give_up",
-        reason: "no_retry_after",
+        reason: "stale_retry_after",
       });
     }
     expect(decideExecuteResend({ ...ok, retryAfter: nowSec - 60 }).kind).toBe("resend");

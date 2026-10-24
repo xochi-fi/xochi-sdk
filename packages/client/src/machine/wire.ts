@@ -231,6 +231,11 @@ export interface ExecuteResponse {
   /** In-doubt: funds may be in flight but unconfirmed. */
   reconciling?: boolean;
   error?: string;
+  /**
+   * `NOT_EXECUTED_SUBSTATUS` on a `failed` the Worker wrote knowing nothing
+   * moved; the only `failed` the machine offers Retry on after an execute.
+   */
+  substatus?: string;
   /** Note commitment for shielded settlements */
   noteCommitment?: string;
   /** Stealth settlement info */
@@ -279,7 +284,10 @@ export interface IntentWebSocketMessage {
   settlementChainId?: ChainId;
   /** In-doubt signal (broadcast when an execute lands in reconcile). */
   reconciling?: boolean;
-  /** Riddler's granular fill substatus, verbatim; see IntentState.substatus. */
+  /**
+   * Riddler's granular fill substatus, verbatim; see IntentState.substatus. On
+   * a `failed`, `NOT_EXECUTED_SUBSTATUS` is the Worker's "nothing moved".
+   */
   substatus?: string;
   error?: string;
   /** Machine-readable refund reason code (deposit routes) on a `refunded` status. */
@@ -432,6 +440,7 @@ export function mapExecuteResponse(w: ExecuteResponseWire): ExecuteResponse {
     bridgeTxHash: w.bridge_tx_hash,
     reconciling: w.reconciling,
     error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
     noteCommitment: w.note_commitment,
     stealthAddress: w.stealth_address,
     ephemeralPubKey: w.ephemeral_pub_key,
@@ -509,31 +518,6 @@ export const GRANULAR_WIRE_STATUS: Readonly<Record<string, IntentStatus>> = {
 };
 
 /**
- * The granular failures that follow an origin pull, which may have moved the
- * user's funds: the refund is pending or failed. `pull_failed` is one of them
- * (Riddler's `OriginPullsStore`: a pull that timed out may still land, and
- * moves on to `refunding`).
- */
-const FUNDS_MAY_HAVE_MOVED: Readonly<Record<string, true>> = {
-  pull_failed: true,
-  fill_failed: true,
-  refund_failed: true,
-};
-
-/**
- * Whether a served status says the funds may have moved although it decodes
- * to `failed`: the status itself, or the solver substatus the Worker passes
- * through (it buckets the granular failures to `failed`), names one of the
- * granular failures `FUNDS_MAY_HAVE_MOVED` lists.
- */
-export function fundsMayHaveMoved(status: unknown, substatus: unknown): boolean {
-  return (
-    (typeof status === "string" && FUNDS_MAY_HAVE_MOVED[status] === true) ||
-    (typeof substatus === "string" && FUNDS_MAY_HAVE_MOVED[substatus] === true)
-  );
-}
-
-/**
  * A raw `/status` value, decoded.
  *
  * `mapped` is a status this build models: a union member, or one of Riddler's
@@ -578,13 +562,6 @@ export interface IntentStatusData {
    * is only the in-flight bucket (`decodeWireStatus`). Absent means mapped.
    */
   unmapped?: boolean;
-  /**
-   * Present (true) on a `failed` status whose wire status or substatus is a
-   * granular failure that follows the origin pull (`fundsMayHaveMoved`): the
-   * funds may have moved, so the machine never offers Retry on it and keeps
-   * polling for the refund.
-   */
-  fundsMayHaveMoved?: true;
   txHash: string | null;
   receivingTxHash: string | null;
   /** Public fill receipt (Riddler #632) + its chain; the receipt CTA keys off these. */
@@ -595,14 +572,17 @@ export interface IntentStatusData {
   refundReason: string | null;
   /**
    * Riddler's granular origin-pull/fill substatus, passed through verbatim
-   * (pulling | pulled | filling | filled | refunding | ...). NOT a status: the
-   * top-level `status` is what advances the lifecycle.
+   * (pulling | pulled | filling | filled | refunding | ...), or on a `failed`
+   * the Worker wrote knowing nothing moved, `NOT_EXECUTED_SUBSTATUS`. NOT a
+   * status: the top-level `status` is what advances the lifecycle.
    *
-   * It is read for one thing -- telling a user whose destination leg has already
-   * landed (`filled`) apart from one still waiting. Riddler can hold an intent at
-   * top-level `settling` with `substatus: filled` indefinitely, which is exactly
-   * the state a stuck stealth swap sits in (xochi#376): the money is delivered and
-   * the app was showing an undifferentiated "settling".
+   * It is read for two things. A `failed` after an execute offers Retry only
+   * with `not_executed` (README "Fund safety"). And it tells a user whose
+   * destination leg has already landed (`filled`) apart from one still
+   * waiting: Riddler can hold an intent at top-level `settling` with
+   * `substatus: filled` indefinitely, which is exactly the state a stuck
+   * stealth swap sits in (xochi#376): the money is delivered and the app was
+   * showing an undifferentiated "settling".
    */
   substatus: string | null;
   terminal: boolean;
@@ -698,6 +678,8 @@ export interface IntentRecord {
   createdAt: string;
   updatedAt: string;
   error?: string;
+  /** `NOT_EXECUTED_SUBSTATUS` on a `failed` the Worker wrote knowing nothing moved. */
+  substatus?: string;
   destinationType?: DestinationType;
   /** Never true on a full record: see `WithheldIntentRecord`. */
   legsWithheld?: false;
@@ -725,6 +707,8 @@ export interface WithheldIntentRecord {
   toChainId?: ChainId;
   settlementType?: SettlementType;
   error?: string;
+  /** As on `IntentRecord`. */
+  substatus?: string;
   /**
    * True once the destination fill receipt exists (it is withheld itself);
    * never on a terminal failure (`withheldSettlementConfirmed`).
@@ -753,6 +737,7 @@ export interface IntentRecordWire {
   created_at?: string;
   updated_at?: string;
   error?: string;
+  substatus?: string | null;
   legs_withheld?: boolean;
   settlement_confirmed?: boolean;
 }
@@ -773,6 +758,7 @@ export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldInten
     toChainId: w.to_chain_id,
     settlementType: w.settlement_type,
     error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
     settlementConfirmed: withheldSettlementConfirmed({
       status: w.status,
       legsWithheld: w.legs_withheld,
@@ -803,5 +789,6 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     createdAt: w.created_at ?? "",
     updatedAt: w.updated_at ?? "",
     error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
   };
 }
