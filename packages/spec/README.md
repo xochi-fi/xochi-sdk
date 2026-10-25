@@ -28,6 +28,15 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   non-signable `ShieldedPreviewV1`, and `CorridorManifestV1` (whose `hashStruct` is
   `manifestDigest`), with signatures from public test keys and single-member refusals. Every
   choice §7 does not spell is listed in its `proposed` array. Inert.
+- **`conformance/shielded-recipient.json`** + `.schema.json`: the recipient-side encodings decided
+  2026-10-24/25: `descriptorDigest` (EIP-712 hashStruct of `RecipientDescriptor`) with the stock
+  `SchnorrAccount` address derivation for both pinned Aztec lines (5.2.0 and `@aztec-labs`
+  6.0.0), the recipient message wrapper and its wide reduction into the BN254 field, recipient
+  Schnorr signatures, and the four acknowledgement structs, marked **DRAFT** until approved. TEST
+  ONLY keys.
+- **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
+  attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the
+  `Xochi Shielded Readiness` domain, with replay and record-parse refusals. Public test key.
 - **`fee/vectors.json`**, **`fee/schedule.json`**, **`fee/schema.json`**: 16 fee vectors (SPEC §4),
   the rate schedule, and the `fee_breakdown` schema.
 - **`erc8262/provider-discovery.schema.json`**, **`erc8262/provider-evidence.schema.json`**: the
@@ -44,7 +53,7 @@ Every file is exported by path, e.g. `@xochi/spec/conformance/conformance.json`.
 
 ## Who is authoritative
 
-- `conformance.json`, `xsp.json`, `shielded.json`, `fee/*`, `erc8262/*`: this repo (fees mirror
+- `conformance.json`, `xsp.json`, `shielded*.json`, `fee/*`, `erc8262/*`: this repo (fees mirror
   Riddler's `FeePolicy` in lockstep).
 - `solver-bid-v2.json` and the escrow sets: parity with Riddler; digests must match on both sides.
 - `wire/openapi.json`: the server. Nothing here edits it.
@@ -69,13 +78,22 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   `shielded.ts` is tested against the committed file; `npm run generate:shielded` regenerates it,
   and only an edit to §7 may change it: its approved encodings fix the vectors, refusals and
   values, and what it leaves open fixes `open`. Network, corridor and Aztec values are fixtures.
-  It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest,
-  descriptorDigest, the recipient message); its `open` array names each one.
+  It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest); its
+  `open` array names each one, and points at the DRAFT acknowledgements below.
 - **`shielded-terms.json`** is generated here (`npm run generate:shielded-terms`) by the same
   rules as `shielded.json`, and stays `status: "PROPOSED"` until the product owner approves its
   `proposed` items into §7. It is the only vector set for the terms, preview and manifest
   digests; Riddler vendors it behind a default-off preview flag and never computes its own
   expectation.
+- **`shielded-recipient.json`** and **`shielded-readiness.json`** follow the same rules and are
+  vendored by Riddler, the Worker and pxe-bridge (pxe-bridge#50 recomputes the descriptor digest
+  it attests over). `npm run generate:shielded` regenerates all three shielded files in order
+  (readiness reads the recipient file). The recipient file's Aztec-specific values (class ids,
+  selector, separators, derivation intermediates, addresses, Schnorr verdicts) are held to the
+  real SDKs, exact-pinned, by `aztec-crosscheck/` (its own package and lockfile, CI job
+  `aztec-crosscheck`; `npm run crosscheck:aztec`), so an equality there is never between two
+  copies of this repo's own code. Its `acknowledgements` section is `status: "DRAFT"`: do not
+  implement against those bytes until the product owner approves them.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the

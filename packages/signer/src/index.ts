@@ -9,6 +9,8 @@ export * from "./erc4337";
 export * from "./escrow";
 export * from "./xsp";
 export * from "./shielded";
+export * from "./shielded-recipient";
+export * from "./shielded-readiness";
 export * from "./permit2";
 export * from "./intent-verify";
 export * from "./claim-verify";

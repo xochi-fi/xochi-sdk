@@ -1,0 +1,24 @@
+{
+  "name": "@xochi/spec-aztec-crosscheck",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-checks conformance/shielded-recipient.json against the pinned Aztec SDKs (5.2.0 and @aztec-labs 6.0.0). Not a workspace, never published.",
+  "scripts": {
+    "crosscheck": "tsx crosscheck.ts aztec-5.2.0 && tsx crosscheck.ts aztec-6.0.0"
+  },
+  "devDependencies": {
+    "@aztec-labs/accounts": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
+    "@aztec/accounts": "5.2.0",
+    "@aztec/constants": "5.2.0",
+    "@aztec/foundation": "5.2.0",
+    "@aztec/stdlib": "5.2.0",
+    "tsx": "4.23.15"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

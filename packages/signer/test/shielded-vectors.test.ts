@@ -411,10 +411,13 @@ describe("open items", () => {
     expect(file.open.map((o) => o.item)).toEqual([
       "ShieldedTermsV1",
       "manifestDigest",
-      "descriptorDigest",
-      "recipientMessage",
+      "recipientAcknowledgements",
     ]);
     expect(Object.keys(file)).not.toContain("terms");
+    // The descriptor digest, the wrapper and the DRAFT acknowledgements live in
+    // shielded-recipient.json, never here.
     expect(Object.keys(file)).not.toContain("recipientMessage");
+    // xochi-sdk#42: the class is pinned, so no open item may still cite it as the blocker.
+    for (const o of file.open) expect(o.reason).not.toMatch(/account class/);
   });
 });
