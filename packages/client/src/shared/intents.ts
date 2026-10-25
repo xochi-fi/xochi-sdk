@@ -112,7 +112,8 @@ export function isIntentStatus(value: unknown): value is IntentStatus {
  *
  * Mirrors `NOT_EXECUTED_SUBSTATUS` in xochi's `@xochi/shared` `intents.ts`
  * verbatim (the doc path above is in xochi). In this package: README "Fund
- * safety" (Retry only on this marker, or on a 404 while "not sent yet").
+ * safety" (Retry only on this marker, or on a 404 while "not sent yet" past
+ * the Worker's finish).
  */
 export const NOT_EXECUTED_SUBSTATUS = "not_executed";
 

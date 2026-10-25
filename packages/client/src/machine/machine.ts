@@ -1643,8 +1643,8 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
  * stays executable until its deadline (by anyone holding it). The intent
  * stays `executing`, marked `notSent` ("not sent yet"), and the poll, re-armed
  * off the resend wait, runs until the Worker ends the intent (README "Fund
- * safety"): `failed` with `NOT_EXECUTED_SUBSTATUS`, or a 404 (`onStatus`), is
- * Retry; any other read ends the mark (`applyStatusUpdate`).
+ * safety"): `failed` with `NOT_EXECUTED_SUBSTATUS`, or a 404 past its finish
+ * (`onStatus`), is Retry; any other read ends the mark (`applyStatusUpdate`).
  */
 function stopResending(
   m: Model,
@@ -1865,6 +1865,27 @@ function onStatus(
   const id = poll.intentId;
   let next = m;
 
+  // A resumed `executing` intent (a reload: no quote in this tab, so no sign
+  // flow and no execute from it can be in flight or answer late) that reads
+  // `quoted`: the Worker's row is unclaimed and the signed request, held
+  // elsewhere, executes until its deadline. Not sent yet, as after a give-up,
+  // never "Still confirming" (whose Close invites a second signature). An
+  // intent in doubt stays so.
+  const resumedUnsent =
+    result.ok &&
+    !!result.status &&
+    !("notFound" in result.status) &&
+    result.status.status === "quoted" &&
+    result.status.unmapped !== true &&
+    next.intent.intentId === id &&
+    next.intent.status === "executing" &&
+    next.intent.quote === null &&
+    !next.intent.reconciling;
+  if (resumedUnsent && !next.intent.notSent) {
+    log(fx, "warn", `${LOG} Resumed intent ${id} reads quoted: not sent yet`);
+    next = patch(next, { notSent: true });
+  }
+
   // A slow execute escalates to "Still confirming"; one not sent (`notSent`)
   // has nothing in flight to confirm.
   if (
@@ -1881,9 +1902,20 @@ function onStatus(
     // A throw is not a change: count the attempt and keep the ceiling armed.
     log(fx, "error", `${LOG} status poll threw; counting the attempt`, result.error.detail);
   } else if (result.status && "notFound" in result.status) {
-    if (next.intent.notSent && next.intent.intentId === id) {
-      // Not sent yet and now gone: only the quote sweep deletes a row, and
-      // only one nothing touched (never claimed, so nothing moved). Retry.
+    const finish = unexecutedFinishAt(next.intent.quote);
+    if (
+      next.intent.notSent &&
+      next.intent.intentId === id &&
+      finish !== null &&
+      now > finish * 1000
+    ) {
+      // Not sent yet, gone, and past the Worker's finish: only the quote sweep
+      // deletes a row, only one nothing touched, 30 min after the quote, and
+      // past the finish the claim's compare-and-swap refuses on the database
+      // clock, so even a 404 from something else (a router, a proxy, a
+      // rollback) leaves nothing that can execute. Retry. Before the finish
+      // (or with it unknown: a resumed intent has no quote) the 404 proves
+      // nothing while the signed request can still be claimed: hold, below.
       log(fx, "warn", `${LOG} A not-sent intent is gone (swept unexecuted); offering Retry`);
       next = transition(next, fx, "failed", {
         error: NOT_SENT_SWEPT_ERROR,
@@ -1893,7 +1925,8 @@ function onStatus(
       if (next.intent.status === "failed") verdict = "stop";
     } else {
       // A definitive 404 for a DISPATCHED intent is not proof of failure (#271,
-      // xochi#398): hold, and report it once per id.
+      // xochi#398), nor for a not-sent one before its finish: hold, and report
+      // it once per id.
       const warning = notFoundDriftWarning(id, next.notFoundReported);
       if (warning) {
         log(fx, "warn", warning);
@@ -1941,7 +1974,14 @@ function onStatus(
     // give-up budget, so the ceiling bounds a swap that is not moving. A read
     // the intent cannot move to (`quoted` after an execute) is no change: the
     // ceiling, sized past the Worker's finish (`pollCeilingAttempts`), holds.
-    verdict = s.terminal ? "stop" : next.intent.status === previous ? undefined : "progress";
+    // A resumed not-sent intent has no quote to size it by, so each `quoted`
+    // read refills it: the Worker's read finish ends the row past its
+    // deadline, which this poll's own reads trigger.
+    verdict = s.terminal
+      ? "stop"
+      : next.intent.status !== previous || (resumedUnsent && next.intent.notSent)
+        ? "progress"
+        : undefined;
   }
 
   // Terminal beats the ceiling: a swap that settles on the ceiling tick is

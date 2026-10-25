@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { STATUS_POLL_MS, unexecutedFinishAt } from "./decisions.js";
+import { STATUS_POLL_FLAT_CEILING_MS, STATUS_POLL_MS, unexecutedFinishAt } from "./decisions.js";
 import {
   RECONCILE_AFTER_ATTEMPTS,
   SIGN_PROMPT_TIMEOUT_MS,
@@ -1089,12 +1089,35 @@ describe("one signature (no origin pull)", () => {
       expect(s.intent.status).toBe("failed");
       expect(s.intent.notSent).toBe(false);
       expect(s.intent.mayHaveMoved).toBe(false);
+      expect(s.intent.error).toBe("This order expired without being sent. Nothing moved.");
       expect(s.receipt.phase).toBe("failed");
       expect(logs(fx, "warn").join(" ")).toMatch(/swept unexecuted/);
       // The poll is over.
       expect(pollReads(s, statusData({ status: "quoted" }), 1)).toBe(0);
+    });
 
-      // The same for the Worker's `quoted` reply to the execute itself.
+    it("holds a not-sent 404 until the Worker's finish has passed", () => {
+      // A 404 that is not the sweep's (a router "Not found", a proxy, a
+      // rollback) while the signed request can still be claimed: no Retry.
+      const { s, exec } = executing();
+      s.send(busy(exec.flow, undefined));
+      pollReads(s, statusData({ status: "quoted" }), 1);
+      const early = notFoundRead(s, STATUS_POLL_MS);
+      expectNotSent(s, "early");
+      expect(s.intent.mayHaveMoved).toBe(false);
+      expect(logs(early, "warn").join(" ")).toMatch(/holding, not failing/);
+      // Exactly at the finish, still claimable on the Worker's clock: held.
+      notFoundRead(s, workerFinishMs(s) - s.now);
+      expectNotSent(s, "at the finish");
+      // One millisecond past it nothing can claim the row: Retry.
+      notFoundRead(s, 1);
+      expect(s.intent.status).toBe("failed");
+      expect(s.intent.mayHaveMoved).toBe(false);
+      expect(s.receipt.phase).toBe("failed");
+
+      // The same for the Worker's `quoted` reply to the execute itself (its
+      // row is touched, so the sweep never deletes it: an early 404 is never
+      // the sweep's).
       const replied = executing();
       replied.s.send({
         type: "ExecuteReplied",
@@ -1105,6 +1128,9 @@ describe("one signature (no origin pull)", () => {
         },
       });
       notFoundRead(replied.s, STATUS_POLL_MS);
+      expect(replied.s.intent.notSent).toBe(true);
+      expect(replied.s.receipt.phase).toBe("not-sent");
+      notFoundRead(replied.s, workerFinishMs(replied.s) - replied.s.now + 1);
       expect(replied.s.receipt.phase).toBe("failed");
     });
 
@@ -1502,6 +1528,99 @@ describe("status", () => {
     const marked = resumed("settling").s;
     reply(marked, statusData({ status: "failed", terminal: true, substatus: "not_executed" }));
     expect(marked.receipt.phase).toBe("failed");
+  });
+
+  describe("a resumed executing intent that reads quoted", () => {
+    const answer = (s: Session, poll: { gen: number; attempt: number }, data: IntentStatusData) =>
+      s.send({
+        type: "StatusReplied",
+        gen: poll.gen,
+        attempt: poll.attempt,
+        result: { ok: true, status: data },
+      });
+    const notFound = (s: Session, advanceMs: number) => {
+      const asked = only(
+        apiCalls(s.send({ type: "TimerFired", timer: "poll" }, advanceMs), "status"),
+      );
+      return s.send({
+        type: "StatusReplied",
+        gen: asked.gen,
+        attempt: asked.attempt,
+        result: { ok: true, status: { notFound: true } },
+      });
+    };
+
+    it("is rebuilt as not sent yet, and a 404 with no quote holds", () => {
+      const { s, poll } = resumed("executing");
+      const fx = answer(s, poll, statusData({ status: "quoted" }));
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.notSent).toBe(true);
+      expect(s.intent.reconciling).toBe(false);
+      expect(s.receipt.phase).toBe("not-sent");
+      expect(logs(fx, "warn").join(" ")).toMatch(/reads quoted: not sent yet/);
+      // No quote to size the ceiling by: each `quoted` read refills it, past
+      // the flat ceiling and the "Still confirming" escalation.
+      const flat = Math.ceil(STATUS_POLL_FLAT_CEILING_MS / STATUS_POLL_MS);
+      expect(pollReads(s, statusData({ status: "quoted" }), flat + 5)).toBe(flat + 5);
+      expect(s.intent.pollExhausted).toBe(false);
+      expect(s.intent.reconciling).toBe(false);
+      expect(s.receipt.phase).toBe("not-sent");
+      // The tab freezes past the sweep and wakes to a 404. With no quote the
+      // Worker's finish is unknown, so it holds (Reset ends it).
+      const held = notFound(s, 31 * 60_000);
+      expect(s.intent.status).toBe("executing");
+      expect(s.intent.notSent).toBe(true);
+      expect(s.receipt.phase).toBe("not-sent");
+      expect(s.model.poll?.stopped).toBe(false);
+      expect(logs(held, "warn").join(" ")).toMatch(/holding, not failing/);
+      // The Worker's own finish is Retry.
+      pollReads(s, statusData({ status: "failed", terminal: true, substatus: "not_executed" }), 1);
+      expect(s.intent.notSent).toBe(false);
+      expect(s.receipt.phase).toBe("failed");
+    });
+
+    it("stays in doubt once escalated, and is never rebuilt from this tab's own execute", () => {
+      const { s, poll } = resumed("executing");
+      answer(s, poll, statusData({ status: "executing" }));
+      pollReads(s, statusData({ status: "executing" }), RECONCILE_AFTER_ATTEMPTS);
+      expect(s.intent.reconciling).toBe(true);
+      pollReads(s, statusData({ status: "quoted" }), 1);
+      expect(s.intent.notSent).toBe(false);
+      expect(s.receipt.phase).toBe("pending");
+
+      // A hand-built unmapped `quoted` is no answer about the row: in doubt.
+      const odd = resumed("executing");
+      answer(odd.s, odd.poll, statusData({ status: "quoted", unmapped: true }));
+      expect(odd.s.intent.notSent).toBe(false);
+      expect(odd.s.receipt.phase).toBe("pending");
+
+      // This tab executed it (it holds the quote): a `quoted` read may be a
+      // stale answer racing the accepted execute, so it is no rebuild.
+      const own = new Session();
+      own.quoteWith(quote());
+      const prompt = signIntent(own);
+      const exec = only(
+        apiCalls(
+          own.send({
+            type: "SignReplied",
+            flow: prompt.flow,
+            purpose: "intent",
+            result: { ok: true, signature: "0xsig" },
+          }),
+          "execute",
+        ),
+      );
+      own.send({
+        type: "ExecuteReplied",
+        flow: exec.flow,
+        result: { ok: true, response: { success: true, intentId: "xi_1", status: "executing" } },
+      });
+      expect(own.model.sign).toBeNull();
+      expect(own.intent.reconciling).toBe(false);
+      pollReads(own, statusData({ status: "quoted" }), 1);
+      expect(own.intent.notSent).toBe(false);
+      expect(own.receipt.phase).toBe("submitting");
+    });
   });
 
   it("decodes an unmapped Riddler status to Still confirming, never completed", () => {

@@ -136,16 +136,20 @@ export interface IntentState {
   mayHaveMoved: boolean;
   /**
    * Set when this client stops resending an execute the Worker answered
-   * not-accepted (`decideExecuteResend` gives up), or when the execute's own
+   * not-accepted (`decideExecuteResend` gives up), when the execute's own
    * answer says the intent reads `quoted` again (the Worker ended its claim
-   * without finishing the intent): the order was not sent, but the signed
-   * request stays executable until its deadline, so there is no Retry yet.
-   * The status stays `executing`, the phase is `not-sent`, and the poll runs
-   * on until the Worker ends the intent: `failed` with
-   * `NOT_EXECUTED_SUBSTATUS` is Retry, and so is a 404 (only the quote sweep
-   * deletes a row, and only one never claimed). Cleared by any other read
-   * than `quoted` (another execute claimed it: shown in doubt) and by
-   * leaving `executing`.
+   * without finishing the intent), or when a resumed `executing` intent (no
+   * quote and no sign flow in this tab) reads `quoted`: the order was not
+   * sent, but the signed request stays executable until its deadline, so
+   * there is no Retry yet. The status stays `executing`, the phase is
+   * `not-sent`, and the poll runs on until the Worker ends the intent:
+   * `failed` with `NOT_EXECUTED_SUBSTATUS` is Retry, and so is a 404 read past
+   * the Worker's finish (`unexecutedFinishAt`: only the quote sweep deletes a
+   * row, only one never claimed, and past the finish nothing can claim it). A
+   * 404 before the finish, or with no quote to compute it (a resumed intent),
+   * holds: it may come from a router, a proxy or a rollback while the signed
+   * request is still claimable. Cleared by any other read than `quoted`
+   * (another execute claimed it: shown in doubt) and by leaving `executing`.
    */
   notSent: boolean;
   /**

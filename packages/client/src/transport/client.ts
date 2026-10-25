@@ -1530,8 +1530,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      * can tell a definitive absence from a blip:
      *  - the status object on 200,
      *  - `{ notFound: true }` on a 404 (no row for this id; a pre-dispatch row
-     *    can be terminalized on it, and a "not sent yet" one ends on it as
-     *    nothing moved; any other dispatched one is held and reported),
+     *    can be terminalized on it, and a "not sent yet" one past its finish
+     *    ends on it as nothing moved; any other is held and reported),
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
      * A read token never stops the poll. A malformed one is not sent, and a
