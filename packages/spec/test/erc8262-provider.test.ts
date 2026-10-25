@@ -34,6 +34,7 @@ type Discovery = {
     sourceId: string;
     claims: { claimType: string; policyId: string; proofType: number }[];
   }[];
+  revocationCheckSeconds: number;
   updatedAt: number;
 };
 type Artifact =
@@ -86,11 +87,21 @@ type AllowlistEntry = { trustDomainId: string; attestorProviderId: string };
 // pin when recorded, if the document named it for the deployment; null otherwise (not shared).
 type SeenDiscovery = { discovery: string; attestorProviderId: string | null };
 type Fetch = { host: string; status: number | null };
-// The block pair an evaluation (or a quorum) resolved before its first Oracle read, and the
-// deployment's block floor in the store (SPEC.md section 10.5, Block floor).
+// The block pair an evaluation (or a quorum) resolved before its first Oracle read (SPEC.md
+// section 10.5, Block pair).
 type BlockRef = { number: number; timestamp: number };
 type Blocks = { chainId: number; finalized: BlockRef; latest: BlockRef };
-type BlockFloor = { finalized: number; latest: number };
+type BlockNumbers = { finalized: number; latest: number };
+// A grant the consumer holds for the subject (SPEC.md section 10.7, Held grants): keyed by the
+// fetch host and announced evidenceId it was granted on, with when its last re-evaluation
+// completed, whether it is suspended, and the lift floor recorded with the suspension.
+type HeldGrant = {
+  trustDomainId: string;
+  evidenceId: string;
+  checkedAt: number;
+  suspended: boolean;
+  liftFloor: BlockNumbers | null;
+};
 type Consumer = {
   chainId: number;
   oracleAddress: string;
@@ -103,7 +114,6 @@ type Consumer = {
   seenEvidence: string[];
   seenRevoked: { trustDomainId: string; evidenceId: string }[];
   blocks: Blocks;
-  blockFloor: BlockFloor | null;
 };
 type Attempt = {
   discoveryFetch: Fetch;
@@ -111,13 +121,13 @@ type Attempt = {
   announcedEvidenceId: string;
   proof: Proof;
 };
-// Revoked keys another quorum member's evaluation recorded (SPEC.md section 10.6), applied at
-// step 18 next to the store; empty outside a quorum's counting pass.
-type SharedKeyRevocation = {
+// A key revocation record, keyed as SPEC.md section 10.7 (Revocation) keys it: by trust domain,
+// the attestor it was recorded under (null: none), keyId and key material.
+type KeyRevocation = {
   trustDomainId: string;
   attestorProviderId: string | null;
   keyId: string;
-  material: string | undefined;
+  material: string;
 };
 // The revocation and denial reads at the latest block (steps 21, 23, 31's
 // isAttestationRevoked); null when they equal the finalized reads. A quorum's carries the
@@ -127,15 +137,29 @@ type LatestReads = {
   validConfigs: string[];
   attestationRevoked: boolean;
 };
+// The observation store an evaluation reads (SPEC.md section 10.7): key revocations, the
+// newest updatedAt per trust domain, the evidence documents and evidence revocations it holds,
+// and the subject's held grants. Built from a case's context, or replayed along a follows chain.
+type Store = {
+  keyRevocations: KeyRevocation[];
+  newestUpdatedAt: Record<string, number>;
+  evidence: Evidence[];
+  revoked: Observed[];
+  heldGrants: HeldGrant[];
+};
 type Context = Consumer &
   Attempt & {
     statement: Statement;
     latest: LatestReads | null;
-    sharedKeyRevocations?: SharedKeyRevocation[];
+    heldGrants: HeldGrant[];
   };
-// SPEC.md section 10.5: the first refusing step, or why an evaluation that passed steps 1-20
-// cannot complete (its block pair), or null when the evidence is accepted.
+// SPEC.md section 10.5: the first refusing step, or why an evaluation that can grant cannot read
+// the Oracle (its block pair), or null when the evidence is accepted.
 type Outcome = { refusal: string } | { unavailable: string } | null;
+type HeldGrantOutcome = {
+  heldGrant: "kept" | "suspended" | "ended" | "deferred";
+  liftFloor: BlockNumbers | null;
+};
 type DocRef = string | { schemaCase: string };
 type Observed = { trustDomainId: string; evidenceId: string };
 // What one evaluation writes to the observation store (SPEC.md section 10.7).
@@ -148,13 +172,13 @@ type Records = {
   };
   revocation: Observed | null;
   evidence: Observed | null;
-  blockFloor: BlockFloor | null;
 };
 type Vectors = {
   limits: {
     maxEvidenceLifetimeSeconds: number;
     clockSkewSeconds: number;
     minUngrantedRevocationsPerAnnouncer: number;
+    maxBlockAgeSeconds: number;
   };
   refusals: string[];
   discovery: Record<string, Discovery>;
@@ -171,8 +195,7 @@ type Vectors = {
       refusal?: string;
       unavailable?: string;
       records: Records;
-      heldGrant: "kept" | "suspended" | "ended" | "unchanged";
-    };
+    } & HeldGrantOutcome;
   }[];
   quorumCases: {
     name: string;
@@ -184,7 +207,7 @@ type Vectors = {
       attestors: string[];
       count: number;
       satisfied: boolean;
-      unavailable: string | null;
+      unavailable?: string;
     };
   }[];
 };
@@ -253,6 +276,35 @@ type Reads = {
 };
 
 /**
+ * The observation store a case's context states: each recorded discovery document's revoked
+ * keys under the attestor it was recorded under, and its updatedAt; the recorded evidence
+ * documents and revocations; the held grants.
+ */
+function storeOf(ctx: Consumer & { heldGrants?: HeldGrant[] }): Store {
+  const newestUpdatedAt: Record<string, number> = {};
+  const keyRevocations: KeyRevocation[] = [];
+  for (const seen of ctx.seenDiscovery) {
+    const d = doc(V.discovery, seen.discovery);
+    newestUpdatedAt[d.trustDomainId] = Math.max(newestUpdatedAt[d.trustDomainId] ?? 0, d.updatedAt);
+    for (const k of d.keys.filter((key) => key.revokedAt !== undefined)) {
+      keyRevocations.push({
+        trustDomainId: d.trustDomainId,
+        attestorProviderId: seen.attestorProviderId,
+        keyId: k.keyId,
+        material: material(k) ?? "",
+      });
+    }
+  }
+  return {
+    keyRevocations,
+    newestUpdatedAt,
+    evidence: ctx.seenEvidence.map((name) => doc(V.evidence, name)),
+    revoked: ctx.seenRevoked,
+    heldGrants: ctx.heldGrants ?? [],
+  };
+}
+
+/**
  * What a step reads. Each derived value is computed on demand, so a step reads only what
  * the steps before it have established (a document is read only after it validated).
  * `reads()` is the finalized block's reads, then the latest block's when they differ.
@@ -261,22 +313,18 @@ type Facts = {
   disc: Discovery;
   ev: Evidence;
   ctx: Context;
+  store: Store;
   signed: () => boolean;
   pinned: () => AllowlistEntry | undefined;
-  priorDiscovery: () => Discovery[];
   key: () => Key | undefined;
   reads: () => Reads[];
   priorEvidence: () => Evidence[];
 };
-function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
+function facts(discDoc: unknown, evDoc: unknown, ctx: Context, store: Store): Facts {
   const disc = discDoc as Discovery;
   const ev = evDoc as Evidence;
   const signed = () => ev.artifact.proofType !== 4;
   const pinned = () => ctx.allowlist.find((a) => a.trustDomainId === ctx.discoveryFetch.host);
-  const priorDiscovery = () =>
-    ctx.seenDiscovery
-      .map((s) => doc(V.discovery, s.discovery))
-      .filter((p) => p.trustDomainId === disc.trustDomainId);
   const key = () => disc.keys.find((k) => k.keyId === ev.keyId);
   const at = (registry: RegistryEntry[], validConfigs: string[], attestationRevoked: boolean) => ({
     registry: registry.find((r) => r.attestorProviderId === ev.deployment.attestorProviderId),
@@ -290,10 +338,10 @@ function facts(discDoc: unknown, evDoc: unknown, ctx: Context): Facts {
       : []),
   ];
   const priorEvidence = () =>
-    ctx.seenEvidence
-      .map((name) => doc(V.evidence, name))
-      .filter((p) => p.trustDomainId === ev.trustDomainId && p.evidenceId === ev.evidenceId);
-  return { disc, ev, ctx, signed, pinned, priorDiscovery, key, reads, priorEvidence };
+    store.evidence.filter(
+      (p) => p.trustDomainId === ev.trustDomainId && p.evidenceId === ev.evidenceId,
+    );
+  return { disc, ev, ctx, store, signed, pinned, key, reads, priorEvidence };
 }
 
 // A 200 whose body validates, carries the announced id and says revoked: final, and recorded
@@ -316,7 +364,7 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       // Runs before discovery is read: only the store and the body's status and evidenceId,
       // keyed by the allowlisted host and the announced id. Recording can only revoke.
-      const recorded = f.ctx.seenRevoked.some(
+      const recorded = f.store.revoked.some(
         (g) =>
           g.trustDomainId === f.ctx.discoveryFetch.host &&
           g.evidenceId === f.ctx.announcedEvidenceId,
@@ -344,7 +392,10 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
       hasDuplicates(f.disc.sources.map((s) => s.sourceId)),
   ],
   ["discovery_from_future", (f) => f.disc.updatedAt > f.ctx.now + V.limits.clockSkewSeconds],
-  ["discovery_stale", (f) => f.priorDiscovery().some((p) => p.updatedAt > f.disc.updatedAt)],
+  [
+    "discovery_stale",
+    (f) => (f.store.newestUpdatedAt[f.disc.trustDomainId] ?? 0) > f.disc.updatedAt,
+  ],
   [
     "deployment_mismatch",
     (f) =>
@@ -387,36 +438,23 @@ const STEPS: readonly (readonly [string, (f: Facts) => boolean])[] = [
     (f) => {
       const key = f.key();
       if (key === undefined) return false;
-      const keyMaterial = material(key);
+      const keyMaterial = material(key) ?? "";
       if (
         f.disc.keys.some(
           (k) =>
-            k.revokedAt !== undefined && (k.keyId === key.keyId || material(k) === keyMaterial),
+            k.revokedAt !== undefined &&
+            (k.keyId === key.keyId || (material(k) ?? "") === keyMaterial),
         )
       ) {
         return true;
       }
-      // Recorded key revocations (and those another quorum member recorded): by keyId and
-      // material for this trust domain, whatever attestor they were recorded under (or none)
-      // and whatever it is pinned to now; by material alone for another trust domain, when
-      // they were recorded under the attestor this trust domain is pinned to now (whether or
-      // not its recorder is still listed), never under another attestor or under none.
+      // Recorded key revocations (and, in a quorum, those another member recorded): by keyId
+      // and material for this trust domain, whatever attestor they were recorded under (or
+      // none) and whatever it is pinned to now; by material alone for another trust domain,
+      // when they were recorded under the attestor this trust domain is pinned to now (whether
+      // or not its recorder is still listed), never under another attestor or under none.
       const pin = f.pinned()?.attestorProviderId;
-      const recorded: SharedKeyRevocation[] = [
-        ...f.ctx.seenDiscovery.flatMap((seen) => {
-          const d = doc(V.discovery, seen.discovery);
-          return d.keys
-            .filter((k) => k.revokedAt !== undefined)
-            .map((k) => ({
-              trustDomainId: d.trustDomainId,
-              attestorProviderId: seen.attestorProviderId,
-              keyId: k.keyId,
-              material: material(k),
-            }));
-        }),
-        ...(f.ctx.sharedKeyRevocations ?? []),
-      ];
-      return recorded.some((r) =>
+      return f.store.keyRevocations.some((r) =>
         r.trustDomainId === f.disc.trustDomainId
           ? r.keyId === key.keyId || r.material === keyMaterial
           : r.attestorProviderId === pin && r.material === keyMaterial,
@@ -554,16 +592,25 @@ const refuses = (refusal: string, f: Facts): boolean => {
   if (!found) throw new Error(`no step ${refusal}`);
   return found[1](f);
 };
-// Steps 1-20 read no block; the block pair is checked before the first Oracle read.
-const FIRST_ORACLE_STEP = stepIndex("attestor_denied");
+// The steps that read the Oracle at the block pair (SPEC.md section 10.5, Oracle reads); every
+// other step reads no block.
+const ORACLE_STEPS = new Set(
+  [
+    "attestor_denied",
+    "credential_signer_mismatch",
+    "not_registered_on_oracle",
+    "proof_mismatch",
+    "proof_stale",
+  ].map(stepIndex),
+);
 
 /**
- * SPEC.md section 10.5, Block floor: the pair is invalid (another chain, finalized after
- * latest, or a head ahead of the clock beyond the skew), else below the deployment's floor
- * (either tag), else usable. Checked once, against the floor the store held when resolved.
+ * SPEC.md section 10.5, Block pair: invalid (another chain, finalized after latest by number
+ * or timestamp, a head more than the skew ahead of the clock), else stale (a head older than
+ * maxBlockAgeSeconds), else usable. Equal numbers or timestamps are in order.
  */
 function blockCheck(c: Consumer): string | null {
-  const { blocks: b, blockFloor: floor } = c;
+  const b = c.blocks;
   if (
     b.chainId !== c.chainId ||
     b.finalized.number > b.latest.number ||
@@ -572,32 +619,35 @@ function blockCheck(c: Consumer): string | null {
   ) {
     return "blocks_invalid";
   }
-  if (floor && (b.finalized.number < floor.finalized || b.latest.number < floor.latest)) {
-    return "below_block_floor";
-  }
-  return null;
+  return b.latest.timestamp < c.now - V.limits.maxBlockAgeSeconds ? "blocks_stale" : null;
 }
 
 /**
- * SPEC.md section 10.5: the first failing step, or null when the evidence is accepted; an
- * evaluation that passes steps 1-20 on an unusable block pair reads no Oracle state at all.
- * The evidence document is read only when its fetch returned 200.
+ * SPEC.md section 10.5: the first failing step, or null when the evidence is accepted. On an
+ * unusable block pair the Oracle steps are skipped (no Oracle state is read) and every other
+ * step still runs in order, so an expiry or a recorded revocation still refuses; with none
+ * refusing the evaluation is unavailable. The evidence document is read only when its fetch
+ * returned 200.
  */
-function evaluate(disc: unknown, held: unknown, ctx: Context): Outcome {
-  const f = facts(disc, held, ctx);
+function evaluate(disc: unknown, held: unknown, ctx: Context, store = storeOf(ctx)): Outcome {
+  const f = facts(disc, held, ctx, store);
+  const unusable = blockCheck(ctx);
   for (const [i, [refusal, refused]] of STEPS.entries()) {
-    if (i === FIRST_ORACLE_STEP) {
-      const unavailable = blockCheck(ctx);
-      if (unavailable !== null) return { unavailable };
-    }
+    if (unusable !== null && ORACLE_STEPS.has(i)) continue;
     if (refused(f)) return { refusal };
   }
-  return null;
+  return unusable === null ? null : { unavailable: unusable };
 }
 
 /** SPEC.md sections 10.3, 10.4, 10.5 and 10.7: what one evaluation writes to the store. */
-function recordsOf(disc: unknown, held: unknown, ctx: Context, outcome: Outcome): Records {
-  const f = facts(disc, held, ctx);
+function recordsOf(
+  disc: unknown,
+  held: unknown,
+  ctx: Context,
+  outcome: Outcome,
+  store = storeOf(ctx),
+): Records {
+  const f = facts(disc, held, ctx, store);
   // The discovery steps are evaluated on their own: the evidence's outcome does not matter.
   const discoveryPasses =
     !refuses("trust_domain_not_allowed", f) &&
@@ -614,8 +664,6 @@ function recordsOf(disc: unknown, held: unknown, ctx: Context, outcome: Outcome)
   const refusedAt = outcome && "refusal" in outcome ? stepIndex(outcome.refusal) : null;
   const passedStep9 =
     outcome === null || refusedAt === null || refusedAt > stepIndex("evidence_id_mismatch");
-  // The floor moves only with Oracle reads made at the pair's blocks.
-  const readOracle = outcome === null || (refusedAt !== null && refusedAt >= FIRST_ORACLE_STEP);
   // Key revocations are shared under the pin only when the document itself names the pinned
   // attestor for the consumer's deployment (the discovery half of step 14); else under none.
   const declared = f.disc.deployments?.find(
@@ -639,9 +687,6 @@ function recordsOf(disc: unknown, held: unknown, ctx: Context, outcome: Outcome)
     evidence: passedStep9
       ? { trustDomainId: f.ev.trustDomainId, evidenceId: f.ev.evidenceId }
       : null,
-    blockFloor: readOracle
-      ? { finalized: ctx.blocks.finalized.number, latest: ctx.blocks.latest.number }
-      : null,
   };
 }
 
@@ -658,23 +703,139 @@ const ENDS_HELD_GRANT: readonly string[] = [
   "proof_stale",
 ];
 
-// What an outcome does to a held grant. A step-31 refusal ends it only when the finalized
-// reads refuse too: an attestation revocation read only at the latest block can still be
-// reorganized away, so it suspends. An invalid block pair cannot complete (suspends); a pair
-// still below the floor defers the re-evaluation, leaving the grant as it was.
-function heldGrantAfter(outcome: Outcome, disc: unknown, ev: unknown, ctx: Context) {
-  if (outcome === null) return "kept";
+// What an outcome does to the grant held on the evidence (the context's heldGrants entry for
+// the fetch host and announced id; none: an exercised grant that is not overdue), and its lift
+// floor afterwards (SPEC.md section 10.7, Held grants).
+// - Accepted: kept, unless it is suspended and the pair is below its lift floor on either tag
+//   (then it stays suspended).
+// - Refused: ended at an ending step (a step-31 refusal only when the finalized reads refuse
+//   too); else suspended, an Oracle step's refusal raising each lift-floor tag to the pair.
+// - Unavailable: deferred (left as it was), unless exercised and overdue: no completed
+//   re-evaluation for the trust domain's revocationCheckSeconds suspends it.
+function heldGrantAfter(
+  outcome: Outcome,
+  disc: unknown,
+  ev: unknown,
+  ctx: Context,
+  store = storeOf(ctx),
+): HeldGrantOutcome {
+  const grant = store.heldGrants.find(
+    (g) => g.trustDomainId === ctx.discoveryFetch.host && g.evidenceId === ctx.announcedEvidenceId,
+  );
+  const prior = grant?.liftFloor ?? null;
+  const pair = { finalized: ctx.blocks.finalized.number, latest: ctx.blocks.latest.number };
+  if (outcome === null) {
+    const below =
+      grant?.suspended === true &&
+      prior !== null &&
+      (pair.finalized < prior.finalized || pair.latest < prior.latest);
+    return below
+      ? { heldGrant: "suspended", liftFloor: prior }
+      : { heldGrant: "kept", liftFloor: null };
+  }
   if ("unavailable" in outcome) {
-    return outcome.unavailable === "below_block_floor" ? "unchanged" : "suspended";
+    const overdue =
+      grant !== undefined &&
+      !grant.suspended &&
+      ctx.now >= grant.checkedAt + (disc as Discovery).revocationCheckSeconds;
+    return { heldGrant: overdue ? "suspended" : "deferred", liftFloor: prior };
   }
   const { refusal } = outcome;
+  let ends = ENDS_HELD_GRANT.includes(refusal);
   if (refusal === "proof_stale") {
-    const finalizedOnly = evaluate(disc, ev, { ...ctx, latest: null });
-    if (!finalizedOnly || !("refusal" in finalizedOnly) || finalizedOnly.refusal !== refusal) {
-      return "suspended";
+    const finalizedOnly = evaluate(disc, ev, { ...ctx, latest: null }, store);
+    ends =
+      finalizedOnly !== null && "refusal" in finalizedOnly && finalizedOnly.refusal === refusal;
+  }
+  if (ends) return { heldGrant: "ended", liftFloor: null };
+  if (!ORACLE_STEPS.has(stepIndex(refusal))) return { heldGrant: "suspended", liftFloor: prior };
+  return {
+    heldGrant: "suspended",
+    liftFloor: {
+      finalized: Math.max(prior?.finalized ?? 0, pair.finalized),
+      latest: Math.max(prior?.latest ?? 0, pair.latest),
+    },
+  };
+}
+
+/**
+ * The store a follows case starts from (SPEC.md section 10.8): the earlier case's store plus
+ * what it wrote, keyed as section 10.7 keys each record, and the grant it re-evaluated as it
+ * left it. Key revocations and evidence documents are insert-if-absent, updatedAt an atomic
+ * maximum.
+ */
+function replay(
+  store: Store,
+  records: Records,
+  ev: Evidence,
+  ctx: Context,
+  after: HeldGrantOutcome,
+): Store {
+  const keyRevocations = [...store.keyRevocations];
+  const newestUpdatedAt = { ...store.newestUpdatedAt };
+  const { discovery } = records;
+  if (discovery) {
+    newestUpdatedAt[discovery.trustDomainId] = Math.max(
+      newestUpdatedAt[discovery.trustDomainId] ?? 0,
+      discovery.updatedAt,
+    );
+    for (const k of discovery.revokedKeys) {
+      const record = {
+        trustDomainId: discovery.trustDomainId,
+        attestorProviderId: discovery.attestorProviderId,
+        ...k,
+      };
+      const held = keyRevocations.some(
+        (r) =>
+          r.trustDomainId === record.trustDomainId &&
+          r.attestorProviderId === record.attestorProviderId &&
+          r.keyId === record.keyId &&
+          r.material === record.material,
+      );
+      if (!held) keyRevocations.push(record);
     }
   }
-  return ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended";
+  const same = (a: Observed) => (b: Observed) =>
+    a.trustDomainId === b.trustDomainId && a.evidenceId === b.evidenceId;
+  const { revocation, evidence } = records;
+  const isGrant = (g: HeldGrant) =>
+    g.trustDomainId === ctx.discoveryFetch.host && g.evidenceId === ctx.announcedEvidenceId;
+  return {
+    keyRevocations,
+    newestUpdatedAt,
+    evidence:
+      evidence && !store.evidence.some(same(evidence)) ? [...store.evidence, ev] : store.evidence,
+    revoked:
+      revocation && !store.revoked.some(same(revocation))
+        ? [...store.revoked, revocation]
+        : store.revoked,
+    // Replay carries forward only a grant the earlier case's store held; it creates none.
+    heldGrants: store.heldGrants.flatMap((g): HeldGrant[] => {
+      if (!isGrant(g)) return [g];
+      if (after.heldGrant === "ended") return [];
+      if (after.heldGrant === "deferred") return [g];
+      return [
+        {
+          ...g,
+          checkedAt: ctx.now,
+          suspended: after.heldGrant === "suspended",
+          liftFloor: after.liftFloor,
+        },
+      ];
+    }),
+  };
+}
+
+// A store in a canonical order, so two stores compare by content.
+function canonicalStore(store: Store) {
+  const sorted = <T>(values: T[]) => values.map((v) => JSON.stringify(v)).sort();
+  return {
+    keyRevocations: sorted(store.keyRevocations),
+    newestUpdatedAt: store.newestUpdatedAt,
+    evidence: sorted(store.evidence.map((e) => immutableFields(e))),
+    revoked: sorted(store.revoked),
+    heldGrants: sorted(store.heldGrants),
+  };
 }
 
 const byNumericValue = (a: string, b: string): number =>
@@ -727,50 +888,64 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     const held = resolve(V.evidence, "evidence", c.evidence);
     const outcome = evaluate(disc, held, c.context);
     const records = recordsOf(disc, held, c.context, outcome);
-    const heldGrant = heldGrantAfter(outcome, disc, held, c.context);
+    const after = heldGrantAfter(outcome, disc, held, c.context);
     expect(
       outcome === null
-        ? { accepted: true, records, heldGrant }
-        : { accepted: false, ...outcome, records, heldGrant },
+        ? { accepted: true, records, ...after }
+        : { accepted: false, ...outcome, records, ...after },
     ).toEqual(c.expected);
   });
 
+  // SPEC.md section 10.8: a follows chain runs on one store. Replaying the earlier case through
+  // a store keyed as section 10.7 keys each record must give exactly the store this case
+  // states, and this case's outcome on that replayed store must be its expected one; a store
+  // keyed otherwise (a key revocation without its recording attestor) diverges here.
   it.each(V.evaluationCases.filter((c) => c.follows).map((c) => [c.name, c] as const))(
-    "%s starts from what its earlier case recorded",
+    "%s starts from the store its earlier case left",
     (_name, c) => {
       const earlier = V.evaluationCases.find((x) => x.name === c.follows);
       if (!earlier) throw new Error(`${c.name} follows unknown case ${c.follows}`);
-      const { discovery, revocation, evidence, blockFloor } = earlier.expected.records;
-      const store = c.context;
-      if (revocation) expect(store.seenRevoked).toContainEqual(revocation);
-      if (blockFloor) {
-        expect(store.blockFloor?.finalized).toBeGreaterThanOrEqual(blockFloor.finalized);
-        expect(store.blockFloor?.latest).toBeGreaterThanOrEqual(blockFloor.latest);
-      }
-      if (evidence) {
-        const recorded = store.seenEvidence.map((n) => doc(V.evidence, n));
-        expect(
-          recorded.map((e) => ({ trustDomainId: e.trustDomainId, evidenceId: e.evidenceId })),
-        ).toContainEqual(evidence);
-      }
-      if (discovery) {
-        const recorded = store.seenDiscovery.filter(
-          (s) => doc(V.discovery, s.discovery).trustDomainId === discovery.trustDomainId,
-        );
-        expect(recorded.map((s) => s.attestorProviderId)).toContain(discovery.attestorProviderId);
-        const newest = recorded.map((s) => doc(V.discovery, s.discovery).updatedAt);
-        expect(Math.max(...newest)).toBeGreaterThanOrEqual(discovery.updatedAt);
-      }
+      const disc = resolve(V.discovery, "discovery", earlier.discovery);
+      const ev = resolve(V.evidence, "evidence", earlier.evidence);
+      const before = storeOf(earlier.context);
+      const outcome = evaluate(disc, ev, earlier.context, before);
+      const store = replay(
+        before,
+        recordsOf(disc, ev, earlier.context, outcome, before),
+        ev as Evidence,
+        earlier.context,
+        heldGrantAfter(outcome, disc, ev, earlier.context, before),
+      );
+      expect(canonicalStore(store)).toEqual(canonicalStore(storeOf(c.context)));
+      const ownDisc = resolve(V.discovery, "discovery", c.discovery);
+      const own = resolve(V.evidence, "evidence", c.evidence);
+      const ownOutcome = evaluate(ownDisc, own, c.context, store);
+      expect(
+        ownOutcome === null
+          ? { accepted: true, ...heldGrantAfter(ownOutcome, ownDisc, own, c.context, store) }
+          : {
+              accepted: false,
+              ...ownOutcome,
+              ...heldGrantAfter(ownOutcome, ownDisc, own, c.context, store),
+            },
+      ).toEqual({
+        accepted: c.expected.accepted,
+        ...(c.expected.refusal === undefined ? {} : { refusal: c.expected.refusal }),
+        ...(c.expected.unavailable === undefined ? {} : { unavailable: c.expected.unavailable }),
+        heldGrant: c.expected.heldGrant,
+        liftFloor: c.expected.liftFloor,
+      });
     },
   );
 
   it("observation stores hold only reachable states", () => {
     // A revoked body stops at step 5 and is recorded as a revocation, never as a document. A
     // discovery document's key revocations are recorded under an attestor only when the
-    // document names it for the deployment (a mis-pin records them under none).
+    // document names it for the deployment (a mis-pin records them under none). Only a
+    // suspended grant has a lift floor.
     const stores = [
       ...V.evaluationCases.map((c) => c.context),
-      ...V.quorumCases.map((c) => c.context),
+      ...V.quorumCases.map((c) => ({ ...c.context, heldGrants: [] })),
     ];
     for (const store of stores) {
       for (const name of store.seenEvidence) expect(doc(V.evidence, name).status).toBe("active");
@@ -781,6 +956,9 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
         );
         expect(declared?.attestorProviderId, seen.discovery).toBe(seen.attestorProviderId);
       }
+      for (const grant of store.heldGrants) {
+        if (!grant.suspended) expect(grant.liftFloor).toBeNull();
+      }
     }
   });
 
@@ -788,11 +966,13 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     expect(V.refusals).toEqual(STEPS.map(([refusal]) => refusal));
   });
 
-  it("exercises every refusal code and both unavailable outcomes", () => {
+  it("exercises every refusal code, both unavailable outcomes and every held-grant outcome", () => {
     const hit = new Set(V.evaluationCases.map((c) => c.expected.refusal).filter(Boolean));
     expect([...hit].sort()).toEqual([...V.refusals].sort());
     const unavailable = new Set(V.evaluationCases.map((c) => c.expected.unavailable));
-    expect(unavailable).toEqual(new Set([undefined, "blocks_invalid", "below_block_floor"]));
+    expect(unavailable).toEqual(new Set([undefined, "blocks_invalid", "blocks_stale"]));
+    const heldGrant = new Set(V.evaluationCases.map((c) => c.expected.heldGrant));
+    expect(heldGrant).toEqual(new Set(["kept", "ended", "suspended", "deferred"]));
   });
 
   it("native and gateway vectors carry distinct bindings", () => {
@@ -826,13 +1006,9 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
 
 describe("erc8262 quorum (SPEC section 10.6)", () => {
   it.each(V.quorumCases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    // One block pair for the whole quorum, checked against the deployment's floor once: an
-    // unusable pair leaves the quorum unavailable, counting no member.
+    // One block pair for the whole quorum, checked once: on an unusable pair every member
+    // still runs the steps that read no block, and none is counted.
     const unavailable = blockCheck(c.context);
-    if (unavailable !== null) {
-      expect({ attestors: [], count: 0, satisfied: false, unavailable }).toEqual(c.expected);
-      return;
-    }
     // Evidence for another claim or proof type is not evaluated. Every other member runs under
     // the case's consumer context, observation store and latest-block reads included (its own
     // attestation reads the same at both blocks), and its proof must prove the requirement's
@@ -849,40 +1025,53 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
             {
               disc: doc(V.discovery, discovery),
               ev,
-              ctx: { ...c.context, ...attempt, latest, statement: c.requirement.statement },
+              ctx: {
+                ...c.context,
+                ...attempt,
+                latest,
+                statement: c.requirement.statement,
+                heldGrants: [],
+              },
             },
           ]
         : [];
     });
     // What each member's evaluation against the snapshot records; its revocations (evidence and
     // key) apply to every member before counting, which can only refuse.
+    const snapshot = storeOf(c.context);
     const recorded = runs.map((r) => recordsOf(r.disc, r.ev, r.ctx, evaluate(r.disc, r.ev, r.ctx)));
-    const seenRevoked = [
-      ...c.context.seenRevoked,
-      ...recorded.flatMap((r) => (r.revocation ? [r.revocation] : [])),
-    ];
-    const sharedKeyRevocations = recorded.flatMap(({ discovery }) =>
-      discovery
-        ? discovery.revokedKeys.map((k) => ({
-            trustDomainId: discovery.trustDomainId,
-            attestorProviderId: discovery.attestorProviderId,
-            ...k,
-          }))
-        : [],
-    );
+    const shared: Store = {
+      ...snapshot,
+      revoked: [
+        ...snapshot.revoked,
+        ...recorded.flatMap((r) => (r.revocation ? [r.revocation] : [])),
+      ],
+      keyRevocations: [
+        ...snapshot.keyRevocations,
+        ...recorded.flatMap(({ discovery }) =>
+          discovery
+            ? discovery.revokedKeys.map((k) => ({
+                trustDomainId: discovery.trustDomainId,
+                attestorProviderId: discovery.attestorProviderId,
+                ...k,
+              }))
+            : [],
+        ),
+      ],
+    };
     const attestors = new Set<string>();
     for (const r of runs) {
-      if (evaluate(r.disc, r.ev, { ...r.ctx, seenRevoked, sharedKeyRevocations }) === null) {
+      if (evaluate(r.disc, r.ev, r.ctx, shared) === null) {
         attestors.add(r.ev.deployment.attestorProviderId);
       }
     }
     const sorted = [...attestors].sort(byNumericValue);
-    expect({
+    const result = {
       attestors: sorted,
       count: sorted.length,
       satisfied: sorted.length >= c.threshold,
-      unavailable: null,
-    }).toEqual(c.expected);
+    };
+    expect(unavailable === null ? result : { ...result, unavailable }).toEqual(c.expected);
   });
 
   it("two sources behind one gateway form one trust domain", () => {
@@ -891,7 +1080,7 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     const evs = c.members.map((m) => doc(V.evidence, m.evidence));
     expect(new Set(evs.map((e) => e.sourceId)).size).toBe(2);
     expect(new Set(evs.map((e) => e.trustDomainId)).size).toBe(1);
-    expect(c.expected).toEqual({ attestors: ["1"], count: 1, satisfied: false, unavailable: null });
+    expect(c.expected).toEqual({ attestors: ["1"], count: 1, satisfied: false });
   });
 });
 

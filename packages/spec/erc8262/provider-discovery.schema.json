@@ -240,7 +240,7 @@
       }
     },
     "revocationCheckSeconds": {
-      "description": "Revocation: the longest a consumer may keep a grant made on this trust domain's evidence without re-evaluating it (a fresh fetch of this document and of the evidence). A 410 for an announced evidenceId means revoked; any other non-200 response means unavailable, never revoked.",
+      "description": "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence since its last completed re-evaluation (a fresh fetch of this document and of the evidence); past it the grant is suspended until one completes. A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
       "type": "integer",
       "minimum": 60,
       "maximum": 86400
