@@ -204,10 +204,7 @@ type Vectors = {
   quorumCases: {
     name: string;
     threshold: number;
-    context: Consumer & {
-      latest: Omit<LatestReads, "attestationRevoked"> | null;
-      maxRecheckSeconds: number;
-    };
+    context: Consumer & { latest: Omit<LatestReads, "attestationRevoked"> | null };
     requirement: { claimType: string; proofType: number; statement: Statement };
     members: ({ discovery: string; evidence: string } & Attempt)[];
     expected: {
@@ -216,7 +213,7 @@ type Vectors = {
       satisfied: boolean;
       unavailable?: string;
       records: (Records | null)[];
-    } & HeldGrantOutcome;
+    };
   }[];
 };
 
@@ -955,10 +952,8 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     expect([...hit].sort()).toEqual([...V.refusals].sort());
     const unavailable = new Set(V.evaluationCases.map((c) => c.expected.unavailable));
     expect(unavailable).toEqual(new Set([undefined, "blocks_invalid", "blocks_stale"]));
-    for (const cases of [V.evaluationCases, V.quorumCases]) {
-      const heldGrant = new Set(cases.map((c) => c.expected.heldGrant));
-      expect(heldGrant).toEqual(new Set(["kept", "ended", "suspended"]));
-    }
+    const heldGrant = new Set(V.evaluationCases.map((c) => c.expected.heldGrant));
+    expect(heldGrant).toEqual(new Set(["kept", "ended", "suspended"]));
   });
 
   // SPEC.md section 10.5, Block pair: every step that reads no block still runs and refuses on
@@ -1038,8 +1033,8 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     // Evidence for another claim or proof type is not evaluated (null). Every other member runs
     // under the case's consumer context, observation store and latest-block reads included (its
     // own attestation reads the same at both blocks), and its proof must prove the
-    // requirement's statement. A member holds no grant of its own: the quorum's one grant is
-    // the case's expected.heldGrant.
+    // requirement's statement. A quorum member holds no grant, and neither does the quorum
+    // (SPEC.md section 10.9, Quorum results are not held).
     const runs = c.members.map(({ discovery, evidence, ...attempt }) => {
       const ev = doc(V.evidence, evidence);
       const latest = c.context.latest && {
@@ -1057,7 +1052,7 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
               latest,
               statement: c.requirement.statement,
               heldGrants: [],
-              maxRecheckSeconds: c.context.maxRecheckSeconds,
+              maxRecheckSeconds: 0,
             },
           }
         : null;
@@ -1089,41 +1084,34 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
         ),
       ],
     };
-    // SPEC.md section 10.6, Quorum grants: a grant made on a satisfied quorum of these members
-    // is kept when this re-evaluation is satisfied, due at now plus the smaller of the counted
-    // members' smallest revocationCheckSeconds and the maximum. Otherwise it is ended once fewer
-    // than threshold distinct attestors (each member's allowlisted attestor) remain among the
-    // members whose own evaluation does not end a held grant, and suspended while they remain.
     const attestors = new Set<string>();
-    const remaining = new Set<string>();
-    const intervals: number[] = [];
     for (const r of evaluated) {
-      const outcome = evaluate(r.disc, r.ev, r.ctx, shared);
-      if (outcome === null) {
+      if (evaluate(r.disc, r.ev, r.ctx, shared) === null) {
         attestors.add(r.ev.deployment.attestorProviderId);
-        intervals.push(r.disc.revocationCheckSeconds);
       }
-      const pin = c.context.allowlist.find(
-        (a) => a.trustDomainId === r.ctx.discoveryFetch.host,
-      )?.attestorProviderId;
-      const own = heldGrantAfter(outcome, r.disc, r.ev, r.ctx, shared);
-      if (pin !== undefined && own.heldGrant !== "ended") remaining.add(pin);
     }
     const sorted = [...attestors].sort(byNumericValue);
-    const satisfied = sorted.length >= c.threshold;
-    const grant: HeldGrantOutcome =
-      satisfied && unavailable === null
-        ? {
-            heldGrant: "kept",
-            recheckBy: c.context.now + Math.min(c.context.maxRecheckSeconds, ...intervals),
-          }
-        : { heldGrant: remaining.size < c.threshold ? "ended" : "suspended", recheckBy: null };
-    const result = { attestors: sorted, count: sorted.length, satisfied };
+    const result = {
+      attestors: sorted,
+      count: sorted.length,
+      satisfied: sorted.length >= c.threshold,
+    };
     expect(
-      unavailable === null
-        ? { ...result, records, ...grant }
-        : { ...result, unavailable, records, ...grant },
+      unavailable === null ? { ...result, records } : { ...result, unavailable, records },
     ).toEqual(c.expected);
+  });
+
+  // SPEC.md section 10.9, Quorum results are not held: in 0.9.0 a consumer holds no grant on a
+  // quorum result, so no quorum case carries a held grant, its outcome or a re-check interval.
+  it("no quorum case carries a held grant", () => {
+    for (const c of V.quorumCases) {
+      for (const key of ["heldGrants", "maxRecheckSeconds"]) {
+        expect(Object.keys(c.context), c.name).not.toContain(key);
+      }
+      for (const key of ["heldGrant", "recheckBy"]) {
+        expect(Object.keys(c.expected), c.name).not.toContain(key);
+      }
+    }
   });
 
   it("two sources behind one gateway form one trust domain", () => {

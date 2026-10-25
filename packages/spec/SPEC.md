@@ -1159,8 +1159,8 @@ node that mines only on demand (an idle anvil) goes stale; a fork that keeps
 mining is never stale but is not the chain (§10.9). The latest block's age
 is checked once more, against the consumer's clock, immediately before the
 evaluation commits a grant or keeps a held one (after its last Oracle and
-transaction read; a quorum likewise before it commits the grant it
-satisfies): if the pair is stale by then, the evaluation is unavailable
+transaction read; a quorum likewise before its result is acted on,
+§10.6): if the pair is stale by then, the evaluation is unavailable
 (`blocks_stale`) and commits only what steps 1-20 record. So an on-chain
 revocation or denial included in a block dated *t* refuses every evaluation
 whose pair is checked after *t* + 120 s by the consumer's clock, and no
@@ -1329,7 +1329,7 @@ resolved once when it starts, so every member reads the same Oracle state at
 both blocks. The pair is checked (§10.5 Block pair) against the
 consumer's clock when every member's fetches have completed and before any
 Oracle read, so the fetches' time counts toward its age, and its age again
-before a grant on the quorum is committed or kept. An unusable pair
+before the quorum's result is acted on. An unusable pair
 leaves the whole quorum unavailable, with the pair's code, counting no
 member; each member's
 evaluation still runs the steps that read no block and records what they
@@ -1350,30 +1350,10 @@ snapshot and one pair of blocks the result never depends on member order.
 Two hosts pinned to one Oracle `providerId` are one member, and so are two
 sources behind one gateway. Evidence refused by §10.5, or for another claim or
 proof type, never counts. Distinct `sourceId`s never count. A satisfied quorum
-authorizes nothing until the proofs verify. The vectors list the counted
+authorizes nothing until the proofs verify, and a consumer holds no grant on
+a quorum result: it evaluates the quorum again each time it needs a decision
+(§10.9 Quorum results are not held). The vectors list the counted
 attestors in ascending numeric order.
-
-**Quorum grants.** A grant made on a satisfied quorum is one grant, keyed by
-the subject, the requirement and the members it was made on (each member's
-fetch host, announced `evidenceId` and proof hash). It is held as §10.7 Held
-grants holds a grant (its `recheckBy`, the deployment maximum, the schedule
-and retries, the store), with these differences. Re-evaluating it re-runs
-this section on the members it was made on (every fetch and Oracle read
-afresh, one snapshot, one pair). A re-evaluation that is satisfied **keeps**
-it, its `recheckBy` the consumer's clock plus the smaller of the smallest
-`revocationCheckSeconds` among the discovery documents of the members it
-counts and the deployment maximum. Otherwise it **ends** the grant when
-fewer than `threshold` distinct attestors (each member's allowlisted
-attestor) remain among the members it evaluates whose own evaluation,
-against the snapshot plus the revocations the members record, does not end
-a held grant (§10.7 Held grants: a revoked or expired member never counts
-for it again), and **suspends** it while they remain, on an unusable pair
-too. So a guardian `denyProvider` of one counted attestor suspends the grant
-at its next re-evaluation if that leaves the count below `threshold`, and a
-`410` at one member ends it once too few attestors are left. The grant is
-exercised only while at least `threshold` distinct attestors among its
-counted members have neither their evidence's nor their attestation's
-`expiresAt` behind the consumer's clock.
 
 ### 10.7 Replay, rotation and revocation
 
@@ -1478,8 +1458,8 @@ counted members have neither their evidence's nor their attestation's
   never touches the new one. Nor does an evaluation for another wallet touch
   the subject's grant: anyone holding the bearer id can announce it under
   another wallet, which is refused at step 24 and suspends only that wallet's
-  grant on it, if one exists. A quorum grant is keyed and re-evaluated as
-  §10.6 Quorum grants states.
+  grant on it, if one exists. A consumer holds no grant on a quorum result
+  (§10.9 Quorum results are not held).
   Each evaluation that accepts (the one that made the grant, and each
   re-evaluation that accepts) records the grant's **`recheckBy`**: the
   consumer's clock then plus the smaller of the `revocationCheckSeconds` of
@@ -1622,10 +1602,9 @@ outcome (accepted, the §10.5 refusal, or `unavailable` with its code,
 writes, what it does to the grant held on the evidence and when that grant's
 next re-evaluation is due, and each `quorumCases` result (`attestors`,
 `count`, `satisfied` = `count >= threshold`, counted as §10.6 states,
-`unavailable` with its code when the quorum's block pair is unusable, what
-each member's evaluation writes, and what it does to a grant made on the
-quorum and when that grant's next re-evaluation is due, §10.6 Quorum
-grants). Both case types encode an outcome
+`unavailable` with its code when the quorum's block pair is unusable, and
+what each member's evaluation writes; a quorum case carries no held grant,
+§10.9 Quorum results are not held). Both case types encode an outcome
 that is not unavailable the same way: `expected` has no `unavailable`
 member. Every step is pinned on each kind of unusable pair, invalid and
 stale: a case per step that reads no block refusing there as usual, and a
@@ -1656,9 +1635,7 @@ block included, or unavailable); `expected.recheckBy` is when the grant's
 next re-evaluation is due afterwards (`context.now` plus the smaller of the
 discovery document's `revocationCheckSeconds` and
 `context.maxRecheckSeconds` when kept, whatever the store held, else
-`null`). A quorum case's `expected.heldGrant` and `expected.recheckBy` say
-the same of a grant made on a satisfied quorum of its members (§10.6 Quorum
-grants). A case's `follows` names
+`null`). A case's `follows` names
 an earlier case: its store (`seenDiscovery`, `seenEvidence`, `seenRevoked`
 and `heldGrants`) is exactly the earlier case's store plus what that case
 wrote, keyed as §10.7 keys each record, and the grant it re-evaluated as it
@@ -1720,7 +1697,7 @@ the evaluation never touches; `context.maxRecheckSeconds` is the consumer's
 deployment maximum on the re-evaluation interval. A quorum case's `context`
 carries one consumer state for every member, its one `latest` (`registry` and
 `validConfigs` only: each member's attestation reads the same at both
-blocks), `blocks` and `maxRecheckSeconds`, its `requirement` the
+blocks) and `blocks`, its `requirement` the
 `claimType`, `proofType` and `statement`, and each member adds its own
 fetches, announced id and proof: no field has a default.
 `limits` carries the constants above. Every address, root and signer hash is
@@ -1733,8 +1710,8 @@ status); the store's durability, sharing, atomicity, retention and
 read-your-writes, and the commit order of a quorum's writes; when a held
 grant is re-evaluated and whether it is exercised at a given instant (the
 schedule, its jitter and backoff and the backoff's cap, the re-evaluation a
-lowered maximum calls for, the comparison against `recheckBy` and a quorum
-grant's expiry: a case is one re-evaluation at its `now`) and the revocation
+lowered maximum calls for and the comparison against `recheckBy`: a case is
+one re-evaluation at its `now`) and the revocation
 bound (the vectors give only the outcome); the instants at which a pair's
 age is checked (after a quorum's fetches, again before a commit: a case has
 one `now`); how a tag is resolved; an unreadable Oracle
@@ -1797,6 +1774,14 @@ configuration (a smaller deployment maximum, its own nodes) instead.
   Block pair), so a grant made through it rests on reads that can still be
   reorganized. If the proof is reorganized away, the next re-evaluation
   meets `AttestationNotFound` and suspends the grant.
+- **Quorum results are not held.** §10.7 Held grants re-evaluates a grant
+  resting on one evidence; this version defines no re-evaluation of a grant
+  resting on a quorum (which members, whose `revocationCheckSeconds`, what
+  one refusing or revoked member does to it). So in protocol version `1`
+  (SPEC `0.9.0`) a consumer MUST NOT hold a grant on a quorum result: it
+  evaluates the quorum (§10.6) afresh each time it needs a decision, and
+  what it decides then lasts only for that decision. The vectors carry no
+  held grant on a quorum case. A later version may define quorum grants.
 
 ---
 

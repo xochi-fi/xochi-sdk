@@ -4538,7 +4538,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("gateway", "gateway-persona"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["1"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["1"], count: 1, satisfied: false },
   },
   {
     name: "native-and-gateway-two-trust-domains",
@@ -4567,7 +4567,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("gateway", "gateway-sumsub"), member("alias", "alias-sumsub")],
-    expected: { attestors: ["1"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["1"], count: 1, satisfied: false },
   },
   {
     name: "refused-member-not-counted",
@@ -4575,7 +4575,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub-expired")],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "impostor-not-counted",
@@ -4583,7 +4583,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("impostor", "impostor-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "claim-types-not-pooled",
@@ -4591,7 +4591,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-human-tech")],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "multi-signed-two-trust-domains",
@@ -4611,7 +4611,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_MULTI_SIGNED,
     members: [member("native", "native-kyc-multi"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "attestors-sorted-numerically",
@@ -4633,7 +4633,7 @@ const quorumCases: QuorumInput[] = [
     },
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "proof-mismatched-member-not-counted",
@@ -4657,7 +4657,7 @@ const quorumCases: QuorumInput[] = [
         attestationRevoked: true,
       }),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "statement-mismatched-member-not-counted",
@@ -4700,7 +4700,7 @@ const quorumCases: QuorumInput[] = [
       member("gateway-key-revoked-future", "gateway-persona"),
       member("gateway", "gateway-sumsub"),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "evidence-revocation-shared-across-members",
@@ -4713,7 +4713,7 @@ const quorumCases: QuorumInput[] = [
       member("gateway", "gateway-sumsub", undefined, 410),
       member("gateway", "gateway-sumsub"),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "key-revocation-not-shared-across-attestors-in-quorum",
@@ -4738,7 +4738,7 @@ const quorumCases: QuorumInput[] = [
       member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
       member("gateway-revokes-foreign-key", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
+    expected: { attestors: ["7"], count: 1, satisfied: false },
   },
   {
     name: "latest-block-denial-in-quorum",
@@ -4776,13 +4776,7 @@ const quorumCases: QuorumInput[] = [
     },
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub", undefined, 410)],
-    expected: {
-      attestors: [],
-      count: 0,
-      satisfied: false,
-      unavailable: "blocks_stale",
-      heldGrant: "ended",
-    },
+    expected: { attestors: [], count: 0, satisfied: false, unavailable: "blocks_stale" },
   },
   {
     name: "quorum-block-pair-invalid",
@@ -5305,14 +5299,10 @@ function finalize({ context, expected, ...c }: CaseInput) {
 
 // A quorum case spelled out like an evaluation case: its one latest-block reads (null: the
 // same as finalized; registry and configs only, each member's attestation reading the same at
-// both blocks), its one block pair, the consumer's deployment maximum (MAX_RECHECK_SECONDS
-// unless stated), and, only when that pair is unusable, why the quorum is unavailable.
-// expected.records is derived: what each member's evaluation writes. expected.heldGrant is what
-// the evaluation does to a grant made on a satisfied quorum of these members if it is that
-// grant's re-evaluation (SPEC.md section 10.6, Quorum grants): kept when satisfied, due at now
-// plus the smaller of the counted members' smallest revocationCheckSeconds and the maximum;
-// ended when a case says so (fewer than threshold distinct attestors left among members whose
-// own evaluation does not end a held grant); suspended otherwise.
+// both blocks), its one block pair, and, only when that pair is unusable, why the quorum is
+// unavailable. expected.records is derived: what each member's evaluation writes. A quorum
+// case carries no held grant: a consumer holds no grant on a quorum result in protocol 0.9.0
+// (SPEC.md section 10.9, Quorum results are not held).
 type QuorumInput = {
   name: string;
   description: string;
@@ -5320,17 +5310,10 @@ type QuorumInput = {
   context: Consumer & {
     latest?: Partial<Omit<LatestReads, "attestationRevoked">>;
     blocks?: Blocks;
-    maxRecheckSeconds?: number;
   };
   requirement: { claimType: string; proofType: number; statement: Statement };
   members: QuorumMember[];
-  expected: {
-    attestors: string[];
-    count: number;
-    satisfied: boolean;
-    unavailable?: Unavailable;
-    heldGrant?: "ended";
-  };
+  expected: { attestors: string[]; count: number; satisfied: boolean; unavailable?: Unavailable };
 };
 // What one quorum member's evaluation against the snapshot writes (SPEC.md section 10.6), on any
 // pair: null for a member for another claim or proof type, which is not evaluated. A member
@@ -5363,29 +5346,10 @@ function memberRecords(
   return recordsFor(m, { ...consumer, ...m }, disc, ev, passedStep9);
 }
 function finalizeQuorum({ context, expected, ...c }: QuorumInput) {
-  const { latest, blocks, maxRecheckSeconds = MAX_RECHECK_SECONDS, ...consumer } = context;
+  const { latest, blocks, ...consumer } = context;
   const pair = blocks ?? blocksOn(consumer.chainId, consumer.now);
   if ((expected.unavailable ?? null) !== pairCheck(pair, consumer.chainId, consumer.now))
     throw new Error(`${c.name}: expected.unavailable contradicts its pair`);
-  const { heldGrant: ends, ...result } = expected;
-  if (ends && result.satisfied) throw new Error(`${c.name}: a satisfied quorum keeps its grant`);
-  // The members the quorum counts: evaluated (the requirement's claim and proof type), both
-  // fetches 200, and attesting for a counted attestor.
-  const counted = c.members.filter((m) => {
-    const ev = evidence[m.evidence]!;
-    return (
-      ev.claimType === c.requirement.claimType &&
-      ev.artifact.proofType === c.requirement.proofType &&
-      m.discoveryFetch.status === 200 &&
-      m.evidenceFetch.status === 200 &&
-      result.attestors.includes(ev.deployment.attestorProviderId)
-    );
-  });
-  const interval = Math.min(
-    maxRecheckSeconds,
-    ...counted.map((m) => discovery[m.discovery]!.revocationCheckSeconds),
-  );
-  const kept = result.satisfied && result.unavailable === undefined;
   return {
     ...c,
     context: {
@@ -5398,13 +5362,10 @@ function finalizeQuorum({ context, expected, ...c }: QuorumInput) {
               validConfigs: latest.validConfigs ?? consumer.validConfigs,
             },
       blocks: pair,
-      maxRecheckSeconds,
     },
     expected: {
-      ...result,
+      ...expected,
       records: c.members.map((m) => memberRecords(m, consumer, c.requirement)),
-      heldGrant: kept ? "kept" : (ends ?? "suspended"),
-      recheckBy: kept ? consumer.now + interval : null,
     },
   };
 }
@@ -5736,10 +5697,6 @@ const HELD_GRANT =
   "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
 const HELD_RECHECK_BY =
   "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.";
-const QUORUM_HELD_GRANT =
-  "What happens to a grant made on a satisfied quorum of these members when this evaluation is its re-evaluation (SPEC.md section 10.6, Quorum grants): kept when the quorum is satisfied; ended when fewer than threshold distinct attestors (each member's allowlisted attestor) remain among the evaluated members whose own evaluation, against the snapshot plus the revocations the members record, does not end a held grant (section 10.7, Held grants); suspended otherwise, an unusable pair included.";
-const QUORUM_RECHECK_BY =
-  "When the quorum grant's next re-evaluation is due after this evaluation: context.now plus the smaller of the smallest revocationCheckSeconds among the discovery documents of the members the quorum counts and context.maxRecheckSeconds when it is kept; null otherwise.";
 const QUORUM_RECORDS = d(
   "What each member's evaluation against the snapshot writes, in member order (SPEC.md section 10.6), as an evaluation case's expected.records; null for a member for another claim or proof type, which is not evaluated. On an unusable pair each member still runs the steps that read no block and writes what they write.",
   { type: "array", items: { oneOf: [{ type: "null" }, RECORDS] } },
@@ -5849,7 +5806,6 @@ const vectorsSchema = {
           ...CONSUMER_FIELDS,
           latest: QUORUM_LATEST,
           blocks: BLOCKS,
-          maxRecheckSeconds: MAX_RECHECK,
         }),
         requirement: d(
           "The multi-provider requirement (SPEC.md section 10.6): one claimType, the proof type it must feed, and the statement every member's proof must prove.",
@@ -5868,18 +5824,8 @@ const vectorsSchema = {
                 items: ATTESTOR_PROVIDER_ID,
               }),
               count: { type: "integer", minimum: 0 },
-              satisfied: { const: true },
+              satisfied: { type: "boolean" },
               records: QUORUM_RECORDS,
-              heldGrant: d(QUORUM_HELD_GRANT, { const: "kept" }),
-              recheckBy: d(QUORUM_RECHECK_BY, UNIX),
-            }),
-            obj({
-              attestors: { type: "array", items: ATTESTOR_PROVIDER_ID },
-              count: { type: "integer", minimum: 0 },
-              satisfied: { const: false },
-              records: QUORUM_RECORDS,
-              heldGrant: d(QUORUM_HELD_GRANT, { enum: ["suspended", "ended"] }),
-              recheckBy: d(QUORUM_RECHECK_BY, { type: "null" }),
             }),
             obj({
               attestors: { type: "array", maxItems: 0 },
@@ -5890,8 +5836,6 @@ const vectorsSchema = {
                 { enum: UNAVAILABLE },
               ),
               records: QUORUM_RECORDS,
-              heldGrant: d(QUORUM_HELD_GRANT, { enum: ["suspended", "ended"] }),
-              recheckBy: d(QUORUM_RECHECK_BY, { type: "null" }),
             }),
           ],
         },

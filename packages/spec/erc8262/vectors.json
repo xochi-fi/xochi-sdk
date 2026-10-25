@@ -50009,8 +50009,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -50055,9 +50054,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -50210,8 +50207,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -50252,9 +50248,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "kept",
-        "recheckBy": 1793492100
+        ]
       }
     },
     {
@@ -50438,8 +50432,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -50498,9 +50491,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "kept",
-        "recheckBy": 1793492100
+        ]
       }
     },
     {
@@ -50653,8 +50644,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -50694,9 +50684,7 @@
               "evidenceId": "ev_alias_sumsub_w100000000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -50849,8 +50837,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -50890,9 +50877,7 @@
               "evidenceId": "ev_gw_sumsub_expired_w1000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -51045,8 +51030,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -51073,9 +51057,7 @@
             "revocation": null,
             "evidence": null
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -51228,8 +51210,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -51252,9 +51233,7 @@
             }
           },
           null
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -51431,8 +51410,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -51473,9 +51451,7 @@
               "evidenceId": "ev_gw_sumsub_multi_w100000"
             }
           }
-        ],
-        "heldGrant": "kept",
-        "recheckBy": 1793492100
+        ]
       }
     },
     {
@@ -51644,8 +51620,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -51668,9 +51643,7 @@
             }
           },
           null
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -51823,8 +51796,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -51860,9 +51832,7 @@
               "evidenceId": "ev_native_kyc_w10000000000"
             }
           }
-        ],
-        "heldGrant": "kept",
-        "recheckBy": 1793493000
+        ]
       }
     },
     {
@@ -52020,8 +51990,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -52058,9 +52027,7 @@
             "revocation": null,
             "evidence": null
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -52213,8 +52180,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -52254,9 +52220,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -52409,8 +52373,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -52450,9 +52413,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -52629,8 +52590,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -52670,9 +52630,7 @@
               "evidenceId": "ev_gw_sumsub_multi_w100000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -52841,8 +52799,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [],
@@ -52880,9 +52837,7 @@
               "evidenceId": "ev_gw_sumsub_multi_w100000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -53066,8 +53021,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -53129,9 +53083,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -53315,8 +53267,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -53374,9 +53325,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -53553,8 +53502,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -53599,9 +53547,7 @@
               "evidenceId": "ev_gw_sumsub_multi_w100000"
             }
           }
-        ],
-        "heldGrant": "kept",
-        "recheckBy": 1793492100
+        ]
       }
     },
     {
@@ -53778,8 +53724,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -53823,9 +53768,7 @@
               "evidenceId": "ev_gw_sumsub_multi_w100000"
             }
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -54019,8 +53962,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -54060,9 +54002,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -54255,8 +54195,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [
@@ -54296,9 +54235,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -54451,8 +54388,7 @@
             "number": 30000450,
             "timestamp": 1793491079
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [],
@@ -54491,9 +54427,7 @@
             },
             "evidence": null
           }
-        ],
-        "heldGrant": "ended",
-        "recheckBy": null
+        ]
       }
     },
     {
@@ -54646,8 +54580,7 @@
             "number": 30000450,
             "timestamp": 1793491198
           }
-        },
-        "maxRecheckSeconds": 1800
+        }
       },
       "expected": {
         "attestors": [],
@@ -54686,9 +54619,7 @@
               "evidenceId": "ev_gw_sumsub_w100000000000"
             }
           }
-        ],
-        "heldGrant": "suspended",
-        "recheckBy": null
+        ]
       }
     }
   ]
