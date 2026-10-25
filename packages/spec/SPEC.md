@@ -812,32 +812,40 @@ the intent to its Aztec transaction for whoever holds that key.
 `[PROPOSED]` shielded release, so before shielded is offered under it these
 fields leave that read or become owner-scoped there, in lockstep with
 Riddler. The xochi Worker's intent read (`GET /api/intent/:id` and its
-`/status`) carries the same link. For a stealth or shielded intent it
-serves a caller that does not prove ownership a status-only view
-(`legs_withheld: true`, xochi#563): on `/api/intent/:id` only `id`,
-`status`, `from_chain_id`, `to_chain_id`, `settlement_type` and
-`settlement_confirmed`; on `/status` only `intent_id`, `status`, `terminal`,
-the two chain ids, `settlement_type` and `settlement_confirmed`. A bearer
-read token (`@xochi/client`'s `X-Xochi-Read-Token`), which whoever holds it
-can present, reads the full record. Before shielded is offered, a
-read-token read of a shielded intent gets that status-only view and
-nothing more, in lockstep with the Worker: every other field (the tokens
-and amounts, `quote_id`, `tier`, `fee_rate`, the Aztec note hash, every tx
-hash with its chain id, `created_at` and `updated_at`, and any error,
-substatus or refund text, under whatever names the Worker serves them)
-goes only to a session for the intent's wallet. The view is an allowlist,
-so a field the Worker adds later stays owner-only until it is added
-deliberately. A list of withheld fields would not hold: the origin
-`tx_hash` is a public transaction whose block dates the move and whose
-transfer gives the amount, which `fee_rate` and `tier` map to `from_amount`
-through the published fee schedule (§4); a note hash and a nullifier are
-public effects in the Aztec transaction's block; a timestamp narrows that
-block as a block number does; and a `transfer_to_private` spends a public
+`/status`) carries the same link and more. As served today (xochi `main`)
+it checks no ownership and takes no read token: whoever holds the intent
+id reads the full record (the tokens and amounts, `quote_id`, `tier`,
+`fee_rate`, the Aztec note hash, every tx hash with its chain id,
+`created_at`, `updated_at` and any error), for a stealth intent as for any
+other, so until xochi#565 lands an intent id is a bearer credential for
+all of it. xochi#565 (open, not merged; xochi#563) adds a status-only view
+(`legs_withheld: true`) for a caller that does not prove ownership of a
+stealth or shielded intent: on `/api/intent/:id` only `id`, `status`,
+`from_chain_id`, `to_chain_id`, `settlement_type` and
+`settlement_confirmed`; on `/status` only `intent_id`, `status`,
+`terminal`, the two chain ids, `settlement_type` and
+`settlement_confirmed`. It also adds a bearer read token (`@xochi/client`'s
+`X-Xochi-Read-Token`), which whoever holds it can present and which reads
+the full record. Before shielded is offered, a read-token read of a
+shielded intent MUST get that status-only view and nothing more, in
+lockstep with the Worker (xochi#565 as drafted gives a token holder the
+full record for a shielded intent too): every other field (the tokens and
+amounts, `quote_id`, `tier`, `fee_rate`, the Aztec note hash, every tx hash
+with its chain id, `created_at` and `updated_at`, and any error, substatus
+or refund text, under whatever names the Worker serves them) goes only to
+a session for the intent's wallet. The view is an allowlist, so a field
+the Worker adds later stays owner-only until it is added deliberately. A
+list of withheld fields would not hold: the origin `tx_hash` is a public
+transaction whose block dates the move and whose transfer gives the
+amount, which `fee_rate` and `tier` map to `from_amount` through the
+published fee schedule (§4); a note hash and a nullifier are public
+effects in the Aztec transaction's block; a timestamp narrows that block
+as a block number does; and a `transfer_to_private` spends a public
 balance, so its amount is public and, with a time, narrows the candidates
-further. Residual: the status-only view is readable by intent id alone, and
-polling it dates each lifecycle move, the move to `completed` among them,
-to within the poll interval; closing that needs an owner-only status read,
-which the Worker does not serve.
+further. Residual, once xochi#565 lands: the status-only view is readable
+by intent id alone, and polling it dates each lifecycle move, the move to
+`completed` among them, to within the poll interval; closing that needs an
+owner-only status read, which the Worker does not serve.
 
 `nullifierHash` is misleading: it is the first protocol nullifier of the
 transaction, and a `transfer_to_private` spends a public balance and nullifies no

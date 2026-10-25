@@ -318,7 +318,8 @@ node cannot report, or any mismatch, is a node error (unproven), never a
 fallback to `chainId`. A rollup redeploy is a new identity: a new corridor
 approval and a new registry partition.
 
-The note fields are the pinned token's note preimage and nothing more. At
+**Note fields (normative).** The note fields are the pinned token's note
+preimage and nothing more. At
 aztec-packages v5.1.0 the Token's balance note is `UintNote { value: u128 }`.
 Its hash is two Poseidon2 rounds: a partial commitment
 `H_sep([owner, randomness], PARTIAL_NOTE_COMMITMENT)`, completed as
@@ -429,16 +430,17 @@ award, and the protocol's nullifier uniqueness admits one tagged tx per
 order on that address. A note from an unrelated transfer, a third party's
 payment, or a payment to a shared or custodial recipient (an exchange
 deposit address) cannot evidence this order. The tag puts no origin value
-on Aztec (C1): `fillSalt` is keyed by the venue. Residual: the extra
+on Aztec (§9.3 C1): `fillSalt` is keyed by the venue. Residual: the extra
 nullifier makes a fill tx distinguishable by shape from a plain `transfer`,
 which narrows the anonymity set (§9.6); a leaked `fillSalt` lets its holder
 tag a tx for the order (the payee is still the authenticated awardee) or burn
 the tag first (Burned tag, below); `FillTag` is net-new and unbuilt. The XSP
 path has no `fillSalt`, so it MUST NOT carry tier 1s at all until 3.8a
-adopts an equivalent Attestor-issued per-obligation tag input in lockstep: no
-shielded obligation is recorded `Open`, so no XSP disclosure is ever judged,
-refused for a tag it could not carry, or slashed on (§6). Every XSP rule in
-this subsection describes that path once the tag lands.
+adopts an equivalent Attestor-issued per-obligation tag input in lockstep
+and Shielded admission (below) admits it: no shielded obligation is
+recorded `Open`, so no XSP disclosure is ever judged, refused for a tag it
+could not carry, or slashed on (§6). Every XSP rule in this subsection
+describes that path once it is admitted.
 
 A node error and an `unknown` result are **unproven**, not "not filled": they
 leave the disclosure unclassified. Only the venue's own Aztec or L1 node, its
@@ -519,8 +521,8 @@ tx but the `txHash` of a disclosure for the order that the venue has
 classed **verified** (above). That one is the awardee's fill, never a
 burn; every other tagged tx is one, the awardee's own included (a tagged
 `transfer` it disclosed and the venue refused on content, say). Only a
-verified class excludes a tx: a verified disclosure received by the grace
-end fails §6's condition (1) on its own, and against a slash on any other
+verified class excludes a tx: a verified disclosure, whenever received,
+fails §6's condition (1) on its own, and against a slash on any other
 order the awardee's burn proof (below) counts every tagged tx, so no venue
 record can turn a burn into slash grounds. A tag first emitted later is no
 burn: it cannot have stopped a fill inside the window. The check completes
@@ -554,12 +556,12 @@ nobody's provable fault, and any sanction on it is one a venue-side holder
 could cause, which §6.1 rules out. A `tag_burned` order's awardee can no
 longer land a tagged `transfer`, and the user's path is the
 permissionless `refund` at `refundableAt` (§3), with no other FillAuth
-(MUST NOT, below), with one exception: a late `:winner` (MUST NOT, below)
-whose disclosure arrives after the check finds its own fill as the burn.
-Once that disclosure is verified with the burning tx as its `txHash`, the
-order may release from `open` (§6), since no slash can follow a
-`tag_burned` record, and the verification records the burn's cause
-(Shielded halt, below). Against a slash proposed on a `tag_unburned`
+(MUST NOT, below). The exception is a late `:winner` (MUST NOT, below)
+whose disclosure arrives after the check found its own fill as the burn:
+once that disclosure is verified with the burning tx as its `txHash`, the
+order releases from `open` like any verified disclosure (§6), and that
+verification records the burn's cause (Shielded halt, below, lift (i)).
+Against a slash proposed on a `tag_unburned`
 record the awardee's **burn proof** is dispute evidence (§6) that voids
 the slash: its `fillSalt`, and a tx and block in whose effects the siloed
 tag recomputed from that `fillSalt` is a nullifier, the block with a
@@ -576,34 +578,89 @@ burning its own tag, with a tagged `transfer` the venue refuses on content
 (a 1-wei amount, a wrong payee) or one it never discloses. Its user waits
 the full `claimWindow` with no slash payment, as §6's Residual for an
 abandoned shielded `:winner`. Every burn puts the venue in shielded halt
-(below), so such an awardee stops all shielded issuance, its own
-included, until the operator records the cause, and the awards it already
+(below), so such an awardee stops all shielded issuance, quotes and opens,
+its own included, until a cause is recorded, and the awards it already
 holds are bounded by each corridor's in-flight notional cap (Exposure
 stops, below). The awardee's own undisclosed fill (a preimage not
-journaled) burns the tag the same way; its user keeps the note and
-refunds. A sanction for a burn that no venue-side holder can cause is open
-(Appendix C, C1), and until it is settled configuration MUST refuse to
-admit a solver other than the venue's own to shielded awards: while the
-venue's own solver is the only awardee, every burn is the venue's own
-event, and no counterparty can use this residual.
+journaled, or a journal lost) burns the tag the same way; its user keeps
+the note and refunds. A sanction for a burn that no venue-side holder can
+cause is open (Appendix C, Q1), so no solver other than the venue's own
+holds a shielded award (Shielded admission, below): while the venue's own
+solver is the only awardee under `RiddlerEscrow`, every burn is the
+venue's own event, and no counterparty can use this residual.
 
-**Shielded halt (normative).** The venue is in **shielded halt** from each
-`tag_burned` record, and from its own record that a venue-side path (a
-`venueKey` leak, an attester or other venue service holding derived
-`fillSalt` values) held or may have held the `fillSalt` of any order, until
-the operator has recorded a cause for every such event: the awardee's own
-tx, with the evidence for it, or a venue-side path, recorded only once that
-path no longer reaches new orders (for the key, a rotation that retires
-every version it held, §9.4). While in halt, no shielded `:winner`
-FillAuth is issued on any corridor, to any awardee, the venue's own solver
-included, so a framing burn never moves shielded flow to the venue's
-solver; the halt is checked in the compare-and-set that records the issue
-in the shared order store. Orders already issued stay as they are: their
-burn checks run, and a burned one refunds. Residual: the lift rests on the
-operator's record, which no counterparty can check, so a wrong cause
-resumes issuance with a path still open; its next burn halts again, at the
-cost of liveness and that order's refund wait, never a slash (Appendix C,
-C2).
+**Shielded halt (normative).** The **halt record** is one record in the
+shared order store: the set of open **halt events**. An event is opened by
+each `tag_burned` record, in the same atomic write that stores that burn
+record; by the venue's own record that a venue-side path (a `venueKey`
+leak, an attester or other venue service holding derived `fillSalt`
+values) held or may have held the `fillSalt` of any order; and, before the
+order's burn record exists, by the venue's own solver's record, written
+when it happens, that its tagged `transfer` for an order was refused
+because the order's tag is already a nullifier (that order's later
+`tag_burned` record joins this event, it does not open another). The venue
+is in **shielded halt** while the halt record holds an open event. An event
+closes only when a cause is recorded for it, in one of two ways and no
+other:
+
+- (i) the verification of a late `:winner` disclosure whose `txHash` is the
+  burning tx (Burned tag, above) records the cause "the awardee's own tx",
+  with that disclosure as its evidence, and needs no operator record;
+- (ii) the operator records a cause: the awardee's own tx, with evidence that
+  ties it to the awardee's account (for the venue's own solver, whose keys
+  the venue holds, the burning tx's effects carrying the nullifier of a
+  note that solver's account held, shown from its own PXE), or a venue-side
+  path, recorded only once that path no longer reaches new orders (for the
+  key, a rotation that retires every version it held, §9.4).
+
+While in halt, the venue issues no shielded FillAuth on any corridor, to
+any awardee, the venue's own solver included, so a framing burn never
+moves shielded flow to the venue's solver, and it quotes no shielded order
+and signs no `OpenAuth` for one (Exposure stops, below). Every write that
+opens an event writes the halt record, and the compare-and-set that
+records an issue in
+the shared order store is conditioned on that record holding no open
+event, so an issue and a concurrent event serialize on the one record,
+never on a predicate over every order's records. Orders already issued
+stay as they are: their burn checks run, and a burned one refunds.
+
+Residuals: lift (ii) rests on the operator's record, which no
+counterparty can check, so a wrong cause resumes issuance with a path
+still open; its next burn halts again, at the cost of liveness and that
+order's refund wait, never a slash (Appendix C, Q2). One undisclosed fill
+of the venue's own solver halts every corridor: if its PXE still holds the
+spent note, lift (ii)'s evidence ends the halt with no rotation; if it lost
+that state too, nothing ties the tx to it and the only lift is a rotation,
+so issuance stays stopped for as long as the rotation takes. A burn that
+no awardee tries to fill against opens its event only at its burn record,
+after the grace end and `T_final` (Burned tag, above); until then issuance
+continues, bounded per corridor by the in-flight notional cap.
+
+**Shielded admission (normative).** This is the one statement of when a
+solver other than the venue's own may hold a shielded award; any other
+statement of it (`SOLVER-RFC.md`'s included) points here. Until every
+condition below holds,
+configuration MUST refuse to admit any other solver to shielded awards:
+
+1. a sanction for a burned tag that no venue-side `fillSalt` holder can
+   cause is settled (Appendix C, Q1);
+2. a per-awardee cap on open shielded awards is settled (Appendix C, Q3);
+3. a decline before acceptance ends the order early in the venue's books
+   (`refund` itself cannot move earlier), or shielded admission requires a
+   minimum honored record: such a decline costs the awardee nothing (no
+   FillAcceptance, so no slash) while its taker waits the whole
+   `claimWindow` (§6 Residual);
+4. the venue gives the awardee a record to check a shielded award against
+   before it signs a FillAcceptance, since no announcement or `SolverBid`
+   backs a shielded award: a shielded leg is never announced, and its
+   award goes to the venue's own solver with no sealed round.
+
+The XSP path carries tier 1s only once 3.8a has adopted a per-obligation
+tag input (Order binding, above) and condition 1 holds: there the
+independent Attestor slashes Riddler like any solver (§6, D9), so Riddler
+is itself a counterparty that could trade that slash for a burn of its own
+tag. Each condition is a reviewed protocol change of its own; meeting them
+admits nobody by itself.
 
 **Registry.** Only after every other check of the release predicate has
 passed (network binding, steps 1–6, the fill tag, the payee and the
@@ -684,9 +741,10 @@ never appear in origin calldata, events or escrow state (C2).
   order's owner, the wallet that signed the `XochiIntent` (`SPEC.md` §2.1),
   by a SIWE (EIP-4361) session for that wallet or by that wallet's
   `RecipientAction` signature (below). A bearer intent read token (such as
-  the `X-Xochi-Read-Token` `@xochi/client` sends) never qualifies: whoever
-  holds it, an embedding host included, can present it, so it is read-only
-  and never authorizes a hold, an acknowledgement or a withdrawal.
+  the `X-Xochi-Read-Token` xochi#565 proposes, `SPEC.md` §5.1) never
+  qualifies: whoever holds it, an embedding host included, can present it,
+  so it is read-only and never authorizes a hold, an acknowledgement or a
+  withdrawal.
 - The recipient's **authenticated channel** is its **mailbox**: a per-`orderId`
   record that only the venue writes and that the venue serves only to a
   request holding the recipient capability. A **mailbox write** is complete
@@ -747,7 +805,7 @@ never appear in origin calldata, events or escrow state (C2).
   the current state is still usable at its `issuedAt` while the order stays
   in that state, so an acknowledge signed early for the expected delivery
   time can end the owner's hold right as delivery lands; binding it to the
-  mailbox write is open (Appendix C, C5). The recipient state records the
+  mailbox write is open (Appendix C, Q5). The recipient state records the
   owner's actions, not the hold: a hold lifted by the operator's record
   (b) or at `holdDeadline` (below) leaves the state `held`, from which the
   owner can still withdraw or acknowledge, and a `not_received` after
@@ -841,15 +899,24 @@ delivered note and also make the hold refund its principal: both records
 need nothing from the taker, and once they exist the hold cannot stop
 release; only a venue outage past its bound can (Residual, below).
 
-Exposure stops before a bound is spent. A disclosure's verification is
-**due** at `T_verify` after the later of its receipt and `fillDeadline +
-T_final`: by then a venue whose node is not lagging has classed it (above).
-The venue MUST NOT issue a shielded `:winner` FillAuth for a corridor while
-its registry is halted, while its Aztec node for the corridor is lagging
-(above), while a disclosure on it whose verification has been due for
-`T_hold` is neither refused on content nor backed by both venue records
-(Recipient, above), or, on every corridor, while the venue is in shielded
-halt (above).
+**Exposure stops (normative).** Exposure stops before a bound is spent. A
+disclosure's verification is **due** at `T_verify` after the later of its
+receipt and `fillDeadline + T_final`: by then a venue whose node is not
+lagging has classed it (above). The venue MUST NOT issue a shielded
+FillAuth (`:winner`, a shielded leg's only role, MUST NOT below) for a
+corridor while its registry is halted, while its Aztec node for the
+corridor is lagging (above), while a disclosure on it whose verification
+has been due for `T_hold` is neither refused on content nor backed by both
+venue records (Recipient, above), or, on every corridor, while the venue
+is in shielded halt (above). While any of these applies to a corridor (the
+halt, to every corridor), or the order would take the corridor past its
+in-flight notional cap (below), the venue MUST NOT quote a shielded order
+on it or sign an `OpenAuth` (§12) for one, checked where the quote is
+minted and again at signing, so no taker locks into a leg that cannot be
+issued. A shielded leg whose FillAuth a stop withholds gets no FillAuth of
+any other role, and its order refunds at `refundableAt` (MUST NOT, below).
+Residual: a stop that begins between an order's `OpenAuth` and its issue
+leaves that taker the full `claimWindow` wait.
 Since every payload and tx-shape failure is refused on content once the
 venue's node answers (above), only the venue's own node, identity-proof,
 layout-pin, key-version or registry failures leave a due disclosure so.
@@ -866,11 +933,20 @@ longer than its bound on an in-flight order (registry, venue nodes or
 operator) lets `refund` return the principal while the recipient keeps a
 delivered note. The solver bears that
 loss (Riddler, while it is the only shielded panel member), bounded by the
-corridor's **in-flight notional cap**: a configured ceiling on the summed
-`toAmount` of its shielded orders neither released nor refunded, recorded in
-the corridor configuration, past which the venue MUST NOT issue a shielded
-`:winner`. The "never refund an unknown" rule below binds the venue's own
-actions only.
+corridor's **in-flight notional cap**: a configured ceiling, recorded in
+the corridor configuration, on its **in-flight notional**, the summed
+`toAmount` of its shielded orders from each one's `OpenAuth` signing
+(§12 reserves inventory there) until it is released or refunded, or the
+origin chain shows at its finality that the `OpenAuth` expired with no
+lock. The in-flight notional is one record per corridor in the shared
+order store: the compare-and-set that records an `OpenAuth` signing adds
+the order's `toAmount` only if the sum stays at most the cap, the writes
+that record an order released or refunded, or its `OpenAuth` expired
+unopened, subtract it, and the compare-and-set that records an issue
+refuses an order that holds no share, so two API nodes cannot sign or
+issue past the cap together. On the XSP path, once it carries tier 1s,
+the obligation's `Open` record takes the `OpenAuth`'s place. The "never
+refund an unknown" rule below binds the venue's own actions only.
 
 **MUST NOT.**
 
@@ -881,17 +957,22 @@ actions only.
   unknown; an unresolved `transfer` stays held until reconciled against the
   venue's own node. The permissionless `refund` is bounded by the claim-window
   floor above, not by this rule.
-- MUST NOT, once a `:winner` FillAuth is issued for a shielded leg's
-  `fillId`, issue a FillAuth of any role but the original `:winner` for it
-  (no `:reserve`, no `:backstop`, no re-award). The winner's non-disclosure
-  is resolved by the refund path at `refundableAt` (§3; on the XSP path,
-  §13), never by a second `transfer`: any other FillAuth for a shielded leg
-  is a resend of an unknown outcome. A `:winner` that discloses after the
-  fill window end for a `transfer` included by it (step 6) is still verified
-  under this subsection, subject to release/slash exclusivity (§6); refusing
-  it does not undo the payout. `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil`
-  rule needs this exemption for `aztec_note_preimage` when that kind lands in
-  lockstep.
+- MUST NOT issue a FillAuth of any role but `:winner` for a shielded leg's
+  `fillId`, before or after a `:winner`: no `:reserve`, no `:backstop`, no
+  re-award, and no self-fill under another role. The payee is the `:winner`
+  solver (Release predicate, above), so no other role could release. When
+  the escrow node refuses the shielded `:winner` (§6.1, §6 Withdrawal) or a
+  stop withholds it (Exposure stops, above), no FillAuth is issued and the
+  order refunds through the permissionless `refund` at `refundableAt`, so
+  every stop binds every shielded fill, the venue's own solver included.
+  The winner's non-disclosure is resolved by the same refund path (§3; on
+  the XSP path, §13), never by a second `transfer`: any other FillAuth for
+  a shielded leg is a resend of an unknown outcome. A `:winner` that
+  discloses after the fill window end for a `transfer` included by it
+  (step 6) is still verified under this subsection, subject to
+  release/slash exclusivity (§6); refusing it does not undo the payout.
+  `SOLVER-RFC.md` §6's 409-after-`exclusiveUntil` rule needs this exemption
+  for `aztec_note_preimage` when that kind lands in lockstep.
 - MUST NOT downgrade a shielded leg to `public` or `stealth` settlement,
   silently or as a remedy.
 - MUST NOT advertise this tier as `verified`, nor as confidentiality tier 2
@@ -919,11 +1000,13 @@ consumer in this tree parses it.
   **Shielded slash predicate (the only statement).** For tier 1s a misfill
   is a disclosure refused on content, so one predicate covers both slashes.
   After the grace end (§5.1 Fill window), the attester signs a
-  `SlashAttestation` for `orderId` iff all three hold: (1) the awardee made
-  no `aztec_note_preimage` disclosure for `orderId` whose receipt (§5.1) the
-  venue clock records by the grace end, or §5.1 has refused on content
-  every such one (its classes, including its `holdDeadline` rule), each with
-  its complete refusal record (§5.1); (2) the venue has recorded
+  `SlashAttestation` for `orderId` iff all three hold: (1) the venue has
+  classed no `aztec_note_preimage` disclosure for `orderId` verified,
+  whenever it was received, and the awardee made no such disclosure whose
+  receipt (§5.1) the venue clock records by the grace end, or §5.1 has
+  refused on content every such one (its classes, including its
+  `holdDeadline` rule), each with its complete refusal record (§5.1); (2)
+  the venue has recorded
   `tag_unburned` on the order in a complete burn record: its burn check
   completed on its own node and found no burn at or before `fillDeadline`
   (Burned tag, §5.1). A missing record never permits a slash: a check that
@@ -933,8 +1016,8 @@ consumer in this tree parses it.
   that, never "no fill" and never "not verified". A junk disclosure
   therefore delays the slash to `holdDeadline` at the latest but cannot
   dodge it unless its tx burned the tag (§5.1 Burned tag, Residual), and a
-  disclosure received after the grace end never blocks it (it is dispute
-  evidence, below). On
+  disclosure received after the grace end blocks it only once verified
+  (otherwise it is dispute evidence, below). On
   the bond chain the proposal is also gated by `FillWindowOpen` (§6.1),
   which opens at the grace end because a shielded FillAuth's `deadline` is
   `fillDeadline` (§5.1).
@@ -944,10 +1027,11 @@ consumer in this tree parses it.
   `completeWithdrawal` pays it out after the deployed `unbondingPeriod`, less
   any slash already proposed (a proposal reserves funds still unbonding), so
   nothing on chain holds a withdrawal for an open shielded outcome. The venue
-  holds it instead: it MUST NOT issue a shielded `:winner` FillAuth to a
-  solver with any amount unbonding (`accounts(solver).unbonding > 0`), nor
-  one whose `refundableAt` (§3) plus `T_slash` is not inside
-  `unbondingPeriod` from the issue (the reserve fills instead, §6.1).
+  holds it instead: it MUST NOT issue a shielded FillAuth to a solver with
+  any amount unbonding (`accounts(solver).unbonding > 0`), nor one whose
+  `refundableAt` (§3) plus `T_slash` is not inside `unbondingPeriod` from
+  the issue; such a leg gets no FillAuth of any role and refunds (§5.1
+  MUST NOT).
   `T_slash` is the corridor's configured bound on landing a slash proposal
   on the bond chain at its finality, recorded with §5.1's other `T_*`
   bounds. A withdrawal requested after the award is then still unbonding
@@ -977,10 +1061,9 @@ consumer in this tree parses it.
   artifact that never landed before `refund` did (it can no longer pay).
   Every edge into `released` requires `refundLanded` unset, so once a
   refund has landed `slash_voided`'s only exit is `refunded`. A release
-  artifact is signed from `open` only for a disclosure received by the grace
-  end, or for a verified disclosure whose `txHash` is the burning tx of the
-  order's `tag_burned` record (§5.1 Burned tag; no slash can follow that
-  record), otherwise only from `slash_voided`; a slash is proposed only from
+  artifact is signed from `open` for any verified disclosure (§5.1),
+  whenever it was received, and otherwise only from `slash_voided`; a slash
+  is proposed only from
   `open`, or from `refunded` as above, under the slash predicate (above). A
   landed `refund` sets `refundLanded`, moves `open`, `slash_voided` and
   `released` to `refunded`, and never moves a slash: a proposed slash
@@ -993,11 +1076,15 @@ consumer in this tree parses it.
   by then still can until `refundableAt + T_slash`, so attester lag up to
   `T_slash` never lets a no-show escape, and the proposal still finds the
   funds the withdrawal rule (above) keeps unbonding. A disclosure received
-  after the grace end (§5.1's late `:winner`) whose fill the burn check
-  recorded as `tag_burned` releases from `open` as above once verified;
-  otherwise it is the solver's dispute evidence: the slash is proposed (the
-  predicate holds) and release follows its voiding, inside §5.1's
-  `T_dispute` term. Either way release comes by `holdDeadline`, else the
+  after the grace end (§5.1's late `:winner`) counts as one received in
+  time once verified, so disclosing later never gains the awardee
+  anything: verified before a slash is proposed, it fails condition (1)
+  and releases from `open`, whether the burn check found its fill as the
+  burn (`tag_burned`, §5.1 Burned tag) or excluded it as verified
+  (`tag_unburned`); verified only after a proposal (one on a wrong
+  `tag_unburned` record, say), it is the solver's dispute evidence and
+  release follows the slash's voiding, inside §5.1's `T_dispute` term.
+  Either way release comes by `holdDeadline`, else the
   order refunds. So at
   most one of a release artifact that can pay and an executed slash exists
   per `orderId`. The solver's dispute evidence is the venue's own §5.1
@@ -1010,16 +1097,17 @@ consumer in this tree parses it.
   While Riddler is the only shielded panel member, venue equals solver, and
   the bond and dispute machinery are inert under `RiddlerEscrow` +
   `SolverBond` (Riddler runs the attesters); under the Depository + Ledger
-  pair, once the XSP path carries tier 1s (§5.1 Order binding), the
+  pair, once the XSP path carries tier 1s (§5.1 Order binding, Shielded
+  admission), the
   independent Attestor's slash applies to Riddler like any solver (D9).
 - **Exclusivity window + backstop**: the venue's `FillAuth` (§9.4) names the
   auction winner as the only address `RiddlerFiller.fill` accepts until its
   deadline, the exclusivity end; after it, the venue's solver fills at the
   reserve under its own FillAuth and the defaulter is slashed (`SOLVER-RFC.md`
-  §2.1). Shielded legs are exempt from the backstop: once a `:winner` is
-  issued, no FillAuth of another role (§5.1 MUST NOT), so a shielded winner
-  that accepted and then did not fill resolves by slash plus `refund`,
-  never by a second `transfer`. A shielded winner that never sends a
+  §2.1). Shielded legs are exempt from the backstop and the reserve: a
+  shielded leg has no FillAuth role but `:winner` (§5.1 MUST NOT), so a
+  shielded winner that accepted and then did not fill resolves by slash
+  plus `refund`, never by a second `transfer`. A shielded winner that never sends a
   FillAcceptance faces neither: the attester has no acceptance to slash on
   (`no_fill_acceptance`, §6.1) and no backstop may fill, so the user's only
   path is the permissionless `refund` at `refundableAt`. Residual: that user
@@ -1046,11 +1134,13 @@ signatures, both by the solver's one key (bid signer = FillAuth `filler` =
    it must recover to `filler`, sign this `orderId`, and still stand
    (`now <= validUntilMs`). The escrow node computes the winner deadline itself
    from the bid's `minExclusiveMs` (never from the API node's `exclusiveUntil`)
-   and refuses `:winner` -- the reserve fills -- if it cannot grant it, or if
+   and refuses `:winner` -- the reserve fills, except on a shielded leg
+   (below) -- if it cannot grant it, or if
    granting it would cut into the backstop's budget (`maxDeadline −
    fillLatency − backstop margin`); on a shielded leg the deadline is
-   `fillDeadline` and only the `minExclusiveMs` check applies (§5.1 Fill
-   window). The winner's `amount` is the bid's `output`, never an
+   `fillDeadline`, only the `minExclusiveMs` check applies (§5.1 Fill
+   window), and a refused `:winner` leaves the leg with no FillAuth (§5.1
+   MUST NOT). The winner's `amount` is the bid's `output`, never an
    API-writable order field.
 2. **FillAcceptance** (`SOLVER-RFC.md` §5.3), signed only once the solver holds
    a FillAuth it has checked it can fill in time, and verified on-chain:
@@ -1805,13 +1895,14 @@ preimage registry (`note_already_bound`), recipient hold (`not_received`),
 hold deadline (`holdDeadline`), network identity (`networkIdentity`), network
 key, fill tag (`FillTag`), burn check and burned tag (`tag_burned`,
 `tag_unburned`, burn record, burn-check deadline, burn proof), shielded
-halt, `venueKey` version and rotation, layout pin, refusal record, fill
+halt (halt record, halt event), exposure stops, shielded admission,
+`venueKey` version and rotation, layout pin, refusal record, fill
 commitment (`fillCommitment`), outcome record (release/slash exclusivity,
 `refundLanded`), fill window end and grace end, recipient capability,
 mailbox (forwarding record), inclusion record, `RecipientAction` (recipient
-state, `fromState`), lagging node, health record, in-flight notional
-cap, `MAX_SLASH_DELAY` (latest slash proposal), `RESOLUTION_TIMEOUT`,
-shielded bounds (`T_final`,
+state, `fromState`), lagging node, health record, in-flight notional and
+in-flight notional cap, `MAX_SLASH_DELAY` (latest slash proposal),
+`RESOLUTION_TIMEOUT`, shielded bounds (`T_final`,
 `T_verify`, `T_hold`, `T_registry`, `T_dispute`, `T_arbiter`, `T_release`,
 `T_slash`).
 
@@ -1821,13 +1912,15 @@ Not normative, and not `[PROPOSED]`: nothing here is a rule. Rounds 7 to 9
 of the adversarial review of xochi-sdk#34 put the mechanisms below into
 §5.1, and each round's fix to them raised new findings, so they are
 withdrawn from §5.1 and kept as questions, each with the review findings
-(cited by ID) that make it hard. Until one is settled, §5.1's conservative
-rules stand: a burned tag is never slash grounds and sanctions nobody
-(Burned tag), every burn halts shielded issuance until the operator records
-its cause (Shielded halt), and no solver other than the venue's own is
-admitted to shielded awards while C1 is open.
+(cited by ID) that make it hard. They are numbered Q1–Q5; C1–C5 elsewhere
+in this RFC are §9.3's confidentiality invariants. Until one is settled,
+§5.1's conservative rules stand: a burned tag is never slash grounds and
+sanctions nobody (Burned tag), every burn halts shielded issuance, quotes
+and opens until a cause is recorded for it (Shielded halt), and no solver
+other than the venue's own holds a shielded award until every condition of
+Shielded admission holds, Q1 and Q3 among them.
 
-**C1. A sanction for a burned tag.** What an awardee bears when the tag of
+**Q1. A sanction for a burned tag.** What an awardee bears when the tag of
 its award is burned, so that burning costs more than the slash it avoids,
 without giving a venue-side `fillSalt` holder a way to sanction an innocent
 awardee. Withdrawn design: each `tag_burned` order opens a pending strike
@@ -1851,7 +1944,7 @@ awardee. Why it is hard:
   `FillAcceptance` (§6.1), so that a burn is provably the awardee's own.
   That changes the signed type and `conformance/fill-acceptance.json`.
 
-**C2. Venue-side exposure and the halt lift.** When shielded issuance may
+**Q2. Venue-side exposure and the halt lift.** When shielded issuance may
 resume after a burn or a venue-side `fillSalt` leak, and what record ends
 the halt. Withdrawn design: a **`fillSalt` exposure** record naming key
 versions or orders, with a cause the operator may record later, closed only
@@ -1875,21 +1968,27 @@ it is hard:
   pending strike on the panel (R10ASecurity-34-2); ordinary crashes before a
   preimage is journaled trip it (R10ASab-34-2).
 
-§5.1 now halts on every burn until the operator records a cause, and states
-that the lift rests on that record (Shielded halt, Residual).
+§5.1 now halts on every burn until a cause is recorded for it, by a
+verified late disclosure or the operator's record, and states that the
+operator's lift rests on that record (Shielded halt, Residuals). Without
+the trigger, one undisclosed fill of the venue's own solver halts every
+corridor (R11ASab-34-2): §5.1 names the evidence that lifts it with no
+rotation (the burning tx nullifying a note of that solver's account) and
+states the residual when that evidence is lost too. Whether a lift can
+rest on a record a counterparty can check is open.
 
-**C3. A per-awardee cap on open shielded awards.** Withdrawn design:
+**Q3. A per-awardee cap on open shielded awards.** Withdrawn design:
 `maxOpenShieldedAwards` per awardee across every corridor, an award open
 until it is released, its burn record or its burn-check deadline, and the
 removal bound `shieldedStrikeLimit − 1 + maxOpenShieldedAwards` attributed
-burns per window. Why it is hard: it exists to bound strike batches (C1),
+burns per window. Why it is hard: it exists to bound strike batches (Q1),
 and its open/close rule and bound were stated inconsistently in three
 successive rounds (R8ANewHire-34-1, R8ASab-8, R8ASecurity-34-4, R8ASab-10;
 R9ANewHire-34-1, R9ASecurity-34-3, R9ASab-34-2, R9ASab-34-4); its atomic
 write was not conditioned on what it read (R10ASab-34-3). §5.1 keeps the
 per-corridor in-flight notional cap (Exposure stops).
 
-**C4. Whether the awardee's own tagged tx is a burn.** Withdrawn design:
+**Q4. Whether the awardee's own tagged tx is a burn.** Withdrawn design:
 the burn check and the burn proof skip every `txHash` disclosed for the
 order, in any class, and any tx the awardee sent, judged from the
 disclosure receipts the venue produces; a burn proof later shown to be the
@@ -1904,7 +2003,7 @@ over (`orderId`, `txHash`), which adds a solver signature to the
 `aztec_note_preimage` payload. §5.1 now excludes only a verified
 disclosure's tx and states the residual (Burned tag).
 
-**C5. `RecipientAction` pre-emption.** A signature dated ahead and naming
+**Q5. `RecipientAction` pre-emption.** A signature dated ahead and naming
 the current recipient state is usable at its `issuedAt` while the order
 stays in that state, so an acknowledge signed early can end the owner's
 hold as delivery lands (R10ASecurity-34-5, R10ASab-34-5). Binding
