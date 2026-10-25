@@ -666,8 +666,13 @@ export interface IntentRecord {
   toChainId: ChainId;
   fromToken: string;
   toToken: string;
-  fromAmount: string;
-  toAmount: string;
+  /**
+   * Absent when the server did not serve it, never defaulted: a withheld or
+   * missing amount is not zero (SPEC.md §5.1). The same for `toAmount`,
+   * `createdAt` and `updatedAt`.
+   */
+  fromAmount?: string;
+  toAmount?: string;
   quoteId: string;
   tier: string;
   feeRate: number;
@@ -677,8 +682,8 @@ export interface IntentRecord {
   /** Public fill receipt (Riddler #632) + its chain, persisted at completion. */
   settlementTxHash?: string;
   settlementChainId?: ChainId;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
   error?: string;
   /** `NOT_EXECUTED_SUBSTATUS` on a `failed` the Worker wrote knowing nothing moved. */
   substatus?: string;
@@ -688,11 +693,12 @@ export interface IntentRecord {
 }
 
 /**
- * `GET /api/intent/:id` for a stealth or shielded intent read without the read
- * token or an owner session (xochi#563): the server's status-only view. Tokens,
+ * `GET /api/intent/:id` for a stealth intent read without the read token or an
+ * owner session, or a shielded intent read without an owner session, token or
+ * not (xochi#563, SPEC.md §5.1): the server's status-only view. Tokens,
  * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
- * so they are absent here rather than defaulted; read with the token, or a
- * wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
+ * so they are absent here rather than defaulted; read with the token (stealth),
+ * or a wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
  */
 export interface WithheldIntentRecord {
   legsWithheld: true;
@@ -778,8 +784,8 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     toChainId: w.to_chain_id as ChainId,
     fromToken: w.from_token ?? "",
     toToken: w.to_token ?? "",
-    fromAmount: w.from_amount ?? "0",
-    toAmount: w.to_amount ?? "0",
+    fromAmount: w.from_amount,
+    toAmount: w.to_amount,
     quoteId: w.quote_id ?? "",
     tier: w.tier ?? "",
     feeRate: w.fee_rate ?? 0,
@@ -788,8 +794,8 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     txHash: w.tx_hash,
     settlementTxHash: w.settlement_tx_hash ?? undefined,
     settlementChainId: w.settlement_chain_id ?? undefined,
-    createdAt: w.created_at ?? "",
-    updatedAt: w.updated_at ?? "",
+    createdAt: w.created_at,
+    updatedAt: w.updated_at,
     error: w.error,
     ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
   };

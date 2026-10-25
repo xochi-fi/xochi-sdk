@@ -573,9 +573,9 @@ export const ExecuteResponseSchema = z
       .describe(
         "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
           "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
-          "on-chain legs of a stealth intent. It never unlocks a shielded intent's Aztec " +
-          "identifiers, timestamps or amounts (owner-authenticated reads only, SPEC.md " +
-          "§5.1). Never put it in a URL.",
+          "on-chain legs of a stealth intent. It adds nothing for a shielded intent: that " +
+          "read is the status-only view (`legs_withheld`), and every other field is served " +
+          "to owner-authenticated reads only (SPEC.md §5.1). Never put it in a URL.",
       ),
   })
   .strict();

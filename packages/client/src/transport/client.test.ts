@@ -1025,6 +1025,34 @@ describe("intent records", () => {
     expect(await c.getIntent("xi_2")).toBeNull();
   });
 
+  it("leaves an amount or timestamp the server did not serve absent, never zero", async () => {
+    const { c } = client((call) =>
+      json({
+        id: "xi_1",
+        status: "completed",
+        ...(call === 2
+          ? {
+              from_amount: "1000000",
+              to_amount: "999000",
+              created_at: "2026-10-25T00:00:00Z",
+              updated_at: "2026-10-25T00:05:00Z",
+            }
+          : {}),
+      }),
+    );
+    const bare = await c.getIntent("xi_1");
+    if (!bare || bare.legsWithheld) throw new Error("expected a full record");
+    for (const key of ["fromAmount", "toAmount", "createdAt", "updatedAt"] as const) {
+      expect(bare[key], key).toBeUndefined();
+    }
+    expect(await c.getIntent("xi_1")).toMatchObject({
+      fromAmount: "1000000",
+      toAmount: "999000",
+      createdAt: "2026-10-25T00:00:00Z",
+      updatedAt: "2026-10-25T00:05:00Z",
+    });
+  });
+
   it("carries the not_executed marker on a full and a withheld record", async () => {
     const { c } = client((call) =>
       json({

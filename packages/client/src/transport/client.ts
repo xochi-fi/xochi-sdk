@@ -886,10 +886,9 @@ export type CallResult<T> =
  * as the `X-Xochi-Read-Token` header so a stealth intent reads with its
  * on-chain legs. Absent, the read is anonymous and those legs are omitted;
  * the server answers a wrong token exactly like an absent one. For a shielded
- * intent the token never unlocks the Aztec identifiers (note hash or
- * commitment, nullifier, tx hash, block) or any timestamp or amount (leg
- * timestamps, `createdAt`, `updatedAt`, `fromAmount`, `toAmount`): SPEC.md
- * §5.1 serves those to owner-authenticated reads only.
+ * intent the token adds nothing: the read is the status-only view
+ * (`legsWithheld`: no Aztec identifiers, tx hashes, tokens, amounts, fees or
+ * timestamps). SPEC.md §5.1 serves the rest to owner-authenticated reads only.
  */
 export interface IntentReadOptions {
   readToken?: string;
@@ -995,10 +994,10 @@ export interface XochiClient {
   /** Execute a signed intent. Single attempt: a failure is in doubt, resolve it by polling status. */
   execute(request: ExecuteRequest): Promise<ExecuteResponse>;
   /**
-   * One intent record, or null on a 404. A stealth or shielded intent read
-   * without its `readToken` (or an owner session) is the status-only
-   * `WithheldIntentRecord` (`legsWithheld: true`); narrow on it before reading
-   * any traded value.
+   * One intent record, or null on a 404. A stealth intent read without its
+   * `readToken`, and a shielded one read without an owner session, is the
+   * status-only `WithheldIntentRecord` (`legsWithheld: true`); narrow on it
+   * before reading any traded value.
    */
   getIntent(
     intentId: string,
