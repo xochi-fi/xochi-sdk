@@ -58,7 +58,10 @@
 //                       (25s) it MUST fit inside the venue's acceptance window
 //                       (`escrow.acceptBy`, 30s from the FillAuth's issue by default):
 //                       a missed window gives the order to the reserve (no slash,
-//                       award lost).
+//                       award lost). Under SOLVER-RFC §13.3 (`[PROPOSED]`) it MUST be
+//                       at least the venue's served `awardToAcceptAllowanceMs` / 1000
+//                       (20 at a pending-award cap of 2), or `auth_expired` declines are
+//                       yours; this example does not read that field yet (§13.3 (d)).
 //   FILLER_ALLOWANCE    standing ERC-20 allowance to DEST_FILLER, set once at startup so
 //                       no approval transaction sits between award and accept; base
 //                       units, default unlimited (2^256-1). Safe to leave standing:
