@@ -610,7 +610,8 @@ export interface IntentStatusData {
  *  - `IntentStatusData` on a 200,
  *  - `{ notFound: true }` on a definitive 404 (a definitive absence, NOT a
  *    verdict: only a pre-dispatch row may be terminalized on it, see
- *    `isSweepablePreDispatch`),
+ *    `isSweepablePreDispatch`, and a "not sent yet" intent ends on it as
+ *    nothing moved, see `IntentState.notSent`),
  *  - `null` on a transient failure (retry on the next tick).
  */
 export type IntentStatusResult = IntentStatusData | { notFound: true } | null;

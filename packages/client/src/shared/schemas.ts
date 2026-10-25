@@ -554,15 +554,17 @@ export const ExecuteResponseSchema = z
       .literal(NOT_EXECUTED_SUBSTATUS)
       .optional()
       .describe(
-        "`not_executed` on a 502 `failed` where nothing moved (the resend budget's finish, no solver configured, or a solver refusal carrying `details.funds_moved: false`): safe to re-quote. Absent on any other failure.",
+        "`not_executed` on a `failed` where nothing moved, served by the execute 502 of the worker's own finishes (the resend budget's, a not-accepted refusal whose un-claim's write failed, no solver configured, a solver refusal carrying `details.funds_moved: false`) and echoed from the row by the lost-race 502 and the in-doubt 200: safe to re-quote. Absent on any other failure. Every source: docs/contracts/xochi-intent-api.md, \"The worker's not_executed marker\".",
       ),
     // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
     // padding. Served once, by the execute that admits the intent; present it as
     // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain
-    // legs of a non-public intent. Older servers omit it. The one declared field
+    // legs of a stealth intent. Older servers omit it. The one declared field
     // that never fails the body: a malformed token is dropped, because this body
     // reports an execute that may already have moved funds, and failing it would
-    // turn a settled swap into an in-doubt one over a privacy-only field.
+    // turn a settled swap into an in-doubt one over a privacy-only field. The
+    // describe below departs from xochi's (which still names shielded legs)
+    // until xochi#565 takes the same correction (SPEC.md §5.1).
     read_token: z
       .string()
       .regex(READ_TOKEN_PATTERN)
@@ -571,7 +573,9 @@ export const ExecuteResponseSchema = z
       .describe(
         "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
           "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
-          "on-chain legs of a stealth or shielded intent. Never put it in a URL.",
+          "on-chain legs of a stealth intent. It never unlocks a shielded intent's Aztec " +
+          "identifiers, timestamps or amounts (owner-authenticated reads only, SPEC.md " +
+          "§5.1). Never put it in a URL.",
       ),
   })
   .strict();
@@ -593,12 +597,16 @@ export const MAX_EXECUTE_RESENDS = 3;
 export const EXECUTE_RESEND_MARGIN_SECS = 5;
 
 /**
- * How long past a never-claimed intent's signed deadline the Worker waits
- * before a read of it (`GET /api/intent/:id` or the status poll, never the
- * stream) finishes it `failed` with `NOT_EXECUTED_SUBSTATUS`: clock skew
- * between the Worker and the solver. Mirrors `QUOTED_EXPIRY_GRACE_SECS` in
- * xochi's `@xochi/shared` `schemas.ts`. The machine polls an execute at least
- * this long past the quote's deadline (`unexecutedFinishAt`).
+ * Seconds past an unexecuted intent's signed deadline before the Worker ends
+ * it: a `quoted` market row (never executed, or every execute un-claimed)
+ * that an intent read (`GET /api/intent/:id` or the status poll, never the
+ * stream) finds this far past the `deadline` the user signed is finished
+ * `failed` with `NOT_EXECUTED_SUBSTATUS`, and the read serves that. Slack for
+ * clock skew between the Worker, the solver and the client. Mirrors
+ * `QUOTED_EXPIRY_GRACE_SECS` in xochi's `@xochi/shared` `schemas.ts`. The
+ * machine polls an execute at least this long past the quote's deadline
+ * (`unexecutedFinishAt`); the quote sweep usually ends an un-claimed intent
+ * before then (README "Fund safety").
  */
 export const QUOTED_EXPIRY_GRACE_SECS = 60;
 

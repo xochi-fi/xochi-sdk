@@ -115,6 +115,8 @@ export const SIGN_PROMPT_TIMEOUT_MS = 90_000;
 const QUOTE_DEADLINE_SECS = 3600;
 /** Log prefix. The host hook is still `useIntent`, and its logs are grepped for it. */
 const LOG = "[useIntent]";
+/** The error of a not-sent intent the poll finds gone (`onStatus`): the Retry view. */
+const NOT_SENT_SWEPT_ERROR = "This order expired without being sent. Nothing moved.";
 
 // ============================================================
 // Context: what the host knows that the machine does not own
@@ -465,8 +467,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       const next = { ...kept, allocationKey: null, amount: msg.amount, refresh: null };
       if (!msg.amount || msg.amount === "0") {
         // "May have moved" holds until Reset, and "not sent yet" until the
-        // Worker finishes the intent: clearing the amount is no way out of
-        // either.
+        // Worker ends the intent: clearing the amount is no way out of either.
         if ((m.intent.status === "failed" && m.intent.mayHaveMoved) || m.intent.notSent) {
           return next;
         }
@@ -1508,6 +1509,24 @@ function onExecuted(
   // So is a reply that cannot be read as this intent's execute response.
   const reply = executeResponseUnlessInDoubt(fx, result, next.intent.intentId);
   if (!reply) return patch(next, { reconciling: true });
+  // The Worker answers `quoted` for this intent when it ended its own claim
+  // and could not finish the intent (a fault while finishing an unexecuted
+  // claim): nothing is in flight, and the signed request stays executable
+  // until its deadline, exactly as after a give-up. "Not sent yet", no Retry;
+  // an intent that already reads in doubt stays so, as on a not-accepted
+  // refusal (`onNotAccepted`).
+  if (
+    !reply.response.success &&
+    reply.response.status === "quoted" &&
+    next.intent.status === "executing" &&
+    !next.intent.reconciling
+  ) {
+    log(fx, "warn", `${LOG} Execute ended unclaimed (the intent reads quoted); not sent yet`);
+    return patch(next, {
+      notSent: true,
+      error: reply.response.error || "The order was not sent.",
+    });
+  }
   const decision = decideExecuteResult(reply.response);
   if (decision.kind === "failed") {
     return transition(next, fx, "failed", {
@@ -1623,8 +1642,8 @@ function resendExecute(m: Model, fx: Effect[], now: number): Model {
  * Worker un-claimed the intent, so it reads `quoted` and the signed request
  * stays executable until its deadline (by anyone holding it). The intent
  * stays `executing`, marked `notSent` ("not sent yet"), and the poll, re-armed
- * off the resend wait, runs until the Worker finishes the intent past that
- * deadline (`unexecutedFinishAt`): `failed` with `NOT_EXECUTED_SUBSTATUS` is
+ * off the resend wait, runs until the Worker ends the intent (README "Fund
+ * safety"): `failed` with `NOT_EXECUTED_SUBSTATUS`, or a 404 (`onStatus`), is
  * Retry; any other read ends the mark (`applyStatusUpdate`).
  */
 function stopResending(
@@ -1862,12 +1881,24 @@ function onStatus(
     // A throw is not a change: count the attempt and keep the ceiling armed.
     log(fx, "error", `${LOG} status poll threw; counting the attempt`, result.error.detail);
   } else if (result.status && "notFound" in result.status) {
-    // A definitive 404 for a DISPATCHED intent is not proof of failure (#271,
-    // xochi#398): hold, and report it once per id.
-    const warning = notFoundDriftWarning(id, next.notFoundReported);
-    if (warning) {
-      log(fx, "warn", warning);
-      next = { ...next, notFoundReported: id };
+    if (next.intent.notSent && next.intent.intentId === id) {
+      // Not sent yet and now gone: only the quote sweep deletes a row, and
+      // only one nothing touched (never claimed, so nothing moved). Retry.
+      log(fx, "warn", `${LOG} A not-sent intent is gone (swept unexecuted); offering Retry`);
+      next = transition(next, fx, "failed", {
+        error: NOT_SENT_SWEPT_ERROR,
+        reconciling: false,
+        mayHaveMoved: false,
+      });
+      if (next.intent.status === "failed") verdict = "stop";
+    } else {
+      // A definitive 404 for a DISPATCHED intent is not proof of failure (#271,
+      // xochi#398): hold, and report it once per id.
+      const warning = notFoundDriftWarning(id, next.notFoundReported);
+      if (warning) {
+        log(fx, "warn", warning);
+        next = { ...next, notFoundReported: id };
+      }
     }
   } else if (result.status) {
     const s = result.status;

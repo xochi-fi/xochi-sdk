@@ -81,12 +81,15 @@ export function failureMayHaveMoved(substatus: unknown): boolean {
 }
 
 /**
- * When (unix seconds) the Worker finishes this quote's intent `failed` with
- * `NOT_EXECUTED_SUBSTATUS` if no execute ever claimed it: the next read past
- * its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS`. The signed deadline is
- * the served `eip712` message's `deadline`; the later of it and the quote's
- * `expiry` is taken, so the poll never stops short of the Worker's clock. Null
- * without a readable deadline.
+ * The latest time (unix seconds) the Worker's read finish ends this quote's
+ * intent `failed` with `NOT_EXECUTED_SUBSTATUS` while it is still `quoted`
+ * with no execute claim (never claimed, or every claim undone): the next read
+ * past its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS` (market rows only;
+ * the quote sweep usually ends an undone claim earlier). The signed deadline
+ * is the served `eip712` message's `deadline`; the later of it and the
+ * quote's `expiry` is taken, so the poll never stops short of the Worker's
+ * clock. Either alone is enough; null only without a quote or with neither
+ * readable.
  */
 export function unexecutedFinishAt(quote: QuoteResponse | null): number | null {
   if (!quote) return null;
@@ -163,12 +166,13 @@ export const POLL_CEILING_MAX_MS = 2 * 60 * 60_000;
  * modal, so a swap that had actually settled sat on a spinner, and the user was
  * then told their funds were coming back and to start again.
  *
- * `executing` lasts at least until the Worker finishes an intent no execute
- * claimed (`unexecutedFinishAt`, passed as `unexecutedFinishSecs`) plus one
- * poll: an execute that never reached the Worker (a timeout, a refused
+ * `executing` lasts at least until the Worker's latest finish of an intent no
+ * execute holds (`unexecutedFinishAt`, passed as `unexecutedFinishSecs`) plus
+ * one poll: an execute that never reached the Worker (a timeout, a refused
  * redirect) or that this client stopped resending reads `quoted`, which is no
- * progress, until the read that finishes it `failed` with
- * `NOT_EXECUTED_SUBSTATUS` offers Retry.
+ * progress, until the quote sweep (usually first for an un-claimed intent) or
+ * the read past the signed deadline finishes it `failed` with
+ * `NOT_EXECUTED_SUBSTATUS` and offers Retry.
  *
  * Bounded below by the flat ceiling (never poll less than before), and above by
  * POLL_CEILING_MAX_MS.

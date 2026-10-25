@@ -136,12 +136,16 @@ export interface IntentState {
   mayHaveMoved: boolean;
   /**
    * Set when this client stops resending an execute the Worker answered
-   * not-accepted (`decideExecuteResend` gives up): the order was not sent, but
-   * the signed request stays executable until its deadline, so there is no
-   * Retry yet. The status stays `executing`, the phase is `not-sent`, and the
-   * poll runs on until the Worker finishes the intent `failed` (Retry only
-   * with `NOT_EXECUTED_SUBSTATUS`). Cleared by any read other than `quoted`
-   * (another execute claimed it: shown in doubt) and by leaving `executing`.
+   * not-accepted (`decideExecuteResend` gives up), or when the execute's own
+   * answer says the intent reads `quoted` again (the Worker ended its claim
+   * without finishing the intent): the order was not sent, but the signed
+   * request stays executable until its deadline, so there is no Retry yet.
+   * The status stays `executing`, the phase is `not-sent`, and the poll runs
+   * on until the Worker ends the intent: `failed` with
+   * `NOT_EXECUTED_SUBSTATUS` is Retry, and so is a 404 (only the quote sweep
+   * deletes a row, and only one never claimed). Cleared by any other read
+   * than `quoted` (another execute claimed it: shown in doubt) and by
+   * leaving `executing`.
    */
   notSent: boolean;
   /**

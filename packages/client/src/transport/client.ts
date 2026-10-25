@@ -151,11 +151,11 @@ export class ApiError extends Error {
   readonly notAccepted: boolean;
   /**
    * Whether this failed `execute` answer cannot vouch that nothing moved for
-   * the executed intent (`isInDoubtExecuteAnswer`): false only on the
-   * Worker's own answers that the intent was refused unclaimed, true on every
-   * other execute failure, an answer that another request holds or held the
-   * intent included. For the host's own copy and logs; the machine never
-   * reads it (README "Transport"). False on every other call.
+   * the executed intent (`isInDoubtExecuteAnswer`): false only on the three
+   * Worker answers that speak for the intent itself, true on every other
+   * execute failure, a refusal of this request alone included (another
+   * request may hold the intent). For the host's own copy and logs; the
+   * machine never reads it (README "Transport"). False on every other call.
    */
   readonly inDoubt: boolean;
 
@@ -176,39 +176,26 @@ export class ApiError extends Error {
 }
 
 /**
- * Statuses on which a failed `execute` was refused before the Worker claimed
- * the intent, while no other request held it: its own validation, auth and
- * lookup, or anything in front of it that never forwarded the request. 409
- * and 429 are not: the Worker answers 409 when another request won the claim,
- * and its plain 429 also when another request holds the intent (its
- * resendable rate limit is the not-accepted 503). The exceptions either way
- * are in `isInDoubtExecuteAnswer`.
- */
-const PRE_CLAIM_REFUSAL: Readonly<Record<number, true>> = {
-  400: true,
-  401: true,
-  403: true,
-  404: true,
-  422: true,
-};
-
-/**
- * The Worker's fast-path 400 for an intent that is no longer `quoted`
- * (`Cannot execute intent in executing status`): the same fact as the 409 its
- * claim answers, read before the claim instead of by it, so in doubt too.
- */
-const NOT_QUOTED_REFUSAL = /^Cannot execute intent in \S+ status$/;
-
-/**
  * A failed answer to `POST /api/intent/execute` that cannot vouch that
  * nothing moved for the executed intent (rules: README "Transport"). Fail
- * closed: in doubt unless the answer is a pre-claim refusal
- * (`PRE_CLAIM_REFUSAL`, but never `NOT_QUOTED_REFUSAL`), the Worker's 409
- * `promo_unavailable` (refused before its claim; the intent stays `quoted`),
- * its not-accepted 503, or its 502 `failed` marked `not_executed` for the
- * executed intent; and always in doubt when it carries a read token or
- * `reconciling: true`. A JSON 5xx is in doubt like any other: the Worker's
- * catch-all 500 can follow its call to the solver.
+ * closed: in doubt unless the answer is one of the three that speak for the
+ * intent, not only for this request:
+ * - the not-accepted 503 (`isNotAcceptedExecuteBody`): the Worker undid its
+ *   own claim, and the intent is `quoted` again;
+ * - the 502 `failed` marked `not_executed` for the executed intent: the
+ *   Worker ended the intent with nothing moved;
+ * - the 409 with `error_category: "promo_unavailable"`: its promo redemption
+ *   is keyed by intent and idempotent, and every claim follows one, so a
+ *   refused redemption means no request has claimed the intent.
+ * Every other answer refuses this request only, and another request for the
+ * same intent (another tab, a host's replay) may hold its claim: the Worker
+ * answers its parse 400 and its 403 `api_key_intent_mismatch` before it reads
+ * the intent's status, its other 400s and 401s (the signed-deadline 400
+ * included) from a row it read before, which another request can claim in
+ * between, and anything in front of it never reads the intent. So every
+ * other 4xx, every 429 and 5xx, JSON or not, is in doubt, and the transport
+ * reads no error text. Always in doubt when the answer carries a read token
+ * or `reconciling: true`.
  */
 function isInDoubtExecuteAnswer(
   status: number,
@@ -217,9 +204,6 @@ function isInDoubtExecuteAnswer(
   servedToken: string | undefined,
 ): boolean {
   if (servedToken !== undefined || body?.reconciling === true) return true;
-  if (PRE_CLAIM_REFUSAL[status]) {
-    return typeof body?.error === "string" && NOT_QUOTED_REFUSAL.test(body.error);
-  }
   if (status === 409) return body?.error_category !== "promo_unavailable";
   if (isNotAcceptedExecuteBody(status, body, intentId)) return false;
   return !(
@@ -409,24 +393,30 @@ async function readCappedText(response: Response): Promise<{ text: string; trunc
   return { text: new TextDecoder().decode(bytes), truncated };
 }
 
-/** A run of `%XX` escapes decoded as UTF-8 (an invalid sequence becomes U+FFFD). */
+/**
+ * A run of `%XX` escapes decoded as UTF-8 (an invalid sequence becomes
+ * U+FFFD). `%5C` is never part of a run (`PERCENT_RUN`): it stays as written.
+ */
 function decodePercentRun(run: string): string {
   const bytes = new Uint8Array(run.length / 3);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(run.slice(i * 3 + 1, i * 3 + 3), 16);
   return new TextDecoder().decode(bytes);
 }
 
-/** The character `codePoint` names, or `escape` itself when it names none. */
+/**
+ * The character `codePoint` names, or `escape` itself when it names none or
+ * names a backslash: a decoded backslash would escape the character after it
+ * on the next pass (`\u005cnAbc…` would lose its `n`), so an escape for one
+ * stays as written, as a written backslash pair does.
+ */
 function codePointOr(escape: string, codePoint: number): string {
-  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : escape;
+  return codePoint <= 0x10ffff && codePoint !== 0x5c ? String.fromCodePoint(codePoint) : escape;
 }
 
 /**
  * What JSON's short escapes for a separator or a control character stand for.
  * `\"` and `\\` stay as written: neither character joins or splits a token,
- * and decoding `\\` would halve a run of backslashes on every pass. An escaped
- * backslash is still consumed as a pair first, so the `\` it ends never
- * escapes the character after it (`C:\\keys\\nAbc…` keeps its `n`).
+ * and decoding `\\` would halve a run of backslashes on every pass.
  */
 const JSON_SHORT_ESCAPE: Readonly<Record<string, string>> = {
   n: "\n",
@@ -438,33 +428,56 @@ const JSON_SHORT_ESCAPE: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Every backslash escape `normalizeOnce` reads, in one alternation scanned
+ * left to right: an escaped backslash (`\\`) is consumed as a pair before any
+ * escape could start at its second backslash, so the backslash it ends never
+ * escapes what follows (`C:\\keys\\nAbc…`, `C:\\u0041` and `C:\\x41` keep
+ * their `n`, `u0041` and `x41`).
+ */
+const BACKSLASH_ESCAPE =
+  /\\(?:\\|u\{0*([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([nrtbf/]))/g;
+/** A run of `%XX` escapes, never `%5C` (a backslash, kept as written: `codePointOr`). */
+const PERCENT_RUN = /(?:%(?![5][cC])[0-9a-fA-F]{2})+/g;
+
+/**
  * One linear normalization pass: decode `\u{…}`, `\uXXXX`, `\xXX`, the JSON
- * escapes `\n`, `\r`, `\t`, `\b`, `\f` and `\/`, `%XX` and numeric character
- * references (any number of leading zeros, `;` optional), fold every
- * non-ASCII character but a space to its compatibility form
- * (`COMPATIBILITY_FOLDED`), then drop invisible characters and complete markup
- * tags, so a token split or disguised by any of these reads whole again. A
- * JSON error body writes every line break and tab in a string as an escape,
- * so without them a token split across lines would read a letter (`n`)
- * between its pieces, which no separator rule skips.
+ * escapes `\n`, `\r`, `\t`, `\b`, `\f` and `\/` (`BACKSLASH_ESCAPE`), `%XX`
+ * and numeric character references (any number of leading zeros, `;`
+ * optional), fold every non-ASCII character but a space to its compatibility
+ * form (`COMPATIBILITY_FOLDED`), then drop invisible characters and complete
+ * markup tags, so a token split or disguised by any of these reads whole
+ * again. Nothing decodes or folds to a backslash: an escape or character
+ * standing for one stays as written (`codePointOr`). A JSON error body writes
+ * every line break and tab in a string as an escape, so without them a token
+ * split across lines would read a letter (`n`) between its pieces, which no
+ * separator rule skips.
  */
 function normalizeOnce(text: string): string {
   return text
-    .replace(/\\u\{0*([0-9a-fA-F]{1,6})\}/g, (escape: string, hex: string) =>
-      codePointOr(escape, parseInt(hex, 16)),
+    .replace(
+      BACKSLASH_ESCAPE,
+      (
+        escape: string,
+        braced: string | undefined,
+        u4: string | undefined,
+        x2: string | undefined,
+        short: string | undefined,
+      ) => {
+        if (short !== undefined) return JSON_SHORT_ESCAPE[short];
+        const hex = braced ?? u4 ?? x2;
+        return hex === undefined ? escape : codePointOr(escape, parseInt(hex, 16));
+      },
     )
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\(\\|[nrtbf/])/g, (pair: string, char: string) =>
-      char === "\\" ? pair : JSON_SHORT_ESCAPE[char],
-    )
-    .replace(/(?:%[0-9a-fA-F]{2})+/g, decodePercentRun)
+    .replace(PERCENT_RUN, decodePercentRun)
     .replace(
       /&#(?:[xX]0*([0-9a-fA-F]{1,6})|0*([0-9]{1,7}));?/g,
       (ref: string, hex: string | undefined, dec: string | undefined) =>
         codePointOr(ref, hex === undefined ? Number(dec) : parseInt(hex, 16)),
     )
-    .replace(COMPATIBILITY_FOLDED, (char: string) => char.normalize("NFKD"))
+    .replace(COMPATIBILITY_FOLDED, (char: string) => {
+      const folded = char.normalize("NFKD");
+      return folded.includes("\\") ? char : folded;
+    })
     .replace(INVISIBLE, "")
     .replace(MARKUP_TAG, "");
 }
@@ -557,23 +570,28 @@ function splitTokens(text: string): string[] {
 
 /**
  * Every value of a body that may be a read token: the body's own `read_token`,
- * the value after any read-token key, every base64url run at least a token
- * long that is not hex (in the normalized prefix and in the undecoded one),
- * and every token split into pieces (`RUN_JOINER` separators removed,
- * `splitTokens` across ASCII ones). Read from the whole prefix, so an echo
- * before the cut is caught even when the token itself lies past it.
+ * the value after any read-token key, and every base64url run at least a
+ * token long that is not hex and every token split into pieces
+ * (`RUN_JOINER` separators removed, `splitTokens` across ASCII ones), each in
+ * the normalized prefix and in the undecoded one. Read from the whole prefix,
+ * so an echo before the cut is caught even when the token itself lies past
+ * it.
  */
 function possibleTokens(body: string, text: string): string[] {
   const tokens: string[] = [];
-  // The undecoded prefix too: decoding a raw `\n`, `\t`, … eats the first
-  // character of a token written right after a backslash (`C:\keys\nAbc…`).
-  for (const [run] of body.matchAll(LONG_BASE64URL_RUN)) if (!HEX_RUN.test(run)) tokens.push(run);
   const served = parseJsonObject(body)?.read_token;
   if (typeof served === "string" && READ_TOKEN_PATTERN.test(served)) tokens.push(served);
   const joined = text.replace(RUN_JOINER, "");
   for (const [, , value] of joined.matchAll(READ_TOKEN_KEYED_VALUE)) tokens.push(value);
-  for (const [run] of joined.matchAll(LONG_BASE64URL_RUN)) if (!HEX_RUN.test(run)) tokens.push(run);
-  tokens.push(...splitTokens(joined));
+  // The undecoded prefix too: decoding a raw `\n`, `\t`, … eats the first
+  // character of a token written right after a backslash (`C:\keys\nAbc…`),
+  // whole or split, leaving a run or chain one character short of a token.
+  for (const source of [joined, body.replace(RUN_JOINER, "")]) {
+    for (const [run] of source.matchAll(LONG_BASE64URL_RUN)) {
+      if (!HEX_RUN.test(run)) tokens.push(run);
+    }
+    tokens.push(...splitTokens(source));
+  }
   return tokens;
 }
 
@@ -867,9 +885,11 @@ export type CallResult<T> =
  * of this intent returned (`ExecuteResponse.readToken`, xochi#563); it is sent
  * as the `X-Xochi-Read-Token` header so a stealth intent reads with its
  * on-chain legs. Absent, the read is anonymous and those legs are omitted;
- * the server answers a wrong token exactly like an absent one. A shielded
- * leg's Aztec identifiers never come with the token (SPEC.md §5.1:
- * owner-authenticated reads only).
+ * the server answers a wrong token exactly like an absent one. For a shielded
+ * intent the token never unlocks the Aztec identifiers (note hash or
+ * commitment, nullifier, tx hash, block) or any timestamp or amount (leg
+ * timestamps, `createdAt`, `updatedAt`, `fromAmount`, `toAmount`): SPEC.md
+ * §5.1 serves those to owner-authenticated reads only.
  */
 export interface IntentReadOptions {
   readToken?: string;
@@ -1510,7 +1530,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
      * can tell a definitive absence from a blip:
      *  - the status object on 200,
      *  - `{ notFound: true }` on a 404 (no row for this id; a pre-dispatch row
-     *    can be terminalized on it, a dispatched one is held and reported),
+     *    can be terminalized on it, and a "not sent yet" one ends on it as
+     *    nothing moved; any other dispatched one is held and reported),
      *  - `null` only on a transient failure (non-404 non-ok, or a network
      *    error); the caller retries on its interval. See #271.
      * A read token never stops the poll. A malformed one is not sent, and a

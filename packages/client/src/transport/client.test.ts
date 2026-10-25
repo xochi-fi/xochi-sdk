@@ -466,6 +466,32 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
         () => json({ success: false, error: `Cannot execute intent in ${status} status` }, 400),
         true,
       ]),
+      // A refusal of this request only: another request may hold the intent.
+      // The Worker's parse 400 and key 403 come before it reads the status, its
+      // other 400s and 401s after awaits a claim can land in, and anything in
+      // front of it never reads the intent.
+      ...(
+        [
+          [400, { success: false, error: "Invalid request body", details: [] }],
+          [403, { error: "x", error_category: "api_key_intent_mismatch" }],
+          [400, { success: false, error: "This quote's signed deadline has passed." }],
+          [400, { success: false, error: "Nonce already used" }],
+          [
+            401,
+            { success: false, error: "Invalid signature", error_category: "signature_invalid" },
+          ],
+          [404, { success: false, error: "Intent not found" }],
+          [422, { success: false, error: "refused" }],
+          // Its wording changed: still in doubt, since no text is read.
+          [400, { success: false, error: "Intent is executing" }],
+        ] as const
+      ).map(([status, body]): [string, () => Response, boolean] => [
+        `a ${status} ${JSON.stringify(body)}`,
+        () => json(body, status),
+        true,
+      ]),
+      ["a 400 not in JSON", () => new Response("bad request", { status: 400 }), true],
+      ["an edge 403 page", () => new Response("<h1>Forbidden</h1>", { status: 403 }), true],
       // The Worker's plain 429 also answers an intent another request holds.
       ["a 429", () => json({ success: false, error: "Rate limit exceeded" }, 429), true],
       // A pre-claim status never outweighs `reconciling: true`.
@@ -503,13 +529,8 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
           ),
         true,
       ],
-      // The Worker's own nothing-moved answers.
+      // The Worker's answers that speak for the intent.
       ["the marked 502", () => json({ ...marked, substatus: "not_executed" }, 502), false],
-      ...[400, 401, 403, 404, 422].map((status): [string, () => Response, boolean] => [
-        `a ${status}`,
-        () => json({ success: false, error: "refused" }, status),
-        false,
-      ]),
       // Its promo refusal runs before the claim: the intent stays `quoted`.
       [
         "the 409 promo refusal",
@@ -524,7 +545,6 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
           ),
         false,
       ],
-      ["a 400 not in JSON", () => new Response("bad request", { status: 400 }), false],
       [
         "a 400 carrying a token",
         () => json({ success: false, intent_id: "intent-1", read_token: token }, 400),
@@ -1818,6 +1838,50 @@ describe("a real read token through the real error path", () => {
     for (const error of ["pattern ^a\\\\/b$ rejected", "pattern ^a\\/b$ rejected"]) {
       const body = JSON.stringify({ success: false, error });
       expect(await refusedWith(body)).toBe(`HTTP 400: ${body}`);
+    }
+  });
+
+  it("lets no escape start at an escaped backslash, and decodes none to a backslash", async () => {
+    // Backslashes as text stay as written, whatever escape follows them.
+    for (const escape of ["u0041", "x41", "u{41}"]) {
+      const body = JSON.stringify({ success: false, error: `path C:\\${escape} bad` });
+      expect(await refusedWith(body), escape).toBe(`HTTP 400: ${body}`);
+    }
+    // An escape for a backslash stays as written too, so it escapes nothing.
+    for (const text of ["C:\\u005cnext", "C:%5Cnext", "C:&#92;next", "C:\uff3cnext"]) {
+      expect(await refusedWith(`path ${text} bad`), text).toBe(`HTTP 400: path ${text} bad`);
+    }
+  });
+
+  it("redacts a token split once after a backslash, whatever escape its first characters read as", async () => {
+    // Unserved tokens sharing the real token's tail, so `rejoinable` measures them.
+    const tokens = [
+      ...["n", "r", "t", "b", "f"].map((first) => `${first}${TOKEN.slice(1)}`),
+      `x4f${TOKEN.slice(3)}`,
+      `u4e2d${TOKEN.slice(5)}`,
+      TOKEN,
+    ];
+    const split = (token: string, gap: string) => `${token.slice(0, 21)}${gap}${token.slice(21)}`;
+    for (const token of tokens) {
+      const rows: [string, string][] = [
+        ["raw, space", `error at C:\\keys\\${split(token, " ")}`],
+        ["raw, line feed", `error at C:\\keys\\${split(token, "\n")}`],
+        ["raw %5C, space", `error at %5C${split(token, " ")}`],
+        ["JSON, unsplit", JSON.stringify({ success: false, error: `C:\\keys\\${token}` })],
+        [
+          "JSON, space",
+          JSON.stringify({ success: false, error: `C:\\keys\\${split(token, " ")}` }),
+        ],
+        [
+          "JSON, line feed",
+          JSON.stringify({ success: false, error: `C:\\keys\\${split(token, "\n")}` }),
+        ],
+        ["JSON \\u005c, space", `{"success":false,"error":"at \\u005c${split(token, " ")}"}`],
+      ];
+      for (const [shape, body] of rows) {
+        const message = await refusedWith(body);
+        expect(rejoinable(message), `${shape}, ${token.slice(0, 5)}`).toBeUndefined();
+      }
     }
   });
 

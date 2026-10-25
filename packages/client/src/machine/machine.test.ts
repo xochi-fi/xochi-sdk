@@ -467,9 +467,10 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
-    it("keeps a reconciling `quoted` reply in doubt and polls it", () => {
-      // The Worker un-claimed a marked refusal it could not finish: a later
-      // read finishes the intent, so this is neither Retry nor an edit.
+    it("reads the Worker's `quoted` reply as not sent yet: no Retry, still polling", () => {
+      // The Worker ended its own claim but could not finish the intent (its
+      // finish-fault answer): the row is `quoted` and the signed request
+      // executable again, so neither "Still confirming" nor Retry.
       const { s, flow } = executing();
       s.send({
         type: "ExecuteReplied",
@@ -480,9 +481,30 @@ describe("one signature (no origin pull)", () => {
         },
       });
       expect(s.intent.status).toBe("executing");
-      expect(s.intent.reconciling).toBe(true);
-      expect(s.receipt.phase).toBe("pending");
+      expect(s.intent.notSent).toBe(true);
+      expect(s.intent.reconciling).toBe(false);
+      expect(s.receipt.phase).toBe("not-sent");
       expect(s.model.poll?.stopped).toBe(false);
+      // The read or the sweep that ends it offers Retry.
+      pollReads(s, statusData({ status: "quoted" }), 3);
+      expect(s.receipt.phase).toBe("not-sent");
+      pollReads(s, statusData({ status: "failed", terminal: true, substatus: "not_executed" }), 1);
+      expect(s.receipt.phase).toBe("failed");
+
+      // An execute the poll already escalated to "Still confirming" stays so.
+      const slow = executing();
+      pollReads(slow.s, statusData({ status: "executing" }), RECONCILE_AFTER_ATTEMPTS);
+      expect(slow.s.intent.reconciling).toBe(true);
+      slow.s.send({
+        type: "ExecuteReplied",
+        flow: slow.flow,
+        result: {
+          ok: true,
+          response: { success: false, intentId: "xi_1", status: "quoted", reconciling: true },
+        },
+      });
+      expect(slow.s.intent.notSent).toBe(false);
+      expect(slow.s.receipt.phase).toBe("pending");
     });
 
     // The poll answers with what the transport decodes: a granular
@@ -1040,6 +1062,74 @@ describe("one signature (no origin pull)", () => {
       expect(claimed.intent.notSent).toBe(false);
       expect(claimed.intent.reconciling).toBe(true);
       expect(claimed.receipt.phase).toBe("pending");
+    });
+
+    /** Answer the poll's next read with a 404, `advanceMs` after the previous one. */
+    const notFoundRead = (s: Session, advanceMs: number) => {
+      const asked = apiCalls(s.send({ type: "TimerFired", timer: "poll" }, advanceMs), "status");
+      const { gen, attempt } = only(asked);
+      return s.send({
+        type: "StatusReplied",
+        gen,
+        attempt,
+        result: { ok: true, status: { notFound: true } },
+      });
+    };
+
+    it("offers Retry on a 404 after a give-up: the sweep deleted the untouched row", () => {
+      // A frozen tab: the give-up came from refusals that claimed nothing (the
+      // Worker's rate-limit 503), the tab reads nothing from the signed
+      // deadline + 60 s to past the 30-minute sweep, then wakes to 404s.
+      const { s, exec } = executing();
+      s.send(busy(exec.flow, undefined));
+      expectNotSent(s);
+      pollReads(s, statusData({ status: "quoted" }), 3);
+      const frozenMs = workerFinishMs(s) - s.now + 31 * 60_000;
+      const fx = notFoundRead(s, frozenMs);
+      expect(s.intent.status).toBe("failed");
+      expect(s.intent.notSent).toBe(false);
+      expect(s.intent.mayHaveMoved).toBe(false);
+      expect(s.receipt.phase).toBe("failed");
+      expect(logs(fx, "warn").join(" ")).toMatch(/swept unexecuted/);
+      // The poll is over.
+      expect(pollReads(s, statusData({ status: "quoted" }), 1)).toBe(0);
+
+      // The same for the Worker's `quoted` reply to the execute itself.
+      const replied = executing();
+      replied.s.send({
+        type: "ExecuteReplied",
+        flow: replied.exec.flow,
+        result: {
+          ok: true,
+          response: { success: false, intentId: "xi_1", status: "quoted", reconciling: true },
+        },
+      });
+      notFoundRead(replied.s, STATUS_POLL_MS);
+      expect(replied.s.receipt.phase).toBe("failed");
+    });
+
+    it("holds on a 404 outside not sent yet: an execute that may have been claimed", () => {
+      // A thrown execute, in doubt.
+      const thrown = executing();
+      thrown.s.send({
+        type: "ExecuteReplied",
+        flow: thrown.exec.flow,
+        result: { ok: false, error: { rejected: false, value: "HTTP 502", detail: "502" } },
+      });
+      // Not sent yet, then an `executing` read: another execute claimed it.
+      const claimed = executing();
+      claimed.s.send(busy(claimed.exec.flow, undefined));
+      pollReads(claimed.s, statusData({ status: "executing" }), 1);
+      for (const [label, s] of [
+        ["thrown", thrown.s],
+        ["claimed after a give-up", claimed.s],
+      ] as const) {
+        const fx = notFoundRead(s, STATUS_POLL_MS);
+        expect(s.intent.status, label).toBe("executing");
+        expect(s.intent.reconciling, label).toBe(true);
+        expect(s.receipt.phase, label).toBe("pending");
+        expect(logs(fx, "warn").join(" "), label).toMatch(/holding, not failing/);
+      }
     });
 
     it("holds not sent yet when the amount is cleared, and on a stream `quoted` frame", () => {

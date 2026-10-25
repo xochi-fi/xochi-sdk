@@ -78,28 +78,41 @@ export function isIntentStatus(value: unknown): value is IntentStatus {
 }
 
 /**
- * The `substatus` the worker puts on a `failed` where nothing moved. This is
- * the one list of its sources; every other doc in this package points here:
- * - a read (`GET /api/intent/:id` or the status poll; the stream only carries
- *   the frame such a read publishes) of an intent still `quoted` with no
- *   execute claim past its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS` (an
- *   execute that never reached the Worker, or that this client stopped
- *   resending), finished by that read;
- * - the quote sweep finishing an execute the solver never accepted;
- * - the resend budget's finish after the solver's not-accepted refusals;
- * - an execute refused because no solver is configured;
- * - a solver refusal of the execute whose body says
- *   `details.funds_moved === false` (refused before this request's claim and
- *   before any pull).
- * Served on every intent read, on the stream frame of that transition, and on
- * the execute 502 that reports it. Any other solver-reported `failed` (which
- * may follow an origin pull) never carries it, and neither does a `failed`
- * nothing vouches for. The Worker vouches for a finish on `accepted: false`
- * alone because it is the sole caller of the solver's execute for its quotes
- * (enforced by the solver's ownership check). Mirrors `NOT_EXECUTED_SUBSTATUS`
- * in xochi's `@xochi/shared` `intents.ts`. After an execute (or a revealed
- * deposit address) the machine offers Retry only on a `failed` with this
- * marker; any other `failed` ends "may have moved" (README "Fund safety").
+ * The `substatus` the worker puts on a `failed` it wrote knowing nothing
+ * moved. The one list of its sources is docs/contracts/xochi-intent-api.md,
+ * "The worker's `not_executed` marker"; this mirrors it. Writers:
+ * 1. an intent read (`GET /api/intent/{id}`, the status poll) of an unsigned
+ *    market `quoted` row (never a Tron deposit route or a limit order; never
+ *    claimed, or every claim undone) past its signed deadline +
+ *    `QUOTED_EXPIRY_GRACE_SECS`;
+ * 2. the quote sweep's finish of a touched `quoted` row past its 30 s quote
+ *    expiry + 60 s;
+ * 3. the resend budget's finish after the solver's not-accepted refusals;
+ * 4. a not-accepted refusal finished because its un-claim's write failed
+ *    (`NOT_ACCEPTED_FAULT_FINISH_ERROR`);
+ * 5. an execute refused because no solver is configured;
+ * 6. a solver refusal of the execute whose body says
+ *    `details.funds_moved === false` (refused before this request's claim and
+ *    before any pull).
+ * Served on every intent read, the history list, the stream frame of that
+ * transition, the execute 502 of writers 3-6, and echoed from the row by the
+ * execute's lost-race 502 and in-doubt 200. Any other solver-reported
+ * `failed` (which may follow an origin pull) never carries it, and neither
+ * does a `failed` nothing vouches for, such as a solver refusal without that
+ * body. A client that sent an execute may offer Retry on a `failed` with this
+ * marker; any other `failed` may follow moved funds (`@xochi/client` holds it
+ * as "may have moved"; the app and widget do not read the marker yet,
+ * xochi#691).
+ *
+ * Writers 1-4 and 6, and the sweep's deletion of an untouched `quoted` row
+ * (which a client holding the intent as not sent reads as nothing moved),
+ * rest on one premise: the worker is the only caller of the solver's execute
+ * for its quotes, which the solver enforces (its execute refuses a caller
+ * other than the one the quote was issued to, Riddler#1346).
+ *
+ * Mirrors `NOT_EXECUTED_SUBSTATUS` in xochi's `@xochi/shared` `intents.ts`
+ * verbatim (the doc path above is in xochi). In this package: README "Fund
+ * safety" (Retry only on this marker, or on a 404 while "not sent yet").
  */
 export const NOT_EXECUTED_SUBSTATUS = "not_executed";
 
