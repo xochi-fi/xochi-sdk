@@ -359,6 +359,11 @@ export interface PollState {
   gen: number;
   /** Every poll performed in this arming (what the reconcile escalation counts). */
   polls: number;
+  /**
+   * The newest attempt answered so far. Replies can land out of order (a timer
+   * read and an off-interval read in flight together).
+   */
+  answered: number;
   /** Elapsed intervals with nothing observed (the give-up budget). */
   spent: number;
   max: number;
@@ -1870,8 +1875,10 @@ function onStatus(
   // `quoted`: the Worker's row is unclaimed and the signed request, held
   // elsewhere, executes until its deadline. Not sent yet, as after a give-up,
   // never "Still confirming" (whose Close invites a second signature). An
-  // intent in doubt stays so.
+  // intent in doubt stays so, and so does one a newer reply already answered:
+  // a late `quoted` is no answer after a newer `executing`.
   const resumedUnsent =
+    attempt >= poll.answered &&
     result.ok &&
     !!result.status &&
     !("notFound" in result.status) &&
@@ -1881,6 +1888,10 @@ function onStatus(
     next.intent.status === "executing" &&
     next.intent.quote === null &&
     !next.intent.reconciling;
+  // A throw answers nothing, so only a reply (a 404 included) moves it.
+  const answered: PollState = result.ok
+    ? { ...poll, answered: Math.max(poll.answered, attempt) }
+    : poll;
   if (resumedUnsent && !next.intent.notSent) {
     log(fx, "warn", `${LOG} Resumed intent ${id} reads quoted: not sent yet`);
     next = patch(next, { notSent: true });
@@ -1988,10 +1999,10 @@ function onStatus(
   // applied and stops quietly.
   if (verdict === "stop") {
     clearTimer(fx, "poll");
-    return { ...next, poll: { ...poll, stopped: true } };
+    return { ...next, poll: { ...answered, stopped: true } };
   }
-  if (verdict === "progress") return { ...next, poll: { ...poll, spent: 0 } };
-  if (poll.spent < poll.max) return next;
+  if (verdict === "progress") return { ...next, poll: { ...answered, spent: 0 } };
+  if (poll.spent < poll.max) return { ...next, poll: answered };
 
   // Never a silent stop: a stopped poll and a waiting one look identical.
   clearTimer(fx, "poll");
@@ -2001,7 +2012,7 @@ function onStatus(
     `${LOG} status poll stopped after ~${Math.round((poll.spent * STATUS_POLL_MS) / 1000)}s ` +
       `with no observable change (${poll.spent} intervals, ${poll.polls} polls); leaving resolution to reconciliation/webhooks`,
   );
-  next = { ...next, poll: { ...poll, stopped: true } };
+  next = { ...next, poll: { ...answered, stopped: true } };
   return next.intent.intentId === id && !next.intent.pollExhausted
     ? patch(next, { pollExhausted: true })
     : next;
@@ -2164,6 +2175,7 @@ function armPoll(m: Model, fx: Effect[], now: number): Model {
     intentId,
     gen,
     polls: 0,
+    answered: 0,
     spent: 0,
     // Read once at arm time: the deadlines are fixed for the life of a phase.
     // The deposit deadline comes from the INTENT (a resumed swap has no

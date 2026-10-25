@@ -1477,7 +1477,9 @@ describe("two signatures (origin pull)", () => {
 });
 
 describe("status", () => {
-  const resumed = (status: "executing" | "settling" = "executing") => {
+  const resumed = (
+    status: "executing" | "settling" | "awaiting_deposit" | "bridging" = "executing",
+  ) => {
     const s = new Session();
     const fx = s.send({
       type: "ResumeRequested",
@@ -1620,6 +1622,54 @@ describe("status", () => {
       pollReads(own, statusData({ status: "quoted" }), 1);
       expect(own.intent.notSent).toBe(false);
       expect(own.receipt.phase).toBe("submitting");
+    });
+
+    it("is not rebuilt by a late quoted reply after a newer executing one", () => {
+      const { s, poll } = resumed("executing");
+      answer(s, poll, statusData({ status: "executing" }));
+      // A timer read, then an off-interval read (the tab returning), both in
+      // flight: the newer answers `executing`, the older `quoted` after it.
+      const older = only(
+        apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const newer = only(apiCalls(s.send({ type: "VisibilityChanged" }, 100), "status"));
+      expect(newer.attempt).toBeGreaterThan(older.attempt);
+      answer(s, newer, statusData({ status: "executing" }));
+      const late = answer(s, older, statusData({ status: "quoted" }));
+      expect(s.intent.notSent).toBe(false);
+      expect(s.receipt.phase).toBe("submitting");
+      expect(logs(late, "warn").join(" ")).not.toMatch(/not sent yet/);
+      // The next read in order still rebuilds it.
+      pollReads(s, statusData({ status: "quoted" }), 1);
+      expect(s.intent.notSent).toBe(true);
+      expect(s.receipt.phase).toBe("not-sent");
+
+      // A thrown newer read answers nothing: the older `quoted` still rebuilds.
+      const thrown = resumed("executing");
+      answer(thrown.s, thrown.poll, statusData({ status: "executing" }));
+      const first = only(
+        apiCalls(thrown.s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const second = only(apiCalls(thrown.s.send({ type: "VisibilityChanged" }, 100), "status"));
+      thrown.s.send({
+        type: "StatusReplied",
+        gen: second.gen,
+        attempt: second.attempt,
+        result: { ok: false, error: { rejected: false, value: "HTTP 502", detail: "502" } },
+      });
+      answer(thrown.s, first, statusData({ status: "quoted" }));
+      expect(thrown.s.intent.notSent).toBe(true);
+      expect(thrown.s.receipt.phase).toBe("not-sent");
+    });
+
+    it("is rebuilt only from executing: a resumed later phase reading quoted is not", () => {
+      for (const status of ["settling", "awaiting_deposit", "bridging"] as const) {
+        const { s, poll } = resumed(status);
+        answer(s, poll, statusData({ status: "quoted" }));
+        expect(s.intent.status).toBe(status);
+        expect(s.intent.notSent).toBe(false);
+        expect(s.receipt.phase).not.toBe("not-sent");
+      }
     });
   });
 
