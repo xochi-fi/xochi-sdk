@@ -53,15 +53,20 @@
 //                       when the venue issues the winner FillAuth; default 1200. Part of
 //                       validUntilMs: a bid that lapses before then hands every win to
 //                       the reserve.
-//   AWARD_TO_ACCEPT_SEC award delivery + `prepare` RPCs, before `accept` starts; default
-//                       10. Part of minExclusiveMs, and with the 15s accept budget
-//                       (25s) it MUST fit inside the venue's acceptance window
-//                       (`escrow.acceptBy`, 30s from the FillAuth's issue by default):
-//                       a missed window gives the order to the reserve (no slash,
-//                       award lost). Under SOLVER-RFC §13.3 (`[PROPOSED]`) it MUST be
-//                       at least the venue's served `awardToAcceptAllowanceMs` / 1000
-//                       (20 at a pending-award cap of 2), or `auth_expired` declines are
-//                       yours; this example does not read that field yet (§13.3 (d)).
+//   AWARD_TO_ACCEPT_SEC your award latency (SOLVER-RFC §13.3): from the award's delivery
+//                       until `accept` starts, so the feed read, any wait in the event
+//                       loop and all of `prepare`, including its wait for your own
+//                       origin node's `safe` head to cover the lock; default 10, which
+//                       is too short wherever that wait runs (47-145s between healthy
+//                       Base mainnet providers, SOLVER-RFC Appendix C). Part of
+//                       minExclusiveMs, and with the 15s accept budget it MUST fit
+//                       inside the venue's acceptance window (`escrow.acceptBy`, 30s
+//                       from the FillAuth's issue by default): a missed window gives
+//                       the order to the reserve (no slash, award lost). Where the
+//                       venue serves `awardToAcceptAllowanceMs` (§13.3, `[PROPOSED]`)
+//                       it MUST be at least that / 1000, or `auth_expired` declines
+//                       are yours; this example does not read that field yet (§13.3
+//                       (d)).
 //   FILLER_ALLOWANCE    standing ERC-20 allowance to DEST_FILLER, set once at startup so
 //                       no approval transaction sits between award and accept; base
 //                       units, default unlimited (2^256-1). Safe to leave standing:
