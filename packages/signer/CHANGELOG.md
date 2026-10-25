@@ -4,6 +4,8 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-25
+
 ### Added
 
 - **Moved in from the archived `axol-io/riddler-sdk`** (snapshot, no history) as `@xochi/signer` (was `@riddler/signer`). Every vector digest, signature, typehash and domain separator is byte-identical; EIP-712 domain and contract names (`Xochi`, `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are unchanged. The `riddler` taker CLI moved to Riddler's private `packages/e2e-signer`.
