@@ -9895,7 +9895,7 @@
             "evidenceId": "ev_gw_sumsub_signed_old_w1"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -19683,7 +19683,7 @@
             "evidenceId": "ev_native_kyc_w10000000000"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -25255,7 +25255,7 @@
     },
     {
       "name": "held-grant-recheck-capped-by-consumer",
-      "description": "A consumer lowers its deployment maximum to 600, below even the gateway's revocationCheckSeconds (900), while its grant's recheckBy (now + 1800) was recorded under the earlier maximum (1800). It re-evaluates the grant at once, as lowering requires, and the accepting re-evaluation sets the next re-evaluation due at now + 600, earlier than the recorded one. A provider can lower the interval, never raise it past the consumer's maximum.",
+      "description": "A consumer has lowered its deployment maximum to 600, below even the gateway's revocationCheckSeconds (900), and its grant's recheckBy (now + 1800), written under the earlier maximum (1800), is not yet clamped (the clamp waits until no evaluation begun under 1800 can still commit, SPEC.md section 10.7). The grant's re-evaluation accepts and sets the next re-evaluation due at now + 600, earlier than the recorded one. A provider can lower the interval, never raise it past the consumer's maximum.",
       "discovery": "gateway",
       "evidence": "gateway-sumsub",
       "context": {
@@ -26443,8 +26443,8 @@
       }
     },
     {
-      "name": "held-grant-on-old-proof-ends-alone",
-      "description": "The subject holds two grants on one evidence from one host: one on an older proof whose Oracle attestation expired one second ago, one on a newer proof of the same evidence made an hour ago (a renewal: a new evaluation, so a new grant). Re-evaluating the old proof is refused at step 31, which ends the old proof's grant only: a grant is keyed by the proof hash too.",
+      "name": "held-grant-replaced-by-renewed-proof",
+      "description": "The subject holds a grant on native-kyc from the native host resting on an older proof, whose Oracle attestation runs out in an hour. It submits a newer proof of the same evidence, whose attestation runs 24 h: that evaluation accepts and, its attestation expiring later, replaces the grant in one write (the record now rests on the newer proof, due at now + 1800). A store holds at most one grant per subject, discovery host and evidenceId, however many proofs the subject submits.",
       "discovery": "native",
       "evidence": "native-kyc",
       "context": {
@@ -26532,15 +26532,7 @@
             "trustDomainId": "attest.native-kyc.test",
             "evidenceId": "ev_native_kyc_w10000000000",
             "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
-            "attestationExpiresAt": 1793491199,
-            "recheckBy": 1793492100
-          },
-          {
-            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "trustDomainId": "attest.native-kyc.test",
-            "evidenceId": "ev_native_kyc_w10000000000",
-            "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
-            "attestationExpiresAt": 1793577600,
+            "attestationExpiresAt": 1793494800,
             "recheckBy": 1793492100
           }
         ],
@@ -26555,27 +26547,26 @@
         },
         "announcedEvidenceId": "ev_native_kyc_w10000000000",
         "proof": {
-          "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
+          "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
           "publicInputs": [
             "0x0000000000000000000000000000000000000000000000000000000000000007",
             "0x0000000000000000000000000000000000000000000000000000000000000001",
             "0x0000000000000000000000000000000000000000000000000000000000000001",
             "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000000000000000000000000000000000006ae672f0",
             "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
           ],
           "attestation": {
             "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "proofType": 4,
-            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
-            "expiresAt": 1793491199,
+            "publicInputsHash": "0xa683beab1080d35310fa07480d87e091c690e2ff1b5d1898b7febe4ca2bf130c",
+            "expiresAt": 1793577600,
             "revoked": false
           }
         }
       },
       "expected": {
-        "accepted": false,
-        "refusal": "proof_stale",
+        "accepted": true,
         "records": {
           "discovery": {
             "trustDomainId": "attest.native-kyc.test",
@@ -26589,14 +26580,14 @@
             "evidenceId": "ev_native_kyc_w10000000000"
           }
         },
-        "heldGrant": "ended",
-        "recheckBy": null
+        "heldGrant": "replaced",
+        "recheckBy": 1793493000
       }
     },
     {
-      "name": "held-grant-on-renewed-proof-kept",
-      "description": "After held-grant-on-old-proof-ends-alone, the renewed proof's grant is still held with its recheckBy unchanged, and its own re-evaluation accepts. A store keying grants without the proof hash ends it with the old proof's.",
-      "follows": "held-grant-on-old-proof-ends-alone",
+      "name": "held-grant-renewed-untouched-by-old-proof",
+      "description": "After held-grant-replaced-by-renewed-proof, the older proof is evaluated again (a re-announcement, or its own re-evaluation committing after the replacement): it accepts, but its attestation expires earlier than the one the record carries, so it leaves the grant untouched, its recheckBy included. A store that re-evaluates the grant on any proof of its evidence keeps it here; one that lets the newest commit win moves it back to the older proof.",
+      "follows": "held-grant-replaced-by-renewed-proof",
       "discovery": "native",
       "evidence": "native-kyc",
       "context": {
@@ -26692,7 +26683,459 @@
             "evidenceId": "ev_native_kyc_w10000000000",
             "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
             "attestationExpiresAt": 1793577600,
-            "recheckBy": 1793492100
+            "recheckBy": 1793493000
+          }
+        ],
+        "maxRecheckSeconds": 1800,
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793494800,
+            "revoked": false
+          }
+        }
+      },
+      "expected": {
+        "accepted": true,
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "untouched",
+        "recheckBy": 1793493000
+      }
+    },
+    {
+      "name": "held-grant-renewed-untouched-by-old-proof-invalidated",
+      "description": "After held-grant-renewed-untouched-by-old-proof, the guardian invalidates the older proof's attestation (invalidateAttestation, finalized). Its evaluation is refused at step 31, which is about that proof: the grant resting on the newer proof is untouched.",
+      "follows": "held-grant-renewed-untouched-by-old-proof",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
+        ],
+        "seenEvidence": [
+          "native-kyc"
+        ],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "blocks": {
+          "chainId": 84532,
+          "finalized": {
+            "number": 30000000,
+            "timestamp": 1793490300
+          },
+          "latest": {
+            "number": 30000450,
+            "timestamp": 1793491198
+          }
+        },
+        "heldGrants": [
+          {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000",
+            "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
+            "attestationExpiresAt": 1793577600,
+            "recheckBy": 1793493000
+          }
+        ],
+        "maxRecheckSeconds": 1800,
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793494800,
+            "revoked": true
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "proof_stale",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "untouched",
+        "recheckBy": 1793493000
+      }
+    },
+    {
+      "name": "held-grant-renewed-untouched-by-old-proof-on-stale-pair",
+      "description": "After held-grant-renewed-untouched-by-old-proof-invalidated, the older proof is evaluated on a node whose latest block is 121 s old: unavailable, which is not the grant's re-evaluation, so the grant resting on the newer proof is untouched (a suspension never spreads to it).",
+      "follows": "held-grant-renewed-untouched-by-old-proof-invalidated",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
+        ],
+        "seenEvidence": [
+          "native-kyc"
+        ],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "blocks": {
+          "chainId": 84532,
+          "finalized": {
+            "number": 30000000,
+            "timestamp": 1793490300
+          },
+          "latest": {
+            "number": 30000450,
+            "timestamp": 1793491079
+          }
+        },
+        "heldGrants": [
+          {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000",
+            "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
+            "attestationExpiresAt": 1793577600,
+            "recheckBy": 1793493000
+          }
+        ],
+        "maxRecheckSeconds": 1800,
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793494800,
+            "revoked": true
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "unavailable": "blocks_stale",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": null,
+          "evidence": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          }
+        },
+        "heldGrant": "untouched",
+        "recheckBy": 1793493000
+      }
+    },
+    {
+      "name": "held-grant-renewed-kept-after-old-proof",
+      "description": "After held-grant-renewed-untouched-by-old-proof-on-stale-pair, the store still holds the grant on the newer proof, exercised, and its own re-evaluation accepts and keeps it.",
+      "follows": "held-grant-renewed-untouched-by-old-proof-on-stale-pair",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
+        ],
+        "seenEvidence": [
+          "native-kyc"
+        ],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "blocks": {
+          "chainId": 84532,
+          "finalized": {
+            "number": 30000000,
+            "timestamp": 1793490300
+          },
+          "latest": {
+            "number": 30000450,
+            "timestamp": 1793491198
+          }
+        },
+        "heldGrants": [
+          {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000",
+            "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
+            "attestationExpiresAt": 1793577600,
+            "recheckBy": 1793493000
           }
         ],
         "maxRecheckSeconds": 1800,
@@ -26744,8 +27187,159 @@
       }
     },
     {
+      "name": "held-grant-renewed-ended-by-old-proof-gone",
+      "description": "After held-grant-renewed-kept-after-old-proof, the older proof is announced again and the native host answers 410 for the evidence: the revocation is the evidence's, not the proof's, so it ends the grant resting on the newer proof too.",
+      "follows": "held-grant-renewed-kept-after-old-proof",
+      "discovery": "native",
+      "evidence": "native-kyc",
+      "context": {
+        "chainId": 84532,
+        "oracleAddress": "0x8262000000000000000000000000000000084532",
+        "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "now": 1793491200,
+        "allowlist": [
+          {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7"
+          },
+          {
+            "trustDomainId": "gateway.xochi.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.gateway-alias.test",
+            "attestorProviderId": "1"
+          },
+          {
+            "trustDomainId": "kyc.second-native.test",
+            "attestorProviderId": "12"
+          }
+        ],
+        "registry": [
+          {
+            "attestorProviderId": "1",
+            "denied": false,
+            "credentialSigner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+            "credentialRoots": [
+              "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+            ],
+            "signerPubkeyHashes": [
+              "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+            ]
+          },
+          {
+            "attestorProviderId": "7",
+            "denied": false,
+            "credentialSigner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+            "credentialRoots": [
+              "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+              "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+            ],
+            "signerPubkeyHashes": [
+              "0x6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            ]
+          },
+          {
+            "attestorProviderId": "12",
+            "denied": false,
+            "credentialSigner": "0x976ea74026e726554db657fa54763abd0c3a0aa9",
+            "credentialRoots": [
+              "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "signerPubkeyHashes": [
+              "0x7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+            ]
+          }
+        ],
+        "validConfigs": [
+          "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        ],
+        "seenDiscovery": [
+          {
+            "discovery": "native",
+            "attestorProviderId": "7"
+          }
+        ],
+        "seenEvidence": [
+          "native-kyc"
+        ],
+        "seenRevoked": [],
+        "statement": null,
+        "latest": null,
+        "blocks": {
+          "chainId": 84532,
+          "finalized": {
+            "number": 30000000,
+            "timestamp": 1793490300
+          },
+          "latest": {
+            "number": 30000450,
+            "timestamp": 1793491198
+          }
+        },
+        "heldGrants": [
+          {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000",
+            "proofHash": "0x59162ef20c5e7811ef382a5f38734f21a0bbe7e555bc08a77dcbcc82cac98372",
+            "attestationExpiresAt": 1793577600,
+            "recheckBy": 1793493000
+          }
+        ],
+        "maxRecheckSeconds": 1800,
+        "discoveryFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 200
+        },
+        "evidenceFetch": {
+          "host": "attest.native-kyc.test",
+          "status": 410
+        },
+        "announcedEvidenceId": "ev_native_kyc_w10000000000",
+        "proof": {
+          "proofHash": "0x565ea40af3b390740d2c49aba505748139add88c57a528f06888ba5b7ec894e7",
+          "publicInputs": [
+            "0x0000000000000000000000000000000000000000000000000000000000000007",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "0x000000000000000000000000000000000000000000000000000000006ab07380",
+            "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+          ],
+          "attestation": {
+            "subject": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "proofType": 4,
+            "publicInputsHash": "0x840d0298ad71d132699291d361cfcd8d46781b6a1fca5e4aedacaa5080b8f3ef",
+            "expiresAt": 1793494800,
+            "revoked": true
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "refusal": "evidence_gone",
+        "records": {
+          "discovery": {
+            "trustDomainId": "attest.native-kyc.test",
+            "attestorProviderId": "7",
+            "updatedAt": 1788220800,
+            "revokedKeys": []
+          },
+          "revocation": {
+            "trustDomainId": "attest.native-kyc.test",
+            "evidenceId": "ev_native_kyc_w10000000000"
+          },
+          "evidence": null
+        },
+        "heldGrant": "ended",
+        "recheckBy": null
+      }
+    },
+    {
       "name": "held-grant-ended-under-its-own-host-only",
-      "description": "The subject holds two grants on one evidenceId and proof: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the fetch host and the announced id (with the subject and the proof hash), so the native host's grant is untouched.",
+      "description": "The subject holds two grants on one evidenceId and proof: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the discovery host and the announced id (with the subject), so the native host's grant is untouched.",
       "discovery": "gateway",
       "evidence": "native-kyc",
       "context": {
@@ -34917,7 +35511,7 @@
             "evidenceId": "ev_gw_sumsub_signed_old_w1"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -39516,7 +40110,7 @@
             "evidenceId": "ev_gw_sumsub_signed_old_w1"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -40484,7 +41078,7 @@
             "evidenceId": "ev_gw_sumsub_window_w10000"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -41042,7 +41636,7 @@
     },
     {
       "name": "unusable-pair-still-refuses-evidence-id-invalid",
-      "description": "As evidence-id-dot-segments, on a stale pair: step 2 (evidence_id_invalid) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is ended.",
+      "description": "As evidence-id-dot-segments, on a stale pair: step 2 (evidence_id_invalid) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and no grant can rest on an announced id that fails the id rule (what would happen to one is expected.heldGrant: ended).",
       "discovery": "gateway",
       "evidence": "gateway-sumsub",
       "context": {
@@ -43619,7 +44213,7 @@
     },
     {
       "name": "unusable-pair-still-refuses-key-retired",
-      "description": "As signals-key-retired-at-not-after, on a stale pair: step 20 (key_retired) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is suspended, though its recheckBy is still 15 minutes ahead.",
+      "description": "As signals-key-retired-at-not-after, on a stale pair: step 20 (key_retired) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is ended.",
       "discovery": "gateway",
       "evidence": "gateway-sumsub-signed-retired-key",
       "context": {
@@ -43772,7 +44366,7 @@
             "evidenceId": "ev_gw_sumsub_signed_old_w1"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -45240,7 +45834,7 @@
     },
     {
       "name": "unusable-pair-skips-proof-stale",
-      "description": "As proof-attestation-expired, on a stale pair: step 31 (proof_stale) reads the Oracle, so it does not run, and no step that reads no block refuses. The evaluation is unavailable (blocks_stale) and suspends the held grant, though its recheckBy is still 15 minutes ahead.",
+      "description": "As proof-attestation-expired, on a stale pair: step 31 (proof_stale) reads the Oracle, so it does not run, and no step that reads no block refuses. The evaluation is unavailable (blocks_stale), and the held grant ends all the same: the attestation expiresAt its record carries has passed, which needs no block read.",
       "discovery": "native",
       "evidence": "native-kyc",
       "context": {
@@ -45377,7 +45971,7 @@
             "evidenceId": "ev_native_kyc_w10000000000"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -45518,7 +46112,7 @@
     },
     {
       "name": "unusable-pair-still-refuses-evidence-id-invalid-other-chain",
-      "description": "As evidence-id-dot-segments, on a pair from another chain: step 2 (evidence_id_invalid) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is ended.",
+      "description": "As evidence-id-dot-segments, on a pair from another chain: step 2 (evidence_id_invalid) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and no grant can rest on an announced id that fails the id rule (what would happen to one is expected.heldGrant: ended).",
       "discovery": "gateway",
       "evidence": "gateway-sumsub",
       "context": {
@@ -48095,7 +48689,7 @@
     },
     {
       "name": "unusable-pair-still-refuses-key-retired-other-chain",
-      "description": "As signals-key-retired-at-not-after, on a pair from another chain: step 20 (key_retired) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is suspended, though its recheckBy is still 15 minutes ahead.",
+      "description": "As signals-key-retired-at-not-after, on a pair from another chain: step 20 (key_retired) reads no block, so it still runs in order and refuses as usual. No Oracle step runs, and the held grant is ended.",
       "discovery": "gateway",
       "evidence": "gateway-sumsub-signed-retired-key",
       "context": {
@@ -48248,7 +48842,7 @@
             "evidenceId": "ev_gw_sumsub_signed_old_w1"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     },
@@ -49716,7 +50310,7 @@
     },
     {
       "name": "unusable-pair-skips-proof-stale-other-chain",
-      "description": "As proof-attestation-expired, on a pair from another chain: step 31 (proof_stale) reads the Oracle, so it does not run, and no step that reads no block refuses. The evaluation is unavailable (blocks_invalid) and suspends the held grant, though its recheckBy is still 15 minutes ahead.",
+      "description": "As proof-attestation-expired, on a pair from another chain: step 31 (proof_stale) reads the Oracle, so it does not run, and no step that reads no block refuses. The evaluation is unavailable (blocks_invalid), and the held grant ends all the same: the attestation expiresAt its record carries has passed, which needs no block read.",
       "discovery": "native",
       "evidence": "native-kyc",
       "context": {
@@ -49853,7 +50447,7 @@
             "evidenceId": "ev_native_kyc_w10000000000"
           }
         },
-        "heldGrant": "suspended",
+        "heldGrant": "ended",
         "recheckBy": null
       }
     }

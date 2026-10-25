@@ -203,7 +203,7 @@
             "type": "string"
           },
           "follows": {
-            "description": "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it re-evaluated (the entry for its subject, fetch host, announced evidenceId and proof hash) as it left it (recheckBy set to expected.recheckBy; an ended grant removed; a grant the earlier store did not hold is not created; every other grant untouched): a consumer runs the chain on its own store.",
+            "description": "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it touched (the entry for its subject, discovery host and announced evidenceId) as it left it (kept: recheckBy set to expected.recheckBy; suspended: recheckBy null; replaced: resting on the earlier case's proof, its proofHash, attestation expiresAt and recheckBy; untouched: unchanged; ended: removed; a grant the earlier store did not hold is not created; every other grant untouched): a consumer runs the chain on its own store.",
             "type": "string",
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
           },
@@ -708,7 +708,7 @@
                 }
               },
               "heldGrants": {
-                "description": "The grants the consumer's observation store holds (SPEC.md section 10.7, Held grants), each keyed by the subject it was granted to, the fetch host and announced evidenceId it was granted on, and the proofHash of the proof it was granted on, with the attestation expiresAt read when it was granted (the grant ends then at the latest) and recheckBy. The entry for this case's subject, fetch host, announced evidenceId and context.proof.proofHash, if any, is the grant expected.heldGrant describes; what happens to it does not depend on its state. Every other entry is another grant (another subject's, host's, id's or proof's), which this evaluation never touches.",
+                "description": "The grants the consumer's observation store holds (SPEC.md section 10.7, Held grants), at most one per key: the subject it was granted to, the discovery host (trustDomainId) and the announced evidenceId it was granted on. Each record carries the proofHash of the proof it rests on, the attestation expiresAt read when that proof was accepted (the grant ends then at the latest, whatever any evaluation decides) and recheckBy. The entry for this case's subject, discovery host and announced evidenceId, if any, is the grant expected.heldGrant describes: re-evaluated when it rests on context.proof.proofHash (what happens to it does not depend on its state), else evaluated against another proof, which can replace or end it but never suspends it. Every other entry is another grant (another subject's, host's or id's), which this evaluation never touches.",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -749,7 +749,7 @@
                       "maximum": 4294967295
                     },
                     "recheckBy": {
-                      "description": "When the grant's next re-evaluation is due (SPEC.md section 10.7, Held grants): the consumer's clock at its last accepting evaluation plus the smaller of the revocationCheckSeconds of the discovery document that evaluation read and the consumer's maxRecheckSeconds. The grant is exercised only before it. null while the grant is suspended.",
+                      "description": "When the grant's next re-evaluation is due (SPEC.md section 10.7, Held grants): the consumer's clock at its last accepting evaluation plus the smaller of the revocationCheckSeconds of the discovery document that evaluation read and the consumer's maxRecheckSeconds (a consumer that lowers its maximum clamps it). The grant is exercised only before it. null while the grant is suspended.",
                       "oneOf": [
                         {
                           "type": "null"
@@ -765,7 +765,7 @@
                 }
               },
               "maxRecheckSeconds": {
-                "description": "The consumer's deployment maximum on a grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares, and a failed or suspending re-evaluation is retried within it. At least 60 (limits.minRevocationCheckSeconds) and at most limits.maxRevocationCheckSeconds.",
+                "description": "The consumer's deployment maximum on a grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares, and a failed or suspending re-evaluation is retried within it on the grant's own schedule, whatever the host's fetch backoff. At least 60 (limits.minRevocationCheckSeconds) and at most limits.maxRevocationCheckSeconds.",
                 "type": "integer",
                 "minimum": 60,
                 "maximum": 86400
@@ -906,7 +906,7 @@
                     "const": true
                   },
                   "records": {
-                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
                     "type": "object",
                     "required": [
                       "discovery",
@@ -1043,14 +1043,25 @@
                     }
                   },
                   "heldGrant": {
-                    "description": "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).",
-                    "const": "kept"
+                    "description": "What this evaluation does to the grant held for its subject, discovery host (trustDomainId) and announced evidenceId (SPEC.md section 10.7, Held grants). A grant past the attestation expiresAt its record carries, or past its recorded evidence's expiresAt, is ended whatever the outcome. Otherwise, when the grant rests on context.proof (or none is held: what would happen to a grant on it, whatever state it was in): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 20, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends). When it rests on another proof: replaced (accepted, and context.proof's attestation expires later than the record's: the record now rests on context.proof), ended (refused at step 1, 4, 5, 18, 20 or 29, the evidence's own ends), or untouched (anything else: the grant stays as it was).",
+                    "enum": [
+                      "kept",
+                      "replaced",
+                      "untouched"
+                    ]
                   },
                   "recheckBy": {
-                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.",
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 4294967295
+                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept or replaced, whatever recheckBy the store held; the recheckBy the store holds for it when untouched (null if suspended); null otherwise.",
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    ]
                   }
                 }
               },
@@ -1104,7 +1115,7 @@
                     ]
                   },
                   "records": {
-                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
                     "type": "object",
                     "required": [
                       "discovery",
@@ -1241,15 +1252,25 @@
                     }
                   },
                   "heldGrant": {
-                    "description": "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).",
+                    "description": "What this evaluation does to the grant held for its subject, discovery host (trustDomainId) and announced evidenceId (SPEC.md section 10.7, Held grants). A grant past the attestation expiresAt its record carries, or past its recorded evidence's expiresAt, is ended whatever the outcome. Otherwise, when the grant rests on context.proof (or none is held: what would happen to a grant on it, whatever state it was in): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 20, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends). When it rests on another proof: replaced (accepted, and context.proof's attestation expires later than the record's: the record now rests on context.proof), ended (refused at step 1, 4, 5, 18, 20 or 29, the evidence's own ends), or untouched (anything else: the grant stays as it was).",
                     "enum": [
                       "suspended",
-                      "ended"
+                      "ended",
+                      "untouched"
                     ]
                   },
                   "recheckBy": {
-                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.",
-                    "type": "null"
+                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept or replaced, whatever recheckBy the store held; the recheckBy the store holds for it when untouched (null if suspended); null otherwise.",
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    ]
                   }
                 }
               },
@@ -1268,14 +1289,14 @@
                     "const": false
                   },
                   "unavailable": {
-                    "description": "Why the evaluation cannot complete (SPEC.md section 10.5, Block pair): blocks_invalid (the pair fails the validity checks) or blocks_stale (its latest block is older than maxBlockAgeSeconds). No Oracle step (21-23, 30, 31) runs; every other step passed. Unavailable is neither a refusal nor an acceptance: it grants nothing and suspends a held grant.",
+                    "description": "Why the evaluation cannot complete (SPEC.md section 10.5, Block pair): blocks_invalid (the pair fails the validity checks) or blocks_stale (its latest block is older than maxBlockAgeSeconds). No Oracle step (21-23, 30, 31) runs; every other step passed. Unavailable is neither a refusal nor an acceptance: it grants nothing and suspends a held grant resting on context.proof.",
                     "enum": [
                       "blocks_invalid",
                       "blocks_stale"
                     ]
                   },
                   "records": {
-                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+                    "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
                     "type": "object",
                     "required": [
                       "discovery",
@@ -1412,12 +1433,25 @@
                     }
                   },
                   "heldGrant": {
-                    "description": "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).",
-                    "const": "suspended"
+                    "description": "What this evaluation does to the grant held for its subject, discovery host (trustDomainId) and announced evidenceId (SPEC.md section 10.7, Held grants). A grant past the attestation expiresAt its record carries, or past its recorded evidence's expiresAt, is ended whatever the outcome. Otherwise, when the grant rests on context.proof (or none is held: what would happen to a grant on it, whatever state it was in): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 20, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends). When it rests on another proof: replaced (accepted, and context.proof's attestation expires later than the record's: the record now rests on context.proof), ended (refused at step 1, 4, 5, 18, 20 or 29, the evidence's own ends), or untouched (anything else: the grant stays as it was).",
+                    "enum": [
+                      "suspended",
+                      "ended",
+                      "untouched"
+                    ]
                   },
                   "recheckBy": {
-                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.",
-                    "type": "null"
+                    "description": "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept or replaced, whatever recheckBy the store held; the recheckBy the store holds for it when untouched (null if suspended); null otherwise.",
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      }
+                    ]
                   }
                 }
               }
@@ -2111,7 +2145,7 @@
                           "type": "null"
                         },
                         {
-                          "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+                          "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
                           "type": "object",
                           "required": [
                             "discovery",
@@ -2289,7 +2323,7 @@
                           "type": "null"
                         },
                         {
-                          "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+                          "description": "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
                           "type": "object",
                           "required": [
                             "discovery",

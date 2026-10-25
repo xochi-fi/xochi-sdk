@@ -1351,10 +1351,10 @@ const blocksOn = (chainId: number, now = NOW): Blocks => ({
   latest: { number: LATEST_BLOCK, timestamp: now - 2 },
 });
 // A grant the consumer holds, as its observation store has it (SPEC.md section 10.7, Held
-// grants): keyed by the subject it was granted to, the fetch host and announced evidenceId,
-// and the hash of the proof it was granted on; the attestation expiresAt read when it was
-// granted (it ends then at the latest); and recheckBy, the instant by which its next
-// re-evaluation must complete (it is exercised only before then), null while suspended.
+// grants): at most one per subject it was granted to, discovery host and announced evidenceId
+// (its key); the hash of the proof it rests on and that proof's attestation expiresAt (it ends
+// then at the latest); and recheckBy, the instant by which its next re-evaluation must
+// complete (it is exercised only before then), null while suspended.
 type HeldGrant = {
   subject: string;
   trustDomainId: string;
@@ -1675,6 +1675,11 @@ const NATIVE_PROOF = {
   credentialRoot: ROOT_NATIVE_SEPOLIA,
   ...live(nativeEvidence),
 } as const satisfies Proof;
+// A renewal of native-kyc's proof (SPEC.md section 10.7, Held grants): the older proof, made at
+// issuance, whose attestation runs out in an hour, and a newer one made an hour ago, whose
+// attestation runs the Oracle's default 24 h.
+const OLD_NATIVE_PROOF = { ...NATIVE_PROOF, attestationExpiresAt: NOW + 3600 } as const;
+const RENEWED_NATIVE_PROOF = { ...NATIVE_PROOF, timestamp: NOW - 3600 } as const;
 
 // One 32-byte public-input word: an integer, address or hash, big-endian, zero-padded.
 const word = (value: string | number | bigint): string =>
@@ -3249,7 +3254,7 @@ const evaluationCases: CaseInput[] = [
   {
     name: "held-grant-recheck-capped-by-consumer",
     description:
-      "A consumer lowers its deployment maximum to 600, below even the gateway's revocationCheckSeconds (900), while its grant's recheckBy (now + 1800) was recorded under the earlier maximum (1800). It re-evaluates the grant at once, as lowering requires, and the accepting re-evaluation sets the next re-evaluation due at now + 600, earlier than the recorded one. A provider can lower the interval, never raise it past the consumer's maximum.",
+      "A consumer has lowered its deployment maximum to 600, below even the gateway's revocationCheckSeconds (900), and its grant's recheckBy (now + 1800), written under the earlier maximum (1800), is not yet clamped (the clamp waits until no evaluation begun under 1800 can still commit, SPEC.md section 10.7). The grant's re-evaluation accepts and sets the next re-evaluation due at now + 600, earlier than the recorded one. A provider can lower the interval, never raise it past the consumer's maximum.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -3352,39 +3357,121 @@ const evaluationCases: CaseInput[] = [
     expected: accept,
   },
   {
-    name: "held-grant-on-old-proof-ends-alone",
-    description:
-      "The subject holds two grants on one evidence from one host: one on an older proof whose Oracle attestation expired one second ago, one on a newer proof of the same evidence made an hour ago (a renewal: a new evaluation, so a new grant). Re-evaluating the old proof is refused at step 31, which ends the old proof's grant only: a grant is keyed by the proof hash too.",
+    name: "held-grant-replaced-by-renewed-proof",
+    description: `The subject holds a grant on native-kyc from the native host resting on an older proof, whose Oracle attestation runs out in an hour. It submits a newer proof of the same evidence, whose attestation runs 24 h: that evaluation accepts and, its attestation expiring later, replaces the grant in one write (the record now rests on the newer proof, due at now + ${MAX_RECHECK_SECONDS}). A store holds at most one grant per subject, discovery host and evidenceId, however many proofs the subject submits.`,
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW - 1 },
+      proof: RENEWED_NATIVE_PROOF,
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc", { proof: OLD_NATIVE_PROOF })],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-renewed-untouched-by-old-proof",
+    description:
+      "After held-grant-replaced-by-renewed-proof, the older proof is evaluated again (a re-announcement, or its own re-evaluation committing after the replacement): it accepts, but its attestation expires earlier than the one the record carries, so it leaves the grant untouched, its recheckBy included. A store that re-evaluates the grant on any proof of its evidence keeps it here; one that lets the newest commit win moves it back to the older proof.",
+    follows: "held-grant-replaced-by-renewed-proof",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: OLD_NATIVE_PROOF,
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
       heldGrants: [
-        heldGrant(NATIVE_HOST, "native-kyc"),
-        heldGrant(NATIVE_HOST, "native-kyc", { proof: { ...NATIVE_PROOF, timestamp: NOW - 3600 } }),
+        heldGrant(NATIVE_HOST, "native-kyc", {
+          proof: RENEWED_NATIVE_PROOF,
+          recheckBy: NOW + MAX_RECHECK_SECONDS,
+        }),
+      ],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-renewed-untouched-by-old-proof-invalidated",
+    description:
+      "After held-grant-renewed-untouched-by-old-proof, the guardian invalidates the older proof's attestation (invalidateAttestation, finalized). Its evaluation is refused at step 31, which is about that proof: the grant resting on the newer proof is untouched.",
+    follows: "held-grant-renewed-untouched-by-old-proof",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...OLD_NATIVE_PROOF, attestationRevoked: true },
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [
+        heldGrant(NATIVE_HOST, "native-kyc", {
+          proof: RENEWED_NATIVE_PROOF,
+          recheckBy: NOW + MAX_RECHECK_SECONDS,
+        }),
       ],
     }),
     expected: refuse("proof_stale"),
   },
   {
-    name: "held-grant-on-renewed-proof-kept",
-    description:
-      "After held-grant-on-old-proof-ends-alone, the renewed proof's grant is still held with its recheckBy unchanged, and its own re-evaluation accepts. A store keying grants without the proof hash ends it with the old proof's.",
-    follows: "held-grant-on-old-proof-ends-alone",
+    name: "held-grant-renewed-untouched-by-old-proof-on-stale-pair",
+    description: `After held-grant-renewed-untouched-by-old-proof-invalidated, the older proof is evaluated on a node whose latest block is ${MAX_BLOCK_AGE_SECONDS + 1} s old: unavailable, which is not the grant's re-evaluation, so the grant resting on the newer proof is untouched (a suspension never spreads to it).`,
+    follows: "held-grant-renewed-untouched-by-old-proof-invalidated",
     discovery: "native",
     evidence: "native-kyc",
     context: sepoliaContext(NATIVE_HOST, {
-      proof: { ...NATIVE_PROOF, timestamp: NOW - 3600 },
+      proof: { ...OLD_NATIVE_PROOF, attestationRevoked: true },
+      blocks: stalePair(BASE_SEPOLIA),
       seenDiscovery: ["native"],
       seenEvidence: ["native-kyc"],
-      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc")],
+      heldGrants: [
+        heldGrant(NATIVE_HOST, "native-kyc", {
+          proof: RENEWED_NATIVE_PROOF,
+          recheckBy: NOW + MAX_RECHECK_SECONDS,
+        }),
+      ],
+    }),
+    expected: unavailable("blocks_stale"),
+  },
+  {
+    name: "held-grant-renewed-kept-after-old-proof",
+    description:
+      "After held-grant-renewed-untouched-by-old-proof-on-stale-pair, the store still holds the grant on the newer proof, exercised, and its own re-evaluation accepts and keeps it.",
+    follows: "held-grant-renewed-untouched-by-old-proof-on-stale-pair",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: RENEWED_NATIVE_PROOF,
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [
+        heldGrant(NATIVE_HOST, "native-kyc", {
+          proof: RENEWED_NATIVE_PROOF,
+          recheckBy: NOW + MAX_RECHECK_SECONDS,
+        }),
+      ],
     }),
     expected: accept,
   },
   {
+    name: "held-grant-renewed-ended-by-old-proof-gone",
+    description:
+      "After held-grant-renewed-kept-after-old-proof, the older proof is announced again and the native host answers 410 for the evidence: the revocation is the evidence's, not the proof's, so it ends the grant resting on the newer proof too.",
+    follows: "held-grant-renewed-kept-after-old-proof",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...OLD_NATIVE_PROOF, attestationRevoked: true },
+      evidenceFetch: { host: NATIVE_HOST, status: 410 },
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [
+        heldGrant(NATIVE_HOST, "native-kyc", {
+          proof: RENEWED_NATIVE_PROOF,
+          recheckBy: NOW + MAX_RECHECK_SECONDS,
+        }),
+      ],
+    }),
+    expected: refuse("evidence_gone"),
+  },
+  {
     name: "held-grant-ended-under-its-own-host-only",
     description:
-      "The subject holds two grants on one evidenceId and proof: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the fetch host and the announced id (with the subject and the proof hash), so the native host's grant is untouched.",
+      "The subject holds two grants on one evidenceId and proof: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the discovery host and the announced id (with the subject), so the native host's grant is untouched.",
     discovery: "gateway",
     evidence: "native-kyc",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -5010,15 +5097,14 @@ const REFUSALS = [
 ];
 // SPEC.md section 10.7, Held grants: the refusals that end a held grant when they refuse its
 // re-evaluation: the consumer's own decision to stop relying on the trust domain (1), an
-// evidence revocation (4, 5) and a key revocation (18), recorded and final, the evidence's
-// expiry (29), and the attestation's revocation or expiry or the proof's window (31), fixed
-// on-chain or by time; a step-31 refusal seen only at the latest block (an attestation
-// revocation not yet finalized) suspends instead, and the case states it. Steps 2 and 3 are
-// listed for completeness: a re-evaluation of the recorded id from the discovery host cannot
-// meet them. Every other refusal is unrecorded and mostly reversible (a provider document, an
-// Oracle read, the consumer's requirement), and suspends the grant; one that is not (a root or
-// config revoked on the Oracle, a retired signed-signals key at step 20) keeps it suspended
-// until it ends at its expiry.
+// evidence revocation (4, 5) and a key revocation (18), recorded and final, a signed-signals
+// key past its notAfter (20) and the evidence's expiry (29), fixed by time, and the
+// attestation's revocation or expiry or the proof's window (31), fixed on-chain or by time; a
+// step-31 refusal seen only at the latest block (an attestation revocation not yet finalized)
+// suspends instead, and the case states it. Steps 2 and 3 are listed for completeness: a
+// re-evaluation of the recorded id from the discovery host cannot meet them. Every other
+// refusal is unrecorded and mostly reversible (a provider document, an Oracle read, the
+// consumer's requirement), and suspends the grant.
 const ENDS_HELD_GRANT = [
   "trust_domain_not_allowed",
   "evidence_id_invalid",
@@ -5026,9 +5112,17 @@ const ENDS_HELD_GRANT = [
   "evidence_gone",
   "evidence_revoked",
   "key_revoked",
+  "key_retired",
   "expired",
   "proof_stale",
 ];
+// The ends that are the evidence's, not the proof's: an evaluation of another proof on the
+// evidence that is refused at one of them ends the grant held on it too (SPEC.md section 10.7,
+// Held grants). Steps 2 and 3 describe what the announcement supplied, and step 31 that
+// proof, so they never touch a grant resting on another proof.
+const ENDS_FOR_ANY_PROOF = ENDS_HELD_GRANT.filter(
+  (r) => !["evidence_id_invalid", "origin_mismatch", "proof_stale"].includes(r),
+);
 
 const LIMITS = {
   maxEvidenceLifetimeSeconds: MAX_EVIDENCE_LIFETIME_SECONDS,
@@ -5173,21 +5267,57 @@ const ORACLE_REFUSALS = [
   "proof_mismatch",
   "proof_stale",
 ];
-// SPEC.md section 10.7, Held grants: what this evaluation does to the grant held on its evidence
-// (keyed by the subject, the fetch host, the announced id and the proof hash), whatever state the
-// grant was in, its recheckBy included, and when the grant's next re-evaluation is due
-// afterwards. Accepted keeps it (lifting a suspension), due at now plus the smaller of the
-// fetched document's revocationCheckSeconds and the consumer's deployment maximum; an ending
-// refusal ends it; any other refusal, and unavailable, suspends it.
+// SPEC.md section 10.7, Held grants. The grant an evaluation touches is the one the store holds
+// for its subject, discovery host and announced id (at most one). A grant past the attestation
+// expiresAt its record carries, or past its recorded evidence's expiresAt, ends whatever the
+// outcome (an expiry needs no block read). Otherwise:
+// - On the case's own proof (or none held: what would happen to a grant on it, whatever state
+//   the grant was in, its recheckBy included), accepted keeps it (lifting a suspension), due at
+//   now plus the smaller of the fetched document's revocationCheckSeconds and the consumer's
+//   deployment maximum; an ending refusal ends it; any other refusal, and unavailable,
+//   suspends it.
+// - On another proof, the evaluation is not its re-evaluation: accepted with a later
+//   attestation expiresAt replaces it (due as when kept), refused at an end that is the
+//   evidence's ends it, and anything else leaves it untouched, its recheckBy included.
+type HeldGrantOutcome = {
+  heldGrant: "kept" | "replaced" | "untouched" | "ended" | "suspended";
+  recheckBy: number | null;
+};
+const isGrantOf =
+  (ctx: Pick<Context, "subject" | "discoveryFetch" | "announcedEvidenceId">) => (g: HeldGrant) =>
+    g.subject === ctx.subject &&
+    g.trustDomainId === ctx.discoveryFetch.host &&
+    g.evidenceId === ctx.announcedEvidenceId;
 function heldGrantAfter(
   expected: CaseInput["expected"],
   ctx: Context,
   disc: Discovery,
-): { heldGrant: "kept" | "ended" | "suspended"; recheckBy: number | null } {
-  if (expected.accepted) {
-    const interval = Math.min(disc.revocationCheckSeconds, ctx.maxRecheckSeconds);
-    return { heldGrant: "kept", recheckBy: ctx.now + interval };
+  shipped: ShippedProof,
+): HeldGrantOutcome {
+  const held = ctx.heldGrants.find(isGrantOf(ctx));
+  const attestationExpiresAt = held?.attestationExpiresAt ?? shipped.attestation.expiresAt;
+  const recorded = ctx.seenEvidence
+    .map((name) => evidence[name]!)
+    .find(
+      (e) =>
+        e.trustDomainId === ctx.discoveryFetch.host && e.evidenceId === ctx.announcedEvidenceId,
+    );
+  const ended = { heldGrant: "ended", recheckBy: null } as const;
+  if (ctx.now > attestationExpiresAt || (recorded && ctx.now >= recorded.expiresAt)) return ended;
+  // When accepted: now plus the smaller of the fetched interval and the deployment maximum.
+  const due = ctx.now + Math.min(disc.revocationCheckSeconds, ctx.maxRecheckSeconds);
+  if (held && held.proofHash !== shipped.proofHash) {
+    const untouched = { heldGrant: "untouched", recheckBy: held.recheckBy } as const;
+    if (expected.accepted) {
+      return shipped.attestation.expiresAt > held.attestationExpiresAt
+        ? { heldGrant: "replaced", recheckBy: due }
+        : untouched;
+    }
+    return "refusal" in expected && ENDS_FOR_ANY_PROOF.includes(expected.refusal)
+      ? ended
+      : untouched;
   }
+  if (expected.accepted) return { heldGrant: "kept", recheckBy: due };
   if ("unavailable" in expected) return { heldGrant: "suspended", recheckBy: null };
   const heldGrant =
     expected.heldGrant ?? (ENDS_HELD_GRANT.includes(expected.refusal) ? "ended" : "suspended");
@@ -5264,6 +5394,11 @@ function finalize({ context, expected, ...c }: CaseInput) {
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
     proof: caseProof,
   };
+  // A store holds at most one grant per subject, discovery host and announced id (SPEC.md
+  // section 10.7, Held grants).
+  const keys = full.heldGrants.map((g) => [g.subject, g.trustDomainId, g.evidenceId].join(" "));
+  if (new Set(keys).size !== keys.length) throw new Error(`${c.name}: two grants on one key`);
+  const shipped = encodeProof(full.proof, full.chainId, full.oracleAddress);
   // A case cannot state an outcome its pair contradicts: unavailable exactly when the pair is
   // unusable (and steps 1-20, 24-29 pass), and never an Oracle refusal on an unusable pair.
   const pairState = pairCheck(full.blocks, full.chainId, full.now);
@@ -5280,7 +5415,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
       : { accepted: false as const, refusal: expected.refusal };
   return {
     ...c,
-    context: { ...full, proof: encodeProof(full.proof, full.chainId, full.oracleAddress) },
+    context: { ...full, proof: shipped },
     expected: {
       ...outcome,
       records: recordsFor(
@@ -5292,7 +5427,7 @@ function finalize({ context, expected, ...c }: CaseInput) {
           "unavailable" in expected ||
           REFUSALS.indexOf(expected.refusal) > REFUSALS.indexOf("evidence_id_mismatch"),
       ),
-      ...heldGrantAfter(expected, full, disc),
+      ...heldGrantAfter(expected, full, disc, shipped),
     },
   };
 }
@@ -5431,9 +5566,15 @@ function onUnusablePair(refusal: string, why: Unavailable): CaseInput {
   const held = EVIDENCE_ID_RULE.test(id)
     ? [{ trustDomainId: host, evidenceId: id, recheckBy: now + 900 }]
     : [];
-  const effect = oracle
-    ? `The evaluation is unavailable (${why}) and suspends the held grant, though its recheckBy is still 15 minutes ahead.`
-    : `No Oracle step runs, and the held grant is ${ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended, though its recheckBy is still 15 minutes ahead"}.`;
+  const attestationPast =
+    source.context.proof !== undefined && now > source.context.proof.attestationExpiresAt;
+  const effect = attestationPast
+    ? `The evaluation is unavailable (${why}), and the held grant ends all the same: the attestation expiresAt its record carries has passed, which needs no block read.`
+    : oracle
+      ? `The evaluation is unavailable (${why}) and suspends the held grant, though its recheckBy is still 15 minutes ahead.`
+      : held.length === 0
+        ? "No Oracle step runs, and no grant can rest on an announced id that fails the id rule (what would happen to one is expected.heldGrant: ended)."
+        : `No Oracle step runs, and the held grant is ${ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended, though its recheckBy is still 15 minutes ahead"}.`;
   return {
     ...rest,
     name: `unusable-pair-${oracle ? "skips" : "still-refuses"}-${refusal.replace(/_/g, "-")}${why === "blocks_invalid" ? "-other-chain" : ""}`,
@@ -5641,11 +5782,11 @@ const BLOCKS = d(
   obj({ chainId: CHAIN_ID, finalized: BLOCK_REF, latest: BLOCK_REF }),
 );
 const RECHECK_BY = d(
-  "When the grant's next re-evaluation is due (SPEC.md section 10.7, Held grants): the consumer's clock at its last accepting evaluation plus the smaller of the revocationCheckSeconds of the discovery document that evaluation read and the consumer's maxRecheckSeconds. The grant is exercised only before it. null while the grant is suspended.",
+  "When the grant's next re-evaluation is due (SPEC.md section 10.7, Held grants): the consumer's clock at its last accepting evaluation plus the smaller of the revocationCheckSeconds of the discovery document that evaluation read and the consumer's maxRecheckSeconds (a consumer that lowers its maximum clamps it). The grant is exercised only before it. null while the grant is suspended.",
   { oneOf: [{ type: "null" }, UNIX] },
 );
 const HELD_GRANTS = d(
-  "The grants the consumer's observation store holds (SPEC.md section 10.7, Held grants), each keyed by the subject it was granted to, the fetch host and announced evidenceId it was granted on, and the proofHash of the proof it was granted on, with the attestation expiresAt read when it was granted (the grant ends then at the latest) and recheckBy. The entry for this case's subject, fetch host, announced evidenceId and context.proof.proofHash, if any, is the grant expected.heldGrant describes; what happens to it does not depend on its state. Every other entry is another grant (another subject's, host's, id's or proof's), which this evaluation never touches.",
+  "The grants the consumer's observation store holds (SPEC.md section 10.7, Held grants), at most one per key: the subject it was granted to, the discovery host (trustDomainId) and the announced evidenceId it was granted on. Each record carries the proofHash of the proof it rests on, the attestation expiresAt read when that proof was accepted (the grant ends then at the latest, whatever any evaluation decides) and recheckBy. The entry for this case's subject, discovery host and announced evidenceId, if any, is the grant expected.heldGrant describes: re-evaluated when it rests on context.proof.proofHash (what happens to it does not depend on its state), else evaluated against another proof, which can replace or end it but never suspends it. Every other entry is another grant (another subject's, host's or id's), which this evaluation never touches.",
   {
     type: "array",
     items: obj({
@@ -5659,7 +5800,7 @@ const HELD_GRANTS = d(
   },
 );
 const MAX_RECHECK = d(
-  `The consumer's deployment maximum on a grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares, and a failed or suspending re-evaluation is retried within it. At least ${MIN_REVOCATION_CHECK_SECONDS} (limits.minRevocationCheckSeconds) and at most limits.maxRevocationCheckSeconds.`,
+  `The consumer's deployment maximum on a grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares, and a failed or suspending re-evaluation is retried within it on the grant's own schedule, whatever the host's fetch backoff. At least ${MIN_REVOCATION_CHECK_SECONDS} (limits.minRevocationCheckSeconds) and at most limits.maxRevocationCheckSeconds.`,
   {
     type: "integer",
     minimum: MIN_REVOCATION_CHECK_SECONDS,
@@ -5672,7 +5813,7 @@ const OBSERVED_PAIR = obj({
   evidenceId: evidenceSchema.properties.evidenceId,
 });
 const RECORDS = d(
-  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first). What the evaluation does to a held grant is expected.heldGrant and expected.recheckBy.",
+  "What this evaluation writes to the observation store (SPEC.md section 10.8): an insert-if-absent or atomic-maximum write counts even when the store already holds the value, and a record is null only when the evaluation writes nothing of that kind. discovery: the discovery document's updatedAt and its revoked keys (keyId and credentialSigner / signerPubkeyHash), when the discovery steps pass on their own, whatever the evidence, under the attestorProviderId the allowlist pins its trust domain to if the document's entry for the deployment names it, else under null (never shared with another trust domain; a key revocation record is keyed by trust domain, recording attestor or null, keyId and material, so a record under null never stops one under the attestor); revocation: (fetch host, announced evidenceId) from a 410 or a revoked body once steps 1-3 pass; evidence: the active evidence document once steps 1-9 pass (after a conflict the store keeps the first).",
   obj({
     discovery: {
       oneOf: [
@@ -5694,15 +5835,15 @@ const RECORDS = d(
 );
 
 const HELD_GRANT =
-  "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
+  "What this evaluation does to the grant held for its subject, discovery host (trustDomainId) and announced evidenceId (SPEC.md section 10.7, Held grants). A grant past the attestation expiresAt its record carries, or past its recorded evidence's expiresAt, is ended whatever the outcome. Otherwise, when the grant rests on context.proof (or none is held: what would happen to a grant on it, whatever state it was in): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 20, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends). When it rests on another proof: replaced (accepted, and context.proof's attestation expires later than the record's: the record now rests on context.proof), ended (refused at step 1, 4, 5, 18, 20 or 29, the evidence's own ends), or untouched (anything else: the grant stays as it was).";
 const HELD_RECHECK_BY =
-  "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.";
+  "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept or replaced, whatever recheckBy the store held; the recheckBy the store holds for it when untouched (null if suspended); null otherwise.";
 const QUORUM_RECORDS = d(
   "What each member's evaluation against the snapshot writes, in member order (SPEC.md section 10.6), as an evaluation case's expected.records; null for a member for another claim or proof type, which is not evaluated. On an unusable pair each member still runs the steps that read no block and writes what they write.",
   { type: "array", items: { oneOf: [{ type: "null" }, RECORDS] } },
 );
 const UNAVAILABLE_FIELD = d(
-  "Why the evaluation cannot complete (SPEC.md section 10.5, Block pair): blocks_invalid (the pair fails the validity checks) or blocks_stale (its latest block is older than maxBlockAgeSeconds). No Oracle step (21-23, 30, 31) runs; every other step passed. Unavailable is neither a refusal nor an acceptance: it grants nothing and suspends a held grant.",
+  "Why the evaluation cannot complete (SPEC.md section 10.5, Block pair): blocks_invalid (the pair fails the validity checks) or blocks_stale (its latest block is older than maxBlockAgeSeconds). No Oracle step (21-23, 30, 31) runs; every other step passed. Unavailable is neither a refusal nor an acceptance: it grants nothing and suspends a held grant resting on context.proof.",
   { enum: UNAVAILABLE },
 );
 
@@ -5747,7 +5888,7 @@ const vectorsSchema = {
           name: NAME,
           description: { type: "string" },
           follows: d(
-            "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it re-evaluated (the entry for its subject, fetch host, announced evidenceId and proof hash) as it left it (recheckBy set to expected.recheckBy; an ended grant removed; a grant the earlier store did not hold is not created; every other grant untouched): a consumer runs the chain on its own store.",
+            "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it touched (the entry for its subject, discovery host and announced evidenceId) as it left it (kept: recheckBy set to expected.recheckBy; suspended: recheckBy null; replaced: resting on the earlier case's proof, its proofHash, attestation expiresAt and recheckBy; untouched: unchanged; ended: removed; a grant the earlier store did not hold is not created; every other grant untouched): a consumer runs the chain on its own store.",
             NAME,
           ),
           discovery: DOC_REF,
@@ -5769,22 +5910,22 @@ const vectorsSchema = {
               obj({
                 accepted: { const: true },
                 records: RECORDS,
-                heldGrant: d(HELD_GRANT, { const: "kept" }),
-                recheckBy: d(HELD_RECHECK_BY, UNIX),
+                heldGrant: d(HELD_GRANT, { enum: ["kept", "replaced", "untouched"] }),
+                recheckBy: d(HELD_RECHECK_BY, { oneOf: [{ type: "null" }, UNIX] }),
               }),
               obj({
                 accepted: { const: false },
                 refusal: { enum: REFUSALS },
                 records: RECORDS,
-                heldGrant: d(HELD_GRANT, { enum: ["suspended", "ended"] }),
-                recheckBy: d(HELD_RECHECK_BY, { type: "null" }),
+                heldGrant: d(HELD_GRANT, { enum: ["suspended", "ended", "untouched"] }),
+                recheckBy: d(HELD_RECHECK_BY, { oneOf: [{ type: "null" }, UNIX] }),
               }),
               obj({
                 accepted: { const: false },
                 unavailable: UNAVAILABLE_FIELD,
                 records: RECORDS,
-                heldGrant: d(HELD_GRANT, { const: "suspended" }),
-                recheckBy: d(HELD_RECHECK_BY, { type: "null" }),
+                heldGrant: d(HELD_GRANT, { enum: ["suspended", "ended", "untouched"] }),
+                recheckBy: d(HELD_RECHECK_BY, { oneOf: [{ type: "null" }, UNIX] }),
               }),
             ],
           },
