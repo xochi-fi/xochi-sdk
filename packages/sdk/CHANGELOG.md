@@ -4,6 +4,8 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-25
+
 ### Breaking
 
 - **RISK_SCORE (0x02) and PATTERN (0x03) carry a proof timestamp** (xochi-fi/ERC-8262#25, ERC-8262 PR #33). The Oracle now rejects either once the timestamp is older than `MAX_PROOF_AGE` (1 hour) or in the future, and ratchets on it per type; before, both used `block.timestamp` and had no age bound. Bundled `risk_score.json` and `pattern.json` are re-synced: their verification keys changed, so deploy the matching ERC-8262 verifiers and Oracle. Proofs made by earlier releases do not verify against the new verifiers.
