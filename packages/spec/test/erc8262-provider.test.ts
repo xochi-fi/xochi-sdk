@@ -724,16 +724,18 @@ const isGrantOf = (ctx: Context) => (g: HeldGrant) =>
 
 // What an outcome does to the grant held on the evidence, and when its next re-evaluation is
 // due afterwards (SPEC.md section 10.7, Held grants).
-// - Past the attestation expiresAt its record carries, or its recorded evidence's expiresAt:
-//   ended, whatever the outcome (no block read needed).
+// - Past its recorded evidence's expiresAt: ended, whatever the outcome; past the attestation
+//   expiresAt its record carries: ended, unless another proof accepts (no block read needed).
 // - Resting on the case's proof (or none held: what happens to a grant on it, whatever state
 //   it was in, its recheckBy included): accepted keeps it (a suspension lifted), due at now
 //   plus the smaller of the fetched document's revocationCheckSeconds and the consumer's
 //   deployment maximum; refused at an ending step ends it (a step-31 refusal only when the
 //   finalized reads refuse too), else suspends it; unavailable suspends it (fail closed),
 //   however long its recheckBy still runs.
-// - Resting on another proof: accepted with a later attestation expiresAt replaces it (due as
-//   when kept); refused at an end that is the evidence's ends it; else untouched.
+// - Resting on another proof: accepted replaces it (due as when kept) unless it is still
+//   exercised (not suspended, before its recheckBy and its record's attestation expiresAt) and
+//   that attestation expires no earlier; refused at an end that is the evidence's ends it;
+//   else untouched.
 function heldGrantAfter(
   outcome: Outcome,
   disc: unknown,
@@ -742,21 +744,25 @@ function heldGrantAfter(
   store = storeOf(ctx),
 ): HeldGrantOutcome {
   const held = store.heldGrants.find(isGrantOf(ctx));
-  const attestationExpiresAt = held?.attestationExpiresAt ?? ctx.proof.attestation.expiresAt;
+  const attestationPast = ctx.now > (held?.attestationExpiresAt ?? ctx.proof.attestation.expiresAt);
   const recorded = store.evidence.find(
     (e) => e.trustDomainId === ctx.discoveryFetch.host && e.evidenceId === ctx.announcedEvidenceId,
   );
-  if (ctx.now > attestationExpiresAt || (recorded && ctx.now >= recorded.expiresAt)) {
-    return { heldGrant: "ended", recheckBy: null };
-  }
+  if (recorded && ctx.now >= recorded.expiresAt) return { heldGrant: "ended", recheckBy: null };
   const onOtherProof = held !== undefined && held.proofHash !== ctx.proof.proofHash;
   if (outcome === null) {
     const interval = Math.min((disc as Discovery).revocationCheckSeconds, ctx.maxRecheckSeconds);
-    if (!onOtherProof) return { heldGrant: "kept", recheckBy: ctx.now + interval };
-    return ctx.proof.attestation.expiresAt > held.attestationExpiresAt
-      ? { heldGrant: "replaced", recheckBy: ctx.now + interval }
-      : { heldGrant: "untouched", recheckBy: held.recheckBy };
+    if (onOtherProof) {
+      // A record past its attestation expiresAt also loses the comparison below: an accepted
+      // proof's attestation has not expired.
+      const exercised = held.recheckBy !== null && ctx.now < held.recheckBy;
+      return !exercised || ctx.proof.attestation.expiresAt > held.attestationExpiresAt
+        ? { heldGrant: "replaced", recheckBy: ctx.now + interval }
+        : { heldGrant: "untouched", recheckBy: held.recheckBy };
+    }
+    if (!attestationPast) return { heldGrant: "kept", recheckBy: ctx.now + interval };
   }
+  if (outcome === null || attestationPast) return { heldGrant: "ended", recheckBy: null };
   if (onOtherProof) {
     return "refusal" in outcome && ENDS_FOR_ANY_PROOF.includes(outcome.refusal)
       ? { heldGrant: "ended", recheckBy: null }
