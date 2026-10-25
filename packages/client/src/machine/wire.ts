@@ -694,8 +694,9 @@ export interface IntentRecord {
 
 /**
  * `GET /api/intent/:id` for a stealth intent read without the read token or an
- * owner session, or a shielded intent read without an owner session, token or
- * not (xochi#563, SPEC.md §5.1): the server's status-only view. Tokens,
+ * owner session (xochi#563): the server's status-only view. Once shielded is
+ * offered, SPEC.md §5.1 requires the same view for a shielded intent read
+ * without an owner session, token or not (`IntentReadOptions`). Tokens,
  * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
  * so they are absent here rather than defaulted; read with the token (stealth),
  * or a wallet SIWE session for the intent's wallet, for the full `IntentRecord`.

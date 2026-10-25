@@ -564,7 +564,8 @@ export const ExecuteResponseSchema = z
     // reports an execute that may already have moved funds, and failing it would
     // turn a settled swap into an in-doubt one over a privacy-only field. The
     // describe below departs from xochi's (which still names shielded legs)
-    // until xochi#565 takes the same correction (SPEC.md §5.1).
+    // until xochi#565 takes the same correction; as drafted, xochi#565 also
+    // reads a shielded intent's full record with the token (SPEC.md §5.1).
     read_token: z
       .string()
       .regex(READ_TOKEN_PATTERN)
@@ -573,9 +574,10 @@ export const ExecuteResponseSchema = z
       .describe(
         "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
           "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
-          "on-chain legs of a stealth intent. It adds nothing for a shielded intent: that " +
-          "read is the status-only view (`legs_withheld`), and every other field is served " +
-          "to owner-authenticated reads only (SPEC.md §5.1). Never put it in a URL.",
+          "on-chain legs of a stealth intent. Shielded is not offered; before it is, a " +
+          "token read of a shielded intent must get only the status-only view " +
+          "(`legs_withheld`), every other field going to owner-authenticated reads only " +
+          "(SPEC.md §5.1). Never put it in a URL.",
       ),
   })
   .strict();
