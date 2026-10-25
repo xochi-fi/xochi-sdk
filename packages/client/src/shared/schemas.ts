@@ -598,15 +598,17 @@ export const EXECUTE_RESEND_MARGIN_SECS = 5;
 
 /**
  * Seconds past an unexecuted intent's signed deadline before the Worker ends
- * it: a `quoted` market row (never executed, or every execute un-claimed)
- * that an intent read (`GET /api/intent/:id` or the status poll, never the
- * stream) finds this far past the `deadline` the user signed is finished
- * `failed` with `NOT_EXECUTED_SUBSTATUS`, and the read serves that. Slack for
- * clock skew between the Worker, the solver and the client. Mirrors
+ * it: a `quoted` market row (never claimed, or every claim undone) that an
+ * intent read (`GET /api/intent/:id` or the status poll, never the stream)
+ * finds this far past the `deadline` the user signed is finished `failed`
+ * with `NOT_EXECUTED_SUBSTATUS`, and the read serves that. Slack for clock
+ * skew between the Worker, the database (whose clock the claim's deadline
+ * check uses), the solver and the client. Measured from the signed deadline;
+ * the quote sweep's own 60 s is measured from the Worker's 30 s quote expiry
+ * and usually ends a touched row first (README "Fund safety"). Mirrors
  * `QUOTED_EXPIRY_GRACE_SECS` in xochi's `@xochi/shared` `schemas.ts`. The
  * machine polls an execute at least this long past the quote's deadline
- * (`unexecutedFinishAt`); the quote sweep usually ends an un-claimed intent
- * before then (README "Fund safety").
+ * (`unexecutedFinishAt`).
  */
 export const QUOTED_EXPIRY_GRACE_SECS = 60;
 
