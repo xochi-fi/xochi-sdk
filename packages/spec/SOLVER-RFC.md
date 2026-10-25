@@ -937,15 +937,16 @@ ESCROW-RFC §5.1's fill window end (§5.2).
 accept headroom) × 1000` -- everything between the FillAuth being issued and the
 fill landing: award delivery, `prepare`'s RPCs, the signature and accept POST
 (§5.3), and the fill's own inclusion. Award-to-accept MUST also fit before the
-venue's `acceptBy` (§5.3; 30 s from issue by default), so nothing slow may sit
-between award and accept: keep a standing allowance to RiddlerFiller rather
-than approving per award. Where the venue serves `awardToAcceptAllowanceMs`
-(§13.3, `[PROPOSED]`), the award-to-accept term is at least the value served
-when the solver bids, the value the venue judges `auth_expired` against: at
-a pending-award cap of 2 (an allowance of at least 20 000) a bid at the
-SDK's defaults needs `minExclusiveMs ≥ (60 + 20 + 15) × 1000 = 95 000`, not
-85 000. A window shorter than that is one the SDK's `accept` refuses for
-lack of headroom, so the award goes to the reserve (§5.3).
+venue's `acceptBy` (§5.3; 30 s from issue by default), so nothing avoidable may
+sit between award and accept: keep a standing allowance to RiddlerFiller rather
+than approving per award. `prepare` also waits until the solver's own origin
+node sees the lock final (§7.1); §13.3 (`[PROPOSED]`) counts that wait in this
+term as **award latency** and is the term's one definition. Where the venue
+serves `awardToAcceptAllowanceMs` (§13.3), the term is at least that
+allowance; which served value a bid sizes against, and the `minExclusiveMs`
+that follows, are open (Appendix C). A window shorter than this rule gives is
+one the SDK's `accept` refuses for lack of headroom, so the award goes to the
+reserve (§5.3).
 
 **Winner amount = bid output.** The escrow node derives the `:winner`
 FillAuth's `amount` from the verified bid's `output`, never from order fields
@@ -2031,11 +2032,14 @@ award stays scored as a decline even if its own FillAuth later fills
    (`no_response`), scores Broken.
 
 `minAcceptBudgetMs`, `awardToAcceptAllowanceMs` and `maxPendingAwardsPerToken`
-are served in `GET /solver/capabilities` (absent means 15 000, 10 000 and 1)
-and MUST be at least those values. `minAcceptBudgetMs` covers the reference
-SDK's default `acceptBudgetSec` (15 s, `escrow-gateway.ts`).
+are served in `GET /solver/capabilities`. `minAcceptBudgetMs` (absent means
+15 000, and at least that) covers the reference SDK's default
+`acceptBudgetSec` (15 s, `escrow-gateway.ts`). `maxPendingAwardsPerToken`
+(absent means 1, and at least 1) is the pending-award cap (below).
 `awardToAcceptAllowanceMs` covers an awardee's **award latency** plus its
-**clock lead**. The award latency is the time from `deliveredAt` to the
+**clock lead**; this section gives it no default or floor, because how it is
+sized is open (Appendix C), and the venue scores no award under §13.3 until
+that is settled here. The award latency is the time from `deliveredAt` to the
 instant the SDK reads its clock for its timing checks
 (`accept_window_closed`, `window_closed`, `auth_expired`; **Reasons**
 below): the feed read that returns the award, any wait behind other work in
@@ -2047,33 +2051,29 @@ for and hold of its per-`(destination chainId, token)` accept slot.
 over the last `lookbackBlocks` in `maxLogRange` spans, one after another),
 reads the solver's own origin `safe` head (`finalized` where the chain has
 none), and pauses `finalityPollMs` until that head covers the `Opened`
-block, then reads that block and the lock. The venue publishes the award
-once its own node sees the lock final (§5.1), so the solver's node can
-still trail it: the **safe lag** is how long after `deliveredAt` the
-solver's origin node's `safe` head reaches the `Opened` block (zero if it
-already has), and the award latency includes it, the passes it costs and
-the pause that ends after it. The clock lead is how far
+block, then reads that block and the lock; every pass repeats the whole
+scan. The venue publishes the award once its own node sees the lock final
+(§5.2), so the solver's node can still trail it: the **safe lag** is how
+long after `deliveredAt` the solver's origin node's `safe` head reaches the
+`Opened` block (zero if it already has), and the award latency includes it,
+the passes it costs and the pause that ends after it. Which head §5.2's
+"final" is read at, and so how long a safe lag runs, is open (Appendix C);
+on Base mainnet, in the one sample taken, two healthy providers' `safe`
+heads trailed a third's by 47 s to 145 s. The clock lead is how far
 the SDK's clock, the later of the local clock and the latest block times of
 the order's origin and destination chains (`escrow-gateway.ts` `nowSec`),
 runs ahead of the venue clock at that instant; a chain head that leads the
 venue clock fails a check earlier than the venue's replay at `checkAtMs`
 (**Reasons**).
 
-Each part is sized by whoever controls it. `safeLagMs` (served beside them;
-absent means 2 000, and at least 2 000) MUST be at least the largest safe
-lag the venue observes over a trailing 30 days, behind its own node's, in
-the `safe` head served by each of at least two independent RPC providers
-for each origin chain it serves. The venue serves an allowance under which
-test (c) (**Reading while committed**) passes at the served
-`maxPendingAwardsPerToken` and `safeLagMs`, plus the largest lead of a
-served chain's head over the venue clock that it observes beyond the lead
-(c) fixes, plus the largest offset of the venue clock behind UTC its clock
-discipline allows. A safe lag beyond `safeLagMs` and a lead of the solver's
-local clock over UTC are the solver's: it chose its node and keeps its
-clock. §5.1's sizing rule takes the allowance served when the solver bids
-as its award-to-accept term (the SDK example's `AWARD_TO_ACCEPT_SEC`, 10 s
-by default, equals it only at the defaults); §13.3 counts the allowance
-from delivery, so the delivery time is the venue's.
+A lead of the solver's local clock over UTC is the solver's, and an offset
+of the venue clock behind UTC is the venue's: each keeps its own clock.
+§13.3 counts the allowance from delivery, so the delivery time is the
+venue's. §5.1 states the bid-sizing term the allowance enters. Which parts
+the allowance is sized from, by whom, and against which measurement of the
+safe lag, are open (Appendix C). Test (c) (**Reading while committed**)
+gates the SDK against the allowance that settlement fixes; it does not size
+the allowance.
 
 The SDK serializes the accept slot (`acceptQueues`), so the wait grows with
 the awards one solver holds at once on one destination token. The venue
@@ -2089,23 +2089,18 @@ solver its own count). The cap binds escrowed panel awards only. A
 shielded-Aztec leg's `:winner` goes to the venue's own solver and is never
 scored (§13 terms), so the cap neither counts nor withholds it: withholding
 it would issue the shielded `:reserve` that §13.8 rules out. Shielded
-concurrency is bounded instead by ESCROW-RFC §5.1's in-flight notional cap
-and, once another solver can hold a shielded award, its
-`maxOpenShieldedAwards`.
+concurrency is bounded instead by ESCROW-RFC §5.1's per-corridor in-flight
+notional cap ("Exposure stops"); a per-awardee cap on open shielded awards
+is open (ESCROW-RFC Appendix C).
 
-A venue that serves a cap above 1 MUST serve `awardToAcceptAllowanceMs ≥
-maxPendingAwardsPerToken × 10 000`, one default allowance per award that can
-wait on the slot, and the acceptance-window floor (below) grows with it: a
-cap of 2 needs a window of at least 37 s at the floors (`deliverySlackMs`
-just above zero), 40 s at the default `deliverySlackMs` of 4 000. The
-`auth_expired` threshold (**Reasons**) uses the
-`awardToAcceptAllowanceMs` served at the auction's `opensAt`, the value the
-solver sized its `minExclusiveMs` against; `checkAtMs` and
-`deliveryCutoffMs` use the values served at `awardedAt`, the ones the
-venue's acceptance window was booted with. The award log records both
-(§13.4). So a default-SDK solver whose award is delivered by
-`deliveryCutoffMs` (below), and whose award latency plus clock lead stay
-inside the allowance, runs all three checks by `checkAtMs`.
+A cap above 1 lengthens the wait for the accept slot, which the allowance
+must cover; the allowance a given cap needs is open (Appendix C).
+`checkAtMs` and `deliveryCutoffMs` use the values served at `awardedAt`, the
+ones the venue's acceptance window was booted with; the award log also
+records the values served at the auction's `opensAt` (§13.4). So a
+default-SDK solver whose award is delivered by `deliveryCutoffMs` (below),
+and whose award latency plus clock lead stay inside the allowance, runs all
+three checks by `checkAtMs`.
 
 **Acceptance-window floor.** This is the only home of the floor while the
 venue scores awards under §13.3 (it then serves the capability fields above);
@@ -2117,14 +2112,14 @@ absent means 4 000) is the venue's own bound from issuing the `:winner`
 FillAuth to appending its award. The 1 000 covers `acceptBy`'s whole
 seconds: `acceptBy × 1000` can fall up to 999 ms short of `awardedAt` plus
 the window. So `deliveryCutoffMs` never falls before an award can be
-appended; at the floors and the default 30 s window, `deliverySlackMs` is at
-most 4 000. The venue also refuses to boot when `longPollHoldMs` breaks its
-bound (**Delivery** below).
+appended. The window this needs moves with the allowance and is open with it
+(Appendix C): §5.3's 30 s default leaves room for an allowance of at most
+10 000 at the default `deliverySlackMs`. The venue also refuses to boot when
+`longPollHoldMs` breaks its bound (**Delivery** below).
 `minAcceptBudgetMs` is its own floor: it is unrelated to
 `minFirmValidityMs`'s 15 000 ms (§13.2), and either moves without the other.
-A solver that configures a larger `acceptBudgetSec` or `fillInclusionSec`,
-whose origin node's safe lag exceeds `safeLagMs`, or whose award latency
-otherwise exceeds the allowance, owns the declines it causes.
+A solver that configures a larger `acceptBudgetSec` or `fillInclusionSec`, or
+whose award latency exceeds the allowance, owns the declines it causes.
 
 **Delivery.** It is decided from the venue's feed log (below), never by when
 the solver chose to read. `deliveredAt` (unix ms) is when the award was first
@@ -2180,8 +2175,8 @@ and the only ones, are:
   or whose writes the venue stopped, with the award unwritten. A read or SSE
   connection the client closed or reset first is the solver's (above);
 - a well-formed acceptance was not stored, whatever the venue answered or
-  whether the client was still there (no venue limit may refuse it,
-  **Limits** below); an acceptance whose body the client
+  whether the client was still there, unless **Limits** (below) makes the
+  refusal the solver's; an acceptance whose body the client
   cut off before the outermost hop received it in full was never received
   and is the solver's (it may re-POST before `acceptBy`);
 - the feed log's record for the award or for an acceptance is missing or
@@ -2201,23 +2196,24 @@ the venue limits no solver): every `/solver/*` request authenticated as the
 solver, well-formed or not, counts against `maxRequests` within any
 `windowMs`, and its feed reads open at once (long polls and SSE connections)
 against `maxOpenReads`. `maxOpenReads` is at least 1 and `maxRequests` at
-least `2 × ⌈windowMs / 1000⌉`, and no limit refuses or resets a well-formed
-feed read sent while no other read of the solver's is open, nor a
-well-formed acceptance or decline of an award the solver holds; both still
-count. So a solver that reads one page at a time and answers its awards is
-never limited, however busy its feed or however many other requests it
-sent. Any other request that a served limit refused or reset while the
-solver's own requests were over that limit is the solver's, whatever the
-status (a `429`, a limiter's `503`, a reset at a connection cap). The
-venue MUST answer such a refusal `429` with `Retry-After`
-where it answers at all. Every other refusal or reset is the venue's,
-whatever the status, a `429` included: one made while the solver was inside
-every served limit, one made by a limit keyed on anything but the solver's
-identity (an IP, a pool the solver shares), and one from load, capacity or a
-node fault. So an awardee that spends its own budget and then reads gets no
-venue-side failure for it, and a venue cannot refuse an awardee inside its
-limits to make a delivery failure the solver's. The venue refuses to boot
-when a served `solverRequestLimit` breaks these bounds.
+least `2 × ⌈windowMs / 1000⌉`. A request that a served limit refused or
+reset while the solver's own requests were over that limit is the solver's,
+whatever the status (a `429`, a limiter's `503`, a reset at a connection
+cap): the feed log's limit record (below) is the evidence, never the status.
+The venue MUST answer such a refusal `429` with `Retry-After` where it
+answers at all, so the client knows to back off; answering otherwise breaks
+that duty but moves no attribution. Every other refusal or reset is the
+venue's, whatever the status, a `429` included: one made while the solver
+was inside every served limit, one made by a limit keyed on anything but the
+solver's identity (an IP, a pool the solver shares), and one from load,
+capacity or a node fault. So an awardee that spends its own budget and then
+reads gets no venue-side failure for it, and a venue cannot refuse an
+awardee inside its limits to make a delivery failure the solver's. The venue
+refuses to boot when a served `solverRequestLimit` breaks these bounds. No
+request is exempt from a served limit; which reads the venue must always
+allow a solver catching up on a busy feed, load a solver generates outside
+its own identity's count, and when the outermost hop counts a reset read
+closed are open (Appendix C).
 
 **Feed log.** The venue records each cursor it issues to a solver, each
 award's append (`deliveredAt`, the award's position) before serving it,
@@ -2250,15 +2246,18 @@ Broken. §13.3 scoring therefore MUST NOT leave `[PROPOSED]` until
 decline without waiting behind any other event's handling (an announcement,
 or another award's fill on any token), counting whatever version re-check it
 runs before acting on the award as award latency, (b) posts the decline its
-re-gate requires, (c) pins by a test that, with the served values (the
-floors at the defaults), each award's timing checks read an SDK clock no
-later than `⌊checkAtMs / 1000⌋`, so each passes `accept_window_closed` at
-the default `acceptBudgetSec`, with a margin the test asserts left before
-`acceptBy`, and (d) sizes the reference example's (`escrow-solver.ts`)
-`minExclusiveMs` from the `awardToAcceptAllowanceMs` served when it bids.
+re-gate requires, (c) pins by a test that each award's timing checks read an
+SDK clock no later than `⌊checkAtMs / 1000⌋`, so each passes
+`accept_window_closed` at the default `acceptBudgetSec`, with a margin the
+test asserts left before `acceptBy`, and (d) sizes the reference example's
+(`escrow-solver.ts`) `minExclusiveMs` from the served allowance as Appendix C
+settles it; and until (e) Appendix C's timing questions are settled in this
+section. Test (c) runs at the cap, safe lag and allowance that (e) fixes,
+written into the test, never at whatever a venue happens to serve, so it
+gates the SDK and sizes nothing.
 The test drives `SolverClient.run` from the feed read: one batch, delivered
 at `deliveryCutoffMs`, holds a full feed page's announcements ahead of
-`maxPendingAwardsPerToken` awards for one destination `(chainId, token)` and
+cap-many awards for one destination `(chainId, token)` and
 an award for another, each `quote` taking a latency the test fixes at no
 less than the allowance. It runs the version re-check, `prepare` and the
 real accept slot at the SDK's defaults (`lookbackBlocks` 20 000,
@@ -2266,17 +2265,18 @@ real accept slot at the SDK's defaults (`lookbackBlocks` 20 000,
 answer each venue request in 200 ms, each JSON-RPC read in 200 ms and each
 `eth_getLogs` over one `maxLogRange` span in 1 000 ms. Each award's `Opened`
 block is above the solver's origin `safe` head at `deliveredAt`, and that
-head reaches it `safeLagMs` later, so `prepare` waits on its own node's
-finality; the destination head leads the local clock by 1 000 ms. The test
-runs at the served `maxPendingAwardsPerToken` and `safeLagMs` and measures
-the time to each check; it never stubs or caps the event loop, `prepare`
-(its log scan and finality wait included) or the slot wait, so a loop that
-queues an award behind announcements, a `prepare` that scans or polls past
-the allowance, or a slot that serializes more than the allowance covers,
-fails it. At these latencies today's `prepare` spends 11 s on each pass's
-scan alone (11 sequential `eth_getLogs` over the last 20 000 blocks), past
-the 10 000 floor, so (c) fails until the SDK narrows or bounds that scan.
-A test that only checks the default equals the floor does not count.
+head reaches it the fixed safe lag later, so `prepare` waits on its own
+node's finality; the destination head leads the local clock by 1 000 ms.
+The test measures the time to each check; it never stubs or caps the event
+loop, `prepare` (its log scan and finality wait included) or the slot wait,
+so a loop that queues an award behind announcements, a `prepare` that scans
+or polls past the allowance, or a slot that serializes more than the
+allowance covers, fails it. At these latencies today's `prepare` spends 11 s
+on each pass's scan alone (11 sequential `eth_getLogs` over the last 20 000
+blocks) and repeats it on every pass until its `safe` head covers the
+`Opened` block; whether (c) then needs that scan narrowed or bounded
+depends on the allowance (e) fixes. A test that only compares configured
+values does not count.
 
 **Reasons.** A decline for a venue-attributable reason scores Lapsed once the
 venue confirms the reason from the FillAuth `fillAuthDigest` names, its own
@@ -2304,19 +2304,19 @@ statement's truthful reasons (§13.7). The 21 codes split as follows:
   plus `ATTESTATION_LATENCY_SEC` and `SAFETY_MARGIN_SEC` before
   `refundableAt`, `escrow-verify.ts`). `auth_expired` is venue-attributable
   when the award fails that check (60 s plus 15 s before the FillAuth
-  `deadline`) and the bid's `minExclusiveMs` is at least
-  `75 000 + awardToAcceptAllowanceMs` (85 000 at the floor; the allowance
-  served at the auction's `opensAt`, above), §5.1's sizing rule at the SDK's
-  defaults; with a smaller `minExclusiveMs` the solver asked for a window the
-  default budgets cannot use, and the decline is its own. Each check can
+  `deadline`) and the bid's `minExclusiveMs` meets §5.1's sizing rule at the
+  SDK's defaults with the allowance as its award-to-accept term; with a
+  smaller `minExclusiveMs` the solver asked for a window the default budgets
+  cannot use, and the decline is its own. Which served allowance that
+  threshold reads is open (Appendix C). Each check can
   only start failing as time passes, so a check that fails no later than
   `checkAtMs` on the venue clock also fails at `checkAtMs`. A default-SDK
   solver whose award latency plus clock lead stay inside the allowance
   (above) runs its checks by then, so its `window_closed` and `auth_expired`
   declines replay at `checkAtMs` and are never Broken. A decline the replay
   at `checkAtMs` does not reproduce is the solver's, whatever made its check
-  late: its event loop, a slow `prepare` (its log scan, or an origin node
-  trailing by more than `safeLagMs`), or a chain head leading by more than
+  late: its event loop, a slow `prepare` (its log scan, or its wait for an
+  origin node's safe lag), or a chain head leading by more than
   the allowance left room for. The reference SDK stays inside the
   allowance only once **Reading while committed** (a) to (c) hold. The venue
   owns a delivery late enough to fail a check at `checkAtMs`, even for a
@@ -2348,9 +2348,9 @@ FillAuth the escrow node signed (ESCROW-RFC §6.1).
 The venue persists one record per award (an escrowed award, §13 terms):
 `auctionId`, `intentId`, `solverId`, `output`, `validUntilMs`,
 `commitmentClass`, `selectionTime`, `regimeAtSelection`, a realized-vol
-bucket, `awardedAt`, `deliveredAt`, `acceptBy`, the `awardToAcceptAllowanceMs`
-served at the auction's `opensAt` and the §13.3 values served at
-`awardedAt`, the feed-log determination
+bucket, `awardedAt`, `deliveredAt`, `acceptBy`, the §13.3 capability values
+served at the auction's `opensAt` and those served at `awardedAt`, the
+feed-log determination
 (§13.3 delivery, acceptance POSTs included), the §13.3 outcome, `reason` and
 decline `fillAuthDigest`, whether the §13.2 re-auction ran, was skipped or
 does not apply, whether a FillAcceptance was recorded, fill result and the
@@ -2495,19 +2495,23 @@ are ESCROW-RFC §5.1's and §6's and are not restated here:
 - **burned tag** (ESCROW-RFC §5.1 "Burned tag"): the awardee's tagged
   `transfer` can no longer land, nobody is slashed and no other FillAuth is
   issued; the order refunds through `refund` at `refundableAt`, and the taker
-  bears the full `claimWindow`. While the venue's own solver is the only
-  awardee, the venue records it as its own `fillSalt` exposure and shielded
-  flow halts on every corridor (next row); once another solver can hold a
-  shielded award, it opens a pending strike on that awardee, which ESCROW-RFC
-  §5.1 reviews, clears or keeps;
-- **shielded halt** (ESCROW-RFC §5.1 "Burned tag", "Exposure stops"): from
-  the recording of a `fillSalt` exposure until ESCROW-RFC §5.1 lifts the
-  halt, no new shielded `:winner` is issued on any corridor; ESCROW-RFC's
-  other Exposure stops (a halted registry, a lagging Aztec node, an overdue
-  disclosure) stop new shielded `:winner`s only on their own corridor.
-  Either way, orders already awarded run on under their own rows; a stop
-  that outlasts its bound on an in-flight order is ESCROW-RFC §5.1's
-  residual, borne by the solver up to the corridor's in-flight notional cap.
+  bears the full `claimWindow`. A burned tag is never slash grounds and
+  carries no sanction on the awardee; it halts shielded flow on every
+  corridor (next row). ESCROW-RFC §5.1 states the residual (an awardee can
+  trade a no-show slash for the order's payout by burning its own tag), and
+  how a burn could be sanctioned is open (ESCROW-RFC Appendix C);
+- **shielded halt** (ESCROW-RFC §5.1 "Shielded halt"): from every
+  `tag_burned` record, and from the venue's record of a venue-side path
+  holding `fillSalt` values, until the operator records a cause for each, no
+  new shielded `:winner` is issued on any corridor to any awardee, the
+  venue's own solver included. ESCROW-RFC §5.1's other Exposure stops (a
+  halted registry, the corridor's Aztec node lagging, a disclosure due for
+  `T_hold` that is neither refused on content nor backed by both venue
+  records, the in-flight notional cap) stop new shielded `:winner`s only on
+  their own corridor. Either way, orders already awarded run on under their
+  own rows; a stop that outlasts its bound on an in-flight order is
+  ESCROW-RFC §5.1's residual, borne by the solver up to the corridor's
+  in-flight notional cap.
 
 Known limit, open until §2.4 re-admits shielded flow to the panel: the first
 row costs a declining awardee nothing but the record (no FillAcceptance, so
@@ -2515,13 +2519,14 @@ no slash) while the taker waits out the whole `claimWindow`. Today the
 awardee is always the venue's own solver (§13 terms). Before any other solver
 can be one, all of these hold: (1) a decline before acceptance ends the order
 early in the venue's books (`refund` itself cannot move earlier), or
-shielded admission requires a minimum honored record; (2) ESCROW-RFC §5.1's
-strike and open-award counts (`shieldedStrikeLimit`,
-`maxOpenShieldedAwards`, `shieldedStrikeReviewPeriod`,
-`shieldedStrikeWindow`) are configured and bind, which that section requires
-for the same moment ("Burned tag"); (3) the venue gives the awardee a record to check
-a shielded award against before it signs a FillAcceptance, since no
-announcement or `SolverBid` backs the venue-minted `auctionId` (§13.3).
+shielded admission requires a minimum honored record; (2) ESCROW-RFC
+Appendix C's burn-sanction question (a sanction no venue-side holder of
+`fillSalt` values can cause) and its per-awardee open-award cap are
+settled, and ESCROW-RFC §5.1 ("Burned tag") refuses to admit any other
+solver to shielded awards until the first is; (3) the venue gives the
+awardee a record to check a shielded award against before it signs a
+FillAcceptance, since no announcement or `SolverBid` backs the venue-minted
+`auctionId` (§13.3).
 
 For XIP-1/XIP-2 plans, whether a sub-trade failure unwinds the plan or only
 the leg is stated and shown to the taker before signing.
@@ -2605,8 +2610,8 @@ not targets.
 | `GET /solver/attestations/:orderId` | `[PROPOSED]` | §6 (escrow-attest) |
 | Regime (reference sources, `k`-of-`n` `feed_degraded`) / `priceSources` / regime-indexed solver layer | `[PROPOSED]` | §13.1 |
 | SolverBid v3 `commitmentClass`, `minFirmValidityMs`, `minFirmValidityMsByOrigin` | `[PROPOSED]` | §13.2 (new vector set) |
-| `GET /solver/capabilities` §13 fields: `regime`, `minFirmValidityMs`, `minFirmValidityMsByOrigin`, `minAcceptBudgetMs`, `awardToAcceptAllowanceMs`, `maxPendingAwardsPerToken`, `safeLagMs`, `deliverySlackMs`, `longPollHoldMs`, `solverRequestLimit` | `[PROPOSED]` | §13.1–§13.3 |
-| `POST /solver/awards/:auctionId/decline`, shared durable feed log, award log, scored selection, `lost` event, size bins, telemetry | `[PROPOSED]` | §13.3–§13.9; §13.3 scoring also waits on a `@xochi/solver-sdk` change (§13.3 "Reading while committed") |
+| `GET /solver/capabilities` §13 fields: `regime`, `minFirmValidityMs`, `minFirmValidityMsByOrigin`, `minAcceptBudgetMs`, `awardToAcceptAllowanceMs`, `maxPendingAwardsPerToken`, `deliverySlackMs`, `longPollHoldMs`, `solverRequestLimit` | `[PROPOSED]` | §13.1–§13.3; the allowance's sizing is open (Appendix C) |
+| `POST /solver/awards/:auctionId/decline`, shared durable feed log, award log, scored selection, `lost` event, size bins, telemetry | `[PROPOSED]` | §13.3–§13.9; §13.3 scoring also waits on `@xochi/solver-sdk` changes and on Appendix C's timing questions (§13.3 "Reading while committed" (a)–(e)) |
 
 ## Appendix B — Glossary
 
@@ -2618,4 +2623,117 @@ dark-pool panel confidentiality, regime (`calm` / `elevated` / `stress` /
 `feed_degraded`; a `pairs` entry may also read `thin`), commitment class
 (`firm` / `indicative`), selection vs award (`selectionTime` / `awardedAt`),
 FillAuth roles (`:winner` / `:reserve` / `:backstop`), honored rate (broken
-vs lapsed), feed log, award log, concentration handicap (§13).
+vs lapsed), award latency, safe lag, clock lead, feed log, award log,
+concentration handicap (§13).
+
+## Appendix C — Open questions: §13.3 timing and limits
+
+§13.3 scoring stays `[PROPOSED]` until each question below is settled in
+§13.3 ("Reading while committed" (e)). Each names the review findings that
+make it hard (round-10 review of xochi-fi/xochi-sdk#33: `R10ASab` the
+saboteur, `R10ASecurity` the security auditor, `R10ANewHire` the new hire).
+
+**Data: Base mainnet, 2026-10-25** (R10ASab-33-1). Read-only public RPCs
+`mainnet.base.org`, `base-rpc.publicnode.com` and `base.drpc.org`;
+concurrent 500 ms polls of the `safe` tag for 5 minutes, plus 6 spot reads.
+
+| Measurement | Value |
+| --- | --- |
+| `safe` head advance | jumps of 36–40 blocks (about 75 s of L2), about once a minute |
+| `latest` across the three providers | identical |
+| publicnode's `safe` reaching each of `mainnet.base.org`'s safe heights | 47–51 s later (n = 4); 40 blocks behind in the spot reads |
+| drpc's `safe` behind `mainnet.base.org`'s | 96–145 s |
+| `finalized` behind `latest` (spot read) | 597 blocks (about 20 min) |
+| publicnode's `finalized` behind `mainnet.base.org`'s | about 48 s |
+
+One sample, on one OP-stack chain, on one day; that cross-provider `safe`
+lag tracks each op-node's L1 confirmation settings is inferred, not
+measured. No other origin chain is measured. At the publicnode figure,
+R10ASab-33-1 sizes an honest allowance at about 55–60 s even with a
+narrowed `prepare` scan (the lag, one `finalityPollMs` pause, one pass), an
+acceptance window at about 80 s (15 s accept budget + 60 s allowance + 4 s
+`deliverySlackMs` + 1 s) and `minExclusiveMs` at about 135 000 (60 s
+`fillInclusionSec` + 60 s allowance + 15 s accept headroom); the drpc
+figure adds about 45–95 s to each.
+
+The data contradicts these values, which round 9's draft of §13.3 and §5.1
+carried and this text withdraws: `safeLagMs`'s 2 000 ms default and floor
+(with the field itself); the allowance's 10 000 default and floor;
+`awardToAcceptAllowanceMs ≥ maxPendingAwardsPerToken × 10 000` for a cap
+above 1; the cap-2 window floors of 37 s and 40 s; `minExclusiveMs` of
+85 000 at the floor and 95 000 at a cap of 2; and a 30 s window holding a
+`deliverySlackMs` of 4 000 at the floors. §5.3's as-built 30 s window and
+the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
+
+1. **Which head "final" means.** §5.2 publishes an escrowed award "only
+   once the lock is final" without naming the tag the venue reads; the SDK
+   waits on its own node's `safe` (`finalized` where the chain has none). On
+   `finalized` the safe lag is near zero, but on Base the award waits about
+   20 minutes behind `latest`; on `safe` the lags above apply.
+   (R10ASab-33-1)
+2. **How the safe lag is bounded, and by whom.** Round 9 served a
+   `safeLagMs` the venue sized from "at least two independent RPC providers"
+   of its choosing, with no published sampling method: two providers that
+   track the venue's own node make every decline of a solver on a slower
+   common provider the solver's. The field had no stated instant, and its
+   attribution sentence ("a safe lag beyond `safeLagMs` is the solver's")
+   was one the venue cannot apply, since it judges timing only by replay at
+   `checkAtMs` and never observes the solver's node. Candidates: publish a
+   fixed provider set and sampling method, or the measured distribution;
+   or carry the `Opened` block and the venue's safe height in the award, so
+   the lag is measured per award. (R10ASab-33-1, R10ASecurity-33-3,
+   R10ANewHire-33-4)
+3. **The allowance.** Round 9 defined it as the value under which test (c)
+   passes at the served cap and `safeLagMs`, while (c) ran at the served
+   values: a venue serving about 15 000 met the gate with today's SDK, and at
+   a 2 000 safe lag (c) never reached the finality pause, since one scan pass
+   takes about 12 s. §13.3 now states only what the allowance covers (award
+   latency plus clock lead) and gates the SDK against a settled value. Open:
+   the value per origin chain, its default and floor, its other parts (a
+   served chain head's lead over the venue clock, the venue clock's offset
+   behind UTC), and whether one served field can cover origins whose safe
+   lags differ by orders of magnitude. (R10ANewHire-33-1, R10ASab-33-1)
+4. **The pending-award cap.** Each award that can wait on the accept slot
+   adds the slot holder's accept to the wait. Round 9's `cap × 10 000`
+   assumed a 10 s award latency; with a finality wait in the latency, what
+   a cap above 1 costs is open. (R10ASab-33-1)
+5. **The acceptance window.** §13.3's boot rule derives the window from the
+   allowance; at the Base figures it needs about 80 s at a cap of 1 against
+   §5.3's 30 s default. A longer window, a narrower `prepare` scan, or both,
+   is open; a longer window also lengthens a declining awardee's hold on the
+   order before the `:backstop` (§13.2's fit test). (R10ASab-33-1,
+   R10ANewHire-33-1)
+6. **`minExclusiveMs` and the `auth_expired` threshold.** §5.1 makes a bid's
+   `minExclusiveMs` grow with the allowance, and the threshold above which
+   an `auth_expired` decline is venue-attributable reads one served
+   allowance. Round 9 equated the value "served when the solver bids" with
+   the one "served at `opensAt`", which are different instants; the SDK
+   reads capabilities only at start, after a feed reset and before acting
+   on its own awards (`client.ts`), never per bid, and `IntentAnnouncement`
+   stamps `regime` but no allowance. So a venue that raises the allowance
+   turns every cached-size `auth_expired` decline into the solver's.
+   Candidate: stamp the allowance (or a capability snapshot id) in
+   `IntentAnnouncement` and judge against that. (R10ASab-33-3)
+7. **Limits.** Round 9 exempted from every limit a well-formed feed read
+   sent while no other read of the solver's was open, and every well-formed
+   acceptance or decline of a held award. A solver in a tight
+   read-close-read or re-POST loop was then bounded only by its round-trip
+   time, and a shed that load caused is the venue's, so its own award's read
+   failing in the delivery window turned a decline it wanted into Lapsed.
+   §13.3 now exempts nothing. Open:
+   - which reads the venue must always allow, so an honest
+     one-page-at-a-time reader catching up on a busy feed is never limited
+     (candidates: reads spaced at least a served interval apart, or the
+     first N per window);
+   - load a solver generates outside its own identity's count
+     (unauthenticated requests, or a second admitted identity behind the
+     same address or pool) still makes the resulting refusal the venue's
+     (candidate: count a refusal made while the solver's pool or address is
+     over a served pool limit against it);
+   - the outermost hop may still count a read open after a network reset, so
+     the SDK's sequential reconnect (`client.ts`, no overlap) counts as a
+     second open read at `maxOpenReads` 1 (candidate: a new read supersedes
+     any older one, which the venue ends and stops counting, once ending it
+     is not itself a delivery failure).
+
+   (R10ASab-33-2, R10ASecurity-33-1, R10ASecurity-33-2)
