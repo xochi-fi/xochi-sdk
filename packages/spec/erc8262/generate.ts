@@ -260,7 +260,7 @@ const discoverySchema = {
       }),
     },
     revocationCheckSeconds: d(
-      "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence after an accepting re-evaluation (a fresh fetch of this document and of the evidence, and fresh Oracle reads) before the next must have accepted; past it the grant is suspended until one accepts. The consumer reads it from the document each re-evaluation fetched and caps it at its own deployment maximum, so raising it never lengthens an interval already running nor exceeds the consumer's maximum. A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
+      "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence after an accepting evaluation (the one that granted it, or a re-evaluation: a fresh fetch of this document and of the evidence, and fresh Oracle reads) before the next must have accepted; past it the grant is suspended until one accepts. The consumer reads it from the document each accepting evaluation fetched, the granting one included, and caps it at its own deployment maximum, so raising it never lengthens an interval already running nor exceeds the consumer's maximum (SPEC.md section 10.7, Held grants). A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
       {
         type: "integer",
         minimum: MIN_REVOCATION_CHECK_SECONDS,
@@ -1283,9 +1283,14 @@ type ProofTiming = {
   hashedAs?: Record<string, unknown>;
 };
 type Proof = ProofTiming & ProofInputs;
-// What a vector ships: the publicInputs words of the submitCompliance call, and the
-// attestation getHistoricalProof(proofHash) / isAttestationRevoked(proofHash) return.
+// What a vector ships: the hash the Oracle indexes the proof by, the publicInputs words of the
+// submitCompliance call, and the attestation getHistoricalProof(proofHash) /
+// isAttestationRevoked(proofHash) return. The vectors ship no proof bytes, so proofHash is a
+// stand-in for the Oracle's keccak256(proof, proofType, chainid, oracle): keccak256 of the
+// verified publicInputsHash, proofType, chainId and oracleAddress words. A runner never
+// recomputes it; it keys held grants (SPEC.md section 10.7, Held grants).
 type ShippedProof = {
+  proofHash: string;
   publicInputs: string[];
   attestation: {
     subject: string;
@@ -1345,13 +1350,24 @@ const blocksOn = (chainId: number, now = NOW): Blocks => ({
   finalized: { number: FINALIZED_BLOCK, timestamp: now - 900 },
   latest: { number: LATEST_BLOCK, timestamp: now - 2 },
 });
-// A grant the consumer holds for the case's subject, as its observation store has it (SPEC.md
-// section 10.7, Held grants): the evidence it rests on and recheckBy, the instant by which its
-// next re-evaluation must complete (it is exercised only before then); null while suspended.
+// A grant the consumer holds, as its observation store has it (SPEC.md section 10.7, Held
+// grants): keyed by the subject it was granted to, the fetch host and announced evidenceId,
+// and the hash of the proof it was granted on; the attestation expiresAt read when it was
+// granted (it ends then at the latest); and recheckBy, the instant by which its next
+// re-evaluation must complete (it is exercised only before then), null while suspended.
 type HeldGrant = {
+  subject: string;
   trustDomainId: string;
   evidenceId: string;
+  proofHash: string;
+  attestationExpiresAt: number;
   recheckBy: number | null;
+};
+// A held grant as a case states it: the subject defaults to the case's, the proof to the
+// case's own proof (finalize() reads its hash and attestation expiresAt).
+type HeldGrantInput = Pick<HeldGrant, "trustDomainId" | "evidenceId" | "recheckBy"> & {
+  subject?: string;
+  proof?: Proof;
 };
 // What the consumer requires of the proof: an evaluation case states it; a quorum case's
 // requirement carries it for every member. Every case also states its latest-block reads
@@ -1463,7 +1479,7 @@ type ContextInput = Omit<Consumer, "seenDiscovery"> & {
     statement?: Statement;
     latest?: Partial<LatestReads>;
     blocks?: Blocks;
-    heldGrants?: HeldGrant[];
+    heldGrants?: HeldGrantInput[];
     maxRecheckSeconds?: number;
   };
 const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): ContextInput => ({
@@ -1472,9 +1488,13 @@ const sepoliaContext = (host: string, over: Partial<ContextInput> = {}): Context
   evidenceFetch: { host, status: 200 },
   ...over,
 });
-// A grant the store holds on an evidence fixture: exercised, its next re-evaluation due in 15
-// minutes, unless a case says otherwise.
-const heldGrant = (host: string, ev: string, over: Partial<HeldGrant> = {}): HeldGrant => ({
+// A grant the store holds on an evidence fixture: granted to the case's subject on the case's
+// proof, exercised, its next re-evaluation due in 15 minutes, unless a case says otherwise.
+const heldGrant = (
+  host: string,
+  ev: string,
+  over: Partial<HeldGrantInput> = {},
+): HeldGrantInput => ({
   trustDomainId: host,
   evidenceId: evidence[ev]!.evidenceId,
   recheckBy: NOW + 900,
@@ -1713,19 +1733,25 @@ function inputWords(p: Proof, chainId: number, oracleAddress: string): string[] 
     }
   }
 }
-// What the vector ships: the words, and the Oracle's record whose publicInputsHash is
-// keccak256 of the concatenated words it verified (ERC8262Oracle `_submitSingle`).
+// What the vector ships: the words, the Oracle's record whose publicInputsHash is keccak256 of
+// the concatenated words it verified (ERC8262Oracle `_submitSingle`), and the proofHash
+// stand-in (ShippedProof).
 function encodeProof(p: Proof, chainId: number, oracleAddress: string): ShippedProof {
   const publicInputs = inputWords(p, chainId, oracleAddress);
   const verified = p.hashedAs
     ? inputWords({ ...p, ...p.hashedAs } as Proof, chainId, oracleAddress)
     : publicInputs;
+  const publicInputsHash = keccak256(concat(verified));
+  const proofType = p.attestationProofType ?? p.proofType;
   return {
+    proofHash: keccak256(
+      concat([publicInputsHash, word(proofType), word(chainId), word(oracleAddress)]),
+    ),
     publicInputs,
     attestation: {
       subject: p.attestationSubject ?? p.submitter,
-      proofType: p.attestationProofType ?? p.proofType,
-      publicInputsHash: keccak256(concat(verified)),
+      proofType,
+      publicInputsHash,
       expiresAt: p.attestationExpiresAt,
       revoked: p.attestationRevoked,
     },
@@ -3223,19 +3249,142 @@ const evaluationCases: CaseInput[] = [
   {
     name: "held-grant-recheck-capped-by-consumer",
     description:
-      "A consumer whose deployment maximum (600) is below even the gateway's revocationCheckSeconds (900): an accepting re-evaluation sets the grant's next re-evaluation due at now + 600. A provider can lower the interval, never raise it past the consumer's maximum.",
+      "A consumer lowers its deployment maximum to 600, below even the gateway's revocationCheckSeconds (900), while its grant's recheckBy (now + 1800) was recorded under the earlier maximum (1800). It re-evaluates the grant at once, as lowering requires, and the accepting re-evaluation sets the next re-evaluation due at now + 600, earlier than the recorded one. A provider can lower the interval, never raise it past the consumer's maximum.",
     discovery: "gateway",
     evidence: "gateway-sumsub",
     context: sepoliaContext(GATEWAY_HOST, {
       maxRecheckSeconds: 600,
-      heldGrants: [heldGrant(GATEWAY_HOST, "gateway-sumsub")],
+      heldGrants: [heldGrant(GATEWAY_HOST, "gateway-sumsub", { recheckBy: NOW + 1800 })],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-shortened-recheck-carried",
+    description:
+      "After held-grant-recheck-capped-by-consumer, the store holds the shorter recheckBy (now + 600) that re-evaluation wrote, not the later one recorded before it: a recheckBy is overwritten by each accepting re-evaluation, never kept as the later of the two.",
+    follows: "held-grant-recheck-capped-by-consumer",
+    discovery: "gateway",
+    evidence: "gateway-sumsub",
+    context: sepoliaContext(GATEWAY_HOST, {
+      maxRecheckSeconds: 600,
+      seenDiscovery: ["gateway"],
+      seenEvidence: ["gateway-sumsub"],
+      heldGrants: [heldGrant(GATEWAY_HOST, "gateway-sumsub", { recheckBy: NOW + 600 })],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-suspended-on-stale-pair",
+    description: `An exercised grant, its next re-evaluation not due for 15 minutes, is re-evaluated on a node whose latest block is ${MAX_BLOCK_AGE_SECONDS + 1} s old. The re-evaluation cannot complete, so it suspends the grant (recheckBy null) however long its recorded recheckBy still runs: an unusable pair never keeps a grant, not even until its recheckBy.`,
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: stalePair(BASE_SEPOLIA),
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc")],
+    }),
+    expected: unavailable("blocks_stale"),
+  },
+  {
+    name: "held-grant-lifted-after-stale-pair",
+    description: `After held-grant-suspended-on-stale-pair, the store holds the grant suspended (recheckBy null), not its earlier recheckBy. A re-evaluation on a usable pair accepts and lifts the suspension: due at now + ${MAX_RECHECK_SECONDS}.`,
+    follows: "held-grant-suspended-on-stale-pair",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc", { recheckBy: null })],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-suspended-on-other-chain-pair",
+    description: `After held-grant-lifted-after-stale-pair, the grant's next re-evaluation is not due until now + ${MAX_RECHECK_SECONDS}, and it is re-evaluated through a node answering for Base (chain 8453) instead of Base Sepolia: the pair is invalid, so the re-evaluation suspends the grant (recheckBy null) however long its recheckBy still runs.`,
+    follows: "held-grant-lifted-after-stale-pair",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      blocks: blocksOn(BASE),
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc", { recheckBy: NOW + MAX_RECHECK_SECONDS })],
+    }),
+    expected: unavailable("blocks_invalid"),
+  },
+  {
+    name: "held-grant-lifted-after-other-chain-pair",
+    description:
+      "After held-grant-suspended-on-other-chain-pair, the store holds the grant suspended; a re-evaluation through a node on the deployment's chain accepts and lifts it.",
+    follows: "held-grant-suspended-on-other-chain-pair",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc", { recheckBy: null })],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-of-other-subject-untouched",
+    description:
+      "As replay-across-wallets: another wallet announces the subject's evidenceId (any party holding the bearer id can), and the evaluation is refused at step 24. The store holds the subject's own grant on that evidence, host and proof: a grant is keyed by the subject too, so the refusal suspends only the announcing wallet's grant on it, if one existed, never the subject's.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      subject: OTHER_WALLET,
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc", { subject: WALLET })],
+    }),
+    expected: refuse("subject_mismatch"),
+  },
+  {
+    name: "held-grant-of-subject-kept-after-other-wallet",
+    description:
+      "After held-grant-of-other-subject-untouched, the subject's grant is still exercised with its recheckBy unchanged, and its own re-evaluation accepts. A store keying grants by host and evidenceId alone suspends it at the other wallet's refusal.",
+    follows: "held-grant-of-other-subject-untouched",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc")],
+    }),
+    expected: accept,
+  },
+  {
+    name: "held-grant-on-old-proof-ends-alone",
+    description:
+      "The subject holds two grants on one evidence from one host: one on an older proof whose Oracle attestation expired one second ago, one on a newer proof of the same evidence made an hour ago (a renewal: a new evaluation, so a new grant). Re-evaluating the old proof is refused at step 31, which ends the old proof's grant only: a grant is keyed by the proof hash too.",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, attestationExpiresAt: NOW - 1 },
+      heldGrants: [
+        heldGrant(NATIVE_HOST, "native-kyc"),
+        heldGrant(NATIVE_HOST, "native-kyc", { proof: { ...NATIVE_PROOF, timestamp: NOW - 3600 } }),
+      ],
+    }),
+    expected: refuse("proof_stale"),
+  },
+  {
+    name: "held-grant-on-renewed-proof-kept",
+    description:
+      "After held-grant-on-old-proof-ends-alone, the renewed proof's grant is still held with its recheckBy unchanged, and its own re-evaluation accepts. A store keying grants without the proof hash ends it with the old proof's.",
+    follows: "held-grant-on-old-proof-ends-alone",
+    discovery: "native",
+    evidence: "native-kyc",
+    context: sepoliaContext(NATIVE_HOST, {
+      proof: { ...NATIVE_PROOF, timestamp: NOW - 3600 },
+      seenDiscovery: ["native"],
+      seenEvidence: ["native-kyc"],
+      heldGrants: [heldGrant(NATIVE_HOST, "native-kyc")],
     }),
     expected: accept,
   },
   {
     name: "held-grant-ended-under-its-own-host-only",
     description:
-      "The subject holds two grants on one evidenceId: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the fetch host and the announced id, so the native host's grant is untouched.",
+      "The subject holds two grants on one evidenceId and proof: one from the native host, one from the gateway (the subject knows the id, and any allowlisted host can serve it). The gateway answers 410 for it: the gateway's grant ends and the revocation is recorded under the gateway. A grant is keyed by the fetch host and the announced id (with the subject and the proof hash), so the native host's grant is untouched.",
     discovery: "gateway",
     evidence: "native-kyc",
     context: sepoliaContext(GATEWAY_HOST, {
@@ -4389,7 +4538,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("gateway", "gateway-persona"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["1"], count: 1, satisfied: false },
+    expected: { attestors: ["1"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "native-and-gateway-two-trust-domains",
@@ -4418,7 +4567,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("gateway", "gateway-sumsub"), member("alias", "alias-sumsub")],
-    expected: { attestors: ["1"], count: 1, satisfied: false },
+    expected: { attestors: ["1"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "refused-member-not-counted",
@@ -4426,7 +4575,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub-expired")],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "impostor-not-counted",
@@ -4434,7 +4583,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("impostor", "impostor-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "claim-types-not-pooled",
@@ -4442,7 +4591,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-human-tech")],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "multi-signed-two-trust-domains",
@@ -4462,7 +4611,7 @@ const quorumCases: QuorumInput[] = [
     ...quorumContext,
     requirement: KYC_MULTI_SIGNED,
     members: [member("native", "native-kyc-multi"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "attestors-sorted-numerically",
@@ -4484,7 +4633,7 @@ const quorumCases: QuorumInput[] = [
     },
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub")],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "proof-mismatched-member-not-counted",
@@ -4508,7 +4657,7 @@ const quorumCases: QuorumInput[] = [
         attestationRevoked: true,
       }),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "statement-mismatched-member-not-counted",
@@ -4551,7 +4700,7 @@ const quorumCases: QuorumInput[] = [
       member("gateway-key-revoked-future", "gateway-persona"),
       member("gateway", "gateway-sumsub"),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "evidence-revocation-shared-across-members",
@@ -4564,7 +4713,7 @@ const quorumCases: QuorumInput[] = [
       member("gateway", "gateway-sumsub", undefined, 410),
       member("gateway", "gateway-sumsub"),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "key-revocation-not-shared-across-attestors-in-quorum",
@@ -4589,7 +4738,7 @@ const quorumCases: QuorumInput[] = [
       member("native", "native-kyc-multi", MULTI_SIGNED_PROOF),
       member("gateway-revokes-foreign-key", "gateway-sumsub-multi", MULTI_SIGNED_PROOF),
     ],
-    expected: { attestors: ["7"], count: 1, satisfied: false },
+    expected: { attestors: ["7"], count: 1, satisfied: false, heldGrant: "ended" },
   },
   {
     name: "latest-block-denial-in-quorum",
@@ -4627,7 +4776,13 @@ const quorumCases: QuorumInput[] = [
     },
     requirement: KYC_ATTESTATION,
     members: [member("native", "native-kyc"), member("gateway", "gateway-sumsub", undefined, 410)],
-    expected: { attestors: [], count: 0, satisfied: false, unavailable: "blocks_stale" },
+    expected: {
+      attestors: [],
+      count: 0,
+      satisfied: false,
+      unavailable: "blocks_stale",
+      heldGrant: "ended",
+    },
   },
   {
     name: "quorum-block-pair-invalid",
@@ -4904,8 +5059,10 @@ const LIMIT_DESCRIPTIONS: Record<keyof typeof LIMITS, string> = {
   maxDiscoveryBytes: "Discovery body cap in bytes.",
   maxEvidenceBytes: "Evidence body cap in bytes.",
   fetchTimeoutSeconds: "Timeout of each fetch.",
-  minRevocationCheckSeconds: "Smallest revocationCheckSeconds a discovery document may declare.",
-  maxRevocationCheckSeconds: "Largest revocationCheckSeconds a discovery document may declare.",
+  minRevocationCheckSeconds:
+    "Smallest revocationCheckSeconds a discovery document may declare, and smallest deployment maximum a consumer may set (SPEC.md section 10.7, Held grants).",
+  maxRevocationCheckSeconds:
+    "Largest revocationCheckSeconds a discovery document may declare, and largest deployment maximum a consumer may set (SPEC.md section 10.7, Held grants).",
   minEvidenceIdLength: "Shortest evidenceId (128 bits of base64url).",
   maxEvidenceIdLength: "Longest evidenceId.",
   maxTimestamp: "Largest timestamp either document may carry (2^32 - 1 Unix seconds).",
@@ -5023,10 +5180,11 @@ const ORACLE_REFUSALS = [
   "proof_stale",
 ];
 // SPEC.md section 10.7, Held grants: what this evaluation does to the grant held on its evidence
-// (keyed by the fetch host and the announced id), whatever state the grant was in, and when the
-// grant's next re-evaluation is due afterwards. Accepted keeps it (lifting a suspension), due at
-// now plus the smaller of the fetched document's revocationCheckSeconds and the consumer's
-// deployment maximum; an ending refusal ends it; any other refusal, and unavailable, suspends it.
+// (keyed by the subject, the fetch host, the announced id and the proof hash), whatever state the
+// grant was in, its recheckBy included, and when the grant's next re-evaluation is due
+// afterwards. Accepted keeps it (lifting a suspension), due at now plus the smaller of the
+// fetched document's revocationCheckSeconds and the consumer's deployment maximum; an ending
+// refusal ends it; any other refusal, and unavailable, suspends it.
 function heldGrantAfter(
   expected: CaseInput["expected"],
   ctx: Context,
@@ -5078,6 +5236,20 @@ function finalize({ context, expected, ...c }: CaseInput) {
     if (pin === undefined) throw new Error(`${c.name}: ${s} was recorded from an unlisted host`);
     return { discovery: s, attestorProviderId: recordingAttestor(doc, consumer, pin) };
   });
+  const caseProof = proof ?? matchingProof(disc, ev, consumer.now);
+  // A held grant was granted to the case's subject on the case's proof unless it says
+  // otherwise; its record carries that proof's hash and attestation expiresAt.
+  const grantOf = ({ subject, proof: on, ...g }: HeldGrantInput): HeldGrant => {
+    const shipped = encodeProof(on ?? caseProof, consumer.chainId, consumer.oracleAddress);
+    return {
+      subject: subject ?? consumer.subject,
+      trustDomainId: g.trustDomainId,
+      evidenceId: g.evidenceId,
+      proofHash: shipped.proofHash,
+      attestationExpiresAt: shipped.attestation.expiresAt,
+      recheckBy: g.recheckBy,
+    };
+  };
   const full: Context = {
     ...consumer,
     seenDiscovery,
@@ -5091,12 +5263,12 @@ function finalize({ context, expected, ...c }: CaseInput) {
             attestationRevoked: latest.attestationRevoked ?? proof?.attestationRevoked === true,
           },
     blocks: blocks ?? blocksOn(consumer.chainId, consumer.now),
-    heldGrants: heldGrants ?? [],
+    heldGrants: (heldGrants ?? []).map(grantOf),
     maxRecheckSeconds: maxRecheckSeconds ?? MAX_RECHECK_SECONDS,
     discoveryFetch,
     evidenceFetch,
     announcedEvidenceId: announcedEvidenceId ?? ev.evidenceId,
-    proof: proof ?? matchingProof(disc, ev, consumer.now),
+    proof: caseProof,
   };
   // A case cannot state an outcome its pair contradicts: unavailable exactly when the pair is
   // unusable (and steps 1-20, 24-29 pass), and never an Oracle refusal on an unusable pair.
@@ -5133,8 +5305,14 @@ function finalize({ context, expected, ...c }: CaseInput) {
 
 // A quorum case spelled out like an evaluation case: its one latest-block reads (null: the
 // same as finalized; registry and configs only, each member's attestation reading the same at
-// both blocks), its one block pair, and, only when that pair is unusable, why the quorum is
-// unavailable. expected.records is derived: what each member's evaluation writes.
+// both blocks), its one block pair, the consumer's deployment maximum (MAX_RECHECK_SECONDS
+// unless stated), and, only when that pair is unusable, why the quorum is unavailable.
+// expected.records is derived: what each member's evaluation writes. expected.heldGrant is what
+// the evaluation does to a grant made on a satisfied quorum of these members if it is that
+// grant's re-evaluation (SPEC.md section 10.6, Quorum grants): kept when satisfied, due at now
+// plus the smaller of the counted members' smallest revocationCheckSeconds and the maximum;
+// ended when a case says so (fewer than threshold distinct attestors left among members whose
+// own evaluation does not end a held grant); suspended otherwise.
 type QuorumInput = {
   name: string;
   description: string;
@@ -5142,10 +5320,17 @@ type QuorumInput = {
   context: Consumer & {
     latest?: Partial<Omit<LatestReads, "attestationRevoked">>;
     blocks?: Blocks;
+    maxRecheckSeconds?: number;
   };
   requirement: { claimType: string; proofType: number; statement: Statement };
   members: QuorumMember[];
-  expected: { attestors: string[]; count: number; satisfied: boolean; unavailable?: Unavailable };
+  expected: {
+    attestors: string[];
+    count: number;
+    satisfied: boolean;
+    unavailable?: Unavailable;
+    heldGrant?: "ended";
+  };
 };
 // What one quorum member's evaluation against the snapshot writes (SPEC.md section 10.6), on any
 // pair: null for a member for another claim or proof type, which is not evaluated. A member
@@ -5178,10 +5363,29 @@ function memberRecords(
   return recordsFor(m, { ...consumer, ...m }, disc, ev, passedStep9);
 }
 function finalizeQuorum({ context, expected, ...c }: QuorumInput) {
-  const { latest, blocks, ...consumer } = context;
+  const { latest, blocks, maxRecheckSeconds = MAX_RECHECK_SECONDS, ...consumer } = context;
   const pair = blocks ?? blocksOn(consumer.chainId, consumer.now);
   if ((expected.unavailable ?? null) !== pairCheck(pair, consumer.chainId, consumer.now))
     throw new Error(`${c.name}: expected.unavailable contradicts its pair`);
+  const { heldGrant: ends, ...result } = expected;
+  if (ends && result.satisfied) throw new Error(`${c.name}: a satisfied quorum keeps its grant`);
+  // The members the quorum counts: evaluated (the requirement's claim and proof type), both
+  // fetches 200, and attesting for a counted attestor.
+  const counted = c.members.filter((m) => {
+    const ev = evidence[m.evidence]!;
+    return (
+      ev.claimType === c.requirement.claimType &&
+      ev.artifact.proofType === c.requirement.proofType &&
+      m.discoveryFetch.status === 200 &&
+      m.evidenceFetch.status === 200 &&
+      result.attestors.includes(ev.deployment.attestorProviderId)
+    );
+  });
+  const interval = Math.min(
+    maxRecheckSeconds,
+    ...counted.map((m) => discovery[m.discovery]!.revocationCheckSeconds),
+  );
+  const kept = result.satisfied && result.unavailable === undefined;
   return {
     ...c,
     context: {
@@ -5194,19 +5398,26 @@ function finalizeQuorum({ context, expected, ...c }: QuorumInput) {
               validConfigs: latest.validConfigs ?? consumer.validConfigs,
             },
       blocks: pair,
+      maxRecheckSeconds,
     },
     expected: {
-      ...expected,
+      ...result,
       records: c.members.map((m) => memberRecords(m, consumer, c.requirement)),
+      heldGrant: kept ? "kept" : (ends ?? "suspended"),
+      recheckBy: kept ? consumer.now + interval : null,
     },
   };
 }
 
 // Every step that reads no block still runs, in order, and refuses on an unusable pair, and no
-// Oracle step (21-23, 30, 31) runs there (SPEC.md section 10.5, Block pair). One case per step:
-// a canonical case refusing at it, re-run on a stale pair. A case for a step that reads no block
-// keeps its refusal; a case for an Oracle step (refusing at no step that reads no block) becomes
-// unavailable, and steps 30 and 31 are also re-run on another chain's (invalid) pair.
+// Oracle step (21-23, 30, 31) runs there (SPEC.md section 10.5, Block pair). One case per step
+// and per kind of unusable pair: a canonical case refusing at it, re-run on a stale pair and on
+// another chain's (invalid) pair. A case for a step that reads no block keeps its refusal; a
+// case for an Oracle step (refusing at no step that reads no block) becomes unavailable. Each
+// re-run holds an exercised grant on its evidence, its recheckBy still 15 minutes ahead, so what
+// an unusable pair does to a grant is pinned whatever the grant's state: it suspends it (or a
+// step that reads no block ends it), never keeps it until its recheckBy. The one exception is
+// the step-2 case, whose announced id fails the id rule, so no grant can rest on it.
 const UNUSABLE_PAIR_SOURCES: Record<string, string> = {
   trust_domain_not_allowed: "impostor-host-not-allowed",
   evidence_id_invalid: "evidence-id-dot-segments",
@@ -5252,18 +5463,29 @@ function onUnusablePair(refusal: string, why: Unavailable): CaseInput {
   const oracle = ORACLE_REFUSALS.includes(refusal);
   const pair = why === "blocks_stale" ? "a stale pair" : "a pair from another chain";
   const { follows: _follows, ...rest } = source;
+  const host = source.context.discoveryFetch.host;
+  const id =
+    source.context.announcedEvidenceId ??
+    resolve<Evidence>(evidence, "evidence", source.evidence).evidenceId;
+  const held = EVIDENCE_ID_RULE.test(id)
+    ? [{ trustDomainId: host, evidenceId: id, recheckBy: now + 900 }]
+    : [];
+  const effect = oracle
+    ? `The evaluation is unavailable (${why}) and suspends the held grant, though its recheckBy is still 15 minutes ahead.`
+    : `No Oracle step runs, and the held grant is ${ENDS_HELD_GRANT.includes(refusal) ? "ended" : "suspended, though its recheckBy is still 15 minutes ahead"}.`;
   return {
     ...rest,
     name: `unusable-pair-${oracle ? "skips" : "still-refuses"}-${refusal.replace(/_/g, "-")}${why === "blocks_invalid" ? "-other-chain" : ""}`,
     description: oracle
-      ? `As ${sourceName}, on ${pair}: step ${step} (${refusal}) reads the Oracle, so it does not run, and no step that reads no block refuses. The evaluation is unavailable (${why}) and suspends a held grant.`
-      : `As ${sourceName}, on ${pair}: step ${step} (${refusal}) reads no block, so it still runs in order and refuses as usual. No Oracle step runs.`,
+      ? `As ${sourceName}, on ${pair}: step ${step} (${refusal}) reads the Oracle, so it does not run, and no step that reads no block refuses. ${effect}`
+      : `As ${sourceName}, on ${pair}: step ${step} (${refusal}) reads no block, so it still runs in order and refuses as usual. ${effect}`,
     context: {
       ...source.context,
       blocks:
         why === "blocks_stale"
           ? stalePair(chainId, now)
           : blocksOn(chainId === BASE ? BASE_SEPOLIA : BASE, now),
+      heldGrants: [...(source.context.heldGrants ?? []), ...held],
     },
     expected: oracle ? unavailable(why) : source.expected,
   };
@@ -5271,9 +5493,9 @@ function onUnusablePair(refusal: string, why: Unavailable): CaseInput {
 if (Object.keys(UNUSABLE_PAIR_SOURCES).join() !== REFUSALS.join())
   throw new Error("UNUSABLE_PAIR_SOURCES must name one case per refusal, in step order");
 evaluationCases.push(
-  ...REFUSALS.map((refusal) => onUnusablePair(refusal, "blocks_stale")),
-  onUnusablePair("proof_mismatch", "blocks_invalid"),
-  onUnusablePair("proof_stale", "blocks_invalid"),
+  ...(["blocks_stale", "blocks_invalid"] as const).flatMap((why) =>
+    REFUSALS.map((refusal) => onUnusablePair(refusal, why)),
+  ),
 );
 
 const vectors = {
@@ -5332,8 +5554,12 @@ const ANNOUNCED_EVIDENCE_ID = d(
   { type: "string" },
 );
 const PROOF = d(
-  "The Oracle-verified proof the evidence feeds, as the consumer reads it (SPEC.md section 10.5, steps 30-31). publicInputs: the publicInputs bytes of the submitCompliance call that verified it, as 32-byte lowercase hex words in ERC-8262 order (the section 10.5 layout table); the consumer accepts them only if keccak256 of their concatenation is attestation.publicInputsHash. attestation: what getHistoricalProof(proofHash) returns (subject, proofType, publicInputsHash, expiresAt) and isAttestationRevoked(proofHash) (revoked).",
+  "The Oracle-verified proof the evidence feeds, as the consumer reads it (SPEC.md section 10.5, steps 30-31). proofHash: the hash the Oracle indexes the proof by, which keys a grant made on it (section 10.7, Held grants). publicInputs: the publicInputs bytes of the submitCompliance call that verified it, as 32-byte lowercase hex words in ERC-8262 order (the section 10.5 layout table); the consumer accepts them only if keccak256 of their concatenation is attestation.publicInputsHash. attestation: what getHistoricalProof(proofHash) returns (subject, proofType, publicInputsHash, expiresAt) and isAttestationRevoked(proofHash) (revoked).",
   obj({
+    proofHash: d(
+      "The Oracle's keccak256(proof, proofType, chainid, oracle). The vectors ship no proof bytes, so it is a stand-in fixture (keccak256 of the verified publicInputsHash, proofType, chainId and oracleAddress words) that a runner never recomputes.",
+      HEX32,
+    ),
     publicInputs: { type: "array", minItems: 1, maxItems: 14, items: HEX32 },
     attestation: obj({
       subject: ADDRESS,
@@ -5458,19 +5684,26 @@ const RECHECK_BY = d(
   { oneOf: [{ type: "null" }, UNIX] },
 );
 const HELD_GRANTS = d(
-  "The grants the consumer holds for the subject, as its observation store has them (SPEC.md section 10.7, Held grants): the evidence each rests on (the fetch host and the announced evidenceId it was granted on) and recheckBy. The entry for this case's fetch host and announced evidenceId, if any, is the grant expected.heldGrant describes; what happens to it does not depend on its state. Every other entry is another grant, which this evaluation never touches.",
+  "The grants the consumer's observation store holds (SPEC.md section 10.7, Held grants), each keyed by the subject it was granted to, the fetch host and announced evidenceId it was granted on, and the proofHash of the proof it was granted on, with the attestation expiresAt read when it was granted (the grant ends then at the latest) and recheckBy. The entry for this case's subject, fetch host, announced evidenceId and context.proof.proofHash, if any, is the grant expected.heldGrant describes; what happens to it does not depend on its state. Every other entry is another grant (another subject's, host's, id's or proof's), which this evaluation never touches.",
   {
     type: "array",
     items: obj({
+      subject: ADDRESS,
       trustDomainId: TRUST_DOMAIN_ID,
       evidenceId: evidenceSchema.properties.evidenceId,
+      proofHash: HEX32,
+      attestationExpiresAt: UNIX,
       recheckBy: RECHECK_BY,
     }),
   },
 );
 const MAX_RECHECK = d(
-  "The consumer's deployment maximum on a held grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares.",
-  { type: "integer", minimum: 1, maximum: MAX_REVOCATION_CHECK_SECONDS },
+  `The consumer's deployment maximum on a grant's re-evaluation interval (SPEC.md section 10.7, Held grants): a grant's next re-evaluation is due at most this many seconds after its last accepting one, whatever revocationCheckSeconds the provider declares, and a failed or suspending re-evaluation is retried within it. At least ${MIN_REVOCATION_CHECK_SECONDS} (limits.minRevocationCheckSeconds) and at most limits.maxRevocationCheckSeconds.`,
+  {
+    type: "integer",
+    minimum: MIN_REVOCATION_CHECK_SECONDS,
+    maximum: MAX_REVOCATION_CHECK_SECONDS,
+  },
 );
 
 const OBSERVED_PAIR = obj({
@@ -5500,9 +5733,13 @@ const RECORDS = d(
 );
 
 const HELD_GRANT =
-  "What happens to the grant held on this evidence (keyed by the fetch host and the announced evidenceId) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
+  "What happens to the grant held on this evidence (keyed by the subject, the fetch host, the announced evidenceId and the proof hash) when this evaluation is its re-evaluation, whatever state the grant was in (SPEC.md section 10.7, Held grants): kept (accepted: exercised, a suspension lifted), ended (refused at step 1-5, 18, 29 or 31, except a step-31 attestation revocation read only at the latest block), or suspended (refused at any other step or in that step-31 case, or unavailable however long the grant's recheckBy still runs: not exercised, neither ended nor revoked, until a re-evaluation accepts or the grant ends at the earlier of the evidence's and the attestation's expiresAt).";
 const HELD_RECHECK_BY =
-  "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept; null otherwise.";
+  "When the grant's next re-evaluation is due after this evaluation (SPEC.md section 10.7, Held grants): context.now plus the smaller of the discovery document's revocationCheckSeconds and context.maxRecheckSeconds when it is kept, whatever recheckBy the store held; null otherwise.";
+const QUORUM_HELD_GRANT =
+  "What happens to a grant made on a satisfied quorum of these members when this evaluation is its re-evaluation (SPEC.md section 10.6, Quorum grants): kept when the quorum is satisfied; ended when fewer than threshold distinct attestors (each member's allowlisted attestor) remain among the evaluated members whose own evaluation, against the snapshot plus the revocations the members record, does not end a held grant (section 10.7, Held grants); suspended otherwise, an unusable pair included.";
+const QUORUM_RECHECK_BY =
+  "When the quorum grant's next re-evaluation is due after this evaluation: context.now plus the smaller of the smallest revocationCheckSeconds among the discovery documents of the members the quorum counts and context.maxRecheckSeconds when it is kept; null otherwise.";
 const QUORUM_RECORDS = d(
   "What each member's evaluation against the snapshot writes, in member order (SPEC.md section 10.6), as an evaluation case's expected.records; null for a member for another claim or proof type, which is not evaluated. On an unusable pair each member still runs the steps that read no block and writes what they write.",
   { type: "array", items: { oneOf: [{ type: "null" }, RECORDS] } },
@@ -5553,7 +5790,7 @@ const vectorsSchema = {
           name: NAME,
           description: { type: "string" },
           follows: d(
-            "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it re-evaluated as it left it (recheckBy set to expected.recheckBy; an ended grant removed; a grant the earlier store did not hold is not created): a consumer runs the chain on its own store.",
+            "An earlier evaluation case. This case's observation store (context.seenDiscovery, seenEvidence, seenRevoked and heldGrants) is exactly the earlier case's store plus what it wrote (expected.records) and the grant it re-evaluated (the entry for its subject, fetch host, announced evidenceId and proof hash) as it left it (recheckBy set to expected.recheckBy; an ended grant removed; a grant the earlier store did not hold is not created; every other grant untouched): a consumer runs the chain on its own store.",
             NAME,
           ),
           discovery: DOC_REF,
@@ -5612,6 +5849,7 @@ const vectorsSchema = {
           ...CONSUMER_FIELDS,
           latest: QUORUM_LATEST,
           blocks: BLOCKS,
+          maxRecheckSeconds: MAX_RECHECK,
         }),
         requirement: d(
           "The multi-provider requirement (SPEC.md section 10.6): one claimType, the proof type it must feed, and the statement every member's proof must prove.",
@@ -5630,8 +5868,18 @@ const vectorsSchema = {
                 items: ATTESTOR_PROVIDER_ID,
               }),
               count: { type: "integer", minimum: 0 },
-              satisfied: { type: "boolean" },
+              satisfied: { const: true },
               records: QUORUM_RECORDS,
+              heldGrant: d(QUORUM_HELD_GRANT, { const: "kept" }),
+              recheckBy: d(QUORUM_RECHECK_BY, UNIX),
+            }),
+            obj({
+              attestors: { type: "array", items: ATTESTOR_PROVIDER_ID },
+              count: { type: "integer", minimum: 0 },
+              satisfied: { const: false },
+              records: QUORUM_RECORDS,
+              heldGrant: d(QUORUM_HELD_GRANT, { enum: ["suspended", "ended"] }),
+              recheckBy: d(QUORUM_RECHECK_BY, { type: "null" }),
             }),
             obj({
               attestors: { type: "array", maxItems: 0 },
@@ -5642,6 +5890,8 @@ const vectorsSchema = {
                 { enum: UNAVAILABLE },
               ),
               records: QUORUM_RECORDS,
+              heldGrant: d(QUORUM_HELD_GRANT, { enum: ["suspended", "ended"] }),
+              recheckBy: d(QUORUM_RECHECK_BY, { type: "null" }),
             }),
           ],
         },

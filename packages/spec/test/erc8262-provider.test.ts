@@ -55,9 +55,11 @@ type Evidence = {
   expiresAt: number;
   artifact: Artifact;
 };
-// The verified proof (SPEC.md section 10.5, steps 30-31): the publicInputs words it was
+// The verified proof (SPEC.md section 10.5, steps 30-31): the hash the Oracle indexes it by
+// (a stand-in fixture; it keys a grant made on the proof), the publicInputs words it was
 // submitted with and the Oracle's record of it.
 type Proof = {
+  proofHash: string;
   publicInputs: string[];
   attestation: {
     subject: string;
@@ -91,12 +93,16 @@ type Fetch = { host: string; status: number | null };
 // section 10.5, Block pair).
 type BlockRef = { number: number; timestamp: number };
 type Blocks = { chainId: number; finalized: BlockRef; latest: BlockRef };
-// A grant the consumer holds for the subject (SPEC.md section 10.7, Held grants): keyed by the
-// fetch host and announced evidenceId it was granted on, with when its next re-evaluation is
+// A grant the consumer holds (SPEC.md section 10.7, Held grants): keyed by the subject it was
+// granted to, the fetch host and announced evidenceId and the proof hash it was granted on,
+// with the attestation expiresAt read when it was granted and when its next re-evaluation is
 // due (null while suspended).
 type HeldGrant = {
+  subject: string;
   trustDomainId: string;
   evidenceId: string;
+  proofHash: string;
+  attestationExpiresAt: number;
   recheckBy: number | null;
 };
 type Consumer = {
@@ -136,7 +142,7 @@ type LatestReads = {
 };
 // The observation store an evaluation reads (SPEC.md section 10.7): key revocations, the
 // newest updatedAt per trust domain, the evidence documents and evidence revocations it holds,
-// and the subject's held grants. Built from a case's context, or replayed along a follows chain.
+// and the held grants. Built from a case's context, or replayed along a follows chain.
 type Store = {
   keyRevocations: KeyRevocation[];
   newestUpdatedAt: Record<string, number>;
@@ -198,7 +204,10 @@ type Vectors = {
   quorumCases: {
     name: string;
     threshold: number;
-    context: Consumer & { latest: Omit<LatestReads, "attestationRevoked"> | null };
+    context: Consumer & {
+      latest: Omit<LatestReads, "attestationRevoked"> | null;
+      maxRecheckSeconds: number;
+    };
     requirement: { claimType: string; proofType: number; statement: Statement };
     members: ({ discovery: string; evidence: string } & Attempt)[];
     expected: {
@@ -207,7 +216,7 @@ type Vectors = {
       satisfied: boolean;
       unavailable?: string;
       records: (Records | null)[];
-    };
+    } & HeldGrantOutcome;
   }[];
 };
 
@@ -702,14 +711,15 @@ const ENDS_HELD_GRANT: readonly string[] = [
   "proof_stale",
 ];
 
-// What an outcome does to the grant held on the evidence (keyed by the fetch host and the
-// announced id), whatever state it was in, and when its next re-evaluation is due afterwards
-// (SPEC.md section 10.7, Held grants).
+// What an outcome does to the grant held on the evidence (keyed by the subject, the fetch host,
+// the announced id and the proof hash), whatever state it was in, its recheckBy included, and
+// when its next re-evaluation is due afterwards (SPEC.md section 10.7, Held grants).
 // - Accepted: kept (a suspension lifted), due at now plus the smaller of the fetched
 //   document's revocationCheckSeconds and the consumer's deployment maximum.
 // - Refused: ended at an ending step (a step-31 refusal only when the finalized reads refuse
 //   too); else suspended.
-// - Unavailable: suspended (fail closed: the re-evaluation cannot complete).
+// - Unavailable: suspended (fail closed: the re-evaluation cannot complete), however long the
+//   grant's recheckBy still runs.
 function heldGrantAfter(
   outcome: Outcome,
   disc: unknown,
@@ -731,6 +741,14 @@ function heldGrantAfter(
   }
   return { heldGrant: ends ? "ended" : "suspended", recheckBy: null };
 }
+
+// The grant an evaluation re-evaluates: the one held for its subject, fetch host, announced id
+// and proof hash (SPEC.md section 10.7, Held grants).
+const isGrantOf = (ctx: Context) => (g: HeldGrant) =>
+  g.subject === ctx.subject &&
+  g.trustDomainId === ctx.discoveryFetch.host &&
+  g.evidenceId === ctx.announcedEvidenceId &&
+  g.proofHash === ctx.proof.proofHash;
 
 /**
  * The store a follows case starts from (SPEC.md section 10.8): the earlier case's store plus
@@ -772,8 +790,7 @@ function replay(
   const same = (a: Observed) => (b: Observed) =>
     a.trustDomainId === b.trustDomainId && a.evidenceId === b.evidenceId;
   const { revocation, evidence } = records;
-  const isGrant = (g: HeldGrant) =>
-    g.trustDomainId === ctx.discoveryFetch.host && g.evidenceId === ctx.announcedEvidenceId;
+  const isGrant = isGrantOf(ctx);
   return {
     keyRevocations,
     newestUpdatedAt,
@@ -921,6 +938,12 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
         expect(declared?.attestorProviderId, seen.discovery).toBe(seen.attestorProviderId);
       }
     }
+    // A grant's record carries the attestation expiresAt of the proof it was granted on.
+    for (const c of V.evaluationCases) {
+      for (const g of c.context.heldGrants.filter(isGrantOf(c.context))) {
+        expect(g.attestationExpiresAt, c.name).toBe(c.context.proof.attestation.expiresAt);
+      }
+    }
   });
 
   it("refusals lists every step, in runner order", () => {
@@ -932,36 +955,48 @@ describe("erc8262 evaluation (SPEC section 10.5)", () => {
     expect([...hit].sort()).toEqual([...V.refusals].sort());
     const unavailable = new Set(V.evaluationCases.map((c) => c.expected.unavailable));
     expect(unavailable).toEqual(new Set([undefined, "blocks_invalid", "blocks_stale"]));
-    const heldGrant = new Set(V.evaluationCases.map((c) => c.expected.heldGrant));
-    expect(heldGrant).toEqual(new Set(["kept", "ended", "suspended"]));
+    for (const cases of [V.evaluationCases, V.quorumCases]) {
+      const heldGrant = new Set(cases.map((c) => c.expected.heldGrant));
+      expect(heldGrant).toEqual(new Set(["kept", "ended", "suspended"]));
+    }
   });
 
   // SPEC.md section 10.5, Block pair: every step that reads no block still runs and refuses on
-  // an unusable pair, and no Oracle step runs there. Each step needs a case on an unusable pair:
-  // one refusing at it, or, for an Oracle step, one unavailable that refuses at it once its pair
-  // is made usable (the same chain, the latest block dated now).
-  it("pins every step on an unusable pair", () => {
-    for (const [i, [refusal]] of STEPS.entries()) {
-      const pinned = V.evaluationCases.some((c) => {
-        if (blockCheck(c.context) === null) return false;
-        if (!ORACLE_STEPS.has(i)) return c.expected.refusal === refusal;
-        if (c.expected.unavailable === undefined) return false;
-        const { blocks } = c.context;
-        const outcome = evaluate(
-          resolve(V.discovery, "discovery", c.discovery),
-          resolve(V.evidence, "evidence", c.evidence),
-          {
-            ...c.context,
-            blocks: {
-              chainId: c.context.chainId,
-              finalized: blocks.finalized,
-              latest: { ...blocks.latest, timestamp: c.context.now },
+  // an unusable pair, and no Oracle step runs there. Each step needs a case on each kind of
+  // unusable pair (invalid and stale): one refusing at it, or, for an Oracle step, one
+  // unavailable that refuses at it once its pair is made usable (the same chain, the latest
+  // block dated now). Each such case holds an exercised grant on its own evidence whose
+  // recheckBy is still ahead, so a consumer that keeps a grant on an unusable pair until its
+  // recheckBy fails it (the step-2 case excepted: its announced id fails the id rule, so no
+  // grant can rest on it).
+  it("pins every step on each kind of unusable pair, with a grant still due later", () => {
+    for (const code of ["blocks_invalid", "blocks_stale"]) {
+      for (const [i, [refusal]] of STEPS.entries()) {
+        const pinned = V.evaluationCases.some((c) => {
+          if (blockCheck(c.context) !== code) return false;
+          const exercised = c.context.heldGrants.some(
+            (g) => isGrantOf(c.context)(g) && g.recheckBy !== null && g.recheckBy > c.context.now,
+          );
+          if (!exercised && refusal !== "evidence_id_invalid") return false;
+          if (!ORACLE_STEPS.has(i)) return c.expected.refusal === refusal;
+          if (c.expected.unavailable === undefined) return false;
+          const { blocks } = c.context;
+          const outcome = evaluate(
+            resolve(V.discovery, "discovery", c.discovery),
+            resolve(V.evidence, "evidence", c.evidence),
+            {
+              ...c.context,
+              blocks: {
+                chainId: c.context.chainId,
+                finalized: blocks.finalized,
+                latest: { ...blocks.latest, timestamp: c.context.now },
+              },
             },
-          },
-        );
-        return outcome !== null && "refusal" in outcome && outcome.refusal === refusal;
-      });
-      expect(pinned, refusal).toBe(true);
+          );
+          return outcome !== null && "refusal" in outcome && outcome.refusal === refusal;
+        });
+        expect(pinned, `${refusal} on ${code}`).toBe(true);
+      }
     }
   });
 
@@ -1003,7 +1038,8 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
     // Evidence for another claim or proof type is not evaluated (null). Every other member runs
     // under the case's consumer context, observation store and latest-block reads included (its
     // own attestation reads the same at both blocks), and its proof must prove the
-    // requirement's statement. A quorum member holds no grant.
+    // requirement's statement. A member holds no grant of its own: the quorum's one grant is
+    // the case's expected.heldGrant.
     const runs = c.members.map(({ discovery, evidence, ...attempt }) => {
       const ev = doc(V.evidence, evidence);
       const latest = c.context.latest && {
@@ -1021,7 +1057,7 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
               latest,
               statement: c.requirement.statement,
               heldGrants: [],
-              maxRecheckSeconds: 0,
+              maxRecheckSeconds: c.context.maxRecheckSeconds,
             },
           }
         : null;
@@ -1053,20 +1089,40 @@ describe("erc8262 quorum (SPEC section 10.6)", () => {
         ),
       ],
     };
+    // SPEC.md section 10.6, Quorum grants: a grant made on a satisfied quorum of these members
+    // is kept when this re-evaluation is satisfied, due at now plus the smaller of the counted
+    // members' smallest revocationCheckSeconds and the maximum. Otherwise it is ended once fewer
+    // than threshold distinct attestors (each member's allowlisted attestor) remain among the
+    // members whose own evaluation does not end a held grant, and suspended while they remain.
     const attestors = new Set<string>();
+    const remaining = new Set<string>();
+    const intervals: number[] = [];
     for (const r of evaluated) {
-      if (evaluate(r.disc, r.ev, r.ctx, shared) === null) {
+      const outcome = evaluate(r.disc, r.ev, r.ctx, shared);
+      if (outcome === null) {
         attestors.add(r.ev.deployment.attestorProviderId);
+        intervals.push(r.disc.revocationCheckSeconds);
       }
+      const pin = c.context.allowlist.find(
+        (a) => a.trustDomainId === r.ctx.discoveryFetch.host,
+      )?.attestorProviderId;
+      const own = heldGrantAfter(outcome, r.disc, r.ev, r.ctx, shared);
+      if (pin !== undefined && own.heldGrant !== "ended") remaining.add(pin);
     }
     const sorted = [...attestors].sort(byNumericValue);
-    const result = {
-      attestors: sorted,
-      count: sorted.length,
-      satisfied: sorted.length >= c.threshold,
-    };
+    const satisfied = sorted.length >= c.threshold;
+    const grant: HeldGrantOutcome =
+      satisfied && unavailable === null
+        ? {
+            heldGrant: "kept",
+            recheckBy: c.context.now + Math.min(c.context.maxRecheckSeconds, ...intervals),
+          }
+        : { heldGrant: remaining.size < c.threshold ? "ended" : "suspended", recheckBy: null };
+    const result = { attestors: sorted, count: sorted.length, satisfied };
     expect(
-      unavailable === null ? { ...result, records } : { ...result, unavailable, records },
+      unavailable === null
+        ? { ...result, records, ...grant }
+        : { ...result, unavailable, records, ...grant },
     ).toEqual(c.expected);
   });
 
