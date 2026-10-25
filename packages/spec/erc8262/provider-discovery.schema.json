@@ -240,7 +240,7 @@
       }
     },
     "revocationCheckSeconds": {
-      "description": "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence since its last completed re-evaluation (a fresh fetch of this document and of the evidence); past it the grant is suspended until one completes. A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
+      "description": "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence after an accepting re-evaluation (a fresh fetch of this document and of the evidence, and fresh Oracle reads) before the next must have accepted; past it the grant is suspended until one accepts. The consumer reads it from the document each re-evaluation fetched and caps it at its own deployment maximum, so raising it never lengthens an interval already running nor exceeds the consumer's maximum. A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
       "type": "integer",
       "minimum": 60,
       "maximum": 86400
