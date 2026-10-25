@@ -39,23 +39,7 @@ export type ShieldedRefusal =
   | "chain_id_zero"
   | "environment_empty"
   | "digest_zero"
-  | "purpose_mismatch"
-  // RecipientDescriptor (shielded-recipient.ts)
-  | "class_not_pinned"
-  | "signing_key_invalid"
-  | "ivpk_invalid"
-  | "address_mismatch"
-  // DRAFT acknowledgements (shielded-recipient.ts)
-  | "senders_not_canonical"
-  | "senders_empty"
-  // readiness records (shielded-readiness.ts)
-  | "missing_field"
-  | "unknown_field"
-  | "forbidden_field"
-  | "not_bool"
-  | "block_not_string"
-  | "timestamp_not_integer"
-  | "signature_malformed";
+  | "purpose_mismatch";
 
 export class ShieldedEncodingError extends Error {
   readonly code: ShieldedRefusal;
@@ -71,6 +55,24 @@ export class ShieldedEncodingError extends Error {
 export const refuse = (code: ShieldedRefusal, field: string, detail: string): never => {
   throw new ShieldedEncodingError(code, field, detail);
 };
+
+/**
+ * Runs `fn` and re-raises a value-rule refusal as the calling module's own error, so the
+ * recipient and readiness modules each keep a closed refusal union of their own and
+ * `ShieldedEncodingError` keeps the `shielded.ts` contract unchanged.
+ */
+export function withRefusalsAs<T>(
+  fn: () => T,
+  make: (code: ShieldedRefusal, field: string, detail: string) => Error,
+): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (!(e instanceof ShieldedEncodingError)) throw e;
+    // The message is `${field}: ${code} (${detail})`, written above.
+    throw make(e.code, e.field, e.message.slice(`${e.field}: ${e.code} (`.length, -1));
+  }
+}
 
 export function bytes32(field: string, value: string): Hex {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {

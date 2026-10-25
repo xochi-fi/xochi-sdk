@@ -37,11 +37,45 @@ import {
   coder,
   environmentHash,
   keccak,
-  refuse,
   uint,
+  withRefusalsAs,
+  type ShieldedRefusal,
   type UintLike,
 } from "./shielded-values";
 import type { Hex } from "./types";
+
+/**
+ * Why a readiness record or domain input is refused: the shared value rules
+ * (`ShieldedRefusal`) plus the strict record parse. Its own union and error, so
+ * `ShieldedEncodingError` keeps the `shielded.ts` contract.
+ */
+export type ReadinessRefusal =
+  | ShieldedRefusal
+  | "missing_field"
+  | "unknown_field"
+  | "forbidden_field"
+  | "not_bool"
+  | "block_not_string"
+  | "timestamp_not_integer"
+  | "signature_malformed";
+
+export class ReadinessEncodingError extends Error {
+  readonly code: ReadinessRefusal;
+  readonly field: string;
+  constructor(code: ReadinessRefusal, field: string, detail: string) {
+    super(`${field}: ${code} (${detail})`);
+    this.name = "ReadinessEncodingError";
+    this.code = code;
+    this.field = field;
+  }
+}
+
+const refuseReadiness = (code: ReadinessRefusal, field: string, detail: string): never => {
+  throw new ReadinessEncodingError(code, field, detail);
+};
+// The shared value rules, refusing as ReadinessEncodingError.
+const readinessRules = <T>(fn: () => T): T =>
+  withRefusalsAs(fn, (code, field, detail) => new ReadinessEncodingError(code, field, detail));
 
 export const SHIELDED_READINESS_DOMAIN_NAME = "Xochi Shielded Readiness";
 
@@ -102,14 +136,16 @@ export function readinessDomainSalt(
   network: NetworkIdentity,
   manifestDigest: string,
 ): Hex {
-  return keccak(
-    coder.encode(
-      ["bytes32", "bytes32", "bytes32"],
-      [
-        environmentHash(environment),
-        hashNetworkIdentity(network),
-        bytes32("manifestDigest", manifestDigest),
-      ],
+  return readinessRules(() =>
+    keccak(
+      coder.encode(
+        ["bytes32", "bytes32", "bytes32"],
+        [
+          environmentHash(environment),
+          hashNetworkIdentity(network),
+          bytes32("manifestDigest", manifestDigest),
+        ],
+      ),
     ),
   );
 }
@@ -124,7 +160,7 @@ export function readinessDomain(
   return {
     name: SHIELDED_READINESS_DOMAIN_NAME,
     version: "1",
-    chainId: chainId("sourceChainId", sourceChainId).toString(),
+    chainId: readinessRules(() => chainId("sourceChainId", sourceChainId)).toString(),
     salt: readinessDomainSalt(environment, network, manifestDigest),
   };
 }
@@ -132,16 +168,16 @@ export function readinessDomain(
 const height = (field: string, v: unknown): bigint =>
   typeof v === "string"
     ? uint(field, v, UINT64_MAX)
-    : refuse("block_not_string", field, "block heights cross JSON as decimal strings");
+    : refuseReadiness("block_not_string", field, "block heights cross JSON as decimal strings");
 function seconds(v: unknown): number {
   if (typeof v !== "number" || !Number.isSafeInteger(v)) {
-    return refuse("timestamp_not_integer", "attestedAt", `got ${JSON.stringify(v)}`);
+    return refuseReadiness("timestamp_not_integer", "attestedAt", `got ${JSON.stringify(v)}`);
   }
-  if (v < 0) refuse("uint_out_of_range", "attestedAt", "negative");
+  if (v < 0) refuseReadiness("uint_out_of_range", "attestedAt", "negative");
   return v;
 }
 function bool(field: string, v: unknown): boolean {
-  if (typeof v !== "boolean") refuse("not_bool", field, `got ${JSON.stringify(v)}`);
+  if (typeof v !== "boolean") refuseReadiness("not_bool", field, `got ${JSON.stringify(v)}`);
   return v as boolean;
 }
 
@@ -159,42 +195,49 @@ export function parseReadinessRecord<T extends ReadinessType>(
   const r = record as Record<string, unknown>;
   const allowed = [...MEMBERS[primaryType], "signature"];
   for (const k of Object.keys(r)) {
-    if (FORBIDDEN.includes(k)) refuse("forbidden_field", k, "never part of a readiness record");
-    if (!allowed.includes(k)) refuse("unknown_field", k, `not a ${primaryType} member`);
+    if (FORBIDDEN.includes(k)) {
+      refuseReadiness("forbidden_field", k, "never part of a readiness record");
+    }
+    if (!allowed.includes(k)) refuseReadiness("unknown_field", k, `not a ${primaryType} member`);
   }
-  for (const k of allowed) if (!(k in r)) refuse("missing_field", k, `${primaryType} requires it`);
+  for (const k of allowed) {
+    if (!(k in r)) refuseReadiness("missing_field", k, `${primaryType} requires it`);
+  }
   const sig = r.signature;
   if (typeof sig !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(sig)) {
-    refuse("signature_malformed", "signature", "expected 0x + 65 bytes");
+    refuseReadiness("signature_malformed", "signature", "expected 0x + 65 bytes");
   }
   const attestedAt = seconds(r.attestedAt);
-  let attestation: ReadinessRecords[ReadinessType];
-  if (primaryType === "Membership") {
-    attestation = {
-      descriptorDigest: bytes32("descriptorDigest", r.descriptorDigest as string),
+  const attestation = readinessRules((): ReadinessRecords[ReadinessType] => {
+    if (primaryType === "Membership") {
+      const parsed = {
+        descriptorDigest: bytes32("descriptorDigest", r.descriptorDigest as string),
+        root: bytes32("root", r.root as string),
+        member: bool("member", r.member),
+        rootBlock: height("rootBlock", r.rootBlock),
+        attestedAt,
+      };
+      aztecField("root", parsed.root);
+      return parsed;
+    }
+    if (primaryType === "RecipientDeployment") {
+      return {
+        descriptorDigest: bytes32("descriptorDigest", r.descriptorDigest as string),
+        recipient: assertAztecBytes32("recipient", r.recipient as string),
+        classId: assertAztecBytes32("classId", r.classId as string),
+        deployed: bool("deployed", r.deployed),
+        finalBlock: height("finalBlock", r.finalBlock),
+        attestedAt,
+      };
+    }
+    const parsed = {
       root: bytes32("root", r.root as string),
-      member: bool("member", r.member),
       rootBlock: height("rootBlock", r.rootBlock),
       attestedAt,
     };
-    aztecField("root", r.root as string);
-  } else if (primaryType === "RecipientDeployment") {
-    attestation = {
-      descriptorDigest: bytes32("descriptorDigest", r.descriptorDigest as string),
-      recipient: assertAztecBytes32("recipient", r.recipient as string),
-      classId: assertAztecBytes32("classId", r.classId as string),
-      deployed: bool("deployed", r.deployed),
-      finalBlock: height("finalBlock", r.finalBlock),
-      attestedAt,
-    };
-  } else {
-    attestation = {
-      root: bytes32("root", r.root as string),
-      rootBlock: height("rootBlock", r.rootBlock),
-      attestedAt,
-    };
-    aztecField("root", r.root as string);
-  }
+    aztecField("root", parsed.root);
+    return parsed;
+  });
   return {
     attestation: attestation as ReadinessRecords[T],
     signature: (sig as string).toLowerCase() as Hex,

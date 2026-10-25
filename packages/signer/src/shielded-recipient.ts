@@ -9,7 +9,8 @@
 //     (`AZTEC_RECIPIENT_PROFILES`) and the fail-closed descriptor check;
 //   - the recipient message wrapper and its wide reduction into the BN254 scalar field;
 //   - a Schnorr-over-Grumpkin verifier for the account's signature over that field value;
-//   - the four acknowledgement structs, which are DRAFT until the owner approves them.
+//   - (the acknowledgement structs are DRAFT and live in the internal
+//     `shielded-recipient-acks.ts`, not exported until the owner approves them).
 //
 // VERIFY-ONLY: the recipient signs with its own tooling, which rebuilds the full typed
 // preimage and applies the wrapper itself; it never signs a value supplied by Xochi. No
@@ -25,27 +26,52 @@ import { ethers } from "ethers";
 import {
   NETWORK_IDENTITY_TYPE_STRING,
   hashNetworkIdentity,
-  shieldedDomainSeparator,
   type NetworkIdentity,
-  type ShieldedDomain,
 } from "./shielded";
 import {
   AZTEC_FIELD_MODULUS,
-  UINT64_MAX,
   assertAztecBytes32,
   aztecField,
   bytes32,
   coder,
   keccak,
-  parseShieldedAmount,
-  refuse,
-  uint,
-  type UintLike,
+  withRefusalsAs,
+  type ShieldedRefusal,
 } from "./shielded-values";
 import type { Hex } from "./types";
 
 const R = AZTEC_FIELD_MODULUS;
 const hex32 = (v: bigint): Hex => ("0x" + v.toString(16).padStart(64, "0")) as Hex;
+
+/**
+ * Why a descriptor or digest is refused: the shared value rules (`ShieldedRefusal`) plus
+ * the descriptor checks. Its own union and error, so `ShieldedEncodingError` keeps the
+ * `shielded.ts` contract.
+ */
+export type RecipientRefusal =
+  | ShieldedRefusal
+  | "class_not_pinned"
+  | "signing_key_invalid"
+  | "ivpk_invalid"
+  | "address_mismatch";
+
+export class RecipientEncodingError extends Error {
+  readonly code: RecipientRefusal;
+  readonly field: string;
+  constructor(code: RecipientRefusal, field: string, detail: string) {
+    super(`${field}: ${code} (${detail})`);
+    this.name = "RecipientEncodingError";
+    this.code = code;
+    this.field = field;
+  }
+}
+
+const refuseRecipient = (code: RecipientRefusal, field: string, detail: string): never => {
+  throw new RecipientEncodingError(code, field, detail);
+};
+// The shared value rules, refusing as RecipientEncodingError.
+const recipientRules = <T>(fn: () => T): T =>
+  withRefusalsAs(fn, (code, field, detail) => new RecipientEncodingError(code, field, detail));
 
 // ---------------------------------------------------------------------------
 // Grumpkin (y^2 = x^3 - 17 over F_r), Jacobian coordinates. Public data only
@@ -185,11 +211,13 @@ export const RECIPIENT_DESCRIPTOR_TYPEHASH = ethers.id(RECIPIENT_DESCRIPTOR_TYPE
 
 // Encoding check: every member a bytes32 field element below r; aztecAddress nonzero.
 function descriptorFields(d: RecipientDescriptor): Record<DescriptorField, bigint> {
-  const out = {} as Record<DescriptorField, bigint>;
-  for (const f of DESCRIPTOR_FIELDS) {
-    out[f] = f === "aztecAddress" ? BigInt(assertAztecBytes32(f, d[f])) : aztecField(f, d[f]);
-  }
-  return out;
+  return recipientRules(() => {
+    const out = {} as Record<DescriptorField, bigint>;
+    for (const f of DESCRIPTOR_FIELDS) {
+      out[f] = f === "aztecAddress" ? BigInt(assertAztecBytes32(f, d[f])) : aztecField(f, d[f]);
+    }
+    return out;
+  });
 }
 
 /** `descriptorDigest = hashStruct(RecipientDescriptor)`: no domain, no 0x1901 prefix. */
@@ -199,7 +227,7 @@ export function hashRecipientDescriptor(d: RecipientDescriptor): Hex {
     coder.encode(Array(DESCRIPTOR_FIELDS.length + 2).fill("bytes32"), [
       RECIPIENT_DESCRIPTOR_TYPEHASH,
       ...DESCRIPTOR_FIELDS.map((k) => hex32(f[k])),
-      hashNetworkIdentity(d.network),
+      recipientRules(() => hashNetworkIdentity(d.network)),
     ]),
   );
 }
@@ -292,8 +320,9 @@ export function deriveRecipientAddress(
     partialAddress,
   ]);
   const point = affine(addJ(mulJ(preaddress, GENERATOR), { X: f.ivpkMX, Y: f.ivpkMY, Z: 1n }));
-  if (point === null)
-    return refuse("address_mismatch", "aztecAddress", "address point at infinity");
+  if (point === null) {
+    return refuseRecipient("address_mismatch", "aztecAddress", "address point at infinity");
+  }
   return {
     constructorArgsHash: hex32(argsHash),
     initializationHash: hex32(initializationHash),
@@ -321,19 +350,23 @@ export function verifyRecipientDescriptor(
   profile: AztecRecipientProfile,
 ): RecipientDerivation {
   const f = descriptorFields(d);
-  hashNetworkIdentity(d.network);
+  recipientRules(() => hashNetworkIdentity(d.network));
   if (hex32(f.classId) !== profile.pinnedClassId.toLowerCase()) {
-    refuse("class_not_pinned", "classId", `not ${profile.sdk} ${profile.pinnedClassId}`);
+    refuseRecipient("class_not_pinned", "classId", `not ${profile.sdk} ${profile.pinnedClassId}`);
   }
   if (!isGrumpkinPoint({ x: f.signingPublicKeyX, y: f.signingPublicKeyY })) {
-    refuse("signing_key_invalid", "signingPublicKeyY", "not a finite Grumpkin point");
+    refuseRecipient("signing_key_invalid", "signingPublicKeyY", "not a finite Grumpkin point");
   }
   if (!isGrumpkinPoint({ x: f.ivpkMX, y: f.ivpkMY })) {
-    refuse("ivpk_invalid", "ivpkMY", "not a finite Grumpkin point");
+    refuseRecipient("ivpk_invalid", "ivpkMY", "not a finite Grumpkin point");
   }
   const derivation = deriveRecipientAddress(d, profile);
   if (derivation.address !== hex32(f.aztecAddress)) {
-    refuse("address_mismatch", "aztecAddress", `the descriptor derives ${derivation.address}`);
+    refuseRecipient(
+      "address_mismatch",
+      "aztecAddress",
+      `the descriptor derives ${derivation.address}`,
+    );
   }
   return derivation;
 }
@@ -371,7 +404,7 @@ export interface RecipientMessage {
  * `d` itself from the full typed preimage; it never takes `d` or `m` from Xochi.
  */
 export function recipientMessage(digest: string): RecipientMessage {
-  const d = ethers.getBytes(bytes32("digest", digest));
+  const d = ethers.getBytes(recipientRules(() => bytes32("digest", digest)));
   const u = ethers.concat([
     ethers.keccak256(ethers.concat([PREFIX_BYTES, d, "0x00"])),
     ethers.keccak256(ethers.concat([PREFIX_BYTES, d, "0x01"])),
@@ -418,167 +451,4 @@ export function verifyRecipientSchnorr(
   const point = affine(addJ(mulJ(s, GENERATOR), mulJ(e, P)));
   if (point === null) return false;
   return poseidon2Hash([SCHNORR_CHALLENGE_DST, point.x, P.x, P.y, msg]) === e;
-}
-
-// ---------------------------------------------------------------------------
-// Acknowledgements: DRAFT until the product owner approves them at PR review
-// ---------------------------------------------------------------------------
-
-/**
- * DRAFT. Each acknowledgement has its own primary type and purpose string and is signed
- * under `Domain (binding)` through the recipient message wrapper. All four name the binding
- * by its EIP-712 digest and carry a server-issued single-use challenge (`nonce`,
- * `challengeExpiry`; for the receipt, the receipt challenge). Do not implement against
- * these bytes until they are approved.
- */
-export const RECIPIENT_ACK_STATUS = "DRAFT";
-
-export interface MessagingEnrollmentAck {
-  bindingDigest: string;
-  aztecRecipient: string;
-  /** The sender account the recipient completed the interactive handshake with. */
-  enrolledSender: string;
-  nonce: string;
-  challengeExpiry: UintLike;
-  purpose: string;
-}
-export interface BackupPersistenceAck {
-  bindingDigest: string;
-  aztecRecipient: string;
-  nonce: string;
-  challengeExpiry: UintLike;
-  purpose: string;
-}
-export interface SenderRegistrationAck {
-  bindingDigest: string;
-  aztecRecipient: string;
-  /** Every panel solver Aztec address registered via `registerSender`: nonempty, ascending. */
-  registeredSenders: string[];
-  nonce: string;
-  challengeExpiry: UintLike;
-  purpose: string;
-}
-export interface PaymentReceiptAck {
-  bindingDigest: string;
-  termsDigest: string;
-  operationId: string;
-  network: NetworkIdentity;
-  txHash: string;
-  blockNumber: UintLike; // decimal string on the wire
-  aztecToken: string;
-  amount: string; // exact credited BaseUnits
-  aztecRecipient: string;
-  nonce: string;
-  challengeExpiry: UintLike;
-  purpose: string;
-}
-export interface RecipientAckMessages {
-  MessagingEnrollmentAck: MessagingEnrollmentAck;
-  BackupPersistenceAck: BackupPersistenceAck;
-  SenderRegistrationAck: SenderRegistrationAck;
-  PaymentReceiptAck: PaymentReceiptAck;
-}
-export type RecipientAckType = keyof RecipientAckMessages;
-
-export const RECIPIENT_ACK_TYPE_STRINGS: Record<RecipientAckType, string> = {
-  MessagingEnrollmentAck:
-    "MessagingEnrollmentAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 enrolledSender,bytes32 nonce,uint64 challengeExpiry,string purpose)",
-  BackupPersistenceAck:
-    "BackupPersistenceAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)",
-  SenderRegistrationAck:
-    "SenderRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32[] registeredSenders,bytes32 nonce,uint64 challengeExpiry,string purpose)",
-  PaymentReceiptAck:
-    "PaymentReceiptAck(bytes32 bindingDigest,bytes32 termsDigest,bytes32 operationId,NetworkIdentity network,bytes32 txHash,uint64 blockNumber,bytes32 aztecToken,uint256 amount,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)" +
-    NETWORK_IDENTITY_TYPE_STRING,
-};
-export const RECIPIENT_ACK_PURPOSES: Record<RecipientAckType, string> = {
-  MessagingEnrollmentAck: "xochi.shielded.messaging-enrollment-ack.v1",
-  BackupPersistenceAck: "xochi.shielded.backup-persistence-ack.v1",
-  SenderRegistrationAck: "xochi.shielded.sender-registration-ack.v1",
-  PaymentReceiptAck: "xochi.shielded.payment-receipt-ack.v1",
-};
-
-function registeredSendersHash(senders: string[]): Hex {
-  if (!Array.isArray(senders) || senders.length === 0) {
-    refuse("senders_empty", "registeredSenders", "names no sender");
-  }
-  const values = senders.map((s) => assertAztecBytes32("registeredSenders", s));
-  for (let i = 1; i < values.length; i++) {
-    if (BigInt(values[i]!) <= BigInt(values[i - 1]!)) {
-      refuse("senders_not_canonical", "registeredSenders", "not strictly ascending");
-    }
-  }
-  return keccak(ethers.concat(values));
-}
-
-/**
- * DRAFT. The EIP-712 struct hash of an acknowledgement. Members are encoded in type-string
- * order: bindingDigest, the type's own members, then nonce, challengeExpiry, purpose.
- */
-export function hashRecipientAck<T extends RecipientAckType>(
-  primaryType: T,
-  message: RecipientAckMessages[T],
-): Hex {
-  if (message.purpose !== RECIPIENT_ACK_PURPOSES[primaryType]) {
-    refuse("purpose_mismatch", "purpose", `expected ${RECIPIENT_ACK_PURPOSES[primaryType]}`);
-  }
-  let own: [string, unknown][];
-  if (primaryType === "MessagingEnrollmentAck") {
-    const a = message as MessagingEnrollmentAck;
-    own = [
-      ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-      ["bytes32", assertAztecBytes32("enrolledSender", a.enrolledSender)],
-    ];
-  } else if (primaryType === "BackupPersistenceAck") {
-    own = [["bytes32", assertAztecBytes32("aztecRecipient", message.aztecRecipient)]];
-  } else if (primaryType === "SenderRegistrationAck") {
-    const a = message as SenderRegistrationAck;
-    own = [
-      ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-      ["bytes32", registeredSendersHash(a.registeredSenders)],
-    ];
-  } else if (primaryType === "PaymentReceiptAck") {
-    const a = message as PaymentReceiptAck;
-    own = [
-      ["bytes32", bytes32("termsDigest", a.termsDigest)],
-      ["bytes32", bytes32("operationId", a.operationId)],
-      ["bytes32", hashNetworkIdentity(a.network)],
-      ["bytes32", bytes32("txHash", a.txHash)],
-      ["uint64", uint("blockNumber", a.blockNumber, UINT64_MAX)],
-      ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
-      ["uint256", parseShieldedAmount("amount", a.amount)],
-      ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-    ];
-  } else {
-    throw new TypeError(`unknown acknowledgement type ${String(primaryType)}`);
-  }
-  const members: [string, unknown][] = [
-    ["bytes32", ethers.id(RECIPIENT_ACK_TYPE_STRINGS[primaryType])],
-    ["bytes32", bytes32("bindingDigest", message.bindingDigest)],
-    ...own,
-    ["bytes32", bytes32("nonce", message.nonce)],
-    ["uint64", uint("challengeExpiry", message.challengeExpiry, UINT64_MAX)],
-    ["bytes32", ethers.id(message.purpose)],
-  ];
-  return keccak(
-    coder.encode(
-      members.map(([t]) => t),
-      members.map(([, v]) => v),
-    ),
-  );
-}
-
-/** DRAFT. The acknowledgement's EIP-712 digest under `Domain (binding)` (`bindingDomain`). */
-export function recipientAckDigest<T extends RecipientAckType>(
-  primaryType: T,
-  message: RecipientAckMessages[T],
-  domain: ShieldedDomain,
-): Hex {
-  return keccak(
-    ethers.concat([
-      "0x1901",
-      shieldedDomainSeparator(domain),
-      hashRecipientAck(primaryType, message),
-    ]),
-  );
 }

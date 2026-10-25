@@ -7,6 +7,8 @@
 // derivation, reduction, signature verdict and refusal is reproduced by @xochi/signer;
 // (2) the EIP-712 values again with ethers' TypedDataEncoder from type definitions written
 // out here; (3) anchors this repo cannot edit: the decided prefix bytes, L = 48 and BN254 r.
+// The DRAFT acknowledgements are not exported from the package root; they are imported from
+// the internal module so their vectors still have a second implementation.
 
 import { describe, it, expect } from "vitest";
 import fs from "fs";
@@ -14,36 +16,41 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { ethers } from "ethers";
 
+import * as signer from "@xochi/signer";
 import {
   AZTEC_RECIPIENT_PROFILES,
   GRUMPKIN_ORDER,
-  RECIPIENT_ACK_PURPOSES,
-  RECIPIENT_ACK_STATUS,
-  RECIPIENT_ACK_TYPE_STRINGS,
   RECIPIENT_DESCRIPTOR_TYPEHASH,
   RECIPIENT_DESCRIPTOR_TYPE_STRING,
   RECIPIENT_MESSAGE_PREFIX,
   RECIPIENT_MESSAGE_WIDE_BYTES,
+  RecipientEncodingError,
   SCHNORR_ACCOUNT_CONSTRUCTOR_SELECTOR,
   SCHNORR_CHALLENGE_DST,
   ShieldedEncodingError,
   bindingDomain,
   deriveRecipientAddress,
-  hashRecipientAck,
   hashRecipientBinding,
   hashRecipientDescriptor,
-  recipientAckDigest,
   recipientMessage,
   reduceWideToField,
   shieldedDomainSeparator,
   verifyRecipientDescriptor,
   verifyRecipientSchnorr,
   type AztecRecipientProfile,
-  type RecipientAckType,
   type RecipientBinding,
   type RecipientDescriptor,
   type ShieldedDomain,
 } from "@xochi/signer";
+import {
+  AckEncodingError,
+  RECIPIENT_ACK_PURPOSES,
+  RECIPIENT_ACK_STATUS,
+  RECIPIENT_ACK_TYPE_STRINGS,
+  hashRecipientAck,
+  recipientAckDigest,
+  type RecipientAckType,
+} from "../src/shielded-recipient-acks";
 
 type Point = { x: string; y: string };
 type Wrapper = { u: string; u48: string; messageField: string; provisionalPlainModR: string };
@@ -236,15 +243,57 @@ const TYPES: Record<string, Record<string, { name: string; type: string }[]>> = 
 const profileOf = (id: string): AztecRecipientProfile =>
   AZTEC_RECIPIENT_PROFILES[id as keyof typeof AZTEC_RECIPIENT_PROFILES];
 
-function refusalOf(fn: () => unknown): { code: string; field: string } | null {
+// Each module refuses with its own error; a ShieldedEncodingError escaping here would mean
+// the shielded.ts contract had widened.
+function refusalOf(
+  fn: () => unknown,
+  as: typeof RecipientEncodingError | typeof AckEncodingError,
+): { code: string; field: string } | null {
   try {
     fn();
     return null;
   } catch (e) {
-    if (!(e instanceof ShieldedEncodingError)) throw e;
+    if (!(e instanceof as)) throw e;
     return { code: e.code, field: e.field };
   }
 }
+
+describe("package surface", () => {
+  it("exports the approved recipient APIs and none of the DRAFT acknowledgement APIs", () => {
+    for (const name of [
+      "hashRecipientDescriptor",
+      "verifyRecipientDescriptor",
+      "recipientMessage",
+      "verifyRecipientSchnorr",
+      "RecipientEncodingError",
+    ]) {
+      expect(signer, name).toHaveProperty(name);
+    }
+    for (const name of [
+      "hashRecipientAck",
+      "recipientAckDigest",
+      "RECIPIENT_ACK_TYPE_STRINGS",
+      "RECIPIENT_ACK_PURPOSES",
+      "RECIPIENT_ACK_STATUS",
+      "AckEncodingError",
+    ]) {
+      expect(signer, name).not.toHaveProperty(name);
+    }
+  });
+
+  it("refuses recipient inputs as RecipientEncodingError, never ShieldedEncodingError", () => {
+    const r = file.descriptor.refusals.find((x) => x.error.code === "aztec_zero")!;
+    let thrown: unknown;
+    try {
+      verifyRecipientDescriptor(r.descriptor, profileOf(r.profile));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(RecipientEncodingError);
+    expect(thrown).not.toBeInstanceOf(ShieldedEncodingError);
+    expect((thrown as Error).message).toBe("aztecAddress: aztec_zero (zero)");
+  });
+});
 
 /** The digest of a recipient-signed struct, by the reference (not by ethers). */
 function referenceDigest(
@@ -326,7 +375,10 @@ describe("RecipientDescriptor", () => {
     const codes = new Set<string>();
     for (const r of file.descriptor.refusals) {
       expect(
-        refusalOf(() => verifyRecipientDescriptor(r.descriptor, profileOf(r.profile))),
+        refusalOf(
+          () => verifyRecipientDescriptor(r.descriptor, profileOf(r.profile)),
+          RecipientEncodingError,
+        ),
         r.name,
       ).toEqual(r.error);
       codes.add(r.error.code);
@@ -513,7 +565,7 @@ describe("acknowledgements (DRAFT)", () => {
   it("refuses every published malformed acknowledgement with its code and field", () => {
     for (const r of file.acknowledgements.refusals) {
       expect(
-        refusalOf(() => hashRecipientAck(r.primaryType, r.message as never)),
+        refusalOf(() => hashRecipientAck(r.primaryType, r.message as never), AckEncodingError),
         r.name,
       ).toEqual(r.error);
     }

@@ -17,7 +17,7 @@ import {
   READINESS_TYPE_STRINGS,
   SHIELDED_DOMAIN_TYPE_STRING,
   SHIELDED_READINESS_DOMAIN_NAME,
-  ShieldedEncodingError,
+  ReadinessEncodingError,
   hashReadinessRecord,
   parseReadinessRecord,
   readinessDigest,
@@ -135,7 +135,8 @@ function refusalOf(fn: () => unknown): { code: string; field: string } | null {
     fn();
     return null;
   } catch (e) {
-    if (!(e instanceof ShieldedEncodingError)) throw e;
+    // Its own error: a ShieldedEncodingError here would mean shielded.ts's contract widened.
+    if (!(e instanceof ReadinessEncodingError)) throw e;
     return { code: e.code, field: e.field };
   }
 }

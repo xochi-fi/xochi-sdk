@@ -41,6 +41,7 @@ import {
   type NetworkIdentity,
   type RecipientBinding,
   type ShieldedDomain,
+  type ShieldedRefusal,
 } from "@xochi/signer";
 
 type Network = Record<keyof NetworkIdentity, string>;
@@ -403,6 +404,32 @@ describe("value rules", () => {
     expect(byValue.get("0")).toBe("amount_zero");
     expect(byValue.get((2n ** 128n).toString())).toBe("amount_over_max");
     expect(file.values.amount.accepted.map((a) => a.value)).toContain((2n ** 128n - 1n).toString());
+  });
+});
+
+// Exactly the codes shielded.ts has always refused with: Record<ShieldedRefusal, true> fails
+// to compile if the union gains or loses a member (the recipient and readiness modules carry
+// their own unions and errors).
+const SHIELDED_REFUSALS: Record<ShieldedRefusal, true> = {
+  not_bytes32: true,
+  aztec_zero: true,
+  aztec_out_of_field: true,
+  amount_not_canonical: true,
+  amount_zero: true,
+  amount_over_max: true,
+  not_evm_address: true,
+  evm_address_zero: true,
+  uint_not_canonical: true,
+  uint_out_of_range: true,
+  chain_id_zero: true,
+  environment_empty: true,
+  digest_zero: true,
+  purpose_mismatch: true,
+};
+
+describe("refusal contract", () => {
+  it("keeps ShieldedRefusal at its 14 codes", () => {
+    expect(Object.keys(SHIELDED_REFUSALS)).toHaveLength(14);
   });
 });
 
