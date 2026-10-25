@@ -1079,9 +1079,11 @@ describe("intent records", () => {
   });
 });
 
-// xochi#563: the execute that admits an intent serves a one-time `read_token`;
-// sent back as a header, it lets the per-intent reads show a stealth or
-// shielded intent's on-chain legs. Never a query parameter.
+// xochi#563: the execute that admits an intent serves a one-time `read_token`
+// (xochi#565, open); sent back as a header, it lets the per-intent reads show a
+// stealth intent's on-chain legs. Before shielded is offered, a token read of a
+// shielded intent must get only the status-only view (SPEC.md §5.1). Never a
+// query parameter.
 describe("intent read capability", () => {
   const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
 

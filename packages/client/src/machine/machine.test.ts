@@ -1624,7 +1624,7 @@ describe("status", () => {
       expect(own.receipt.phase).toBe("submitting");
     });
 
-    it("is not rebuilt by a late quoted reply after a newer executing one", () => {
+    it("is not rebuilt by a late quoted reply after a newer executing or 404 reply", () => {
       const { s, poll } = resumed("executing");
       answer(s, poll, statusData({ status: "executing" }));
       // A timer read, then an off-interval read (the tab returning), both in
@@ -1660,6 +1660,23 @@ describe("status", () => {
       answer(thrown.s, first, statusData({ status: "quoted" }));
       expect(thrown.s.intent.notSent).toBe(true);
       expect(thrown.s.receipt.phase).toBe("not-sent");
+
+      // A newer 404 is a reply too: the older `quoted` after it is no rebuild.
+      const gone = resumed("executing");
+      answer(gone.s, gone.poll, statusData({ status: "executing" }));
+      const before = only(
+        apiCalls(gone.s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const after = only(apiCalls(gone.s.send({ type: "VisibilityChanged" }, 100), "status"));
+      gone.s.send({
+        type: "StatusReplied",
+        gen: after.gen,
+        attempt: after.attempt,
+        result: { ok: true, status: { notFound: true } },
+      });
+      answer(gone.s, before, statusData({ status: "quoted" }));
+      expect(gone.s.intent.notSent).toBe(false);
+      expect(gone.s.receipt.phase).toBe("submitting");
     });
 
     it("is rebuilt only from executing: a resumed later phase reading quoted is not", () => {

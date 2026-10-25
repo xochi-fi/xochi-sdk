@@ -244,11 +244,12 @@ export interface ExecuteResponse {
   viewTag?: number;
   /**
    * Per-intent read capability (xochi#563), served once and only by a server
-   * that issues it. Keep it with the intent and pass it as `readToken` to
-   * `getIntent` / `getIntentStatus`: without it a stealth intent's status
-   * reads without its on-chain legs (a shielded leg's Aztec identifiers never
-   * come with it: `IntentReadOptions`). A bearer secret: never log it or put
-   * it in a URL.
+   * that issues it (xochi#565, open; xochi `main` serves none). Keep it with
+   * the intent and pass it as `readToken` to `getIntent` / `getIntentStatus`:
+   * under xochi#565 a stealth intent read without it omits its on-chain legs.
+   * Shielded is not offered; before it is, SPEC.md §5.1 requires a token read
+   * of a shielded intent to get only the status-only view (`IntentReadOptions`).
+   * A bearer secret: never log it or put it in a URL.
    */
   readToken?: string;
 }
@@ -588,11 +589,14 @@ export interface IntentStatusData {
   substatus: string | null;
   terminal: boolean;
   /**
-   * Present (true) when the server withheld the on-chain legs of a stealth or
-   * shielded intent from this read (xochi#563): the read carried no valid
-   * `readToken` and no owner session. The tx hashes and `settlementChainId` are
-   * then null because they were withheld, not because they do not exist; the
-   * read token or a wallet SIWE session for the intent's wallet reads them.
+   * Present (true) when the server withheld the on-chain legs of a stealth
+   * intent from this read (xochi#563; served from xochi#565, open): the read
+   * carried no valid `readToken` and no owner session. The tx hashes and
+   * `settlementChainId` are then null because they were withheld, not because
+   * they do not exist; the read token or a wallet SIWE session for the
+   * intent's wallet reads them. Once shielded is offered, SPEC.md §5.1 requires
+   * it on every read of a shielded intent without an owner session, token or
+   * not, so only a wallet SIWE session reads a shielded intent's legs.
    */
   legsWithheld?: true;
   /**
