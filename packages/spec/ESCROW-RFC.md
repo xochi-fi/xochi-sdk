@@ -1707,6 +1707,9 @@ Flip the capability in production for a **single** allowlisted solver, with a
 per-intent notional cap and a corridor whitelist. Real funds, bounded loss.
 
 - **Owner:** ops + server.
+- **Entry gate:** `SOLVER-RFC.md` §5.3 (no escrowed `:winner` to a solver
+  other than the venue's own until that RFC's Appendix C questions 1, 5 and
+  7 are settled).
 - **Exit gate:** a sustained run with zero releases lacking a `verified` verdict;
   the backstop exercised **at least once** (an arranged no-show) so the path
   that protects the taker is known to work before it is needed; the kill switch

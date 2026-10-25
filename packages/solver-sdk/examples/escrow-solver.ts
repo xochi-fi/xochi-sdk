@@ -58,11 +58,15 @@
 //                       loop and all of `prepare`, including its wait for your own
 //                       origin node's `safe` head to cover the lock; default 10, which
 //                       is too short wherever that wait runs (47-145s between healthy
-//                       Base mainnet providers, SOLVER-RFC Appendix C). Part of
+//                       Base mainnet providers, SOLVER-RFC Appendix C). Measure yours
+//                       and set this to it; never lower it to fit the window. Part of
 //                       minExclusiveMs, and with the 15s accept budget it MUST fit
 //                       inside the venue's acceptance window (`escrow.acceptBy`, 30s
 //                       from the FillAuth's issue by default): a missed window gives
-//                       the order to the reserve (no slash, award lost). Where the
+//                       the order to the reserve (no slash, award lost). Where it
+//                       cannot fit, that venue's window is too short for you; until
+//                       SOLVER-RFC Appendix C settles the window, the venue awards no
+//                       escrowed order to any solver but its own (§5.3). Where the
 //                       venue serves `awardToAcceptAllowanceMs` (§13.3, `[PROPOSED]`)
 //                       it MUST be at least that / 1000, or `auth_expired` declines
 //                       are yours; this example does not read that field yet (§13.3
