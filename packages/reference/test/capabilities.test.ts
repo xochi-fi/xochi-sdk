@@ -6,7 +6,10 @@
  * @xochi/signer generates. It is a read path with no signature over it, so unlike the
  * deposit-attestation vectors these bytes are not a byte-equality contract;
  * what matters is that the parser survives what the server actually sends and
- * never *invents* a value it did not.
+ * never *invents* a value it did not. The multi-chain stealth fields
+ * (`stealth_chains`, `chains[].stealth_factory_address`, the deprecated nullable
+ * top-level factory) and `execute_ownership` follow the served `CapabilityMatrix`
+ * as vendored by the 2026-10-26 wire refresh (Riddler #1336, #1346).
  *
  * The negative cases carry most of the weight. A tolerant parser's failure mode
  * is silently defaulting a field it should have reported as absent, and absent
@@ -25,6 +28,8 @@ import {
   depositAttestationVersionSkew,
   orderBoundsViolation,
   stealthNotionalFloor,
+  narrowStealthChains,
+  stealthFactoryFor,
   servedChainKeys,
   chainUnservedReason,
   DEPOSIT_ATTESTATION_VERSION,
@@ -33,6 +38,8 @@ import { CONFIG } from "../src/config";
 
 const SOLVER = "0x1111111111111111111111111111111111111111";
 const PERMIT2_PROXY = "0x2222222222222222222222222222222222222222";
+const L1_FACTORY = "0x13E9ed32155810FDbd067D4522C492D6f68E5944";
+const BASE_FACTORY = "0x3333333333333333333333333333333333333333";
 
 /** Shaped after `capability_matrix/0`. snake_case, exactly as the server emits. */
 function matrix(overrides: Record<string, any> = {}): Record<string, any> {
@@ -49,7 +56,10 @@ function matrix(overrides: Record<string, any> = {}): Record<string, any> {
       "10": { erc3009: SOLVER, permit2: SOLVER },
     },
     pull_deadline_buffer_seconds: 300,
-    stealth_factory_address: "0x13E9ed32155810FDbd067D4522C492D6f68E5944",
+    execute_ownership: true,
+    stealth_chains: [1, 8453],
+    // Deprecated: the factory on the FIRST stealth_chains entry, for older clients.
+    stealth_factory_address: L1_FACTORY,
     chains: [
       {
         chain_id: 8453,
@@ -57,6 +67,7 @@ function matrix(overrides: Record<string, any> = {}): Record<string, any> {
         vm_type: "evm",
         address_format: "hex20",
         min_stealth_notional_usd: 5,
+        stealth_factory_address: BASE_FACTORY,
       },
       {
         chain_id: 1,
@@ -64,6 +75,7 @@ function matrix(overrides: Record<string, any> = {}): Record<string, any> {
         vm_type: "evm",
         address_format: "hex20",
         min_stealth_notional_usd: 120,
+        stealth_factory_address: L1_FACTORY,
       },
       {
         chain_id: 728126428,
@@ -71,6 +83,7 @@ function matrix(overrides: Record<string, any> = {}): Record<string, any> {
         vm_type: "tvm",
         address_format: "base58check",
         min_stealth_notional_usd: null,
+        stealth_factory_address: null,
       },
     ],
     tokens: [
@@ -356,6 +369,94 @@ describe("deposit attestation version skew (riddler-sdk#92)", () => {
   });
 });
 
+describe("stealth chains and factories (Riddler #1336)", () => {
+  it("parses the served stealth chain list and per-chain factories", () => {
+    const c = caps();
+    expect(c.stealthChains).toEqual([1, 8453]);
+    expect(stealthFactoryFor(c, 1)).toBe(L1_FACTORY);
+    expect(stealthFactoryFor(c, 8453)).toBe(BASE_FACTORY);
+    // Served null on a chain outside stealth_chains, and unadvertised chains have none.
+    expect(stealthFactoryFor(c, 728126428)).toBeNull();
+    expect(stealthFactoryFor(c, 10)).toBeNull();
+  });
+
+  it("reads the per-chain factory, never the deprecated top-level one", () => {
+    // A top-level factory that disagrees with the per-chain one loses...
+    const disagree = parseCapabilities(
+      matrix({ stealth_factory_address: "0x4444444444444444444444444444444444444444" }),
+    )!;
+    expect(stealthFactoryFor(disagree, 1)).toBe(L1_FACTORY);
+    // ...and one with no per-chain field beside it is no fallback, even for the first
+    // stealth chain it describes: the producer serves both together.
+    const noPerChain = parseCapabilities(
+      matrix({ chains: [{ chain_id: 1, chain_name: "Ethereum", vm_type: "evm" }] }),
+    )!;
+    expect(stealthFactoryFor(noPerChain, 1)).toBeNull();
+  });
+
+  it("names no factory for a chain outside stealth_chains, whatever its row says", () => {
+    // The producer serves null there; an address contradicts the body it came in.
+    const c = parseCapabilities(matrix({ stealth_chains: [1] }))!;
+    expect(c.chains.find((x) => x.chainId === 8453)!.stealthFactoryAddress).toBe(BASE_FACTORY);
+    expect(stealthFactoryFor(c, 8453)).toBeNull();
+    expect(stealthFactoryFor(c, 1)).toBe(L1_FACTORY);
+  });
+
+  it("names no factory for a duplicated, unknown-VM or non-EVM chain", () => {
+    for (const chains of [
+      [
+        { chain_id: 1, vm_type: "evm", stealth_factory_address: L1_FACTORY },
+        { chain_id: 1, vm_type: "evm", stealth_factory_address: BASE_FACTORY },
+      ],
+      [{ chain_id: 1, vm_type: "evm2", stealth_factory_address: L1_FACTORY }],
+      [{ chain_id: 1, vm_type: "tvm", stealth_factory_address: L1_FACTORY }],
+    ]) {
+      const c = parseCapabilities(matrix({ stealth_chains: [1], chains }))!;
+      expect(stealthFactoryFor(c, 1)).toBeNull();
+    }
+  });
+
+  it("reads an absent or non-list stealth_chains as unsaid, and names no factory", () => {
+    for (const stealth_chains of [undefined, null, "1,8453", { "0": 1 }, 1]) {
+      const c = parseCapabilities(matrix({ stealth_chains }))!;
+      expect(c.stealthChains).toBeNull();
+      expect(stealthFactoryFor(c, 1)).toBeNull();
+      // Unsaid narrows nothing: the caller's own set stands.
+      expect(narrowStealthChains(c, [1, 8453])).toEqual([1, 8453]);
+    }
+  });
+
+  it("drops entries that are not canonical chain ids and collapses repeats", () => {
+    const c = parseCapabilities(
+      matrix({ stealth_chains: [1, "08453", -1, 0, 1.5, "0x2105", null, {}, 1, "8453"] }),
+    )!;
+    expect(c.stealthChains).toEqual([1, 8453]);
+  });
+
+  it("reads an empty list as stealth offered nowhere", () => {
+    const c = parseCapabilities(matrix({ stealth_chains: [], stealth_factory_address: null }))!;
+    expect(c.stealthChains).toEqual([]);
+    expect(narrowStealthChains(c, [1, 8453])).toEqual([]);
+    expect(stealthFactoryFor(c, 1)).toBeNull();
+  });
+
+  it("narrows the caller's stealth set and never widens it", () => {
+    const c = parseCapabilities(matrix({ stealth_chains: [42161, 8453, 1] }))!;
+    // Advertised 42161 is not pinned, so it is not added; pinned 10 is not served.
+    expect(narrowStealthChains(c, [8453, 10, 1])).toEqual([8453, 1]);
+  });
+});
+
+describe("execute ownership (Riddler #1346)", () => {
+  it("is true only for the served literal true", () => {
+    expect(caps().executeOwnership).toBe(true);
+    for (const execute_ownership of [undefined, null, false, "true", 1, {}]) {
+      expect(parseCapabilities(matrix({ execute_ownership }))!.executeOwnership).toBe(false);
+    }
+    expect(parseCapabilities({})!.executeOwnership).toBe(false);
+  });
+});
+
 describe("hostile payloads", () => {
   it("refuses a leading-zero chain key rather than letting it shadow the real one", () => {
     // JS iterates integer-like keys first and string keys after, so "08453" is
@@ -461,11 +562,12 @@ describe("hostile payloads", () => {
     const c = parseCapabilities(
       matrix({
         deposit_attestation_signer: "not-an-address",
-        stealth_factory_address: "javascript:alert(1)",
+        chains: [{ chain_id: 1, vm_type: "evm", stealth_factory_address: "javascript:alert(1)" }],
       }),
     )!;
     expect(c.depositAttestationSigner).toBeNull();
-    expect(c.stealthFactoryAddress).toBeNull();
+    expect(c.chains[0]!.stealthFactoryAddress).toBeNull();
+    expect(stealthFactoryFor(c, 1)).toBeNull();
   });
 
   it("does not leak Object.prototype members to a loose JS caller", () => {
