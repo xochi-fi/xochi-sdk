@@ -558,26 +558,20 @@ export const ExecuteResponseSchema = z
       ),
     // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
     // padding. Served once, by the execute that admits the intent; present it as
-    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain
-    // legs of a stealth intent. Older servers omit it. The one declared field
-    // that never fails the body: a malformed token is dropped, because this body
-    // reports an execute that may already have moved funds, and failing it would
-    // turn a settled swap into an in-doubt one over a privacy-only field. The
-    // describe below departs from xochi's (which still names shielded legs)
-    // until xochi#565 takes the same correction; as drafted, xochi#565 also
-    // reads a shielded intent's full record with the token (SPEC.md §5.1).
+    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the owner's
+    // view of a stealth intent; a shielded intent's token read gets the
+    // status-only view (SPEC.md §5.1). Older servers omit it. The one declared
+    // field that never fails the body: a malformed token is dropped, because this
+    // body reports an execute that may already have moved funds, and failing it
+    // would turn a settled swap into an in-doubt one over a privacy-only field.
+    // The describe is xochi's (xochi#565, `0317e84`) verbatim.
     read_token: z
       .string()
       .regex(READ_TOKEN_PATTERN)
       .optional()
       .catch(undefined)
       .describe(
-        "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
-          "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
-          "on-chain legs of a stealth intent. Shielded is not offered; before it is, a " +
-          "token read of a shielded intent must get only the status-only view " +
-          "(`legs_withheld`), every other field going to owner-authenticated reads only " +
-          "(SPEC.md §5.1). Never put it in a URL.",
+        "Per-intent read capability (xochi#563): 32 random bytes, base64url without padding. Returned to the request that claimed the intent for execution, on every answer where funds may have moved: the 200, the 502 of an unmarked solver refusal or failure this request wrote, a 502 whose status another writer decided, and the outcome unknown after the claim. Never on a `not_executed` answer, an un-claim back to `quoted` (the not-accepted 503, the in-doubt 200 with `status: \"quoted\"`) or a retried execute. Store it with the intent id and send it as the `X-Xochi-Read-Token` header on `GET /api/intent/{id}` and `/status` to get the owner's full view of a stealth intent without a wallet session. On a shielded intent it reads only the status-only view (legs_withheld), like an anonymous read; only a SIWE session for the intent's wallet reads that full record. A bearer secret: never log it or put it in a URL. The server stores only its SHA-256, so it cannot be re-issued; signing in with the intent's wallet (SIWE) reads the same view.",
       ),
   })
   .strict();

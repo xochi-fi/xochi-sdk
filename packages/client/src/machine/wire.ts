@@ -244,11 +244,11 @@ export interface ExecuteResponse {
   viewTag?: number;
   /**
    * Per-intent read capability (xochi#563), served once and only by a server
-   * that issues it (xochi#565, open; xochi `main` serves none). Keep it with
-   * the intent and pass it as `readToken` to `getIntent` / `getIntentStatus`:
-   * under xochi#565 a stealth intent read without it omits its on-chain legs.
-   * Shielded is not offered; before it is, SPEC.md §5.1 requires a token read
-   * of a shielded intent to get only the status-only view (`IntentReadOptions`).
+   * that issues it (xochi#565, merged as `0317e84`, once deployed). Keep it
+   * with the intent and pass it as `readToken` to `getIntent` /
+   * `getIntentStatus`: a stealth intent read without it omits its on-chain
+   * legs. A token read of a shielded intent gets only the status-only view, as
+   * an anonymous read does (SPEC.md §5.1, `IntentReadOptions`).
    * A bearer secret: never log it or put it in a URL.
    */
   readToken?: string;
@@ -589,14 +589,14 @@ export interface IntentStatusData {
   substatus: string | null;
   terminal: boolean;
   /**
-   * Present (true) when the server withheld the on-chain legs of a stealth
-   * intent from this read (xochi#563; served from xochi#565, open): the read
-   * carried no valid `readToken` and no owner session. The tx hashes and
-   * `settlementChainId` are then null because they were withheld, not because
-   * they do not exist; the read token or a wallet SIWE session for the
-   * intent's wallet reads them. Once shielded is offered, SPEC.md §5.1 requires
-   * it on every read of a shielded intent without an owner session, token or
-   * not, so only a wallet SIWE session reads a shielded intent's legs.
+   * Present (true) when the server withheld the on-chain legs of a stealth or
+   * shielded intent from this read (xochi#563; served by xochi#565, merged as
+   * `0317e84`, once deployed): the read carried no owner proof. The tx hashes
+   * and `settlementChainId` are then null because they were withheld, not
+   * because they do not exist, and the server omits `substatus` unless it is
+   * `not_executed`. A wallet SIWE session for the intent's wallet reads them,
+   * and so does the read token of a stealth intent only: a token read of a
+   * shielded intent gets this view too (SPEC.md §5.1).
    */
   legsWithheld?: true;
   /**
@@ -697,13 +697,15 @@ export interface IntentRecord {
 }
 
 /**
- * `GET /api/intent/:id` for a stealth intent read without the read token or an
- * owner session (xochi#563): the server's status-only view. Once shielded is
- * offered, SPEC.md §5.1 requires the same view for a shielded intent read
- * without an owner session, token or not (`IntentReadOptions`). Tokens,
- * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
- * so they are absent here rather than defaulted; read with the token (stealth),
- * or a wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
+ * `GET /api/intent/:id` read without owner proof (xochi#563; served by
+ * xochi#565 once deployed): the server's status-only view, for a stealth
+ * intent read without the read token or an owner session, and for a shielded
+ * intent read without an owner session, token or not (SPEC.md §5.1,
+ * `IntentReadOptions`). Tokens, amounts, wallet, quote, tier, fee, timestamps
+ * and every tx hash are withheld, so they are absent here rather than
+ * defaulted, and `substatus` is present only when it is `not_executed`; read
+ * with the token (stealth), or a wallet SIWE session for the intent's wallet,
+ * for the full `IntentRecord`.
  */
 export interface WithheldIntentRecord {
   legsWithheld: true;
