@@ -47,7 +47,7 @@
             }
           }
         },
-        "description": "Per-IP or per-user rate limit exceeded (L-2)",
+        "description": "Per-IP or per-user rate limit exceeded (L-2). Honour `Retry-After`. It may carry `details.accepted: false` (the shared ETS limiter's 429 does); the claim limiter's 429 does not. Rely on the marker only on the /xochi/execute 429.\n",
         "headers": {
           "Retry-After": {
             "schema": {
@@ -170,7 +170,7 @@
                   "type": "string"
                 },
                 "min_stealth_notional_usd": {
-                  "description": "Minimum order notional (USD) for a solvable stealth/shielded quote settling on this chain: destination fill + sponsored ERC-4337 claim cost, times the gas-floor margin. A consumer may pre-decline a stealth order below this before quoting. Null when the gas oracle cannot price the chain, or for non-EVM chains (no 4337 claim leg). L1 destinations are materially higher than L2s.\n",
+                  "description": "Minimum order notional (USD) for a solvable stealth quote settling on this chain: destination fill + sponsored ERC-4337 claim cost (execution gas plus, on a rollup, the claim's L1 data posting), times the gas-floor margin. A consumer may pre-decline a stealth order below this before quoting. Null when the gas oracle cannot price the chain, or for non-EVM chains (no 4337 claim leg). L1 destinations are materially higher than L2s.\n",
                   "example": 47.5,
                   "nullable": true,
                   "type": "number"
@@ -185,6 +185,12 @@
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "stealth_factory_address": {
+                  "description": "SimpleAccount factory that owns stealth counterfactual accounts on THIS chain, so a client can verify a recovered stealth signer via `getAddress(owner, 0)` on the chain the claim runs on. Null on a chain that is not in `stealth_chains`.\n",
+                  "example": "0x13E9ed32155810FDbd067D4522C492D6f68E5944",
+                  "nullable": true,
+                  "type": "string"
                 },
                 "vm_type": {
                   "description": "VM type for address format selection. \"cvm\" is Canton.",
@@ -240,6 +246,14 @@
           },
           "escrow": {
             "$ref": "#/components/schemas/EscrowCapability"
+          },
+          "execute_ownership": {
+            "description": "Present (always `true`) when `/execute` refuses a caller that does\nnot own the quote: only the `kid` that asked for a quote may execute\nit, so that `kid` is the quote's sole caller. Absent on a server\nwithout the check (a build before it, or a rollback to one). A\ncaller whose \"nothing moved\" verdicts rest on being the sole caller\n(see \"Execute ownership\" in `docs/api/xochi.md`) can check this\nfield before relying on it.\n",
+            "enum": [
+              true
+            ],
+            "example": true,
+            "type": "boolean"
           },
           "order_bounds_usd": {
             "properties": {
@@ -300,9 +314,22 @@
             "example": "0.6.0",
             "type": "string"
           },
+          "stealth_chains": {
+            "description": "Chains a stealth settlement may be quoted to on this deploy\n(`XOCHI_STEALTH_CHAINS`; unset, `[1]` on a mainnet deploy and `[]`\non a testnet-only one). Empty means stealth is offered on no chain.\nA stealth quote to any other destination is refused\n`stealth_requires_l1_destination` (the code\npredates multi-chain stealth). A client may use this list to\nNARROW its own stealth chain set; it must never widen a locally\npinned factory allowlist from it -- the factory decides who can\nclaim, so trusting the solver for it lets a misconfigured or\ncompromised solver redirect payouts.\n",
+            "example": [
+              1,
+              8453
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ChainId"
+            },
+            "type": "array"
+          },
           "stealth_factory_address": {
-            "description": "Canonical SimpleAccount factory that owns stealth counterfactual\naccounts. Lets the client verify a recovered stealth signer via\n`getAddress(owner, 0)` without pinning the address itself.\n",
+            "deprecated": true,
+            "description": "The SimpleAccount factory on the FIRST entry of `stealth_chains`\n(null when the list is empty), kept for clients that predate\nmulti-chain stealth. Read `chains[].stealth_factory_address` for the\nchain the claim runs on.\n",
             "example": "0x13E9ed32155810FDbd067D4522C492D6f68E5944",
+            "nullable": true,
             "type": "string"
           },
           "tokens": {
@@ -447,6 +474,11 @@
             "maxItems": 10,
             "minItems": 1,
             "type": "array"
+          },
+          "chain_id": {
+            "description": "One chain for the whole set, as `chain_id` on the single-account form: every named account resolves only against intents settled on it. A claim-all over payments on several chains is one request per chain. Omitted, every chain matches.\n",
+            "minimum": 1,
+            "type": "integer"
           },
           "counterfactual_addresses": {
             "description": "The counterfactuals to prepare, each scanned from its own ERC-5564 announcement. No repeats: preparing one account twice would charge its rate-limit bucket twice and hand back two ops to choose between. Bounded because each account costs a sponsorship and an RPC probe, which the per-counterfactual limiter cannot see the width of.\n",
@@ -682,6 +714,11 @@
             "maxItems": 10,
             "minItems": 1,
             "type": "array"
+          },
+          "chain_id": {
+            "description": "The chain the scanned payment settled on (the announcement's chain; the intent's `to_chain_id`). The counterfactual is the same CREATE2 address on every chain, so without this the newest claimable settlement on ANY chain is prepared, and a recipient paid on two chains is handed an op for the wrong one. When sent, only an intent settled on this chain is resolved; none there answers the unknown-counterfactual 404. Optional for clients that predate it, which keep the newest-anywhere answer. It also fixes the `{chain_id}` the ownership proof is checked against.\n",
+            "minimum": 1,
+            "type": "integer"
           },
           "counterfactual_address": {
             "allOf": [
@@ -1052,6 +1089,14 @@
           "blockNumber": {
             "type": "string"
           },
+          "claimed": {
+            "description": "True when the op swept the payout, so the intent is now claimed (`receivingTxHash` on `/xochi/status`). False for an action that leaves the funds in place (`approve_permit2`, a non-terminal `call`): the payment stays claimable.\n",
+            "type": "boolean"
+          },
+          "intentId": {
+            "description": "The intent whose stealth payout this op claimed. A client learns only the counterfactual at prepare; this is how it closes its own settlement record.\n",
+            "type": "string"
+          },
           "opHash": {
             "type": "string"
           },
@@ -1062,7 +1107,9 @@
         "required": [
           "txHash",
           "opHash",
-          "action"
+          "action",
+          "intentId",
+          "claimed"
         ],
         "type": "object"
       },
@@ -1500,7 +1547,7 @@
         "properties": {
           "details": {
             "additionalProperties": true,
-            "description": "Structured, machine-readable context for the rejection. Notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (rate_limit_exceeded, pre_positioning, and escrow_unavailable with `reason: depositor_open_auths_exhausted`), `reason` (escrow_refused and escrow_unavailable: the escrow check; conversion_unavailable: `conversion_rate_moved` with `drift_bps`, `conversion_rate_unverifiable` or `conversion_price_contested`; rate_limit_exceeded on an escrow /quote: `escrow_issuance_rate` with `scope` `depositor` or `caller`), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
+            "description": "Structured, machine-readable context for the rejection. The not-accepted marker: `accepted` (always the boolean `false` when present) with `retry_after` means this request did nothing -- load shedding, a rate limit, or an /execute refused before its claim and before any origin pull -- so the SAME request may be resent after `retry_after` seconds (also sent as `Retry-After`). It speaks only for this request, not for other requests of the same intent. Only a 503 or 429 carries it; without it a 5xx or 409 from /execute is in doubt (poll status, never resend). The not-executed marker: `funds_moved` (always the boolean `false` when present) means nothing moved -- an /execute was refused before its claim and before any origin pull while the intent it names had no execute claim (read after the request's lock was released). Any status carries it, a permanent 4xx included (beside the field-keyed messages of `validation_failed`, where it is not a field); it does not invite a resend. Only the /execute adapter sets it, since only it reads the claim: never on load shedding, a rate limit, a body that does not parse, an execute by a `kid` that does not own the quote, an `intent_id` that is not the quote's, a lock store this node cannot reach, a held lock, `already_executed`, a refusal after the claim, a crash, an escrow or deposit-route quote once read, or a refusal whose lock release was unconfirmed. Absent means funds may have moved. The xochi Worker relies on it, and on its own `accepted: false` refusals, as the quote's sole caller (`/xochi/execute`'s ownership check). Other notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (every not-accepted refusal, rate_limit_exceeded, pre_positioning, quote_store_unavailable, escrow_unavailable with `reason: depositor_open_auths_exhausted`), `reason` (escrow_refused and escrow_unavailable: the escrow check; conversion_unavailable: `conversion_rate_moved` with `drift_bps`, `conversion_rate_unverifiable` or `conversion_price_contested`; rate_limit_exceeded on an escrow /quote: `escrow_issuance_rate` with `scope` `depositor` or `caller`), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap; `fx_inventory_limit` when the route COLLECTS an FX token (EURe, ZCHF) and the solver's holdings of it plus this order exceed its aggregate inventory ceiling -- then `max_order_usd`, when present, is the origin notional that may still be collected -- or `fx_inventory_unverified` when those holdings cannot be read; both at /quote and at /execute, where nothing has been pulled), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
             "type": "object"
           },
           "error": {
@@ -1509,6 +1556,11 @@
           "message": {
             "description": "Human-readable, user-safe description. Vetted to contain no internal hostnames, stack traces, raw revert data, or infra identifiers -- safe to surface to end users as-is. Map `error` codes to your own UX copy where you need tighter control; `message` prose may be refined without notice, codes are stable. For `validation_failed` the message names the offending fields (`Request validation failed: recipient_address, wallet`) so a proxy that forwards only `error` and `message` still carries a diagnosable reason; the per-field reasons remain in `details`.\n",
             "type": "string"
+          },
+          "retry_after": {
+            "description": "Served only on `rate_limit_exceeded` (429), where it predates `details`; it equals `details.retry_after` when that is present. Prefer `details.retry_after`, which every not-accepted refusal carries.\n",
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": [
@@ -1530,7 +1582,7 @@
             "type": "array"
           },
           "corridors": {
-            "description": "Routes whose origin pull targets the escrow. A `public`-settlement\nquote on one of these carries `escrow`, and its pull `to` /\n`spender` is `chains[].escrow_address` (also\n`pull_recipients[chain].escrow`). A stealth or shielded quote on a\nlisted corridor is served without escrow; one whose pull resolves\nto anything but ERC-3009 or Permit2 is refused `escrow_refused`\n(`reason: origin_not_escrowable`).\n",
+            "description": "Routes whose origin pull targets the escrow. A `public`-settlement\nquote on one of these carries `escrow`, and its pull `to` /\n`spender` is `chains[].escrow_address` (also\n`pull_recipients[chain].escrow`). A stealth quote on a\nlisted corridor is served without escrow; shielded is refused.\nA pull resolving to anything but ERC-3009 or Permit2 is refused `escrow_refused`\n(`reason: origin_not_escrowable`).\n",
             "items": {
               "properties": {
                 "from_chain_id": {
@@ -1805,6 +1857,7 @@
             "$ref": "#/components/schemas/BigIntString"
           },
           "privacy_bps": {
+            "description": "Legacy settlement-type premium (SPEC.md §4.6). 0 under the layered model (default); non-zero only on the XOCHI_LAYERED_FEES=false rollback path, where it is part of total_bps.",
             "minimum": 0,
             "type": "integer"
           },
@@ -2324,7 +2377,7 @@
         "type": "object"
       },
       "PaymentMethod": {
-        "description": "The pull mechanism of the served `pull_authorization`: on EVM routes the\nlabel always agrees with its `primaryType` (#828). USDC public ->\n`erc3009` for an EOA, `permit2` for a smart-account wallet on a chain\nwhose XochiPull proxy cannot execute a bytes pull yet; other ERC-20\npublic -> `permit2`; stealth/shielded -> `pimlico` (the recipient's\nsponsored claim flow -- the payer still signs the served\n`pull_authorization`). Deposit-address origins carry no\n`pull_authorization`; dispatch those on `deposit_address` instead.\n",
+        "description": "The pull mechanism of the served `pull_authorization`: on EVM routes the\nlabel always agrees with its `primaryType` (#828). USDC public ->\n`erc3009` for an EOA, `permit2` for a smart-account wallet on a chain\nwhose XochiPull proxy cannot execute a bytes pull yet; other ERC-20\npublic -> `permit2`; stealth -> `pimlico` (the recipient's\nsponsored claim flow -- the payer still signs the served\n`pull_authorization`). Deposit-address origins carry no\n`pull_authorization`; dispatch those on `deposit_address` instead.\n",
         "enum": [
           "erc3009",
           "permit2",
@@ -2346,6 +2399,11 @@
             },
             "type": "array"
           },
+          "customer_ref": {
+            "description": "Optional pseudonymous customer reference, minted by the Xochi backend:\n`m_` for a Xochi Member, else `k_` for an integrator API key, then a\n64-hex HMAC whose key Xochi owns. Attribution only: never priced,\nnever echoed, never a metric label. Riddler records the first quote\nthat carries each reference to tell new from returning customers.\nOmit it rather than sending a wallet-derived value.\n",
+            "pattern": "^[mk]_[0-9a-f]{64}$",
+            "type": "string"
+          },
           "deadline": {
             "description": "Unix timestamp; defaults to ~30s ahead if omitted.",
             "type": "integer"
@@ -2362,7 +2420,7 @@
             "description": "Source token address on `from_chain_id`."
           },
           "idempotency_key": {
-            "description": "Caller-minted UUID naming ONE deposit-route allocation attempt\n(#1044). Scoped to the presenting token's `kid`. The same caller\nrepeating the same deal under the same key receives the original\nquote verbatim and allocates nothing, for as long as that route\nstill accepts deposits.\n\nThe deal a key names is exactly these fields, `0x` hex values\n(addresses and stealth pubkeys alike) case-folded and a defaulted\n`recipient_address` resolved to\n`wallet`: `wallet`, `from_chain_id`, `to_chain_id`, `from_token`,\n`to_token`, `swap_kind`, `from_amount`, `output_amount`,\n`recipient_address`, `refund_address`, `settlement_preference`,\n`slippage_bps`, `stealth_spending_pub_key`,\n`stealth_viewing_pub_key`, `origin`. `deadline`, `trust_score`,\n`attestations` and `preview` are NOT part of it, so a retry that\nrecomputes its deadline or re-fetches its attestations still\nreplays.\n\nOutcomes: a different deal under the same key answers\n`422 idempotency_key_reused`; a route that no longer accepts\ndeposits -- its deadline passed, its intent terminal, or the quote\nit was priced from gone (that one does not survive a deploy\ncutover) -- answers `422 idempotency_key_expired`; a concurrent\nduplicate answers `409 idempotency_key_in_flight` with\n`Retry-After`; an unreadable store, or an instance (or caller share)\nalready at its keyed-allocation limit, answers\n`503 idempotency_unavailable` with `Retry-After`. Ignored on\nnon-deposit (EVM) origins, which allocate nothing at quote time and\nare re-priced on every call.\n",
+            "description": "Caller-minted UUID naming ONE deposit-route allocation attempt\n(#1044). Scoped to the presenting token's `kid`. The same caller\nrepeating the same deal under the same key receives the original\nquote verbatim and allocates nothing, for as long as that route\nstill accepts deposits.\n\nThe deal a key names is exactly these fields, `0x` hex values\n(addresses and stealth pubkeys alike) case-folded and a defaulted\n`recipient_address` resolved to\n`wallet`: `wallet`, `from_chain_id`, `to_chain_id`, `from_token`,\n`to_token`, `swap_kind`, `from_amount`, `output_amount`,\n`recipient_address`, `refund_address`, `settlement_preference`,\n`slippage_bps`, `stealth_spending_pub_key`,\n`stealth_viewing_pub_key`, `origin`. `deadline`, `trust_score`,\n`attestations`, `preview` and `customer_ref` are NOT part of it, so a retry that\nrecomputes its deadline or re-fetches its attestations still\nreplays.\n\nOutcomes: a different deal under the same key answers\n`422 idempotency_key_reused`; a route that no longer accepts\ndeposits -- its deadline passed, its intent terminal, or the quote\nit was priced from gone (that one does not survive a deploy\ncutover) -- answers `422 idempotency_key_expired`; a concurrent\nduplicate answers `409 idempotency_key_in_flight` with\n`Retry-After`; an unreadable store, or an instance (or caller share)\nalready at its keyed-allocation limit, answers\n`503 idempotency_unavailable` with `Retry-After`. Ignored on\nnon-deposit (EVM) origins, which allocate nothing at quote time and\nare re-priced on every call.\n",
             "format": "uuid",
             "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
             "type": "string"
@@ -2432,7 +2490,7 @@
           },
           "trust_score": {
             "default": 0,
-            "description": "Optional. Higher scores unlock cheaper trading fees and the\nstealth/shielded settlement options. See\n[trust tier table](xochi.md#fee-tiers).\n",
+            "description": "Optional. Higher scores unlock cheaper trading fees, not settlement\nimplementation support. L1 stealth is not trust-gated; shielded is\nunavailable. See [trust tier table](xochi.md#fee-tiers).\n",
             "minimum": 0,
             "type": "integer"
           },
@@ -2518,6 +2576,11 @@
           },
           "from_amount": {
             "$ref": "#/components/schemas/BigIntString"
+          },
+          "input_amount_usd": {
+            "description": "Gross origin notional in USD at the exact token valuation accepted\nby conversion pricing. Optional for legacy and same-token quotes.\nNever an assumption that a fiat-referenced token trades at par.\n",
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "type": "string"
           },
           "intent_id": {
             "description": "Stable identifier; reused at /execute and /status.",
@@ -2692,7 +2755,7 @@
         "type": "object"
       },
       "SettlementType": {
-        "description": "`public` = standard ERC-3009/Permit2 transfer to wallet.\n`stealth` = ERC-5564 + ERC-4337 counterfactual SimpleAccount.\n`shielded` = Aztec L2 shielded note (returns `aztec_unavailable`\nuntil the sidecar is deployed -- see HANDOVER.md\nXOCHI-SETTLE-AZTEC).\n",
+        "description": "`public` = standard ERC-3009/Permit2 transfer to wallet.\n`stealth` = ERC-5564 + ERC-4337 counterfactual SimpleAccount.\n`shielded` is reserved and unavailable: an end-to-end settlement\nimplementation and recipient discovery/spend qualification are required.\nAllowlisting it or setting `AZTEC_NODE_URL` cannot enable it.\n",
         "enum": [
           "public",
           "stealth",
@@ -2955,7 +3018,7 @@
                 }
               }
             },
-            "description": "Ownership proof timestamp outside the freshness window"
+            "description": "Permanent. Either the ownership proof timestamp is outside the freshness window (`ownership_proof_stale`), or the account's payout has already been claimed (`bad_request` with `details.reason: already_claimed`): any balance still at the account arrived beside the payment (the claim sweeps the payment's amount, not the balance), and there is nothing to claim. Not a lost record -- that is the 404, whose remedy is `/xochi/claim/rebuild`.\n"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -3161,7 +3224,7 @@
     },
     "/xochi/execute": {
       "post": {
-        "description": "Verifies the user's EIP-712 signature against the quote, atomically\nclaims the intent (`IntentStore.create_if_absent`, XL-1 replay\nguard), and initiates settlement. Returns immediately with the\nintent's initial executing state; poll `/xochi/status/{intent_id}`\nfor terminal states.\n\n**Escrow quotes** (a quote carrying `escrow`, M6) are never pulled to a\nsolver-side address. Without `pull_signature` the depositor opens the\nlock themselves, and this call answers the order's status --\nidempotently, never `already_executed`. The intent is recorded when\nthe quote is served, so `/xochi/status` follows the order whether or\nnot this is ever called. With `pull_signature` Riddler relays the open\nfrom its relayer, broadcasting it at most once.\n\nRequired scope: `execute`.\n",
+        "description": "Verifies the user's EIP-712 signature against the quote, atomically\nclaims the intent (`IntentStore.create_if_absent`, XL-1 replay\nguard), and initiates settlement. Returns immediately with the\nintent's initial executing state; poll `/xochi/status/{intent_id}`\nfor terminal states.\n\n**Escrow quotes** (a quote carrying `escrow`, M6) are never pulled to a\nsolver-side address. Without `pull_signature` the depositor opens the\nlock themselves, and this call answers the order's status --\nidempotently, never `already_executed`. The intent is recorded when\nthe quote is served, so `/xochi/status` follows the order whether or\nnot this is ever called. With `pull_signature` Riddler relays the open\nfrom its relayer, broadcasting it at most once.\n\n**Sole caller.** Only the `kid` the quote was made for may execute it\n(`Auth.Ownership`, as on `/status` and `/settle`; a caller presenting\nthe legacy secret is never let through). Another `kid` gets the 404 an\nunknown quote gets, without `details.funds_moved`: it cannot vouch for\nan intent its owner may have claimed. The check runs before the\nper-intent execute lock and the claim read, both keyed on the quote's\nown intent, so another `kid` can neither hold the owner's lock nor\nread the intent's claim state. The Worker's \"nothing moved\" verdicts\nrest on being the quote's sole caller, which this check enforces;\n`GET /xochi/capabilities` serves `execute_ownership: true` while it\ndoes.\n\nRequired scope: `execute`.\n",
         "operationId": "xochi_execute",
         "requestBody": {
           "content": {
@@ -3201,7 +3264,21 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "$ref": "#/components/responses/NotFound"
+            "content": {
+              "application/json": {
+                "example": {
+                  "details": {
+                    "funds_moved": false
+                  },
+                  "error": "not_found",
+                  "message": "Quote not found or expired"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such quote (or expired): `not_found`, with\n`details.funds_moved: false` when no stored quote holds the named\nintent and the intent has no claim. A quote owned by another\ncaller's `kid` answers the same code and message without\n`details`.\n"
           },
           "409": {
             "content": {
@@ -3229,13 +3306,53 @@
                 }
               }
             },
-            "description": "Validation failed or stealth keys missing (XL-6). On an escrow\nquote, a relayed open refused permanently: `escrow_refused` with\n`details.reason` (`relay_refused`, `invalid_pull_signature`,\n`open_window_closed`, `order_unrelayable`,\n`open_simulation_reverted`, `open_reverted`, or a permanent contract\nrevert). The remedy is to self-submit the open or request a new\nquote, not to retry the relay.\n"
+            "description": "Validation failed or stealth keys missing (XL-6). A body that does\nnot parse, and an `intent_id` that is not the quote's, are never\nmarked; an expired quote or an unrecovered signature carries\n`details.funds_moved: false` beside the field messages when the\nintent has no claim. On an escrow\nquote, a relayed open refused permanently: `escrow_refused` with\n`details.reason` (`relay_refused`, `invalid_pull_signature`,\n`open_window_closed`, `order_unrelayable`,\n`open_simulation_reverted`, `open_reverted`, or a permanent contract\nrevert). The remedy is to self-submit the open or request a new\nquote, not to retry the relay.\n"
           },
           "426": {
             "$ref": "#/components/responses/TlsRequired"
           },
           "429": {
-            "$ref": "#/components/responses/RateLimited"
+            "content": {
+              "application/json": {
+                "example": {
+                  "details": {
+                    "accepted": false,
+                    "retry_after": 12
+                  },
+                  "error": "rate_limit_exceeded",
+                  "message": "Too many requests. Please try again later.",
+                  "retry_after": 12
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Per-IP or per-caller rate limit (L-2), refused before the request\nwas handled: `details.accepted: false` with `details.retry_after`,\nnever `details.funds_moved` (the limiter cannot read the intent's\nclaim).\nResend the SAME request (same `intent_id`, `quote_id` and\nsignatures) after `Retry-After`.\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before resending; equals `details.retry_after`.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-limit": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-remaining": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-ratelimit-reset": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -3243,12 +3360,32 @@
           "503": {
             "content": {
               "application/json": {
+                "example": {
+                  "details": {
+                    "accepted": false,
+                    "funds_moved": false,
+                    "reason": "inventory_unverified",
+                    "retry_after": 5
+                  },
+                  "error": "insufficient_liquidity",
+                  "message": "Solver inventory for this route could not be verified -- retry shortly"
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Transient -- retry shortly. On an escrow quote, `escrow_unavailable`\n(`details.reason`: `order_store_unavailable`, `escrow_unreadable`,\n`relayer_unavailable`, `pull_signature_unverifiable` (a\ncontract-wallet depositor's ERC-1271 check could not be reached), or\na transient contract revert from the relay's simulation). Also `quote_store_unavailable` (carries\n`Retry-After`; retry with the SAME `quote_id`) and the settlement\navailability codes (`service_unavailable`, `insufficient_liquidity`,\n`conversion_unavailable`).\n"
+            "description": "Two opposite cases share this status; `details.accepted` tells\nthem apart.\n\n**Not accepted** (`details.accepted: false`, with\n`details.retry_after` and `Retry-After`): refused before this\nrequest claimed the intent and before any origin pull, so this\nrequest did nothing. Resend the SAME request unchanged after\n`Retry-After`, while the quote and the pull authorization are still\nvalid. The marker speaks only for this request: a resend can still\nmeet another request's claim (409 `already_executed`, in doubt).\nServed for: load shedding (`service_unavailable`), an unreadable\nquote store (`quote_store_unavailable`, with its own shorter\ninterval; NOT evidence the quote is gone), an execute lock that\ncould not be taken (`service_unavailable`, only when no lock\ncommand was sent or the solver confirmed this request left no lock\nbehind; its message says to retry the same request), a smart account's\nERC-1271 check that could not be reached (`service_unavailable`),\nand the destination payout re-authorization\n(`conversion_unavailable`; `insufficient_liquidity` with\n`details.reason` `float_committed`, `inventory_unverified`,\n`fx_inventory_limit` or `fx_inventory_unverified`).\n\nThe adapter's not-accepted refusals also carry\n`details.funds_moved: false` (nothing moved), as do its pre-claim\n4xx refusals, unless the quote is an escrow or deposit-route quote\nor the intent's claim state could not be read\n(`ErrorResponse.details`). Load shedding and the no-connection\nlock refusal never carry it: neither can read the claim.\n\n**Anything else is in doubt.** A 503 without the marker -- notably\n`pull_failed`, which includes an origin pull that may have been\nbroadcast (\"do not resubmit\"), and `service_unavailable` for an\nexecution of this intent already in progress -- may have moved\nfunds or claimed the intent: poll `/xochi/status/{intent_id}`, never\nresend. The marker is only ever `false`; treat any other value or\nits absence as in doubt.\n\nOn an escrow quote, every `escrow_unavailable` is without the\nmarker (`details.reason`: `order_store_unavailable` (an absent order\nand an unreadable store cannot be told apart), `escrow_unreadable`,\n`relayer_unavailable`, `pull_signature_unverifiable` (a\ncontract-wallet depositor's ERC-1271 check could not be reached), or\na transient contract revert from the relay's simulation).\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before resending. Present on every not-accepted 503 (equals `details.retry_after`). Never makes a 503 resendable on its own: an in-doubt 503 can carry one too (a `quote_store_unavailable` answered without the marker), and only `details.accepted: false` means \"resend\".\n",
+                "required": false,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Execute a signed intent",
@@ -3315,11 +3452,41 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "checks": {
+                      "properties": {
+                        "genservers": {
+                          "enum": [
+                            "ok",
+                            "not_ready"
+                          ],
+                          "type": "string"
+                        },
+                        "mode": {
+                          "enum": [
+                            "ok",
+                            "not_ready"
+                          ],
+                          "type": "string"
+                        },
+                        "property_tables": {
+                          "enum": [
+                            "ok",
+                            "not_ready"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
                     "integration": {
                       "example": "xochi",
                       "type": "string"
                     },
                     "status": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "format": "date-time",
                       "type": "string"
                     }
                   },
@@ -3333,11 +3500,59 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "details": {
+                          "properties": {
+                            "checks": {
+                              "properties": {
+                                "genservers": {
+                                  "enum": [
+                                    "ok",
+                                    "not_ready"
+                                  ],
+                                  "type": "string"
+                                },
+                                "mode": {
+                                  "enum": [
+                                    "ok",
+                                    "not_ready"
+                                  ],
+                                  "type": "string"
+                                },
+                                "property_tables": {
+                                  "enum": [
+                                    "ok",
+                                    "not_ready"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "timestamp": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "checks",
+                            "timestamp"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
-            "description": "Service is not ready (dependencies not healthy)"
+            "description": "Service is not ready (dependencies not healthy). `message` is `not_ready`; `details.checks` names each check and its result, and `details.timestamp` is when they were taken, as in the 200 body.\n"
           }
         },
         "security": [],
@@ -3408,7 +3623,7 @@
         ]
       },
       "post": {
-        "description": "Step 2 of 2. Verifies the `LimitOrder` signature (ecrecover, then ERC-1271 for a contract wallet) and the pull-authorization signature against what `prepare` minted, then moves the order to `waiting`. The trigger worker fills it while the wallet is offline. Required scope: `orders`; the order must have been prepared under the same credential (a foreign order answers 404).\n",
+        "description": "Step 2 of 2. Verifies the `LimitOrder` signature (ecrecover, then ERC-1271 for a contract wallet) and the pull-authorization signature against what `prepare` minted, then moves the order to `waiting`. The trigger worker fills it while the wallet is offline only when one atomic payout is available; inventory waits do not consume the operational retry budget and partial fills are not supported. Required scope: `orders`; the order must have been prepared under the same credential (a foreign order answers 404).\n",
         "operationId": "xochi_orders_submit",
         "requestBody": {
           "content": {
@@ -3476,7 +3691,7 @@
     },
     "/xochi/orders/prepare": {
       "post": {
-        "description": "Step 1 of 2. Mints the `LimitOrder` EIP-712 typed data and an origin-pull authorization (ERC-3009 or Permit2) valid until `expires_at`, persists a `prepared` order shell and returns both payloads. Nothing rests until `POST /xochi/orders` carries both signatures. Only `trigger_condition: gte` is fillable in v1 (`lte` is refused 422). Answers 501 `not_implemented` while `XOCHI_LIMIT_ORDERS_ENABLED` is off. Required scope: `orders`.\n",
+        "description": "Step 1 of 2. Mints the `LimitOrder` EIP-712 typed data and an origin-pull authorization (ERC-3009 or Permit2) valid until `expires_at`, persists a `prepared` order shell and returns both payloads. Nothing rests until `POST /xochi/orders` carries both signatures. Origin exposure and the signed payout floor must fit `XOCHI_LIMIT_ORDERS_MAX_ORDER_USD`; per-token caps can tighten it. Only `trigger_condition: gte` is fillable in v1 (`lte` is refused 422). Answers 501 `not_implemented` while `XOCHI_LIMIT_ORDERS_ENABLED` is off. Required scope: `orders`.\n",
         "operationId": "xochi_orders_prepare",
         "requestBody": {
           "content": {
@@ -3644,7 +3859,7 @@
     },
     "/xochi/quote": {
       "post": {
-        "description": "Returns a quote keyed by `quote_id` and `intent_id` with tier-based\nfees (0.10-0.30% trading + privacy premium) and the full EIP-712\ntyped data the user signs. Quotes are valid for ~30s (configurable).\n\nRequired scope: `quote`.\n\n**Deposit-address origins allocate.** A Tron-origin quote binds a\nper-intent deposit address, an intent record and a signed attestation\nto one `intent_id`, so a retry after a timeout or a lost 2xx would\nmint a second route while the first still accepts funds. Send\n`idempotency_key` (a caller-minted UUID, one per allocation attempt)\nto make such a retry safe: the same authenticated caller repeating the\nsame deal under the same key receives the ORIGINAL quote (same\n`intent_id`, `quote_id`, `deposit_address`, `deposit_attestation`,\n`deposit_deadline`) and allocates nothing, for as long as that route\nstill accepts deposits. It binds only deposit-address routes; an EVM\nquote allocates nothing and is re-priced on every call, key or not.\n`preview: true` prices a route without allocating anything at all.\n",
+        "description": "Returns a quote keyed by `quote_id` and `intent_id` with tier-based\nlayered fees (solver spread + price impact + venue + routing, itemized in\n`fee_breakdown`. No settlement-type premium: the venue and routing layers\nprice identically for public, stealth and shielded; the gas floor reflects\neach route's real cost (stealth and shielded include the claim leg) and the full EIP-712 typed data the user signs. Quotes are\nvalid for ~30s (configurable).\n\nRequired scope: `quote`.\n\n**Deposit-address origins allocate.** A Tron-origin quote binds a\nper-intent deposit address, an intent record and a signed attestation\nto one `intent_id`, so a retry after a timeout or a lost 2xx would\nmint a second route while the first still accepts funds. Send\n`idempotency_key` (a caller-minted UUID, one per allocation attempt)\nto make such a retry safe: the same authenticated caller repeating the\nsame deal under the same key receives the ORIGINAL quote (same\n`intent_id`, `quote_id`, `deposit_address`, `deposit_attestation`,\n`deposit_deadline`) and allocates nothing, for as long as that route\nstill accepts deposits. It binds only deposit-address routes; an EVM\nquote allocates nothing and is re-priced on every call, key or not.\n`preview: true` prices a route without allocating anything at all.\n",
         "operationId": "xochi_quote",
         "requestBody": {
           "content": {
@@ -3809,7 +4024,7 @@
     },
     "/xochi/settle": {
       "post": {
-        "description": "Server-to-server callback used by the Xochi worker to ask Riddler\nto execute a settlement (stealth `DirectTransfer` or shielded\nAztec note). Most customers do NOT call this directly -- it is\nexposed for documentation completeness and Xochi-backend\nintegrators.\n\nOnly the caller whose token (`kid`) requested the quote can settle\nthe intent: a foreign intent answers the same 404 as a nonexistent\nid, by design, and the refusal lands before the already-settled fast\npath so the settlement tx hash is never disclosed. Intents predating\nownership stamping and intents created under the legacy shared token\nstay settleable by any `settle`-scoped caller.\n\nRequired scope: `settle`.\n",
+        "description": "Server-to-server callback used by the Xochi worker to ask Riddler\nto execute a stealth settlement. Shielded requests are refused with\n`settlement_not_allowed`, regardless of allowlist or sidecar configuration.\nPrior unsupported payout evidence is held for manual reconciliation, never\naccepted as private delivery and never automatically paid again or refunded.\n\nOnly the caller whose token (`kid`) requested the quote can settle\nthe intent: a foreign intent answers the same 404 as a nonexistent\nid, by design, and the refusal lands before the already-settled fast\npath so the settlement tx hash is never disclosed. Intents predating\nownership stamping and intents created under the legacy shared token\nstay settleable by any `settle`-scoped caller.\n\nRequired scope: `settle`.\n",
         "operationId": "xochi_settle",
         "requestBody": {
           "content": {

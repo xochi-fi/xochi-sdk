@@ -4,6 +4,10 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Changed
+
+- **Wire contract refreshed (2026-10-26, `8 BREAKING, 15 STALE`, `--allow-breaking`)**: the served `0.8.0` gained Riddler #1315 (`QuoteResponse.input_amount_usd`), #1318 (`QuoteRequest.customer_ref`), #1321 (`/xochi/health/ready` `checks`/`timestamp`, `503` as `allOf`), #1336 (`stealth_chains`, per-chain `stealth_factory_address`, the top-level one nullable and deprecated, `chain_id` on claim prepare), #1346 (`/xochi/execute` `404`/`429`/`503` inlined with `Retry-After`, the `accepted`/`funds_moved` markers, `ErrorResponse.retry_after`, `execute_ownership`) and #1347 (required `intentId`/`claimed` on `ClaimSubmitResult`). `wire/openapi.{json,sha256}` carry them; SPEC.md §0.3 states why each BREAKING finding is acceptable, and §3.2/§3.3/§3.5/§5.1/§6 read the new shapes, including that an unmarked `/xochi/execute` `503` is in doubt rather than transient. No vector, schedule or signed struct changes.
+
 ## [0.9.0] - 2026-10-25
 
 ### Added
