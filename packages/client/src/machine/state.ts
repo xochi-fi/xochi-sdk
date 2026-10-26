@@ -54,8 +54,17 @@ export interface IntentState {
    * Read only to tell a delivered destination leg apart from one still in
    * flight: Riddler can hold an intent at top-level `settling` with
    * `substatus: filled` indefinitely (xochi#376). Never advances the lifecycle.
+   * Also `filled` when a status poll reads `settlementConfirmed` (a private
+   * intent's fill confirmed, its receipt withheld from an anonymous read).
    */
   substatus: string | null;
+  /**
+   * True while the latest status poll was the server's anonymous view of a
+   * stealth or shielded intent (xochi#563): its on-chain legs were withheld, so
+   * null hashes mean "not shown", not "not there". The host offers wallet SIWE
+   * recovery on it; a later owner read (no marker) clears it. Never a token.
+   */
+  legsWithheld: boolean;
   reconciling: boolean;
   /** Plain-language refund explanation; set only on a `refunded` status. */
   refundReason: string | null;
@@ -118,6 +127,32 @@ export interface IntentState {
    */
   pollExhausted: boolean;
   /**
+   * Set on a `failed` read after an execute (or a revealed deposit address)
+   * that does not carry the Worker's nothing-moved marker
+   * (`failureMayHaveMoved`): the order did not complete and the funds may have
+   * moved. Terminal and never offered Retry: the phase is `may-have-moved`, the
+   * poll is stopped, and no quote starts until Reset.
+   */
+  mayHaveMoved: boolean;
+  /**
+   * Set when this client stops resending an execute the Worker answered
+   * not-accepted (`decideExecuteResend` gives up), when the execute's own
+   * answer says the intent reads `quoted` again (the Worker ended its claim
+   * without finishing the intent), or when a resumed `executing` intent (no
+   * quote and no sign flow in this tab) reads `quoted`: the order was not
+   * sent, but the signed request stays executable until its deadline, so
+   * there is no Retry yet. The status stays `executing`, the phase is
+   * `not-sent`, and the poll runs on until the Worker ends the intent:
+   * `failed` with `NOT_EXECUTED_SUBSTATUS` is Retry, and so is a 404 read past
+   * the Worker's finish (`unexecutedFinishAt`: only the quote sweep deletes a
+   * row, only one never claimed, and past the finish nothing can claim it). A
+   * 404 before the finish, or with no quote to compute it (a resumed intent),
+   * holds: it may come from a router, a proxy or a rollback while the signed
+   * request is still claimable. Cleared by any other read than `quoted`
+   * (another execute claimed it: shown in doubt) and by leaving `executing`.
+   */
+  notSent: boolean;
+  /**
    * Set when a sign ceremony was refused before the funds-moving signature
    * (see SignRefusal). The intent is `quoted` so the quote stays on screen; a
    * new quote, a successful Confirm or a reset clears it.
@@ -136,6 +171,7 @@ export const INITIAL_INTENT_STATE: IntentState = {
   settlementTxHash: null,
   settlementChainId: null,
   substatus: null,
+  legsWithheld: false,
   reconciling: false,
   refundReason: null,
   quotedAddress: null,
@@ -145,5 +181,7 @@ export const INITIAL_INTENT_STATE: IntentState = {
   depositDeadline: null,
   attestedDeposit: null,
   pollExhausted: false,
+  mayHaveMoved: false,
+  notSent: false,
   refusal: null,
 };

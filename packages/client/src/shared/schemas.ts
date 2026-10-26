@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { ETH_ADDRESS_REGEX } from "./validators.js";
+import { NOT_EXECUTED_SUBSTATUS } from "./intents.js";
 
 // ============================================================
 // Primitives
@@ -509,6 +510,22 @@ export const QuoteResponseSchema = z
   })
   .strict();
 
+/**
+ * Length of an intent read capability (`read_token` on the execute response,
+ * xochi#563): 32 random bytes as unpadded base64url.
+ */
+export const READ_TOKEN_LENGTH = 43;
+
+/** Shape of an intent read capability: exactly `READ_TOKEN_LENGTH` base64url characters. */
+export const READ_TOKEN_PATTERN = new RegExp(`^[A-Za-z0-9_-]{${READ_TOKEN_LENGTH}}$`);
+
+/**
+ * The request header that carries a `read_token` on `GET /api/intent/:id` and
+ * `GET /api/intent/:id/status`. A header and never a query parameter: the token
+ * must not land in URLs, logs or referrers.
+ */
+export const READ_TOKEN_HEADER = "X-Xochi-Read-Token";
+
 /** Mirrors `ExecuteResponse` in public/openapi.yaml. */
 export const ExecuteResponseSchema = z
   .object({
@@ -533,8 +550,69 @@ export const ExecuteResponseSchema = z
     ephemeral_pub_key: z.string().optional(),
     view_tag: z.number().int().optional(),
     error: z.string().optional(),
+    substatus: z
+      .literal(NOT_EXECUTED_SUBSTATUS)
+      .optional()
+      .describe(
+        "`not_executed` on a `failed` where nothing moved, served by the execute 502 of the worker's own finishes (the resend budget's, a not-accepted refusal whose un-claim's write failed, no solver configured, a solver refusal carrying `details.funds_moved: false`) and echoed from the row by the lost-race 502 and the in-doubt 200: safe to re-quote. Absent on any other failure. Every source: docs/contracts/xochi-intent-api.md, \"The worker's not_executed marker\".",
+      ),
+    // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
+    // padding. Served once, by the execute that admits the intent; present it as
+    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the on-chain
+    // legs of a stealth intent. Older servers omit it. The one declared field
+    // that never fails the body: a malformed token is dropped, because this body
+    // reports an execute that may already have moved funds, and failing it would
+    // turn a settled swap into an in-doubt one over a privacy-only field. The
+    // describe below departs from xochi's (which still names shielded legs)
+    // until xochi#565 takes the same correction; as drafted, xochi#565 also
+    // reads a shielded intent's full record with the token (SPEC.md §5.1).
+    read_token: z
+      .string()
+      .regex(READ_TOKEN_PATTERN)
+      .optional()
+      .catch(undefined)
+      .describe(
+        "Per-intent read capability, served once. Send it as the `X-Xochi-Read-Token` " +
+          "header on `GET /api/intent/:id` and `GET /api/intent/:id/status` to see the " +
+          "on-chain legs of a stealth intent. Shielded is not offered; before it is, a " +
+          "token read of a shielded intent must get only the status-only view " +
+          "(`legs_withheld`), every other field going to owner-authenticated reads only " +
+          "(SPEC.md §5.1). Never put it in a URL.",
+      ),
   })
   .strict();
+
+/**
+ * Automatic resends of one execute after its not-accepted answer. Mirrors
+ * `MAX_EXECUTE_RESENDS` in xochi's `@xochi/shared` `schemas.ts`, the budget
+ * the Worker enforces too: the refusal that follows this many un-claims
+ * finishes the intent `failed` instead.
+ */
+export const MAX_EXECUTE_RESENDS = 3;
+
+/**
+ * A resend must reach the Worker at least this many seconds before the
+ * earliest deadline the signed request carries. Mirrors
+ * `EXECUTE_RESEND_MARGIN_SECS` in xochi's `@xochi/shared` `schemas.ts`, the
+ * margin the Worker applies before it un-claims.
+ */
+export const EXECUTE_RESEND_MARGIN_SECS = 5;
+
+/**
+ * Seconds past an unexecuted intent's signed deadline before the Worker ends
+ * it: a `quoted` market row (never claimed, or every claim undone) that an
+ * intent read (`GET /api/intent/:id` or the status poll, never the stream)
+ * finds this far past the `deadline` the user signed is finished `failed`
+ * with `NOT_EXECUTED_SUBSTATUS`, and the read serves that. Slack for clock
+ * skew between the Worker, the database (whose clock the claim's deadline
+ * check uses), the solver and the client. Measured from the signed deadline;
+ * the quote sweep's own 60 s is measured from the Worker's 30 s quote expiry
+ * and usually ends a touched row first (README "Fund safety"). Mirrors
+ * `QUOTED_EXPIRY_GRACE_SECS` in xochi's `@xochi/shared` `schemas.ts`. The
+ * machine polls an execute at least this long past the quote's deadline
+ * (`unexecutedFinishAt`).
+ */
+export const QUOTED_EXPIRY_GRACE_SECS = 60;
 
 // Response wire types (snake_case). The canonical agent contract.
 export type Eip712TypedDataWire = z.infer<typeof Eip712TypedDataSchema>;

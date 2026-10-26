@@ -72,6 +72,16 @@ export type SigningSlot =
   /** Deep-link wallets: signature 1 is held, waiting for the user's tap for 2. */
   | { kind: "awaiting_second" }
   | { kind: "submitted" }
+  /**
+   * The Worker answered the execute not-accepted (the solver is busy), and the
+   * same signed request is sent again automatically at `retryAt` (unix
+   * seconds). This is resend `resend` of at most `of`. The phase stays
+   * `submitting`. Suggested copy, which makes no funds claim (the signed
+   * request stays executable during the wait): "Solver busy. Resending in Ns
+   * (retry r of n)." with "Keep this tab open. If it closes, this tab will not
+   * resend the order."
+   */
+  | { kind: "busy"; retryAt: number; resend: number; of: number }
   /** The sign ceremony was refused before funds could move; the quote is still on screen. */
   | { kind: "refused"; refusal: SignRefusal };
 

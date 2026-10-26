@@ -24,6 +24,7 @@ import type {
 import {
   ExecuteResponseSchema,
   QuoteResponseSchema,
+  READ_TOKEN_PATTERN,
   isSettlementType,
   isIntentStatus,
 } from "../shared/index.js";
@@ -230,13 +231,37 @@ export interface ExecuteResponse {
   /** In-doubt: funds may be in flight but unconfirmed. */
   reconciling?: boolean;
   error?: string;
+  /**
+   * `NOT_EXECUTED_SUBSTATUS` on a `failed` the Worker wrote knowing nothing
+   * moved; the only `failed` the machine offers Retry on after an execute.
+   */
+  substatus?: string;
   /** Note commitment for shielded settlements */
   noteCommitment?: string;
   /** Stealth settlement info */
   stealthAddress?: string;
   ephemeralPubKey?: string;
   viewTag?: number;
+  /**
+   * Per-intent read capability (xochi#563), served once and only by a server
+   * that issues it (xochi#565, open; xochi `main` serves none). Keep it with
+   * the intent and pass it as `readToken` to `getIntent` / `getIntentStatus`:
+   * under xochi#565 a stealth intent read without it omits its on-chain legs.
+   * Shielded is not offered; before it is, SPEC.md §5.1 requires a token read
+   * of a shielded intent to get only the status-only view (`IntentReadOptions`).
+   * A bearer secret: never log it or put it in a URL.
+   */
+  readToken?: string;
 }
+
+/**
+ * An execute response as the machine receives it in `ExecuteReplied`: the
+ * bearer `readToken` removed (`const { readToken, ...response } = ...`) and
+ * kept outside the machine, so no message, model, effect or replay log holds
+ * it. The machine derives the fund-safety verdict (#226) from this response
+ * itself; a host relays it and never decides it.
+ */
+export type ExecuteReply = Omit<ExecuteResponse, "readToken"> & { readToken?: never };
 
 // ============================================================
 // Intent Status Messages
@@ -261,7 +286,10 @@ export interface IntentWebSocketMessage {
   settlementChainId?: ChainId;
   /** In-doubt signal (broadcast when an execute lands in reconcile). */
   reconciling?: boolean;
-  /** Riddler's granular fill substatus, verbatim; see IntentState.substatus. */
+  /**
+   * Riddler's granular fill substatus, verbatim; see IntentState.substatus. On
+   * a `failed`, `NOT_EXECUTED_SUBSTATUS` is the Worker's "nothing moved".
+   */
   substatus?: string;
   error?: string;
   /** Machine-readable refund reason code (deposit routes) on a `refunded` status. */
@@ -414,10 +442,17 @@ export function mapExecuteResponse(w: ExecuteResponseWire): ExecuteResponse {
     bridgeTxHash: w.bridge_tx_hash,
     reconciling: w.reconciling,
     error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
     noteCommitment: w.note_commitment,
     stealthAddress: w.stealth_address,
     ephemeralPubKey: w.ephemeral_pub_key,
     viewTag: w.view_tag,
+    // The decoders read the raw body, not the parse output, so the schema's
+    // drop of a malformed token does not reach here: check it again.
+    readToken:
+      typeof w.read_token === "string" && READ_TOKEN_PATTERN.test(w.read_token)
+        ? w.read_token
+        : undefined,
   };
 }
 
@@ -539,17 +574,39 @@ export interface IntentStatusData {
   refundReason: string | null;
   /**
    * Riddler's granular origin-pull/fill substatus, passed through verbatim
-   * (pulling | pulled | filling | filled | refunding | ...). NOT a status: the
-   * top-level `status` is what advances the lifecycle.
+   * (pulling | pulled | filling | filled | refunding | ...), or on a `failed`
+   * the Worker wrote knowing nothing moved, `NOT_EXECUTED_SUBSTATUS`. NOT a
+   * status: the top-level `status` is what advances the lifecycle.
    *
-   * It is read for one thing -- telling a user whose destination leg has already
-   * landed (`filled`) apart from one still waiting. Riddler can hold an intent at
-   * top-level `settling` with `substatus: filled` indefinitely, which is exactly
-   * the state a stuck stealth swap sits in (xochi#376): the money is delivered and
-   * the app was showing an undifferentiated "settling".
+   * It is read for two things. A `failed` after an execute offers Retry only
+   * with `not_executed` (README "Fund safety"). And it tells a user whose
+   * destination leg has already landed (`filled`) apart from one still
+   * waiting: Riddler can hold an intent at top-level `settling` with
+   * `substatus: filled` indefinitely, which is exactly the state a stuck
+   * stealth swap sits in (xochi#376): the money is delivered and the app was
+   * showing an undifferentiated "settling".
    */
   substatus: string | null;
   terminal: boolean;
+  /**
+   * Present (true) when the server withheld the on-chain legs of a stealth
+   * intent from this read (xochi#563; served from xochi#565, open): the read
+   * carried no valid `readToken` and no owner session. The tx hashes and
+   * `settlementChainId` are then null because they were withheld, not because
+   * they do not exist; the read token or a wallet SIWE session for the
+   * intent's wallet reads them. Once shielded is offered, SPEC.md §5.1 requires
+   * it on every read of a shielded intent without an owner session, token or
+   * not, so only a wallet SIWE session reads a shielded intent's legs.
+   */
+  legsWithheld?: true;
+  /**
+   * Present only with `legsWithheld`: true once the destination fill receipt
+   * exists, standing in for the withheld `settlementTxHash`; never true on a
+   * terminal failure (`withheldSettlementConfirmed`). The machine shows it
+   * exactly as `substatus: "filled"` (delivered); it does not move `status` or
+   * `terminal`.
+   */
+  settlementConfirmed?: boolean;
 }
 
 /**
@@ -557,7 +614,8 @@ export interface IntentStatusData {
  *  - `IntentStatusData` on a 200,
  *  - `{ notFound: true }` on a definitive 404 (a definitive absence, NOT a
  *    verdict: only a pre-dispatch row may be terminalized on it, see
- *    `isSweepablePreDispatch`),
+ *    `isSweepablePreDispatch`, and a "not sent yet" intent ends on it as
+ *    nothing moved once past its finish, see `IntentState.notSent`),
  *  - `null` on a transient failure (retry on the next tick).
  */
 export type IntentStatusResult = IntentStatusData | { notFound: true } | null;
@@ -578,6 +636,27 @@ export function isTerminalIntentStatus(status: IntentStatus): boolean {
   return TERMINAL_INTENT_STATUSES[status] === true;
 }
 
+/**
+ * Whether an anonymous read's `settlement_confirmed` (xochi#563) counts as a
+ * delivered fill. Only on a read that withheld the legs (the marker stands in
+ * for the withheld receipt), and only when `status` decodes (`decodeWireStatus`)
+ * to a status this build models that is not a terminal failure and not part of
+ * a refund: never on `refunded` / `failed` / `expired`, on a granular status
+ * bucketed to one (`fill_failed`, `refund_failed`), on any `refund*` status
+ * (`refunding`, `refund_pending`), or on an unmapped or absent status.
+ */
+export function withheldSettlementConfirmed(read: {
+  status: unknown;
+  legsWithheld: unknown;
+  settlementConfirmed: unknown;
+}): boolean {
+  if (read.legsWithheld !== true || read.settlementConfirmed !== true) return false;
+  const decoded = decodeWireStatus(read.status);
+  if (decoded.kind !== "mapped") return false;
+  if (typeof read.status === "string" && read.status.startsWith("refund")) return false;
+  return !(isTerminalIntentStatus(decoded.status) && decoded.status !== "completed");
+}
+
 // ============================================================
 // Intent records (GET /api/intent/:id, GET /api/intent/history)
 // snake_case wire; plain scalars, no signed data.
@@ -591,8 +670,13 @@ export interface IntentRecord {
   toChainId: ChainId;
   fromToken: string;
   toToken: string;
-  fromAmount: string;
-  toAmount: string;
+  /**
+   * Absent when the server did not serve it, never defaulted: a withheld or
+   * missing amount is not zero (SPEC.md §5.1). The same for `toAmount`,
+   * `createdAt` and `updatedAt`.
+   */
+  fromAmount?: string;
+  toAmount?: string;
   quoteId: string;
   tier: string;
   feeRate: number;
@@ -602,10 +686,47 @@ export interface IntentRecord {
   /** Public fill receipt (Riddler #632) + its chain, persisted at completion. */
   settlementTxHash?: string;
   settlementChainId?: ChainId;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
   error?: string;
+  /** `NOT_EXECUTED_SUBSTATUS` on a `failed` the Worker wrote knowing nothing moved. */
+  substatus?: string;
   destinationType?: DestinationType;
+  /** Never true on a full record: see `WithheldIntentRecord`. */
+  legsWithheld?: false;
+}
+
+/**
+ * `GET /api/intent/:id` for a stealth intent read without the read token or an
+ * owner session (xochi#563): the server's status-only view. Once shielded is
+ * offered, SPEC.md §5.1 requires the same view for a shielded intent read
+ * without an owner session, token or not (`IntentReadOptions`). Tokens,
+ * amounts, wallet, quote, tier, fee, timestamps and every tx hash are withheld,
+ * so they are absent here rather than defaulted; read with the token (stealth),
+ * or a wallet SIWE session for the intent's wallet, for the full `IntentRecord`.
+ */
+export interface WithheldIntentRecord {
+  legsWithheld: true;
+  id: string;
+  /**
+   * The served status decoded (`decodeWireStatus`): a granular one
+   * (`fill_failed`) as its bucket, an unmodelled one as `executing` with
+   * `unmapped: true`.
+   */
+  status: IntentStatus;
+  /** True when the served status was outside this build's vocabulary. Absent means mapped. */
+  unmapped?: true;
+  fromChainId?: ChainId;
+  toChainId?: ChainId;
+  settlementType?: SettlementType;
+  error?: string;
+  /** As on `IntentRecord`. */
+  substatus?: string;
+  /**
+   * True once the destination fill receipt exists (it is withheld itself);
+   * never on a terminal failure (`withheldSettlementConfirmed`).
+   */
+  settlementConfirmed: boolean;
 }
 
 export interface IntentRecordWire {
@@ -629,6 +750,34 @@ export interface IntentRecordWire {
   created_at?: string;
   updated_at?: string;
   error?: string;
+  substatus?: string | null;
+  legs_withheld?: boolean;
+  settlement_confirmed?: boolean;
+}
+
+/**
+ * One `GET /api/intent/:id` body: the status-only `WithheldIntentRecord` when
+ * the server says it withheld the legs, else the full record.
+ */
+export function mapIntentRead(w: IntentRecordWire): IntentRecord | WithheldIntentRecord {
+  if (w.legs_withheld !== true) return mapIntentRecord(w);
+  const decoded = decodeWireStatus(w.status);
+  return {
+    legsWithheld: true,
+    id: w.id,
+    status: decoded.status,
+    ...(decoded.kind === "unmapped" ? { unmapped: true as const } : {}),
+    fromChainId: w.from_chain_id,
+    toChainId: w.to_chain_id,
+    settlementType: w.settlement_type,
+    error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
+    settlementConfirmed: withheldSettlementConfirmed({
+      status: w.status,
+      legsWithheld: w.legs_withheld,
+      settlementConfirmed: w.settlement_confirmed,
+    }),
+  };
 }
 
 export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
@@ -640,8 +789,8 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     toChainId: w.to_chain_id as ChainId,
     fromToken: w.from_token ?? "",
     toToken: w.to_token ?? "",
-    fromAmount: w.from_amount ?? "0",
-    toAmount: w.to_amount ?? "0",
+    fromAmount: w.from_amount,
+    toAmount: w.to_amount,
     quoteId: w.quote_id ?? "",
     tier: w.tier ?? "",
     feeRate: w.fee_rate ?? 0,
@@ -650,8 +799,9 @@ export function mapIntentRecord(w: IntentRecordWire): IntentRecord {
     txHash: w.tx_hash,
     settlementTxHash: w.settlement_tx_hash ?? undefined,
     settlementChainId: w.settlement_chain_id ?? undefined,
-    createdAt: w.created_at ?? "",
-    updatedAt: w.updated_at ?? "",
+    createdAt: w.created_at,
+    updatedAt: w.updated_at,
     error: w.error,
+    ...(typeof w.substatus === "string" ? { substatus: w.substatus } : {}),
   };
 }

@@ -9,8 +9,12 @@
 
 import type { ChainId, IntentStatus, SelectableChainId, SettlementType } from "../shared/index.js";
 import {
+  EXECUTE_RESEND_MARGIN_SECS,
   EXTENDED_CHAIN_NAMES,
   IntentStatusFrameSchema,
+  MAX_EXECUTE_RESENDS,
+  NOT_EXECUTED_SUBSTATUS,
+  QUOTED_EXPIRY_GRACE_SECS,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -52,13 +56,52 @@ export const WALLET_INTERRUPTIBLE_STATES: IntentStatus[] = [
   "failed",
 ];
 
-/** The status poll runs while in one of these in-flight states. */
+/**
+ * The status poll runs while in one of these in-flight states. Each follows an
+ * execute or a revealed deposit address, so a `failed` read from one is Retry
+ * only on the Worker's nothing-moved marker (`failureMayHaveMoved`): a deposit
+ * route's `failed` can follow a deposit the poll never saw.
+ */
 export const POLL_INFLIGHT_STATES: IntentStatus[] = [
   "awaiting_deposit",
   "executing",
   "bridging",
   "settling",
 ];
+
+/**
+ * Whether a `failed` after an execute (or a revealed deposit address) may have
+ * moved funds: every one but the Worker's nothing-moved finish (`substatus`
+ * `NOT_EXECUTED_SUBSTATUS`, whose sources that constant lists). The machine
+ * shows it as the terminal "may have moved" view (no Retry, no poll, Reset
+ * only); rules: README "Fund safety".
+ */
+export function failureMayHaveMoved(substatus: unknown): boolean {
+  return substatus !== NOT_EXECUTED_SUBSTATUS;
+}
+
+/**
+ * The latest time (unix seconds) the Worker's read finish ends this quote's
+ * intent `failed` with `NOT_EXECUTED_SUBSTATUS` while it is still `quoted`
+ * with no execute claim (never claimed, or every claim undone): the next read
+ * past its signed deadline plus `QUOTED_EXPIRY_GRACE_SECS` (market rows only;
+ * the quote sweep usually ends an undone claim earlier). The signed deadline
+ * is the served `eip712` message's `deadline`; the later of it and the
+ * quote's `expiry` is taken, so the poll never stops short of the Worker's
+ * clock. Either alone is enough; null only without a quote or with neither
+ * readable.
+ */
+export function unexecutedFinishAt(quote: QuoteResponse | null): number | null {
+  if (!quote) return null;
+  const expiryMs = new Date(quote.expiry).getTime();
+  const raw = quote.eip712Data?.message?.deadline;
+  const signed = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : raw;
+  const candidates = [
+    Number.isFinite(expiryMs) ? Math.floor(expiryMs / 1000) : NaN,
+    typeof signed === "number" ? signed : NaN,
+  ].filter((v) => Number.isFinite(v));
+  return candidates.length > 0 ? Math.max(...candidates) + QUOTED_EXPIRY_GRACE_SECS : null;
+}
 
 // ============================================================
 // Status poll cadence and ceilings
@@ -123,6 +166,14 @@ export const POLL_CEILING_MAX_MS = 2 * 60 * 60_000;
  * modal, so a swap that had actually settled sat on a spinner, and the user was
  * then told their funds were coming back and to start again.
  *
+ * `executing` lasts at least until the Worker's latest finish of an intent no
+ * execute holds (`unexecutedFinishAt`, passed as `unexecutedFinishSecs`) plus
+ * one poll: an execute that never reached the Worker (a timeout, a refused
+ * redirect) or that this client stopped resending reads `quoted`, which is no
+ * progress, until the quote sweep (usually first for an un-claimed intent) or
+ * the read past the signed deadline finishes it `failed` with
+ * `NOT_EXECUTED_SUBSTATUS` and offers Retry.
+ *
  * Bounded below by the flat ceiling (never poll less than before), and above by
  * POLL_CEILING_MAX_MS.
  */
@@ -132,11 +183,15 @@ export function pollCeilingAttempts(
   nowMs: number,
   pollMs: number,
   flatCeilingMs: number,
+  unexecutedFinishSecs?: number,
 ): number {
   const flat = Math.ceil(flatCeilingMs / pollMs);
-  if (status !== "awaiting_deposit" || !depositDeadlineSecs) return flat;
-
-  const windowMs = depositDeadlineSecs * 1000 - nowMs + DEPOSIT_POLL_GRACE_MS;
+  let windowMs = NaN;
+  if (status === "awaiting_deposit" && depositDeadlineSecs) {
+    windowMs = depositDeadlineSecs * 1000 - nowMs + DEPOSIT_POLL_GRACE_MS;
+  } else if (status === "executing" && unexecutedFinishSecs) {
+    windowMs = unexecutedFinishSecs * 1000 - nowMs + pollMs;
+  }
   if (!Number.isFinite(windowMs) || windowMs <= 0) return flat;
 
   return Math.max(flat, Math.ceil(Math.min(windowMs, POLL_CEILING_MAX_MS) / pollMs));
@@ -489,23 +544,37 @@ export function decideSignPreflight(input: {
 // ============================================================
 
 export type ExecuteDecision =
-  | { kind: "failed"; error: string }
+  | { kind: "failed"; error: string; mayHaveMoved: boolean }
   | { kind: "transition"; status: IntentStatus; updates: Partial<IntentState> };
 
 /**
  * Interpret an /execute response, preserving the in-doubt distinction (#226):
- * the worker returns HTTP 200 `{success:false}` for BOTH a genuine failure
- * (status "failed" -- terminal, retryable) AND a fail-closed downgrade (a
- * non-failure status like "settling" with reconciling -- the origin pull already
- * moved funds but the settlement is unconfirmed inline, so IN-DOUBT). Only status
- * "failed" is a real failure; anything else advances and keeps polling, forcing
- * `reconciling` on when the server withheld success so the UI shows the
- * safe-to-close "Still confirming" path with no Retry (an in-session retry of a
- * funds-moved swap would be a double execution).
+ * the worker returns `{success:false}` for BOTH a genuine failure AND a
+ * fail-closed downgrade (the origin pull already moved funds but the
+ * settlement is unconfirmed inline, so IN-DOUBT). `reconciling` is the
+ * server's flag when it sends one, else on whenever the server withheld
+ * success (`reconciling ?? !success`). The verdicts, in order:
+ * - `failed` with `success: false` and `reconciling` off by that rule (the
+ *   server sent `reconciling: false`) is final: Retry only with the Worker's
+ *   nothing-moved marker, else "may have moved" (`failureMayHaveMoved`).
+ * - `completed` completes with reconciling off, whatever the reply says: a
+ *   completion leaves nothing to reconcile.
+ * - Any other `failed` (`success: true`, or `reconciling` on, the absent flag
+ *   included) is in doubt: it moves to the in-flight `executing` with
+ *   reconciling on, and the poll reads the final status.
+ * - Anything else advances to its status with reconciling by that rule, so a
+ *   withheld success shows the "Still confirming" path with no Retry (an
+ *   in-session retry of a funds-moved swap would be a double execution).
+ * `onExecuted` also shows an unmapped status in doubt.
  */
 export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
-  if (!result.success && result.status === "failed") {
-    return { kind: "failed", error: result.error || "Execution failed" };
+  const reconciling = result.reconciling ?? !result.success;
+  if (result.status === "failed" && !result.success && !reconciling) {
+    return {
+      kind: "failed",
+      error: result.error || "Execution failed",
+      mayHaveMoved: failureMayHaveMoved(result.substatus),
+    };
   }
 
   const base: Partial<IntentState> = {
@@ -518,11 +587,76 @@ export function decideExecuteResult(result: ExecuteResponse): ExecuteDecision {
   if (result.status === "completed") {
     return { kind: "transition", status: "completed", updates: { ...base, reconciling: false } };
   }
-  return {
-    kind: "transition",
-    status: result.status,
-    updates: { ...base, reconciling: result.reconciling ?? !result.success },
-  };
+  if (result.status === "failed") {
+    return { kind: "transition", status: "executing", updates: { ...base, reconciling: true } };
+  }
+  return { kind: "transition", status: result.status, updates: { ...base, reconciling } };
+}
+
+export type ExecuteResend =
+  | { kind: "resend"; delayMs: number }
+  | { kind: "give_up"; reason: "exhausted" | "no_retry_after" | "stale_retry_after" | "deadline" };
+
+/**
+ * How far before `now` a not-accepted `retryAfter` may lie and still be read
+ * as the absolute target it must be. The transport rounds the target up from
+ * the moment it read the refusal, so a real one is never older than the
+ * report's dispatch delay; a minute is past any quote's life (30 s), so no
+ * resend is lost to it. An older value is a delta passed where the absolute
+ * target belongs (`retry_after: 7` read as 1970), which would resend at once
+ * and ignore the server's wait.
+ */
+const RETRY_AFTER_MAX_AGE_SECS = 60;
+
+/**
+ * After the server refused an execute before accepting anything, whether to
+ * send the SAME request again and when (rules: README "Fund safety").
+ * `retryAfter` and `deadline` are unix seconds, `now` the host's clock; a null
+ * `deadline` never resends, a `retryAfter` older than
+ * `RETRY_AFTER_MAX_AGE_SECS` gives up, and the wait is at least a second, so
+ * a slightly past `retryAfter` cannot spin. A give-up offers no Retry: the
+ * signed request stays executable until its deadline, so the machine shows
+ * "not sent yet" (`IntentState.notSent`) and polls until the Worker finishes
+ * the intent.
+ */
+export function decideExecuteResend(input: {
+  resends: number;
+  retryAfter: number | undefined;
+  deadline: number | null;
+  now: number;
+}): ExecuteResend {
+  if (input.resends >= MAX_EXECUTE_RESENDS) return { kind: "give_up", reason: "exhausted" };
+  const { retryAfter, deadline } = input;
+  if (retryAfter === undefined || !Number.isFinite(retryAfter)) {
+    return { kind: "give_up", reason: "no_retry_after" };
+  }
+  if (retryAfter * 1000 < input.now - RETRY_AFTER_MAX_AGE_SECS * 1000) {
+    return { kind: "give_up", reason: "stale_retry_after" };
+  }
+  const sendAt = Math.max(retryAfter * 1000, input.now + 1000);
+  if (deadline === null || sendAt > (deadline - EXECUTE_RESEND_MARGIN_SECS) * 1000) {
+    return { kind: "give_up", reason: "deadline" };
+  }
+  return { kind: "resend", delayMs: sendAt - input.now };
+}
+
+/**
+ * The earliest deadline (unix seconds) a resent execute carries: the quote's
+ * expiry, the signed intent's `deadline` and the origin pull's `validBefore` /
+ * `deadline`. Null without a readable quote expiry, which never resends.
+ */
+export function executeDeadline(quote: QuoteResponse | null): number | null {
+  const expiryMs = quote ? new Date(quote.expiry).getTime() : NaN;
+  if (!quote || !Number.isFinite(expiryMs)) return null;
+  const signed = [
+    quote.eip712Data?.message?.deadline,
+    quote.pullAuthorization?.message?.validBefore,
+    quote.pullAuthorization?.message?.deadline,
+  ].flatMap((v) => {
+    const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) ? [n] : [];
+  });
+  return Math.min(Math.floor(expiryMs / 1000), ...signed);
 }
 
 // ============================================================

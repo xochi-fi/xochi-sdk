@@ -28,6 +28,11 @@ export const IntentStatusFrameSchema = z.object({
   ts: z.number().int(),
   /** Present only for a PUBLIC settlement with a known hash. */
   tx_hash: z.string().optional(),
+  /**
+   * `NOT_EXECUTED_SUBSTATUS` on the `failed` transition of a row the worker
+   * finished itself knowing nothing moved; absent on every other frame.
+   */
+  substatus: z.string().optional(),
 });
 export type IntentStatusFrame = z.infer<typeof IntentStatusFrameSchema>;
 
@@ -47,6 +52,7 @@ export function buildIntentStatusFrame(input: {
   settlementType: string;
   revision: number | null;
   txHash?: string | null;
+  substatus?: string | null;
   ts: number;
 }): IntentStatusFrame {
   return {
@@ -58,5 +64,6 @@ export function buildIntentStatusFrame(input: {
     revision: input.revision,
     ts: input.ts,
     ...(input.settlementType === "public" && input.txHash ? { tx_hash: input.txHash } : {}),
+    ...(input.substatus ? { substatus: input.substatus } : {}),
   };
 }

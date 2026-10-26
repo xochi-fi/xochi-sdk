@@ -18,6 +18,16 @@ export type SwapPhase =
   // distinctly from a failure.
   | "refunded"
   | "failed"
+  // The order did not complete and the funds may have moved (`mayHaveMoved`):
+  // terminal, no Retry, Reset only. Suggested copy: "This order did not
+  // complete. Funds may have moved. Check Activity before trading again."
+  | "may-have-moved"
+  // This client stopped resending an execute the solver refused as busy
+  // (`notSent`): the order was not sent, but its signed request stays
+  // executable until it expires, so no Retry until the Worker finishes it.
+  // Still polling. Suggested copy: "Not sent yet. The solver was busy. You
+  // can try again once this order expires."
+  | "not-sent"
   | "pending";
 
 /**
@@ -25,15 +35,18 @@ export type SwapPhase =
  *
  * - Wallet rejection sets status back to "quoted" (with error "Signature
  *   rejected"), so soft-cancel returns to the confirm surface automatically.
- * - Only "failed" maps to the failure view. An in-doubt swap keeps a non-failure
- *   status (executing/bridging/settling); when the caller knows it is
- *   reconciling, it surfaces as "pending" ("still confirming"), never as a
- *   failure. This covers both the slow-fill reconcile flip and the #226
- *   fail-closed success:false downgrade (funds moved, settlement unconfirmed).
+ * - Only "failed" maps to the failure view (Retry). A `failed` the caller
+ *   marks `mayHaveMoved` maps to "may-have-moved" instead. An `executing` the
+ *   caller marks `notSent` maps to "not-sent". An in-doubt swap
+ *   keeps a non-failure status (executing/bridging/settling); when the caller
+ *   knows it is reconciling, it surfaces as "pending" ("still confirming"),
+ *   never as a failure. This covers both the slow-fill reconcile flip and the
+ *   #226 fail-closed success:false downgrade (funds moved, settlement
+ *   unconfirmed).
  */
 export function phaseFromStatus(
   status: IntentStatus,
-  opts: { reconciling?: boolean } = {},
+  opts: { reconciling?: boolean; mayHaveMoved?: boolean; notSent?: boolean } = {},
 ): SwapPhase {
   switch (status) {
     case "signing":
@@ -41,6 +54,7 @@ export function phaseFromStatus(
     case "awaiting_deposit":
       return "deposit";
     case "executing":
+      if (opts.notSent) return "not-sent";
       return opts.reconciling ? "pending" : "submitting";
     case "bridging":
       return opts.reconciling ? "pending" : "bridging";
@@ -51,7 +65,7 @@ export function phaseFromStatus(
     case "refunded":
       return "refunded";
     case "failed":
-      return "failed";
+      return opts.mayHaveMoved ? "may-have-moved" : "failed";
     // idle | pending | quoting | quoted | expired -> the confirm surface
     default:
       return "confirm";

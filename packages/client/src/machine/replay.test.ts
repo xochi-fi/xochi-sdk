@@ -11,8 +11,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { init, update, type Msg } from "./machine.js";
+import { init, update, type Context, type Msg } from "./machine.js";
 import { view } from "./view.js";
+import { createXochiClient } from "../transport/client.js";
 import {
   CONFIG,
   Session,
@@ -27,8 +28,43 @@ import {
   type Step,
 } from "./test/session.js";
 
+const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
+
+/**
+ * The Worker the host's transport talks to: an execute that serves a read
+ * token, then status reads. Records every request it is sent.
+ */
+function worker() {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const xochi = createXochiClient({
+    baseUrl: "https://api.example.test",
+    log: () => {},
+    fetch: async (url, init) => {
+      requests.push({ url, init });
+      const body = url.endsWith("/api/intent/execute")
+        ? { success: true, intent_id: "xi_1", status: "settling", read_token: READ_TOKEN }
+        : { intent_id: "xi_1", status: "settling", substatus: "filling", terminal: false };
+      const res = new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      // As a spec fetch answers: naming the url (the transport refuses an
+      // execute or token read whose answer names none).
+      Object.defineProperty(res, "url", { value: String(url) });
+      return res;
+    },
+  });
+  return { xochi, requests };
+}
+
 /** Preview -> connect -> quote -> refresh -> 2-signature sign -> execute -> status. */
-function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } {
+async function recordSession(): Promise<{
+  initial: Context;
+  session: Session;
+  readToken: string | undefined;
+  requests: { url: string; init: RequestInit }[];
+}> {
+  const { xochi, requests } = worker();
   const initial = ctx({}, { address: null, chainId: null });
   const s = new Session(initial);
 
@@ -106,25 +142,31 @@ function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } 
       "execute",
     ),
   );
+  // The effect host performs the execute through the real transport, keeps
+  // the bearer secret (README "Fund safety") and relays the rest.
+  const { readToken, ...reply } = await xochi.execute(exec.request);
   const settling = only(
     apiCalls(
       s.send(
         {
           type: "ExecuteReplied",
           flow: exec.flow,
-          result: { ok: true, response: { success: true, intentId: "xi_1", status: "settling" } },
+          result: { ok: true, response: reply },
         },
         1100,
       ),
       "status",
     ),
   );
+  // ...and performs the status effect with the retained token.
+  const polled = await xochi.getIntentStatus(settling.intentId, { readToken });
+  if (!polled || "notFound" in polled) throw new Error("the status read must answer");
   s.send(
     {
       type: "StatusReplied",
       gen: settling.gen,
       attempt: settling.attempt,
-      result: { ok: true, status: statusData({ status: "settling", substatus: "filling" }) },
+      result: { ok: true, status: polled },
     },
     300,
   );
@@ -146,20 +188,30 @@ function recordSession(): { initial: ReturnType<typeof ctx>; session: Session } 
     },
     250,
   );
-  return { initial, session: s };
+  return { initial, session: s, readToken, requests };
 }
 
 describe("replay", () => {
-  it("records a full session that ends completed", () => {
-    const { session } = recordSession();
+  it("records a full session that ends completed", async () => {
+    const { session } = await recordSession();
     expect(session.intent.status).toBe("completed");
     expect(session.intent.quotedAddress).toBe(WALLET);
     expect(session.receipt.phase).toBe("success");
     expect(session.steps.length).toBeGreaterThan(15);
   });
 
-  it("replays the JSON log to identical effects and receipts at every step", () => {
-    const { initial, session } = recordSession();
+  it("keeps the token the transport served out of every replayable step", async () => {
+    const { readToken, requests, session } = await recordSession();
+    // The token was really in play: served by the execute, sent on the status read.
+    expect(readToken).toBe(READ_TOKEN);
+    const statusRead = requests.find((r) => r.url.endsWith("/status"));
+    expect(new Headers(statusRead?.init.headers).get("X-Xochi-Read-Token")).toBe(READ_TOKEN);
+    expect(JSON.stringify(session.steps)).not.toContain(READ_TOKEN);
+    expect(JSON.stringify(session.model)).not.toContain(READ_TOKEN);
+  });
+
+  it("replays the JSON log to identical effects and receipts at every step", async () => {
+    const { initial, session } = await recordSession();
     const log: Msg[] = JSON.parse(JSON.stringify(session.steps.map((s) => s.msg)));
     const recorded: Step[] = JSON.parse(JSON.stringify(session.steps));
 
@@ -173,8 +225,8 @@ describe("replay", () => {
     expect(JSON.parse(JSON.stringify(model))).toEqual(JSON.parse(JSON.stringify(session.model)));
   });
 
-  it("replays twice to the same result (no hidden state between runs)", () => {
-    const { initial, session } = recordSession();
+  it("replays twice to the same result (no hidden state between runs)", async () => {
+    const { initial, session } = await recordSession();
     const log = session.steps.map((s) => s.msg);
     const run = () => log.reduce((m, msg) => update(m, msg)[0], init(CONFIG, initial));
     expect(view(run())).toEqual(view(run()));
