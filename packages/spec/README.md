@@ -18,8 +18,18 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
 - **`conformance/{order-id,open-auth,dest-blinding,fill-salt,fill-auth,fill-attestation,slash-attestation,fill-acceptance}.json`**
   (+ `.schema.json`): escrow vectors (ESCROW-RFC, SOLVER-RFC §5.3). Public test keys only.
 - **`conformance/xsp.json`** + `.schema.json`: Xochi Settlement Protocol digests (ESCROW-RFC §13).
+- **`conformance/shielded.json`** + `.schema.json`: shielded settlement contract v1 typed encodings
+  (xochi `docs/planning/shielded-execution.md` §7, approved 2026-10-18; the NetworkIdentity
+  encoding approved 2026-10-19): NetworkIdentity, the salted `Domain (binding)` /
+  `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
+  and the Aztec `bytes32` / amount refusals. Inert: shielded settlement is not live.
 - **`fee/vectors.json`**, **`fee/schedule.json`**, **`fee/schema.json`**: 16 fee vectors (SPEC §4),
   the rate schedule, and the `fee_breakdown` schema.
+- **`erc8262/provider-discovery.schema.json`**, **`erc8262/provider-evidence.schema.json`**: the
+  ERC-8262 provider protocol (SPEC §10), the documents a provider serves at
+  `/.well-known/erc8262-provider.json` and `/v1/erc8262/evidence/{evidenceId}`.
+  **`erc8262/vectors.json`** + `vectors.schema.json`: native and gateway fixtures, schema
+  rejections, evaluation and quorum cases. Fixture addresses only.
 - **`wire/openapi.json`** + **`wire/openapi.sha256`**: the served `/xochi/openapi.json`, reformatted
   to sorted-key JSON (structurally identical, numeric literals kept verbatim; the digest covers the
   vendored file, not the served bytes), plus the differ `wire/compare.mjs`. See
@@ -29,7 +39,8 @@ Every file is exported by path, e.g. `@xochi/spec/conformance/conformance.json`.
 
 ## Who is authoritative
 
-- `conformance.json`, `xsp.json`, `fee/*`: this repo (fees mirror Riddler's `FeePolicy` in lockstep).
+- `conformance.json`, `xsp.json`, `shielded.json`, `fee/*`, `erc8262/*`: this repo (fees mirror
+  Riddler's `FeePolicy` in lockstep).
 - `solver-bid-v2.json` and the escrow sets: parity with Riddler; digests must match on both sides.
 - `wire/openapi.json`: the server. Nothing here edits it.
 
@@ -47,6 +58,14 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   digest identical, so the only guard is `@xochi/solver-sdk`'s pre-bid check of
   `capabilities.rfcVersion` against `SOLVER_RFC_VERSION`, the one place that literal lives.
   `npm run generate:solver-bid-v2` lands in lockstep with the server.
+- **`shielded.json`** is generated here and vendored inbound by Riddler and the Xochi Worker, which
+  never compute their own expectations (§7 "Vector authority"). Its generator derives every value
+  from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
+  `shielded.ts` is tested against the committed file; `npm run generate:shielded` regenerates it,
+  and only an edit to §7 may change it: its approved encodings fix the vectors, refusals and
+  values, and what it leaves open fixes `open`. Network, corridor and Aztec values are fixtures.
+  It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest,
+  descriptorDigest, the recipient message); its `open` array names each one.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the
@@ -59,7 +78,7 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
 Pin an exact version; never read a sibling checkout:
 
 ```bash
-npm install --save-dev --save-exact @xochi/spec@0.8.1
+npm install --save-dev --save-exact @xochi/spec@0.9.0
 ```
 
 ```ts
@@ -69,7 +88,7 @@ import conformance from "@xochi/spec/conformance/conformance.json" with { type: 
 Non-JS CI:
 
 ```bash
-npm pack @xochi/spec@0.8.1 && tar -xzf xochi-spec-0.8.1.tgz   # -> package/conformance/..., package/fee/...
+npm pack @xochi/spec@0.9.0 && tar -xzf xochi-spec-0.9.0.tgz   # -> package/conformance/..., package/fee/...
 ```
 
 ## Verifying an implementation
@@ -86,6 +105,10 @@ reference is `computeFeeBreakdown` / `FEE_SCHEDULE` in `@xochi/client`. Note `to
 sum of independently floored layers.
 
 Wire: check `openapi.json` against `openapi.sha256`; compare a served document with `compare.mjs`.
+
+ERC-8262 providers: what a provider or consumer reproduces from `erc8262/vectors.json` is SPEC
+§10.8. The reference runner is
+[`packages/spec/test/erc8262-provider.test.ts`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/test/erc8262-provider.test.ts).
 
 Reference runners live in the repo:
 [`packages/reference/test`](https://github.com/xochi-fi/xochi-sdk/tree/main/packages/reference/test).

@@ -247,9 +247,9 @@ describe("SettlementRegistryClient (anvil)", () => {
         submitterPadded,
       ];
     } else if (proofType === PROOF_TYPES.PATTERN) {
-      // pattern layout (audit H-1):
+      // pattern layout (audit H-1, ERC-8262#25):
       //   [analysis_type, result, reporting_threshold, time_window, tx_set_hash,
-      //    submitter, settlement_root]
+      //    submitter, settlement_root, timestamp]
       // settlement_root must equal SettlementRegistry.computeSettlementRoot(tradeId)
       // at the time finalizeTrade is called -- callers that intend to finalize
       // MUST pass the matching tradeId here so the off-chain helper can fetch it.
@@ -264,6 +264,7 @@ describe("SettlementRegistryClient (anvil)", () => {
         padHex("0xdead", { size: 32 }), // tx_set_hash (non-zero)
         submitterPadded, // submitter (must match msg.sender)
         settlementRoot, // settlement_root (audit H-1)
+        padHex(toHex(now), { size: 32 }), // timestamp (must be within MAX_PROOF_AGE)
       ];
     } else {
       throw new Error(`unsupported proof type for test helper: ${proofType}`);

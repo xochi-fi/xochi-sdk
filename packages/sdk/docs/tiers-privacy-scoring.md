@@ -64,9 +64,11 @@ import { generateTierProof, generateHighestTierProof, verifyTierProof } from "@x
 
 const proof = await generateTierProof(loader, 60, 25, account.address);
 await verifyTierProof(loader, proof, { submitter: account.address });
-// { valid: true, threshold: 25, tierName: "Trusted" } -- read from the public inputs
+// { valid: true, threshold: 25, tierName: "Trusted", timestamp: 1792440000 } -- read from the public inputs
 
 await generateHighestTierProof(loader, 60, account.address); // score >= 50; null below 25
 ```
 
 **Tier proofs are self-attested** (unsigned private signals): anyone can prove any tier. Never grant fees or privacy from one.
+
+A tier proof's `timestamp` (unix seconds, risk_score public input 7) is set when it is generated and bound by the proof. The Oracle refuses it once it is older than `MAX_PROOF_AGE` (1 hour), whatever `expiresAt` says. `verifyTierProof` and `decodeTierProofClaim` return it but do not check its age: bound it yourself (`assertProofRecent(timestamp)`), never against an Oracle attestation's `timestamp`, which is the block time.

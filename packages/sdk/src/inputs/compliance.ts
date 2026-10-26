@@ -11,6 +11,13 @@ interface MultiProviderCompliance {
   jurisdictionId: number; // 0=EU, 1=US, 2=UK, 3=SG, 4=UAE
   providerSetHash: string;
   configHash?: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock). The Oracle rejects
+   * it when after `block.timestamp` (`ProofTimestampInFuture`) or more than
+   * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
+   * clock ahead of the chain makes the default revert. Prefer
+   * `await chainProofTimestamp(client)` (the chain's latest block time).
+   */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;
@@ -21,6 +28,7 @@ interface SingleProviderCompliance {
   jurisdictionId: number;
   providerSetHash: string;
   configHash?: string;
+  /** Proof timestamp (unix seconds); see MultiProviderCompliance.timestamp. */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
   submitter: Address;

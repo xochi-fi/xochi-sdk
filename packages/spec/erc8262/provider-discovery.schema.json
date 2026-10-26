@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/erc8262/provider-discovery.schema.json",
+  "title": "ERC-8262 provider discovery document",
+  "description": "Served at GET https://{trustDomainId}/.well-known/erc8262-provider.json (SPEC.md section 10.3). Discovery is never a pin: the consumer's allowlist pins the trust domain to its attestor, and every key and root is checked against the Oracle deployment named in the evidence. Re-fetch at least every revocationCheckSeconds; updatedAt never decreases. Body at most 65536 bytes.",
+  "type": "object",
+  "required": [
+    "protocol",
+    "protocolVersion",
+    "trustDomainId",
+    "mode",
+    "operator",
+    "deployments",
+    "keys",
+    "sources",
+    "revocationCheckSeconds",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {
+      "const": "erc8262-provider"
+    },
+    "protocolVersion": {
+      "description": "Provider protocol version; equals the `/v{n}/erc8262/` path segment. A consumer MUST refuse a version it does not implement.",
+      "const": 1
+    },
+    "trustDomainId": {
+      "description": "The independently controlled signing domain: the lowercase DNS host that serves this provider's discovery document and evidence endpoint. A document is authoritative only when fetched over https, without redirects, from this exact host: the consumer compares the serialized host of the URL it fetched with this value as exact ASCII. Never an IP literal: the last label starts with a letter, so no WHATWG URL parser reads the host as an IPv4 address. The host proves nothing about the attestor: the consumer's allowlist pins each trust domain to its attestorProviderId per Oracle deployment, and a host it does not list is refused.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "mode": {
+      "description": "`native`: the source operates its own keys, so the trust domain is the source's and lists exactly one source. `gateway`: an operator re-signs one or more vendor sources under one key set; every source behind it shares this one trust domain.",
+      "enum": [
+        "native",
+        "gateway"
+      ]
+    },
+    "operator": {
+      "description": "Human-readable name of the party controlling the keys.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "deployments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "description": "An ERC-8262 Oracle deployment and this trust domain's attestor on it. chainId and oracleAddress bind every artifact to one deployment (ERC-8262 signed payloads and credential roots are deployment-scoped), so evidence for one chain or Oracle is never accepted on another.",
+        "type": "object",
+        "required": [
+          "chainId",
+          "oracleAddress",
+          "attestorProviderId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "chainId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "oracleAddress": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{40}$"
+          },
+          "attestorProviderId": {
+            "description": "The ERC-8262 Oracle `providerId` (uint256: nonzero and at most 2^256 - 1) that attests for this trust domain on the paired deployment, as a canonical decimal string. Self-asserted: a consumer accepts it only when it equals the attestor its allowlist pins for the trust domain.",
+            "type": "string",
+            "maxLength": 78,
+            "pattern": "^(?:[1-9][0-9]{0,76}|1[0-0][0-9]{76}|11[0-4][0-9]{75}|115[0-6][0-9]{74}|1157[0-8][0-9]{73}|11579[0-1][0-9]{72}|1157920[0-7][0-9]{70}|11579208[0-8][0-9]{69}|115792089[0-1][0-9]{68}|1157920892[0-2][0-9]{67}|11579208923[0-6][0-9]{66}|115792089237[0-2][0-9]{65}|1157920892373[0-0][0-9]{64}|11579208923731[0-5][0-9]{63}|115792089237316[0-0][0-9]{62}|1157920892373161[0-8][0-9]{61}|11579208923731619[0-4][0-9]{60}|115792089237316195[0-3][0-9]{59}|1157920892373161954[0-1][0-9]{58}|11579208923731619542[0-2][0-9]{57}|115792089237316195423[0-4][0-9]{56}|1157920892373161954235[0-6][0-9]{55}|115792089237316195423570[0-8][0-9]{53}|1157920892373161954235709[0-7][0-9]{52}|11579208923731619542357098[0-4][0-9]{51}|11579208923731619542357098500[0-7][0-9]{48}|115792089237316195423570985008[0-5][0-9]{47}|1157920892373161954235709850086[0-7][0-9]{46}|11579208923731619542357098500868[0-6][0-9]{45}|115792089237316195423570985008687[0-8][0-9]{44}|11579208923731619542357098500868790[0-6][0-9]{42}|115792089237316195423570985008687907[0-7][0-9]{41}|1157920892373161954235709850086879078[0-4][0-9]{40}|11579208923731619542357098500868790785[0-2][0-9]{39}|115792089237316195423570985008687907853[0-1][0-9]{38}|1157920892373161954235709850086879078532[0-5][0-9]{37}|11579208923731619542357098500868790785326[0-8][0-9]{36}|115792089237316195423570985008687907853269[0-8][0-9]{35}|1157920892373161954235709850086879078532699[0-7][0-9]{34}|11579208923731619542357098500868790785326998[0-3][0-9]{33}|115792089237316195423570985008687907853269984[0-5][0-9]{32}|1157920892373161954235709850086879078532699846[0-5][0-9]{31}|11579208923731619542357098500868790785326998466[0-4][0-9]{30}|115792089237316195423570985008687907853269984665[0-5][0-9]{29}|1157920892373161954235709850086879078532699846656[0-3][0-9]{28}|115792089237316195423570985008687907853269984665640[0-4][0-9]{26}|1157920892373161954235709850086879078532699846656405[0-5][0-9]{25}|11579208923731619542357098500868790785326998466564056[0-3][0-9]{24}|1157920892373161954235709850086879078532699846656405640[0-2][0-9]{22}|11579208923731619542357098500868790785326998466564056403[0-8][0-9]{21}|115792089237316195423570985008687907853269984665640564039[0-3][0-9]{20}|1157920892373161954235709850086879078532699846656405640394[0-4][0-9]{19}|11579208923731619542357098500868790785326998466564056403945[0-6][0-9]{18}|115792089237316195423570985008687907853269984665640564039457[0-4][0-9]{17}|1157920892373161954235709850086879078532699846656405640394575[0-7][0-9]{16}|11579208923731619542357098500868790785326998466564056403945758[0-3][0-9]{15}|11579208923731619542357098500868790785326998466564056403945758400[0-6][0-9]{12}|115792089237316195423570985008687907853269984665640564039457584007[0-8][0-9]{11}|1157920892373161954235709850086879078532699846656405640394575840079[0-0][0-9]{10}|11579208923731619542357098500868790785326998466564056403945758400791[0-2][0-9]{9}|115792089237316195423570985008687907853269984665640564039457584007913[0-0][0-9]{8}|1157920892373161954235709850086879078532699846656405640394575840079131[0-1][0-9]{7}|11579208923731619542357098500868790785326998466564056403945758400791312[0-8][0-9]{6}|115792089237316195423570985008687907853269984665640564039457584007913129[0-5][0-9]{5}|1157920892373161954235709850086879078532699846656405640394575840079131296[0-2][0-9]{4}|11579208923731619542357098500868790785326998466564056403945758400791312963[0-8][0-9]{3}|115792089237316195423570985008687907853269984665640564039457584007913129639[0-8][0-9]{2}|1157920892373161954235709850086879078532699846656405640394575840079131296399[0-2][0-9]{1}|11579208923731619542357098500868790785326998466564056403945758400791312963993[0-4]|115792089237316195423570985008687907853269984665640564039457584007913129639935)$"
+          }
+        }
+      },
+      "description": "One entry per Oracle deployment. A (chainId, oracleAddress) pair MUST appear at most once (a consumer refuses a duplicate): one trust domain maps to one attestor per deployment."
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "description": "A signing key of this trust domain. The Oracle registry is authoritative over this list, and a key never issues before the Oracle holds it. Rotation (SPEC.md section 10.7): announce the predecessor's notAfter ahead and switch the Oracle at notAfter, not earlier. A credential-root successor's notBefore is that instant (setCredentialSigner then); a signed-signals successor's hash is registered first, so its notBefore may precede the predecessor's notAfter (an overlap in which evidence is re-issued), and the predecessor's hash is revoked at its notAfter.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "keyId",
+              "use",
+              "credentialSigner",
+              "notBefore"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "keyId": {
+                "description": "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9._-]+$"
+              },
+              "use": {
+                "description": "Signs EIP-712 CredentialRootPublication for proof type 4 roots.",
+                "const": "credential-root"
+              },
+              "credentialSigner": {
+                "description": "The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock more than 60 s before notAfter (the skew favours a consumer whose clock lags the provider's). A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter - 60 s on: the Oracle switches to the successor at notAfter.",
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "notBefore": {
+                "description": "Unix seconds; first instant the key may issue.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "notAfter": {
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation, announced at least revocationCheckSeconds plus cache propagation ahead, and the Oracle is switched at notAfter, not earlier (SPEC.md section 10.7, Rotation). Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement (type 4 evidence lives only while the Oracle holds its root valid, 48 h from registration). A retired signed-signals key's evidence is refused from notAfter on: proof types 7-9 are signed per proof.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "revokedAt": {
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per trust domain by keyId and by key material (credentialSigner or signerPubkeyHash): a later document omitting it, or listing the same material under a new keyId, does not restore the key.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "keyId",
+              "use",
+              "signerPubkeyHash",
+              "notBefore"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "keyId": {
+                "description": "Provider-chosen key identifier, unique within the trust domain and never reused. Compared exactly (case-sensitive): `K1` and `k1` are two keys.",
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9._-]+$"
+              },
+              "use": {
+                "description": "Signs signal payloads for proof types 7, 8 and 9.",
+                "const": "signed-signals"
+              },
+              "signerPubkeyHash": {
+                "description": "The hash the Oracle holds registered to the attestor (signerProvider(hash) == attestorProviderId), from before notBefore until notAfter. Never the all-zero hash, which marks an inactive signer slot.",
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$",
+                "not": {
+                  "const": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                }
+              },
+              "notBefore": {
+                "description": "Unix seconds; first instant the key may issue.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "notAfter": {
+                "description": "Unix seconds, exclusive; set when the key is retired by rotation, announced at least revocationCheckSeconds plus cache propagation ahead, and the Oracle is switched at notAfter, not earlier (SPEC.md section 10.7, Rotation). Evidence claiming an issuedAt at or after it is refused. A retired credential-root key's evidence is not refused for the retirement (type 4 evidence lives only while the Oracle holds its root valid, 48 h from registration). A retired signed-signals key's evidence is refused from notAfter on: proof types 7-9 are signed per proof.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "revokedAt": {
+                "description": "Unix seconds; set when the key is revoked (compromise). Revocation is retroactive: every evidence naming this key is refused whatever its issuedAt, because a compromised key can backdate. Never cleared, and a consumer remembers it per trust domain by keyId and by key material (credentialSigner or signerPubkeyHash): a later document omitting it, or listing the same material under a new keyId, does not restore the key.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            }
+          }
+        ]
+      },
+      "description": "keyId MUST be unique within the document (a consumer refuses a duplicate)."
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "description": "sourceId MUST be unique within the document (a consumer refuses a duplicate).",
+      "items": {
+        "type": "object",
+        "required": [
+          "sourceId",
+          "claims"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "description": "The commercial evidence source (the vendor whose check produced the claim), e.g. `sumsub`. The same sourceId may appear under several trust domains (a vendor reached natively and through a gateway); quorum never counts sourceIds.",
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "claims": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "required": [
+                "claimType",
+                "policyId",
+                "proofType"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "claimType": {
+                  "description": "The claim, namespaced `<namespace>.<name>`, e.g. `kyc.individual`, `personhood.unique`. Consumers map (sourceId, claimType) to their own scoring policy; a provider never sends points, categories or tiers.",
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+                },
+                "policyId": {
+                  "description": "The provider's verification policy under which the claim was established (e.g. a KYC level). Immutable per id: a change in what the provider checks is a new policyId, never an edit. Distinct from the consumer's scoring policy version, which a provider never sends.",
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
+                },
+                "proofType": {
+                  "description": "The ERC-8262 proof type the claim feeds: 4 (ATTESTATION, credential-root inclusion), 7 (COMPLIANCE_SIGNED), 8 (RISK_SCORE_SIGNED) or 9 (COMPLIANCE_MULTI_SIGNED).",
+                  "enum": [
+                    4,
+                    7,
+                    8,
+                    9
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "revocationCheckSeconds": {
+      "description": "Revocation: the longest a consumer may exercise a grant made on this trust domain's evidence after an accepting evaluation (the one that granted it, or a re-evaluation: a fresh fetch of this document and of the evidence, and fresh Oracle reads) before the next must have accepted; past it the grant is suspended until one accepts. The consumer reads it from the document each accepting evaluation fetched, the granting one included, and caps it at its own deployment maximum, so raising it never lengthens an interval already running nor exceeds the consumer's maximum (SPEC.md section 10.7, Held grants). A 410 for an announced evidenceId means revoked; any other non-200 response is a fetch failure (refused for now), never revoked.",
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400
+    },
+    "updatedAt": {
+      "description": "Unix seconds of the last change to this document. Never decreases: a consumer refuses a document older than one it has recorded for the same trust domain (a stale cache or rollback), and refuses (without recording) one more than 60 seconds ahead of its clock, so a mis-scaled value cannot lock the trust domain out.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    }
+  },
+  "if": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "const": "native"
+      }
+    }
+  },
+  "then": {
+    "type": "object",
+    "properties": {
+      "sources": {
+        "type": "array",
+        "maxItems": 1
+      }
+    }
+  }
+}

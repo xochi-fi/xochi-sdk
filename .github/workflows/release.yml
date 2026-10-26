@@ -87,7 +87,7 @@ concurrency:
 
 env:
   # Same pins as ci.yml; the @xochi/sdk gate needs the ERC-8262 artifacts.
-  ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
+  ERC_8262_REF: 1238acc8c68e2796b6274f31e066516b6087ee04
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
@@ -265,8 +265,10 @@ jobs:
           done
           npm run generate:conformance
           npm run generate:fee
+          npm run generate:erc8262
           npm run generate:solver-bid-v2
           npm run generate:escrow
+          npm run generate:shielded -w @xochi/spec
           git diff --exit-code packages/spec/
           cd packages/spec/wire
           printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -

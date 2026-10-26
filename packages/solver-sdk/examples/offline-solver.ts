@@ -54,6 +54,7 @@ import {
   type SolverEvent,
   type SolverTransport,
   type VenueCapabilities,
+  UnknownSolverEventError,
   ZERO_ORDER_ID,
 } from "../src/index";
 import { MAX_LOGGED_ERROR_CHARS, assertKeyShape, assertVenueUrl, requireEnv, tame } from "./env";
@@ -1044,7 +1045,10 @@ async function runLive(): Promise<void> {
         `  GAP   dropped=${gap.dropped} reset=${gap.reset} lost (${tame(gap.requestedCursor)}, ${tame(gap.cursor)}]`,
       ),
     onInvalidEvent: (err) =>
-      say(`  skip  malformed feed entry: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`),
+      say(
+        `  skip  ${err instanceof UnknownSolverEventError ? "unknown-type" : "malformed"} feed ` +
+          `entry: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`,
+      ),
   });
 
   // Public and unauthenticated: readable before admission. PRINTED, not

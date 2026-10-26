@@ -1,6 +1,6 @@
 {
   "name": "@xochi/spec",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Xochi protocol spec, wire contract and byte-equality conformance vectors.",
   "keywords": [
     "xochi",
@@ -44,8 +44,14 @@
     "./conformance/slash-attestation.schema.json": "./conformance/slash-attestation.schema.json",
     "./conformance/solver-bid-v2.json": "./conformance/solver-bid-v2.json",
     "./conformance/solver-bid-v2.schema.json": "./conformance/solver-bid-v2.schema.json",
+    "./conformance/shielded.json": "./conformance/shielded.json",
+    "./conformance/shielded.schema.json": "./conformance/shielded.schema.json",
     "./conformance/xsp.json": "./conformance/xsp.json",
     "./conformance/xsp.schema.json": "./conformance/xsp.schema.json",
+    "./erc8262/provider-discovery.schema.json": "./erc8262/provider-discovery.schema.json",
+    "./erc8262/provider-evidence.schema.json": "./erc8262/provider-evidence.schema.json",
+    "./erc8262/vectors.json": "./erc8262/vectors.json",
+    "./erc8262/vectors.schema.json": "./erc8262/vectors.schema.json",
     "./fee/vectors.json": "./fee/vectors.json",
     "./fee/schedule.json": "./fee/schedule.json",
     "./fee/schema.json": "./fee/schema.json",
@@ -59,12 +65,14 @@
     "ESCROW-RFC.md",
     "conformance",
     "fee",
+    "erc8262",
     "wire",
     "!wire/*.tmp",
     "!wire/generate.mjs",
     "!wire/format.mjs",
     "!conformance/*.ts",
     "!fee/*.ts",
+    "!erc8262/*.ts",
     "CHANGELOG.md"
   ],
   "publishConfig": {
@@ -73,9 +81,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
-    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
+    "format": "prettier --write \"conformance/**/*.ts\" \"fee/**/*.ts\" \"erc8262/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
+    "format:check": "prettier --check \"conformance/**/*.ts\" \"fee/**/*.ts\" \"erc8262/**/*.ts\" \"test/**/*.ts\" \"wire/**/*.mjs\" \"*.json\"",
     "generate:fee": "tsx fee/generate.ts",
+    "generate:erc8262": "tsx erc8262/generate.ts",
     "generate:order-id": "tsx conformance/generate-order-id.ts",
     "generate:open-auth": "tsx conformance/generate-open-auth.ts",
     "generate:fill-salt": "tsx conformance/generate-fill-salt.ts",
@@ -88,6 +97,7 @@
     "generate:solver-bid-v2": "tsx conformance/generate-solver-bid-v2.ts",
     "generate:fill-acceptance": "tsx conformance/generate-fill-acceptance.ts",
     "generate:xsp": "tsx conformance/generate-xsp.ts",
+    "generate:shielded": "tsx conformance/generate-shielded.ts",
     "generate:conformance": "tsx conformance/generate.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test"
   },
@@ -96,6 +106,7 @@
     "@xochi/reference": "0.0.0",
     "@xochi/signer": "0.5.1",
     "@xochi/solver-sdk": "0.5.0",
+    "ajv": "^8.20.0",
     "ethers": "^6.17.0",
     "tsx": "^4.23.13"
   }

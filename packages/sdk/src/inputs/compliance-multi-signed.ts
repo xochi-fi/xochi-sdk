@@ -83,6 +83,14 @@ export interface ComplianceMultiSignedInput {
   thresholdM: number;
   providerSetHash: string;
   configHash?: string;
+  /**
+   * Proof timestamp (unix seconds, default the local clock); must equal the
+   * timestamp every slot's provider signed. The Oracle rejects it when after
+   * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
+   * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
+   * chain makes the default revert. Prefer `await chainProofTimestamp(client)`
+   * (the chain's latest block time), read before requesting the signatures.
+   */
   timestamp?: string;
   submitter: Address;
   /** EVM chain ID of the consuming Oracle deployment (audit F-6). */

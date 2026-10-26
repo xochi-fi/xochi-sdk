@@ -4,7 +4,7 @@ All notable changes to `@xochi/provider` are documented here. Format follows [Ke
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-16
+## [0.1.0] - 2026-10-25
 
 ### Added
 
@@ -34,6 +34,8 @@ All notable changes to `@xochi/provider` are documented here. Format follows [Ke
 
 - Require `viem@^2.55.0`, which resolves the `ws` memory-disclosure and memory-exhaustion
   advisories fixed in `ws@8.21.0` (GHSA-58qx-3vcg-4xpx and GHSA-96hv-2xvq-fx4p).
+- The README's custody section states that the KMS/HSM key behind a `DigestSigner` is a
+  raw-digest signing oracle and must be dedicated to provider signing.
 
 [Unreleased]: https://github.com/xochi-fi/xochi-sdk/compare/provider-v0.1.0...HEAD
 [0.1.0]: https://github.com/xochi-fi/xochi-sdk/releases/tag/provider-v0.1.0

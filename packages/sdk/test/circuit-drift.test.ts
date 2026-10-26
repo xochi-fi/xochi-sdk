@@ -102,7 +102,7 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
   },
   {
     name: "risk_score",
-    publicInputs: 8,
+    publicInputs: 9,
     build: () =>
       buildRiskScoreInputs({
         type: "threshold",
@@ -110,16 +110,17 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
         threshold: 5000,
         direction: "gt",
         providerSetHash: PROVIDER_SET_HASH,
+        timestamp: TIMESTAMP,
         submitter: SUBMITTER,
       }),
   },
   {
     name: "pattern",
-    publicInputs: 7,
+    publicInputs: 8,
     build: () =>
       buildPatternInputs({
         amounts: [9000, 8500, 9200],
-        timestamps: [1700000000, 1700000100, 1700000200],
+        timestamps: [1699999800, 1699999900, 1700000000],
         numTransactions: 3,
         analysisType: 1,
         reportingThreshold: 10000,
@@ -127,6 +128,7 @@ const CIRCUITS: { name: string; publicInputs: number; build: () => Record<string
         txSetHash: "0xabcd",
         submitter: SUBMITTER,
         settlementRoot: "0",
+        timestamp: TIMESTAMP,
       }),
   },
   {

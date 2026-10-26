@@ -4,6 +4,8 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-25
+
 ### Changed
 
 - **Version 0.1.1**, past every pre-fix commit (which declare the never-published 0.1.0).

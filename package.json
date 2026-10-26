@@ -26,6 +26,7 @@
     "test:fee": "npm run test:fee -w @xochi/reference",
     "generate:conformance": "npm run generate:conformance -w @xochi/spec",
     "generate:fee": "npm run generate:fee -w @xochi/spec",
+    "generate:erc8262": "npm run generate:erc8262 -w @xochi/spec",
     "generate:solver-bid-v2": "npm run generate:solver-bid-v2 -w @xochi/spec",
     "generate:escrow": "npm run generate:escrow -w @xochi/spec",
     "generate:wire": "npm run generate:wire -w @xochi/spec --",

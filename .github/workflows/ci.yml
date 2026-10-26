@@ -9,7 +9,7 @@ on:
 env:
   # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
   # with packages/sdk/scripts/sync-circuits.sh output.
-  ERC_8262_REF: 0147684f9bee9b7b0f2f3aa5ca04f2a4c3b530e0
+  ERC_8262_REF: 1238acc8c68e2796b6274f31e066516b6087ee04
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
@@ -194,23 +194,25 @@ jobs:
           npm run typecheck -w @xochi/reference
           npm run typecheck -w @xochi/spec
 
-      - name: Tests (signer vectors + reference conformance/fee + solver + wire differ)
+      - name: Tests (signer vectors + reference conformance/fee + solver + wire differ + erc8262)
         run: |
           npm test -w @xochi/signer
           npm test -w @xochi/reference
           npm test -w @xochi/solver-sdk
           npm test -w @xochi/spec
 
-      - name: Fixture staleness check (conformance + fee)
+      - name: Fixture staleness check (conformance + fee + erc8262)
         run: |
           npm run generate:conformance
           npm run generate:fee
-          git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/
+          npm run generate:erc8262
+          git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/ packages/spec/erc8262/
 
-      - name: Solver vector staleness check (bid v2 + escrow)
+      - name: Solver vector staleness check (bid v2 + escrow + shielded)
         run: |
           npm run generate:solver-bid-v2
           npm run generate:escrow
+          npm run generate:shielded -w @xochi/spec
           git diff --exit-code packages/spec/conformance/
 
       # The wire artifact's gate is NOT `generate:wire` + `git diff --exit-code`

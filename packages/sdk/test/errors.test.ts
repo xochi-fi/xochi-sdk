@@ -13,6 +13,9 @@ import {
   SubmitterMismatchError,
   ProofAlreadyUsedError,
   ProofTimestampStaleError,
+  ProofTimestampInFutureError,
+  ProofTimestampNotMonotonicError,
+  TimeWindowTooLargeError,
   BatchTooLargeError,
   EmptyBatchError,
   VersionRevokedError,
@@ -64,6 +67,36 @@ describe("decodeContractError", () => {
     expect(err).toBeInstanceOf(ProofTimestampStaleError);
     expect((err as ProofTimestampStaleError).proofTimestamp).toBe(1700000000n);
     expect((err as ProofTimestampStaleError).blockTimestamp).toBe(1700003700n);
+  });
+
+  it("decodes ProofTimestampNotMonotonic as a re-prove signal", () => {
+    const err = decodeContractError(
+      makeRevert("ProofTimestampNotMonotonic", [1699999940n, 1700000000n]),
+      ORACLE_ABI,
+    );
+    expect(err).toBeInstanceOf(ProofTimestampNotMonotonicError);
+    expect((err as ProofTimestampNotMonotonicError).proofTimestamp).toBe(1699999940n);
+    expect((err as ProofTimestampNotMonotonicError).lastTimestamp).toBe(1700000000n);
+    expect(err?.message).toMatch(/re-prove/);
+  });
+
+  it("decodes ProofTimestampInFuture", () => {
+    const err = decodeContractError(
+      makeRevert("ProofTimestampInFuture", [1700000001n, 1700000000n]),
+      ORACLE_ABI,
+    );
+    expect(err).toBeInstanceOf(ProofTimestampInFutureError);
+    expect((err as ProofTimestampInFutureError).blockTimestamp).toBe(1700000000n);
+  });
+
+  it("decodes TimeWindowTooLarge with the window and maximum", () => {
+    const err = decodeContractError(
+      makeRevert("TimeWindowTooLarge", [7776001n, 7776000n]),
+      ORACLE_ABI,
+    );
+    expect(err).toBeInstanceOf(TimeWindowTooLargeError);
+    expect((err as TimeWindowTooLargeError).timeWindow).toBe(7776001n);
+    expect((err as TimeWindowTooLargeError).maximum).toBe(7776000n);
   });
 
   it("decodes BatchTooLarge and EmptyBatch (no args)", () => {

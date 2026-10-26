@@ -1,0 +1,1061 @@
+{
+  "version": 1,
+  "generator": "packages/spec/conformance/generate-shielded.ts",
+  "source": "xochi docs/planning/shielded-execution.md §7 \"Approved 2026-10-18: typed encodings\" (xochi#633, xochi#635)",
+  "constants": {
+    "aztecFieldModulus": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+    "amountMax": "340282366920938463463374607431768211455",
+    "domainVersion": "1",
+    "bindingDomainName": "Xochi Shielded Recipient",
+    "termsDomainName": "Xochi Shielded Terms",
+    "purpose": "xochi.shielded.recipient-binding.v1"
+  },
+  "domain": {
+    "typeString": "EIP712Domain(string name,string version,uint256 chainId,bytes32 salt)",
+    "typehash": "0xa604fff5a27d5951f334ccda7abff3286a8af29caeeb196a6f2b40a1dce7612b"
+  },
+  "networkIdentity": {
+    "approved": "2026-10-19 by the product owner, protocolVersion = numeric Aztec rollup version; the §7 record lands in a separate xochi PR",
+    "typeString": "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)",
+    "typehash": "0xd30a9f62f8e7b404cb3181a16d547adec2b019fa08cadb19ea0a97528c727cff",
+    "vectors": [
+      {
+        "name": "fixture-a",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "networkIdentityDigest": "0xf5046ae3e3c59d817787e4d1b3ae6d178280a4bf1b4dad404d4d31d5ca81e968"
+      },
+      {
+        "name": "fixture-a-redeployed-rollup",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "networkIdentityDigest": "0xa633167d362f0bec60f540ce3e9a7d2f9a8f67716efc19ff468b2928167fa597"
+      },
+      {
+        "name": "max-members",
+        "network": {
+          "aztecChainId": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+          "protocolVersion": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+          "rollupAddress": "0xffffffffffffffffffffffffffffffffffffffff",
+          "l1ChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "genesisOrNetworkDigest": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "networkIdentityDigest": "0xfca2208dfc7442947e40c8a1b9dffc04caa6bb62581e5818f5c79222e54ad95f"
+      }
+    ]
+  },
+  "domains": [
+    {
+      "name": "staging-fixture-a-84532",
+      "environment": "staging",
+      "network": {
+        "aztecChainId": "11155111",
+        "protocolVersion": "3924331020",
+        "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "l1ChainId": "11155111",
+        "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+      },
+      "chainId": "84532",
+      "networkIdentityDigest": "0xf5046ae3e3c59d817787e4d1b3ae6d178280a4bf1b4dad404d4d31d5ca81e968",
+      "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85",
+      "binding": {
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0xc15b5f6caea16ed88caa68a9ef1037b1376dad3569d9e47e22adb986f3559ff1"
+      },
+      "terms": {
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9"
+      }
+    },
+    {
+      "name": "production-fixture-a-84532",
+      "environment": "production",
+      "network": {
+        "aztecChainId": "11155111",
+        "protocolVersion": "3924331020",
+        "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "l1ChainId": "11155111",
+        "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+      },
+      "chainId": "84532",
+      "networkIdentityDigest": "0xf5046ae3e3c59d817787e4d1b3ae6d178280a4bf1b4dad404d4d31d5ca81e968",
+      "salt": "0x50c7cf50e6052eca47a523780144d96006c0034595a1b0e57ceea2c1a254bf1b",
+      "binding": {
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x50c7cf50e6052eca47a523780144d96006c0034595a1b0e57ceea2c1a254bf1b"
+        },
+        "domainSeparator": "0xb1fc8715fc1cdc1e5a391ffee39c36c5b09bdb81587ba5c4d9d89b1d6e388183"
+      },
+      "terms": {
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x50c7cf50e6052eca47a523780144d96006c0034595a1b0e57ceea2c1a254bf1b"
+        },
+        "domainSeparator": "0x712d1331b5ccca66e239e7950a0558818f30344d052ac1d444114f16ea54d5b1"
+      }
+    },
+    {
+      "name": "staging-redeployed-rollup-84532",
+      "environment": "staging",
+      "network": {
+        "aztecChainId": "11155111",
+        "protocolVersion": "3924331020",
+        "rollupAddress": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+        "l1ChainId": "11155111",
+        "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+      },
+      "chainId": "84532",
+      "networkIdentityDigest": "0xa633167d362f0bec60f540ce3e9a7d2f9a8f67716efc19ff468b2928167fa597",
+      "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66",
+      "binding": {
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66"
+        },
+        "domainSeparator": "0x353a7fca351278344d6f239739ceb962f6b3843705d2cccbb6f369efdce6fdbc"
+      },
+      "terms": {
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66"
+        },
+        "domainSeparator": "0x6b83f9b55e04d9fe2e4b196c867c19f34899d48caefce074e2843b69e972880f"
+      }
+    },
+    {
+      "name": "staging-fixture-a-chain-1",
+      "environment": "staging",
+      "network": {
+        "aztecChainId": "11155111",
+        "protocolVersion": "3924331020",
+        "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "l1ChainId": "11155111",
+        "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+      },
+      "chainId": "1",
+      "networkIdentityDigest": "0xf5046ae3e3c59d817787e4d1b3ae6d178280a4bf1b4dad404d4d31d5ca81e968",
+      "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85",
+      "binding": {
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x9de596250b85e7b84c116fc3bda5c6218f80436776c4c411045e6946e43e3709"
+      },
+      "terms": {
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x4ef8e3011d2bf82df59bbe6c3be76dbf27eceeeb580fdaa999a740cb8d59bfa1"
+      }
+    },
+    {
+      "name": "utf8-environment-max-members",
+      "environment": "tést-ñet",
+      "network": {
+        "aztecChainId": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+        "protocolVersion": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+        "rollupAddress": "0xffffffffffffffffffffffffffffffffffffffff",
+        "l1ChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "genesisOrNetworkDigest": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "chainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "networkIdentityDigest": "0xfca2208dfc7442947e40c8a1b9dffc04caa6bb62581e5818f5c79222e54ad95f",
+      "salt": "0xb0b23c5d8dd3ca6159b72170537ed464ce9bc46774414e822744c1b94a13cf6b",
+      "binding": {
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "salt": "0xb0b23c5d8dd3ca6159b72170537ed464ce9bc46774414e822744c1b94a13cf6b"
+        },
+        "domainSeparator": "0x22b978d8d8a8e2dd0d8c76e20c29ec69e8824ee6029c2151ea52af725351476f"
+      },
+      "terms": {
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "salt": "0xb0b23c5d8dd3ca6159b72170537ed464ce9bc46774414e822744c1b94a13cf6b"
+        },
+        "domainSeparator": "0xbb8632eb5dd671c6930bc4e18078de8bd7c73db04c0136160fade291b8f67ac7"
+      }
+    }
+  ],
+  "recipientBinding": {
+    "typeString": "RecipientBinding(address sourceWallet,uint256 sourceChainId,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision,bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)",
+    "typehash": "0xb36b18a8133bbef159bd669b8ff06e68beeb14623b663fce5ffc4e316a8f67a3",
+    "signerIsTestKey": true,
+    "vectors": [
+      {
+        "name": "baseline",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0xc15b5f6caea16ed88caa68a9ef1037b1376dad3569d9e47e22adb986f3559ff1",
+        "structHash": "0x1e69420a791641eecbaf9062775fd2e0fd98e26122dcb80a8c7271db62fddc36",
+        "digest": "0x14ded95243ad0ee6dd60e28f52d9f185933f3ec14d8cddbc916544860e4782b4",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0xad4383f6f183321203edcdcc36396426620128c404b7b981fbb750a7a9039afe761b208af317d38ab6a524cef6bd398a77f5892ffc60099c1a54f89fb1aa93df1b"
+      },
+      {
+        "name": "other-environment",
+        "environment": "production",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x50c7cf50e6052eca47a523780144d96006c0034595a1b0e57ceea2c1a254bf1b"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0xb1fc8715fc1cdc1e5a391ffee39c36c5b09bdb81587ba5c4d9d89b1d6e388183",
+        "structHash": "0x1e69420a791641eecbaf9062775fd2e0fd98e26122dcb80a8c7271db62fddc36",
+        "digest": "0xb06633851159b95945a399567dffd27d6dca2da9a64cb62b364c79891d0a2ad3",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x8541149744b138755b48273a7dd8bcbfd34a4f11e4c624a0e683a41d15b813613ac64b0a86f728b779288990e1f1396621365d7f63c3edb26765863b2c9e7d131b"
+      },
+      {
+        "name": "redeployed-rollup",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0x353a7fca351278344d6f239739ceb962f6b3843705d2cccbb6f369efdce6fdbc",
+        "structHash": "0x1e69420a791641eecbaf9062775fd2e0fd98e26122dcb80a8c7271db62fddc36",
+        "digest": "0xa092e1521087248419c547c6544a67cffd87bfbee8806753003112b788a2d9ac",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x9d90476106e6a98642e2990e9ce3b4db588ea0b1441d9c54ba7f3dff98194886327e3d447392b563467fe598626a4703cb2bdfa5b1bda9959868656590b9323e1c"
+      },
+      {
+        "name": "other-source-chain",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "1",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0x9de596250b85e7b84c116fc3bda5c6218f80436776c4c411045e6946e43e3709",
+        "structHash": "0x47e535caee68a22d2f4ae132e8dc172424b321c57db53d918cf23779006f00e5",
+        "digest": "0x6909d3f6d4da9438072dec34705e95b2890ff660bee232d3d6be43f888d52bb8",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x3ca226189a23135c0f6f07a85ea9d46ab13a705a17e8d5ccd53068905e97c21f028d9e9d9d0ffd55b61d21d8bad7ece5b8d16baceb88156977c4a363455638a61b"
+      },
+      {
+        "name": "next-corridor-revision",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "2",
+          "manifestDigest": "0x4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0xc15b5f6caea16ed88caa68a9ef1037b1376dad3569d9e47e22adb986f3559ff1",
+        "structHash": "0xda4e35be651d6514347f7d6d579bdb4e89521f884be303f0bf1d354e02975493",
+        "digest": "0x178e799a3d3dc43f4ce9e693dc9b5da4589ad0e99983d2c659986343772411a3",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x3b373ebf321c1b184722f206a4098972a250f9e98615c7c63a5d20bc7b2844896390da9fa88b4c9ae6ddbfc5f65da3f77046fe3a53b5fe47138704e5aee48d1a1b"
+      },
+      {
+        "name": "second-source-wallet",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "message": {
+          "sourceWallet": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0xc15b5f6caea16ed88caa68a9ef1037b1376dad3569d9e47e22adb986f3559ff1",
+        "structHash": "0x8142e1421caab098d22c59be31e17dfd4bd073da76fa0b8d813102f378910fec",
+        "digest": "0xb17aae52755d49fc6a35618b832654080da04be27fe03dd685be55a91c1d6ab9",
+        "signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "signature": "0xc4e336c02154a9852b61888dbf7ae0b0ed6c26429d340d2b4b2ec1e1c5a2cf606743579e6f73f5aaf1e33c74d62b9ad7f2d76e19538d64c069e23836b852a73a1c"
+      },
+      {
+        "name": "boundary-values",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+          "protocolVersion": "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+          "rollupAddress": "0xffffffffffffffffffffffffffffffffffffffff",
+          "l1ChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "genesisOrNetworkDigest": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "salt": "0xe39d9c50dd57fab0addcd1bec2312d539c882e9e7cf0d67cbb2b76518bff53ac"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "aztecRecipient": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+          "aztecToken": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "4294967295",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "challengeExpiry": "18446744073709551615",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "domainSeparator": "0xa3a20ab2424aa1091746d04656789822995628348a5c4c28e11a5b70fab23cfb",
+        "structHash": "0x2cadccc8843257be7044f94b9c393295aa3d3a9fbeb436d7e9e1642c510907ce",
+        "digest": "0x73d757f32542eeecb8c9844332438e77dcafa103be31269594095637a75d38b9",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0xd9430602d93dd29b0a9b07a82e6bc188fe6039bef3c189711741c66206c5f2114fb916d825e284d1f9713ebdfadfbb40bbfc2bc79d3603b4a7a3182662a392be1c"
+      }
+    ],
+    "refusals": [
+      {
+        "name": "token-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "aztecToken"
+        }
+      },
+      {
+        "name": "recipient-field-modulus",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "aztec_out_of_field",
+          "field": "aztecRecipient"
+        }
+      },
+      {
+        "name": "purpose-other-version",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v2"
+        },
+        "error": {
+          "code": "purpose_mismatch",
+          "field": "purpose"
+        }
+      },
+      {
+        "name": "corridor-revision-over-uint32",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "4294967296",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "uint_out_of_range",
+          "field": "corridorRevision"
+        }
+      },
+      {
+        "name": "challenge-expiry-over-uint64",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "18446744073709551616",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "uint_out_of_range",
+          "field": "challengeExpiry"
+        }
+      },
+      {
+        "name": "source-chain-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "0",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "chain_id_zero",
+          "field": "sourceChainId"
+        }
+      },
+      {
+        "name": "source-wallet-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0x0000000000000000000000000000000000000000",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "evm_address_zero",
+          "field": "sourceWallet"
+        }
+      },
+      {
+        "name": "source-wallet-not-20-bytes",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "not_evm_address",
+          "field": "sourceWallet"
+        }
+      },
+      {
+        "name": "descriptor-digest-not-bytes32",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "not_bytes32",
+          "field": "descriptorDigest"
+        }
+      },
+      {
+        "name": "environment-empty",
+        "environment": "",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "environment_empty",
+          "field": "environment"
+        }
+      },
+      {
+        "name": "network-aztec-chain-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "0",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "network.aztecChainId"
+        }
+      },
+      {
+        "name": "network-protocol-version-field-modulus",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "aztec_out_of_field",
+          "field": "network.protocolVersion"
+        }
+      },
+      {
+        "name": "network-rollup-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0x0000000000000000000000000000000000000000",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "evm_address_zero",
+          "field": "network.rollupAddress"
+        }
+      },
+      {
+        "name": "network-l1-chain-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "0",
+          "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "chain_id_zero",
+          "field": "network.l1ChainId"
+        }
+      },
+      {
+        "name": "network-genesis-digest-zero",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "3924331020",
+          "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "digest_zero",
+          "field": "network.genesisOrNetworkDigest"
+        }
+      }
+    ]
+  },
+  "values": {
+    "aztecBytes32": {
+      "accepted": [
+        {
+          "name": "fixture-recipient",
+          "value": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c"
+        },
+        {
+          "name": "fixture-token",
+          "value": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+        },
+        {
+          "name": "one",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000001"
+        },
+        {
+          "name": "evm-address-sized",
+          "value": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+        },
+        {
+          "name": "largest-below-2^160",
+          "value": "0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff"
+        },
+        {
+          "name": "largest-in-field",
+          "value": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+        }
+      ],
+      "refused": [
+        {
+          "name": "zero",
+          "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "error": "aztec_zero"
+        },
+        {
+          "name": "field-modulus",
+          "value": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "error": "aztec_out_of_field"
+        },
+        {
+          "name": "all-ones",
+          "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "error": "aztec_out_of_field"
+        },
+        {
+          "name": "no-0x-prefix",
+          "value": "1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "error": "not_bytes32"
+        },
+        {
+          "name": "31-bytes",
+          "value": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "error": "not_bytes32"
+        },
+        {
+          "name": "33-bytes",
+          "value": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+          "error": "not_bytes32"
+        },
+        {
+          "name": "non-hex",
+          "value": "0xzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+          "error": "not_bytes32"
+        }
+      ]
+    },
+    "amount": {
+      "accepted": [
+        {
+          "name": "one",
+          "value": "1"
+        },
+        {
+          "name": "six-decimal-unit",
+          "value": "1000000"
+        },
+        {
+          "name": "max",
+          "value": "340282366920938463463374607431768211455"
+        }
+      ],
+      "refused": [
+        {
+          "name": "zero",
+          "value": "0",
+          "error": "amount_zero"
+        },
+        {
+          "name": "max-plus-one",
+          "value": "340282366920938463463374607431768211456",
+          "error": "amount_over_max"
+        },
+        {
+          "name": "uint256-max",
+          "value": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+          "error": "amount_over_max"
+        },
+        {
+          "name": "leading-zero",
+          "value": "01",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "double-zero",
+          "value": "00",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "negative",
+          "value": "-1",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "plus-sign",
+          "value": "+1",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "fraction",
+          "value": "1.0",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "exponent",
+          "value": "1e3",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "hex",
+          "value": "0x10",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "leading-space",
+          "value": " 1",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "trailing-space",
+          "value": "1 ",
+          "error": "amount_not_canonical"
+        },
+        {
+          "name": "empty",
+          "value": "",
+          "error": "amount_not_canonical"
+        }
+      ]
+    }
+  },
+  "open": [
+    {
+      "item": "ShieldedTermsV1",
+      "reason": "§7 fixes the terms domain only. The struct's member names and types, its nesting of source/destination/network/corridor, and the fee_breakdown typed shape are not fixed."
+    },
+    {
+      "item": "manifestDigest",
+      "reason": "§7 lists the manifest identity fields but not their typed encoding; manifestDigest is an opaque bytes32 input here."
+    },
+    {
+      "item": "descriptorDigest",
+      "reason": "Its encoding is open (§7 'Still open'); it is an opaque bytes32 input here."
+    },
+    {
+      "item": "recipientMessage",
+      "reason": "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are open (§7). Selecting the recipient account class (§7 'Recipient authorization') is a prerequisite, not their specification."
+    }
+  ]
+}

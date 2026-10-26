@@ -1,0 +1,806 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xochi.fi/spec/conformance/shielded.schema.json",
+  "title": "Shielded settlement contract v1 typed-encoding vector set",
+  "description": "NetworkIdentity hashStruct, the salted Domain (binding) / Domain (terms), the RecipientBinding struct hash, EIP-712 digest and source-wallet signature (public test keys), and the value refusals (xochi shielded-execution.md §7, approved 2026-10-18; NetworkIdentity encoding approved 2026-10-19). Generated from §7 literals with ethers primitives, independently of @xochi/signer. uint values are decimal strings; bytes/addresses lowercase hex. Every refusal case differs from the baseline in exactly one input, so its expected code is independent of check order. Network, corridor and Aztec values are fixtures.",
+  "type": "object",
+  "required": [
+    "version",
+    "generator",
+    "source",
+    "constants",
+    "domain",
+    "networkIdentity",
+    "domains",
+    "recipientBinding",
+    "values",
+    "open"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "generator": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "constants": {
+      "type": "object",
+      "required": [
+        "aztecFieldModulus",
+        "amountMax",
+        "domainVersion",
+        "bindingDomainName",
+        "termsDomainName",
+        "purpose"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aztecFieldModulus": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "amountMax": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "domainVersion": {
+          "const": "1"
+        },
+        "bindingDomainName": {
+          "const": "Xochi Shielded Recipient"
+        },
+        "termsDomainName": {
+          "const": "Xochi Shielded Terms"
+        },
+        "purpose": {
+          "const": "xochi.shielded.recipient-binding.v1"
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "required": [
+        "typeString",
+        "typehash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "typeString": {
+          "type": "string"
+        },
+        "typehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        }
+      }
+    },
+    "networkIdentity": {
+      "type": "object",
+      "required": [
+        "approved",
+        "typeString",
+        "typehash",
+        "vectors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "type": "string"
+        },
+        "typeString": {
+          "type": "string"
+        },
+        "typehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "network",
+              "networkIdentityDigest"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "network": {
+                "type": "object",
+                "required": [
+                  "aztecChainId",
+                  "protocolVersion",
+                  "rollupAddress",
+                  "l1ChainId",
+                  "genesisOrNetworkDigest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "aztecChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "protocolVersion": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "rollupAddress": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "l1ChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "genesisOrNetworkDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "networkIdentityDigest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "environment",
+          "network",
+          "chainId",
+          "networkIdentityDigest",
+          "salt",
+          "binding",
+          "terms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "network": {
+            "type": "object",
+            "required": [
+              "aztecChainId",
+              "protocolVersion",
+              "rollupAddress",
+              "l1ChainId",
+              "genesisOrNetworkDigest"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "aztecChainId": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "protocolVersion": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "rollupAddress": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "l1ChainId": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "genesisOrNetworkDigest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          },
+          "chainId": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "networkIdentityDigest": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "salt": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "binding": {
+            "type": "object",
+            "required": [
+              "domain",
+              "domainSeparator"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "salt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          },
+          "terms": {
+            "type": "object",
+            "required": [
+              "domain",
+              "domainSeparator"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "salt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "recipientBinding": {
+      "type": "object",
+      "required": [
+        "typeString",
+        "typehash",
+        "signerIsTestKey",
+        "vectors",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "typeString": {
+          "type": "string"
+        },
+        "typehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "signerIsTestKey": {
+          "const": true
+        },
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "environment",
+              "network",
+              "domain",
+              "message",
+              "domainSeparator",
+              "structHash",
+              "digest",
+              "signer",
+              "signature"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "network": {
+                "type": "object",
+                "required": [
+                  "aztecChainId",
+                  "protocolVersion",
+                  "rollupAddress",
+                  "l1ChainId",
+                  "genesisOrNetworkDigest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "aztecChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "protocolVersion": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "rollupAddress": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "l1ChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "genesisOrNetworkDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "salt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "message": {
+                "type": "object",
+                "required": [
+                  "sourceWallet",
+                  "sourceChainId",
+                  "aztecRecipient",
+                  "aztecToken",
+                  "descriptorDigest",
+                  "corridorId",
+                  "corridorRevision",
+                  "manifestDigest",
+                  "nonce",
+                  "challengeExpiry",
+                  "purpose"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "sourceWallet": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "sourceChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "aztecRecipient": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "aztecToken": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "descriptorDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "corridorId": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "corridorRevision": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "manifestDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "nonce": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "challengeExpiry": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "purpose": {
+                    "const": "xochi.shielded.recipient-binding.v1"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "structHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "signer": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "signature": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{130}$"
+              }
+            }
+          }
+        },
+        "refusals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "environment",
+              "network",
+              "message",
+              "error"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "network": {
+                "type": "object",
+                "required": [
+                  "aztecChainId",
+                  "protocolVersion",
+                  "rollupAddress",
+                  "l1ChainId",
+                  "genesisOrNetworkDigest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "aztecChainId": {
+                    "type": "string"
+                  },
+                  "protocolVersion": {
+                    "type": "string"
+                  },
+                  "rollupAddress": {
+                    "type": "string"
+                  },
+                  "l1ChainId": {
+                    "type": "string"
+                  },
+                  "genesisOrNetworkDigest": {
+                    "type": "string"
+                  }
+                }
+              },
+              "message": {
+                "type": "object",
+                "required": [
+                  "sourceWallet",
+                  "sourceChainId",
+                  "aztecRecipient",
+                  "aztecToken",
+                  "descriptorDigest",
+                  "corridorId",
+                  "corridorRevision",
+                  "manifestDigest",
+                  "nonce",
+                  "challengeExpiry",
+                  "purpose"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "sourceWallet": {
+                    "type": "string"
+                  },
+                  "sourceChainId": {
+                    "type": "string"
+                  },
+                  "aztecRecipient": {
+                    "type": "string"
+                  },
+                  "aztecToken": {
+                    "type": "string"
+                  },
+                  "descriptorDigest": {
+                    "type": "string"
+                  },
+                  "corridorId": {
+                    "type": "string"
+                  },
+                  "corridorRevision": {
+                    "type": "string"
+                  },
+                  "manifestDigest": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "challengeExpiry": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  }
+                }
+              },
+              "error": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "field"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "not_evm_address",
+                      "evm_address_zero",
+                      "uint_not_canonical",
+                      "uint_out_of_range",
+                      "chain_id_zero",
+                      "environment_empty",
+                      "digest_zero",
+                      "purpose_mismatch"
+                    ]
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "values": {
+      "type": "object",
+      "required": [
+        "aztecBytes32",
+        "amount"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aztecBytes32": {
+          "type": "object",
+          "required": [
+            "accepted",
+            "refused"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "accepted": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              }
+            },
+            "refused": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value",
+                  "error"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "error": {
+                    "enum": [
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "not_evm_address",
+                      "evm_address_zero",
+                      "uint_not_canonical",
+                      "uint_out_of_range",
+                      "chain_id_zero",
+                      "environment_empty",
+                      "digest_zero",
+                      "purpose_mismatch"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "amount": {
+          "type": "object",
+          "required": [
+            "accepted",
+            "refused"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "accepted": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                }
+              }
+            },
+            "refused": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value",
+                  "error"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "error": {
+                    "enum": [
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "not_evm_address",
+                      "evm_address_zero",
+                      "uint_not_canonical",
+                      "uint_out_of_range",
+                      "chain_id_zero",
+                      "environment_empty",
+                      "digest_zero",
+                      "purpose_mismatch"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "open": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "item",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

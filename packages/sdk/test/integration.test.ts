@@ -120,19 +120,23 @@ describe("pattern proof", () => {
   it("generates and verifies a structuring analysis proof", async () => {
     const result = await prover.provePattern({
       amounts: [500, 1200, 3000, 7500],
-      timestamps: [1700000000, 1700001000, 1700002000, 1700003000],
+      timestamps: [1699990000, 1699991000, 1699992000, 1699993000],
       numTransactions: 4,
       analysisType: 1,
       reportingThreshold: 10000,
       timeWindow: 86400,
-      txSetHash: "0x2231d26d52515af30cbb6e91834cdb9e3d1d36575f160cbb4f6ebbb3c3dd8dad",
+      txSetHash: "0x2b3a892d0f3dfeb2474d341a27f3f48fbab2ae0d5a8b4ecca47ef9be42e20f56",
       submitter: SUBMITTER,
       settlementRoot: "0x" + "0".repeat(64),
+      timestamp: "1700000000",
     });
 
     expect(result.proof).toBeInstanceOf(Uint8Array);
     expect(result.proof.length).toBeGreaterThan(0);
     expect(result.publicInputs).toHaveLength(PUBLIC_INPUT_COUNTS[PROOF_TYPES.PATTERN]);
+    // settlement_root stays input 6; the proof timestamp is appended as input 7.
+    expect(BigInt(result.publicInputs[6])).toBe(0n);
+    expect(BigInt(result.publicInputs[7])).toBe(1700000000n);
     expect(result.proofHex).toMatch(/^0x[0-9a-f]+$/);
 
     const valid = await prover.verify("pattern", result.proof, result.publicInputs);
