@@ -25,7 +25,13 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { LayeredFeeBreakdownSchema } from "@xochi/client";
-import { parseCapabilities, chainVmType, chainAddressFormat } from "@xochi/signer";
+import {
+  parseCapabilities,
+  chainVmType,
+  chainAddressFormat,
+  stealthFactoryFor,
+  narrowStealthChains,
+} from "@xochi/signer";
 
 const require = createRequire(import.meta.url);
 
@@ -191,6 +197,80 @@ describe("capability chain encodings the parser recognises", () => {
       unrecognised,
       "served address_format(s) capabilities.ts does not recognise; add them to AddressFormat",
     ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("capability stealth and ownership fields the parser reads (Riddler #1336, #1346)", () => {
+  // The value-level view of a served property: what `type`/`nullable`/`enum`/`items` say.
+  interface ValueSchema {
+    type?: string;
+    nullable?: boolean;
+    enum?: unknown[];
+    items?: { $ref?: string };
+  }
+
+  function matrixProp(key: string): ValueSchema {
+    const found = schema("CapabilityMatrix").properties?.[key] as ValueSchema | undefined;
+    if (!found) throw new Error(`served CapabilityMatrix declares no property \`${key}\``);
+    return found;
+  }
+
+  function chainItemProp(key: string): ValueSchema {
+    const items = (
+      schema("CapabilityMatrix").properties?.chains as { items?: OpenApiSchema } | undefined
+    )?.items;
+    const found = items?.properties?.[key] as ValueSchema | undefined;
+    if (!found) throw new Error(`served CapabilityMatrix.chains[] declares no property \`${key}\``);
+    return found;
+  }
+
+  // Catches: a served chain id the parser drops from `stealth_chains`, or the list
+  // retyped away from an array of integer ChainIds (parseStealthChains reads a list of
+  // positive integers and nothing else).
+  it("stealth_chains is a list of ChainId, and every served ChainId survives the parse", () => {
+    const served = matrixProp("stealth_chains");
+    expect(served.type).toBe("array");
+    const ref = served.items?.$ref ?? "";
+    const prefix = "#/components/schemas/";
+    expect(ref.startsWith(prefix), `stealth_chains items are not a local $ref: ${ref}`).toBe(true);
+    const chainId = schema(ref.slice(prefix.length)) as ValueSchema;
+    expect(chainId.type).toBe("integer");
+    const ids = (chainId.enum ?? []) as number[];
+    if (ids.length === 0) throw new Error(`served ${ref} declares no enum`);
+    const c = parseCapabilities({ stealth_chains: ids })!;
+    expect(c.stealthChains).toEqual(ids);
+    expect(narrowStealthChains(c, ids)).toEqual(ids);
+  });
+
+  // Catches: the per-chain factory losing its nullability or its string type. The parser
+  // reads it as `string | null` and serves `null` through stealthFactoryFor.
+  it("chains[].stealth_factory_address is a nullable string, and null parses as no factory", () => {
+    const served = chainItemProp("stealth_factory_address");
+    expect(served.type).toBe("string");
+    expect(served.nullable).toBe(true);
+    const c = parseCapabilities({
+      stealth_chains: [1],
+      chains: [{ chain_id: 1, vm_type: "evm", stealth_factory_address: null }],
+    })!;
+    expect(stealthFactoryFor(c, 1)).toBeNull();
+  });
+
+  // Catches: the served enum gaining a member, or `execute_ownership` retyped. Every
+  // served value must grant the premise and every other boolean must not, which is the
+  // parser's "literal true only" reading.
+  it("execute_ownership: every served value reads true, every other boolean reads false", () => {
+    const served = matrixProp("execute_ownership");
+    expect(served.type).toBe("boolean");
+    const values = served.enum ?? [];
+    if (values.length === 0) throw new Error("served execute_ownership declares no enum");
+    for (const v of values) {
+      expect(parseCapabilities({ execute_ownership: v })!.executeOwnership, String(v)).toBe(true);
+    }
+    for (const v of [true, false].filter((b) => !values.includes(b))) {
+      expect(parseCapabilities({ execute_ownership: v })!.executeOwnership, String(v)).toBe(false);
+    }
   });
 });
 
