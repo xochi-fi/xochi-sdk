@@ -37,7 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
-| 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Additive; no taker signed struct, wire field or existing vector changes |
+| 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3): served `/xochi/*` fields vendored, execute refusal markers and the sole-caller re-quote rule (§3.5). No taker signed struct or existing vector changes |
 | 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
 | 0.8.0 | current | 3 | XSP hash primitives (`ESCROW-RFC 0.4.0-draft` §13, riddler #1223): `XochiObligation` EIP-712 `obligationId`, Depository CallRequest/MarkConsumed digests, deposit-address derivation, pinned by `conformance/xsp.json`. Additive; no taker signed struct or wire field changes |
 | 0.7.0 | current | 3 | Slash proof on solver signatures (`SOLVER-RFC 0.4.0-draft`, `ESCROW-RFC 0.3.0-draft`): SolverBid v2 (`conformance/solver-bid-v2.json`, replaces `bid.json`), FillAcceptance (`conformance/fill-acceptance.json`), SolverBond v2 domain `"2"` (`slash-attestation.json` regenerated). No taker signed struct or wire field changes |
@@ -145,32 +145,6 @@
   and was moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
-- **Wire refresh against served `0.8.0` (2026-10-26), and the SPEC version does
-  not move.** The served document gained Riddler #1315, #1318, #1321, #1336,
-  #1346 and #1347: `QuoteRequest.customer_ref`, `QuoteResponse.input_amount_usd`,
-  `checks`/`timestamp` on `/xochi/health/ready`, multi-chain stealth
-  (`stealth_chains`, `chains[].stealth_factory_address`, `chain_id` on both claim
-  prepare forms), `/xochi/execute`'s not-accepted and not-executed markers with
-  `Retry-After` on its `429`/`503` and the top-level `ErrorResponse.retry_after`,
-  `execute_ownership`, and `intentId`/`claimed` on `ClaimSubmitResult`. §3.2,
-  §3.3, §3.5, §5.1 and §6 now read those shapes (§5.1 also reads #1302's
-  shielded refusal, served in prose the differ does not compare); §3.5's rule
-  that a `503` is transient no longer holds on `/xochi/execute`, where an
-  unmarked `503` is in doubt (poll status, never resend). Installed with
-  `--allow-breaking`; each of
-  the 8 BREAKING findings is acceptable for a stated reason. (1)–(2) The
-  `/xochi/execute` `404` and `429` lost their `$ref`: the inlined responses keep
-  the `ErrorResponse` schema (the `429` adds `Retry-After` and `x-ratelimit-*`
-  headers). (3)–(4) The
-  `/xochi/health/ready` `503` schema became `allOf` of `ErrorResponse` and a
-  `details {checks, timestamp}` object: a narrowing of an operational body no
-  taker flow reads. (5)–(7) `ClaimSubmitResult` gained the required `intentId`
-  and `claimed`: a response gaining fields; only a decoder that refuses unknown
-  keys breaks, and no request changes. (8) `CapabilityMatrix.stealth_factory_address`
-  became nullable (and deprecated): `null` on a deploy whose `stealth_chains` is
-  empty; `@xochi/signer`'s `parseCapabilities` already reads it as
-  `string | null`. The served `spec_version` is still `0.8.0`; Riddler #1286
-  (merged, not yet deployed) advertises `0.9.0` without touching the OpenAPI.
 - `0.9.0`: ERC-8262 provider protocol (§10, xochi-sdk#37). New artifact set
   `erc8262/`: `provider-discovery.schema.json` (served at
   `/.well-known/erc8262-provider.json`), `provider-evidence.schema.json`
@@ -187,9 +161,40 @@
   MINOR because it
   adds a public contract, as `0.8.0` did for XSP; additive, so no §2 taker
   struct, §4 fee
-  artifact, served wire field or existing vector changes. The server MUST
+  artifact or existing vector changes. The server MUST
   advertise `spec_version: "0.9.0"` in lockstep; until it does the
   `spec_version` probe reports DRIFT, which is correct.
+
+  `0.9.0` also carries the wire refresh against served `0.8.0` taken
+  2026-10-26 (xochi-sdk#53). The served document gained Riddler #1315, #1318,
+  #1321, #1336, #1346 and #1347: `QuoteRequest.customer_ref`,
+  `QuoteResponse.input_amount_usd`, `checks`/`timestamp` on
+  `/xochi/health/ready`, multi-chain stealth (`stealth_chains`,
+  `chains[].stealth_factory_address`, `chain_id` on both claim prepare forms),
+  `/xochi/execute`'s not-accepted and not-executed markers with `Retry-After` on
+  its `429`/`503` and the top-level `ErrorResponse.retry_after`,
+  `execute_ownership`, and `intentId`/`claimed` on `ClaimSubmitResult`. §3.2,
+  §3.3, §3.5, §5.1 and §6 read those shapes (§5.1 also reads #1302's shielded
+  refusal, served in prose the differ does not compare). Two §3.5 rules move
+  with it: a `503` is no longer transient on `/xochi/execute`, where an
+  unmarked one is in doubt (poll status, never resend); and a caller that owns
+  the quote, while the server serves `execute_ownership: true`, MAY treat an
+  execute refusal carrying `details.funds_moved: false` as nothing moved and
+  re-quote inside the pull's expiry bound, which every other caller still MUST
+  NOT. The refresh was installed with `--allow-breaking`; each of the 8
+  BREAKING findings is acceptable for a stated reason. (1)–(2) The
+  `/xochi/execute` `404` and `429` lost their `$ref`: the inlined responses keep
+  the `ErrorResponse` schema (the `429` adds `Retry-After` and `x-ratelimit-*`
+  headers). (3)–(4) The `/xochi/health/ready` `503` schema became `allOf` of
+  `ErrorResponse` and a `details {checks, timestamp}` object: a narrowing of an
+  operational body no taker flow reads. (5)–(7) `ClaimSubmitResult` gained the
+  required `intentId` and `claimed`: a response gaining fields; only a decoder
+  that refuses unknown keys breaks, and no request changes. (8)
+  `CapabilityMatrix.stealth_factory_address` became nullable (and deprecated):
+  `null` on a deploy whose `stealth_chains` is empty; `@xochi/signer`'s
+  `parseCapabilities` already reads it as `string | null`. No signed struct,
+  fee artifact or vector changes. Riddler #1286 (merged, not yet deployed)
+  advertises `0.9.0` without touching the OpenAPI.
 - `0.8.1`: never published; its changes ship inside `0.9.0`, the version the
   server must advertise next (above). PATCH-sized, with no wire, signature or
   vector change: the second adversarial review's fixes, and the tarball's
@@ -548,9 +553,10 @@ resend.
 without `details.funds_moved`. `funds_moved: false` covers only claims made up
 to the answer, so it is a "nothing moved" verdict only for a caller that is the
 quote's sole caller; `GET /xochi/capabilities` serves `execute_ownership: true`
-while the server enforces this (§6). The markers report what this request did:
-they do not lift the re-quote bound below, since a `pull_signature` the venue
-has received stays executable until its expiry bound.
+while the server enforces this (§6). For every other caller the markers report
+only what this request did and do not lift the re-quote bound below, since a
+`pull_signature` the venue has received stays executable until its expiry
+bound; the sole-caller exception below is the only case they do.
 
 **A stale quote has no stable code.** This document previously named
 `quote_expired` and hung a single-retry SHOULD on it; that code is not in the
@@ -590,7 +596,26 @@ code:
   holding two independently executable pulls over one wallet balance, and while
   a per-quote input ceiling bounds each pull on its own, nothing bounds the
   pair in aggregate. A client MUST wait for that bound to pass before quoting
-  again, or surface the failure.
+  again, or surface the failure, except under the sole-caller exception below.
+- **Sole-caller exception.** A caller that owns the quote — its `kid` is the
+  one that requested it — MAY treat a `POST /xochi/execute` refusal carrying
+  `details.funds_moved: false` (on a `404`, a `422` or any other status) as
+  nothing moved and re-quote while the signed pull is still inside its expiry
+  bound, but only while the server serves `execute_ownership: true`. The verdict
+  rests on the ownership check, not on the marker alone: the server read the
+  intent's claim state after this request's lock was released, and only the
+  check guarantees that no other caller could claim the intent after that read,
+  so only the owner's own execute could spend the pull the venue holds, and
+  the owner sends no further one for this intent. Every other
+  caller keeps the MUST NOT above: one that does not own the quote, one whose
+  server does not serve `execute_ownership`, and one acting on a refusal
+  without the marker. The rollback risk is the caller's: a build without the
+  check does not serve `execute_ownership`, and a rollback to one drops the
+  field with no other signal, so a value read before the rollback keeps
+  vouching for a check that is gone. The caller SHOULD read the field close to
+  the decision rather than from a value cached across deploys. A deployment that
+  issues a second `kid` for the same quotes, or puts a retrying hop in front of
+  `/xochi/execute`, breaks the premise even while the field is served.
 - A client MUST NOT infer *which* condition the 404 means, and MUST NOT treat
   the re-quote as a recovery of the original intent: the retry is a new quote
   and a new intent, subject to §3.3 in full.
@@ -874,8 +899,8 @@ since the factory decides who can claim.
 
 **`execute_ownership`** is present, always `true`, while `POST /xochi/execute`
 refuses a caller that does not own the quote (§3.5); absent on a server without
-the check. A caller whose "nothing moved" verdicts rest on being the quote's sole
-caller can check it before relying on them.
+the check. The §3.5 sole-caller exception holds only while it is served; a
+rollback to a build without the check drops it.
 
 `chains[].roles` is present only on a chain that is not both an origin and a
 destination; absent means both, and `["destination"]` marks a destination-only
