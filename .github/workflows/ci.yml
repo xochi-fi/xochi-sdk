@@ -9,7 +9,7 @@ on:
 env:
   # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
   # with packages/sdk/scripts/sync-circuits.sh output.
-  ERC_8262_REF: 98a77cebd03cfeb36c251804508dd8664ad7c9f1
+  ERC_8262_REF: 02b104cceb5fba49939d3afe843ccb61f73e7e6c
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
