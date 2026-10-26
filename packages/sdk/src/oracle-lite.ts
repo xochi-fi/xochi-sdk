@@ -18,7 +18,21 @@ export interface OracleLiteConfig {
   rpcUrl: string;
   /** Timeout applied to every eth_call, in milliseconds (default 15000). */
   timeoutMs?: number;
+  /**
+   * Block `verifyProof` simulates `submitCompliance` at (default `"pending"`).
+   * At `"pending"` the Oracle reads the next block's `block.timestamp`, the
+   * soonest a submission could land, so a proof stamped by a clock that runs
+   * just past the latest block (the second after it was mined, or a chain
+   * that lags real time) passes as it would when mined. At `"latest"` the
+   * same proof reverts `ProofTimestampInFuture` until a newer block lands;
+   * use it only for an RPC that does not serve `"pending"`, with proofs
+   * dated by `chainProofTimestamp`. Reads always use `"latest"`.
+   */
+  verifyBlockTag?: SimulationBlockTag;
 }
+
+/** Block tags `OracleLite.verifyProof` can simulate at. */
+export type SimulationBlockTag = "pending" | "latest";
 
 export interface CheckComplianceOptions {
   /**
@@ -90,6 +104,7 @@ const SELECTOR_SUBMIT_COMPLIANCE = "0xf33bc62b"; // submitCompliance(uint8,uint8
 
 export class OracleLite {
   private readonly timeoutMs: number;
+  private readonly verifyBlockTag: SimulationBlockTag;
 
   constructor(private config: OracleLiteConfig) {
     assertAddress(config.address, "config.address");
@@ -100,6 +115,13 @@ export class OracleLite {
       );
     }
     this.timeoutMs = timeoutMs;
+    const verifyBlockTag = config.verifyBlockTag ?? "pending";
+    if (verifyBlockTag !== "pending" && verifyBlockTag !== "latest") {
+      throw new Error(
+        `OracleLite: config.verifyBlockTag must be "pending" or "latest", got ${String(verifyBlockTag)}`,
+      );
+    }
+    this.verifyBlockTag = verifyBlockTag;
   }
 
   /**
@@ -172,7 +194,8 @@ export class OracleLite {
   }
 
   /**
-   * Verify a ZK proof by simulating submitCompliance() via eth_call.
+   * Verify a ZK proof by simulating submitCompliance() via eth_call, at
+   * `config.verifyBlockTag` (default `"pending"`).
    *
    * Runs the on-chain UltraHonk verifier without gas. The `from` field
    * is set to `wallet` because the oracle uses msg.sender as subject.
@@ -215,7 +238,10 @@ export class OracleLite {
 
     let result: string | null;
     try {
-      result = await this.ethCall({ from: wallet, to: this.config.address, data });
+      result = await this.ethCall(
+        { from: wallet, to: this.config.address, data },
+        this.verifyBlockTag,
+      );
     } catch (err) {
       return {
         valid: false,
@@ -276,7 +302,10 @@ export class OracleLite {
     const words = [wallet.slice(2).toLowerCase().padStart(WORD_HEX, "0"), uintWord(jurisdictionId)];
     if (proofType !== undefined) words.push(uintWord(proofType));
 
-    const result = await this.ethCall({ to: this.config.address, data: selector + words.join("") });
+    const result = await this.ethCall(
+      { to: this.config.address, data: selector + words.join("") },
+      "latest",
+    );
     if (!result) return null;
 
     const hex = result.slice(2);
@@ -306,16 +335,19 @@ export class OracleLite {
     return { onChainValid, attestation };
   }
 
-  private async ethCall(params: {
-    from?: string;
-    to: string;
-    data: string;
-  }): Promise<string | null> {
+  private async ethCall(
+    params: {
+      from?: string;
+      to: string;
+      data: string;
+    },
+    blockTag: SimulationBlockTag,
+  ): Promise<string | null> {
     const body = JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
       method: "eth_call",
-      params: [params, "latest"],
+      params: [params, blockTag],
     });
 
     const response = await fetch(this.config.rpcUrl, {

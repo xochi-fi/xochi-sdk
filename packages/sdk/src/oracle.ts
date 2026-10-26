@@ -37,8 +37,9 @@ export interface SubmitComplianceParams {
   providerSetHash: Hex;
   /**
    * Unix timestamp (seconds) of proof generation. When set, recency is checked
-   * before submission against the chain's latest block time, as the Oracle
-   * does against `block.timestamp` (one extra RPC read).
+   * before submission against the pending block's time (the soonest the
+   * submission can land), as the Oracle does against `block.timestamp` (one
+   * extra RPC read).
    */
   proofTimestamp?: number;
   /** Max proof age in seconds (default: 3600). Only used when proofTimestamp is set. */
@@ -88,12 +89,15 @@ export class ERC8262Oracle {
 
     if (params.proofTimestamp !== undefined) {
       // Chain time, not the local clock: a client clock behind (or ahead of)
-      // the chain would otherwise refuse proofs the Oracle accepts.
-      const latest = await getBlock(this.publicClient, { blockTag: "latest" });
+      // the chain would otherwise refuse proofs the Oracle accepts. The pending
+      // block, not the latest: the transaction lands in a later block, so a
+      // proof stamped in the second after the latest block is not future-dated
+      // when mined.
+      const pending = await getBlock(this.publicClient, { blockTag: "pending" });
       assertProofRecent(
         params.proofTimestamp,
         params.maxProofAge ?? DEFAULT_MAX_PROOF_AGE,
-        Number(latest.timestamp),
+        Number(pending.timestamp),
       );
     }
 

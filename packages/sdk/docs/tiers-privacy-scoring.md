@@ -62,13 +62,14 @@ Prove "score >= threshold" for 25, 50, 75 or 100.
 ```typescript
 import { generateTierProof, generateHighestTierProof, verifyTierProof } from "@xochi/sdk";
 
-const proof = await generateTierProof(loader, 60, 25, account.address);
+// publicClient: any viem client on the Oracle's chain; it dates the proof
+const proof = await generateTierProof(loader, 60, 25, account.address, { client: publicClient });
 await verifyTierProof(loader, proof, { submitter: account.address });
 // { valid: true, threshold: 25, tierName: "Trusted", timestamp: 1792440000 } -- read from the public inputs
 
-await generateHighestTierProof(loader, 60, account.address); // score >= 50; null below 25
+await generateHighestTierProof(loader, 60, account.address, { client: publicClient }); // score >= 50; null below 25
 ```
 
 **Tier proofs are self-attested** (unsigned private signals): anyone can prove any tier. Never grant fees or privacy from one.
 
-A tier proof's `timestamp` (unix seconds, risk_score public input 7) is set when it is generated and bound by the proof. The Oracle refuses it once it is older than `MAX_PROOF_AGE` (1 hour), whatever `expiresAt` says. `verifyTierProof` and `decodeTierProofClaim` return it but do not check its age: bound it yourself (`assertProofRecent(timestamp)`), never against an Oracle attestation's `timestamp`, which is the block time.
+A tier proof's `timestamp` (unix seconds, risk_score public input 7) is set when it is generated and bound by the proof. The last argument, `TierProofOptions`, takes `configHash` (default `DEFAULT_CONFIG_HASH`), an explicit `timestamp`, or a viem `client`, which dates the proof with `chainProofTimestamp(client)` (the earlier of the local clock and the latest block's timestamp). With neither, the local clock dates it, and the Oracle rejects it as `ProofTimestampInFuture` while that is ahead of the chain head: a fast client clock, or a proof stamped in the second after the latest block and checked by a simulation at `latest`. The Oracle refuses it once it is older than `MAX_PROOF_AGE` (1 hour), whatever `expiresAt` says. `verifyTierProof` and `decodeTierProofClaim` return it but do not check its age: bound it yourself (`assertProofRecent(timestamp)`), never against an Oracle attestation's `timestamp`, which is the block time.

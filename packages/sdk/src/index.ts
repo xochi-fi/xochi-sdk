@@ -152,7 +152,9 @@ export type {
   TierProof,
   TierProofVerification,
   TierProofExpectations,
+  TierProofOptions,
 } from "./tier-proofs.js";
+export type { ProverOptions } from "./prover.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,
@@ -165,6 +167,7 @@ export type {
   ComplianceAttestationLite,
   ComplianceCheckResult,
   ProofVerificationResult as LiteProofVerificationResult,
+  SimulationBlockTag,
 } from "./oracle-lite.js";
 export type {
   RiskScoreInput,

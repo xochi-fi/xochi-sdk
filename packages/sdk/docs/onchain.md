@@ -10,7 +10,8 @@ import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
 const oracle = new ERC8262Oracle("0x...", publicClient, walletClient, mainnet);
 
 // The publicInputs timestamp must not exceed block.timestamp and must be within
-// 1 hour of it: date the proof with chainProofTimestamp(publicClient).
+// 1 hour of it: date the proof from the chain (new ERC8262Prover(loader, { client })
+// or chainProofTimestamp(publicClient)).
 await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
@@ -26,7 +27,7 @@ const history = await oracle.getAttestationHistory("0x...", 0);
 
 `checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately. The contract reports `meetsThreshold: true` for every proof type, so this policy is client-side until ERC-8262 enforces it on-chain. `ComplianceAttestation` carries `proofType` (uint8) between `jurisdictionId` and `meetsThreshold`, in both the viem and the `OracleLite` (`ComplianceAttestationLite`) shape.
 
-On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`, which it must not exceed; when `proofTimestamp` is passed, `submitCompliance` pre-checks it with `assertProofRecent` against the chain's latest block time, not the local clock), and `MIN_TIME_WINDOW = 3600` / `MAX_TIME_WINDOW = 90 days` for PATTERN analysis (`TimeWindowTooSmall` / `TimeWindowTooLarge`; `buildPatternInputs` enforces the stricter `PATTERN_TIME_WINDOW_MIN` (24h) and the same `PATTERN_TIME_WINDOW_MAX` (90 days)). `chainProofTimestamp(client)` returns the latest block's timestamp as the builders' `timestamp` string, so a client clock ahead of the chain does not date proofs in the chain's future. `assertProofRecent` / `isProofRecent` take an optional third argument, the reference time in unix seconds (default the local clock).
+On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`, which it must not exceed, with no tolerance; when `proofTimestamp` is passed, `submitCompliance` pre-checks it with `assertProofRecent` against the pending block's time, the soonest the transaction lands, not the latest block or the local clock), and `MIN_TIME_WINDOW = 3600` / `MAX_TIME_WINDOW = 90 days` for PATTERN analysis (`TimeWindowTooSmall` / `TimeWindowTooLarge`; `buildPatternInputs` enforces the stricter `PATTERN_TIME_WINDOW_MIN` (24h) and the same `PATTERN_TIME_WINDOW_MAX` (90 days)). `chainProofTimestamp(client)` returns the earlier of the local clock and the latest block's timestamp as the builders' `timestamp` string, so a client clock ahead of the chain does not date proofs in the chain's future; `ERC8262Prover`'s and `generateTierProof`'s `client` option stamp with it. `assertProofRecent` / `isProofRecent` take an optional third argument, the reference time in unix seconds (default the local clock).
 
 Beyond the calls above, the client wraps the Oracle's history queries (`getHistoricalProof`, `getAttestationHistoryPaginated`, `getProofType`, `isAttestationValid`, `isAttestationRevoked`, `invalidateAttestation`, `attestationTTL`), config / Merkle root / reporting threshold validation (`providerConfigHash`, `isValidConfig`, `isRevokedConfig`, `isValidMerkleRoot`, `isValidReportingThreshold`), the signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`, `signerProvider`) and credential roots (`setProviderPublisher`, `getProviderPublisher`, `setCredentialSigner`, `getCredentialSigner`, `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`, `revokeCredentialRoot`, `isValidCredentialRoot`, `getCredentialRoot`).
 
@@ -64,6 +65,8 @@ if (result.valid && result.publicInputs) {
 ```
 
 `verifyProof`'s `valid` means the verifier accepted the proof, **not** a compliance verdict; read the claim from the verified public inputs. The wallet, jurisdiction and proof type are validated before any request, and the returned attestation is asserted to match the query. Each call times out after `timeoutMs` (default 15 s). For Cloudflare Workers and other environments without viem.
+
+`verifyProof` simulates `submitCompliance` at the `pending` block (`verifyBlockTag`, default `"pending"`), so the Oracle reads the next block's `block.timestamp`: a proof stamped in the second after the latest block, or by a clock slightly ahead of a lagging chain, verifies as it would when mined. At `"latest"` the same proof reverts `ProofTimestampInFuture` until a newer block lands (xochi-sdk#50); set `verifyBlockTag: "latest"` only for an RPC that does not serve `pending`, and then require chain-dated proofs. `checkCompliance` and `checkComplianceByType` always read `latest`.
 
 ## Typed contract errors
 
@@ -104,7 +107,7 @@ const pattern = await prover.provePattern({
   analysisType: 1,
   submitter: account.address,
   settlementRoot,
-  timestamp: await chainProofTimestamp(publicClient), // optional; defaults to the local clock
+  timestamp: await chainProofTimestamp(publicClient), // optional; a prover built with { client } does this
 });
 // submit it via oracle.submitCompliance, then:
 await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);

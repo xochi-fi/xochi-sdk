@@ -22,17 +22,20 @@ const SUBMITTER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 const OTHER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" as Address;
 
 let trusted: TierProof; // score 25, exactly at the Trusted boundary
-let institutional: TierProof; // score 110, above the circuit's signal cap
+let institutional: TierProof; // score 110, above the circuit's signal cap, explicit timestamp
 let provedFrom: number; // unix seconds before proving
 let provedTo: number; // unix seconds after proving
+const EXPLICIT_TIMESTAMP = 1_800_000_000;
 
 beforeAll(async () => {
   provedFrom = Math.floor(Date.now() / 1000);
   trusted = await generateTierProof(loader, 25, 25, SUBMITTER);
-  const top = await generateHighestTierProof(loader, 110, SUBMITTER);
+  provedTo = Math.floor(Date.now() / 1000);
+  const top = await generateHighestTierProof(loader, 110, SUBMITTER, {
+    timestamp: EXPLICIT_TIMESTAMP,
+  });
   if (!top) throw new Error("expected an Institutional proof for score 110");
   institutional = top;
-  provedTo = Math.floor(Date.now() / 1000);
 });
 
 describe("tier proof generation", () => {
@@ -63,6 +66,17 @@ describe("tier proof generation", () => {
     expect(trusted.timestamp).toBeLessThanOrEqual(provedTo);
     expect(BigInt(trusted.publicInputs[7])).toBe(BigInt(trusted.timestamp));
     expect(BigInt(trusted.publicInputs[8])).toBe(BigInt(SUBMITTER));
+  });
+
+  it("binds an explicit timestamp option instead of the local clock", () => {
+    expect(institutional.timestamp).toBe(EXPLICIT_TIMESTAMP);
+    expect(BigInt(institutional.publicInputs[7])).toBe(BigInt(EXPLICIT_TIMESTAMP));
+  });
+
+  it.each([Date.now(), 1.5, -1])("rejects timestamp %s before proving", async (timestamp) => {
+    await expect(generateTierProof(loader, 25, 25, SUBMITTER, { timestamp })).rejects.toThrow(
+      /Timestamp must be an integer in/,
+    );
   });
 
   it("has no proof for Standard", async () => {

@@ -20,14 +20,14 @@ The root entry pulls `@noir-lang/noir_js` and `@aztec/bb.js` (several MB of WASM
 import { ERC8262Prover } from "@xochi/sdk";
 import { BundledCircuitLoader } from "@xochi/sdk/node";
 
-const prover = new ERC8262Prover(new BundledCircuitLoader());
+// publicClient: any viem client on the Oracle's chain; proofs are dated from it
+const prover = new ERC8262Prover(new BundledCircuitLoader(), { client: publicClient });
 
 const result = await prover.proveCompliance({
   score: 25, // or { signals: [25, 30], weights: [50, 50], providerIds: ["1", "2"] }
   jurisdictionId: 0, // EU
   providerSetHash: "0x14b6becf...",
   submitter: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", // the on-chain msg.sender
-  timestamp: String(Math.floor(Date.now() / 1000)),
 });
 
 // result.proofHex and result.publicInputsHex are ready for on-chain submission
@@ -50,21 +50,25 @@ await prover.destroy();
 | 0x08 | Risk Score Signed       | `risk_score_signed`       | 12            | `proveRiskScoreSigned()`       | Risk score with provider-signed signals       |
 | 0x09 | Compliance Multi-Signed | `compliance_multi_signed` | 14            | `proveComplianceMultiSigned()` | M-of-N provider signatures (up to 5 slots)    |
 
-Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. Every circuit carries a proof timestamp the Oracle rejects after `MAX_PROOF_AGE` (1 hour); for RISK_SCORE (input 7, before `submitter`) and PATTERN (input 7, after `settlement_root`) it is the builder's optional `timestamp`, default the local clock (see [Proof timestamps](#proof-timestamps)). `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
+Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. Every circuit carries a proof timestamp the Oracle rejects after `MAX_PROOF_AGE` (1 hour); for RISK_SCORE (input 7, before `submitter`) and PATTERN (input 7, after `settlement_root`) it is the builder's optional `timestamp`, dated from the chain when the prover has a `client` and by the local clock otherwise (see [Proof timestamps](#proof-timestamps)). `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
 
 ## Proof timestamps
 
-The Oracle rejects a proof whose timestamp is after `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`). The builders' `timestamp` option (`currentTimestamp` for attestation) defaults to the local clock, so a client whose clock runs ahead of the target chain (clock skew, or a test chain behind real time) makes proofs that revert until the chain catches up. Read the timestamp from the chain instead:
+The Oracle rejects a proof whose timestamp is after `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`). There is no tolerance for a future timestamp, so date proofs from the chain, not the local clock: a client whose clock runs ahead of the target chain (clock skew, a chain lagging real time, a test chain behind it), or a proof stamped in the second after the latest block, reverts until a later block lands.
+
+- `new ERC8262Prover(loader, { client })` dates every unsigned proof given no `timestamp` (`currentTimestamp` for attestation) with `chainProofTimestamp(client)`: the earlier of the local clock and the latest block's timestamp (one RPC read per proof).
+- `generateTierProof` / `generateHighestTierProof` take `{ client }` (same default) or an explicit `{ timestamp }`.
+- Without a client, the builders and tier proofs fall back to the local clock and carry the risk above.
 
 ```typescript
 import { chainProofTimestamp } from "@xochi/sdk";
 
-const timestamp = await chainProofTimestamp(publicClient); // latest block time, as a string
+const timestamp = await chainProofTimestamp(publicClient); // min(local clock, latest block time), as a string
 const result = await prover.proveRiskScore({ ...input, timestamp });
 // submit within MAX_PROOF_AGE (1 hour) of `timestamp`
 ```
 
-For the signed types, read it before requesting the signature: the provider signs the same timestamp. `submitCompliance`'s optional `proofTimestamp` pre-check measures the proof's age against the chain's latest block time, as the Oracle does, so a local clock behind or ahead of the chain does not affect it.
+For the signed types, read it before requesting the signature: the provider signs the same timestamp, so the prover never re-dates them. `submitCompliance`'s optional `proofTimestamp` pre-check and `OracleLite.verifyProof`'s simulation run against the pending block (the soonest a submission lands), not the latest, so neither refuses a proof the next block accepts.
 
 ## Provider-signed proofs
 
@@ -87,7 +91,7 @@ const result = await prover.proveComplianceSigned({
 
 - `submitter` must be the address that submits the proof; the Oracle rejects any other `msg.sender`.
 - Signed proofs expire one hour after signing (`MAX_PROOF_AGE`).
-- A proof timestamp must not exceed the chain's block time and must be within `MAX_PROOF_AGE` of it; date proofs with `chainProofTimestamp(client)`, not the local clock.
+- A proof timestamp must not exceed the chain's block time and must be within `MAX_PROOF_AGE` of it; date proofs from the chain (the prover's or `generateTierProof`'s `client`, or `chainProofTimestamp(client)`), not the local clock.
 - Tier proofs are self-attested: never grant fees or privacy from one.
 - `OracleLite.verifyProof`'s `valid` is not a compliance verdict; read the verified public inputs.
 

@@ -14,22 +14,28 @@ import { getBlock } from "viem/actions";
 export const DEFAULT_MAX_PROOF_AGE = 3600;
 
 /**
- * Proof timestamp read from the target chain: the latest block's timestamp,
- * in unix seconds, as the string the input builders' `timestamp` option takes.
+ * Proof timestamp read from the target chain: the earlier of the local clock
+ * and the latest block's timestamp, in unix seconds, as the string the input
+ * builders' `timestamp` option takes.
  *
  * The Oracle rejects a proof timestamp after `block.timestamp`
  * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
  * (`ProofTimestampStale`). The builders default to the local wall clock, so a
- * client whose clock runs ahead of the chain head makes proofs that revert
- * until the chain catches up. The latest block's timestamp never exceeds that
- * of the block that includes the submission; submit within an hour of reading it.
+ * client whose clock runs ahead of the chain head, or one that stamps in the
+ * second after the latest block, makes proofs that revert until a later block
+ * lands. The latest block's timestamp never exceeds that of the block that
+ * includes the submission, and the local clock caps a head that runs ahead of
+ * real time; submit within an hour of reading it.
+ *
+ * `generateTierProof`'s `client` option and `new ERC8262Prover(loader, { client })`
+ * stamp with this when no timestamp is given.
  *
  * @param client - Any viem client connected to the chain the Oracle is on
  *   (public, wallet or test client).
  */
 export async function chainProofTimestamp(client: Client): Promise<string> {
   const block = await getBlock(client, { blockTag: "latest" });
-  return String(block.timestamp);
+  return String(Math.min(localNow(), Number(block.timestamp)));
 }
 
 /**

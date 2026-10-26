@@ -10,11 +10,12 @@
  * authoritative score, never from a tier proof.
  */
 
-import { bytesToHex, encodePacked, keccak256, type Address, type Hex } from "viem";
+import { bytesToHex, encodePacked, keccak256, type Address, type Client, type Hex } from "viem";
 import type { CircuitLoader } from "./types.js";
 import { encodeProof, encodePublicInputs } from "./encoding.js";
 import { DEFAULT_CONFIG_HASH, PROOF_TYPES, PUBLIC_INPUT_COUNTS } from "./constants.js";
-import { validateSubmitter } from "./inputs/validate.js";
+import { validateSubmitter, validateTimestamp } from "./inputs/validate.js";
+import { chainProofTimestamp } from "./recency.js";
 import { type TierThreshold, type TierName, getTierName, TIER_PROOF_EXPIRY_MS } from "./tiers.js";
 
 export type { TierThreshold };
@@ -68,6 +69,28 @@ export interface TierProofExpectations {
   submitter: Address;
   /** Config hash the proof must commit to (default DEFAULT_CONFIG_HASH). */
   configHash?: Hex;
+}
+
+/** Options for `generateTierProof` / `generateHighestTierProof`. */
+export interface TierProofOptions {
+  /** Config hash the proof commits to (default `DEFAULT_CONFIG_HASH`). */
+  configHash?: string;
+  /**
+   * Proof timestamp (unix seconds), public input 7. Takes precedence over
+   * `client`. The Oracle rejects it when after `block.timestamp`
+   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
+   * (`ProofTimestampStale`).
+   */
+  timestamp?: number;
+  /**
+   * Any viem client on the Oracle's chain. Without `timestamp`, the proof is
+   * dated `chainProofTimestamp(client)`: the earlier of the local clock and
+   * the latest block's timestamp (one RPC read). With neither, it is dated by
+   * the local clock, which the Oracle (and `OracleLite.verifyProof` at
+   * `"latest"`) rejects while it is ahead of the chain head: a client clock
+   * running fast, or a proof stamped in the second after the latest block.
+   */
+  client?: Client;
 }
 
 /** Tier claim decoded from risk_score public inputs. */
@@ -264,13 +287,16 @@ function assertScore(score: number): void {
  * `threshold` must be 25, 50, 75 or 100 (Standard needs no proof). Fractional
  * scores round down and scores above 100 prove as 100: circuit signals are
  * integers capped at 100, and Institutional is the 100+ tier.
+ *
+ * Pass `options.client` (or `options.timestamp`) to date the proof from the
+ * chain; see {@link TierProofOptions}.
  */
 export async function generateTierProof(
   loader: CircuitLoader,
   score: number,
   threshold: TierThreshold,
   submitter: Address,
-  configHash?: string,
+  options: TierProofOptions = {},
 ): Promise<TierProof> {
   assertScore(score);
   if (!isProvableThreshold(threshold)) {
@@ -292,7 +318,10 @@ export async function generateTierProof(
   const { Barretenberg, UltraHonkBackend } = await import("@aztec/bb.js");
 
   const now = Date.now();
-  const timestamp = Math.floor(now / 1000);
+  const timestamp =
+    options.timestamp ??
+    (options.client ? Number(await chainProofTimestamp(options.client)) : Math.floor(now / 1000));
+  validateTimestamp(timestamp);
 
   // Single-provider risk_score witness: signals[0] = score, weights[0] = 100,
   // threshold proof (proof_type 1), direction GT, bound_lower = T*100 - 1.
@@ -307,7 +336,7 @@ export async function generateTierProof(
     bound_lower: String(boundLower),
     bound_upper: "0",
     result: "1",
-    config_hash: configHash ?? DEFAULT_CONFIG_HASH,
+    config_hash: options.configHash ?? DEFAULT_CONFIG_HASH,
     provider_set_hash: TIER_PROVIDER_SET_HASH,
     timestamp: String(timestamp),
     submitter,
@@ -352,12 +381,12 @@ export async function generateHighestTierProof(
   loader: CircuitLoader,
   score: number,
   submitter: Address,
-  configHash?: string,
+  options: TierProofOptions = {},
 ): Promise<TierProof | null> {
   assertScore(score);
   const threshold = PROVABLE_THRESHOLDS.find((t) => score >= t);
   if (threshold === undefined) return null;
-  return generateTierProof(loader, score, threshold, submitter, configHash);
+  return generateTierProof(loader, score, threshold, submitter, options);
 }
 
 // ============================================================

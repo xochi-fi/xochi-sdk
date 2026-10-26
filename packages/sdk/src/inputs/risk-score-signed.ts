@@ -55,7 +55,7 @@ interface ThresholdBaseSigned extends SignedDigestBinding {
    * The Oracle rejects it when after `block.timestamp`
    * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
    * (`ProofTimestampStale`): take it from `await chainProofTimestamp(client)`
-   * (the chain's latest block time) rather than a local clock.
+   * (the chain's clock) rather than a local clock.
    */
   signedTimestamp: string | bigint;
 }

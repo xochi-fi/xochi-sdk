@@ -44,10 +44,11 @@ export interface PatternInput {
    * time. Public input 7, after `settlement_root`; the Oracle rejects it when
    * after `block.timestamp` (`ProofTimestampInFuture`) or more than
    * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
-   * clock ahead of the chain makes the default revert. Prefer
-   * `await chainProofTimestamp(client)` (the chain's latest block time). The
-   * circuit requires every active transaction timestamp to lie in
-   * `[timestamp - timeWindow, timestamp]`.
+   * clock ahead of the chain head makes the default revert. Prefer
+   * `await chainProofTimestamp(client)`, or `new ERC8262Prover(loader, { client })`,
+   * which stamps with it. The circuit requires every active transaction
+   * timestamp to lie in `[timestamp - timeWindow, timestamp]`; the builder
+   * throws for a transaction dated after a chain stamp that trails the clock.
    */
   timestamp?: string;
 }

@@ -4,6 +4,7 @@
 
 import { Noir } from "@noir-lang/noir_js";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
+import type { Client } from "viem";
 import type { CircuitLoader, CircuitName, ProofResult } from "./types.js";
 import { encodeProof, encodePublicInputs } from "./encoding.js";
 import { buildRiskScoreInputs, type RiskScoreInput } from "./inputs/risk-score.js";
@@ -24,11 +25,39 @@ import { buildMembershipInputs, type MembershipInput } from "./inputs/membership
 import { buildNonMembershipInputs, type NonMembershipInput } from "./inputs/non-membership.js";
 import { buildPatternInputs, type PatternInput } from "./inputs/pattern.js";
 import { buildAttestationInputs, type AttestationInput } from "./inputs/attestation.js";
+import { chainProofTimestamp } from "./recency.js";
+
+/** Options for {@link ERC8262Prover}. */
+export interface ProverOptions {
+  /**
+   * Any viem client on the Oracle's chain. `proveRiskScore`, `proveCompliance`,
+   * `proveMembership`, `proveNonMembership`, `provePattern` and
+   * `proveAttestation` date a proof given no `timestamp` (`currentTimestamp`
+   * for attestation) with `chainProofTimestamp(client)`, the earlier of the
+   * local clock and the latest block's timestamp (one RPC read per proof).
+   * Without a client they keep the builders' local-clock default, which the
+   * Oracle rejects while it is ahead of the chain head. The signed provers
+   * take the timestamp the provider signed and never read the chain.
+   */
+  client?: Client;
+}
 
 export class ERC8262Prover {
   private api: Barretenberg | null = null;
+  private readonly client: Client | undefined;
 
-  constructor(private loader: CircuitLoader) {}
+  constructor(
+    private loader: CircuitLoader,
+    options: ProverOptions = {},
+  ) {
+    this.client = options.client;
+  }
+
+  /** The given proof timestamp, else the chain's when a client is configured. */
+  private async stamp(given: string | undefined): Promise<string | undefined> {
+    if (given !== undefined || !this.client) return given;
+    return chainProofTimestamp(this.client);
+  }
 
   private async getApi(): Promise<Barretenberg> {
     if (!this.api) {
@@ -62,12 +91,12 @@ export class ERC8262Prover {
   }
 
   async proveRiskScore(opts: RiskScoreInput): Promise<ProofResult> {
-    const inputs = buildRiskScoreInputs(opts);
+    const inputs = buildRiskScoreInputs({ ...opts, timestamp: await this.stamp(opts.timestamp) });
     return this.prove("risk_score", inputs);
   }
 
   async proveCompliance(opts: ComplianceInput): Promise<ProofResult> {
-    const inputs = buildComplianceInputs(opts);
+    const inputs = buildComplianceInputs({ ...opts, timestamp: await this.stamp(opts.timestamp) });
     return this.prove("compliance", inputs);
   }
 
@@ -123,22 +152,28 @@ export class ERC8262Prover {
   }
 
   async proveMembership(opts: MembershipInput): Promise<ProofResult> {
-    const inputs = buildMembershipInputs(opts);
+    const inputs = buildMembershipInputs({ ...opts, timestamp: await this.stamp(opts.timestamp) });
     return this.prove("membership", inputs);
   }
 
   async proveNonMembership(opts: NonMembershipInput): Promise<ProofResult> {
-    const inputs = buildNonMembershipInputs(opts);
+    const inputs = buildNonMembershipInputs({
+      ...opts,
+      timestamp: await this.stamp(opts.timestamp),
+    });
     return this.prove("non_membership", inputs);
   }
 
   async provePattern(opts: PatternInput): Promise<ProofResult> {
-    const inputs = buildPatternInputs(opts);
+    const inputs = buildPatternInputs({ ...opts, timestamp: await this.stamp(opts.timestamp) });
     return this.prove("pattern", inputs);
   }
 
   async proveAttestation(opts: AttestationInput): Promise<ProofResult> {
-    const inputs = buildAttestationInputs(opts);
+    const currentTimestamp =
+      opts.currentTimestamp ??
+      (this.client ? Number(await chainProofTimestamp(this.client)) : undefined);
+    const inputs = buildAttestationInputs({ ...opts, currentTimestamp });
     return this.prove("attestation", inputs);
   }
 

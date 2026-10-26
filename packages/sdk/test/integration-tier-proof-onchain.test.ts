@@ -6,7 +6,11 @@
  * T*100 - 1 encoding at the tier boundaries, including Institutional; and a
  * RISK_SCORE attestation, which ERC-8262's `checkCompliance` reports as valid,
  * does not read as compliance through the SDK clients (with a real proof
- * instead of a stub verifier).
+ * instead of a stub verifier). Proofs are dated from the chain
+ * (`{ client }`); a proof dated one second past the latest block, which a
+ * wall-clock stamp produced whenever the clock crossed a second after the
+ * last mined block (xochi-sdk#50), verifies at `pending` and is refused at
+ * `latest`.
  *
  * Requires anvil and `forge build` output in ../ERC-8262/out.
  */
@@ -22,6 +26,7 @@ import {
   http,
   padHex,
   parseAbi,
+  toFunctionSelector,
   type Address,
   type Hex,
 } from "viem";
@@ -140,7 +145,7 @@ describe("tier proofs on the real Oracle (anvil)", () => {
   let institutional: TierProof;
 
   beforeAll(async () => {
-    const proof = await generateHighestTierProof(loader, 110, ALICE);
+    const proof = await generateHighestTierProof(loader, 110, ALICE, { client: publicClient });
     if (!proof) throw new Error("expected an Institutional proof for score 110");
     institutional = proof;
   });
@@ -163,6 +168,48 @@ describe("tier proofs on the real Oracle (anvil)", () => {
     });
   });
 
+  it("dates the proof from the chain, never after the latest block", async () => {
+    const latest = await publicClient.getBlock({ blockTag: "latest" });
+    expect(institutional.timestamp).toBeLessThanOrEqual(Number(latest.timestamp));
+    expect(BigInt(institutional.publicInputs[7])).toBe(BigInt(institutional.timestamp));
+  });
+
+  it("verifies a proof dated one second past the latest block at pending, not at latest", async () => {
+    const latest = await publicClient.getBlock({ blockTag: "latest" });
+    const timestamp = Number(latest.timestamp) + 1;
+    const ahead = await generateTierProof(loader, 110, 100, ALICE, { timestamp });
+    const atLatest = new OracleLite({
+      address: oracleAddress,
+      rpcUrl: ANVIL_URL,
+      verifyBlockTag: "latest",
+    });
+
+    const refused = await atLatest.verifyProof(
+      ALICE,
+      PROOF_TYPES.RISK_SCORE,
+      ahead.proofHex,
+      ahead.publicInputsHex,
+      undefined,
+      EU,
+    );
+    expect(refused.valid).toBe(false);
+    expect(refused.error).toContain(toFunctionSelector("ProofTimestampInFuture(uint256,uint256)"));
+
+    const accepted = await lite.verifyProof(
+      ALICE,
+      PROOF_TYPES.RISK_SCORE,
+      ahead.proofHex,
+      ahead.publicInputsHex,
+      undefined,
+      EU,
+    );
+    expect(accepted.error).toBeUndefined();
+    expect(accepted.valid).toBe(true);
+    expect(decodeTierProofClaim(accepted.publicInputs!, { submitter: ALICE }).timestamp).toBe(
+      timestamp,
+    );
+  });
+
   it("rejects the same proof submitted by another wallet", async () => {
     const result = await lite.verifyProof(
       BOB,
@@ -177,7 +224,7 @@ describe("tier proofs on the real Oracle (anvil)", () => {
   });
 
   it("records a boundary Trusted proof, which the SDK does not read as compliance", async () => {
-    const trusted = await generateTierProof(loader, 25, 25, BOB);
+    const trusted = await generateTierProof(loader, 25, 25, BOB, { client: publicClient });
     const bob = new ERC8262Oracle(
       oracleAddress,
       publicClient,
