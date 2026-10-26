@@ -10,6 +10,7 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 - **Moved in from the archived `axol-io/riddler-sdk`** (snapshot, no history) as `@xochi/signer` (was `@riddler/signer`). Every vector digest, signature, typehash and domain separator is byte-identical; EIP-712 domain and contract names (`Xochi`, `RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are unchanged. The `riddler` taker CLI moved to Riddler's private `packages/e2e-signer`.
 - A README.
+- **Multi-chain stealth and execute-ownership capabilities** (served by Riddler #1336 and #1346): `parseCapabilities` reads `stealth_chains` into `stealthChains` (`null` when absent or not a list; non-canonical chain ids dropped, repeats collapsed), each chain's `stealth_factory_address` into `chains[].stealthFactoryAddress`, and `execute_ownership` into `executeOwnership` (`true` only for the literal `true`). `stealthFactoryFor(caps, chainId)` names the factory for a single EVM chain listed in `stealth_chains`, never falling back to the deprecated top-level field; `narrowStealthChains(caps, pinnedChainIds)` narrows the caller's own stealth set and never widens it. Both are discovery: a client holds the factory against its own pinned allowlist and never adds to that allowlist from it.
 - **`shielded.ts`** (xochi#633, xochi#635): hash-only, inert reference for the shielded settlement contract v1 typed encodings (xochi `shielded-execution.md` §7; `NetworkIdentity` encoding approved 2026-10-19): `hashNetworkIdentity`, `shieldedDomainSalt`, `bindingDomain` / `termsDomain`, `shieldedDomainSeparator`, `hashRecipientBinding`, `recipientBindingDigest`, and the value rules `assertAztecBytes32` (nonzero and below the BN254 modulus; magnitude does not judge EVM/Aztec provenance, which descriptor/address derivation enforces) and `parseShieldedAmount` (canonical decimal, `0 < x <= 2^128 - 1`), refusing with a typed `ShieldedEncodingError` code. Checked against `@xochi/spec`'s independently generated `shielded.json`. Nothing in the signing path calls it.
 
 ### Changed
@@ -25,6 +26,7 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 ### Removed
 
 - Source maps (`dist/*.map`) from the tarball.
+- `SolverCapabilities.stealthFactoryAddress`, the deprecated top-level `stealth_factory_address` (the factory on the first `stealth_chains` entry, `null` when that list is empty). Use `stealthFactoryFor` for the chain the claim runs on.
 
 ### Fixed
 

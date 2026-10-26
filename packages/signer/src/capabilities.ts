@@ -62,6 +62,12 @@ export interface ChainCapability {
    * could not price it, or on a non-EVM chain with no 4337 claim.
    */
   minStealthNotionalUsd: number | null;
+  /**
+   * The SimpleAccount factory the server SAYS owns stealth counterfactual accounts on
+   * this chain (served `null` on a chain outside `stealth_chains`); `null` too when
+   * absent or not address-shaped. Read it through {@link stealthFactoryFor}.
+   */
+  stealthFactoryAddress: string | null;
 }
 
 export interface TokenChainPull {
@@ -128,8 +134,25 @@ export interface SolverCapabilities {
    * widen it. `null` leaves the local ceiling in force.
    */
   pullDeadlineBufferSeconds: number | null;
-  /** SimpleAccount factory owning stealth counterfactual accounts. */
-  stealthFactoryAddress: string | null;
+  /**
+   * Chains a stealth settlement may be quoted to; `[]` means none. `null` when the
+   * server did not say (a build before multi-chain stealth) or sent something other
+   * than a list. A client may narrow its own stealth set with it, never widen one:
+   * see {@link narrowStealthChains}.
+   */
+  stealthChains: readonly number[] | null;
+  /**
+   * `true` only when the server serves `execute_ownership: true`, which it does while
+   * `POST /xochi/execute` refuses every `kid` but the one that requested the quote.
+   * That check is what makes the requester the quote's sole caller, and the Worker's
+   * "nothing moved" verdicts (`funds_moved: false` on a not-accepted execute) rest on
+   * being the sole caller: they cover only claims made up to the answer, so a second
+   * caller can move funds after one (SPEC.md §3.5). Absent means a build without the
+   * check, or a rollback to one, so anything but the literal `true` reads `false`: an
+   * omitted or malformed field must never grant the premise. It reports the running
+   * build, so a reading taken before a rollback goes stale with it.
+   */
+  executeOwnership: boolean;
 
   chains: readonly ChainCapability[];
   tokens: readonly TokenCapability[];
@@ -262,6 +285,7 @@ function parseChain(raw: unknown): ChainCapability | null {
 
   const chainName = asString(r.chain_name) ?? String(chainId);
   const minStealthNotionalUsd = asNumber(r.min_stealth_notional_usd);
+  const stealthFactoryAddress = asEvmAddress(r.stealth_factory_address);
   const vmType = asVmType(r.vm_type);
   if (vmType === null) {
     // Kept, not dropped: dropped before `chainCapability`'s duplicate check,
@@ -275,6 +299,7 @@ function parseChain(raw: unknown): ChainCapability | null {
       addressFormat: null,
       unrecognisedVmType: typeof served === "string" ? served : JSON.stringify(served),
       minStealthNotionalUsd,
+      stealthFactoryAddress,
     };
   }
   return {
@@ -289,6 +314,7 @@ function parseChain(raw: unknown): ChainCapability | null {
     addressFormat: asAddressFormat(r.address_format) ?? addressFormatForVm(vmType),
     unrecognisedVmType: null,
     minStealthNotionalUsd,
+    stealthFactoryAddress,
   };
 }
 
@@ -357,6 +383,21 @@ function parsePullRecipients(raw: unknown): Record<number, PullRecipients> {
   return out;
 }
 
+/**
+ * `stealth_chains`, or `null` when absent or not a list. An entry that is not a
+ * canonical chain id is dropped and a repeat collapsed: the list only narrows a
+ * client's own set, so losing an entry narrows further and cannot widen.
+ */
+function parseStealthChains(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: number[] = [];
+  for (const value of raw) {
+    const chainId = asChainIdValue(value);
+    if (chainId !== null && !out.includes(chainId)) out.push(chainId);
+  }
+  return out;
+}
+
 function parseObjectList(raw: unknown): Record<string, unknown>[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(asRecord).filter((x): x is Record<string, unknown> => x !== null);
@@ -400,7 +441,8 @@ export function parseCapabilities(raw: unknown): SolverCapabilities | null {
     // honestly producible. A caller is tempted to substitute this for a local
     // ceiling, so an implausible one is dropped, not carried.
     pullDeadlineBufferSeconds: asNonNegativeInteger(r.pull_deadline_buffer_seconds),
-    stealthFactoryAddress: asEvmAddress(r.stealth_factory_address),
+    stealthChains: parseStealthChains(r.stealth_chains),
+    executeOwnership: r.execute_ownership === true,
 
     chains: (Array.isArray(r.chains) ? r.chains : [])
       .map(parseChain)
@@ -547,6 +589,49 @@ export function orderBoundsViolation(caps: SolverCapabilities, notionalUsd: numb
  */
 export function stealthNotionalFloor(caps: SolverCapabilities, chainId: number): number | null {
   return chainCapability(caps, chainId)?.minStealthNotionalUsd ?? null;
+}
+
+/**
+ * The caller's own stealth chain set narrowed to the chains the server says it quotes
+ * stealth to. Narrow, never widen (SPEC.md §6): the result is a subset of
+ * `pinnedChainIds`, in its order, so an advertised chain the caller did not pin is
+ * never added. A server that does not say (`stealthChains` is `null`) narrows nothing:
+ * a build before the field still served stealth to L1, and its refusal
+ * (`stealth_requires_l1_destination`) is the authority on the rest.
+ */
+export function narrowStealthChains(
+  caps: SolverCapabilities,
+  pinnedChainIds: readonly number[],
+): number[] {
+  const served = caps.stealthChains;
+  if (served === null) return [...pinnedChainIds];
+  return pinnedChainIds.filter((chainId) => served.includes(chainId));
+}
+
+/**
+ * The SimpleAccount factory the server SAYS owns stealth counterfactual accounts on
+ * `chainId`, or `null`. Discovery, never a pin: the factory decides who can claim, so
+ * a client holds this against its own pinned factory allowlist and never adds to that
+ * allowlist from it (SPEC.md §6); trusting it lets a misconfigured or compromised
+ * solver redirect payouts.
+ *
+ * `null` unless the chain is a single EVM entry in `chains[]`, is listed in
+ * `stealth_chains`, and carries an address-shaped factory. The producer serves `null`
+ * on every chain outside `stealth_chains`, so a factory on an unlisted chain
+ * contradicts the body it came in.
+ *
+ * The deprecated top-level `stealth_factory_address` (the factory on the first
+ * `stealth_chains` entry, kept for clients that predate multi-chain stealth) is not
+ * parsed and is no fallback. Riddler serves `stealth_chains` and the per-chain field
+ * together (Riddler #1336), so a body with `stealth_chains` and no per-chain factory is
+ * malformed, and a body without `stealth_chains` has no "first entry" for the
+ * top-level value to describe.
+ */
+export function stealthFactoryFor(caps: SolverCapabilities, chainId: number): string | null {
+  if (!caps.stealthChains?.includes(chainId)) return null;
+  const chain = chainCapability(caps, chainId);
+  if (chain?.vmType !== "evm") return null;
+  return chain.stealthFactoryAddress;
 }
 
 /**
