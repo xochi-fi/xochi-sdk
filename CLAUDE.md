@@ -34,7 +34,7 @@ Under `packages/sdk/` unless noted. CI jobs `check` (format, typecheck, unit, bu
 - **src/inputs/validate.ts**: shared validation (signal range, weights, timestamps, credential types, submitter non-zero)
 - **src/inputs/field-bytes.ts**: `@xochi/sdk`'s own `fieldToBytes` / `bytesToHexField`, so the signed builders take `@xochi/provider`'s byte bundles without depending on it (`@xochi/provider` is a devDependency for tests only)
 - **src/abis.ts**: full Solidity ABIs for Oracle, Verifier and SettlementRegistry (functions, events, custom errors); `test/abi-drift.test.ts` checks them against the ERC-8262 forge artifacts in both directions (runs when the sibling ERC-8262 `out/` or `ERC_8262_PATH` exists)
-- **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 24 subclasses, `decodeContractError`, `withDecodedErrors`)
+- **src/errors.ts**: typed contract errors (`ERC8262ContractError` base + 25 subclasses, `decodeContractError`, `withDecodedErrors`)
 - **src/noir-version.ts**: pinned `EXPECTED_NOIR_VERSION` + `assertCompatibleNoirVersion` (used by both loaders)
 
 #### Trust & Compliance

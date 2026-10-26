@@ -113,7 +113,7 @@ const pattern = await prover.provePattern({
 await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
 
-Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`. `SettlementRegistryClient` also wraps `expireTrade`, `getSettlement` and `getSubSettlements`.
+Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`. The PATTERN proof's own `timestamp` must be at or after the trade's `createdAt` (`PatternProofPredatesTradeError` otherwise; legs submitted before registration revert `AttestationPredatesTrade` at `recordSubSettlement`), so date it after `registerTrade` lands. RISK_SCORE and PATTERN proofs never ratchet: submit them in any order within `MAX_PROOF_AGE`. `SettlementRegistryClient` also wraps `expireTrade`, `getSettlement` and `getSubSettlements`.
 
 ## Execution planning (XIP-2)
 

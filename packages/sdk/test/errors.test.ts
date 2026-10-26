@@ -22,6 +22,7 @@ import {
   TradeNotFoundError,
   SignedSignalsRequiredError,
   InvalidSignerPubkeyHashError,
+  PatternProofPredatesTradeError,
 } from "../src/errors.js";
 import { ORACLE_ABI, VERIFIER_ABI } from "../src/abis.js";
 import { SETTLEMENT_REGISTRY_ABI } from "../src/settlement-registry.js";
@@ -123,6 +124,20 @@ describe("decodeContractError", () => {
     );
     expect(err).toBeInstanceOf(TradeNotFoundError);
     expect((err as TradeNotFoundError).tradeId).toBe(tradeId);
+  });
+
+  it("decodes registry PatternProofPredatesTrade with the proof time and trade creation", () => {
+    const proofHash = "0xabcd";
+    const err = decodeContractError(
+      makeRevert("PatternProofPredatesTrade", [proofHash, 1699999999n, 1700000000n]),
+      SETTLEMENT_REGISTRY_ABI,
+    );
+    expect(err).toBeInstanceOf(PatternProofPredatesTradeError);
+    expect(err?.errorName).toBe("PatternProofPredatesTrade");
+    expect((err as PatternProofPredatesTradeError).proofHash).toBe(proofHash);
+    expect((err as PatternProofPredatesTradeError).proofTimestamp).toBe(1699999999n);
+    expect((err as PatternProofPredatesTradeError).tradeCreatedAt).toBe(1700000000n);
+    expect(err?.message).toMatch(/re-prove/);
   });
 
   it("decodes SignedSignalsRequired with jurisdiction + proofType args", () => {

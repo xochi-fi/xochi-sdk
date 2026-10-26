@@ -71,6 +71,7 @@ export {
   InvalidPublicInputLengthError,
   UnalignedPublicInputsError,
   SettlementRootMismatchError,
+  PatternProofPredatesTradeError,
   decodeContractError,
   withDecodedErrors,
 } from "./errors.js";
