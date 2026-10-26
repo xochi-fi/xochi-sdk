@@ -144,13 +144,14 @@ export interface SolverCapabilities {
   /**
    * `true` only when the server serves `execute_ownership: true`, which it does while
    * `POST /xochi/execute` refuses every `kid` but the one that requested the quote.
-   * That check is what makes the requester the quote's sole caller, and the Worker's
-   * "nothing moved" verdicts (`funds_moved: false` on a not-accepted execute) rest on
-   * being the sole caller: they cover only claims made up to the answer, so a second
-   * caller can move funds after one (SPEC.md §3.5). Absent means a build without the
-   * check, or a rollback to one, so anything but the literal `true` reads `false`: an
-   * omitted or malformed field must never grant the premise. It reports the running
-   * build, so a reading taken before a rollback goes stale with it.
+   * That check is half of what makes a "nothing moved" verdict sound (an execute
+   * refusal carrying `details.funds_moved: false`, on any status; distinct from
+   * `details.accepted: false`, which only invites a resend of the same request): the
+   * marker covers only claims made up to the answer, so a second caller could move
+   * funds after it. The full conditions are SPEC.md §3.5's sole-caller exception. Absent
+   * means a build without the check, or a rollback to one, so anything but the literal
+   * `true` reads `false`: an omitted or malformed field must never grant the premise.
+   * It reports the running build, so a reading taken before a rollback goes stale with it.
    */
   executeOwnership: boolean;
 

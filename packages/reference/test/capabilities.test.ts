@@ -433,6 +433,15 @@ describe("stealth chains and factories (Riddler #1336)", () => {
     expect(c.stealthChains).toEqual([1, 8453]);
   });
 
+  it("drops a non-canonical spelling of a chain id the list does not already hold", () => {
+    // The case above is masked by dedupe: every padded or hex spelling there names a
+    // chain already present. Here each is the only spelling of its chain.
+    const c = parseCapabilities(
+      matrix({ stealth_chains: ["08453", "0x2105", "1e3", " 10", "137.0", "+42161"] }),
+    )!;
+    expect(c.stealthChains).toEqual([]);
+  });
+
   it("reads an empty list as stealth offered nowhere", () => {
     const c = parseCapabilities(matrix({ stealth_chains: [], stealth_factory_address: null }))!;
     expect(c.stealthChains).toEqual([]);
@@ -444,6 +453,11 @@ describe("stealth chains and factories (Riddler #1336)", () => {
     const c = parseCapabilities(matrix({ stealth_chains: [42161, 8453, 1] }))!;
     // Advertised 42161 is not pinned, so it is not added; pinned 10 is not served.
     expect(narrowStealthChains(c, [8453, 10, 1])).toEqual([8453, 1]);
+  });
+
+  it("keeps the caller's order, not the server's", () => {
+    const c = parseCapabilities(matrix({ stealth_chains: [8453, 1] }))!;
+    expect(narrowStealthChains(c, [1, 8453])).toEqual([1, 8453]);
   });
 });
 

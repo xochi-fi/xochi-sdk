@@ -37,7 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
-| 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Additive; no taker signed struct, wire field or existing vector changes |
+| 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
 | 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
 | 0.8.0 | current | 3 | XSP hash primitives (`ESCROW-RFC 0.4.0-draft` §13, riddler #1223): `XochiObligation` EIP-712 `obligationId`, Depository CallRequest/MarkConsumed digests, deposit-address derivation, pinned by `conformance/xsp.json`. Additive; no taker signed struct or wire field changes |
 | 0.7.0 | current | 3 | Slash proof on solver signatures (`SOLVER-RFC 0.4.0-draft`, `ESCROW-RFC 0.3.0-draft`): SolverBid v2 (`conformance/solver-bid-v2.json`, replaces `bid.json`), FillAcceptance (`conformance/fill-acceptance.json`), SolverBond v2 domain `"2"` (`slash-attestation.json` regenerated). No taker signed struct or wire field changes |
@@ -158,12 +158,48 @@
   feeds (its recorded inputs, identity and the consumer's statement), quorum
   over attestors per (`claimType`, `proofType`), the fetch contract, the
   durable observation store, and the replay, rotation and revocation rules.
-  MINOR because it
-  adds a public contract, as `0.8.0` did for XSP; additive, so no §2 taker
-  struct, §4 fee
-  artifact, served wire field or existing vector changes. The server MUST
+  The §10 contract is additive, as `0.8.0` was for XSP: no §2 taker struct, §4
+  fee artifact or existing vector changes. The server MUST
   advertise `spec_version: "0.9.0"` in lockstep; until it does the
   `spec_version` probe reports DRIFT, which is correct.
+
+  `0.9.0` also carries the wire refresh against served `0.8.0` taken
+  2026-10-26 (xochi-sdk#53). The served document gained Riddler #1315, #1318,
+  #1321, #1336, #1346 and #1347: `QuoteRequest.customer_ref`,
+  `QuoteResponse.input_amount_usd`, `checks`/`timestamp` on
+  `/xochi/health/ready`, multi-chain stealth (`stealth_chains`,
+  `chains[].stealth_factory_address`, `chain_id` on both claim prepare forms),
+  `/xochi/execute`'s not-accepted and not-executed markers with `Retry-After` on
+  its `429`/`503` and the top-level `ErrorResponse.retry_after`,
+  `execute_ownership`, and `intentId`/`claimed` on `ClaimSubmitResult`. §3.2,
+  §3.3, §3.5, §5.1 and §6 read those shapes (§5.1 also reads #1302's shielded
+  refusal, served in prose the differ does not compare). Client behaviour on
+  `/xochi/execute` changes with it (§3.5): an unmarked `503` is in doubt rather
+  than transient, `quote_store_unavailable` is resent only when marked not
+  accepted, and the sole-caller exception relaxes the re-quote bound for the
+  quote's owner.
+
+  **So `0.9.0` is not purely additive.** The refresh was installed with
+  `--allow-breaking`: the differ graded 8 served deltas BREAKING, and §0.1 makes
+  a breaking wire change a MAJOR. The version is a MINOR anyway, by judgement:
+  every one of the 8 is a shape the producer already serves under `0.8.0`, so
+  this document records a break the server made rather than making one, and a
+  MAJOR here would move the lockstep `spec_version` target for a contract
+  change the server shipped without one. Each is acceptable for a stated
+  reason. (1)–(2) The
+  `/xochi/execute` `404` and `429` lost their `$ref`: the inlined responses keep
+  the `ErrorResponse` schema (the `429` adds `Retry-After` and `x-ratelimit-*`
+  headers). (3)–(4) The `/xochi/health/ready` `503` schema became `allOf` of
+  `ErrorResponse` and a `details {checks, timestamp}` object: a narrowing of an
+  operational body no taker flow reads. (5)–(7) `ClaimSubmitResult` gained the
+  required `intentId` and `claimed`: a response gaining fields; only a decoder
+  that refuses unknown keys breaks, and no request changes. (8)
+  `CapabilityMatrix.stealth_factory_address` became nullable (and deprecated):
+  `null` on a deploy whose `stealth_chains` is empty. `@xochi/signer` no longer
+  reads the top-level field; it reads `chains[].stealth_factory_address`
+  through `stealthFactoryFor`. No signed struct,
+  fee artifact or vector changes. Riddler #1286 (merged, not yet deployed)
+  advertises `0.9.0` without touching the OpenAPI.
 - `0.8.1`: never published; its changes ship inside `0.9.0`, the version the
   server must advertise next (above). PATCH-sized, with no wire, signature or
   vector change: the second adversarial review's fixes, and the tarball's
@@ -375,10 +411,10 @@ server-parity list in §2.1.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/xochi/quote` | Quote an intent; returns `eip712`, `pull_authorization`, `fee_breakdown` (+ reserved `escrow` envelope when advertised, §5.2) |
-| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `503` transient (§3.5) |
+| POST | `/xochi/execute` | Submit signed intent + `pull_signature` (+ `aztec_proof`, required for `shielded`); MAY echo `escrow.address`/`order_id` (§5.2). Only the `kid` that requested the quote may execute it (§3.5). `200` execution initiated; `202` accepted but not finished (an async execute resting at `pull_pending`, or an escrow open broadcast with no receipt inside the server's wait) — poll status, and a retried execute answers status and never resends the open; `404` unknown, expired or foreign quote; `429` rate limit; `503` not accepted or in doubt (§3.5) |
 | GET | `/xochi/status/:intent_id` | Poll settlement status |
-| POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` → returns `userOpHash` |
-| POST | `/xochi/claim/submit` | Submit `{signature, user_op_hash}` |
+| POST | `/xochi/claim/prepare` | Build the stealth-claim userOp; body `{counterfactual_address, recipient_address}` plus an optional `chain_id` (the chain the payment settled on; see below) → returns `userOpHash` |
+| POST | `/xochi/claim/submit` | Submit `{signature, user_op_hash}` → `{txHash, opHash, action, intentId, claimed}` once the op's receipt is seen |
 | GET | `/xochi/chains` · `/routes` · `/capabilities` | Discovery (§6) |
 | GET | `/xochi/openapi.json` · `/health` | Schema + health |
 
@@ -393,6 +429,21 @@ only in that property's `description`. A requirement carried by prose is one no
 schema check can enforce and one the wire probe deliberately never compares, so
 treat it as normative here and send it for `shielded` regardless.
 
+**Stealth claims are chain-bound by `chain_id`.** The counterfactual account is
+the same CREATE2 address on every chain, so a `/xochi/claim/prepare` without
+`chain_id` resolves the newest claimable settlement on *any* chain, and a
+recipient paid on two chains can be handed an op for the wrong one. A client
+SHOULD send `chain_id` (the announcement's chain, the intent's `to_chain_id`);
+the multi form takes one `chain_id` for the whole set, so a claim-all over
+several chains is one request per chain. It is optional only for clients that
+predate it. `/xochi/claim/submit`'s `claimed` is `true` when the op swept the
+payout (the intent is now claimed) and `false` for an action that leaves the
+funds in place (`approve_permit2`, a non-terminal `call`); `intentId` names the
+intent whose payout the op touched. A prepare for an account whose payout is
+already claimed answers `400 bad_request` with `details.reason:
+already_claimed`: any balance still there arrived beside the payment, and it is
+not a lost record (that is the 404, remedied by `/xochi/claim/rebuild`).
+
 ### 3.3 Quote request fields
 
 `wallet`, `from_chain_id`, `to_chain_id`, `from_token`, `to_token`;
@@ -403,7 +454,15 @@ treat it as normative here and send it for `shielded` regardless.
 a Xochi promo code's discount in bps, resolved and limited by the Xochi worker,
 never by the taker directly — see §4.5 `discount`); `settlement_preference`
 (default `public`); `stealth_spending_pub_key` / `stealth_viewing_pub_key`
-(required when `settlement=stealth`). Both snake_case and camelCase are accepted.
+(required when `settlement=stealth`); `customer_ref` (optional pseudonymous
+attribution reference minted by the Xochi backend, `^[mk]_[0-9a-f]{64}$`: never
+priced, never echoed, outside the idempotency fingerprint, and never a
+wallet-derived value). Both snake_case and camelCase are accepted.
+
+The response MAY carry `input_amount_usd`: the gross origin notional in USD at
+the token valuation conversion pricing accepted, a decimal string (absent on
+legacy and same-token quotes; never an assumption that a fiat-referenced token
+trades at par).
 
 **Address encodings** (the served `ChainAddress`, three `oneOf` branches):
 EVM `0x` + 40 hex; base58 (Tron/Solana) of 32–44 characters; and, since the
@@ -443,12 +502,16 @@ Errors are `HTTP status + { error: <code>, message?, details? }`; only `error`
 is required. Codes come from the served `ErrorCode` enum — append-only, never
 repurposed, and catalogued in `wire/openapi.json` rather than here, because a
 list in prose is a list that goes stale. Its own classification: 4xx is
-client-actionable (fix the request or re-quote), 503 is transient, 500
+client-actionable (fix the request or re-quote), 503 is transient (except on
+`POST /xochi/execute`, where an unmarked 503 is in doubt, below), 500
 `internal_error` is the server's. Codes carrying a rule beyond that:
 `rate_limit_exceeded` and `pre_positioning` carry `details.retry_after` seconds
-and MUST NOT be retried sooner; `already_executed` (409, the replay guard) MUST
+and MUST NOT be retried sooner (`rate_limit_exceeded` also carries a top-level
+`retry_after`, which predates `details` and equals `details.retry_after` when
+both are present; prefer the latter); `already_executed` (409, the replay guard) MUST
 NOT be retried with the same intent — re-quote. An unrecognized code SHOULD
-degrade to a retryable service error with the raw code preserved.
+degrade to a retryable service error with the raw code preserved, except on
+`POST /xochi/execute`, where it is in doubt unless marked not accepted.
 
 `POST /xochi/quote` `429` is the per-IP / per-caller rate limit with
 `x-ratelimit-*` headers and, on an escrow corridor, also the escrow-authorization
@@ -457,16 +520,56 @@ issuance limit (`details.reason: escrow_issuance_rate`, `details.scope`
 `x-ratelimit-*` headers; both MUST NOT be retried before `retry_after`. Escrow
 adds two codes, each with its cause in `details.reason`: `escrow_refused`
 (`422` on execute, a relayed open refused permanently — self-submit the open or
-re-quote, never retry the relay) and `escrow_unavailable` (`503`, transient).
-`quote_store_unavailable` (`503`) carries `Retry-After` and is retried with the
-**same** `quote_id`.
+re-quote, never retry the relay) and `escrow_unavailable` (`503`; never marked
+not accepted on execute, so in doubt there). `quote_store_unavailable` (`503`)
+carries `Retry-After`; it is not evidence the quote is gone, and on execute it is
+resent with the **same** `quote_id` only when marked not accepted.
+
+**`POST /xochi/execute` refusals carry two markers** in `details`, each only
+ever the boolean `false`; any other value, or its absence, means the marker is
+not set:
+
+- **Not accepted** (`details.accepted: false` with `details.retry_after`, also
+  sent as `Retry-After`; only on a `503` or `429`): this request was refused
+  before it claimed the intent and before any origin pull, so it did nothing.
+  The client MAY resend the **same** request (same `intent_id`, `quote_id` and
+  signatures) after `retry_after`, while the quote and pull authorization are
+  valid. It speaks only for this request: a resend can still meet another
+  request's claim (`409 already_executed`, in doubt). `Retry-After` alone never
+  makes a `503` resendable: an in-doubt `503` can carry one too.
+- **Not executed** (`details.funds_moved: false`, on any status, a permanent
+  4xx included, beside `validation_failed`'s field messages where it is not a
+  field): the request was refused before its claim and before any origin pull,
+  while the intent had no execute claim. It does not invite a resend. Never set
+  on load shedding, a rate limit, a body that does not parse, a caller that does
+  not own the quote, an `intent_id` that is not the quote's, an unreachable or
+  held execute lock, `already_executed`, a post-claim refusal, an escrow or
+  deposit-route quote, or an unconfirmed lock release.
+
+**Anything else from `POST /xochi/execute` is in doubt.** A `5xx` or `409`
+without the not-accepted marker — notably `pull_failed`, which includes an
+origin pull that may have been broadcast, and `service_unavailable` for an
+execution of this intent already in progress — may have moved funds or claimed
+the intent: the client MUST poll `GET /xochi/status/:intent_id` and MUST NOT
+resend.
+
+**Sole caller.** Only the `kid` that requested a quote may execute it; another
+`kid` gets the unknown quote's `404 not_found` ("Quote not found or expired")
+without `details.funds_moved`. `funds_moved: false` covers only claims made up
+to the answer: it reports what the server read, and says nothing about a claim
+another request makes after it. When the markers may lift the re-quote bound
+below is the sole-caller exception there, and nowhere else.
 
 **A stale quote has no stable code.** This document previously named
 `quote_expired` and hung a single-retry SHOULD on it; that code is not in the
-served enum, and no served response pins one for the condition — an expired
-quote answers the shared 404 (`Intent / quote not found or expired`), which a
-nonexistent *or* foreign intent id also answers by design, and the enum carries
-both `not_found` and `quote_not_found` without saying which applies here. So
+served enum, and no served response pins one for the condition. On
+`POST /xochi/execute` a quote evicted from the store answers `404 not_found`
+("Quote not found or expired"), which an unknown quote and another `kid`'s quote
+also answer by design, while a stored but expired quote is refused `422
+validation_failed` (`quote: ["quote expired"]`) under the execute lock;
+elsewhere an expired quote answers the shared 404 (`Intent / quote not found or
+expired`), and the enum carries both `not_found` and `quote_not_found` without
+saying which applies. So
 the single-retry SHOULD is not implementable as written: a client cannot tell a
 stale quote from an unknown one. In its place, and until the server pins a
 code:
@@ -495,7 +598,30 @@ code:
   holding two independently executable pulls over one wallet balance, and while
   a per-quote input ceiling bounds each pull on its own, nothing bounds the
   pair in aggregate. A client MUST wait for that bound to pass before quoting
-  again, or surface the failure.
+  again, or surface the failure, except under the sole-caller exception below.
+- **Sole-caller exception.** A caller MAY treat a `POST /xochi/execute` refusal
+  carrying `details.funds_moved: false` (on a `404`, a `422` or any other
+  status) as nothing moved and re-quote while the signed pull is still inside
+  its expiry bound, only when **all** of these hold:
+  1. it owns the quote: its `kid` is the one that requested it;
+  2. the server serves `execute_ownership: true` (§6), read close to the
+     decision rather than from a value cached across deploys;
+  3. it has no other `POST /xochi/execute` for this intent outstanding, across
+     every process presenting that `kid` (another instance of a shared
+     backend, or its own not-accepted resend still in flight, included), and it
+     sends none for this intent after this refusal.
+
+  The verdict rests on the premise in two halves, never on the marker alone:
+  the server read the intent's claim state after this request's lock was
+  released, the ownership check (2) guarantees no other `kid` can claim the
+  intent after that read, and (3) guarantees the owner itself cannot. Only then
+  is the pull the venue holds spendable by no later execute. Every other caller
+  keeps the MUST NOT above. The rollback risk is the caller's: a build without
+  the check does not serve `execute_ownership`, and a rollback to one drops the
+  field with no other signal, so a value read before the rollback keeps
+  vouching for a check that is gone. A deployment that issues a second `kid`
+  for the same quotes, or puts a retrying hop in front of `/xochi/execute`,
+  breaks the premise even while the field is served.
 - A client MUST NOT infer *which* condition the 404 means, and MUST NOT treat
   the re-quote as a recovery of the original intent: the retry is a new quote
   and a new intent, subject to §3.3 in full.
@@ -662,8 +788,8 @@ breakdown from the headline fee.
 | Type | Recipient mechanism | Expected fill | Status surfaces |
 |---|---|---|---|
 | `public` | plain address | ~30s | tx hashes |
-| `stealth` | ERC-5564 → ERC-4337 counterfactual account, gasless claim | ~60s | `stealthAddress`, `ephemeralPubKey`, `counterfactualAddress` |
-| `shielded` | Aztec note (testnet; launch-pending) | ~120s | `noteHashes`, `nullifiers`, `l2TxHash` |
+| `stealth` | ERC-5564 → ERC-4337 counterfactual account, gasless claim, on the chains in `stealth_chains` (§6) | ~60s | `stealthAddress`, `ephemeralPubKey`, `counterfactualAddress` |
+| `shielded` | Aztec note (reserved and unavailable: refused `settlement_not_allowed` whatever the deploy's allowlist or sidecar configuration) | ~120s | `noteHashes`, `nullifiers`, `l2TxHash` |
 
 A `transfer_to_private` emits two note hashes and three nullifiers, so the
 shielded surfaces are arrays. `noteCommitment` and `nullifierHash` remain as
@@ -757,12 +883,30 @@ source of truth for release. A client MUST NOT release-gate on it.
 ## 6. Capabilities & discovery
 
 `GET /xochi/capabilities` returns the capability matrix: `cross_chain_only`,
-`order_bounds_usd {min,max}`, `deposit_attestation_signer`,
-`stealth_factory_address`, `chains[]` (`chain_id`, `chain_name`, `vm_type`
-`evm|tvm|svm|cvm`, `address_format` `hex20|base58check|base58|canton_party`,
-`min_stealth_notional_usd`, optional `roles` and `escrow_address`), `tokens[]`,
+`order_bounds_usd {min,max}`, `deposit_attestation_signer`, `stealth_chains`,
+`stealth_factory_address` (deprecated), optional `execute_ownership`, `chains[]`
+(`chain_id`, `chain_name`, `vm_type` `evm|tvm|svm|cvm`, `address_format`
+`hex20|base58check|base58|canton_party`, `min_stealth_notional_usd`,
+`stealth_factory_address`, optional `roles` and `escrow_address`), `tokens[]`,
 `corridors[]`, `conversion_pairs[]`, `pull_recipients`. `GET /xochi/routes` returns
 `[{from_chain_id, to_chain_id, settlement_type, expected_fill_seconds}]`.
+
+**Stealth chains.** `stealth_chains` lists the chains a stealth settlement may be
+quoted to (empty: none); a stealth quote to any other destination is refused
+`stealth_requires_l1_destination` (the code predates multi-chain stealth).
+`chains[].stealth_factory_address` is the SimpleAccount factory owning stealth
+counterfactual accounts on that chain, `null` on a chain not in
+`stealth_chains`; read it for the chain the claim runs on. The top-level
+`stealth_factory_address` is deprecated and nullable: the factory on the first
+`stealth_chains` entry, `null` when the list is empty. Like every address here it
+is discovery, never a pin: a client MAY use `stealth_chains` to narrow its own
+stealth chain set and MUST NOT widen a locally pinned factory allowlist from it,
+since the factory decides who can claim.
+
+**`execute_ownership`** is present, always `true`, while `POST /xochi/execute`
+refuses a caller that does not own the quote (§3.5); absent on a server without
+the check. What a caller may rely on it for, and the rollback rule, is §3.5's
+sole-caller exception.
 
 `chains[].roles` is present only on a chain that is not both an origin and a
 destination; absent means both, and `["destination"]` marks a destination-only
