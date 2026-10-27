@@ -22,7 +22,13 @@ export interface EscrowRecord {
   proof?: FillProof;
 }
 
-const KNOWN_PROOF_KINDS = new Set(["tx_hash", "oracle_attestation", "light_client", "zk"]);
+const KNOWN_PROOF_KINDS = new Set([
+  "tx_hash",
+  "canton_update",
+  "oracle_attestation",
+  "light_client",
+  "zk",
+]);
 
 // Fail closed: only a recognized, minimally well-formed proof can release funds.
 function isProven(proof: FillProof): boolean {
@@ -33,6 +39,12 @@ function isProven(proof: FillProof): boolean {
         typeof proof.txHash === "string" &&
         proof.txHash.length > 0 &&
         Number.isFinite(proof.chainId)
+      );
+    case "canton_update":
+      return (
+        typeof proof.updateId === "string" &&
+        proof.updateId.length > 0 &&
+        proof.updateId.trim() === proof.updateId
       );
     case "oracle_attestation":
       return !!proof.attestation && !!proof.signer;

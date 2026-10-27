@@ -141,6 +141,9 @@ describe("order-id.json", () => {
       "evm-recipient-checksummed",
       "tron-base58-recipient",
       "canton-party-recipient",
+      "canton-mainnet-destination",
+      "canton-party-recipient-case",
+      "canton-testnet-destination",
       "bytes32-hex-recipient",
       "symbol-to-token",
       "zero-amounts",
@@ -174,6 +177,21 @@ describe("order-id.json", () => {
         expect(n, v.name).toMatch(/^[0-9]+$/);
       }
     }
+  });
+
+  it("keys two Canton parties differing only in case apart", () => {
+    const byName = new Map(orderIds.vectors.map((v) => [v.name, v]));
+    const lower = byName.get("canton-mainnet-destination")!;
+    const upper = byName.get("canton-party-recipient-case")!;
+
+    expect(upper.opening.recipient.toLowerCase()).toBe(lower.opening.recipient.toLowerCase());
+    expect(upper.opening.recipient).not.toBe(lower.opening.recipient);
+    expect({ ...upper.opening, recipient: lower.opening.recipient }).toEqual(lower.opening);
+    expect(upper.terms).toEqual(lower.terms);
+
+    expect(upper.expected_recipient_key).not.toBe(lower.expected_recipient_key);
+    expect(upper.expected_dest_commitment).not.toBe(lower.expected_dest_commitment);
+    expect(upper.expected_order_id).not.toBe(lower.expected_order_id);
   });
 });
 

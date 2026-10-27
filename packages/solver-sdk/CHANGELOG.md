@@ -8,6 +8,11 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Added
 
+- `FillProof` kind `canton_update` (`{ kind: "canton_update"; updateId: string }`,
+  SOLVER-RFC `0.6.0-draft` §6): a Canton-destination fill's ledger update id.
+  `FillReceiptSchema` takes it verbatim and refuses an empty or
+  whitespace-padded id, as the venue does; `StubEscrowGateway` treats it as a
+  known kind.
 - Moved in from the archived `axol-io/riddler-sdk` (snapshot, no history) as
   `@xochi/solver-sdk` (was `@riddler/solver-sdk`, unpublished). Bid digests,
   typehashes and domain separators are byte-identical; the EIP-712 names
@@ -29,6 +34,10 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
+- **BREAKING: `SOLVER_RFC_VERSION` is `"0.6.0-draft"`** (was
+  `"0.5.0-draft"`). `SolverClient.run` refuses a venue still serving
+  `0.5.0-draft` with `VenueVersionSkewError`, so the venue and this SDK deploy
+  in lockstep (RFC §12).
 - **BREAKING: `IntentAnnouncement.settlementPreference` is `"public"`** (was
   `SettlementType`): SOLVER-RFC `0.5.0-draft` producer withdrawal,
   `rfcVersion` unchanged. The field stays required on the wire.

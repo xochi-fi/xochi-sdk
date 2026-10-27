@@ -107,6 +107,81 @@
       "expected_order_id": "0xa7d7fafc8e01d9e055ee62db3c572ee28a45b72825d4116362aa140426862ca3"
     },
     {
+      "name": "canton-mainnet-destination",
+      "why": "A Canton MainNet order: a party recipient and the Canton Coin instrument admin (DSO party) as toToken, both keccak of their verbatim UTF-8; toChainId is the synthetic id 253340876.",
+      "opening": {
+        "recipient": "alice::1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72",
+        "toToken": "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x1e7ff0239163aad4c6a908422e48bd04e5c5e7fd0063b0925a524f51d2f1d0dc",
+      "expected_to_token_key": "0x02c05219f30af16bf207d10511682ef49fbad6d42cc422829f0b3d2fc65a9696",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xc0a259cd637e33a7198358e6cd64265a6242f5ba77fe006b06d030e21990907b",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "253340876",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x72b072def712f7fd0996903ad1150e029e0f17ae967bb0d7b47444bafcad1e51"
+    },
+    {
+      "name": "canton-party-recipient-case",
+      "why": "canton-mainnet-destination with only the party hint's case changed (Alice, not alice). Canton party ids are case-sensitive, so recipientKey, destCommitment and orderId MUST all differ from it: an implementation that folds case pays a different party.",
+      "opening": {
+        "recipient": "Alice::1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72",
+        "toToken": "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x3cbfcc7c1b17a424cf50a16eba2b723a5520768eedf9dd6fdd17ecfdd3d67659",
+      "expected_to_token_key": "0x02c05219f30af16bf207d10511682ef49fbad6d42cc422829f0b3d2fc65a9696",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0xa7a0c14eb83437f109ee795b5b756a292a4c65bd9ba746447682d7ba27377a85",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "8453",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "253340876",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x30b750dd4087f061c80e37a337bc1fbfada502f493decd9c6edb2832e1d3d381"
+    },
+    {
+      "name": "canton-testnet-destination",
+      "why": "A Canton TestNet order (Base Sepolia origin): toChainId 4149314359 is above 2^31, so it catches an int32 chain id; toToken is TestNet's own DSO party.",
+      "opening": {
+        "recipient": "alice::1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72",
+        "toToken": "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337",
+        "toAmount": "99700000",
+        "blinding": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "intentId": "intent-0001"
+      },
+      "expected_recipient_key": "0x1e7ff0239163aad4c6a908422e48bd04e5c5e7fd0063b0925a524f51d2f1d0dc",
+      "expected_to_token_key": "0x5f815413174f131a6a2f49e5667e28a7337639b7b2a38126c51cc129e689e8e3",
+      "expected_intent_id_hash": "0x743b3c5ffff87f1e53cad048e85c52fb8b38886628c9a44e39250a23b5c9b8d3",
+      "expected_dest_commitment": "0x05cc0b9678a4495dd8110888622e3415215b0c42dec5b64d6b99226beaa9ea74",
+      "terms": {
+        "depositor": "0x1111111111111111111111111111111111111111",
+        "fromChainId": "84532",
+        "fromToken": "0x833589fcd6eb6af1a2ab0fc6d6d0dd6aab3a7ac5",
+        "fromAmount": "100000000",
+        "toChainId": "4149314359",
+        "fillDeadline": "1900000000",
+        "escrow": "0x3333333333333333333333333333333333333333"
+      },
+      "expected_order_id": "0x2719817a5a276119c5f206fbcfb9ca167326e2d915443d5804eedbe469cb6272"
+    },
+    {
       "name": "bytes32-hex-recipient",
       "why": "A 0x-prefixed 32-byte string (Solana/Sui style) is NOT an EVM address: it is hashed as a string, never decoded as bytes32 or truncated to 20 bytes.",
       "opening": {

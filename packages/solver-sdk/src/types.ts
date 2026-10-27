@@ -216,8 +216,11 @@ export interface FillAttestationWire {
 // Proof that a fill happened on the destination. Tagged union from day one so
 // the wire format survives the proof upgrade (tx-hash -> oracle -> light-client
 // -> zk). A verifier MUST treat an unknown `kind` as unproven (fail closed).
+// `canton_update` is a Canton destination's fill: there is no transaction hash,
+// only the ledger update id, an opaque case-sensitive string (never fold it).
 export type FillProof =
   | { kind: "tx_hash"; chainId: number; txHash: string }
+  | { kind: "canton_update"; updateId: string }
   | { kind: "oracle_attestation"; attestation: string; signer: string }
   | { kind: "light_client"; header: string; proof: string }
   | { kind: "zk"; proof: string; publicInputs: string[] };
