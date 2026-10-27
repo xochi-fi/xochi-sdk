@@ -335,7 +335,14 @@ export const VenueCapabilitiesSchema = z
         settleRule: z.string().optional(),
         quoteTtlSeconds: z.number().int().positive().optional(),
         corridors: z
-          .array(z.object({ fromChainId: z.number().int().positive(), toChainId: z.number().int().positive() }).passthrough())
+          .array(
+            z
+              .object({
+                fromChainId: z.number().int().positive(),
+                toChainId: z.number().int().positive(),
+              })
+              .passthrough(),
+          )
           .optional(),
       })
       .passthrough()

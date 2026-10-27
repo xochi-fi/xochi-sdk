@@ -29,14 +29,20 @@ describe("IntentAnnouncementSchema quote-through", () => {
   });
 
   it("parses a quote-through announcement with its horizon", () => {
-    const parsed = IntentAnnouncementSchema.parse({ ...base, quoteThrough: true, minValidUntilMs: 61_300 });
+    const parsed = IntentAnnouncementSchema.parse({
+      ...base,
+      quoteThrough: true,
+      minValidUntilMs: 61_300,
+    });
     expect(parsed.quoteThrough).toBe(true);
     expect(parsed.minValidUntilMs).toBe(61_300);
   });
 
   it("refuses one key without the other", () => {
     expect(IntentAnnouncementSchema.safeParse({ ...base, quoteThrough: true }).success).toBe(false);
-    expect(IntentAnnouncementSchema.safeParse({ ...base, minValidUntilMs: 61_300 }).success).toBe(false);
+    expect(IntentAnnouncementSchema.safeParse({ ...base, minValidUntilMs: 61_300 }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -54,6 +60,8 @@ describe("VenueCapabilitiesSchema quote-through", () => {
   });
 
   it("is optional", () => {
-    expect(VenueCapabilitiesSchema.parse({ rfcVersion: "0.6.0-draft" }).quoteThrough).toBeUndefined();
+    expect(
+      VenueCapabilitiesSchema.parse({ rfcVersion: "0.6.0-draft" }).quoteThrough,
+    ).toBeUndefined();
   });
 });

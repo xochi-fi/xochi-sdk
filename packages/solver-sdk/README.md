@@ -42,7 +42,8 @@ const solver: Solver = {
     settlementTypes: ["public"],
     rfcVersion: SOLVER_RFC_VERSION,
   }),
-  // A bid, or null to pass. `minOutput` is the floor, not the reserve.
+  // A bid, or null to pass. `minOutput` is the floor -- not the reserve, except on a
+  // quote-through announcement (RFC §2.5), where it IS the (public) reserve.
   quote: async (intent) => {
     live.set(intent.intentId, intent);
     return {
@@ -107,8 +108,11 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
   absolute unix ms, `output` is canonical decimal. On a quote-through announcement
   (`quoteThrough: true`, RFC §2.5) bid `validUntilMs >= minValidUntilMs`, or the bid is admitted
   and never selected.
-- **`minOutput` is admissibility, not the reserve.** A bid at `minOutput + 1` is admissible and
-  still loses.
+- **`minOutput` is admissibility, not the reserve -- except on a quote-through corridor.** On an
+  ordinary announcement the venue's reserve is private, so a bid at `minOutput + 1` is admissible
+  and still loses. On a quote-through announcement (`quoteThrough: true`, RFC §2.5) there is no
+  private reserve: `minOutput` IS the reserve, public, a bid AT it is eligible, and the winner
+  delivers `max(next-best standing bid, minOutput)` (second price).
 - **Handle `onFeedGap`.** `dropped` and `reset` mean intents you will never see.
 - **Unknown event types are skipped; malformed and lookalike ones are not.** `HttpSolverTransport`
   skips an entry whose `type` it does not know (to `onInvalidEvent` as `UnknownSolverEventError`,

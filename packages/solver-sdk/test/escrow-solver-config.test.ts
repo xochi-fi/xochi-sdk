@@ -82,7 +82,11 @@ describe("EscrowSolver quote-through horizon", () => {
     const w = world([]);
     vi.spyOn(Date, "now").mockReturnValue(announcement.closesAt);
     const horizon = announcement.closesAt + 10 * 86_400_000;
-    const bid = await w.escrowSolver.quote({ ...announcement, quoteThrough: true, minValidUntilMs: horizon });
+    const bid = await w.escrowSolver.quote({
+      ...announcement,
+      quoteThrough: true,
+      minValidUntilMs: horizon,
+    });
     expect(bid?.validUntilMs).toBe(horizon);
   });
 

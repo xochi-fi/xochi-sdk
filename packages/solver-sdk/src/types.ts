@@ -132,6 +132,9 @@ export interface IntentAnnouncement {
   // is rejected outright. It is NOT the venue's reserve bid, which is private
   // (RFC §2.1) -- a bid at `minOutput + 1` is ADMISSIBLE and still loses to the
   // reserve. Price the corridor yourself; there is no number here to shadow.
+  // Exception: on a quote-through announcement (`quoteThrough: true`, RFC §2.5)
+  // there is no private reserve -- `minOutput` IS the reserve, public, and a bid
+  // at it is eligible (settled second-price).
   minOutput: string;
   opensAt: number; // server clock, ms
   closesAt: number; // sealed-window close, ms
