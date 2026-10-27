@@ -52,10 +52,26 @@ describe("generate-shielded-terms", () => {
     ).toBe(true);
   });
 
-  it("every vector has its own digest", () => {
-    const { vectors } = JSON.parse(committed("shielded-terms.json")) as {
-      vectors: { digest: string }[];
+  it("every manifest, preview and terms digest is distinct", () => {
+    type V = { digest?: string; manifestDigest?: string };
+    const set = JSON.parse(committed("shielded-terms.json")) as {
+      manifest: { vectors: V[] };
+      preview: { vectors: V[] };
+      terms: { vectors: V[] };
     };
-    expect(new Set(vectors.map((v) => v.digest)).size).toBe(vectors.length);
+    const all = [...set.manifest.vectors, ...set.preview.vectors, ...set.terms.vectors].map(
+      (v) => v.digest ?? v.manifestDigest,
+    );
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("a preview is never signable terms: other type, version and domain", () => {
+    const set = JSON.parse(committed("shielded-terms.json")) as {
+      constants: Record<string, string>;
+      types: Record<string, { encodeType: string }>;
+    };
+    expect(set.types.preview!.encodeType.startsWith("ShieldedPreviewV1(")).toBe(true);
+    expect(set.constants.previewDomainName).not.toBe(set.constants.termsDomainName);
+    expect(set.constants.previewProtocolVersion).not.toBe(set.constants.termsProtocolVersion);
   });
 });

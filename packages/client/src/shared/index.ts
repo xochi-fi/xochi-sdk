@@ -14,3 +14,4 @@ export * from "./validators.js";
 export * from "./schemas.js";
 export * from "./api.js";
 export * from "./intentStream.js";
+export * from "./shieldedPreview.js";

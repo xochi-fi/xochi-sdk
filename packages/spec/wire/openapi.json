@@ -137,10 +137,20 @@
       }
     },
     "schemas": {
+      "AztecValue": {
+        "description": "A 32-byte Aztec address or field element: nonzero and below the BN254 scalar field modulus. Never a padded or hashed EVM address (a 20-byte value is refused `not_bytes32`). Responses are lowercase.\n",
+        "example": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+        "pattern": "^0x[0-9a-fA-F]{64}$",
+        "type": "string"
+      },
       "BigIntString": {
         "description": "Positive integer as string (token amounts in base units).",
         "example": "1000000000",
         "pattern": "^[1-9][0-9]*$",
+        "type": "string"
+      },
+      "Bytes32": {
+        "pattern": "^0x[0-9a-fA-F]{64}$",
         "type": "string"
       },
       "CapabilityMatrix": {
@@ -1525,6 +1535,7 @@
           "announcer_not_configured",
           "tron_fee_misconfigured",
           "escrow_refused",
+          "shielded_terms_refused",
           "insufficient_balance",
           "insufficient_liquidity",
           "pre_positioning",
@@ -2762,6 +2773,545 @@
           "shielded"
         ],
         "type": "string"
+      },
+      "ShieldedCorridor": {
+        "additionalProperties": false,
+        "description": "One immutable corridor revision. `manifest_digest` is the server-computed `hashStruct(CorridorManifestV1)`; any other value is refused (`manifest_mismatch`).\n",
+        "properties": {
+          "corridor_id": {
+            "$ref": "#/components/schemas/Bytes32"
+          },
+          "manifest_digest": {
+            "$ref": "#/components/schemas/Bytes32"
+          },
+          "revision": {
+            "maximum": 4294967295,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "corridor_id",
+          "revision",
+          "manifest_digest"
+        ],
+        "type": "object"
+      },
+      "ShieldedFeeBreakdown": {
+        "description": "`ShieldedFeeBreakdown` (PROPOSED): amounts in SOURCE-token base units (an exact-output fee is added to the source pull). `total_fee` is `gas_floor` plus the four layers; `total_bps` the four rates.\n",
+        "properties": {
+          "gas_floor": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "price_impact": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "price_impact_bps": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "routing_fee": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "routing_fee_bps": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "solver_fee": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "solver_fee_bps": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_bps": {
+            "maximum": 40000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_fee": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "venue_fee": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "venue_fee_bps": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gas_floor",
+          "solver_fee_bps",
+          "solver_fee",
+          "price_impact_bps",
+          "price_impact",
+          "venue_fee_bps",
+          "venue_fee",
+          "routing_fee_bps",
+          "routing_fee",
+          "total_bps",
+          "total_fee"
+        ],
+        "type": "object"
+      },
+      "ShieldedNetworkIdentity": {
+        "additionalProperties": false,
+        "description": "Shielded contract v1 `NetworkIdentity`. uint256 members are canonical decimal strings; `aztec_chain_id` and `protocol_version` (the numeric rollup version) are nonzero and below the BN254 modulus.\n",
+        "properties": {
+          "aztec_chain_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "genesis_or_network_digest": {
+            "$ref": "#/components/schemas/Bytes32"
+          },
+          "l1_chain_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "protocol_version": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "rollup_address": {
+            "pattern": "^0x[0-9a-fA-F]{40}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aztec_chain_id",
+          "protocol_version",
+          "rollup_address",
+          "l1_chain_id",
+          "genesis_or_network_digest"
+        ],
+        "type": "object"
+      },
+      "ShieldedPreview": {
+        "description": "ShieldedPreviewV1 in snake_case: every ShieldedTermsV1 member except the per-execution ones (intent/quote/operation ids, source authorization digest, reservation id). Every member is a digest member.\n",
+        "properties": {
+          "collect_before": {
+            "type": "integer"
+          },
+          "destination": {
+            "properties": {
+              "amount": {
+                "$ref": "#/components/schemas/BigIntString"
+              },
+              "asset_id": {
+                "type": "string"
+              },
+              "corridor": {
+                "$ref": "#/components/schemas/ShieldedCorridor"
+              },
+              "disclosure_profile": {
+                "enum": [
+                  "recipient-private-public-amount-v1"
+                ],
+                "type": "string"
+              },
+              "fee_payer": {
+                "$ref": "#/components/schemas/AztecValue"
+              },
+              "network": {
+                "$ref": "#/components/schemas/ShieldedNetworkIdentity"
+              },
+              "privacy_level": {
+                "enum": [
+                  "private"
+                ],
+                "type": "string"
+              },
+              "rail": {
+                "description": "The design-A tracer. `b_panel` is not a v1 rail.",
+                "enum": [
+                  "a_tracer"
+                ],
+                "type": "string"
+              },
+              "recipient_address": {
+                "$ref": "#/components/schemas/AztecValue"
+              },
+              "recipient_binding_id": {
+                "type": "string"
+              },
+              "recipient_descriptor_digest": {
+                "$ref": "#/components/schemas/Bytes32"
+              },
+              "settlement_type": {
+                "enum": [
+                  "shielded"
+                ],
+                "type": "string"
+              },
+              "token_address": {
+                "$ref": "#/components/schemas/AztecValue"
+              }
+            },
+            "required": [
+              "settlement_type",
+              "privacy_level",
+              "disclosure_profile",
+              "rail",
+              "network",
+              "corridor",
+              "asset_id",
+              "token_address",
+              "recipient_binding_id",
+              "recipient_descriptor_digest",
+              "recipient_address",
+              "amount",
+              "fee_payer"
+            ],
+            "type": "object"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "fee_breakdown": {
+            "$ref": "#/components/schemas/ShieldedFeeBreakdown"
+          },
+          "policy_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protocol_version": {
+            "enum": [
+              "xochi.shielded.preview.v1"
+            ],
+            "type": "string"
+          },
+          "recipient_binding_digest": {
+            "$ref": "#/components/schemas/Bytes32"
+          },
+          "refund_address": {
+            "pattern": "^0x[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "refund_amount": {
+            "$ref": "#/components/schemas/BigIntString"
+          },
+          "settlement_service_deadline": {
+            "type": "integer"
+          },
+          "source": {
+            "properties": {
+              "amount": {
+                "$ref": "#/components/schemas/BigIntString"
+              },
+              "chain_id": {
+                "type": "integer"
+              },
+              "collector": {
+                "pattern": "^0x[0-9a-f]{40}$",
+                "type": "string"
+              },
+              "token_address": {
+                "pattern": "^0x[0-9a-f]{40}$",
+                "type": "string"
+              },
+              "wallet": {
+                "pattern": "^0x[0-9a-f]{40}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "chain_id",
+              "token_address",
+              "wallet",
+              "collector",
+              "amount"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "protocol_version",
+          "environment",
+          "source",
+          "destination",
+          "fee_breakdown",
+          "refund_address",
+          "refund_amount",
+          "collect_before",
+          "settlement_service_deadline",
+          "recipient_binding_digest",
+          "policy_revision"
+        ],
+        "type": "object"
+      },
+      "ShieldedPreviewRefusal": {
+        "description": "`details.reason` of a `shielded_terms_refused` answer. Encoding codes match `@xochi/spec` shielded vectors; all are permanent.\n",
+        "enum": [
+          "unknown_field",
+          "missing_field",
+          "terms_version_unsupported",
+          "privacy_level_unsupported",
+          "corridor_unapproved",
+          "corridor_revision_conflict",
+          "corridor_not_testnet",
+          "manifest_mismatch",
+          "network_mismatch",
+          "asset_unsupported",
+          "recipient_binding_mismatch",
+          "deadline_order",
+          "deadline_out_of_window",
+          "preview_mismatch",
+          "not_bytes32",
+          "aztec_zero",
+          "aztec_out_of_field",
+          "amount_not_canonical",
+          "amount_zero",
+          "amount_over_max",
+          "not_evm_address",
+          "evm_address_zero",
+          "uint_not_canonical",
+          "uint_out_of_range",
+          "chain_id_zero",
+          "digest_zero",
+          "string_empty",
+          "environment_empty"
+        ],
+        "type": "string"
+      },
+      "ShieldedPreviewRequest": {
+        "additionalProperties": false,
+        "description": "Unknown keys are refused (`unknown_field`) at every level, so no stealth/ERC-4337 field can ride along.\n",
+        "properties": {
+          "collect_before": {
+            "description": "Unix seconds; inside the corridor's collect window",
+            "type": "integer"
+          },
+          "corridor": {
+            "$ref": "#/components/schemas/ShieldedCorridor"
+          },
+          "destination": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BigIntString"
+                  }
+                ],
+                "description": "Exact destination amount in base units, at most 2^128 - 1."
+              },
+              "recipient_address": {
+                "$ref": "#/components/schemas/AztecValue"
+              },
+              "recipient_descriptor_digest": {
+                "$ref": "#/components/schemas/Bytes32"
+              },
+              "token_address": {
+                "$ref": "#/components/schemas/AztecValue"
+              }
+            },
+            "required": [
+              "token_address",
+              "recipient_address",
+              "recipient_descriptor_digest",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "expected_preview_digest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bytes32"
+              }
+            ],
+            "description": "When sent, the computed preview digest must equal it (`preview_mismatch`)."
+          },
+          "network": {
+            "$ref": "#/components/schemas/ShieldedNetworkIdentity"
+          },
+          "preview_version": {
+            "enum": [
+              "xochi.shielded.preview.v1"
+            ],
+            "type": "string"
+          },
+          "privacy_level": {
+            "description": "Sovereign is refused (`privacy_level_unsupported`).",
+            "enum": [
+              "private"
+            ],
+            "type": "string"
+          },
+          "recipient_binding": {
+            "additionalProperties": false,
+            "description": "The enrolled RecipientBinding's own members. Its digest is recomputed from these plus the preview's source wallet/chain, Aztec recipient/token and corridor; `digest`, when sent, must equal it (`recipient_binding_mismatch`).\n",
+            "properties": {
+              "binding_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "challenge_expiry": {
+                "description": "Unix seconds",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "digest": {
+                "$ref": "#/components/schemas/Bytes32"
+              },
+              "nonce": {
+                "$ref": "#/components/schemas/Bytes32"
+              }
+            },
+            "required": [
+              "binding_id",
+              "nonce",
+              "challenge_expiry"
+            ],
+            "type": "object"
+          },
+          "refund_address": {
+            "description": "Defaults to `source.wallet`.",
+            "pattern": "^0x[0-9a-fA-F]{40}$",
+            "type": "string"
+          },
+          "settlement_service_deadline": {
+            "description": "Unix seconds; after `collect_before`, inside the corridor's service window",
+            "type": "integer"
+          },
+          "source": {
+            "additionalProperties": false,
+            "properties": {
+              "chain_id": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "token_address": {
+                "pattern": "^0x[0-9a-fA-F]{40}$",
+                "type": "string"
+              },
+              "wallet": {
+                "pattern": "^0x[0-9a-fA-F]{40}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "chain_id",
+              "token_address",
+              "wallet"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "preview_version",
+          "privacy_level",
+          "corridor",
+          "network",
+          "source",
+          "destination",
+          "recipient_binding",
+          "collect_before",
+          "settlement_service_deadline"
+        ],
+        "type": "object"
+      },
+      "ShieldedPreviewResponse": {
+        "properties": {
+          "domain": {
+            "properties": {
+              "chain_id": {
+                "description": "The source chain",
+                "type": "integer"
+              },
+              "name": {
+                "enum": [
+                  "Xochi Shielded Preview"
+                ],
+                "type": "string"
+              },
+              "salt": {
+                "$ref": "#/components/schemas/Bytes32"
+              },
+              "version": {
+                "enum": [
+                  "1"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "version",
+              "chain_id",
+              "salt"
+            ],
+            "type": "object"
+          },
+          "executable": {
+            "enum": [
+              false
+            ],
+            "type": "boolean"
+          },
+          "manifest": {
+            "description": "Manifest facts reported beside the preview; the recipient class is not a digest member.",
+            "properties": {
+              "aztec_sdk_version": {
+                "example": "6.0.0",
+                "type": "string"
+              },
+              "manifest_digest": {
+                "$ref": "#/components/schemas/Bytes32"
+              },
+              "recipient_account_class_id": {
+                "$ref": "#/components/schemas/AztecValue"
+              }
+            },
+            "required": [
+              "manifest_digest",
+              "aztec_sdk_version",
+              "recipient_account_class_id"
+            ],
+            "type": "object"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/ShieldedPreview"
+          },
+          "preview_digest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bytes32"
+              }
+            ],
+            "description": "EIP-712 digest of `preview` (ShieldedPreviewV1) under `domain`. Not a signing payload: no ShieldedTermsV1 signature verifies against it.\n"
+          },
+          "preview_version": {
+            "enum": [
+              "xochi.shielded.preview.v1"
+            ],
+            "type": "string"
+          },
+          "recipient_binding_digest": {
+            "$ref": "#/components/schemas/Bytes32"
+          }
+        },
+        "required": [
+          "executable",
+          "preview_version",
+          "preview_digest",
+          "recipient_binding_digest",
+          "domain",
+          "preview",
+          "manifest"
+        ],
+        "type": "object"
       },
       "TokenCapability": {
         "properties": {
@@ -4077,6 +4627,68 @@
         "summary": "Settlement callback from the Xochi backend",
         "tags": [
           "settle"
+        ]
+      }
+    },
+    "/xochi/shielded/preview": {
+      "post": {
+        "description": "Dark by default: unless `XOCHI_SHIELDED_TERMS_PREVIEW_ENABLED` is on, this\npath answers the same 404 as any unknown route, for every caller.\n\nReturns `ShieldedPreviewV1` for one approved corridor revision\n(design-A testnet tracer, manifest revision 1 on the Aztec public\ntestnet, SDK 6.0.0) and its EIP-712 digest under the salted\n`Xochi Shielded Preview` domain. It is every `ShieldedTermsV1` member\nexcept the five per-execution ones (intent, quote and operation ids,\nsource authorization digest, reservation id) under its own type,\nversion and domain, so the digest is stable and never verifies as\nsigned terms. Both encodings are pinned by `@xochi/spec`\n`conformance/shielded-terms.json` (**PROPOSED**, recorded as the D7\namendment of the shielded contract v1).\n\nIt is NOT a quote: it creates no quote, intent, inventory reservation or\nquote hold, builds no origin-pull authorization (no ERC-3009/Permit2\nsignable, no deposit address), carries no ERC-4337 factory/salt, claim\nleg, EVM destination or note fields, and `executable` is always false.\nShielded `/xochi/execute` and `/xochi/settle` remain refused\n(`settlement_not_allowed`).\n\nEvery destination identity is a 32-byte Aztec value (nonzero, below the\nBN254 scalar field modulus); an EVM address is never padded into one.\nThe network, Aztec token, fee payer, rail (`a_tracer`), collector and\nfee policy are the manifest's, and `manifest_digest` is computed from\nit: naming another network, token or digest is refused. The recipient,\nrecipient descriptor digest, exact destination amount, binding\nreference and deadlines are the caller's and are digest members; the\n`recipient_binding_digest` is recomputed from the preview's own source\nwallet, Aztec recipient/token and corridor. Send the digest you were\nshown as `expected_preview_digest` and any change to the binding,\nrecipient or amount is refused (`preview_mismatch`).\n\nRequired scope: `quote`.\n",
+        "operationId": "xochi_shielded_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShieldedPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShieldedPreviewResponse"
+                }
+              }
+            },
+            "description": "The preview and its digest. Nothing was created."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "details": {
+                    "field": "privacy_level",
+                    "reason": "privacy_level_unsupported"
+                  },
+                  "error": "shielded_terms_refused",
+                  "message": "Shielded terms cannot be previewed for this request; retrying it unchanged will not change the answer"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Permanent refusal (`shielded_terms_refused`): `details.reason` and `details.field` name it. Retrying the same body cannot succeed.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "summary": "Preview the exact Aztec destination of a shielded corridor (non-executable, never signed)",
+        "tags": [
+          "quote"
         ]
       }
     },
