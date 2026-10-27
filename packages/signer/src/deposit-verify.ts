@@ -143,7 +143,7 @@ export class DepositQuoteMismatchError extends DepositAttestationError {
  */
 export function recipientIsDestinationToken(recipient: string, toToken: string): boolean {
   if (!recipient || !toToken) return false;
-  return normalizeAddress(recipient) === normalizeAddress(toToken);
+  return normalizePartyCapable(recipient) === normalizePartyCapable(toToken);
 }
 
 /**
@@ -244,10 +244,23 @@ export function attestationSignerConsistency(
  * Mirrors the server's `normalize_address/1`: a `0x`-prefixed value is
  * lowercased, anything else left byte-for-byte alone. The prefix check is
  * case-sensitive like the server's `"0x" <> _` pattern; a `0X` value is not
- * lowercased on either side, so treating it as EVM would diverge.
+ * lowercased on either side, so treating it as EVM would diverge. Every field
+ * except `to_token` and `recipient` uses this rule.
  */
 function normalizeAddress(address: string): string {
   return address.startsWith("0x") ? address.toLowerCase() : address;
+}
+
+/**
+ * Mirrors the server's `normalize_party_capable/1`, for `to_token` and `recipient`
+ * only -- the fields that can hold a Canton party (axol-io/Riddler#1254): a value
+ * that is ENTIRELY `0x` + one or more hex digits is lowercased, anything else left
+ * byte-for-byte alone, since `0xAlice::1220...` is not `0xalice::1220...`. The other
+ * fields keep the plain rule so that no served preimage changed: the stealth keys,
+ * for one, are not validated on a public route and can carry a non-hex `0x` value.
+ */
+function normalizePartyCapable(address: string): string {
+  return /^0x[0-9a-fA-F]+$/.test(address) ? address.toLowerCase() : address;
 }
 
 /**
@@ -286,10 +299,10 @@ export function buildDepositAttestationMessage(fields: DepositAttestationFields)
     optional(fields.deposit_deadline),
     optional(fields.refund_address),
     String(fields.to_chain_id),
-    normalizeAddress(fields.to_token),
+    normalizePartyCapable(fields.to_token),
     String(fields.to_amount),
     String(fields.min_to_amount),
-    normalizeAddress(fields.recipient),
+    normalizePartyCapable(fields.recipient),
     optional(fields.stealth_spending_pub_key),
     optional(fields.stealth_viewing_pub_key),
     String(fields.settlement_preference),
@@ -457,9 +470,14 @@ function sameAmount(a: string, b: string): boolean {
 
 /**
  * Refuses a recipient, wallet or refund address that starts `0x` without being `0x` +
- * hex: the deposit attestation lowercases it (axol-io/Riddler#1254), so it cannot tell
- * it from a differently-cased party id. Run on the request by `xochiDepositQuote` before
- * the quote call and on the attested fields by `assertDepositQuoteMatchesRequest`.
+ * hex. Riddler signs such a recipient verbatim since axol-io/Riddler#1254, but that change
+ * did not move `DEPOSIT_ATTESTATION_VERSION`, so this client cannot tell a deploy that
+ * binds its case from an earlier one whose digest lowercased it -- and against the
+ * latter an attestation for `0xalice::...` is indistinguishable from one for
+ * `0xAlice::...`. No served deposit route carries such a value (deposit routes are
+ * Tron-origin; a Canton destination is escrow-only), so refusing costs nothing; lift it
+ * with the next version bump. Run on the request by `xochiDepositQuote` before the
+ * quote call and on the attested fields by `assertDepositQuoteMatchesRequest`.
  */
 export function assertDepositPartiesCaseBindable(parties: {
   recipient?: unknown;
@@ -469,9 +487,10 @@ export function assertDepositPartiesCaseBindable(parties: {
   for (const [name, value] of Object.entries(parties)) {
     if (typeof value === "string" && value.startsWith("0x") && !/^0x[0-9a-fA-F]+$/.test(value)) {
       throw new DepositQuoteMismatchError(
-        `${name} ${JSON.stringify(value)} starts with 0x but is not hex, so the deposit attestation ` +
-          "lowercases it and cannot tell it from a differently-cased party id (axol-io/Riddler#1254). " +
-          "This client refuses such a value until the attestation binds its case. Do NOT send funds.",
+        `${name} ${JSON.stringify(value)} starts with 0x but is not hex, and this attestation ` +
+          "version does not guarantee the server binds its case: a deploy that lowercases it cannot " +
+          "tell it from a differently-cased party id (axol-io/Riddler#1254). This client refuses " +
+          "such a value until a version bump says the attestation binds its case. Do NOT send funds.",
       );
     }
   }
@@ -523,16 +542,17 @@ export function assertDepositQuoteMatchesRequest(
     }
   }
 
-  // The attestation cannot bind the CASE of a value that starts `0x` without being
-  // `0x` + hex: `normalizeAddress` is the DIGEST rule (Riddler's `normalize_address/1`)
-  // and folds every `0x`-prefixed value, which includes a Canton party id whose
-  // free-text hint starts `0x` (`0xAlice::1220...`, spec 0.8.0). So a genuine
-  // attestation for `0xalice::1220...` -- another party, obtainable by anyone, since
-  // quoting is not authenticated by wallet -- verifies against a request for
-  // `0xAlice::1220...`, and the displayed `recipient_address` below cannot catch it:
-  // it is unsigned and arrives on the same channel as the quote. Refused outright for
-  // the recipient, the wallet and the refund address until axol-io/Riddler#1254 stops
-  // the server folding them and bumps `deposit_attestation_version`.
+  // The attestation cannot be TRUSTED to bind the CASE of a value that starts `0x`
+  // without being `0x` + hex: Riddler signs a recipient verbatim since axol-io/Riddler#1254, but
+  // the message version did not move, so an earlier deploy that folds every
+  // `0x`-prefixed value -- including a Canton party id whose free-text hint starts `0x`
+  // (`0xAlice::1220...`, spec 0.8.0) -- answers under the same tag. Against such a
+  // deploy a genuine attestation for `0xalice::1220...` (another party, obtainable by
+  // anyone, since quoting is not authenticated by wallet) is no binding for
+  // `0xAlice::1220...`, and the displayed `recipient_address` below cannot catch it: it
+  // is unsigned and arrives on the same channel as the quote. Refused outright for the
+  // recipient, the wallet and the refund address until a version bump says the server
+  // binds that case.
   assertDepositPartiesCaseBindable({
     recipient: fields.recipient,
     wallet: fields.wallet,
