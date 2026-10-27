@@ -99,7 +99,9 @@ All but the `503`s are permanent: the SDK throws them and never retries (RFC §9
   (`closesAt` is not in the digest).
 - Hold inventory at bid time; release on refusal, expiry or fill.
 - Escape venue-supplied strings (`auctionId`, `intentId`) before logging.
-- Size escrow bids as `validUntilMs = closesAt + quote TTL + origin finality budget` and
+- Size escrow bids as `validUntilMs = closesAt + quote TTL + origin finality budget`, and never
+  below `announcement.minValidUntilMs` when the venue sends one (a quote-through corridor, RFC
+  §2.5: your bid IS the taker's price, settled second-price against `minOutput`), and
   `minExclusiveMs = (fillInclusionSec + award-to-accept latency + accept headroom) × 1000`
   (`examples/escrow-solver.ts`: 300 s + 1200 s, and 85 s).
 

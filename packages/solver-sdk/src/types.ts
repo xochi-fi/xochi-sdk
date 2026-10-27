@@ -55,6 +55,12 @@ export interface VenueCapabilities {
   };
   chains?: number[];
   settlementTypes?: SettlementType[];
+  // Present only while the venue lists a quote-through corridor (RFC §2.5).
+  quoteThrough?: {
+    settleRule?: string;
+    quoteTtlSeconds?: number;
+    corridors?: { fromChainId: number; toChainId: number }[];
+  };
 }
 
 // A solver's standing with the venue (RFC §8), answered by
@@ -126,10 +132,18 @@ export interface IntentAnnouncement {
   // is rejected outright. It is NOT the venue's reserve bid, which is private
   // (RFC §2.1) -- a bid at `minOutput + 1` is ADMISSIBLE and still loses to the
   // reserve. Price the corridor yourself; there is no number here to shadow.
+  // Exception: on a quote-through announcement (`quoteThrough: true`, RFC §2.5)
+  // there is no private reserve -- `minOutput` IS the reserve, public, and a bid
+  // at it is eligible (settled second-price).
   minOutput: string;
   opensAt: number; // server clock, ms
   closesAt: number; // sealed-window close, ms
   exclusiveWindowMs: number; // winner's exclusive fill budget after award
+  // Quote-through corridor (RFC §2.5): the winning bid IS the taker's price,
+  // settled second-price, and is selected only if its `validUntilMs` reaches
+  // `minValidUntilMs`. Both absent on every other announcement.
+  quoteThrough?: true;
+  minValidUntilMs?: number;
 }
 
 // What `Solver.quote` returns: the output it commits to deliver to the taker,

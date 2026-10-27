@@ -75,6 +75,35 @@ describe("SDK key parsing", () => {
   });
 });
 
+describe("EscrowSolver quote-through horizon", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("never bids below the announced minValidUntilMs", async () => {
+    const w = world([]);
+    vi.spyOn(Date, "now").mockReturnValue(announcement.closesAt);
+    const horizon = announcement.closesAt + 10 * 86_400_000;
+    const bid = await w.escrowSolver.quote({
+      ...announcement,
+      quoteThrough: true,
+      minValidUntilMs: horizon,
+    });
+    expect(bid?.validUntilMs).toBe(horizon);
+  });
+
+  it("keeps its own sizing when that already reaches the horizon, or none is announced", async () => {
+    const w = world([]);
+    vi.spyOn(Date, "now").mockReturnValue(announcement.closesAt);
+    const plain = await w.escrowSolver.quote(announcement);
+    const firm = await w.escrowSolver.quote({
+      ...announcement,
+      auctionId: "qt",
+      quoteThrough: true,
+      minValidUntilMs: announcement.closesAt + 1,
+    });
+    expect(firm?.validUntilMs).toBe(plain?.validUntilMs);
+  });
+});
+
 describe("EscrowSolver bid index", () => {
   it("drops a bid whose validity has passed, so a later award for it is refused", async () => {
     const w = world([]);
