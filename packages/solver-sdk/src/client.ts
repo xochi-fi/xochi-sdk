@@ -42,7 +42,7 @@ import {
 // domain does NOT vary with this string, so a skew produces valid signatures
 // over an announcement the two sides read differently -- there is nothing
 // cryptographic to catch it. This check is the only protection.
-export const SOLVER_RFC_VERSION = "0.5.0-draft";
+export const SOLVER_RFC_VERSION = "0.6.0-draft";
 
 // Thrown by `SolverClient.run` when the venue answered and advertised an
 // `rfcVersion` other than `SOLVER_RFC_VERSION`. Typed so a supervisor can stop

@@ -228,6 +228,16 @@ const fillProof = z.discriminatedUnion("kind", [
     txHash: z.string(),
   }),
   z.object({ kind: z.literal("oracle_attestation"), attestation: z.string(), signer: z.string() }),
+  // A Canton fill (SOLVER-RFC §6, 0.6.0-draft): the ledger update id, opaque
+  // and case-sensitive, kept verbatim. The venue refuses an empty or
+  // whitespace-padded id, so the SDK does too rather than trimming it.
+  z.object({
+    kind: z.literal("canton_update"),
+    updateId: z
+      .string()
+      .min(1)
+      .refine((id) => id.trim() === id, "must not carry leading or trailing whitespace"),
+  }),
   z.object({ kind: z.literal("light_client"), header: z.string(), proof: z.string() }),
   z.object({ kind: z.literal("zk"), proof: z.string(), publicInputs: z.array(z.string()) }),
 ]);

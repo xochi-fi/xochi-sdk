@@ -1,6 +1,6 @@
 # Riddler Solver Protocol — RFC
 
-- **RFC version:** `0.5.0-draft`
+- **RFC version:** `0.6.0-draft`
 - **Status:** Partially implemented. The maker-side companion to `SPEC.md` §7
   (reserved, and points here). The `/solver/*` surface §§4–6 is **built and
   CI-green** in axol-io/riddler #770–#774, merged but not enabled on prod,
@@ -33,6 +33,33 @@ deploy announces nothing and answers nothing.
 - **`[DEPRECATED]`** — exists but is being removed; MUST NOT be built on.
 - **`[RESERVED]`** — depends on the non-custodial escrow (`SPEC.md` §5.2, M6);
   additive and capability-flagged when it lands.
+
+### Changes in `0.6.0-draft`
+
+Lockstep: the venue's `rfcVersion` and `SOLVER_RFC_VERSION` move together
+(§12), so a `0.5.0-draft` solver refuses a `0.6.0-draft` venue at its pre-bid
+check and vice versa.
+
+- **`canton_update` proof kind** (§6, Riddler #1194): a fill on a Canton
+  destination is proved by `{ kind: "canton_update", updateId }`, the
+  ledger update id of the transfer to the recipient party. A Canton fill has
+  no transaction hash: the id is an opaque string, neither hex nor
+  fixed-length, so it is not squeezed into `tx_hash`. It is **case-sensitive**
+  and travels verbatim; a venue or solver MUST NOT case-fold, trim or
+  re-encode it, and a venue refuses an empty or whitespace-padded id `400`.
+  The kind carries no chain id: the award it binds to names the destination.
+  Additive: every existing kind, signed struct and vector is unchanged, and a
+  `0.5.0-draft` venue answers this kind `400` (unknown kind, fail closed).
+- **Non-EVM destinations on the announcement** (§4.2, clarification): a
+  Canton `toChainId` is the ADR-0014 synthetic id (MainNet `253340876`;
+  TestNet's is above `2^31`, so a port MUST NOT hold it in an int32), and
+  `toToken` is the Canton Coin instrument admin party, a case-sensitive string
+  a solver MUST compare byte-for-byte. Nothing on the wire changes shape.
+- **Canton escrow orders** (ESCROW-RFC §2.4): `order-id.json` gains
+  `canton-mainnet-destination`, `canton-party-recipient-case` (the same order
+  with only the party hint's case changed: every key, commitment and orderId
+  differs) and `canton-testnet-destination`. No encoding moves; existing
+  vectors are byte-identical.
 
 ### Changes in `0.5.0-draft`
 
@@ -439,9 +466,9 @@ interface IntentAnnouncement {
   auctionId: string;        // this sealed round
   orderId: string;          // bytes32 escrow order sold (ESCROW-RFC §2.3); 0x00..00 = non-escrow. Signed into every bid (§5.1)
   fromChainId: number;
-  toChainId: number;
+  toChainId: number;        // Canton: ADR-0014 synthetic id; may exceed 2^31
   fromToken: string;        // symbol or address (cross-VM: base58 survives)
-  toToken: string;
+  toToken: string;          // Canton: the Canton Coin instrument admin party, case-sensitive
   swapKind: "exact_input" | "exact_output";
   fromAmount?: string;      // present iff exact_input (origin base units)
   outputAmount?: string;    // present iff exact_output (dest base units)
@@ -460,6 +487,14 @@ depositor through the public `Opened(orderId, ...)` once the lock opens, §2.2):
 the signed `XochiIntent` and
 origin-pull authorization stay with the venue, so the venue rebuilds the digest
 server-side (`SPEC.md` §2).
+
+**Non-EVM destinations.** A Canton destination (`0.6.0-draft` clarification)
+announces its ADR-0014 synthetic `toChainId` -- an ordinary positive integer,
+`253340876` on MainNet and above `2^31` on TestNet, so a port MUST NOT hold it
+in an int32 -- and its `toToken` as the Canton Coin instrument admin party
+(`DSO::1220…`). Party ids are case-sensitive: a solver compares `toToken`
+byte-for-byte and never case-folds it, as it may an EVM address. Its fill is
+proved with `canton_update` (§6).
 
 **Public settlement only** `[PROPOSED]` until Riddler #1200 merges to
 `master`; the property holds only once it is deployed and the feed has
@@ -1028,6 +1063,7 @@ interface FillReceipt {
 // Tagged union from day one so the wire format survives the proof upgrade.
 type FillProof =
   | { kind: "tx_hash"; chainId: number; txHash: string }             // venue oracle watches
+  | { kind: "canton_update"; updateId: string }                      // Canton destination (0.6.0-draft)
   | { kind: "oracle_attestation"; attestation: string; signer: string }
   | { kind: "light_client"; header: string; proof: string }
   | { kind: "zk"; proof: string; publicInputs: string[] };
@@ -1058,6 +1094,17 @@ endpoint an oracle for who is currently winning. Resubmission is idempotent.
 `light_client` and `zk` parse but have **no verifier** here and are refused
 `501`, distinguishable from an unknown `kind` (400), and are never stored as
 though verified.
+
+**A Canton destination** (`0.6.0-draft`) has no transaction hash, so its fill
+is proved by `{ kind: "canton_update", updateId }`: the Canton ledger update id
+of the transfer that paid the recipient party. The id is opaque (neither hex
+nor fixed-length) and **case-sensitive**: a solver sends it exactly as the
+ledger reported it, and a venue MUST store and compare it verbatim, never
+case-folded, trimmed or re-encoded (`tx_hash` folds case only because hex is
+case-insensitive). A venue refuses an empty or whitespace-padded `updateId`
+`400` rather than trimming it. The kind carries no chain id; the destination is
+the one the award names. `tx_hash` stays EVM-only: `0x` + 32 bytes and a
+positive integer `chainId`.
 
 **On an escrowed award** the receipt is informational: its proof is
 `{ kind: "tx_hash", chainId: <destination>, txHash }` of the

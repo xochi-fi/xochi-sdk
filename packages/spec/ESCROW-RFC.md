@@ -153,7 +153,11 @@ The normative vectors are generated from `@xochi/signer` into
 | `xsp.json`               | §13      | `xochi_xsp.json`                       | yes                     | no (hash-only)            |
 
 `order-id.json` covers EVM recipients in both casings, base58 Tron, a Canton
-party, a bytes32-hex string, a symbol token, zero and max-uint256 amounts and
+party, Canton MainNet and TestNet destinations (party recipient, Canton Coin's
+DSO party as `toToken`, a synthetic `toChainId` above `2^31` on TestNet) with a
+twin differing only in the party hint's case (every key, commitment and
+`orderId` differs: a party is never case-folded), a bytes32-hex string, a
+symbol token, zero and max-uint256 amounts and
 deadline, a unicode intentId, long multi-word strings and a high-bit blinding;
 the other sets cover their own fields and are smaller. **Direction: SDK ->
 Riddler.** Every set is generated here and vendored *into* Riddler

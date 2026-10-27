@@ -49,6 +49,17 @@ const TERMS: Terms = {
   escrow: "0x3333333333333333333333333333333333333333",
 };
 
+// Canton destinations (ADR-0014): synthetic chain ids cut from each global
+// synchronizer's namespace fingerprint, and Canton Coin named by its CIP-56
+// instrument admin, the DSO party. TestNet's id is above 2^31.
+const CANTON_MAINNET_CHAIN_ID = 253340876;
+const CANTON_TESTNET_CHAIN_ID = 4149314359;
+const CANTON_MAINNET_CC =
+  "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc";
+const CANTON_TESTNET_CC =
+  "DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337";
+const CANTON_PARTY = "alice::1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72";
+
 type Case = { name: string; why: string; opening: DestOpening; terms: Terms };
 
 const CASES: Case[] = [
@@ -93,6 +104,31 @@ const CASES: Case[] = [
       toToken: "Amulet",
     },
     terms: TERMS,
+  },
+  {
+    name: "canton-mainnet-destination",
+    why:
+      "A Canton MainNet order: a party recipient and the Canton Coin instrument admin (DSO party) " +
+      "as toToken, both keccak of their verbatim UTF-8; toChainId is the synthetic id 253340876.",
+    opening: { ...OPENING, recipient: CANTON_PARTY, toToken: CANTON_MAINNET_CC },
+    terms: { ...TERMS, toChainId: CANTON_MAINNET_CHAIN_ID },
+  },
+  {
+    name: "canton-party-recipient-case",
+    why:
+      "canton-mainnet-destination with only the party hint's case changed (Alice, not alice). " +
+      "Canton party ids are case-sensitive, so recipientKey, destCommitment and orderId MUST all " +
+      "differ from it: an implementation that folds case pays a different party.",
+    opening: { ...OPENING, recipient: "A" + CANTON_PARTY.slice(1), toToken: CANTON_MAINNET_CC },
+    terms: { ...TERMS, toChainId: CANTON_MAINNET_CHAIN_ID },
+  },
+  {
+    name: "canton-testnet-destination",
+    why:
+      "A Canton TestNet order (Base Sepolia origin): toChainId 4149314359 is above 2^31, so it " +
+      "catches an int32 chain id; toToken is TestNet's own DSO party.",
+    opening: { ...OPENING, recipient: CANTON_PARTY, toToken: CANTON_TESTNET_CC },
+    terms: { ...TERMS, fromChainId: 84532, toChainId: CANTON_TESTNET_CHAIN_ID },
   },
   {
     name: "bytes32-hex-recipient",
