@@ -48,6 +48,23 @@ export class ProofAlreadyUsedError extends ERC8262ContractError {
   }
 }
 
+/**
+ * A full 32-byte proof word at `wordIndex` is not below the BN254 scalar
+ * modulus r. The Oracle refuses it before verification: `word + r` would
+ * verify as `word` under a second `proofHash`, replaying the proof.
+ */
+export class NonCanonicalProofError extends ERC8262ContractError {
+  readonly wordIndex: bigint;
+  constructor(wordIndex: bigint) {
+    super(
+      "NonCanonicalProof",
+      [wordIndex],
+      `Proof word ${String(wordIndex)} is not a canonical field element (>= BN254 scalar modulus)`,
+    );
+    this.wordIndex = wordIndex;
+  }
+}
+
 export class ProofTimestampStaleError extends ERC8262ContractError {
   readonly proofTimestamp: bigint;
   readonly blockTimestamp: bigint;
@@ -80,9 +97,9 @@ export class ProofTimestampInFutureError extends ERC8262ContractError {
 /**
  * The per-(subject, jurisdiction, proof type) ratchet already holds a newer
  * proof timestamp. Not retryable as-is: concurrently generated proofs of one
- * type must be submitted in non-decreasing timestamp order, and an older one
- * must be re-proved with a current timestamp (RISK_SCORE threshold and range
- * proofs share one slot).
+ * ratcheted type must be submitted in non-decreasing timestamp order, and an
+ * older one must be re-proved with a current timestamp. RISK_SCORE (0x02) and
+ * PATTERN (0x03) never ratchet, so they never revert with it.
  */
 export class ProofTimestampNotMonotonicError extends ERC8262ContractError {
   readonly proofTimestamp: bigint;
@@ -331,6 +348,29 @@ export class SettlementRootMismatchError extends ERC8262ContractError {
   }
 }
 
+/**
+ * `finalizeTrade`: the PATTERN proof's own `timestamp` (public input 7)
+ * predates the trade's `registerTrade` block. `proofTimestamp` is the proof's
+ * time, not the Oracle attestation time, which may be later. Re-prove the
+ * PATTERN proof dated at or after `tradeCreatedAt`.
+ */
+export class PatternProofPredatesTradeError extends ERC8262ContractError {
+  readonly proofHash: string;
+  readonly proofTimestamp: bigint;
+  readonly tradeCreatedAt: bigint;
+  constructor(proofHash: string, proofTimestamp: bigint, tradeCreatedAt: bigint) {
+    super(
+      "PatternProofPredatesTrade",
+      [proofHash, proofTimestamp, tradeCreatedAt],
+      `PATTERN proof ${proofHash} is dated ${String(proofTimestamp)}, before the trade was ` +
+        `registered at ${String(tradeCreatedAt)}; re-prove it dated at or after registration`,
+    );
+    this.proofHash = proofHash;
+    this.proofTimestamp = proofTimestamp;
+    this.tradeCreatedAt = tradeCreatedAt;
+  }
+}
+
 // ============================================================
 // Decoder
 // ============================================================
@@ -363,6 +403,8 @@ export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractErro
       return new SubmitterMismatchError();
     case "ProofAlreadyUsed":
       return new ProofAlreadyUsedError(args[0] as string);
+    case "NonCanonicalProof":
+      return new NonCanonicalProofError(args[0] as bigint);
     case "ProofTimestampStale":
       return new ProofTimestampStaleError(args[0] as bigint, args[1] as bigint);
     case "ProofTimestampInFuture":
@@ -415,6 +457,12 @@ export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractErro
       return new TradeNotFoundError(args[0] as string);
     case "AttestationNotFound":
       return new AttestationNotFoundError(args[0] as string);
+    case "PatternProofPredatesTrade":
+      return new PatternProofPredatesTradeError(
+        args[0] as string,
+        args[1] as bigint,
+        args[2] as bigint,
+      );
     default:
       return new ERC8262ContractError(errorName, args, `Contract reverted: ${errorName}`);
   }

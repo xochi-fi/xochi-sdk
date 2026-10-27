@@ -20,6 +20,7 @@ export {
   isProofRecent,
   assertProofRecent,
   chainProofTimestamp,
+  ChainAheadOfClockError,
   DEFAULT_MAX_PROOF_AGE,
 } from "./recency.js";
 
@@ -49,6 +50,7 @@ export {
   ERC8262ContractError,
   SubmitterMismatchError,
   ProofAlreadyUsedError,
+  NonCanonicalProofError,
   ProofTimestampStaleError,
   ProofTimestampInFutureError,
   ProofTimestampNotMonotonicError,
@@ -71,6 +73,7 @@ export {
   InvalidPublicInputLengthError,
   UnalignedPublicInputsError,
   SettlementRootMismatchError,
+  PatternProofPredatesTradeError,
   decodeContractError,
   withDecodedErrors,
 } from "./errors.js";
@@ -82,7 +85,6 @@ export {
   SURPLUS_SHARE_PCT,
   TRUST_THRESHOLDS,
   SHIELDED_MIN_SCORE,
-  TIER_PROOF_EXPIRY_MS,
   CATEGORY_MAX,
   PRIVACY_LEVELS,
   headlineBps,
@@ -128,7 +130,7 @@ export { buildComplianceSignedInputs } from "./inputs/compliance-signed.js";
 export { buildComplianceMultiSignedInputs } from "./inputs/compliance-multi-signed.js";
 export { buildRiskScoreInputs } from "./inputs/risk-score.js";
 export { buildRiskScoreSignedInputs } from "./inputs/risk-score-signed.js";
-export { buildPatternInputs } from "./inputs/pattern.js";
+export { buildPatternInputs, PatternTimestampPredatesTradeError } from "./inputs/pattern.js";
 export { buildAttestationInputs } from "./inputs/attestation.js";
 export { buildMembershipInputs } from "./inputs/membership.js";
 export { buildNonMembershipInputs } from "./inputs/non-membership.js";
@@ -152,7 +154,9 @@ export type {
   TierProof,
   TierProofVerification,
   TierProofExpectations,
+  TierProofOptions,
 } from "./tier-proofs.js";
+export type { ProverOptions } from "./prover.js";
 export type {
   ComplianceAttestation,
   SubmitComplianceParams,
@@ -165,6 +169,7 @@ export type {
   ComplianceAttestationLite,
   ComplianceCheckResult,
   ProofVerificationResult as LiteProofVerificationResult,
+  SimulationBlockTag,
 } from "./oracle-lite.js";
 export type {
   RiskScoreInput,

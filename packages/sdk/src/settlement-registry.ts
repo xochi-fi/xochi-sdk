@@ -228,6 +228,15 @@ export const SETTLEMENT_REGISTRY_ABI = [
       { name: "tradeCreatedAt", type: "uint256" },
     ],
   },
+  {
+    type: "error",
+    name: "PatternProofPredatesTrade",
+    inputs: [
+      { name: "proofHash", type: "bytes32" },
+      { name: "proofTimestamp", type: "uint256" },
+      { name: "tradeCreatedAt", type: "uint256" },
+    ],
+  },
   { type: "error", name: "AttestationRevoked", inputs: [{ name: "proofHash", type: "bytes32" }] },
   {
     type: "error",
@@ -351,7 +360,12 @@ export class SettlementRegistryClient {
    * caller must supply the same `publicInputs` bytes that were used at
    * `submitCompliance` time, and the registry verifies (a) hash equality with the
    * stored `publicInputsHash` and (b) `analysis_type == 1` (anti-structuring).
-   * VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected.
+   * VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected. The proof's own
+   * `timestamp` (public input 7) must be at or after the trade's `createdAt`,
+   * else `PatternProofPredatesTradeError`: prove it after `registerTrade` lands
+   * with `notBefore: (await this.getSettlement(tradeId)).createdAt`, which
+   * raises a default stamp to `createdAt` (a local clock or chain stamp can
+   * trail it) and refuses an earlier explicit `timestamp` before proving.
    *
    * @param tradeId trade identifier
    * @param patternProofHash proofHash of the PATTERN attestation (anti-structuring)

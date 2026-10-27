@@ -69,6 +69,17 @@ const ORACLE_SETUP_ABI = parseAbi([
 // Anvil management
 // ============================================================
 
+/**
+ * Random stand-in proof word for the AlwaysPassVerifier. Below the BN254 scalar
+ * modulus (top byte < 0x30), as the Oracle refuses a non-canonical word with
+ * `NonCanonicalProof`.
+ */
+function randomProofWord(): Hex {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  bytes[0] &= 0x1f;
+  return toHex(bytes);
+}
+
 const ANVIL_PORT = 8547;
 const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
 
@@ -241,7 +252,7 @@ describe("ERC8262Verifier (anvil)", () => {
   });
 
   it("verifyProof returns true with AlwaysPassVerifier", async () => {
-    const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const fakeProof = randomProofWord();
     const publicInputs = buildCompliancePublicInputs(ALICE, 0);
 
     const valid = await verifierClient.verifyProof(PROOF_TYPES.COMPLIANCE, fakeProof, publicInputs);
@@ -250,10 +261,7 @@ describe("ERC8262Verifier (anvil)", () => {
 
   it("verifyProofBatch returns true for multiple proofs", async () => {
     const proofTypes = [PROOF_TYPES.COMPLIANCE, PROOF_TYPES.COMPLIANCE];
-    const proofs = [
-      toHex(crypto.getRandomValues(new Uint8Array(32))),
-      toHex(crypto.getRandomValues(new Uint8Array(32))),
-    ];
+    const proofs = [randomProofWord(), randomProofWord()];
     const publicInputs = [
       buildCompliancePublicInputs(ALICE, 0),
       buildCompliancePublicInputs(ALICE, 0),
@@ -264,7 +272,7 @@ describe("ERC8262Verifier (anvil)", () => {
   });
 
   it("verifyProofAtVersion returns true for version 1", async () => {
-    const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const fakeProof = randomProofWord();
     const publicInputs = buildCompliancePublicInputs(ALICE, 0);
 
     const valid = await verifierClient.verifyProofAtVersion(
@@ -303,7 +311,7 @@ describe("ERC8262Oracle (anvil)", () => {
   });
 
   it("submitCompliance creates an attestation", async () => {
-    const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const fakeProof = randomProofWord();
     const publicInputs = buildCompliancePublicInputs(ALICE, 0);
     const providerSetHash = padHex("0xaabb", { size: 32 }) as Hex;
 
@@ -361,7 +369,7 @@ describe("OracleLite parity (anvil)", () => {
   // Ensure a compliance proof exists before OracleLite tests run
   beforeAll(async () => {
     const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
-    const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const fakeProof = randomProofWord();
     const publicInputs = buildCompliancePublicInputs(ALICE, 0);
     const providerSetHash = padHex("0xaabb", { size: 32 }) as Hex;
 
@@ -414,7 +422,7 @@ describe("OracleLite parity (anvil)", () => {
   });
 
   it("verifyProof succeeds with AlwaysPassVerifier", async () => {
-    const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const fakeProof = randomProofWord();
     const publicInputs = buildCompliancePublicInputs(ALICE, 0);
     const providerSetHash = padHex("0xaabb", { size: 32 });
 
@@ -504,7 +512,7 @@ describe("signer registry and compliance-type policy (anvil)", () => {
       hash: await bobOracle.submitCompliance({
         jurisdictionId: US,
         proofType: PROOF_TYPES.RISK_SCORE_SIGNED,
-        proof: toHex(crypto.getRandomValues(new Uint8Array(32))),
+        proof: randomProofWord(),
         publicInputs,
         providerSetHash: padHex("0xaabb", { size: 32 }),
       }),

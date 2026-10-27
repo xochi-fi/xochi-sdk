@@ -43,14 +43,16 @@ afterEach(async () => {
 /** Start a JSON-RPC endpoint that answers every eth_call with `reply(call)`. */
 async function startRpc(
   reply: (call: EthCall) => Reply,
-): Promise<{ url: string; calls: EthCall[] }> {
+): Promise<{ url: string; calls: EthCall[]; tags: string[] }> {
   const calls: EthCall[] = [];
+  const tags: string[] = [];
   server = createServer((req, res) => {
     let body = "";
     req.on("data", (chunk: Buffer) => (body += chunk.toString()));
     req.on("end", () => {
       const { id, params } = JSON.parse(body) as { id: number; params: [EthCall, string] };
       calls.push(params[0]);
+      tags.push(params[1]);
       const answer = reply(params[0]);
       if (answer === "hang") return;
       res.setHeader("Content-Type", "application/json");
@@ -60,7 +62,7 @@ async function startRpc(
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${String(port)}`, calls };
+  return { url: `http://127.0.0.1:${String(port)}`, calls, tags };
 }
 
 interface AttestationFields {
@@ -159,7 +161,22 @@ describe("OracleLite query validation", () => {
         args: [WALLET, US, PROOF_TYPES.COMPLIANCE_SIGNED],
       }),
     );
+    expect(rpc.tags).toEqual(["latest", "latest"]);
   });
+
+  it.each(["safe", "finalized", "PENDING", ""])(
+    "rejects verifyBlockTag %j (only pending or latest)",
+    (tag) => {
+      expect(
+        () =>
+          new OracleLite({
+            address: ORACLE,
+            rpcUrl: "http://127.0.0.1:1",
+            verifyBlockTag: tag as never,
+          }),
+      ).toThrow(`verifyBlockTag must be "pending" or "latest", got ${tag}`);
+    },
+  );
 });
 
 describe("OracleLite.checkCompliance", () => {
@@ -314,6 +331,29 @@ describe("OracleLite.verifyProof", () => {
         ],
       }),
     );
+    // A chain-stamped proof is at or below latest: see OracleLiteConfig.verifyBlockTag.
+    expect(rpc.tags).toEqual(["latest"]);
+  });
+
+  it("simulates at pending when opted in, and reads stay at latest", async () => {
+    const rpc = await startRpc((call) =>
+      call.from === undefined
+        ? checkResult(true, { subject: WALLET, jurisdictionId: US, proofType: 1 })
+        : { result: `0x${attestationHex({ subject: WALLET, jurisdictionId: US, proofType: 1 })}` },
+    );
+    const lite = new OracleLite({ address: ORACLE, rpcUrl: rpc.url, verifyBlockTag: "pending" });
+
+    const result = await lite.verifyProof(
+      WALLET,
+      PROOF_TYPES.COMPLIANCE,
+      PROOF,
+      INPUTS[0],
+      PROVIDER_SET,
+      US,
+    );
+    expect(result.valid).toBe(true);
+    expect((await lite.checkCompliance(WALLET, US))?.valid).toBe(true);
+    expect(rpc.tags).toEqual(["pending", "latest"]);
   });
 
   it("is invalid when the simulated attestation is not bound to the request", async () => {

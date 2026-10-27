@@ -40,8 +40,9 @@ export interface AttestationInput {
    * `expiryTimestamp` is checked against. The Oracle rejects it when after
    * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
    * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
-   * chain makes the default revert. Prefer
-   * `Number(await chainProofTimestamp(client))` (the chain's latest block time).
+   * chain head makes the default revert. Prefer
+   * `Number(await chainProofTimestamp(client))`, or
+   * `new ERC8262Prover(loader, { client })`, which stamps with it.
    */
   currentTimestamp?: number;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */

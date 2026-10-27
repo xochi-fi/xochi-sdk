@@ -4,8 +4,10 @@
 
 import { describe, it, expect, afterAll } from "vitest";
 import type { Address } from "viem";
-import { ERC8262Prover } from "../src/index.js";
+import { ERC8262Prover, PatternTimestampPredatesTradeError } from "../src/index.js";
 import { BundledCircuitLoader } from "../src/circuits.js";
+import type { RiskScoreInput } from "../src/inputs/risk-score.js";
+import { startScriptedBlockRpc } from "./scripted-block-rpc.js";
 
 const loader = new BundledCircuitLoader();
 const prover = new ERC8262Prover(loader);
@@ -75,5 +77,68 @@ describe("ERC8262Prover", () => {
         submitter: SUBMITTER,
       }),
     ).rejects.toThrow("not compliant");
+  });
+});
+
+describe("ERC8262Prover({ client }) chain stamps", () => {
+  const RISK_SCORE: RiskScoreInput = {
+    type: "threshold",
+    score: 60,
+    threshold: 5000,
+    direction: "gt",
+    providerSetHash: "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2",
+    submitter: SUBMITTER,
+  };
+
+  it("never go backwards when the RPC's latest steps back; explicit timestamps neither read nor move the mark", async () => {
+    const head = BigInt(Math.floor(Date.now() / 1000) - 600);
+    const rpc = await startScriptedBlockRpc([head, head - 100n]);
+    const chainProver = new ERC8262Prover(loader, { client: rpc.client });
+    try {
+      const first = await chainProver.proveRiskScore(RISK_SCORE);
+      expect(BigInt(first.publicInputs[7])).toBe(head);
+
+      const second = await chainProver.proveRiskScore(RISK_SCORE);
+      expect(rpc.reads()).toBe(2);
+      expect(BigInt(second.publicInputs[7])).toBe(head);
+
+      const explicit = String(head + 50n);
+      const third = await chainProver.proveRiskScore({ ...RISK_SCORE, timestamp: explicit });
+      expect(rpc.reads()).toBe(2);
+      expect(BigInt(third.publicInputs[7])).toBe(head + 50n);
+
+      const fourth = await chainProver.proveRiskScore(RISK_SCORE);
+      expect(rpc.reads()).toBe(3);
+      expect(BigInt(fourth.publicInputs[7])).toBe(head);
+    } finally {
+      await chainProver.destroy();
+      await rpc.close();
+    }
+  });
+
+  it("provePattern refuses an explicit timestamp before notBefore without reading the chain", async () => {
+    const rpc = await startScriptedBlockRpc([BigInt(Math.floor(Date.now() / 1000))]);
+    const chainProver = new ERC8262Prover(loader, { client: rpc.client });
+    try {
+      await expect(
+        chainProver.provePattern({
+          amounts: [500],
+          timestamps: [1_699_999_000],
+          numTransactions: 1,
+          analysisType: 1,
+          reportingThreshold: 10000,
+          timeWindow: 86400,
+          txSetHash: "0x01",
+          submitter: SUBMITTER,
+          settlementRoot: "0x" + "0".repeat(64),
+          timestamp: "1700000000",
+          notBefore: 1_700_000_001n,
+        }),
+      ).rejects.toBeInstanceOf(PatternTimestampPredatesTradeError);
+      expect(rpc.reads()).toBe(0);
+    } finally {
+      await chainProver.destroy();
+      await rpc.close();
+    }
   });
 });

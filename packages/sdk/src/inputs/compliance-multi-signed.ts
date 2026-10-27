@@ -89,7 +89,7 @@ export interface ComplianceMultiSignedInput {
    * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
    * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
    * chain makes the default revert. Prefer `await chainProofTimestamp(client)`
-   * (the chain's latest block time), read before requesting the signatures.
+   * (the chain's clock), read before requesting the signatures.
    */
   timestamp?: string;
   submitter: Address;

@@ -252,6 +252,8 @@ describe("tier proof", () => {
     expect(tierProof.threshold).toBe(50);
     expect(tierProof.proof).toBeInstanceOf(Uint8Array);
     expect(tierProof.proofHex).toMatch(/^0x[0-9a-f]+$/);
+    // The Oracle's submission deadline: MAX_PROOF_AGE (1 hour) after the proof timestamp.
+    expect(tierProof.expiresAt).toBe((tierProof.timestamp + 3600) * 1000);
     expect(tierProof.expiresAt).toBeGreaterThan(Date.now());
 
     const verification = await verifyTierProof(loader, tierProof, { submitter: SUBMITTER });

@@ -158,9 +158,6 @@ export const TIERS: readonly TierInfo[] = TIER_ORDER.map((name, i) => ({
   rate: headlineBps(FEE_SCHEDULE[name].stable) / 100,
 }));
 
-/** Tier proof validity duration in milliseconds (7 days) */
-export const TIER_PROOF_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
  * Minimum trust score for Aztec-SHIELDED settlement.
  *

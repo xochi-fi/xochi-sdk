@@ -9,7 +9,9 @@ on:
 env:
   # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
   # with packages/sdk/scripts/sync-circuits.sh output.
-  ERC_8262_REF: 1238acc8c68e2796b6274f31e066516b6087ee04
+  # Fetched by SHA, so a PR head stays checkoutable after its branch is deleted;
+  # cut an sdk-v* tag only while this is an ERC-8262 main commit.
+  ERC_8262_REF: 326380e78f0c68d1931e83bea4d5364b8604a731
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
@@ -34,7 +36,9 @@ jobs:
       - name: Checkout ERC-8262 at the pinned commit
         run: |
           git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
+          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
+          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
           git -C ../ERC-8262 submodule update --init --recursive --depth=1
 
       - name: Build contracts
@@ -293,7 +297,9 @@ jobs:
       - name: Checkout ERC-8262 at the pinned commit
         run: |
           git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
+          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
+          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
           git -C ../ERC-8262 submodule update --init --recursive --depth=1
 
       - name: Build contracts

@@ -5,6 +5,8 @@
  * ERC8262Oracle, SettlementRegistry) on a local anvil node, then exercises
  * the SDK client through the full settlement lifecycle:
  *   register trade -> submit compliance proofs -> record sub-settlements -> finalize
+ * The last test proves a real PATTERN proof dated by `ERC8262Prover({ client })`
+ * with `notBefore` while the chain runs ahead of the local clock.
  *
  * Requires anvil (foundry). Run with:
  *   npm run test:integration
@@ -15,7 +17,9 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  bytesToHex,
   createPublicClient,
+  createTestClient,
   createWalletClient,
   http,
   parseAbi,
@@ -27,11 +31,21 @@ import {
   type Address,
 } from "viem";
 import { foundry } from "viem/chains";
+import { Barretenberg } from "@aztec/bb.js";
+import { pedersenHash } from "@xochi/provider";
 import { SettlementRegistryClient, SETTLEMENT_REGISTRY_ABI } from "../src/settlement-registry.js";
 import { ERC8262Oracle } from "../src/oracle.js";
 import { ORACLE_ABI } from "../src/abis.js";
 import { PROOF_TYPES } from "../src/constants.js";
 import type { BatchProveResult } from "../src/batch-prover.js";
+import { BundledCircuitLoader } from "../src/circuits.js";
+import {
+  PATTERN_STRUCTURING,
+  PatternTimestampPredatesTradeError,
+  type PatternInput,
+} from "../src/inputs/pattern.js";
+import { ERC8262Prover } from "../src/prover.js";
+import { chainProofTimestamp } from "../src/recency.js";
 
 // ============================================================
 // Contract bytecodes from ERC-8262 compiled artifacts
@@ -63,6 +77,17 @@ const ORACLE_SETUP_ABI = parseAbi([
 // ============================================================
 // Anvil management
 // ============================================================
+
+/**
+ * Random stand-in proof word for the AlwaysPassVerifier. Below the BN254 scalar
+ * modulus (top byte < 0x30), as the Oracle refuses a non-canonical word with
+ * `NonCanonicalProof`.
+ */
+function randomProofWord(): Hex {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  bytes[0] &= 0x1f;
+  return toHex(bytes);
+}
 
 const ANVIL_PORT = 8546; // avoid conflict with default 8545
 const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
@@ -256,6 +281,10 @@ describe("SettlementRegistryClient (anvil)", () => {
       const settlementRoot: Hex = tradeId
         ? await registryClient.computeSettlementRoot(tradeId)
         : (("0x" + "0".repeat(64)) as Hex);
+      // finalizeTrade refuses a PATTERN timestamp before the trade's createdAt;
+      // anvil can mine a block in the local clock's future, so never date it earlier.
+      const createdAt = tradeId ? (await registryClient.getSettlement(tradeId)).createdAt : 0n;
+      const patternTimestamp = createdAt > BigInt(now) ? createdAt : BigInt(now);
       publicInputs = [
         padHex(toHex(1), { size: 32 }), // analysis_type
         padHex(toHex(1), { size: 32 }), // result = pass
@@ -264,7 +293,7 @@ describe("SettlementRegistryClient (anvil)", () => {
         padHex("0xdead", { size: 32 }), // tx_set_hash (non-zero)
         submitterPadded, // submitter (must match msg.sender)
         settlementRoot, // settlement_root (audit H-1)
-        padHex(toHex(now), { size: 32 }), // timestamp (must be within MAX_PROOF_AGE)
+        padHex(toHex(patternTimestamp), { size: 32 }), // timestamp (>= createdAt, within MAX_PROOF_AGE)
       ];
     } else {
       throw new Error(`unsupported proof type for test helper: ${proofType}`);
@@ -275,8 +304,7 @@ describe("SettlementRegistryClient (anvil)", () => {
 
     // Fake proof bytes (AlwaysPassVerifier accepts anything).
     // Must be unique per call -- oracle rejects replay via proofHash = keccak256(proof || publicInputs)
-    const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const fakeProof = toHex(nonce) as Hex;
+    const fakeProof = randomProofWord();
 
     const hash = await wallet.writeContract({
       address: oracleAddress,
@@ -412,7 +440,7 @@ describe("SettlementRegistryClient (anvil)", () => {
 
     const proofs: BatchProveResult["proofs"] = [];
     for (let i = 0; i < subTradeCount; i++) {
-      const fakeProof = toHex(crypto.getRandomValues(new Uint8Array(32)));
+      const fakeProof = randomProofWord();
       // compliance layout: [jurisdiction_id, provider_set_hash, config_hash, timestamp, meets_threshold, submitter]
       const publicInputs = [
         padHex(toHex(0), { size: 32 }), // EU
@@ -472,17 +500,23 @@ describe("SettlementRegistryClient (anvil)", () => {
     const providerSetHash = padHex("0xaabb", { size: 32 }) as Hex;
     const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
 
-    // Step 1: Submit batch proofs to oracle
+    // Step 1: Register the trade first: recordSubSettlement refuses a leg whose
+    // Oracle submission block predates registration (AttestationPredatesTrade).
+    const regHash = await registryClient.registerTrade(batch.tradeId, 0, 2);
+    expect((await publicClient.waitForTransactionReceipt({ hash: regHash })).status).toBe(
+      "success",
+    );
+
+    // Step 2: Submit batch proofs to oracle
     const batchResult = await oracleClient.submitBatch({
       batch,
       jurisdictionId: 0,
       proofType: PROOF_TYPES.COMPLIANCE,
       providerSetHash,
     });
-
-    // Step 2: Register trade
-    const regHash = await registryClient.registerTrade(batch.tradeId, 0, 2);
-    await publicClient.waitForTransactionReceipt({ hash: regHash });
+    expect(
+      (await publicClient.waitForTransactionReceipt({ hash: batchResult.txHash })).status,
+    ).toBe("success");
 
     // Step 3: Record sub-settlements using proofHashes from batch
     for (const sub of batchResult.submissions) {
@@ -491,7 +525,9 @@ describe("SettlementRegistryClient (anvil)", () => {
         sub.index,
         sub.proofHash,
       );
-      await publicClient.waitForTransactionReceipt({ hash: recHash });
+      expect((await publicClient.waitForTransactionReceipt({ hash: recHash })).status).toBe(
+        "success",
+      );
     }
 
     // Step 4: Submit pattern proof and finalize (pass publicInputs + tradeId so
@@ -502,7 +538,9 @@ describe("SettlementRegistryClient (anvil)", () => {
       pat.proofHash,
       pat.publicInputs,
     );
-    await publicClient.waitForTransactionReceipt({ hash: finHash });
+    expect((await publicClient.waitForTransactionReceipt({ hash: finHash })).status).toBe(
+      "success",
+    );
 
     // Verify
     const settlement = await registryClient.getSettlement(batch.tradeId);
@@ -513,5 +551,109 @@ describe("SettlementRegistryClient (anvil)", () => {
     expect(subs).toHaveLength(2);
     expect(subs[0].proofHash).toBe(batchResult.submissions[0].proofHash);
     expect(subs[1].proofHash).toBe(batchResult.submissions[1].proofHash);
+  });
+
+  // Moves anvil ahead of the local clock for good: keep this test last.
+  it("a chain-stamped PATTERN proof with notBefore: createdAt finalizes when the chain is ahead of the local clock", async () => {
+    const publicClient = createPublicClient({ chain: foundry, transport: http(ANVIL_URL) });
+    const testClient = createTestClient({
+      chain: foundry,
+      mode: "anvil",
+      transport: http(ANVIL_URL),
+    });
+    const providerSetHash = padHex("0xaabb", { size: 32 }) as Hex;
+    const tradeId = keccak256(toHex("settlement-test-pattern-not-before"));
+
+    // registerTrade lands 10 minutes ahead of the local clock (under MAX_PROOF_AGE,
+    // so chainProofTimestamp caps at the local clock rather than refusing).
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const latest = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
+    const ahead = (latest > now ? latest : now) + 600n;
+    await testClient.setNextBlockTimestamp({ timestamp: ahead });
+    const regHash = await registryClient.registerTrade(tradeId, 0, 2);
+    expect((await publicClient.waitForTransactionReceipt({ hash: regHash })).status).toBe(
+      "success",
+    );
+    const { createdAt } = await registryClient.getSettlement(tradeId);
+    expect(createdAt).toBe(ahead);
+
+    for (const index of [0, 1]) {
+      const leg = await submitComplianceProof(ALICE, 0, PROOF_TYPES.COMPLIANCE);
+      const recHash = await registryClient.recordSubSettlement(tradeId, index, leg.proofHash);
+      expect((await publicClient.waitForTransactionReceipt({ hash: recHash })).status).toBe(
+        "success",
+      );
+    }
+
+    // Without notBefore the chain stamp, min(local clock, latest), predates the trade.
+    expect(BigInt(await chainProofTimestamp(publicClient))).toBeLessThan(createdAt);
+
+    const amounts = [500, 1200, 3000, 7500];
+    const timestamps = [4000, 3000, 2000, 1000].map((ago) => Number(now) - ago);
+    const api = await Barretenberg.new();
+    let txSetHash: Hex;
+    try {
+      const fields = Array.from({ length: 16 }, (_, i) => [
+        BigInt(amounts[i] ?? 0),
+        BigInt(timestamps[i] ?? 0),
+      ]).flat();
+      txSetHash = bytesToHex(await pedersenHash(api, fields));
+    } finally {
+      await api.destroy();
+    }
+    const patternInput: PatternInput = {
+      amounts,
+      timestamps,
+      numTransactions: amounts.length,
+      analysisType: PATTERN_STRUCTURING,
+      reportingThreshold: 10000,
+      timeWindow: 86400,
+      txSetHash,
+      submitter: ALICE,
+      settlementRoot: await registryClient.computeSettlementRoot(tradeId),
+    };
+
+    const prover = new ERC8262Prover(new BundledCircuitLoader(), { client: publicClient });
+    try {
+      await expect(
+        prover.provePattern({
+          ...patternInput,
+          timestamp: String(createdAt - 1n),
+          notBefore: createdAt,
+        }),
+      ).rejects.toBeInstanceOf(PatternTimestampPredatesTradeError);
+
+      const pattern = await prover.provePattern({ ...patternInput, notBefore: createdAt });
+      expect(BigInt(pattern.publicInputs[7])).toBeGreaterThanOrEqual(createdAt);
+
+      const submitHash = await oracleClient.submitCompliance({
+        jurisdictionId: 0,
+        proofType: PROOF_TYPES.PATTERN,
+        proof: pattern.proofHex as Hex,
+        publicInputs: pattern.publicInputsHex as Hex,
+        providerSetHash,
+      });
+      const submitReceipt = await publicClient.waitForTransactionReceipt({ hash: submitHash });
+      expect(submitReceipt.status).toBe("success");
+      const verified = submitReceipt.logs.find(
+        (l) =>
+          l.topics[0] ===
+          keccak256(toHex("ComplianceVerified(address,uint8,bool,bytes32,uint256,uint256)")),
+      );
+      const patternProofHash = verified?.topics[3];
+      if (!patternProofHash) throw new Error("ComplianceVerified proofHash topic missing");
+
+      const finHash = await registryClient.finalizeTrade(
+        tradeId,
+        patternProofHash,
+        pattern.publicInputsHex as Hex,
+      );
+      expect((await publicClient.waitForTransactionReceipt({ hash: finHash })).status).toBe(
+        "success",
+      );
+      expect((await registryClient.getSettlement(tradeId)).finalized).toBe(true);
+    } finally {
+      await prover.destroy();
+    }
   });
 });
