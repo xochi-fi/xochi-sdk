@@ -1,6 +1,6 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.9.0`
+- **Spec version:** `0.10.0`
 - **Status:** Draft (signature and fee layers are substantive and
   conformance-tested; transport defers to the server OpenAPI; escrow/solver
   sections are reserved)
@@ -37,6 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
+| 0.10.0 | current | 3 | Shielded terms and preview, corridor manifest, solver registration, and Canton destination order-id conformance vectors. Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
 | 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
 | 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
 | 0.8.0 | current | 3 | XSP hash primitives (`ESCROW-RFC 0.4.0-draft` §13, riddler #1223): `XochiObligation` EIP-712 `obligationId`, Depository CallRequest/MarkConsumed digests, deposit-address derivation, pinned by `conformance/xsp.json`. Additive; no taker signed struct or wire field changes |
@@ -145,6 +146,14 @@
   and was moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
+- `0.10.0`: additive conformance for three surfaces. `conformance/shielded-terms.json`
+  pins the proposed `ShieldedTermsV1`, non-signable `ShieldedPreviewV1` and
+  `CorridorManifestV1` encodings. `conformance/solver-registration.json` pins
+  bonded solver registration signatures, outcomes and freshness bounds.
+  `conformance/order-id.json` gains Canton mainnet/testnet destinations and a
+  party-recipient case-sensitivity case; all 11 prior vectors are byte-identical.
+  No active taker signed struct or wire field changes. The server MUST advertise
+  `spec_version: "0.10.0"` in lockstep.
 - `0.9.0`: ERC-8262 provider protocol (§10, xochi-sdk#37). New artifact set
   `erc8262/`: `provider-discovery.schema.json` (served at
   `/.well-known/erc8262-provider.json`), `provider-evidence.schema.json`
