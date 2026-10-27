@@ -1515,7 +1515,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -1553,10 +1553,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -1569,8 +1569,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xd0ef5af12f76e2ce45c340db11168b00d5e8e1b8350df17d670a8113277c4cf7",
-        "digest": "0xabb955bb118cea006124064bad55c42875ca8d094367d783c9d628d9b1ae72a7"
+        "structHash": "0xbcd2d7d988d1d8d6e3ab887d37f56e186420f1d1dd198b64e3d1f59cedbe397a",
+        "digest": "0xa243b6350b7868f47bc227918be86daac485f808bc7ee142fa3e74af5cf2083a"
       },
       {
         "name": "other-aztec-recipient",
@@ -1655,7 +1655,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -1693,10 +1693,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x744b7abfd1fa608ea13de20a8760374953f59b6a90dd9a73fef0ba2134db34f1",
@@ -1709,8 +1709,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xd5a9c6f44b061c5ed80b27076ca1c502b224cd809c5971cf98b148bc0e598917",
-        "digest": "0xccf77f2b8ca0b5acd89c04ddac3c0d76ab2069d73e8ab222d5fa5f1e1c324400"
+        "structHash": "0xc8b8207ebc5b231d2261e7e3437d64d56d75803b4d530d65dcb4286e9ca48ab4",
+        "digest": "0x7a42e60a148025838d029dc8e3379dbc3aadfc7a17cadf6d097f42c89851bad3"
       },
       {
         "name": "other-descriptor-digest",
@@ -1795,7 +1795,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -1833,10 +1833,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xc6a00bfb2167fc6941615b8cb91c4b1a7c704aea462598d04e16b92a3c2bfb6a",
@@ -1849,8 +1849,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x5af940ed689d015711e9c5c4120f0de0798ccaa0293aa3c78c64f43e9b1e90be",
-        "digest": "0x327373cf3754ec53fb7669b9b19da83d11c36912bbf30f3113578f301c63fa84"
+        "structHash": "0xe1ed933c7d69c7fce66d6ab94297599a6bdb5ef24a14c028beb8b9fddd4b84b9",
+        "digest": "0x40d804f85128a3033836452f2680c59cd15915d54dfb254d32aceac368414fff"
       },
       {
         "name": "other-destination-amount",
@@ -1935,7 +1935,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009001"
+            "amount": "1005001"
           },
           "destination": {
             "settlementType": "shielded",
@@ -1973,10 +1973,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009001",
+          "refundAmount": "1005001",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -1989,8 +1989,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x3e44b04692147722d180bc7bf31c8f5eb03ae87d23a7748b0c74dc53158a21c9",
-        "digest": "0xe75340b43c7c9c9b97be4d72b4831fcc1741c976a3327e63c453f3851f15240f"
+        "structHash": "0xc1a4a8a7f7cb4593d32b3e8df61ea07bde969048e705b1fb475fac0493781b26",
+        "digest": "0xf1fb8cbe186863b9757c9061e5a35e475cd021600b224aa9d0b93528961f3a54"
       },
       {
         "name": "other-recipient-binding-id",
@@ -2075,7 +2075,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2113,10 +2113,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -2129,8 +2129,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x7203dfbe209c3f6783cf63c3f053c92e244ff732c3495c8714c187d78a7bb7b9",
-        "digest": "0xec45d28a641b7e064f26aa1644cee9b9ab3e0346c5f0278e4fd04850c7a324fc"
+        "structHash": "0x6c16d0a365150047bb3ebc1171231457a7943dd35323b6b8de9f37ac30775573",
+        "digest": "0x9d3192b902d37c095cb14cdd1ca1ec6559eb9d5a10b2d8477898d1c15dadd3eb"
       },
       {
         "name": "other-binding-nonce",
@@ -2215,7 +2215,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2253,10 +2253,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x75b4727a4115bf02b559710860bb3c2368303d103a96f79f2e180d98b133fc3d",
@@ -2269,8 +2269,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xc4cfaaf8606516c9927dbfcc11b0f2eb922f1932db4dce448f4e00a5865ebbfd",
-        "digest": "0x428278389a40214c55be58173e70f67718b9c4d73542146cba33f3ce72949de9"
+        "structHash": "0xfe4ea7e7e1c96d476cb8544c4034df7e7eb7d8c4da18aa37c21e05e680711294",
+        "digest": "0x6f1ea5de753b85c3405ba676547540ce9d105907d8a3b4994a7cb34e9f4a8671"
       },
       {
         "name": "other-binding-challenge-expiry",
@@ -2355,7 +2355,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2393,10 +2393,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xec1c2e4ffdbaa4dc9f2068511cc0ec94fd33a54be1e7e39450c2fb58f4c09a90",
@@ -2409,8 +2409,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xbf087b3280757655077e9f2a6ac0a33c0716424486265562adfbbbbf3acdcae3",
-        "digest": "0xf9f6fe9d4c1035ef91057c4f4ae34e9cd9468030da22a991e509e4c13ae96670"
+        "structHash": "0xb06d6e71f2dac84f239b23785d374939f19f8a989d75a805aee0c2f98174b723",
+        "digest": "0xc665d7a06d6505531c0a0649b2f452124c0ae83b8bcde1044107ba0f2b75cd8c"
       },
       {
         "name": "other-source-wallet",
@@ -2495,7 +2495,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2533,10 +2533,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x5b08ba7583a4397a71467e419313c642461af21918ce6c5cafa232e1abbba6e3",
@@ -2549,8 +2549,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x25708213ebed73a103865a241488777d284daa2fb7a216f290f428d53a0a5404",
-        "digest": "0x4854e5eba74d48d33dd41cea2c7701bcc0418c54476d8b675ec4bca49a6fe918"
+        "structHash": "0x17d24b539599bd3fe22d58adae636a53731b3746e701666cb689e53294ce00fc",
+        "digest": "0xfa7a3f1872bb4b003be0b3acecc54f2a3cb1c2f15fdaf03808e68820e437acb3"
       },
       {
         "name": "other-refund-address",
@@ -2635,7 +2635,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2673,10 +2673,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xadadadadadadadadadadadadadadadadadadadad",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -2689,8 +2689,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xd2167ad12ca5634cc1e60e6fad37039350463307d16fd5da7e0b899bd62630ac",
-        "digest": "0xaaf72b4eddb1691a8cdfc0fd9b27aeee7da6fb8fec3b59e94c2759a9748d550f"
+        "structHash": "0x725785cad53905c120f8e693feefff95dc46061d034f68e3cc8b8c74ad375f91",
+        "digest": "0xcc7e8b8d5fdf48cd8e2fc87bcabccac54843922c2dd86b145e7e0cf4078bf354"
       },
       {
         "name": "other-collect-before",
@@ -2775,7 +2775,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2813,10 +2813,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000001",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -2829,8 +2829,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xab75ac90531b6e8e7460140fe8cde3731a2134a9a887625e9e0fb0a27722ca37",
-        "digest": "0x7b9a80bb96c94c0a33f80026a6a5fdbe3476afbf098bda8c455722ee2d7881c9"
+        "structHash": "0x78950612c33ff2e301bde9df2c41ab01ea0e2af71716f84dd117be3440736f2b",
+        "digest": "0xe23f1fd41f4d9831ded108eee8691a3a6737d20f4255fa4061fa9ccf5179149a"
       },
       {
         "name": "other-service-deadline",
@@ -2915,7 +2915,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -2953,10 +2953,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003601",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -2969,8 +2969,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x023953cee826eccb7f184fbe96cedce721547c1508d768da163a39a895f51997",
-        "digest": "0x606c48a1021fb62b5091b81526f757ec2446f166e030720866fcbaae19ffd479"
+        "structHash": "0x204fe2df84468675a73b97069b8dba7232860696f70461bd6e8142202edb8cd7",
+        "digest": "0x42219ea9125bb0fbe6c0e143ebe9740a1cf6ac8bf648432019813db468e4b9ea"
       },
       {
         "name": "other-manifest-revision",
@@ -3055,7 +3055,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3093,10 +3093,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xb845f6ab5b6b1a13defd17071438c8894a96e378f6b3ac44bc71e92c7671ab4f",
@@ -3109,148 +3109,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xbbcafce8d33bd0a1dc178cf95be7514e4857e83f7780b53c247efd391d70b216",
-        "digest": "0xc994c37a288379c665c943a72466a49bdf2331074add39f3f97e6ef26cbaed39"
-      },
-      {
-        "name": "other-aztec-token",
-        "inputs": {
-          "manifest": {
-            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-            "revision": "1",
-            "environment": "staging",
-            "rail": "a_tracer",
-            "sourceChainId": "84532",
-            "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
-            "sourceToken": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-            "sourceDecimals": "6",
-            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "network": {
-              "aztecChainId": "11155111",
-              "protocolVersion": "3924331020",
-              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-              "l1ChainId": "11155111",
-              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
-            },
-            "aztecSdkVersion": "6.0.0",
-            "aztecToken": "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
-            "destinationDecimals": "6",
-            "aztecTokenClassId": "0x067df4ddda0b0872ef604f47f3681d5e8c0de98280ac6b79963851c055ba91e0",
-            "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
-            "issuerProvenance": "fixture: Xochi deployment of the Aztec standard Token",
-            "redemptionRules": "fixture: test unit, not redeemable",
-            "sourceUnits": "1",
-            "destinationUnits": "1",
-            "rounding": "ceil-source-units",
-            "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
-            "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
-            "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
-            "sourceFinality": "fixture: finalized",
-            "destinationFinality": "fixture: finalized",
-            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
-          },
-          "policy": {
-            "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "priceImpactBps": "0",
-            "venueFeeBps": "10",
-            "routingFeeBps": "12",
-            "policyRevision": "1",
-            "assetId": "aztec-testnet-xtu"
-          },
-          "caller": {
-            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
-            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-            "amount": "1000000",
-            "recipientBindingId": "bnd_0001",
-            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
-            "challengeExpiry": "1899999700",
-            "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "collectBefore": "1900000000",
-            "settlementServiceDeadline": "1900003600"
-          }
-        },
-        "recipientBinding": {
-          "message": {
-            "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "sourceChainId": "84532",
-            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
-            "aztecToken": "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
-            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-            "corridorRevision": "1",
-            "manifestDigest": "0x611790b7194c974653d15b1e9666929db79c1602932f482c8884ad0eedfe225f",
-            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
-            "challengeExpiry": "1899999700",
-            "purpose": "xochi.shielded.recipient-binding.v1"
-          },
-          "digest": "0xe6598caecb46ad4d544e2b109b7020dc00b86532b33954a0aeabe24b56ad569a"
-        },
-        "message": {
-          "protocolVersion": "xochi.shielded.preview.v1",
-          "environment": "staging",
-          "source": {
-            "chainId": "84532",
-            "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
-          },
-          "destination": {
-            "settlementType": "shielded",
-            "privacyLevel": "private",
-            "disclosureProfile": "recipient-private-public-amount-v1",
-            "rail": "a_tracer",
-            "network": {
-              "aztecChainId": "11155111",
-              "protocolVersion": "3924331020",
-              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-              "l1ChainId": "11155111",
-              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
-            },
-            "corridor": {
-              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-              "corridorRevision": "1",
-              "manifestDigest": "0x611790b7194c974653d15b1e9666929db79c1602932f482c8884ad0eedfe225f"
-            },
-            "assetId": "aztec-testnet-xtu",
-            "aztecToken": "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
-            "recipientBindingId": "bnd_0001",
-            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
-            "amount": "1000000",
-            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
-          },
-          "feeBreakdown": {
-            "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
-            "priceImpactBps": "0",
-            "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
-            "totalFee": "9000"
-          },
-          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
-          "collectBefore": "1900000000",
-          "settlementServiceDeadline": "1900003600",
-          "recipientBindingDigest": "0xe6598caecb46ad4d544e2b109b7020dc00b86532b33954a0aeabe24b56ad569a",
-          "policyRevision": "1"
-        },
-        "domain": {
-          "name": "Xochi Shielded Preview",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
-        },
-        "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x3eafab544b7efc81e23dfea430f414fa0a1199ab177215124f589a2e0555e373",
-        "digest": "0x21f0a575f9234f8f0403cd10028fcc503a002546403bf791bf508a0839665f39"
+        "structHash": "0xd03c5b6d4511e916a8d4ab763fd52c79474152a438049df98ddd8949541028a7",
+        "digest": "0x8ff34606760b099524dcd7129f173fb1afa613cbc654155f171189854474e204"
       },
       {
         "name": "redeployed-rollup",
@@ -3335,7 +3195,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3373,10 +3233,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x3b17b2ab8945341f4067ab5699499041cdb5e5b34d748427c8c8e42dd87f0010",
@@ -3389,8 +3249,8 @@
           "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66"
         },
         "domainSeparator": "0xcb6162f8518b22aff90f4c04c5d57d08cad8221190e6a694d686fd481f50f993",
-        "structHash": "0x8db7e3a6bafb1c76cd95954a7cbf27c15f7fffd3c7b1a4524dcc0c6914ae047d",
-        "digest": "0x249f88081038769bf082b181507a7a333789f860f39a26f0b52915e7d95fed29"
+        "structHash": "0x8314406909af7164e57b844ef65c9fee08bc06cc62c0cc17d5aad8af7369157e",
+        "digest": "0xdc980ebd2a0dfc511b7e2a7d56226d5e7c184b10ddcd1fe7dec552bb426238ec"
       },
       {
         "name": "other-policy-revision",
@@ -3475,7 +3335,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3513,10 +3373,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -3529,8 +3389,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x95d561e64cd950e3b3188aedf4e14d5827fe67da8926557d25e6ddfb2b817829",
-        "digest": "0xc72edc1c05419a60953c44172513a443f2c43cfe435c266fd098ca24756851cd"
+        "structHash": "0x5058b2298197ec0c5e6d015ffb5a631ea765632b2cdb45eae5db478d3eae7c1e",
+        "digest": "0xe135df87704e5111e75a2da4dc0c85a26e6055a1a221c8ba4e35a433b03f5963"
       },
       {
         "name": "other-solver-fee",
@@ -3615,7 +3475,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009100"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3653,10 +3513,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "41",
-            "totalFee": "9100"
+            "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009100",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -3669,8 +3529,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0x3dbe2b345301c39c821579ee495208fae0f015d759cdbb125b8c6f2c00705f9d",
-        "digest": "0xce000102a091ff56c26a569a3e305ede70314ecc950b9a822499c8897ff78e1e"
+        "structHash": "0xebdda680d5fb3262a916b05e5413d7a03dd0148ac72911b46b0ad36e767c82e8",
+        "digest": "0x15ec6128af7fc4775762b3bc3d2dd0dc2496872003c2e79abd4578a8df43f8fa"
       },
       {
         "name": "other-gas-floor",
@@ -3755,7 +3615,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009001"
+            "amount": "1005001"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3793,10 +3653,10 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9001"
+            "totalFee": "5001"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009001",
+          "refundAmount": "1005001",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -3809,8 +3669,148 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
-        "structHash": "0xa9755b01dc5d417cc82d853205e14c5aecb6e79e5b01762d0203378806aab2e6",
-        "digest": "0x0fb9f497683638caf35039b8218221f97306ea4785e998e86c47792d3b727e74"
+        "structHash": "0xe052896ff5106533e26264526a53afac004f8899f0cabd861fd23726867176b4",
+        "digest": "0x1eb8bd00031ed78ee4d4f52f5b3396e26fd87915f1b644f438cfb3b407e63e51"
+      },
+      {
+        "name": "layers-above-floor",
+        "inputs": {
+          "manifest": {
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "revision": "1",
+            "environment": "staging",
+            "rail": "a_tracer",
+            "sourceChainId": "84532",
+            "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+            "sourceToken": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "sourceDecimals": "6",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "aztecSdkVersion": "6.0.0",
+            "aztecToken": "0x13b600d8f842babc98a7130dcb79a2d1f4f0ba22569b2fb99f3ecc3b5c39282b",
+            "destinationDecimals": "6",
+            "aztecTokenClassId": "0x067df4ddda0b0872ef604f47f3681d5e8c0de98280ac6b79963851c055ba91e0",
+            "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "issuerProvenance": "fixture: Xochi deployment of the Aztec standard Token",
+            "redemptionRules": "fixture: test unit, not redeemable",
+            "sourceUnits": "1",
+            "destinationUnits": "1",
+            "rounding": "ceil-source-units",
+            "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
+            "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
+            "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
+            "sourceFinality": "fixture: finalized",
+            "destinationFinality": "fixture: finalized",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "policy": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "priceImpactBps": "0",
+            "venueFeeBps": "10",
+            "routingFeeBps": "12",
+            "policyRevision": "1",
+            "assetId": "aztec-testnet-xtu"
+          },
+          "caller": {
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "amount": "10000000",
+            "recipientBindingId": "bnd_0001",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collectBefore": "1900000000",
+            "settlementServiceDeadline": "1900003600"
+          }
+        },
+        "recipientBinding": {
+          "message": {
+            "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "sourceChainId": "84532",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "aztecToken": "0x13b600d8f842babc98a7130dcb79a2d1f4f0ba22569b2fb99f3ecc3b5c39282b",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "corridorRevision": "1",
+            "manifestDigest": "0x54ac6a07dde84a3905322d47c9f77029cd96fb8a44360d14898532f12f121187",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "purpose": "xochi.shielded.recipient-binding.v1"
+          },
+          "digest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3"
+        },
+        "message": {
+          "protocolVersion": "xochi.shielded.preview.v1",
+          "environment": "staging",
+          "source": {
+            "chainId": "84532",
+            "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "10040000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0x54ac6a07dde84a3905322d47c9f77029cd96fb8a44360d14898532f12f121187"
+            },
+            "assetId": "aztec-testnet-xtu",
+            "aztecToken": "0x13b600d8f842babc98a7130dcb79a2d1f4f0ba22569b2fb99f3ecc3b5c39282b",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "10000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "18000",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "10000",
+            "routingFeeBps": "12",
+            "routingFee": "12000",
+            "totalBps": "40",
+            "totalFee": "40000"
+          },
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "10040000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
+          "policyRevision": "1"
+        },
+        "domain": {
+          "name": "Xochi Shielded Preview",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0xf10ccb711803e9e913efd2d048a40cdc5f9dbace2659fafbb495dc62206b031b",
+        "structHash": "0x9247bbcd5282e4dc163d07da51cc96bf403a0465f4fcf5a176bd8d5e967e344d",
+        "digest": "0x19e8a48dcacb09f95e7c08de91f7a95422bbc8025feefbf412cb633975868a89"
       }
     ]
   },
@@ -3830,7 +3830,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3868,11 +3868,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -3886,14 +3886,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x352781143c10ee3d3e1809746d94b647762e51e46af08687d9423f1921a2d484",
-        "digest": "0x498040fb27ffc7ed74a34d0d28554acbaeba4f04536186ab3b1f46c67b8efe5c",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x98b0cb5910ca9d6b0e0a485d2585d0c6d36164f19d6fe807e0979454f21d276e",
+        "digest": "0x6992b4f7110d9dc435b6d2896dddd8a4f37078c9dc921eaa2e53ad2c0f4309ed",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x011f2f310a80b7c62f721573ef078fc8c8d10c3efff34544706a77c67968ca631a569bc4f90cef17ec75afd5863eb6669c9a8a122e98120fbe40be8e98dc3d0c1c"
+        "signature": "0xe042b634278f6f8acbd595cfca1fa4600f887d8d1788897da90e91bb9cb0a77b0e1e2d8157ccdd826ba69d2187a0fb58b0466f108cf8347060c743bced2a483d1b"
       },
       {
         "name": "other-intent-id",
@@ -3909,7 +3909,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -3947,11 +3947,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -3965,14 +3965,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x356482fef577f9b6aab0b2aed02c32604c8491bb716c1c81e1ff084577eaadc0",
-        "digest": "0xa877fa907734cc9d0fd7da7a05b7141cb69d88c165c62448123ca68fdb913cf8",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x3888183a129668572931dfe252f08676c4dc1c6456f9a25d373635e0659e7db5",
+        "digest": "0x8f568d26dabbb29fccd70b4ec639bf55886156a0e4bf7742a47f3bff24d6ffc8",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xe08a25ecc2c97089a863b9c7c9d8ab75bec07f412f07952fc35ccef5b78d2ffd177d67fb3c8eaa6a8e114f5b09597ba7b5278ffb972102b3dd84a44a252cf15d1c"
+        "signature": "0x4c62358dea4f3e7b7b2cd892c8284103433bb94ea348720fe8178fbd017c8f723453c350ea7d66b892d8ebcabf0f22cfca8ebac6af15ab4a95305da6d5ae14521c"
       },
       {
         "name": "other-quote-id",
@@ -3988,7 +3988,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4026,11 +4026,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4044,14 +4044,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xb80af17af43fe0267faa62382c4648c9590fe9e856a17cfde34b0164bd6083da",
-        "digest": "0x38d24d2f7be2e6cfa383c4126a410b0a594c535a2aa6c7ad92ecf1acbb7d52ff",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xd411d44622531b99be4957c9c3492edbadbce26f9ab6181e5e831deb03d7d221",
+        "digest": "0xa6861fde0bc5624d84756ac6540ecaf3f6f744fc8e4a37690f436d26edea90de",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x610dd93597f8644676ed4b084c54c8c20e2032f3143c875001d05837bb04e53a7ab5b6bd5668a8851f8fd3e8d9f41334a060744860d409e96198878caa47c4d41b"
+        "signature": "0xf5f6a009f5360020cd247c252a456512f007488ae52cf1d243b163ecda4cb1733523ca39862b2a188a3ff8bf39da3a3e1be4be6c5e2e27094ae1787f8864ea301c"
       },
       {
         "name": "other-operation-id",
@@ -4067,7 +4067,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4105,11 +4105,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4123,14 +4123,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x71037ac7d6ed0f158d4d60ca71a78e7eb7e1d434d0adae0e726033edcb2fd6df",
-        "digest": "0x45ff1cfa2c5902ed83f30d473bd9b54ed7923f6d96f82c92a5afabf0513c6444",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xe017bca861fae1d2cf887cb02011a1a7ec0423d737c90b0427696dc76ef24181",
+        "digest": "0xf15710cebc9c9f8211254b6890174684a2b6d1ce64de2e81dd7e3fb5109b8a3a",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x7f30da3c797fbade3eb6715ade84005452655e5cee7d64ce267e96e590c673f54c711eb3192f0cacd72af14755bdc1188c1292a1d7c157b5ae35f58a16faf18d1b"
+        "signature": "0x3ed4a7b472040f7062301f8dadd171a7ffe37ff471c86ffdbe3a07e6e7c9440a6f7e79f683414f483ab34141ff298d34660d22f21e7a9b5a130fa8a11e8acd441b"
       },
       {
         "name": "other-source-authorization",
@@ -4146,7 +4146,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4184,11 +4184,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4202,14 +4202,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xc6b59948180dce543306a4a8d7af905c0583b323fc9deb315285c3c8c912ddb6",
-        "digest": "0x3db2fdce334d3b92ce2e10207e6fdc9ff886c7c1a917468c86a955fe4814eed3",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xe3a8b20578f6363de43a3ff8c0adddb05a47c414c292eb5e28cd0ae9cf803fb8",
+        "digest": "0x74dfe161e7832ae47a201b6e89598fcdfe87c09ed6bda9812ed63d7dd3050936",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xf8abbab35097530d9cfb50142d618fb6091a3f37fedd5e2d67c36c95c0f87587786d79e33b72b2b0b8b89c9196f6b57474a6fadac21e25eb4e1aa651e16926091c"
+        "signature": "0xf1cb96f9fe61783f684cf7433ba8fb48b05ca8019efbc56d79f9fe0f0e6aa38723e18dfbb2b45a812fdc07bbb933d535eec9e91d73d9e341290b379efd488ea61c"
       },
       {
         "name": "other-reservation-id",
@@ -4225,7 +4225,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4263,11 +4263,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4281,14 +4281,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x899c44bc2a7438122ae2aff918dbf231df42824b754d6dbaa12650fa1998ef5a",
-        "digest": "0x8bcdde91e69ad295a8e9a01d87679561b48cfc29efb1f45eee4bb2750632c9b6",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x258ace47e9cb40d7160973fc25620a8259038618460a485efdcbfca85626b08d",
+        "digest": "0xbb632a71e8c5e93f82a02384e73debcc491285b601cfeb0114ae6eb8c4992547",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x95d07f4452c3f075d95128b9d9d1a27143b62df585bcc79746cbce1c30d100dd6f354c1793ef4f6a416243c48b35a3cf2ce2344952731b8243e4825735f381e31b"
+        "signature": "0x0241523d2874f532944a251aa8d7fba54844f235ba539c7b77fd40fdcf4bf6935bed5e6e9f3e551114c9f970e233926bfe5afe03be98753234bb4dcc9e1c459b1c"
       },
       {
         "name": "other-aztec-recipient",
@@ -4304,7 +4304,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4342,11 +4342,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x744b7abfd1fa608ea13de20a8760374953f59b6a90dd9a73fef0ba2134db34f1",
@@ -4360,14 +4360,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0xe6c9831ef1db14e362dea1e3829e3cc373b5de548c75783408d8b49efc6a94cb",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x9ed795707a7288d7fe927a221888f0c9d84cf13c938d734a34ecbec42b678795",
-        "digest": "0x0063b177e478ba3cbafabf0099e9696f8ea3e824e45f37b795b1eba0020f1388",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x3e36434439f8423a60cebaecd1c9eb5027d2b74712ac3f52a53fd3f4f3b5a03b",
+        "digest": "0x4fc0bcf39bdcc55d532c3ad6868dbc6618aa7be629e89419d5ac2a2ccebeadc6",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xbf3724a1580186c79d069d6c41986bce74d1934985a2e6b1aba92b521cf0ac6070464f5c75009332f90d5c61da7fe990a623ab7d3d672faebb782652af5b8a921c"
+        "signature": "0xd8a0b4998426efb3b1d2018a31a7f06835375e5dd97802b1a5e021eed67674fe41a522edb06b987ec38d6a4aad5db07aac5b8c60220cf66b57034890beb81e071b"
       },
       {
         "name": "other-descriptor-digest",
@@ -4383,7 +4383,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4421,11 +4421,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xc6a00bfb2167fc6941615b8cb91c4b1a7c704aea462598d04e16b92a3c2bfb6a",
@@ -4439,14 +4439,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x8097af56b5d2726bec95ee60aa89eaa41a2cff7023ab69fa1941608a314e2779",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x6f986f77653e6883356dcb5f0839f95f65f9b31b277f5aee77ab4f59eb82b56a",
-        "digest": "0xe70c0456c23762fb0d09f5a08bc82e856fb8df72715ff87d43d526fc31afdeae",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xfcb3077bb215573f904ffe12d7960636327e69815f7a719ac9bcf01e13ee8098",
+        "digest": "0x0795854e6656c55aa7a092abfb9fbd39061424241d642be86b3b2b575a8a5333",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xb5b08f13a0653e09a02b126262bb2fe81b66070bf399eaf481c796eeebb5b4467cae47451849409e026134f583656adcad0119ce970a7c39f8e198b10bde18731b"
+        "signature": "0x4b7683b01ae5384b1463e133b3ff679c8e2d74d62f9cc6ea4855cb011fa0ad0e19ba2a6ac679fd9c674761fa9bc2cfc02d2bbd2ff7892f7fd9e65f68b8d3325c1c"
       },
       {
         "name": "other-destination-amount",
@@ -4462,7 +4462,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009001"
+            "amount": "1005001"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4500,11 +4500,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009001",
+          "refundAmount": "1005001",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4518,14 +4518,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x06c08ac603484928602df96de633b1999570d41b7b9d4080f8efd691557f0740",
+        "sourceHash": "0xdd3211ccff371f01ce979ecb7332d6c3cf02a32cd49c37761ea044a965b02225",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0xcb01dd7a11d058118e506e9ac9d5e2704968b25ad41b4a5f8ed4545e0555d141",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xd3bd416bf9cba36a6c73435d949cdc82f30e9a1e0806411bfaea3b36d50a59e9",
-        "digest": "0xeba2a0a388a099b97eba34d65002948c2204151e3bb94a98acdf03fc114aa927",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x7387afb3f44bfb7a187c3dd89d0246574c1dcecf53a5147a7dc1ef41ee4ca6d0",
+        "digest": "0xf1331a5dc4d165aa431ec6bdedf0ba11f9455587d7de2be7ec14a5a3b0c2c670",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x2abf969369558368926346fa5eedca739a5aad8a3e158a12f06e5cc710a8688f1d152c8b1a9003b2f4cb26cfccd931ea9e4ef60864cf2254ab782e6bbf982d2c1c"
+        "signature": "0xc7d4a6202ebcca7e29425cb5a5f3b635cb00ea49df37ef5c4927232185958db90d5982c6536c79309c6d44fbba72776d38293e855b70dc55223bfce9c0a50d041c"
       },
       {
         "name": "other-recipient-binding-id",
@@ -4541,7 +4541,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4579,11 +4579,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4597,14 +4597,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0xfcc8bd99f7c75a3deaa2edf30eb1a1c59e43b48684b2ce78385aafdb0c9017ee",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x97885a2beb9d0ad040638fbf956fe58dbb1a86dceff525f051378da7214ddb26",
-        "digest": "0xbb56003d73626661ae750df94d7cb320ae0adb08f48697e247c3d1a2220a0b94",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x9ca88eab8490a2bc6d9b027014aa4903319313444c8ecb763994956a2f8d4405",
+        "digest": "0x5674ee7d6a8dd455f4acf88c42f707b1fc0ce2b74a6c5c4943d625ddb7de6605",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xb797af211d309a375a6d330defae999a4c63d0ecf1743f958675f5b1e372c2f91286672404faf720353185bf1fc97e9073f93083cad22d97d588832717e64ffd1b"
+        "signature": "0xb08507608c20b6699ab3ef312b1914a34c23b47696139655acb2d2b56b3b0eaf23ee302733f338b8c12da4ff138d8fe7ffb5420588bc0bc9a1e75c4f65c476971b"
       },
       {
         "name": "other-binding-nonce",
@@ -4620,7 +4620,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4658,11 +4658,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x75b4727a4115bf02b559710860bb3c2368303d103a96f79f2e180d98b133fc3d",
@@ -4676,14 +4676,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x902902891cc4f5fb3dc12435a8ffd68967e506159a5ca5a3aba311899be34a4f",
-        "digest": "0x38277a9061345aada63e2167483dfc69e089f5585abf4a3ec8d053e216cd3853",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x69052e2a30d7c7f2a3f130f39b3f4b54b3db33e654bdd820010535916881bcd8",
+        "digest": "0xcca9279d37f422ade4f1bb32f3ee4357d7fb3c11f469b9b30068c7343e9a8263",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x3e29afb2dbf8e09940f882ab87f311c0b6a9afdc4eefc25a641d758711a4ea173d6afe982f4a34eae48da705dc63e314a11b9663fbeec3aca18f1c0904ef83471c"
+        "signature": "0x3bbf9b20bae7f4b2079db0e07382c61b8bf6925e6242a15ff2229e67a9fdfd7e4cba54322e5a6dacde919ff86acca36b5e15e900d9b21cad324ac8a1ffd71ba41c"
       },
       {
         "name": "other-binding-challenge-expiry",
@@ -4699,7 +4699,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4737,11 +4737,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xec1c2e4ffdbaa4dc9f2068511cc0ec94fd33a54be1e7e39450c2fb58f4c09a90",
@@ -4755,14 +4755,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xd5f3cc5125590b6bb4ddec7d430ceb6cd24e980cb5fc65b72d4c6831a4acbbd5",
-        "digest": "0x54e7ad58c68085ceaf30d00f5be78045ee2ccf740fb9665c5d56fc8944ff3115",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x9f380d9772f718791378c85fa48b8e0b5b91e958553ad814084ac224958027da",
+        "digest": "0x716a4c4f371cba318da4dda516365ba3255f687f17ebdf28ea7ef542658784d9",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x5cb556f16069fff18f35b3ff29a257b05e39e5463d47c953a02a172b27e6a34b39aa43d324fcf3108d4b4bdefd1d6a27cd2bde51fe8959b5982b3623a3719f871b"
+        "signature": "0xe97869f0b2cb5b4b42961e2455e562f9ac5983099d66c42b5f577d91afb6bb60716ecf3684273c1604388c529fcca39694a4740bf82cf8b2507ce07dc9d963f51b"
       },
       {
         "name": "other-source-wallet",
@@ -4778,7 +4778,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4816,11 +4816,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x5b08ba7583a4397a71467e419313c642461af21918ce6c5cafa232e1abbba6e3",
@@ -4834,14 +4834,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x67068869e07526813dbf43706a77ce092c8ce9adf9c23ae3b495bd524da1ea4a",
+        "sourceHash": "0x986f546ed3d0d957b9bed96a34e2d6532bb8f1ec1bf8a56873d98c85607a2da1",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xa34bd6cb8987416cd5b4f72bb4be31483c9c908d5b502b325ba255dd2085ab4b",
-        "digest": "0x333dc55906dc1d051eacb8249c0aae463dc8c942c0a47c836b5e607dfb0ee63e",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x9b1862aaf3a26039593e16d692bacb2c0b4825c0062df8f929b543d0388e7c55",
+        "digest": "0xc895239ecdf0fd0c12337c756582d4d1e45e39eaf0ec87273f1bbb7d6d228fc9",
         "signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-        "signature": "0xf32b4bb95fab826def7e349f401774c166ce8e0448f6bf538420cc00cddc7864668dc383a038d5cb67ce922472d58c24c08a557d8b87c47b69772fc4db71b8311b"
+        "signature": "0x98b92a258e86f732392a3c42f832174cd2208d0b72e5ca20f295302c6bf542ef040de99c7839a509fd9e29ee3e6054e99012690ca8a776218c36c0a1f33c60ce1c"
       },
       {
         "name": "other-refund-address",
@@ -4857,7 +4857,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4895,11 +4895,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xadadadadadadadadadadadadadadadadadadadad",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4913,14 +4913,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xcff09466a80abca59c94fd49c0feae64aa05a8ebd8ac81430cfe0fb3a88b1f26",
-        "digest": "0x74e6dcd07128438958f376d35ed0e160928f50529044c2145441ac2232ba9ac1",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x4dc5b91831fe5b9e0b622ac5b4d37a049b2fc39b26f532279bc39889a8542179",
+        "digest": "0x28d7d8bae0754288294576dd159d1a08a26d09eba6ccdfa26b350e8977fa30bb",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x0e19ebf363d6c7f3d8b22822774681367e00f051ab693fcfe85b9c73bc4d94dc6e1f906bce1c5920ad205203113af9bb2f0d31adbc442cfdd365f12cfff1adaf1c"
+        "signature": "0x84ac4e55816220d9f8389cacd2cf5c546d5008dd64cb07cbc9dc82bf8a0f4e6f3226e6124ebf02921870216257192cc80ec7d65d8d01313a7c19c18664a4813c1b"
       },
       {
         "name": "other-collect-before",
@@ -4936,7 +4936,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4974,11 +4974,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000001",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -4992,14 +4992,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x3e3d7dbf158e7e026088e4d31048e45ff599e1a74add660ede150542c592367d",
-        "digest": "0x1cd3596942430a2280154dd5648833e9fd3b81567fbd00d06071cf8b734e42a9",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x5e67e27f0cbef198cf078fe6d9bf1d4ec21479a74252a31583831716dd66cabc",
+        "digest": "0x497579c2a6eea3ad9ce7b86ea84cc72096e7df12ba01b4a6af5e1bb12d6bbca8",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x093eaf8bd3dfa0cc14a418b472be1b77d09fa4d680cebb01345d10e7e6bd118d70d7ba62dacfebf6f53400aa0ea4e5213091bf53616a46252dbf49db8885b4b61b"
+        "signature": "0xfdf4a318214c956093b94038358f6a54ee8bf16c02f50708fb77f5edeea7e66078220bfd9a772bf046678c9279f6744b56ef443a632bc434ece245b5f5913fc41b"
       },
       {
         "name": "other-service-deadline",
@@ -5015,7 +5015,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5053,11 +5053,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003601",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5071,14 +5071,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x2437db50de202410004497967114f21f754740bcf6d1eb7f9edb280c46864c79",
-        "digest": "0x34a3aeeabaa598ef94070d3f286aebc1db0011118293f370baf0b1d383f3ecf5",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xbd57dd2d3863636151624c5722cf1bcf3195055794a5257274aa26f528db13f9",
+        "digest": "0x3dea9f4a716a0ce5894ac4b216949df4da4ca212959e4a80c86d5c38041d0099",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xf8aa7ff07d65f24291ae1149b47fc0540e0109913755de99eebb3c610ba2477d6a5d0ae307320f19b931aa2ee0825d507be046d0ea015318825f91cfdae3c88e1c"
+        "signature": "0x61e1c21785888ff55b8b38c7c63c2487433c9e4511f11b88b261c10a71c5779212fad3a9d9abaf696337138142aba3eee8a148d30f24c7b761df5d23252c64e01c"
       },
       {
         "name": "other-manifest-revision",
@@ -5094,7 +5094,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5132,11 +5132,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xb845f6ab5b6b1a13defd17071438c8894a96e378f6b3ac44bc71e92c7671ab4f",
@@ -5150,93 +5150,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0x1275191e34ced8a59b010df17e6d3f9405f2e7b4c2dbfa2cb929ac88f88fa611",
         "destinationHash": "0x7ea363795365a0cd5f0515687f09a3364407cdc8f90264212f9f37e51a68db5f",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xc7dc58fbb9ea8d9f41e4fc4364fef4ac17553892b422a7345da1eff719006986",
-        "digest": "0x5ade13d8eb7beb86066928205bd3a767131c5969f03a263df7b260448469e30c",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x5d785daf160f32e19770780022b9c4e773323480aba357e2c60273caf0a60ee1",
+        "digest": "0x6ada23502b13327ab4487cb24b67a06eabe231e3168f056c02f295942c7912f7",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x0b1f39c6a40e54b3883f9db41cb207432bcf11b849d6db60feb163c4a55f820058d4c384aa62de039b448dba0ea748c836453fcac97677311132a7dd7159242b1c"
-      },
-      {
-        "name": "other-aztec-token",
-        "previewVector": "other-aztec-token",
-        "message": {
-          "protocolVersion": "xochi.shielded.terms.v1",
-          "environment": "staging",
-          "intentId": "xi_fixture0001",
-          "quoteId": "xq_fixture0001",
-          "operationId": "op_fixture0001",
-          "source": {
-            "chainId": "84532",
-            "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
-            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
-          },
-          "destination": {
-            "settlementType": "shielded",
-            "privacyLevel": "private",
-            "disclosureProfile": "recipient-private-public-amount-v1",
-            "rail": "a_tracer",
-            "network": {
-              "aztecChainId": "11155111",
-              "protocolVersion": "3924331020",
-              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-              "l1ChainId": "11155111",
-              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
-            },
-            "corridor": {
-              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-              "corridorRevision": "1",
-              "manifestDigest": "0x611790b7194c974653d15b1e9666929db79c1602932f482c8884ad0eedfe225f"
-            },
-            "assetId": "aztec-testnet-xtu",
-            "aztecToken": "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
-            "recipientBindingId": "bnd_0001",
-            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
-            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
-            "amount": "1000000",
-            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
-          },
-          "feeBreakdown": {
-            "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
-            "priceImpactBps": "0",
-            "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
-            "totalFee": "9000"
-          },
-          "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
-          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
-          "collectBefore": "1900000000",
-          "settlementServiceDeadline": "1900003600",
-          "recipientBindingDigest": "0xe6598caecb46ad4d544e2b109b7020dc00b86532b33954a0aeabe24b56ad569a",
-          "policyRevision": "1",
-          "reservationId": "rsv_fixture0001"
-        },
-        "domain": {
-          "name": "Xochi Shielded Terms",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
-        },
-        "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
-        "corridorHash": "0x251d95d4f42846b035ec7494dfc979da1d59982dcb1a4dda29172fdbb41a08d5",
-        "destinationHash": "0x2576c1b1b9e4dfecd782632687d124f8560354850a8b51b1221ba2f1e53e710b",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0xb09a69705a47b92bdc2911d95a5cc4766f1ead1021c6168d8992ce4d4f780daf",
-        "digest": "0xa0101e848803bf5916e7a6582718a7e4f77853c79c947fec268b183bae7ee3e1",
-        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xf964d27b6d2a84617e01cb67b0768db3a1118067e972108919c670724e6736d9514eedae93c0d7e603b54895792374c97eb224fe82cd6c41e05bf1528de2c19f1b"
+        "signature": "0xb65929bd309df3e200659e0a472e5384a756c50f1b9ac7549335e011a51ef09b7ed707efcf70bfc71623083b252a056758ae4fa73dca99389cf5c1489f11af731c"
       },
       {
         "name": "redeployed-rollup",
@@ -5252,7 +5173,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5290,11 +5211,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x3b17b2ab8945341f4067ab5699499041cdb5e5b34d748427c8c8e42dd87f0010",
@@ -5308,14 +5229,14 @@
           "salt": "0xde04d021f029001a5393561c811bcd6fbb666f51e09a0128a8818283181f3e66"
         },
         "domainSeparator": "0x6b83f9b55e04d9fe2e4b196c867c19f34899d48caefce074e2843b69e972880f",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xa139fae7e59fb24c144d24169d69ceafefd4d6b21364dab10b7972133ed202a2",
         "destinationHash": "0xa5631668e6da67ce1252815bbeef92e4abc1a74acd588df96667fb6faacfee70",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x9e58df597234878202c150edb9bfd4a06536ee21f134f1a79f51a8d04ff1ee72",
-        "digest": "0x75497f21cf70163985a721b4b3a4a87d55065fda8d62e73ddf1a737d1d4c5220",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0xbd8ec95c25581530336d1a420ded014adc3616c246b65e22aaef08b397f95dad",
+        "digest": "0x642dba70b412277cb3a3b58e2ee013dbdf9df64cb8b83a774e291002f83ddd41",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xceeaa7289997790c65a6bd0cf2c068c9373738061dea272d7f3d800e55608ca91b6e6fc6ded3ba41812441c55e367f31ce8305c9fe3eb2204c444cc49e8c46481c"
+        "signature": "0xca499629cb17ca2d5fe4017e6ed5ff1004c15e7db0abb222771c955d11463f1c17904b118ee5e9055062e9ab400b48da3cf765d751ebedcbdcb1a5cb745e5b901b"
       },
       {
         "name": "other-policy-revision",
@@ -5331,7 +5252,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5369,11 +5290,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5387,14 +5308,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x01d66dad3b48c8b138a7ed955f8b82b236e0231c6a367021638040f750c19c32",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xacbe4928b778f91c81ecfdb8b794a283383db4f27d4c7c1e413618dadc80e469",
-        "structHash": "0x8b0b35e7f7a14915360ed98b939c38a6558d81d16a1e9a068b9cb478612b1f6f",
-        "digest": "0x2cb71975f2bc802b912243a8749837cf59f0edf6f6ab1ff9d3578068de4643f8",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x92fac443b99313d06307dec50d7568b5996ffb877f184600a37b8f913da19189",
+        "digest": "0x96127ee577ea423c7f980b2b328696a67f44e23a63b32af1934eea5c4b86ae4b",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xd3a15862db7fb4480b904615a84dc81494795d06f4d1408d6d85df00345a6329550139adcf8131f5399615ba9ac464e97b1701599e403df60eb9ad9c8f42d9181b"
+        "signature": "0x3aa6759fbd5ddec790749a305540e2503b2fd42a5525725797210d0c733189d14eb8a232a8f3edfd2ba96f92b8f5f0437f6e6175200ead8b3a21a425eb12cd501c"
       },
       {
         "name": "other-solver-fee",
@@ -5410,7 +5331,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009100"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5448,11 +5369,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "41",
-            "totalFee": "9100"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009100",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5466,14 +5387,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x03b6be8242787bd7040cc9b21776fca7bfbb4a88ce63b252123b372db55834a2",
+        "sourceHash": "0xeea1869e790878cd7c48223ff02bd8db9a3c0f4c4788e547b5ccbbcb0c20b287",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0x233c554ff9d422c761ae85f8ccd01823f4ebfe00dbfce42c76724a5c2ec31f47",
-        "structHash": "0xa081b68705620a059836703af6ed9d97958d3ed728f6c9356725062d4c03e9ae",
-        "digest": "0x2afdbf09a18acf1ea7c439f09cf0fa945b97b4ea91c18d29934fd3d3321cda25",
+        "feeBreakdownHash": "0xa3748eba53ef57bb52448f88215d792361ac0fbd420c58eaacbe57614035ba33",
+        "structHash": "0x063316f538b6f7ce6acc246c2e9abdf589c256d334aadd02748f6accb4bf5e58",
+        "digest": "0x601565273289383b5dca9a859ad92b5af25282e45183ccd0f963a52364718706",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0xd74f9eff28f57d5877a3b6c26e33b9add3956b6a524db76d4a49d7f41d256d7820e89fea9740a3b38bb629dfcef1f410e818cf17b9a53c3eca590b5320006e881b"
+        "signature": "0xd9e6bd7e37deeb883f0daaab7a2811f2c7d8437793d6b9c262f91eac3b24c8e33cce02ba85c91a8882107f62e60fc5f0ed6d0778e2a9072bfe88c854905d1f0d1b"
       },
       {
         "name": "other-gas-floor",
@@ -5489,7 +5410,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009001"
+            "amount": "1005001"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5527,11 +5448,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9001"
+            "totalFee": "5001"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009001",
+          "refundAmount": "1005001",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5545,14 +5466,93 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
-        "sourceHash": "0x06c08ac603484928602df96de633b1999570d41b7b9d4080f8efd691557f0740",
+        "sourceHash": "0xdd3211ccff371f01ce979ecb7332d6c3cf02a32cd49c37761ea044a965b02225",
         "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
         "destinationHash": "0x351899f81445f35189031ffe40568f8be8624b5acfce4554e42b2987771a7d0c",
-        "feeBreakdownHash": "0xf9a58fcd9a8441e9d7a5e5ca7b0b422c15ad491db825d9327d26112844fe4708",
-        "structHash": "0x45f9ac7254bbb5270e387256d0db9934fe4bc0ca6e6809c46c83c4920322b16e",
-        "digest": "0x39dbfa3b9ccae22881f0965064b26815c77fb90cece82ad2f9bcc711b659e63e",
+        "feeBreakdownHash": "0x3684d5edc41f86aeb6b505e90d2951cf7b8a71429040acbf8d6283d9dd6cccdc",
+        "structHash": "0x7003f1b062a257c60814bea360f9162f0844650284c245d72c6cb4025ca557cc",
+        "digest": "0x87974fb2a98ab7530744db67a8d74e28995fe2a5d4f4ab1ad653f3b75d73e449",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x17a06e29e50c5dd0f892f9b29e51d8731fd56fbaa5f0521183117d6c488eb1d848ca5fb6edd1de177289dc672db5cdcd69c38c8412fa533fd0ba9f067b1408ee1b"
+        "signature": "0x86c2926665dd4b9f03f6643294e4de23c81fa937a70508d268d6c92d8cd2f03f0a1e0be21369b1be409160ee9e52a5d408eedca9a9cf58a034ab517207e609a61b"
+      },
+      {
+        "name": "layers-above-floor",
+        "previewVector": "layers-above-floor",
+        "message": {
+          "protocolVersion": "xochi.shielded.terms.v1",
+          "environment": "staging",
+          "intentId": "xi_fixture0001",
+          "quoteId": "xq_fixture0001",
+          "operationId": "op_fixture0001",
+          "source": {
+            "chainId": "84532",
+            "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "10040000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0x54ac6a07dde84a3905322d47c9f77029cd96fb8a44360d14898532f12f121187"
+            },
+            "assetId": "aztec-testnet-xtu",
+            "aztecToken": "0x13b600d8f842babc98a7130dcb79a2d1f4f0ba22569b2fb99f3ecc3b5c39282b",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "10000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "18000",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "10000",
+            "routingFeeBps": "12",
+            "routingFee": "12000",
+            "totalBps": "40",
+            "totalFee": "40000"
+          },
+          "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "10040000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
+          "policyRevision": "1",
+          "reservationId": "rsv_fixture0001"
+        },
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x3f77e30988b79ab85e8adf51140bf176227d7cf6222e1f4176f7e9f3bc23dfd9",
+        "sourceHash": "0x631373643f2980fe25dc5e1687429bbf1e31cc5f22edade2f90feb7ad553e230",
+        "corridorHash": "0xd03350ddad23a335a4c483a61e90924f8071f39f614ab3657167964a8ae1b651",
+        "destinationHash": "0xed337dc873856710a3ee55888468f58213ef393e88073e2e8474b1b45ab890b8",
+        "feeBreakdownHash": "0xfe3ce8c2ca810c640a123c4b07867f836fd2ee0753e7917244483667a76ccc05",
+        "structHash": "0xce1a336866abd3b31cb7ee1e96fe68e36617daa6834a2e7a9ec55ce9ed4cf4bb",
+        "digest": "0xcfe859af0ae4f550276d1164fe89a294813d8a961dd1859f0e08688ed1116a86",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0xdf8357643bf5f55787bd7037aadc3367e097c28cee2acbb4e46e6df22dbd5b735d6d8757193b0cb1618b7e11e7e256c875ab9c395f7faa69ff92e90d5c0dbc161c"
       }
     ],
     "refusals": [
@@ -5569,7 +5569,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5607,11 +5607,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5636,7 +5636,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "stealth",
@@ -5674,11 +5674,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5703,7 +5703,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5741,11 +5741,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5770,7 +5770,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5808,11 +5808,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5837,7 +5837,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5875,11 +5875,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5904,7 +5904,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -5942,11 +5942,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -5971,7 +5971,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6009,11 +6009,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6038,7 +6038,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6076,11 +6076,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6105,7 +6105,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6143,11 +6143,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6172,7 +6172,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6210,11 +6210,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900000000",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6239,7 +6239,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6277,11 +6277,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "18446744073709551616",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6306,7 +6306,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6344,11 +6344,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6373,7 +6373,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6411,11 +6411,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9001"
+            "totalFee": "5001"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6440,7 +6440,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6478,11 +6478,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "41",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6507,7 +6507,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6545,11 +6545,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6574,7 +6574,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6612,11 +6612,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6641,7 +6641,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6679,11 +6679,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6708,7 +6708,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6746,11 +6746,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6775,7 +6775,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6813,11 +6813,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6842,7 +6842,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6880,11 +6880,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6947,11 +6947,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -6976,7 +6976,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -7014,7 +7014,7 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
@@ -7043,7 +7043,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0x0000000000000000000000000000000000000000",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -7081,11 +7081,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -7110,7 +7110,7 @@
             "token": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -7148,11 +7148,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -7177,7 +7177,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -7215,11 +7215,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -7244,7 +7244,7 @@
             "token": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1009000"
+            "amount": "1005000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -7282,11 +7282,11 @@
             "routingFeeBps": "12",
             "routingFee": "1200",
             "totalBps": "40",
-            "totalFee": "9000"
+            "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1009000",
+          "refundAmount": "1005000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0xd8e00a2a59052df76681140eb4dc39ab2dae9b2169fb8d49deeda723baa11ee3",
@@ -7319,15 +7319,15 @@
     },
     {
       "item": "ShieldedFeeBreakdown",
-      "reason": "The narrowest shape matching Riddler FeePolicy's layered breakdown, amounts in SOURCE base units (an exact-output fee is added to the source pull). totalFee = gasFloor + the four layers; totalBps = the four rates. Tier, asset class, total_usd and the surplus share are not signing values."
+      "reason": "The narrowest shape matching Riddler FeePolicy's layered breakdown, amounts in SOURCE base units (an exact-output fee is added to the source pull). gasFloor is a MINIMUM, as in FeePolicy: totalFee = max(gasFloor, the four layers); totalBps = the four rates. Tier, asset class, total_usd and the surplus share are not signing values."
     },
     {
       "item": "derivation",
-      "reason": "base = ceil(amount * sourceUnits / destinationUnits); each layer floor(base * bps / 10000); source.amount = base + totalFee; refundAmount = source.amount (design A refunds in full). Each preview vector carries its inputs."
+      "reason": "base = ceil(amount * sourceUnits / destinationUnits); each layer floor(base * bps / 10000); totalFee = max(gasFloor, layers); source.amount = base + totalFee; refundAmount = source.amount (design A refunds in full). Each preview vector carries its inputs, and a preview never varies a revision's fixed identity field (that is a new revision)."
     },
     {
       "item": "CorridorManifestV1",
-      "reason": "The §6/§7 identity fields as typed members: the recipient class pin is outside (decided 2026-10-24), the exact Aztec SDK version inside; rounding literal \"ceil-source-units\"; provenance, redemption and finality rules as strings."
+      "reason": "The §6/§7 identity fields as typed members: the recipient class pin is outside (decided 2026-10-24), the exact Aztec SDK version inside; rounding literal \"ceil-source-units\"; provenance, redemption and finality rules as strings. The manifest vectors pin the hash only: a revision's decided identity values are fixed, and changing one is a new revision."
     },
     {
       "item": "recipientBindingDigest derivation",

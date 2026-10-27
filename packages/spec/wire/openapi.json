@@ -2798,7 +2798,7 @@
         "type": "object"
       },
       "ShieldedFeeBreakdown": {
-        "description": "`ShieldedFeeBreakdown` (PROPOSED): amounts in SOURCE-token base units (an exact-output fee is added to the source pull). `total_fee` is `gas_floor` plus the four layers; `total_bps` the four rates.\n",
+        "description": "`ShieldedFeeBreakdown` (PROPOSED): amounts in SOURCE-token base units (an exact-output fee is added to the source pull). `gas_floor` is a minimum fee, as in FeePolicy: `total_fee` is `max(gas_floor, layers)` and `total_bps` the four rates.\n",
         "properties": {
           "gas_floor": {
             "pattern": "^(0|[1-9][0-9]*)$",

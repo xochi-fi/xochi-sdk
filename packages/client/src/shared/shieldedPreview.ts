@@ -146,20 +146,19 @@ export type ShieldedFeeBreakdownWire = z.infer<typeof ShieldedFeeBreakdownSchema
 /**
  * Decode a preview response. Throws (zod) on any shape the solver does not
  * publish, including an executable or terms-shaped answer, and on a fee
- * breakdown whose totals are not the sums of its parts.
+ * breakdown whose totals disagree: `total_fee` must be `max(gas_floor, layers)` (the gas
+ * floor is a minimum fee, as in FeePolicy) and `total_bps` the four rates.
  */
 export function decodeShieldedPreview(body: unknown): ShieldedPreviewResponseWire {
   const decoded = ShieldedPreviewResponseSchema.parse(body);
   const f = decoded.preview.fee_breakdown;
-  const totalFee =
-    BigInt(f.gas_floor) +
-    BigInt(f.solver_fee) +
-    BigInt(f.price_impact) +
-    BigInt(f.venue_fee) +
-    BigInt(f.routing_fee);
+  const layers =
+    BigInt(f.solver_fee) + BigInt(f.price_impact) + BigInt(f.venue_fee) + BigInt(f.routing_fee);
+  const gasFloor = BigInt(f.gas_floor);
+  const totalFee = layers > gasFloor ? layers : gasFloor;
   const totalBps = f.solver_fee_bps + f.price_impact_bps + f.venue_fee_bps + f.routing_fee_bps;
   if (BigInt(f.total_fee) !== totalFee || f.total_bps !== totalBps) {
-    throw new Error("shielded preview fee_breakdown totals are not the sums of its parts");
+    throw new Error("shielded preview fee_breakdown totals disagree with max(gas_floor, layers)");
   }
   return decoded;
 }

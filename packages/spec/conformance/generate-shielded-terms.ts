@@ -319,7 +319,8 @@ const BASE_CALLER: Caller = {
 //
 // Exact output. base = ceil(amount * sourceUnits / destinationUnits) in source base units;
 // each layer = floor(base * bps / 10000) (FeePolicy: independently floored layers);
-// totalFee = gasFloor + the four layers; source.amount = base + totalFee; design A refunds
+// totalFee = max(gasFloor, the four layers) -- FeePolicy's gas floor is a MINIMUM fee, never
+// added on top; source.amount = base + totalFee; design A refunds
 // the collected principal in full, so refundAmount = source.amount.
 const derive = (manifest: Manifest, policy: Policy, caller: Caller) => {
   const su = BigInt(manifest.sourceUnits as string);
@@ -330,7 +331,8 @@ const derive = (manifest: Manifest, policy: Policy, caller: Caller) => {
   const priceImpact = layer(policy.priceImpactBps);
   const venueFee = layer(policy.venueFeeBps);
   const routingFee = layer(policy.routingFeeBps);
-  const totalFee = policy.gasFloor + solverFee + priceImpact + venueFee + routingFee;
+  const layers = solverFee + priceImpact + venueFee + routingFee;
+  const totalFee = layers > policy.gasFloor ? layers : policy.gasFloor;
   const totalBps =
     policy.solverFeeBps + policy.priceImpactBps + policy.venueFeeBps + policy.routingFeeBps;
   const sourceAmount = base + totalFee;
@@ -474,11 +476,12 @@ const PREVIEW_CASES: {
   { name: "other-collect-before", caller: { collectBefore: "1900000001" } },
   { name: "other-service-deadline", caller: { settlementServiceDeadline: "1900003601" } },
   { name: "other-manifest-revision", manifest: { revision: "2" } },
-  { name: "other-aztec-token", manifest: { aztecToken: rep32("2c") } },
   { name: "redeployed-rollup", manifest: { network: { ...NET_A, rollupAddress: rep20("a2") } } },
   { name: "other-policy-revision", policy: { policyRevision: "2" } },
   { name: "other-solver-fee", policy: { solverFeeBps: 19n } },
   { name: "other-gas-floor", policy: { gasFloor: 5001n } },
+  // 10 test units: the layers (40,000) exceed the 5,000 floor, so the floor does not bind.
+  { name: "layers-above-floor", caller: { amount: "10000000" } },
 ];
 
 const previewVectors = PREVIEW_CASES.map(({ name, caller, manifest, policy }) => {
@@ -657,7 +660,7 @@ for (const v of previewVectors) {
 //   string_empty                 an id, assetId or recipientBindingId is empty
 //   environment_empty            environment is empty (shielded.json's code)
 //   deadline_order               settlementServiceDeadline <= collectBefore
-//   fee_breakdown_inconsistent   totalFee != gasFloor + layers, or totalBps != sum of rates
+//   fee_breakdown_inconsistent   totalFee != max(gasFloor, layers), or totalBps != sum of rates
 //   rounding_unknown             a manifest rounding rule other than "ceil-source-units"
 //   aztec_zero / aztec_out_of_field / not_bytes32 / amount_* / evm_address_zero /
 //   not_evm_address / uint_out_of_range / chain_id_zero   as in shielded.json
@@ -897,23 +900,27 @@ const out = {
       item: "ShieldedFeeBreakdown",
       reason:
         "The narrowest shape matching Riddler FeePolicy's layered breakdown, amounts in SOURCE base " +
-        "units (an exact-output fee is added to the source pull). totalFee = gasFloor + the four " +
-        "layers; totalBps = the four rates. Tier, asset class, total_usd and the surplus share are " +
+        "units (an exact-output fee is added to the source pull). gasFloor is a MINIMUM, as in " +
+        "FeePolicy: totalFee = max(gasFloor, the four layers); totalBps = the four rates. Tier, " +
+        "asset class, total_usd and the surplus share are " +
         "not signing values.",
     },
     {
       item: "derivation",
       reason:
         "base = ceil(amount * sourceUnits / destinationUnits); each layer floor(base * bps / 10000); " +
-        "source.amount = base + totalFee; refundAmount = source.amount (design A refunds in full). " +
-        "Each preview vector carries its inputs.",
+        "totalFee = max(gasFloor, layers); source.amount = base + totalFee; refundAmount = " +
+        "source.amount (design A refunds in full). Each preview vector carries its inputs, and a " +
+        "preview never varies a revision's fixed identity field (that is a new revision).",
     },
     {
       item: "CorridorManifestV1",
       reason:
         "The §6/§7 identity fields as typed members: the recipient class pin is outside (decided " +
         "2026-10-24), the exact Aztec SDK version inside; rounding literal " +
-        `"${ROUNDING}"; provenance, redemption and finality rules as strings.`,
+        `"${ROUNDING}"; provenance, redemption and finality rules as strings. The manifest ` +
+        "vectors pin the hash only: a revision's decided identity values are fixed, and changing " +
+        "one is a new revision.",
     },
     {
       item: "recipientBindingDigest derivation",

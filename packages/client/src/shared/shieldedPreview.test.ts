@@ -32,7 +32,7 @@ const response = () => ({
       token_address: "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
       wallet: a20("11"),
       collector: a20("c1"),
-      amount: "1009000",
+      amount: "1005000",
     },
     destination: {
       settlement_type: "shielded",
@@ -66,10 +66,10 @@ const response = () => ({
       routing_fee_bps: 12,
       routing_fee: "1200",
       total_bps: 40,
-      total_fee: "9000",
+      total_fee: "5000",
     },
     refund_address: a20("11"),
-    refund_amount: "1009000",
+    refund_amount: "1005000",
     collect_before: 1900000000,
     settlement_service_deadline: 1900003600,
     recipient_binding_digest: b32("bb"),
@@ -98,10 +98,14 @@ describe("decodeShieldedPreview", () => {
     expect(() => decodeShieldedPreview(evm)).toThrow();
   });
 
-  it("refuses a fee breakdown that does not add up", () => {
-    const bad = response();
-    bad.preview.fee_breakdown.total_fee = "9001";
-    expect(() => decodeShieldedPreview(bad)).toThrow(/sums of its parts/);
+  it("refuses a fee breakdown whose total is not max(gas_floor, layers)", () => {
+    // Adding the floor on top of the layers is the wrong rule: the floor is a minimum.
+    const added = response();
+    added.preview.fee_breakdown.total_fee = "9000";
+    expect(() => decodeShieldedPreview(added)).toThrow(/max\(gas_floor, layers\)/);
+    const off = response();
+    off.preview.fee_breakdown.total_fee = "5001";
+    expect(() => decodeShieldedPreview(off)).toThrow(/max\(gas_floor, layers\)/);
   });
 
   it("names exactly the members the vendored wire contract requires", () => {
