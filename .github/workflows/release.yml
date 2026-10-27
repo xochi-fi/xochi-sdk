@@ -87,7 +87,7 @@ concurrency:
 
 env:
   # Same pins as ci.yml; the @xochi/sdk gate needs the ERC-8262 artifacts.
-  ERC_8262_REF: 02b104cceb5fba49939d3afe843ccb61f73e7e6c
+  ERC_8262_REF: 326380e78f0c68d1931e83bea4d5364b8604a731
   FOUNDRY_VERSION: v1.5.1
 
 jobs:
@@ -249,7 +249,9 @@ jobs:
         if: steps.pkg.outputs.name == '@xochi/sdk'
         run: |
           git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          git -C ../ERC-8262 checkout --quiet "$ERC_8262_REF"
+          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
+          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
+          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
           git -C ../ERC-8262 submodule update --init --recursive --depth=1
           (cd ../ERC-8262 && forge build)
 
