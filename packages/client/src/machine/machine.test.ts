@@ -220,6 +220,7 @@ describe("one signature (no origin pull)", () => {
     // The poll arms with the phase: an immediate read plus the interval.
     expect(apiCalls(fx, "status")).toHaveLength(1);
     expect(timers(fx)).toContain("set:poll");
+    expect(timers(fx)).toContain("clear:signPrompt");
 
     const settled = s.send(
       {
@@ -245,6 +246,48 @@ describe("one signature (no origin pull)", () => {
     expect(s.intent.txHash).toBe("0xabc");
     expect(s.receipt.phase).toBe("success");
     expect(timers(done)).toContain("clear:poll");
+  });
+
+  it("cancels an unanswered wallet prompt and ignores its late signature", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    const started = s.send({ type: "SignRequested" });
+    const prompt = only(walletCalls(started, "signTypedData"));
+    expect(timers(started)).toContain("set:signPrompt");
+
+    const cancelled = s.send({ type: "CancelSignRequested" });
+    expect(s.intent.status).toBe("quoted");
+    expect(s.intent.error).toBe("Signature cancelled");
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+    expect(timers(cancelled)).toContain("clear:signPrompt");
+
+    const late = s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xlate" },
+    });
+    expect(apiCalls(late, "execute")).toHaveLength(0);
+  });
+
+  it("times out signature 1 without leaving a live ceremony", () => {
+    const s = new Session();
+    s.quoteWith(quote());
+    const started = s.send({ type: "SignRequested" });
+    const prompt = only(walletCalls(started, "signTypedData"));
+
+    s.send({ type: "TimerFired", timer: "signPrompt" }, SIGN_PROMPT_TIMEOUT_MS);
+    expect(s.intent.status).toBe("expired");
+    expect(s.intent.error).toBe("Quote expired");
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+
+    const late = s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xlate" },
+    });
+    expect(apiCalls(late, "execute")).toHaveLength(0);
   });
 
   it("measures the fill on an inline completion only", () => {

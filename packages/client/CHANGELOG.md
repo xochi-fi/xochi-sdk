@@ -4,9 +4,15 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-27
+
 ### Added
 
 - Typed wire shapes and a zod decoder for Riddler's shielded terms preview (`POST /xochi/shielded/preview`, Riddler#1296): `ShieldedPreviewResponseSchema`, `ShieldedPreviewSchema`, `ShieldedFeeBreakdownSchema`, `ShieldedNetworkIdentitySchema`, `ShieldedCorridorSchema`, the `ShieldedPreviewRequestWire` / `ShieldedPreviewResponseWire` types and `decodeShieldedPreview(body)`, which also refuses a fee breakdown whose totals do not add up. Shapes only, with no transport method: the preview needs a `quote`-scoped Riddler credential, and the Xochi Worker proxy route that would expose it is a follow-up owned by xochi#635. A test holds the schemas' members to the vendored `wire/openapi.json`.
+
+### Fixed
+
+- A wallet signature prompt can be cancelled immediately, and every prompt now times out after 90 seconds. A dismissed WalletConnect request previously left consumers in `signing` forever with no retry action; `CancelSignRequested` returns the unchanged quote to its confirm surface, timeout returns to retry or quote refresh as its expiry allows, and any late signature is ignored.
 
 ## [0.1.1] - 2026-10-26
 
