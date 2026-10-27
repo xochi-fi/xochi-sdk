@@ -270,7 +270,6 @@ export function world(
   const cfg: Config = {
     baseUrl: "https://venue.invalid",
     solverKey: SOLVER_KEY,
-    apiKey: "",
     claimKey: SOLVER_KEY,
     origin: { chainId: ORIGIN, rpc: "", escrow: ESCROW },
     dest: { chainId: DEST, rpc: "", filler: FILLER, token: TOKEN },

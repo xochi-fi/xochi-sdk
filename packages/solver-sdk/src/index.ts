@@ -4,6 +4,8 @@
 
 export * from "./types";
 export * from "./bid";
+export * from "./registration";
+export * from "./session";
 export * from "./schema";
 export * from "./client";
 export * from "./escrow";

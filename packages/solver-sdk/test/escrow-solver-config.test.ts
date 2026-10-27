@@ -11,7 +11,6 @@ import { SOLVER_KEY, announcement, award, world } from "./escrow-world";
 const BASE_ENV = {
   RIDDLER_SOLVER_URL: "https://venue.invalid",
   SOLVER_KEY,
-  SOLVER_API_KEY: "secret",
   ORIGIN_CHAIN_ID: "1",
   ORIGIN_RPC_URL: "https://origin.invalid",
   ORIGIN_ESCROW: "0x1111111111111111111111111111111111111111",

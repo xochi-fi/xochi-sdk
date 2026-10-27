@@ -5,7 +5,9 @@
 // Two behaviours worth guarding: the feed's `dropped`/`reset` must reach the
 // caller (a reader that misses them silently misses intents), and
 // `getCapabilities()` must work unauthenticated, since SOLVER-RFC §12 expects a
-// solver to gate on `rfcVersion` and `phase` before it has been admitted.
+// solver to gate on `rfcVersion` and `phase` before it has registered.
+// Registration itself is `registration.test.ts`; here `serve` answers
+// `POST /solver/register` so every other request finds a session.
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { ZodError } from "zod";
@@ -29,6 +31,23 @@ import {
 
 const SOLVER_KEY = "0x0000000000000000000000000000000000000000000000000000000000000001";
 const SOLVER_ID = solverIdFromKey(SOLVER_KEY);
+// Pinned, so the transport signs for it without reading capabilities: the
+// tests below count capability reads.
+const BOND = { chainId: 84532, address: "0xA6902450bC7eEC58Ea19D8a9674796Ce1DD7F1E0" };
+const AUTH = { solverKey: SOLVER_KEY, bond: BOND };
+const SESSION_TOKEN = "rss1.test-session";
+const REPUTATION = {
+  solverId: SOLVER_ID.toLowerCase(),
+  fillSuccessRate: 0,
+  noShowRate: 0,
+  medianLatencyMs: null,
+  volumeUsd: 0,
+  bondUsd: 25,
+  probation: true,
+  eligible: true,
+  exposureCapUsd: 25,
+  inFlightUsd: 0,
+};
 
 const ANNOUNCEMENT = {
   type: "announcement",
@@ -71,13 +90,26 @@ const CAPABILITIES = {
 let server: http.Server | undefined;
 
 // Records every inbound request so a test can assert what was (not) sent.
+// Registrations are answered here and counted apart, never passed on.
 const seen: { url: string; headers: http.IncomingHttpHeaders }[] = [];
+let registrations = 0;
 
 async function serve(
   handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
 ): Promise<string> {
   seen.length = 0;
+  registrations = 0;
   server = http.createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/solver/register") {
+      registrations += 1;
+      req.resume();
+      return json(res, {
+        solverId: SOLVER_ID,
+        sessionToken: SESSION_TOKEN,
+        expiresAtMs: Date.now() + 3_600_000,
+        reputation: REPUTATION,
+      });
+    }
     seen.push({ url: req.url ?? "", headers: req.headers });
     handler(req, res);
   });
@@ -117,7 +149,7 @@ describe("HttpSolverTransport feed gaps", () => {
     const gaps: FeedGap[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onFeedGap: (g) => gaps.push(g),
     });
 
@@ -136,7 +168,7 @@ describe("HttpSolverTransport feed gaps", () => {
     const gaps: FeedGap[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onFeedGap: (g) => gaps.push(g),
     });
 
@@ -158,7 +190,7 @@ describe("HttpSolverTransport feed gaps", () => {
     const gaps: FeedGap[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onFeedGap: (g) => gaps.push(g),
     });
 
@@ -173,7 +205,7 @@ describe("HttpSolverTransport feed gaps", () => {
     const gaps: FeedGap[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onFeedGap: (g) => gaps.push(g),
     });
 
@@ -186,7 +218,7 @@ describe("HttpSolverTransport feed gaps", () => {
     const baseUrl = await serve((_req, res) =>
       json(res, { events: [ANNOUNCEMENT], cursor: "1", dropped: 3 }),
     );
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     const ev = await firstEvent(transport);
 
@@ -226,7 +258,7 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
           solverKey: SOLVER_KEY,
           transport: new HttpSolverTransport({
             baseUrl,
-            solverId: SOLVER_ID,
+            ...AUTH,
             onFeedGap: (g) => gaps.push(g),
           }),
           now: () => 1_500,
@@ -234,6 +266,7 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
       : new SolverClient({
           solverKey: SOLVER_KEY,
           baseUrl,
+          bond: BOND,
           now: () => 1_500,
           onFeedGap: (g) => gaps.push(g),
         });
@@ -287,7 +320,7 @@ describe("SolverClient re-checks rfcVersion on a feed reset", () => {
       if ((req.url ?? "").startsWith("/solver/capabilities")) return json(res, CAPABILITIES);
       return json(res, { error: "gone" }, 500);
     });
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
     let live = 0;
     const counted =
       <L>(add: (listener: L) => () => void) =>
@@ -327,7 +360,7 @@ describe("HttpSolverTransport getCapabilities", () => {
     const baseUrl = await serve(() => {
       // never respond
     });
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, readTimeoutMs: 50 });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH, readTimeoutMs: 50 });
     await expect(transport.getCapabilities()).rejects.toThrow(/timeout|abort/i);
     await expect(transport.getAttestation("0x01")).rejects.toThrow(/timeout|abort/i);
   });
@@ -336,23 +369,21 @@ describe("HttpSolverTransport getCapabilities", () => {
     const baseUrl = await serve(() => {
       // never respond
     });
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID, postTimeoutMs: 50 });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH, postTimeoutMs: 50 });
     await expect(transport.submitBid({} as Bid)).rejects.toThrow(/timeout|abort/i);
     await expect(transport.submitFill({} as FillReceipt)).rejects.toThrow(/timeout|abort/i);
   });
 
-  it("sends no credentials -- the endpoint is public and pre-admission", async () => {
+  it("sends no credentials and registers nothing -- the endpoint is public", async () => {
     const baseUrl = await serve((_req, res) => json(res, CAPABILITIES));
-    const transport = new HttpSolverTransport({
-      baseUrl,
-      solverId: SOLVER_ID,
-      apiKey: "panel-secret",
-    });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     await transport.getCapabilities();
 
+    expect(registrations).toBe(0);
     expect(seen).toHaveLength(1);
     expect(seen[0]?.url).toBe("/solver/capabilities");
+    expect(seen[0]?.headers.authorization).toBeUndefined();
     expect(seen[0]?.headers["x-api-key"]).toBeUndefined();
     expect(seen[0]?.headers["x-solver-id"]).toBeUndefined();
   });
@@ -361,7 +392,7 @@ describe("HttpSolverTransport getCapabilities", () => {
     const baseUrl = await serve((_req, res) =>
       json(res, { ...CAPABILITIES, somethingNew: { nested: true } }),
     );
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     const caps = await transport.getCapabilities();
 
@@ -375,13 +406,13 @@ describe("HttpSolverTransport getCapabilities", () => {
       json(res, { auction: { model: "sealed_bid_best_output" } }),
     );
     await expect(
-      new HttpSolverTransport({ baseUrl: noVersion, solverId: SOLVER_ID }).getCapabilities(),
+      new HttpSolverTransport({ baseUrl: noVersion, ...AUTH }).getCapabilities(),
     ).rejects.toThrow();
 
     const noPhase = await serve((_req, res) => json(res, { rfcVersion: SOLVER_RFC_VERSION }));
     const caps = await new HttpSolverTransport({
       baseUrl: noPhase,
-      solverId: SOLVER_ID,
+      ...AUTH,
     }).getCapabilities();
     expect(caps.rfcVersion).toBe(SOLVER_RFC_VERSION);
     expect(caps.phase).toBeUndefined();
@@ -389,7 +420,7 @@ describe("HttpSolverTransport getCapabilities", () => {
 
   it("surfaces a non-200 rather than returning a partial matrix", async () => {
     const baseUrl = await serve((_req, res) => json(res, { error: "nope" }, 503));
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     await expect(transport.getCapabilities()).rejects.toThrow(/503/);
   });
@@ -406,7 +437,7 @@ describe("HttpSolverTransport malformed entries", () => {
     const bad: unknown[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: (_err, raw) => bad.push(raw),
     });
 
@@ -420,7 +451,7 @@ describe("HttpSolverTransport malformed entries", () => {
 
   it("rethrows a malformed entry when no handler is set -- never silently skipped", async () => {
     const baseUrl = await serve((_req, res) => json(res, BAD_BATCH));
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     await expect(firstEvent(transport)).rejects.toThrow();
   });
@@ -431,7 +462,7 @@ describe("HttpSolverTransport malformed entries", () => {
     const baseUrl = await serve((_req, res) => json(res, { events: [ANNOUNCEMENT] }));
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: () => undefined,
     });
 
@@ -466,7 +497,7 @@ describe("HttpSolverTransport malformed entries", () => {
     const bad: unknown[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: (_err, raw) => bad.push(raw),
     });
 
@@ -494,6 +525,7 @@ describe("HttpSolverTransport malformed entries", () => {
     const quoted: Record<string, unknown>[] = [];
     const client = new SolverClient({
       baseUrl,
+      bond: BOND,
       solverKey: SOLVER_KEY,
       now: () => 1_500,
       onInvalidEvent: (_err, raw) =>
@@ -534,7 +566,12 @@ describe("HttpSolverTransport malformed entries", () => {
         ? json(res, { ...CAPABILITIES, rfcVersion: "0.2.0-draft" })
         : json(res, { events: [ANNOUNCEMENT], cursor: "1" }),
     );
-    const client = new SolverClient({ baseUrl, solverKey: SOLVER_KEY, now: () => 1_500 });
+    const client = new SolverClient({
+      baseUrl,
+      bond: BOND,
+      solverKey: SOLVER_KEY,
+      now: () => 1_500,
+    });
     const solver = {
       capabilities: () => ({
         solverId: SOLVER_ID,
@@ -587,7 +624,7 @@ describe("HttpSolverTransport unknown event types", () => {
     const invalid: { err: unknown; raw: unknown }[] = [];
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: (err, raw) => invalid.push({ err, raw }),
     });
     const delivered: SolverEvent[] = [];
@@ -625,7 +662,12 @@ describe("HttpSolverTransport unknown event types", () => {
     });
     const quoted: string[] = [];
     const filled: string[] = [];
-    const client = new SolverClient({ baseUrl, solverKey: SOLVER_KEY, now: () => 1_500 });
+    const client = new SolverClient({
+      baseUrl,
+      bond: BOND,
+      solverKey: SOLVER_KEY,
+      now: () => 1_500,
+    });
     const solver: Solver = {
       capabilities: () => ({
         solverId: SOLVER_ID,
@@ -680,7 +722,7 @@ describe("HttpSolverTransport unknown event types", () => {
     const baseUrl = await serve((_req, res) =>
       json(res, { events: [entry, ANNOUNCEMENT], cursor: "7" }),
     );
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
 
     const outcome = await firstEvent(transport).catch((err: unknown) => err);
 
@@ -708,7 +750,7 @@ describe("HttpSolverTransport unknown event types", () => {
     const invalid: unknown[] = [];
     const reported = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: (err) => invalid.push(err),
     });
 
@@ -716,7 +758,7 @@ describe("HttpSolverTransport unknown event types", () => {
     expect(invalid).toHaveLength(1);
     expect(invalid[0]).toBeInstanceOf(ZodError);
 
-    const unhandled = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const unhandled = new HttpSolverTransport({ baseUrl, ...AUTH });
     expect(await firstEvent(unhandled).catch((err: unknown) => err)).toBeInstanceOf(ZodError);
   });
 
@@ -730,7 +772,7 @@ describe("HttpSolverTransport unknown event types", () => {
       if (polls === 1) return json(res, { events: [...unknown, ANNOUNCEMENT], cursor: "7" });
       return json(res, { error: "gone" }, 500);
     });
-    const transport = new HttpSolverTransport({ baseUrl, solverId: SOLVER_ID });
+    const transport = new HttpSolverTransport({ baseUrl, ...AUTH });
     const delivered: string[] = [];
 
     try {
@@ -764,7 +806,7 @@ describe("HttpSolverTransport unknown event types", () => {
     );
     const transport = new HttpSolverTransport({
       baseUrl,
-      solverId: SOLVER_ID,
+      ...AUTH,
       onInvalidEvent: (err) => {
         throw err;
       },
@@ -809,6 +851,7 @@ describe("HttpSolverTransport unknown event types", () => {
       const skipped: unknown[] = [];
       const client = new SolverClient({
         baseUrl,
+        bond: BOND,
         solverKey: SOLVER_KEY,
         now: () => 1_500,
         ...(handler ? { onInvalidEvent: (err: unknown) => skipped.push(err) } : {}),

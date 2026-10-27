@@ -1,0 +1,306 @@
+{
+  "$schema": "./solver-registration.schema.json",
+  "description": "EIP-712 SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs) vectors (SOLVER-RFC §3.1). Reference: @xochi/solver-sdk registrationTypedData/signRegistration. expected_digest is under the venue's domain; signed_digest under signing_domain (they differ only in the wrong-domain vectors). expected_outcome is what a venue whose SolverBond is (bondChainId, bond), whose clock reads verify_at_ms and whose window is max_age_ms answers, the key's stake being sufficient. signer_private_key values are PUBLIC Hardhat/Anvil TEST keys: never fund or register them.",
+  "domain": {
+    "name": "RiddlerSolver",
+    "version": "2"
+  },
+  "primary_type": "SolverRegistration",
+  "types": {
+    "SolverRegistration": [
+      {
+        "name": "solverId",
+        "type": "address"
+      },
+      {
+        "name": "bondChainId",
+        "type": "uint256"
+      },
+      {
+        "name": "bond",
+        "type": "address"
+      },
+      {
+        "name": "issuedAtMs",
+        "type": "uint64"
+      }
+    ]
+  },
+  "encode_type": "SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)",
+  "typehash": "0x58ca0802ee89a606fbacd85e86f9621ab5d3c71bdbcbb7715fe0ee93e72fd497",
+  "domain_separator": "0xf29c21aa6d04016f8c76a28b25be9243acaca904d549c2af5fb4c49e0070e11b",
+  "max_age_ms": 120000,
+  "vectors": [
+    {
+      "name": "baseline",
+      "why": "A fresh registration for the venue's bond, presented at the instant it was issued.",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c",
+      "verify_at_ms": 1900000000000,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    },
+    {
+      "name": "second-solver",
+      "why": "Same fields, another key: the recovered signer is the solverId.",
+      "registration": {
+        "solverId": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0x934e4bbfef61307328c747a0821b0251c86b9ac37590a3ba9ed7540a15d3d82870a41847c90aecf890730b3e93019e2b45a102d98528e6591b68ecff7d896b161c"
+      },
+      "message": {
+        "solverId": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0xd9c4f1a98876f02b69b9c0778731e3a8a95f7e0d0937327235627f0d7bd8aa42",
+      "expected_digest": "0xf4b7b93ebe7da367fbcbd42db7e2577045b82f53dd6b14258ac0b2478b52f72a",
+      "signed_digest": "0xf4b7b93ebe7da367fbcbd42db7e2577045b82f53dd6b14258ac0b2478b52f72a",
+      "signer_private_key": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+      "signer_address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "expected_signature": "0x934e4bbfef61307328c747a0821b0251c86b9ac37590a3ba9ed7540a15d3d82870a41847c90aecf890730b3e93019e2b45a102d98528e6591b68ecff7d896b161c",
+      "verify_at_ms": 1900000000000,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    },
+    {
+      "name": "window-edge-past",
+      "why": "Presented exactly max_age_ms after issuedAtMs: the bound is inclusive.",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c",
+      "verify_at_ms": 1900000120000,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    },
+    {
+      "name": "window-edge-future",
+      "why": "issuedAtMs exactly max_age_ms ahead of the venue's clock: the window is two-sided, so a signer clock running fast is admitted up to the same bound.",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c",
+      "verify_at_ms": 1899999880000,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    },
+    {
+      "name": "stale",
+      "why": "Presented 1 ms past the window. The signature is genuine; freshness is checked before it, and the refusal is permanent for this signature (sign a fresh one).",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x7eb4ec634758328b60121a9e3b49f74dac30b69196c62715d3fe4c824441133509d8539162565971bfad011a3dad2da8a9ee6b53a54499073dbf779e6c0cc15c1c",
+      "verify_at_ms": 1900000120001,
+      "expected_verify": "ok",
+      "expected_outcome": "registration_stale"
+    },
+    {
+      "name": "wrong-domain-version",
+      "why": "Signed under RiddlerSolver/\"1\" (the retired bid domain): a genuine signature that recovers to another address under RiddlerSolver/\"2\".",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0xbce3fdef04bcb472f253c8eeef23ec3c01d94aafa77cfb761a02e8eab1ea76251165ca4b0c1fd9d06da764fc0387455cc5e777d560e7decff96898eb36190b031c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "1"
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0xe6edac51a65eb44303fda803c0604a5160ce8c62a6a5a391d1ce761090e9ec19",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xbce3fdef04bcb472f253c8eeef23ec3c01d94aafa77cfb761a02e8eab1ea76251165ca4b0c1fd9d06da764fc0387455cc5e777d560e7decff96898eb36190b031c",
+      "verify_at_ms": 1900000000000,
+      "expected_verify": "signature_mismatch",
+      "expected_outcome": "signature_mismatch"
+    },
+    {
+      "name": "wrong-domain-chain-id",
+      "why": "Signed under a domain that adds chainId (the bond's). The domain has no chainId: a port that adds one recovers to another address.",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000,
+        "signature": "0xfd242103429edb15468d296f7256c1fa56b8735b4af1c180ec78d710688e237e710e47f2de4257c000edda2fda39d1c08a0d98468bd43ca897e2d40c9defae9b1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 1900000000000
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2",
+        "chainId": 8453
+      },
+      "expected_struct_hash": "0xa0056d5b651b30c723c309669e53ccbbc23910d067216cfe4b67188db56a0628",
+      "expected_digest": "0x09f9f814171ae0c4d0e3ee92a7118f53ce907433162ded5927457f18c09ca84e",
+      "signed_digest": "0xa88f830a820f560ae51292a34f0cc38285cb10d9183e1c34629499dffabbdc3f",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0xfd242103429edb15468d296f7256c1fa56b8735b4af1c180ec78d710688e237e710e47f2de4257c000edda2fda39d1c08a0d98468bd43ca897e2d40c9defae9b1c",
+      "verify_at_ms": 1900000000000,
+      "expected_verify": "signature_mismatch",
+      "expected_outcome": "signature_mismatch"
+    },
+    {
+      "name": "max-issued-at",
+      "why": "issuedAtMs = 2^53-1, the widest a JSON number carries exactly (the member is uint64; 2^53 is refused as malformed).",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 9007199254740991,
+        "signature": "0x3ad1e264b95b50d5455b6510ed1407e747f816b13f4fbc11dab02bc440238443367dc8b0e8e8a393a21d5980f22b57ef628f7f57de8b8d9a47c90f0f32a7955f1c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 9007199254740991
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0x96743c22a3a2b0077e3686ec99770d6d3fd444eb15d1a849350a2a3597d98139",
+      "expected_digest": "0x81280811069ebb858934c1f94d765a7f9748646b8041b34d5b8eb1cf7e53613b",
+      "signed_digest": "0x81280811069ebb858934c1f94d765a7f9748646b8041b34d5b8eb1cf7e53613b",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x3ad1e264b95b50d5455b6510ed1407e747f816b13f4fbc11dab02bc440238443367dc8b0e8e8a393a21d5980f22b57ef628f7f57de8b8d9a47c90f0f32a7955f1c",
+      "verify_at_ms": 9007199254740991,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    },
+    {
+      "name": "zero-issued-at",
+      "why": "issuedAtMs = 0 is well-formed; only freshness decides it.",
+      "registration": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 0,
+        "signature": "0x6f3cb09d022dfbcf372233c33b0d686ba1c3fd78141c50f695a79647e85f22db4de18b20661ac14ee3cba81ee149eedc0b4d388b210a9f394813d00c418f30121c"
+      },
+      "message": {
+        "solverId": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "bondChainId": 8453,
+        "bond": "0x4444444444444444444444444444444444444444",
+        "issuedAtMs": 0
+      },
+      "signing_domain": {
+        "name": "RiddlerSolver",
+        "version": "2"
+      },
+      "expected_struct_hash": "0x26d028bd72f26c3e1d7b684d1550d902fa6184cb5622b4e3c45a84dad66ae5ea",
+      "expected_digest": "0xcb18d0f95f633b58000b203100e86811cc7d0b5f70d48f279b0dd7b0ab012013",
+      "signed_digest": "0xcb18d0f95f633b58000b203100e86811cc7d0b5f70d48f279b0dd7b0ab012013",
+      "signer_private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+      "signer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "expected_signature": "0x6f3cb09d022dfbcf372233c33b0d686ba1c3fd78141c50f695a79647e85f22db4de18b20661ac14ee3cba81ee149eedc0b4d388b210a9f394813d00c418f30121c",
+      "verify_at_ms": 0,
+      "expected_verify": "ok",
+      "expected_outcome": "admitted"
+    }
+  ]
+}

@@ -15,7 +15,7 @@ npm run example:solver -- --live    # against a venue
 
 Offline, `examples/offline-solver.ts` runs against a stub auctioneer enforcing the RFC §5.1
 acceptance rules: the only way to exercise `fill` at P0. Live needs `RIDDLER_SOLVER_URL` (`https:`,
-loopback exempt), `SOLVER_KEY` and `SOLVER_API_KEY`; the offline demo key is refused live.
+loopback exempt) and `SOLVER_KEY`, staked as below; the offline demo key is refused live.
 
 To test your own solver, inject a `SolverTransport` stub into `SolverClient` (see
 `test/client.test.ts`). `onFeedGap`/`onInvalidEvent` with an injected transport is a constructor
@@ -23,15 +23,45 @@ error.
 
 ## Getting admitted
 
-Send us your `solverId` (the solver key's address) plus corridors and size bounds; we return an API
-secret bound to that id.
+Nobody issues you a credential: admission is bonded and permissionless (RFC §3.1).
 
-| Credential  | Use                                                                         |
-| ----------- | --------------------------------------------------------------------------- |
-| `solverKey` | Signs bids; its address is your `solverId`. Not a hot wallet.               |
-| `apiKey`    | Sent as `X-API-Key` beside `X-Solver-Id`; a secret under another id is 401. |
+1. Read the venue's SolverBond from `GET /solver/capabilities` (public): `admission.bond` is
+   `{ chainId, address }`, and `admission.model` must be `bonded_permissionless` (`riddler_only`
+   means the venue admits nobody).
+2. Stake USDC on that bond from your solver key's address, at or above its `minBond()`
+   (`npm run example:escrow -- bond deposit <amount>`). Stake you are withdrawing does not count.
+3. Run with `solverKey` and `bond` pinned to that bond. The transport signs a `SolverRegistration`,
+   receives a session token (one hour by default) and sends it as `Authorization: Bearer`;
+   `client.register()` does it up front and answers your standing.
 
-`GET /solver/capabilities` is public: read `rfcVersion` and `phase` before admission.
+| Input       | Use                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `solverKey` | Signs bids and registrations; its address is your `solverId` and the bonded account. |
+| `bond`      | The SolverBond you staked on. Pin it: unpinned, the venue's advertisement is signed. |
+
+The venue re-reads your bond every minute. If it falls short (a withdrawal, a slash) every request
+is `401` until you restake and register again; the transport re-registers on the `401` and throws
+`SolverRegistrationRefusedError` (`solver_bond_insufficient`) when that is why.
+
+New solvers start on **probation**: in-flight awarded notional is capped at the lower of your bond
+and the venue's probation cap ($1,000 by default), and shrinks with your no-show rate. You graduate
+after 20 fills at a no-show rate of 5% or less (defaults). A bid that would take you over your cap
+loses to the next-best eligible bid, silently; the registration answer shows `exposureCapUsd` and
+`inFlightUsd` (RFC §8).
+
+## Registration refusals
+
+| Code                                    | Meaning                                                           |
+| --------------------------------------- | ----------------------------------------------------------------- |
+| `422 solver_bond_insufficient`          | active stake under `minBond`; post more, then register again      |
+| `422 solver_registration_stale`         | your clock is more than 120 s (default) off the venue's; fix it   |
+| `422 solver_bond_mismatch`              | you signed for another bond than `admission.bond`                 |
+| `422 solver_registration_not_enabled`   | this venue admits no self-registered solver                       |
+| `403 forbidden`                         | the signature does not recover to `solverId` (key, domain)        |
+| `400 bad_request`                       | malformed body or non-canonical signature                         |
+| `503 solver_bond_unreadable` / `503`    | transient; retried after `Retry-After`                            |
+
+All but the `503`s are permanent: the SDK throws them and never retries (RFC §9.1).
 
 ## Pricing
 
@@ -90,8 +120,9 @@ Fill receipts return `404` for everything except an expired window (`409`).
 ## Escrowed awards
 
 Accept by `acceptBy` (venue clock, default 30 s after FillAuth issue). Miss it and the venue answers
-`409 auction_window_closed` and backstops the order: no slash, award lost, recorded as abandoned;
-repeated abandonment can remove you from the panel. Riddler re-delivers an activated award every 15
+`409 auction_window_closed` and backstops the order: no slash, award lost. An award you held and
+did not fill counts as a no-show (RFC §8): it shrinks your exposure cap and can return you to
+probation. Riddler re-delivers an activated award every 15
 s within the window; the same gateway handles it idempotently. Approve RiddlerFiller once at
 startup: a per-award approval does not fit the window. `examples/escrow-solver.ts` lists its env
 (`BOND_RPC_URL` and `SOLVER_BOND` are required to fill) and implements the state file, lease and

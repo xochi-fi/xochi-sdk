@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SOLVER_RFC_VERSION,
   SolverClient,
+  SolverRegistrationRefusedError,
+  SolverRegistrationUnavailableError,
   ZERO_ORDER_ID,
   solverIdFromKey,
   type Bid,
@@ -250,6 +252,48 @@ describe("escrow example feed supervisor", () => {
     await supervised;
     expect(outcome).toBeInstanceOf(FatalSolverStop);
     expect((outcome as Error).message).toMatch(/version skew: the venue serves RFC 9\.9\.9-draft/);
+  });
+
+  it("stops bidding on a permanent registration refusal; retries an unavailable one", async () => {
+    const background = new BackgroundTasks(log);
+    const unavailable = new SolverRegistrationUnavailableError(
+      "solver_bond_unreadable",
+      503,
+      5,
+      15_000,
+      "retry",
+    );
+    const refused = new SolverRegistrationRefusedError(
+      "solver_bond_insufficient",
+      422,
+      "below the minimum",
+    );
+    const transport = new FlakyTransport(
+      [
+        { events: [], then: unavailable },
+        { events: [], then: refused },
+      ],
+      [SERVED],
+    );
+    const client = new SolverClient({ solverKey: SOLVER_KEY, transport, now: () => 1_500 });
+    let outcome: unknown = "pending";
+    const supervised = superviseFeed(
+      runAgainstVenue(client, claimingSolver(background, Promise.resolve())),
+      background,
+      { signal: new AbortController().signal, log },
+    ).then(
+      () => (outcome = "resolved"),
+      (err: unknown) => (outcome = err),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await supervised;
+    expect(transport.connections).toBe(2);
+    expect(logs[0]).toMatch(/^feed  solver registration unavailable .*restarting in 1000ms/);
+    expect(outcome).toBeInstanceOf(FatalSolverStop);
+    expect((outcome as Error).message).toBe(
+      "registration refused: solver_bond_insufficient: below the minimum",
+    );
   });
 
   it("doubles the restart delay up to the cap", async () => {

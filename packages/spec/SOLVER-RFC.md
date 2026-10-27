@@ -60,6 +60,29 @@ check and vice versa.
   with only the party hint's case changed: every key, commitment and orderId
   differs) and `canton-testnet-destination`. No encoding moves; existing
   vectors are byte-identical.
+- **Bonded permissionless admission** (§3.1, Riddler #1198): a solver
+  registers itself at `POST /solver/register` with an EIP-712
+  `SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)`
+  signed by its `solverId` key on the bid's `RiddlerSolver`/`"2"` domain,
+  naming the SolverBond the venue advertises (`admission.bond` on
+  `GET /solver/capabilities`, new; `admission.model` is
+  `bonded_permissionless` while registration is open). The venue admits a key
+  whose active stake meets the bond's minimum and answers a short-lived
+  session token, sent on every other request as `Authorization: Bearer`.
+  **Breaking for every solver:** the `SolverDirectory` allowlist and its
+  operator-issued `X-API-Key` secret are withdrawn, so a `0.5.0-draft`
+  solver's credential is refused `401`. New vector set
+  `conformance/solver-registration.json` (a stale and two wrong-domain
+  cases); no existing signed struct or vector moves.
+- **Reputation, probation and exposure caps** (§8, Riddler #1199): a panel
+  award is scored fill / no-show from its final escrow outcome, every solver
+  starts on probation, and award selection skips a bidder whose in-flight
+  awarded notional would pass its cap (`bondUsd × collateralFactor`, lower on
+  probation, shrunk by no-shows). The solver reads its standing in the
+  registration response. Reputation no longer breaks ties.
+- **Typed refusals** (§9.1): every registration refusal is permanent or
+  transient, and every authentication refusal on the rest of the surface is
+  one `401` whose remedy is registering again.
 
 ### Changes in `0.5.0-draft`
 
@@ -363,9 +386,10 @@ rules are the `0.5.0-draft` producer withdrawal: `[PROPOSED]` until Riddler
 deployed and the feed has drained. A
 stealth or shielded intent is not put to the panel: a commitment can hide
 who is paid, but not that a private intent of this size crossed this
-corridor at this time. In lower permissioning phases (§9) the panel is small
-and allowlisted, which bounds leakage; widening the panel is gated on
-reputation.
+corridor at this time. The panel is every solver that has registered against
+the venue's SolverBond (§3.1): the bond, not an allowlist, is the cost of
+seeing the flow, and how much a solver may win is capped by its bond and record
+(§8).
 
 ### 2.3 Deprecated: Dutch-decay / exclusive-limit orders  `[DEPRECATED]`
 
@@ -417,14 +441,132 @@ interface Solver {
   fill(award: Award): Promise<FillReceipt>;
 }
 
-await new SolverClient({ baseUrl, solverKey, apiKey }).run(solver);
+await new SolverClient({ baseUrl, solverKey }).run(solver);
 ```
 
-- `solverKey` signs bids and receipts (a solver-scoped key, distinct from any
-  hot wallet). The auctioneer attributes an award to the recovered signer.
+- `solverKey` signs bids, receipts and the registration that admits it (§3.1):
+  a solver-scoped key, distinct from any hot wallet, and the account staked on
+  the SolverBond. The auctioneer attributes an award to the recovered signer.
 - A solver MUST treat every `IntentAnnouncement` as confidential and MUST NOT
-  republish it. (Panel confidentiality is enforced by permissioning + reputation,
-  §8–§9, not cryptographically at launch.)
+  republish it. (Panel confidentiality rests on the bond admission costs and on
+  reputation, §3.1 and §8, not on cryptography.)
+
+### 3.1 Admission: bonded permissionless registration  `[PROPOSED]`
+
+**As built:** Riddler #1198 on `feat/solver-registration-reputation`, not yet
+merged; `@xochi/solver-sdk` implements the solver side (`signRegistration`,
+`SolverSession`, `HttpSolverTransport`). It replaces the `SolverDirectory`
+allowlist and its operator-issued `X-API-Key` secret, which are withdrawn: no
+operator issues a credential, and any key that has posted the bond can
+register.
+
+**The bond.** A venue that admits solvers advertises the SolverBond it gates
+on at `GET /solver/capabilities` (public, §12):
+
+```json
+"admission": {
+  "model": "bonded_permissionless",
+  "panelSize": 3,
+  "bond": { "chainId": 8453, "address": "0x..." }
+}
+```
+
+`model` is `bonded_permissionless` only while a solver can actually register;
+a venue with no bond or no session secret configured reports `riddler_only`
+and `bond: null`, and admits nobody. `panelSize` counts the solvers admitted
+now. A key's stake is **sufficient** when `activeBond(solverId) > 0` and
+`activeBond(solverId) >= minBond()`, both read on that bond: `activeBond` is
+the bonded stake less what pending slashes reserve, so stake mid-withdrawal
+does not count, and the `> 0` keeps a zero `minBond` from admitting a key with
+no bond at all. The bond asset is USDC, valued at par (`bondUsd`).
+
+**The registration.** The solver signs, with its `solverId` key, EIP-712 typed
+data on the bid's domain (§5.1: `{ name: "RiddlerSolver", version: "2" }`, no
+`chainId`, no `verifyingContract`; the two structs are told apart by type
+hash):
+
+```
+SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)
+```
+
+- `solverId`: the signing key's address.
+- `bondChainId`, `bond`: the SolverBond the venue advertises. They are what
+  scope a registration to one venue: one signed for another venue's bond is
+  refused here, and one signed for this bond is refused by every other venue.
+  A solver SHOULD sign for the bond it staked, pinned in its own
+  configuration, rather than for whatever `admission.bond` says: a venue
+  advertising another bond is then a refusal (`solver_bond_mismatch`), never a
+  signature over a bond the venue chose.
+- `issuedAtMs`: unix ms on the signer's clock. The venue admits it while
+  `|now - issuedAtMs| <= window` (default 120 000 ms, inclusive, either side).
+  The signature is the credential a session is minted from, so it is
+  replayable only inside that window and only at the venue whose bond it
+  names. A solver MUST sign a fresh registration for every attempt.
+
+`POST /solver/register` (public; the body's own signature is the
+credential):
+
+```ts
+interface SolverRegistrationBody {
+  solverId: string;      // 0x + 40 hex, any case
+  bondChainId: number;   // JSON number, 1..2^53-1
+  bond: string;          // 0x + 40 hex, any case
+  issuedAtMs: number;    // JSON number, 0..2^53-1
+  signature: string;     // 65-byte r||s||v, low-s; send 0x + 130 lowercase hex
+}
+```
+
+The venue checks, in this order: that it admits anyone at all; the body's
+shape; that `(bondChainId, bond)` is its bond; freshness; that the signature
+recovers to `solverId`; then the key's stake on the bond. Every refusal is
+typed (§9.1). On admission it answers `200` with `Cache-Control: no-store`:
+
+```ts
+interface SolverRegistrationResponse {
+  solverId: string;            // lowercase
+  sessionToken: string;        // opaque
+  expiresAtMs: number;         // venue clock
+  reputation: SolverReputation; // §8, including probation and the exposure cap
+}
+```
+
+Pinned by `conformance/solver-registration.json` (typed data, struct hash,
+digest and signature per vector, with a stale and two wrong-domain cases),
+generated from `@xochi/solver-sdk`'s `signRegistration` and vendored by the
+Riddler server, whose `POST /solver/register` verifier is held to it.
+
+**The session.** Every `/solver/*` request but `/health`, `/capabilities` and
+`/register` carries the token as `Authorization: Bearer <sessionToken>`. A
+venue MAY also read it from `X-API-Key`; a solver SHOULD use Bearer.
+`X-Solver-Id` is optional and, when sent, MUST name the token's solver. The
+token names the solver and expires (default one hour); it survives a
+blue/green cutover, and rotating the venue's session secret logs every solver
+out at once.
+
+A token proves identity, not admission. The venue re-reads every admitted
+solver's bond (default every 60 s) and refuses a solver whose stake fell short,
+or whose last reading is older than its bound (default 180 s), even under an
+unexpired token. A refresh never re-admits a solver it unbonded: only
+registering again does. Every authentication refusal is the same `401`,
+deliberately uninformative; registering is what says why. So a solver:
+
+- SHOULD renew its session shortly before `expiresAtMs`, by registering again;
+- on a `401`, SHOULD register again once and re-send the request once (the
+  venue refuses a `401` before it reads the body, so re-sending a bid or a fill
+  receipt is safe), and treat a second `401` as an error;
+- MUST NOT retry a permanent registration refusal (§9.1) with a new
+  signature: the thing to fix is the bond, the clock or the configuration;
+- SHOULD retry a transient one after its `Retry-After`.
+
+`@xochi/solver-sdk`'s `HttpSolverTransport` does all four; `SolverSession`
+is the same logic for a custom transport.
+
+**What admission does not change.** Registering admits a solver to the feed
+and to bidding. Whether an award can reach it is still the phase (§9): a panel
+award needs an escrow binding, and until one exists the venue's reserve wins
+every auction. A replayed registration yields a session for its `solverId`,
+which reads that solver's feed and spends its rate bucket, but cannot bid:
+every bid is separately signed by the key (§5.1). Hence `https` only.
 
 ---
 
@@ -625,7 +767,7 @@ interface Bid {
 
 `POST /solver/bids`: submit a sealed `Bid`. The auctioneer MUST reject a bid
 received after `closesAt`, MUST NOT reveal bid contents before `closesAt`, and
-MUST verify `signature` recovers to a registered `solverId` (§8).
+MUST verify `signature` recovers to an admitted `solverId` (§3.1).
 
 **Why v2.** The bid is what a slash rests on (§5.3, ESCROW-RFC §6). v1 signed
 `(auctionId, intentId, output, expiry)`: it bound no order, and its lifetime was
@@ -778,8 +920,8 @@ third-party implementation has to respect:
   to the same address) is rejected, matching `ethers.verifyTypedData` — which
   refuses to read a non-canonical `s` at all — and the SDK's own `verifyBid`.
 - `intentId` MUST equal the announced intent for that `auctionId`.
-- `solverId` MUST match the authenticated panel member (`X-Solver-Id` bound to
-  the API secret, §8), so a credentialed member cannot bid in a competitor's
+- `solverId` MUST match the authenticated solver (the `solverId` its session
+  token names, §3.1), so an admitted solver cannot bid in a competitor's
   name.
 - `validUntilMs` is enforced at selection and again by the escrow node before a
   `:winner` FillAuth; `minExclusiveMs` by the escrow node's deadline (above).
@@ -1278,42 +1420,96 @@ The bond a P2 solver posts is `SolverBond` v2 on Base (`deposit`,
 
 ---
 
-## 8. Reputation  `[PROPOSED]`; `SolverDirectory` admission `[IMPLEMENTED]`
+## 8. Reputation, probation and exposure caps  `[PROPOSED]`
 
-A solver-scoped reputation reusing the attestation substrate (§10). Keyed on the
-`settlementConfirmed` signal.
+**As built:** Riddler #1199 on `feat/solver-registration-reputation`, not yet
+merged. Under open admission (§3.1), how much a solver may win comes from its
+bond and its record, not from a list.
 
 ```ts
 interface SolverReputation {
   solverId: string;
-  fillSuccessRate: number;  // filled / awarded
-  noShowRate: number;       // awarded-but-unfilled / awarded
-  medianLatencyMs: number;  // quote + fill latency
-  volumeUsd: number;
-  bondUsd: number;          // posted bond (phase P2+)
-  eligible: boolean;        // feed-eligibility gate
+  fillSuccessRate: number;       // fills / (fills + no-shows); 0 before the first
+  noShowRate: number;            // no-shows / (fills + no-shows); 0 before the first
+  medianLatencyMs: number | null; // winner FillAuth issued -> fill observed; null with no fills
+  volumeUsd: number;             // notional of the awards it filled
+  bondUsd: number;               // active SolverBond stake, at par
+  probation: boolean;
+  eligible: boolean;             // admitted now: bond sufficient and freshly read
+  exposureCapUsd: number;        // in-flight awarded notional it may carry now
+  inFlightUsd: number;           // awarded notional not yet settled
 }
 ```
 
-Reputation drives feed eligibility (who receives RFQs), tie-breaks (equal
-`output` → higher reputation wins), and the permissioning ladder (§9).
-`SolverReputation` / `SolverDirectory` are net-new: today only a config-only
-`SolverRegistry` (hot-wallet addresses) and *user-side* ZKSAR trust scoring
-exist.
+The venue answers it at every registration (§3.1); there is no other read.
+
+**Outcomes.** A panel award is counted once, by `orderId`, when its escrow
+settlement is final:
+
+- **fill** -- the lock was claimed against an attestation of the winner's own
+  fill;
+- **no-show** -- the winner held the award (it accepted the FillAuth, or the
+  award was delivered to it) and the lock was refunded at its deadline, or
+  claimed by the venue's backstop instead;
+- **neither** -- the award was never delivered. Not the solver's doing (and
+  never slashable, §5.3), so it moves no rate.
+
+Rates are over settled awards (fills + no-shows). The venue's reserve is never
+scored.
+
+**Exposure.** A solver's **in-flight notional** is the USD notional of the
+panel awards it holds that have not settled. Every outcome above, `neither`
+included, releases its award's notional; one no outcome releases (an OpenAuth
+never redeemed) stops counting once every lock it could be is claimable or
+refundable (36 h by default). Its **cap** is
+
+```
+collateral  = bondUsd × collateralFactor                    (default 1.0)
+reliability = max(0, 1 − noShowPenalty × noShowRate)        (default penalty 2.0)
+cap         = min(collateral, probationCapUsd) × reliability   on probation (default $1,000)
+            = collateral × reliability                         once graduated
+```
+
+and 0 for a solver not admitted now. So the invariant holds by construction:
+**in-flight notional never exceeds `bondUsd × collateralFactor`**, and at the
+default penalty a solver that no-shows half its awards can carry nothing.
+
+**Selection.** The cap binds at award selection (§5.2): among the standing
+bids that strictly beat the reserve, best output first, the first whose award
+keeps its solver's in-flight notional plus this order within its cap wins; a
+bidder that would exceed it is skipped for the next-best, and if none fits the
+reserve wins. An order whose notional the venue cannot price awards no panel
+solver (the bound cannot be checked, so it is not assumed), and an unreadable
+exposure store reads as ineligible. The award exists only once its notional is
+durably committed against the winner, under the same cap re-checked in that
+commit; a commit that is refused or cannot be written falls back to the
+reserve. A skipped solver is not told: it sees an award to someone else, and
+its next registration shows `exposureCapUsd` and `inFlightUsd`. Equal outputs
+are not broken by reputation.
+
+**Probation.** Every solver starts on probation, whose cap is the lower of its
+collateral and `probationCapUsd`. It graduates once it has `minFills` fills
+(default 20) and a no-show rate at or under `maxNoShowRate` (default 0.05); a
+graduated solver whose rate rises above that bound returns to probation. A
+solver unbonded by a refresh and registering again keeps its record.
+
+Every parameter above is the venue's configuration, not a protocol constant: a
+solver reads its cap from `exposureCapUsd` and MUST NOT compute it from the
+defaults.
 
 ---
 
-## 9. Permissioning ladder  — P0 `[IMPLEMENTED]`, P1+ `[RESERVED]`
+## 9. Permissioning ladder and refusals  — P0 `[IMPLEMENTED]`, P1+ `[RESERVED]`
 
 | Phase | Admission | Fills | Fund safety |
 |---|---|---|---|
-| **P0** | Riddler-only | venue solver only | trivially safe (self) |
-| **P1** | allowlist (`SolverDirectory`) | allowlisted third parties | escrow: funds locked, not paid until proof |
-| **P2** | bonded | allowlisted + bond at risk | escrow + slashable bond on no-show/fraud |
-| **P3** | permissionless | reputation-gated open admission | escrow + bond + reputation |
+| **P0** | Riddler-only awards; registration (§3.1) may already be open | venue solver only | trivially safe (self) |
+| **P1** | bonded registration (§3.1) | registered third parties, exposure-capped (§8) | escrow: funds locked, not paid until proof |
+| **P2** | bonded, and the bond slashable | as P1, bond at risk | escrow + slashable bond on no-show/fraud |
+| **P3** | permissionless, reputation-gated | caps that grow with the record (§8) | escrow + bond + reputation |
 
 **Fund-safety invariant at every stage:** origin funds are escrowed and released
-only on proven fill (§6–§7). Opening the allowlist is safe because a malicious
+only on proven fill (§6–§7). Opening admission is safe because a malicious
 solver cannot take principal, only forfeit its exclusive window (and, from P2,
 its bond). Today the system is at **P0** (Riddler is the sole solver);
 everything P1+ is gated on the escrow (M6).
@@ -1328,6 +1524,43 @@ actually bind an escrow envelope to an award. An address on its own describes a
 lock nobody took: the solver would fill against a named contract holding no
 principal, so there would be nothing to release. So the binding capability has
 no env var at all: P1 arrives by shipping the escrow, not by setting a variable.
+
+### 9.1 Refusals  `[PROPOSED]` (with §3.1)
+
+Every reason a venue cannot admit or serve a solver is on exactly one side:
+**permanent** (no retry of the same request can clear it; something has to
+change first) or **transient** (the same request may succeed later). A solver
+MUST NOT retry a permanent refusal and SHOULD retry a transient one after its
+`Retry-After`. The body is the venue's error envelope,
+`{ "error": <code>, "message": <text>, "details"?: {...} }`; route on
+`error`, never on `message`.
+
+`POST /solver/register` (§3.1):
+
+| Status | `error` | Side | Means; what clears it |
+|---|---|---|---|
+| 400 | `bad_request` | permanent | the body is malformed (a field missing or mistyped, an integer past 2^53-1), or the signature is not a canonical 65-byte r\|\|s\|\|v (low-s, `v` 27 or 28); fix the client |
+| 403 | `forbidden` | permanent | the signature does not recover to `solverId`: another key, another domain (`conformance/solver-registration.json`'s wrong-domain vectors), or a field changed after signing |
+| 422 | `solver_registration_not_enabled` | permanent | this venue admits no self-registered solver: no SolverBond or session secret configured (its capabilities then say `riddler_only`), or a bond asset it cannot value |
+| 422 | `solver_bond_mismatch` | permanent | signed for a bond that is not this venue's `admission.bond`; sign for its bond, or this is not the venue you staked for |
+| 422 | `solver_registration_stale` | permanent for that signature | `issuedAtMs` is outside the venue's window: the signer's clock is off by more than it (120 s by default). Fix the clock; a fresh signature from the same clock is refused again |
+| 422 | `solver_bond_insufficient` | permanent until restaked | `activeBond` is zero or under `minBond`; post more bond, then register again |
+| 503 | `solver_bond_unreadable` | transient, `Retry-After` | the venue could not read the bond; nobody is admitted on an unread bond |
+| 503 | `service_unavailable` | transient, `Retry-After` | the venue could not record the registration |
+
+A rate-limit `429` is transient likewise. A venue serving no `/solver/*`
+surface at all answers `404` to every path, this one included.
+
+Every other authenticated path answers one `401` for every authentication
+refusal: an expired, forged or rotated-out token, an `X-Solver-Id` naming
+another solver, a bond that fell short or was not re-read in time. It is
+transient in the sense that registering again is the remedy (§3.1), and
+deliberately says nothing more; the registration it prompts answers with the
+reason from the table above. A `401` that survives a fresh registration is the
+venue's fault, not something to retry in a loop.
+
+An exposure cap (§8) is not a refusal: a capped bidder is skipped at selection
+and never told.
 
 ---
 
@@ -1351,8 +1584,12 @@ compliance/eligibility), not a new crypto layer.
 - exposes `capabilities()`, returns a valid `BidDraft | null` within the sealed
   window, and produces a `FillReceipt` with a well-formed `FillProof`;
 - signs bids/receipts with its `solverId` key such that they recover correctly,
-  reproducing every `conformance/solver-bid-v2.json` digest (§5.1) and every
-  `conformance/fill-acceptance.json` digest (§5.3);
+  reproducing every `conformance/solver-bid-v2.json` digest (§5.1), every
+  `conformance/fill-acceptance.json` digest (§5.3) and every
+  `conformance/solver-registration.json` digest and signature (§3.1);
+- registers with a fresh `issuedAtMs` each time, renews before expiry,
+  re-registers once on a `401`, and never retries a permanent refusal (§3.1,
+  §9.1);
 - checks the venue's advertised `rfcVersion` against the one version constant
   it holds, before it signs anything (§12);
 - keeps its own `auctionId` → announcement index and fills from it; the digest
@@ -1459,8 +1696,8 @@ types are the contract.
 | Exact-output RFQ | `[PROPOSED]` | — (unwinnable under a bid with no input field; not announced) |
 | Public-only announcement, `recipientCommitment` withdrawn (`0.5.0-draft`) | `[PROPOSED]` producer; consumer narrowed in `@xochi/solver-sdk` 0.5.0 | Riddler #1200 (PR #1302 open, not deployed); §§2.2, 4.2 |
 | Sealed-bid auction, `Bid`/`Award` | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/{auction,bid,award}.ex` |
-| `SolverDirectory` (allowlist admission) | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/directory.ex` (`SOLVER_DIRECTORY_JSON`) |
-| `SolverReputation` | `[PROPOSED]` | — |
+| Bonded registration, session tokens (`POST /solver/register`) | `[PROPOSED]` | Riddler #1198 (`feat/solver-registration-reputation`, not merged); solver side `SolverSession` / `HttpSolverTransport`; §3.1. Replaces `SolverDirectory` (`SOLVER_DIRECTORY_JSON`), withdrawn |
+| `SolverReputation`, probation, exposure caps | `[PROPOSED]` | Riddler #1199 (same branch); §8 |
 | Solver-submitted `FillProof` artifact | `[IMPLEMENTED]` intake; verification `[PROPOSED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (recorded, not verified) |
 | Permissioning P0 | `[IMPLEMENTED]` | derived from escrow readiness, not operator-set |
 | Bonds / slashing / permissioning P1–P3 | `[RESERVED]` | gated on the escrow (§7, M6); `SolverBond` helpers in `@xochi/solver-sdk` |
@@ -1471,5 +1708,6 @@ types are the contract.
 
 Sealed RFQ, reserve bid, exclusive window, backstop, first-price vs Vickrey,
 committed/encrypted bid, frequent batch auction (FBA), `FillProof`,
-`SolverDirectory`, `SolverReputation`, permissioning phase (P0–P3), escrow
+`SolverRegistration`, session token, `SolverReputation`, probation, exposure
+cap, permissioning phase (P0–P3), escrow
 gateway (`lock`/`release`/`void`), dark-pool panel confidentiality.

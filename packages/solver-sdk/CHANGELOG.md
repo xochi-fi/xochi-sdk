@@ -8,6 +8,32 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Added
 
+- **Bonded permissionless registration** (SOLVER-RFC `0.6.0-draft` §3.1,
+  Riddler #1198). `signRegistration(wallet, { bondChainId, bond, issuedAtMs })`
+  signs the EIP-712
+  `SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)`
+  on the bid's `RiddlerSolver`/`"2"` domain (`registrationTypedData`,
+  `registrationDigest`, `SOLVER_REGISTRATION_DOMAIN`/`_TYPES`/`_TYPE`/
+  `_PRIMARY_TYPE`), pinned by `@xochi/spec`'s
+  `conformance/solver-registration.json`.
+- `SolverSession`: registers at `POST /solver/register` (re-signing every
+  attempt), holds the session token, renews it before `expiresAtMs`
+  (`renewBeforeMs`, default 60 s), and registers once for any number of
+  concurrent callers. The bond is `opts.bond` when pinned, else the venue's
+  `admission.bond`. A 4xx is thrown as `SolverRegistrationRefusedError`
+  (`code`, `status`, `detail`, `permanent: true`) and never retried; a
+  `503`/`429` is retried after `Retry-After` (`parseRetryAfter`, clamped to 300
+  s) up to `maxAttempts` (default 5), then thrown as
+  `SolverRegistrationUnavailableError`.
+- `HttpSolverTransport` sends the session token as `Authorization: Bearer` on
+  every request but `getCapabilities`; on a `401` it re-registers and re-sends
+  once. New options `registerTimeoutMs` and `maxRegisterAttempts`; its
+  `session` is public, and `register()` implements the new optional
+  `SolverTransport.register`, which `SolverClient.register()` calls to answer
+  the solver's standing up front.
+- `VenueCapabilities.admission.bond` (`{ chainId, address } | null`), and
+  `SolverReputation` / `SolverRegistrationResult` with their schemas (RFC §8:
+  probation, `bondUsd`, `exposureCapUsd`, `inFlightUsd`).
 - `FillProof` kind `canton_update` (`{ kind: "canton_update"; updateId: string }`,
   SOLVER-RFC `0.6.0-draft` §6): a Canton-destination fill's ledger update id.
   `FillReceiptSchema` takes it verbatim and refuses an empty or
@@ -34,6 +60,19 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
+- **BREAKING: the `apiKey` option is removed** from `SolverClient` and
+  `HttpSolverTransport`, and `HttpSolverTransport`'s `solverId` option with it:
+  pass `solverKey` (and preferably `bond`) instead. Neither sends `X-API-Key`
+  or `X-Solver-Id` any more; the venue's allowlist and its operator-issued
+  secrets are withdrawn (RFC §3.1). Migration: stake the solver key on the
+  venue's SolverBond, delete `apiKey`/`SOLVER_API_KEY`, and add
+  `bond: { chainId, address }`. A `SolverClient` given both `bond` and an
+  injected `transport` throws, as it does for `onFeedGap`.
+- Examples: the live offline solver and the escrow solver need no
+  `SOLVER_API_KEY`; the escrow solver pins its registration to `SOLVER_BOND`
+  on `BOND_CHAIN_ID` (default 8453), and its supervisor stops bidding on a
+  `SolverRegistrationRefusedError` (owed fills and claims still drain) while
+  retrying a `SolverRegistrationUnavailableError`.
 - **BREAKING: `SOLVER_RFC_VERSION` is `"0.6.0-draft"`** (was
   `"0.5.0-draft"`). `SolverClient.run` refuses a venue still serving
   `0.5.0-draft` with `VenueVersionSkewError`, so the venue and this SDK deploy

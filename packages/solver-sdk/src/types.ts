@@ -30,8 +30,9 @@ export interface SolverCapabilities {
 // What the VENUE advertises about itself at `GET /solver/capabilities` (RFC
 // §12). Distinct from `SolverCapabilities`, which is what a solver advertises.
 // Public and unauthenticated by design: a prospective solver must be able to
-// read `rfcVersion` and `phase` before it has been admitted, and `panelSize`
-// lets it see it has not been admitted without holding credentials.
+// read `rfcVersion` and `phase` before it has registered, `admission.bond` to
+// know which SolverBond to post and sign for (RFC §3.1), and `panelSize` to
+// see the panel without holding credentials.
 export interface VenueCapabilities {
   rfcVersion: string; // SOLVER-RFC version the venue serves
   // Optional because RFC §12 only SHOULDs it, and only `rfcVersion` is the
@@ -44,9 +45,40 @@ export interface VenueCapabilities {
     windowMs?: number;
     exclusiveWindowMs?: number;
   };
-  admission?: { model?: string; panelSize?: number };
+  admission?: {
+    // "bonded_permissionless" while a solver can register; "riddler_only" when
+    // the venue admits nobody (no bond or no session secret configured).
+    model?: string;
+    panelSize?: number;
+    // The SolverBond a registration names; null when none is configured.
+    bond?: { chainId: number; address: string } | null;
+  };
   chains?: number[];
   settlementTypes?: SettlementType[];
+}
+
+// A solver's standing with the venue (RFC §8), answered by
+// `POST /solver/register`. Rates are over SETTLED panel awards (fills +
+// no-shows) and read 0 before the first one.
+export interface SolverReputation {
+  solverId: string;
+  fillSuccessRate: number; // fills / (fills + no-shows)
+  noShowRate: number; // no-shows / (fills + no-shows)
+  medianLatencyMs: number | null; // winner FillAuth issued -> fill observed; null with no fills
+  volumeUsd: number;
+  bondUsd: number; // active SolverBond stake, at par
+  probation: boolean;
+  eligible: boolean; // admitted: bond sufficient and freshly read
+  exposureCapUsd: number; // in-flight awarded notional it may carry now
+  inFlightUsd: number; // awarded notional not yet settled
+}
+
+// What `POST /solver/register` answers (RFC §3.1).
+export interface SolverRegistrationResult {
+  solverId: string;
+  sessionToken: string; // sent back as `Authorization: Bearer`
+  expiresAtMs: number; // venue clock
+  reputation: SolverReputation;
 }
 
 // Signalled by the feed when this reader missed announcements. Both cases mean
@@ -259,6 +291,11 @@ export interface SolverTransport {
   // Optional so an existing custom transport stays valid: widening this
   // interface with a required method would break every implementor.
   getCapabilities?(signal?: AbortSignal): Promise<VenueCapabilities>;
+  // `POST /solver/register` now (RFC §3.1), renewing the session the
+  // authenticated requests carry. A transport registers on its own when it
+  // needs a session; this is for a caller that wants the answer (its
+  // reputation, its exposure cap) or a refusal up front.
+  register?(signal?: AbortSignal): Promise<SolverRegistrationResult>;
   // The venue's FillAttestation for an order this solver filled, or null while
   // there is none (not yet attested, or not this solver's: indistinguishable).
   getAttestation?(orderId: string, signal?: AbortSignal): Promise<FillAttestationWire | null>;

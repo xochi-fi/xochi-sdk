@@ -33,7 +33,10 @@
 //   SOLVER_KEY          0x + 64 hex. Signs bids AND fills: the venue's FillAuth
 //                       names the award's solverId as filler, so the fill must
 //                       come from this key. It needs dest-token inventory and gas.
-//   SOLVER_API_KEY      panel secret (X-API-Key)
+//                       It also signs the SolverRegistration that admits it
+//                       (SOLVER-RFC §3.1): there is no API key. The venue admits a
+//                       key whose active stake on SOLVER_BOND meets its minimum, so
+//                       `bond deposit` first.
 //   CLAIM_KEY           optional; submits `claim` on the origin (default SOLVER_KEY).
 //                       The escrow pays the attested payee whoever submits. It
 //                       needs ORIGIN gas: `accept` refuses (insufficient_claim_gas)
@@ -65,6 +68,9 @@
 //   BOND_RPC_URL, SOLVER_BOND                          SolverBond v2 on Base: the bond you
 //                       are slashable on. Required to fill too: every fill is preceded
 //                       by a FillAcceptance signed on this bond's EIP-712 domain.
+//   BOND_CHAIN_ID       the chain SOLVER_BOND is on; default 8453 (Base). With
+//                       SOLVER_BOND it is what the registration signs for; a venue
+//                       advertising another bond answers `solver_bond_mismatch`.
 //   SOLVER_STATE_FILE   where accepted and filled-but-unclaimed orders are kept, so
 //                       a restart resumes their fill and claim instead of orphaning
 //                       a paid fill; default ./escrow-solver-state.json. An order is
@@ -113,6 +119,7 @@ import {
   type Solver,
   type SolverCapabilities,
   type TxOutcome,
+  type SolverBondRef,
   UnknownSolverEventError,
 } from "../src/index";
 import { assertKeyShape, assertVenueUrl, envInt, requireEnv } from "./env";
@@ -141,16 +148,17 @@ const say = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 const ENV_HINT = "(see the header of examples/escrow-solver.ts)";
 
 // SolverBond v2 on Base, required by the loop (every fill is preceded by a
-// FillAcceptance on its domain) and by `bond ...`, not by `resolveConfig`.
+// FillAcceptance on its domain, and the registration names it) and by
+// `bond ...`, not by `resolveConfig`.
 const bondEnv = () => ({
   rpc: requireEnv("BOND_RPC_URL", ENV_HINT),
   address: requireEnv("SOLVER_BOND", ENV_HINT),
+  chainId: Number(envInt("BOND_CHAIN_ID", 8453n)),
 });
 
 export interface Config {
   baseUrl: string;
   solverKey: string;
-  apiKey: string;
   claimKey: string;
   origin: { chainId: number; rpc: string; escrow: string };
   dest: { chainId: number; rpc: string; filler: string; token: string };
@@ -173,7 +181,6 @@ export function resolveConfig(): Config {
   return {
     baseUrl,
     solverKey,
-    apiKey: env("SOLVER_API_KEY"),
     claimKey,
     origin: {
       chainId: Number(env("ORIGIN_CHAIN_ID")),
@@ -849,11 +856,14 @@ function rpcProvider(url: string): ethers.JsonRpcProvider {
   return new ethers.JsonRpcProvider(url, undefined, { cacheTimeout: -1 });
 }
 
-function venueTransport(cfg: Config): HttpSolverTransport {
+// `bond` pins the SolverBond the registration names: the one this key is
+// slashable on, never one the venue chose. Omitted (`bond ...` commands, which
+// make no authenticated request), the venue's advertised bond is used.
+function venueTransport(cfg: Config, bond?: SolverBondRef): HttpSolverTransport {
   return new HttpSolverTransport({
     baseUrl: cfg.baseUrl,
-    apiKey: cfg.apiKey,
-    solverId: new ethers.Wallet(cfg.solverKey).address,
+    solverKey: cfg.solverKey,
+    bond,
     // A gap is intents this solver will never see. A skipped entry is either a
     // kind this SDK does not know (a newer venue's) or a malformed one.
     onFeedGap: (gap) =>
@@ -913,8 +923,12 @@ async function runSolver(noShow: boolean): Promise<void> {
   }
   try {
     const solverId = new ethers.Wallet(cfg.solverKey).address;
-    const transport = venueTransport(cfg);
-    const { gateway, destSigner } = buildGateway(cfg, transport, bondEnv());
+    const bond = bondEnv();
+    const transport = venueTransport(cfg, {
+      chainId: bond.chainId,
+      address: ethers.getAddress(bond.address),
+    });
+    const { gateway, destSigner } = buildGateway(cfg, transport, bond);
     const solver = new EscrowSolver(cfg, gateway, destSigner, noShow, background, state);
     const client = new SolverClient({
       solverKey: cfg.solverKey,
