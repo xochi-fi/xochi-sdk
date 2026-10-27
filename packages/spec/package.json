@@ -1,6 +1,6 @@
 {
   "name": "@xochi/spec",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Xochi protocol spec, wire contract and byte-equality conformance vectors.",
   "keywords": [
     "xochi",
