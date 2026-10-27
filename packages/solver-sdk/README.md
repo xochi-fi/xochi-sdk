@@ -89,6 +89,63 @@ npm run example:solver -w @xochi/solver-sdk -- --live   # against a venue's /sol
 npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepare -> accept -> fill -> claim
 ```
 
+### Canton TestNet test solver (staging, TESTNET ONLY)
+
+`examples/canton-test-solver.ts` fills ONE Base Sepolia USDC -> Canton TestNet CC order through
+the M6 escrow by hand (Riddler runbook `docs/operations/guides/canton-testnet-e2e.md`, #1356). It
+refuses any origin but Base Sepolia (84532), any destination but Canton TestNet (4149314359), a
+bond on another chain, and an RPC that is named `mainnet` or does not answer chain 84532.
+Prerequisite: the `external_solver` key has its SolverBond deposit on Base Sepolia (>= 10 USDC),
+Base Sepolia ETH for the claim's gas, and TestNet CC in its Metatarz party.
+
+```bash
+read -rs SOLVER_PRIVATE_KEY && export SOLVER_PRIVATE_KEY   # 1Password Relayer, "TESTNET riddler-escrow external_solver"
+export RIDDLER_SOLVER_URL=https://<staging riddler>        # https; http only on loopback
+export ORIGIN_RPC_URL=https://sepolia.base.org             # default; must answer chain 84532
+export CC_PER_USDC=6.5                                     # firm rate; unset = bid exactly minOutput
+# Defaults: SOLVER_BOND=0xA6902450bC7eEC58Ea19D8a9674796Ce1DD7F1E0, BOND_CHAIN_ID=84532,
+# ORIGIN_ESCROW=0x8F45d6F7Fe17ea91B75EC6A6f009f98bd24fCF66 (M6.2 v2), MIN_EXCLUSIVE_MS=600000,
+# VALIDITY_MARGIN_MS=60000, ATTESTATION_TIMEOUT_MS=3600000, AWARD_DIR=.
+
+npm run example:canton -w @xochi/solver-sdk
+```
+
+It registers and prints the standing (`eligible`, `probation`, `bondUsd`, exposure), then bids on
+every quote-through announcement for the corridor with `validUntilMs = minValidUntilMs + 60s`. Now
+quote and open the order as the depositor (runbook step 4). Once the lock is final the award
+arrives and the script prints the transfer to make in the Metatarz wallet:
+
+```text
+================ SEND BY HAND (Metatarz wallet, Canton TestNet) ================
+  recipient party : user_b39488aD::1220...                       (copy byte for byte)
+  amount          : 12.5000000000 CC  (125000000000 base units, 10 dp)
+  instrument      : DSO::1220f22a...
+  deadline        : 2026-10-31T16:20:00.000Z  (~10 min from now)
+```
+
+Send at least that amount to that party before the deadline, then paste the transfer's
+`update_id` at the prompt, exactly as the wallet shows it (case-sensitive; a value with
+surrounding whitespace is refused). The receipt goes to `POST /solver/fills`:
+
+- `202`: recorded; attested now or deferred and retried by the escrow node.
+- `422 canton_delivery_refused`: permanent for that update; `details.reason` names the check
+  (party, amount, instrument, window...). The script asks for another update id.
+- `503`: nothing recorded; resubmitted after `Retry-After`, up to 12 times.
+
+It then polls `GET /solver/attestations/:orderId`, checks the attestation (`verifyAttestation`,
+`isAttester` on the lock's verifier), sends `claim(orderId, proof)` to the escrow from the solver
+key and prints the transaction and the lock's final status (`Claimed`). The award is saved to
+`AWARD_DIR/canton-award-<orderId>.json` before the prompt; after a crash, or to keep waiting for
+the attestation:
+
+```bash
+npm run example:canton -w @xochi/solver-sdk -- --resume ./canton-award-0x<orderId>.json
+npm run example:canton -w @xochi/solver-sdk -- --resume ./canton-award-0x<orderId>.json --update-id '<update_id>'
+```
+
+With `--update-id` nothing is read from stdin, and a `422` ends the run instead of prompting.
+There is no FillAcceptance step: a Canton award carries no FillAuth to co-sign.
+
 ## Rules you must follow
 
 - **Registration refusals are typed.** A permanent one (`SolverRegistrationRefusedError`:
