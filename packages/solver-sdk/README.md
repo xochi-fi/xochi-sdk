@@ -66,11 +66,18 @@ const solver: Solver = {
 
 const client = new SolverClient({
   baseUrl,
-  solverKey,
-  apiKey,
+  solverKey, // signs bids and the registration that admits it; no API key
+  bond: { chainId: 8453, address: SOLVER_BOND }, // the SolverBond your key staked on
   onFeedGap: (gap) => log.warn("missed intents", gap),
 });
 await client.run(solver);
+```
+
+There is no credential to request. Stake `solverKey`'s address on the venue's SolverBond
+(`admission.bond` on `GET /solver/capabilities`) at or above its minimum; the transport then
+registers by signing a `SolverRegistration` (SOLVER-RFC §3.1), sends the session token it is
+issued as `Authorization: Bearer`, and renews it. `client.register()` registers up front and
+answers your standing: probation, `bondUsd`, `exposureCapUsd`, `inFlightUsd` (RFC §8).
 ```
 
 Reference solvers, from a repo checkout (the examples are not in the tarball):
@@ -83,6 +90,13 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 
 ## Rules you must follow
 
+- **Registration refusals are typed.** A permanent one (`SolverRegistrationRefusedError`:
+  `solver_bond_insufficient`, `solver_registration_stale`, `solver_bond_mismatch`,
+  `solver_registration_not_enabled`, `forbidden`, `bad_request`) is thrown, never retried: post
+  bond, fix the clock or the configuration. A `503`/`429` is retried after `Retry-After`, up to
+  `maxRegisterAttempts` (default 5), then thrown as `SolverRegistrationUnavailableError`. A `401` on
+  any request re-registers once and re-sends; a second `401` is an error. Pin `bond`: unpinned, the
+  transport signs for whatever bond the venue advertises.
 - **Version gate.** `run` refuses (`VenueVersionSkewError`, nothing signed) unless
   `capabilities.rfcVersion === SOLVER_RFC_VERSION`; import the constant, never retype it. It
   re-checks after a feed `reset`, after a skipped entry of an unknown `type`, and before each of
@@ -134,8 +148,12 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
 
 ## API surface
 
-- `SolverClient`, `HttpSolverTransport` (`readTimeoutMs`, `acceptTimeoutMs`, `postTimeoutMs`, all
-  10 s), `VenueVersionSkewError`
+- `SolverClient` (`register()`), `HttpSolverTransport` (`readTimeoutMs`, `acceptTimeoutMs`,
+  `postTimeoutMs`, `registerTimeoutMs`, all 10 s; `maxRegisterAttempts`; `session`),
+  `VenueVersionSkewError`
+- Registration: `SolverSession`, `signRegistration`, `registrationTypedData`,
+  `registrationDigest`, `SolverRegistrationRefusedError`, `SolverRegistrationUnavailableError`,
+  `SOLVER_REGISTRATION_DOMAIN`, `SOLVER_REGISTRATION_TYPES`, `SOLVER_REGISTRATION_TYPE`
 - `signBid`, `verifyBid`, `verifyBidDetailed`, `solverIdFromKey`, `bidTypedData`, `bidDigest`
 - `SOLVER_RFC_VERSION`, `SOLVER_BID_DOMAIN`, `SOLVER_BID_TYPES`, `SOLVER_BID_PRIMARY_TYPE`,
   `MAX_BID_MS`, `ZERO_ORDER_ID`

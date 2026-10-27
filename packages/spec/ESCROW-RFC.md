@@ -52,7 +52,7 @@ STEP                                 PRINCIPAL LOCATION        WHO CAN MOVE IT
 **Fund-safety invariant (normative):** escrowed principal moves to a solver only
 via `release(orderId, proof)` with a verifiable proof; a no-show routes to
 `refund` (depositor) or the backstop, never to loss. This is what makes opening
-the solver allowlist safe (`SOLVER-RFC.md` §9).
+solver admission safe (`SOLVER-RFC.md` §§3.1, 9).
 
 ---
 

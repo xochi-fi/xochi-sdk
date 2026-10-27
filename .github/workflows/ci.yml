@@ -212,9 +212,10 @@ jobs:
           npm run generate:erc8262
           git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/ packages/spec/erc8262/
 
-      - name: Solver vector staleness check (bid v2 + escrow + shielded)
+      - name: Solver vector staleness check (bid v2 + registration + escrow + shielded)
         run: |
           npm run generate:solver-bid-v2
+          npm run generate:solver-registration
           npm run generate:escrow
           npm run generate:shielded -w @xochi/spec
           npm run generate:shielded-terms -w @xochi/spec

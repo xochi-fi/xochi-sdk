@@ -554,6 +554,7 @@ const PARITY_SETS: [ours: string, riddler: string][] = [
   ["slash-attestation.json", "escrow_slash_attestation.json"],
   ["fill-acceptance.json", "escrow_fill_acceptance.json"],
   ["solver-bid-v2.json", "escrow_solver_bid_v2.json"],
+  ["solver-registration.json", "escrow_solver_registration.json"],
   ["xsp.json", "xochi_xsp.json"],
 ];
 

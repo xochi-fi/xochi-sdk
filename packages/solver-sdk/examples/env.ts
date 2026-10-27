@@ -53,12 +53,13 @@ export function envInt(name: string, fallback: bigint): bigint {
   return BigInt(raw.trim());
 }
 
-// The panel secret goes to this URL on every feed poll and every bid POST, and
-// whatever answers chooses the announcements this solver signs firm offers
-// against -- offers that are NOT bound to the venue that served them, because
-// the EIP-712 domain carries no deployment binding (axol-io/Riddler#1034). So an
-// unauthenticated origin is not a downgrade, it is a credential in cleartext
-// plus a bid-signing oracle. https only, the same rule
+// The session token goes to this URL on every feed poll and every bid POST, the
+// signed registration that mints it on every renewal, and whatever answers
+// chooses the announcements this solver signs firm offers against -- offers
+// that are NOT bound to the venue that served them, because the EIP-712 domain
+// carries no deployment binding (axol-io/Riddler#1034). So an unauthenticated
+// origin is not a downgrade, it is a credential in cleartext plus a bid-signing
+// oracle. https only, the same rule
 // `scripts/probe-lib.mjs` applies to `RIDDLER_URL_<NAME>`.
 //
 // The loopback exemption exists for a local venue -- testing the version gate
@@ -76,7 +77,7 @@ export function assertVenueUrl(raw: string, warn: (msg: string) => void): void {
     url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
   if (url.protocol === "http:" && loopback) {
     warn(
-      `WARNING ${tame(url.origin)} is plain http, allowed only because it is loopback: the panel secret is sent unencrypted`,
+      `WARNING ${tame(url.origin)} is plain http, allowed only because it is loopback: the session token is sent unencrypted`,
     );
     return;
   }

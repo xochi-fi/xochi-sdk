@@ -308,11 +308,48 @@ export const VenueCapabilitiesSchema = z
       .object({
         model: z.string().optional(),
         panelSize: z.number().int().nonnegative().optional(),
+        // RFC §3.1: the SolverBond a registration names; null when the venue
+        // has none configured (and so admits nobody).
+        bond: z
+          .object({
+            chainId: z.number().int().positive().max(MAX_BID_MS),
+            address: evmAddress,
+          })
+          .passthrough()
+          .nullable()
+          .optional(),
       })
       .passthrough()
       .optional(),
     chains: z.array(z.number().int().positive()).optional(),
     settlementTypes: z.array(settlement).optional(),
+  })
+  .passthrough();
+
+// RFC §8. Rates are numbers; `medianLatencyMs` is null until the first fill.
+export const SolverReputationSchema = z
+  .object({
+    solverId: z.string(),
+    fillSuccessRate: z.number(),
+    noShowRate: z.number(),
+    medianLatencyMs: z.number().nullable(),
+    volumeUsd: z.number(),
+    bondUsd: z.number(),
+    probation: z.boolean(),
+    eligible: z.boolean(),
+    exposureCapUsd: z.number(),
+    inFlightUsd: z.number(),
+  })
+  .passthrough();
+
+// `POST /solver/register` 200 (RFC §3.1). The token is opaque to the solver:
+// it is sent back verbatim as `Authorization: Bearer`.
+export const SolverRegistrationResponseSchema = z
+  .object({
+    solverId: evmAddress,
+    sessionToken: z.string().min(1),
+    expiresAtMs: z.number().int().nonnegative(),
+    reputation: SolverReputationSchema,
   })
   .passthrough();
 

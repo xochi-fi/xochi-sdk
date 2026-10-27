@@ -18,9 +18,11 @@ import type {
   FillAcceptanceReceipt,
   FillReceipt,
   FeedGap,
+  SolverRegistrationResult,
   VenueCapabilities,
 } from "./types";
 import { signBid, solverIdFromKey, walletFromKey } from "./bid";
+import type { SolverBondRef } from "./registration";
 import {
   parseSolverEvent,
   UnknownSolverEventError,
@@ -29,6 +31,7 @@ import {
   FillAttestationWireSchema,
   VenueCapabilitiesSchema,
 } from "./schema";
+import { SolverSession } from "./session";
 
 // The RFC revision this SDK implements, and the ONE place it is a value rather
 // than prose. `SolverClient.run` compares the venue's advertised `rfcVersion`
@@ -66,12 +69,13 @@ export interface SolverClientOptions {
   // Base URL of the venue's `/solver/*` surface. Required for the default
   // transport; ignored if a `transport` is injected.
   baseUrl?: string;
-  // The solver key (0x-prefixed). Signs bids; its address is the `solverId`.
+  // The solver key (0x-prefixed). Signs bids and the registration that admits
+  // it (RFC §3.1); its address is the `solverId`.
   solverKey: string;
-  // Panel secret. Sent as `X-API-Key` alongside `X-Solver-Id`; the venue binds
-  // one secret to one solverId and both must agree, so a valid secret paired
-  // with another member's id is a 401 (RFC section 8).
-  apiKey?: string;
+  // The SolverBond to register against. Omitted, the default transport reads
+  // the venue's advertised `admission.bond` (see `SolverSessionOptions.bond`).
+  // Applies to the default transport only.
+  bond?: SolverBondRef;
   // Injectable transport seam. Defaults to `HttpSolverTransport` over `baseUrl`.
   transport?: SolverTransport;
   // Injectable clock (ms). Defaults to `Date.now`. A bid whose announcement has
@@ -132,11 +136,12 @@ export class SolverClient {
       const orphaned = [
         opts.onFeedGap ? "onFeedGap" : null,
         opts.onInvalidEvent ? "onInvalidEvent" : null,
+        opts.bond ? "bond" : null,
       ].filter(Boolean);
       if (orphaned.length > 0) {
         throw new Error(
           `SolverClient: ${orphaned.join("/")} only applies to the default transport; ` +
-            "an injected transport owns its own feed and must report these itself",
+            "an injected transport owns its own feed and registration",
         );
       }
       this.transport = opts.transport;
@@ -145,8 +150,8 @@ export class SolverClient {
         throw new Error("SolverClient: baseUrl is required when no transport is injected");
       this.transport = new HttpSolverTransport({
         baseUrl: opts.baseUrl,
-        apiKey: opts.apiKey,
-        solverId: this.solverId,
+        solverKey: opts.solverKey,
+        bond: opts.bond,
         onFeedGap: opts.onFeedGap,
         onInvalidEvent: opts.onInvalidEvent,
       });
@@ -162,6 +167,17 @@ export class SolverClient {
       throw new Error("SolverClient: the injected transport does not implement getCapabilities()");
     }
     return this.transport.getCapabilities(signal);
+  }
+
+  // Register now (RFC §3.1) and answer the venue's view of this solver: its
+  // probation, bond and exposure cap. `run` registers on its own; this is for
+  // printing that standing, or failing fast on a permanent refusal
+  // (`SolverRegistrationRefusedError`), before the loop starts.
+  async register(signal?: AbortSignal): Promise<SolverRegistrationResult> {
+    if (!this.transport.register) {
+      throw new Error("SolverClient: the injected transport does not implement register()");
+    }
+    return this.transport.register(signal);
   }
 
   // Run the loop until the stream ends or `signal` aborts. For each announcement,
@@ -286,8 +302,17 @@ export class SolverClient {
 
 export interface HttpSolverTransportOptions {
   baseUrl: string;
-  apiKey?: string;
-  solverId: string;
+  // The solver key (0x-prefixed). Signs the `SolverRegistration` that admits
+  // this transport (RFC §3.1); its address is the `solverId`. Every request
+  // but `getCapabilities` carries the resulting session token as
+  // `Authorization: Bearer`.
+  solverKey: string;
+  // The SolverBond to register against; see `SolverSessionOptions.bond`.
+  bond?: SolverBondRef;
+  // Upper bound on each registration request (default 10_000 ms).
+  registerTimeoutMs?: number;
+  // Registration attempts across transient (503/429) refusals (default 5).
+  maxRegisterAttempts?: number;
   // Resumable feed cursor to start from (RFC section 4.1). Defaults to "0".
   since?: string;
   // Called when a batch reports `dropped` or `reset` -- i.e. this reader missed
@@ -343,8 +368,10 @@ const MAX_WARNED_UNKNOWN_TYPES = 32;
 // cursor named a sequence the log never issued, so an unknown number of
 // announcements were missed). Both are reported via `onFeedGap`.
 export class HttpSolverTransport implements SolverTransport {
+  // Registration and the session token (session.ts). Exposed so a caller can
+  // read the last registration's reputation.
+  readonly session: SolverSession;
   private readonly baseUrl: string;
-  private readonly headers: Record<string, string>;
   private readonly onFeedGap?: (gap: FeedGap) => void;
   private readonly onInvalidEvent?: (err: unknown, raw: unknown) => void;
   private readonly acceptTimeoutMs: number;
@@ -359,28 +386,33 @@ export class HttpSolverTransport implements SolverTransport {
 
   constructor(opts: HttpSolverTransportOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
+    this.session = new SolverSession({
+      baseUrl: this.baseUrl,
+      solverKey: opts.solverKey,
+      bond: opts.bond,
+      timeoutMs: opts.registerTimeoutMs,
+      maxAttempts: opts.maxRegisterAttempts,
+    });
     this.cursor = opts.since ?? "0";
     this.onFeedGap = opts.onFeedGap;
     this.onInvalidEvent = opts.onInvalidEvent;
     this.acceptTimeoutMs = opts.acceptTimeoutMs ?? 10_000;
     this.readTimeoutMs = opts.readTimeoutMs ?? 10_000;
     this.postTimeoutMs = opts.postTimeoutMs ?? 10_000;
-    this.headers = {
-      "Content-Type": "application/json",
-      "X-Solver-Id": opts.solverId,
-      ...(opts.apiKey ? { "X-API-Key": opts.apiKey } : {}),
-    };
+  }
+
+  register(signal?: AbortSignal): Promise<SolverRegistrationResult> {
+    return this.session.register(signal);
   }
 
   async *events(signal?: AbortSignal): AsyncIterable<SolverEvent> {
     while (!signal?.aborted) {
       const requestedCursor = this.cursor;
-      const res = await fetch(
-        `${this.baseUrl}/solver/intents/stream?since=${encodeURIComponent(requestedCursor)}`,
-        {
-          headers: this.headers,
-          signal,
-        },
+      const res = await this.authed(
+        `/solver/intents/stream?since=${encodeURIComponent(requestedCursor)}`,
+        {},
+        undefined,
+        signal,
       );
       if (!res.ok) throw new Error(`solver feed ${res.status}: ${await res.text()}`);
       // Envelope failures always throw -- see `onInvalidEvent` on the options.
@@ -446,7 +478,7 @@ export class HttpSolverTransport implements SolverTransport {
   }
 
   // `GET /solver/capabilities` is public and unauthenticated (RFC §12), so this
-  // deliberately sends no credentials -- it must work before admission.
+  // deliberately sends no credentials -- it must work before registration.
   async getCapabilities(signal?: AbortSignal): Promise<VenueCapabilities> {
     const res = await fetch(`${this.baseUrl}/solver/capabilities`, {
       signal: this.bounded(this.readTimeoutMs, signal),
@@ -464,10 +496,12 @@ export class HttpSolverTransport implements SolverTransport {
   // and not this solver's are deliberately indistinguishable -- so it is null,
   // never an error; any other non-2xx throws.
   async getAttestation(orderId: string, signal?: AbortSignal): Promise<FillAttestationWire | null> {
-    const res = await fetch(`${this.baseUrl}/solver/attestations/${encodeURIComponent(orderId)}`, {
-      headers: this.headers,
-      signal: this.bounded(this.readTimeoutMs, signal),
-    });
+    const res = await this.authed(
+      `/solver/attestations/${encodeURIComponent(orderId)}`,
+      {},
+      this.readTimeoutMs,
+      signal,
+    );
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`solver attestation ${res.status}: ${await res.text()}`);
     return FillAttestationWireSchema.parse(await res.json());
@@ -481,14 +515,11 @@ export class HttpSolverTransport implements SolverTransport {
     body: { orderId: string; signature: string },
     signal?: AbortSignal,
   ): Promise<FillAcceptanceReceipt> {
-    const res = await fetch(
-      `${this.baseUrl}/solver/awards/${encodeURIComponent(auctionId)}/accept`,
-      {
-        method: "POST",
-        headers: this.headers,
-        body: JSON.stringify(body),
-        signal: this.bounded(this.acceptTimeoutMs, signal),
-      },
+    const res = await this.authed(
+      `/solver/awards/${encodeURIComponent(auctionId)}/accept`,
+      { method: "POST", body: JSON.stringify(body) },
+      this.acceptTimeoutMs,
+      signal,
     );
     if (!res.ok) throw new Error(`solver accept ${res.status}: ${await res.text()}`);
     return FillAcceptanceReceiptSchema.parse(await res.json());
@@ -516,13 +547,40 @@ export class HttpSolverTransport implements SolverTransport {
     return AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
   }
 
+  // An authenticated request (RFC §3.1): the session token as
+  // `Authorization: Bearer`, registering first when there is none or it is due
+  // for renewal. A 401 means the session no longer holds -- it expired, the
+  // venue rotated its secret, or the bond fell short -- so the token is
+  // dropped, the solver registers again and the request is sent once more.
+  // Re-sending is safe: the venue refuses a 401 before it reads the body. A
+  // registration refusal is thrown from here as its typed error; a second 401
+  // is returned, and the caller reports it like any other status.
+  private async authed(
+    path: string,
+    init: { method?: string; body?: string },
+    timeoutMs: number | undefined,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const send = (token: string) =>
+      fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        signal: timeoutMs === undefined ? signal : this.bounded(timeoutMs, signal),
+      });
+    const token = await this.session.token(signal);
+    const res = await send(token);
+    if (res.status !== 401) return res;
+    await res.body?.cancel();
+    this.session.invalidate(token);
+    return send(await this.session.token(signal));
+  }
+
   private async post(path: string, body: unknown): Promise<void> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.postTimeoutMs),
-    });
+    const res = await this.authed(
+      path,
+      { method: "POST", body: JSON.stringify(body) },
+      this.postTimeoutMs,
+    );
     if (!res.ok) throw new Error(`POST ${path} ${res.status}: ${await res.text()}`);
   }
 }

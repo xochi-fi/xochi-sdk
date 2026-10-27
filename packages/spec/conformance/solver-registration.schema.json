@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riddler.axol.io/spec/conformance/solver-registration.schema.json",
+  "title": "Riddler SolverRegistration vector set",
+  "description": "EIP-712 SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs) vectors, domain RiddlerSolver/2 (SOLVER-RFC §3.1). signer_private_key values are PUBLIC TEST keys.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "domain",
+    "primary_type",
+    "types",
+    "encode_type",
+    "typehash",
+    "domain_separator",
+    "max_age_ms",
+    "vectors"
+  ],
+  "$defs": {
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "20-byte hex; case is not significant."
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "safe_uint": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "A bare JSON number on the wire, so bounded at 2^53-1 whatever the struct member's width."
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["solverId", "bondChainId", "bond", "issuedAtMs"],
+      "properties": {
+        "solverId": { "$ref": "#/$defs/address" },
+        "bondChainId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "uint256 in the struct; the SolverBond's chain. A bare JSON number, so bounded at 2^53-1."
+        },
+        "bond": { "$ref": "#/$defs/address" },
+        "issuedAtMs": {
+          "$ref": "#/$defs/safe_uint",
+          "description": "uint64 in the struct; unix ms on the signer's clock."
+        }
+      }
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{130}$",
+      "description": "65-byte r||s||v, low-s, lowercase hex."
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "const": "RiddlerSolver"
+        },
+        "version": {
+          "const": "2"
+        }
+      }
+    },
+    "primary_type": {
+      "const": "SolverRegistration"
+    },
+    "types": {
+      "type": "object"
+    },
+    "encode_type": {
+      "const": "SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)"
+    },
+    "typehash": { "$ref": "#/$defs/hash" },
+    "domain_separator": { "$ref": "#/$defs/hash" },
+    "max_age_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The venue's freshness window: |verify_at_ms - issuedAtMs| <= max_age_ms is fresh."
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "why",
+          "registration",
+          "message",
+          "signing_domain",
+          "expected_struct_hash",
+          "expected_digest",
+          "signed_digest",
+          "signer_private_key",
+          "signer_address",
+          "expected_signature",
+          "verify_at_ms",
+          "expected_verify",
+          "expected_outcome"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string"
+          },
+          "registration": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["solverId", "bondChainId", "bond", "issuedAtMs", "signature"],
+            "properties": {
+              "solverId": { "$ref": "#/$defs/address" },
+              "bondChainId": { "$ref": "#/$defs/safe_uint" },
+              "bond": { "$ref": "#/$defs/address" },
+              "issuedAtMs": { "$ref": "#/$defs/safe_uint" },
+              "signature": { "$ref": "#/$defs/signature" }
+            },
+            "description": "The POST /solver/register body, verbatim."
+          },
+          "message": { "$ref": "#/$defs/message" },
+          "signing_domain": {
+            "type": "object",
+            "description": "The domain the signature was produced under. The venue's own except in the wrong-domain vectors."
+          },
+          "expected_struct_hash": { "$ref": "#/$defs/hash" },
+          "expected_digest": {
+            "$ref": "#/$defs/hash",
+            "description": "The digest under the venue's domain: what a verifier recovers over."
+          },
+          "signed_digest": {
+            "$ref": "#/$defs/hash",
+            "description": "The digest under signing_domain: what was signed."
+          },
+          "signer_private_key": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$",
+            "description": "PUBLIC TEST key (Hardhat/Anvil). Never fund or register it."
+          },
+          "signer_address": { "$ref": "#/$defs/address" },
+          "expected_signature": { "$ref": "#/$defs/signature" },
+          "verify_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The venue's clock when the registration is presented."
+          },
+          "expected_verify": {
+            "enum": ["ok", "signature_mismatch"],
+            "description": "Recovery under the venue's domain: ok when it recovers to solverId."
+          },
+          "expected_outcome": {
+            "enum": ["admitted", "registration_stale", "signature_mismatch"],
+            "description": "The venue's answer at verify_at_ms for a sufficiently staked key on (bondChainId, bond). Freshness is checked before the signature."
+          }
+        }
+      }
+    }
+  }
+}

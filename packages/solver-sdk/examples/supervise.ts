@@ -5,6 +5,7 @@
 // (`startSolver`).
 
 import {
+  SolverRegistrationRefusedError,
   VenueVersionSkewError,
   type PreparedFill,
   type Solver,
@@ -208,7 +209,10 @@ export async function superviseFeed(
 // One supervised run. `run` checks the venue's version before it reads the
 // feed: a definite skew (`VenueVersionSkewError`) is FATAL rather than
 // retried, while an unreachable or unreadable capabilities endpoint is a plain
-// error and is retried like any other venue outage.
+// error and is retried like any other venue outage. Registration splits the
+// same way: a refusal (`SolverRegistrationRefusedError` -- bond short, clock
+// skewed, another bond) is FATAL, since no retry clears it; a venue that
+// stayed unavailable (`SolverRegistrationUnavailableError`) is retried.
 export function runAgainstVenue(
   client: SolverClient,
   solver: Solver,
@@ -217,10 +221,15 @@ export function runAgainstVenue(
     try {
       await client.run(solver, signal);
     } catch (err) {
-      if (!(err instanceof VenueVersionSkewError)) throw err;
-      throw new FatalSolverStop(
-        `version skew: the venue serves RFC ${err.advertised}, this solver implements ${err.implemented}`,
-      );
+      if (err instanceof VenueVersionSkewError) {
+        throw new FatalSolverStop(
+          `version skew: the venue serves RFC ${err.advertised}, this solver implements ${err.implemented}`,
+        );
+      }
+      if (err instanceof SolverRegistrationRefusedError) {
+        throw new FatalSolverStop(`registration refused: ${err.code}: ${err.detail}`);
+      }
+      throw err;
     }
   };
 }

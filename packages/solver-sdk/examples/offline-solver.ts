@@ -25,13 +25,14 @@
 // call, holds no credential, and reads no environment variable at all.
 //   RIDDLER_SOLVER_URL  https origin of the venue's /solver/* surface. Plain
 //                       http is refused unless the host is loopback.
-//   SOLVER_KEY          0x + 64 hex. Signs bids; its ADDRESS is your solverId.
+//   SOLVER_KEY          0x + 64 hex. Signs bids, and the SolverRegistration that
+//                       admits it (SOLVER-RFC §3.1); its ADDRESS is your solverId.
+//                       The venue admits it only once this address has an active
+//                       stake on the venue's SolverBond (`admission.bond` on
+//                       /solver/capabilities) at or above the bond's minimum.
 //                       Never printed, never in an error message. A demo key
 //                       from this file is refused.
-//   SOLVER_API_KEY      panel secret, sent as `X-API-Key`. REQUIRED: without it
-//                       every feed poll is a 401 that reads like a failed
-//                       admission rather than a missing variable.
-// All three are resolved and checked before the first request.
+// Both are resolved and checked before the first request.
 //
 // Copying this out of the repo: change the `../src/index` import to
 // "@xochi/solver-sdk" and take ./env.ts along. Nothing else here is repo-local.
@@ -1004,36 +1005,31 @@ async function runOffline(): Promise<void> {
 // Live mode.
 // ---------------------------------------------------------------------------
 
-const ENV_HINT = "for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY, SOLVER_API_KEY)";
+const ENV_HINT = "for --live (needs RIDDLER_SOLVER_URL, SOLVER_KEY)";
 
 interface LiveConfig {
   baseUrl: string;
   solverKey: string;
-  apiKey: string;
 }
 
 // Everything a live run needs, resolved and checked BEFORE the first request
-// and before a signer exists. All three variables are required: a missing panel
-// secret otherwise surfaces as a feed 401, which reads as "you are not admitted
-// to the panel" rather than "you forgot to export a variable".
+// and before a signer exists.
 function resolveLiveConfig(): LiveConfig {
   const baseUrl = requireEnv("RIDDLER_SOLVER_URL", ENV_HINT);
   const solverKey = requireEnv("SOLVER_KEY", ENV_HINT);
-  const apiKey = requireEnv("SOLVER_API_KEY", ENV_HINT);
   assertVenueUrl(baseUrl, say);
   assertLiveKey("SOLVER_KEY", solverKey);
-  return { baseUrl, solverKey, apiKey };
+  return { baseUrl, solverKey };
 }
 
 async function runLive(): Promise<void> {
-  const { baseUrl, solverKey, apiKey } = resolveLiveConfig(); // no network yet, and nothing signed yet
+  const { baseUrl, solverKey } = resolveLiveConfig(); // no network yet, and nothing signed yet
   const clock: Clock = { now: () => Date.now(), tick: () => {} }; // pricing latency is real here
 
   const solver = new ReferenceSolver(solverKey, clock);
   const client = new SolverClient({
     baseUrl,
     solverKey,
-    apiKey,
     onError: (err, event) => {
       say(`  error ${event.type}: ${tame((err as Error).message, MAX_LOGGED_ERROR_CHARS)}`);
       if (event.type === "announcement")
@@ -1060,7 +1056,7 @@ async function runLive(): Promise<void> {
   // "the venue did not say", never "not P0".
   const phase = typeof caps.phase === "string" ? caps.phase : null;
   say(
-    `venue ${tame(baseUrl)}  rfcVersion=${tame(caps.rfcVersion)} phase=${phase === null ? "(not advertised)" : tame(phase)} panel=${caps.admission?.panelSize ?? "?"}`,
+    `venue ${tame(baseUrl)}  rfcVersion=${tame(caps.rfcVersion)} phase=${phase === null ? "(not advertised)" : tame(phase)} panel=${caps.admission?.panelSize ?? "?"} admission=${tame(caps.admission?.model ?? "?")}`,
   );
   say(`this solver implements RFC ${SOLVER_RFC_VERSION}`);
   if (phase === null) {
@@ -1070,6 +1066,16 @@ async function runLive(): Promise<void> {
   } else if (phase.toUpperCase() === "P0") {
     say(
       "phase P0: bids are scored but the venue's reserve wins every auction -- `fill` will not run",
+    );
+  }
+  // Register up front only when the versions match, so a skewed venue still
+  // gets nothing signed (`run` refuses it next). `run` would register on its
+  // first poll anyway; doing it here prints the standing, or the refusal --
+  // permanent, and saying what clears it -- before the loop.
+  if (caps.rfcVersion === SOLVER_RFC_VERSION) {
+    const { reputation: r } = await client.register();
+    say(
+      `registered: probation=${r.probation} bond=$${r.bondUsd} exposureCap=$${r.exposureCapUsd} inFlight=$${r.inFlightUsd}`,
     );
   }
   say(`solverId=${solver.solverId}\n`);
