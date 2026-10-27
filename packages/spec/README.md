@@ -23,6 +23,10 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   encoding approved 2026-10-19): NetworkIdentity, the salted `Domain (binding)` /
   `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
   and the Aztec `bytes32` / amount refusals. Inert: shielded settlement is not live.
+- **`conformance/shielded-terms.json`** + `.schema.json`: **PROPOSED** typed encoding of
+  `ShieldedTermsV1` under the approved `Domain (terms)` (Riddler#1296): type strings, struct
+  hashes, digests and source-wallet signatures (public test keys), single-member variations and
+  refusals. Every choice §7 does not spell is listed in its `proposed` array. Inert.
 - **`fee/vectors.json`**, **`fee/schedule.json`**, **`fee/schema.json`**: 16 fee vectors (SPEC §4),
   the rate schedule, and the `fee_breakdown` schema.
 - **`erc8262/provider-discovery.schema.json`**, **`erc8262/provider-evidence.schema.json`**: the
@@ -66,6 +70,10 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   values, and what it leaves open fixes `open`. Network, corridor and Aztec values are fixtures.
   It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest,
   descriptorDigest, the recipient message); its `open` array names each one.
+- **`shielded-terms.json`** is generated here (`npm run generate:shielded-terms`) by the same
+  rules as `shielded.json`, and stays `status: "PROPOSED"` until the product owner approves its
+  `proposed` items into §7. It is the only vector set for the terms digest; Riddler vendors it
+  behind a default-off preview flag and never computes its own expectation.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the

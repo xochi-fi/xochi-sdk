@@ -46,6 +46,8 @@
     "./conformance/solver-bid-v2.schema.json": "./conformance/solver-bid-v2.schema.json",
     "./conformance/shielded.json": "./conformance/shielded.json",
     "./conformance/shielded.schema.json": "./conformance/shielded.schema.json",
+    "./conformance/shielded-terms.json": "./conformance/shielded-terms.json",
+    "./conformance/shielded-terms.schema.json": "./conformance/shielded-terms.schema.json",
     "./conformance/xsp.json": "./conformance/xsp.json",
     "./conformance/xsp.schema.json": "./conformance/xsp.schema.json",
     "./erc8262/provider-discovery.schema.json": "./erc8262/provider-discovery.schema.json",
@@ -98,6 +100,7 @@
     "generate:fill-acceptance": "tsx conformance/generate-fill-acceptance.ts",
     "generate:xsp": "tsx conformance/generate-xsp.ts",
     "generate:shielded": "tsx conformance/generate-shielded.ts",
+    "generate:shielded-terms": "tsx conformance/generate-shielded-terms.ts",
     "generate:conformance": "tsx conformance/generate.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test"
   },
