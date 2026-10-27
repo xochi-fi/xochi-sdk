@@ -70,8 +70,14 @@ export const IntentAnnouncementSchema = z
     opensAt: z.number().int().nonnegative(),
     closesAt: z.number().int().nonnegative(),
     exclusiveWindowMs: z.number().int().nonnegative(),
+    // Quote-through (RFC §2.5): both or neither.
+    quoteThrough: z.literal(true).optional(),
+    minValidUntilMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .passthrough()
+  .refine((a) => (a.quoteThrough === true) === (a.minValidUntilMs !== undefined), {
+    message: "quoteThrough and minValidUntilMs travel together",
+  })
   .transform((announcement) => {
     for (const key of RETIRED_ANNOUNCEMENT_KEYS) delete announcement[key];
     return announcement;
@@ -323,6 +329,17 @@ export const VenueCapabilitiesSchema = z
       .optional(),
     chains: z.array(z.number().int().positive()).optional(),
     settlementTypes: z.array(settlement).optional(),
+    // Present only while the venue lists a quote-through corridor (RFC §2.5).
+    quoteThrough: z
+      .object({
+        settleRule: z.string().optional(),
+        quoteTtlSeconds: z.number().int().positive().optional(),
+        corridors: z
+          .array(z.object({ fromChainId: z.number().int().positive(), toChainId: z.number().int().positive() }).passthrough())
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 

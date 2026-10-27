@@ -55,6 +55,12 @@ export interface VenueCapabilities {
   };
   chains?: number[];
   settlementTypes?: SettlementType[];
+  // Present only while the venue lists a quote-through corridor (RFC §2.5).
+  quoteThrough?: {
+    settleRule?: string;
+    quoteTtlSeconds?: number;
+    corridors?: { fromChainId: number; toChainId: number }[];
+  };
 }
 
 // A solver's standing with the venue (RFC §8), answered by
@@ -130,6 +136,11 @@ export interface IntentAnnouncement {
   opensAt: number; // server clock, ms
   closesAt: number; // sealed-window close, ms
   exclusiveWindowMs: number; // winner's exclusive fill budget after award
+  // Quote-through corridor (RFC §2.5): the winning bid IS the taker's price,
+  // settled second-price, and is selected only if its `validUntilMs` reaches
+  // `minValidUntilMs`. Both absent on every other announcement.
+  quoteThrough?: true;
+  minValidUntilMs?: number;
 }
 
 // What `Solver.quote` returns: the output it commits to deliver to the taker,

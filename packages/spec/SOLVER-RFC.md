@@ -83,6 +83,15 @@ check and vice versa.
 - **Typed refusals** (§9.1): every registration refusal is permanent or
   transient, and every authentication refusal on the rest of the surface is
   one `401` whose remedy is registering again.
+- **Quote-through corridors** (§2.5, Riddler #1193): on a corridor the venue
+  cannot fill, `/xochi/quote` waits out the sealed window and the taker's price
+  IS the panel's best firm bid, settled **second-price** against `minOutput`
+  as the reserve. Such an announcement carries `quoteThrough: true` and
+  `minValidUntilMs`; a bid whose `validUntilMs` is below it is admissible and
+  never awarded. `GET /solver/capabilities` gains `quoteThrough`
+  (`settleRule`, `quoteTtlSeconds`, `corridors`) while a corridor is listed.
+  Additive: both keys are absent on every other announcement and venue, and no
+  signed struct moves (SolverBid v2 already signs `validUntilMs`).
 
 ### Changes in `0.5.0-draft`
 
@@ -365,6 +374,37 @@ the winner receives an exclusive fill window (§6).
   reduce bid-shading — feasible precisely because the auctioneer is trusted. The
   wire format (§5) carries the settled `output` explicitly so the settle rule can
   change without a schema change.
+  On a quote-through corridor (§2.5) it already has: settled second-price.
+
+### 2.5 Quote-through corridors  `[IMPLEMENTED]` (venue, behind config)
+
+On a corridor the venue cannot fill there is no reserve bid and no backstop,
+so the taker's price has to be a solver commitment (Riddler ADR-0015
+decisions 4-5). The venue lists such corridors in configuration, never per
+request, and announces every quote on them whatever its quote-time announce
+setting says.
+
+- **Synchronous.** The venue holds the taker's `/quote` open for the sealed
+  window and quotes the outcome. No admissible bid, no quote: the taker is
+  told to retry (a new quote opens a new auction).
+- **Second-price, private reserve.** The winner is the best standing bid.
+  The reserve is `minOutput` itself, so a bid AT `minOutput` is eligible.
+  The taker is quoted, and the winner MUST deliver, `max(next-best standing
+  bid, minOutput)`: the award's `output` (§5.2) carries that settled amount,
+  at or below the winner's own bid, and the escrow FillAuth authorizes exactly
+  it. Bid your true price.
+- **Firm.** The announcement carries `quoteThrough: true` and
+  `minValidUntilMs` (absolute unix ms): the quote's expiry (60 s after the
+  quote) plus the origin's finality budget, the §5.1 sizing rule computed by
+  the venue. A bid whose `validUntilMs` is below `minValidUntilMs` is admitted
+  and never selected. A selected bid is held to its price for the quote's
+  whole life.
+- **Not re-auctioned.** The award goes to the bidder whose price was quoted,
+  recorded on the escrow order before the quote is answered, and is delivered
+  (§5.2) when the taker's lock is final. A bid past its `validUntilMs` by then
+  is never awarded (the escrow node refuses the winner's FillAuth).
+- **Escrow only.** A quote-through quote is always escrowed (§7); there is no
+  un-escrowed path for a third-party fill.
 
 ### 2.2 Size privacy  `[IMPLEMENTED]`; public-only withdrawal `[PROPOSED]`
 
@@ -619,6 +659,8 @@ interface IntentAnnouncement {
   opensAt: number;          // server clock, ms
   closesAt: number;         // sealed-window close, ms
   exclusiveWindowMs: number;// winner's exclusive fill budget after award
+  quoteThrough?: true;      // quote-through corridor (§2.5); absent otherwise
+  minValidUntilMs?: number; // present iff quoteThrough: the least validUntilMs a bid may carry and be selected
 }
 ```
 
