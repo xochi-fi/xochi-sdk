@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Typed wire shapes and a zod decoder for Riddler's shielded terms preview (`POST /xochi/shielded/preview`, Riddler#1296): `ShieldedPreviewResponseSchema`, `ShieldedPreviewSchema`, `ShieldedFeeBreakdownSchema`, `ShieldedNetworkIdentitySchema`, `ShieldedCorridorSchema`, the `ShieldedPreviewRequestWire` / `ShieldedPreviewResponseWire` types and `decodeShieldedPreview(body)`, which also refuses a fee breakdown whose totals do not add up. Shapes only, with no transport method: the preview needs a `quote`-scoped Riddler credential, and the Xochi Worker proxy route that would expose it is a follow-up owned by xochi#635. A test holds the schemas' members to the vendored `wire/openapi.json`.
+
 ## [0.1.1] - 2026-10-26
 
 ### Added

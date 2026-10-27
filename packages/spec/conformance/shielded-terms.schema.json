@@ -1,0 +1,1492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xochi.fi/spec/conformance/shielded-terms.schema.json",
+  "title": "Shielded settlement v1 design-A terms, preview and manifest vectors (PROPOSED)",
+  "description": "ShieldedTermsV1 (§7 SignedTerms + rail + feePayer, D7 amendment 2026-10-27), the non-signable ShieldedPreviewV1 and the CorridorManifestV1 hashStruct (manifestDigest), with single-member refusals. Generated with ethers primitives, independently of @xochi/signer and Riddler. uint values are decimal strings; bytes/addresses lowercase hex. All digests are distinct.",
+  "type": "object",
+  "required": [
+    "version",
+    "status",
+    "generator",
+    "source",
+    "constants",
+    "domain",
+    "types",
+    "signerIsTestKey",
+    "manifest",
+    "preview",
+    "terms",
+    "proposed"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "status": {
+      "const": "PROPOSED"
+    },
+    "generator": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "constants": {
+      "type": "object",
+      "required": [
+        "aztecFieldModulus",
+        "amountMax",
+        "domainVersion",
+        "termsDomainName",
+        "previewDomainName",
+        "termsProtocolVersion",
+        "previewProtocolVersion",
+        "settlementType",
+        "privacyLevel",
+        "disclosureProfileA",
+        "rails",
+        "rounding",
+        "executionMembers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aztecFieldModulus": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "amountMax": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "domainVersion": {
+          "const": "1"
+        },
+        "termsDomainName": {
+          "const": "Xochi Shielded Terms"
+        },
+        "previewDomainName": {
+          "const": "Xochi Shielded Preview"
+        },
+        "termsProtocolVersion": {
+          "const": "xochi.shielded.terms.v1"
+        },
+        "previewProtocolVersion": {
+          "const": "xochi.shielded.preview.v1"
+        },
+        "settlementType": {
+          "const": "shielded"
+        },
+        "privacyLevel": {
+          "const": "private"
+        },
+        "disclosureProfileA": {
+          "const": "recipient-private-public-amount-v1"
+        },
+        "rails": {
+          "type": "array",
+          "items": {
+            "const": "a_tracer"
+          }
+        },
+        "rounding": {
+          "const": "ceil-source-units"
+        },
+        "executionMembers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "required": [
+        "typeString",
+        "typehash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "typeString": {
+          "type": "string"
+        },
+        "typehash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        }
+      }
+    },
+    "types": {
+      "type": "object",
+      "required": [
+        "terms",
+        "preview",
+        "manifest",
+        "destination",
+        "source",
+        "corridor",
+        "feeBreakdown"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "terms": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "preview": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "manifest": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "destination": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "corridor": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        },
+        "feeBreakdown": {
+          "type": "object",
+          "required": [
+            "encodeType",
+            "typehash"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encodeType": {
+              "type": "string"
+            },
+            "typehash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "signerIsTestKey": {
+      "const": true
+    },
+    "manifest": {
+      "type": "object",
+      "required": [
+        "vectors",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "message",
+              "manifestDigest"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "message": {
+                "type": "object",
+                "required": [
+                  "corridorId",
+                  "revision",
+                  "environment",
+                  "rail",
+                  "sourceChainId",
+                  "sourceGenesisHash",
+                  "sourceToken",
+                  "sourceDecimals",
+                  "collector",
+                  "network",
+                  "aztecSdkVersion",
+                  "aztecToken",
+                  "destinationDecimals",
+                  "aztecTokenClassId",
+                  "aztecTokenArtifactDigest",
+                  "issuerProvenance",
+                  "redemptionRules",
+                  "sourceUnits",
+                  "destinationUnits",
+                  "rounding",
+                  "solverAccount",
+                  "solverClassId",
+                  "solverConstructorDigest",
+                  "sourceFinality",
+                  "destinationFinality",
+                  "feePayer"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "corridorId": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "environment": {
+                    "type": "string"
+                  },
+                  "rail": {
+                    "type": "string"
+                  },
+                  "sourceChainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "sourceGenesisHash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "sourceToken": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "sourceDecimals": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "collector": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "network": {
+                    "type": "object",
+                    "required": [
+                      "aztecChainId",
+                      "protocolVersion",
+                      "rollupAddress",
+                      "l1ChainId",
+                      "genesisOrNetworkDigest"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "aztecChainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "protocolVersion": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "rollupAddress": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "l1ChainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "genesisOrNetworkDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  "aztecSdkVersion": {
+                    "type": "string"
+                  },
+                  "aztecToken": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "destinationDecimals": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "aztecTokenClassId": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "aztecTokenArtifactDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "issuerProvenance": {
+                    "type": "string"
+                  },
+                  "redemptionRules": {
+                    "type": "string"
+                  },
+                  "sourceUnits": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "destinationUnits": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "rounding": {
+                    "type": "string"
+                  },
+                  "solverAccount": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "solverClassId": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "solverConstructorDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "sourceFinality": {
+                    "type": "string"
+                  },
+                  "destinationFinality": {
+                    "type": "string"
+                  },
+                  "feePayer": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "manifestDigest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "refusals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "message",
+              "error"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "message": {
+                "type": "object"
+              },
+              "error": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "field"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "terms_version_unsupported",
+                      "settlement_type_mismatch",
+                      "privacy_level_unsupported",
+                      "disclosure_profile_mismatch",
+                      "rail_unknown",
+                      "string_empty",
+                      "environment_empty",
+                      "deadline_order",
+                      "fee_breakdown_inconsistent",
+                      "rounding_unknown",
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "not_evm_address",
+                      "evm_address_zero",
+                      "uint_out_of_range",
+                      "chain_id_zero"
+                    ]
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "required": [
+        "vectors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "inputs",
+              "recipientBinding",
+              "message",
+              "domain",
+              "domainSeparator",
+              "structHash",
+              "digest"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object",
+                "required": [
+                  "manifest",
+                  "policy",
+                  "caller"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "required": [
+                      "corridorId",
+                      "revision",
+                      "environment",
+                      "rail",
+                      "sourceChainId",
+                      "sourceGenesisHash",
+                      "sourceToken",
+                      "sourceDecimals",
+                      "collector",
+                      "network",
+                      "aztecSdkVersion",
+                      "aztecToken",
+                      "destinationDecimals",
+                      "aztecTokenClassId",
+                      "aztecTokenArtifactDigest",
+                      "issuerProvenance",
+                      "redemptionRules",
+                      "sourceUnits",
+                      "destinationUnits",
+                      "rounding",
+                      "solverAccount",
+                      "solverClassId",
+                      "solverConstructorDigest",
+                      "sourceFinality",
+                      "destinationFinality",
+                      "feePayer"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "corridorId": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "environment": {
+                        "type": "string"
+                      },
+                      "rail": {
+                        "type": "string"
+                      },
+                      "sourceChainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "sourceGenesisHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "sourceToken": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "sourceDecimals": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "collector": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "network": {
+                        "type": "object",
+                        "required": [
+                          "aztecChainId",
+                          "protocolVersion",
+                          "rollupAddress",
+                          "l1ChainId",
+                          "genesisOrNetworkDigest"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "aztecChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "protocolVersion": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "rollupAddress": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          },
+                          "l1ChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "genesisOrNetworkDigest": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "aztecSdkVersion": {
+                        "type": "string"
+                      },
+                      "aztecToken": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "destinationDecimals": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "aztecTokenClassId": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "aztecTokenArtifactDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "issuerProvenance": {
+                        "type": "string"
+                      },
+                      "redemptionRules": {
+                        "type": "string"
+                      },
+                      "sourceUnits": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "destinationUnits": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "rounding": {
+                        "type": "string"
+                      },
+                      "solverAccount": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "solverClassId": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "solverConstructorDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "sourceFinality": {
+                        "type": "string"
+                      },
+                      "destinationFinality": {
+                        "type": "string"
+                      },
+                      "feePayer": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  "policy": {
+                    "type": "object"
+                  },
+                  "caller": {
+                    "type": "object"
+                  }
+                }
+              },
+              "recipientBinding": {
+                "type": "object",
+                "required": [
+                  "message",
+                  "digest"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "type": "object"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "message": {
+                "type": "object",
+                "required": [
+                  "protocolVersion",
+                  "environment",
+                  "source",
+                  "destination",
+                  "feeBreakdown",
+                  "refundAddress",
+                  "refundAmount",
+                  "collectBefore",
+                  "settlementServiceDeadline",
+                  "recipientBindingDigest",
+                  "policyRevision"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "protocolVersion": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "object",
+                    "required": [
+                      "chainId",
+                      "token",
+                      "wallet",
+                      "collector",
+                      "amount"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "chainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "token": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "wallet": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "collector": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      }
+                    }
+                  },
+                  "destination": {
+                    "type": "object",
+                    "required": [
+                      "settlementType",
+                      "privacyLevel",
+                      "disclosureProfile",
+                      "rail",
+                      "network",
+                      "corridor",
+                      "assetId",
+                      "aztecToken",
+                      "recipientBindingId",
+                      "descriptorDigest",
+                      "aztecRecipient",
+                      "amount",
+                      "feePayer"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "settlementType": {
+                        "type": "string"
+                      },
+                      "privacyLevel": {
+                        "type": "string"
+                      },
+                      "disclosureProfile": {
+                        "type": "string"
+                      },
+                      "rail": {
+                        "type": "string"
+                      },
+                      "network": {
+                        "type": "object",
+                        "required": [
+                          "aztecChainId",
+                          "protocolVersion",
+                          "rollupAddress",
+                          "l1ChainId",
+                          "genesisOrNetworkDigest"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "aztecChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "protocolVersion": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "rollupAddress": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          },
+                          "l1ChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "genesisOrNetworkDigest": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "corridor": {
+                        "type": "object",
+                        "required": [
+                          "corridorId",
+                          "corridorRevision",
+                          "manifestDigest"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "corridorId": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          },
+                          "corridorRevision": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "manifestDigest": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "assetId": {
+                        "type": "string"
+                      },
+                      "aztecToken": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "recipientBindingId": {
+                        "type": "string"
+                      },
+                      "descriptorDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "aztecRecipient": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "feePayer": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  "feeBreakdown": {
+                    "type": "object",
+                    "required": [
+                      "gasFloor",
+                      "solverFeeBps",
+                      "solverFee",
+                      "priceImpactBps",
+                      "priceImpact",
+                      "venueFeeBps",
+                      "venueFee",
+                      "routingFeeBps",
+                      "routingFee",
+                      "totalBps",
+                      "totalFee"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "gasFloor": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "solverFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "solverFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "priceImpactBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "priceImpact": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "venueFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "venueFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "routingFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "routingFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "totalBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "totalFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      }
+                    }
+                  },
+                  "refundAddress": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "refundAmount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "collectBefore": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "settlementServiceDeadline": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "recipientBindingDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "policyRevision": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                }
+              },
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "salt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "structHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "terms": {
+      "type": "object",
+      "required": [
+        "vectors",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "previewVector",
+              "message",
+              "domain",
+              "domainSeparator",
+              "sourceHash",
+              "corridorHash",
+              "destinationHash",
+              "feeBreakdownHash",
+              "structHash",
+              "digest",
+              "signer",
+              "signature"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "previewVector": {
+                "type": "string"
+              },
+              "message": {
+                "type": "object",
+                "required": [
+                  "protocolVersion",
+                  "environment",
+                  "intentId",
+                  "quoteId",
+                  "operationId",
+                  "source",
+                  "destination",
+                  "feeBreakdown",
+                  "sourceAuthorizationDigest",
+                  "refundAddress",
+                  "refundAmount",
+                  "collectBefore",
+                  "settlementServiceDeadline",
+                  "recipientBindingDigest",
+                  "policyRevision",
+                  "reservationId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "protocolVersion": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "string"
+                  },
+                  "intentId": {
+                    "type": "string"
+                  },
+                  "quoteId": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "object",
+                    "required": [
+                      "chainId",
+                      "token",
+                      "wallet",
+                      "collector",
+                      "amount"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "chainId": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "token": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "wallet": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "collector": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      }
+                    }
+                  },
+                  "destination": {
+                    "type": "object",
+                    "required": [
+                      "settlementType",
+                      "privacyLevel",
+                      "disclosureProfile",
+                      "rail",
+                      "network",
+                      "corridor",
+                      "assetId",
+                      "aztecToken",
+                      "recipientBindingId",
+                      "descriptorDigest",
+                      "aztecRecipient",
+                      "amount",
+                      "feePayer"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "settlementType": {
+                        "type": "string"
+                      },
+                      "privacyLevel": {
+                        "type": "string"
+                      },
+                      "disclosureProfile": {
+                        "type": "string"
+                      },
+                      "rail": {
+                        "type": "string"
+                      },
+                      "network": {
+                        "type": "object",
+                        "required": [
+                          "aztecChainId",
+                          "protocolVersion",
+                          "rollupAddress",
+                          "l1ChainId",
+                          "genesisOrNetworkDigest"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "aztecChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "protocolVersion": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "rollupAddress": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          },
+                          "l1ChainId": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "genesisOrNetworkDigest": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "corridor": {
+                        "type": "object",
+                        "required": [
+                          "corridorId",
+                          "corridorRevision",
+                          "manifestDigest"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "corridorId": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          },
+                          "corridorRevision": {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          },
+                          "manifestDigest": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "assetId": {
+                        "type": "string"
+                      },
+                      "aztecToken": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "recipientBindingId": {
+                        "type": "string"
+                      },
+                      "descriptorDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "aztecRecipient": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "amount": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "feePayer": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  "feeBreakdown": {
+                    "type": "object",
+                    "required": [
+                      "gasFloor",
+                      "solverFeeBps",
+                      "solverFee",
+                      "priceImpactBps",
+                      "priceImpact",
+                      "venueFeeBps",
+                      "venueFee",
+                      "routingFeeBps",
+                      "routingFee",
+                      "totalBps",
+                      "totalFee"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "gasFloor": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "solverFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "solverFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "priceImpactBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "priceImpact": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "venueFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "venueFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "routingFeeBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "routingFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "totalBps": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "totalFee": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      }
+                    }
+                  },
+                  "sourceAuthorizationDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "refundAddress": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "refundAmount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "collectBefore": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "settlementServiceDeadline": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "recipientBindingDigest": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "policyRevision": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "reservationId": {
+                    "type": "string"
+                  }
+                }
+              },
+              "domain": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "version",
+                  "chainId",
+                  "salt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "chainId": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  },
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "domainSeparator": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "sourceHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "corridorHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "destinationHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "feeBreakdownHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "structHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "signer": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{40}$"
+              },
+              "signature": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{130}$"
+              }
+            }
+          }
+        },
+        "refusals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "message",
+              "error"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "message": {
+                "type": "object"
+              },
+              "error": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "field"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "terms_version_unsupported",
+                      "settlement_type_mismatch",
+                      "privacy_level_unsupported",
+                      "disclosure_profile_mismatch",
+                      "rail_unknown",
+                      "string_empty",
+                      "environment_empty",
+                      "deadline_order",
+                      "fee_breakdown_inconsistent",
+                      "rounding_unknown",
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "not_evm_address",
+                      "evm_address_zero",
+                      "uint_out_of_range",
+                      "chain_id_zero"
+                    ]
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proposed": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "item",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
