@@ -261,6 +261,7 @@ export type MsgBody =
   | { type: "RefreshRequested" }
   | { type: "SignRequested" }
   | { type: "PullSignRequested" }
+  | { type: "CancelSignRequested" }
   | { type: "ResetRequested" }
   | {
       type: "ResumeRequested";
@@ -516,6 +517,10 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
 
     case "SignRequested":
       return beginSign(m, fx, msg.now);
+
+    case "CancelSignRequested":
+      if (m.intent.status !== "signing" || !m.sign) return m;
+      return transition(abandonSign(m, fx), fx, "quoted", { error: "Signature cancelled" });
 
     case "PullSignRequested":
       return beginPullSign(m, fx, msg.now);
@@ -1198,8 +1203,9 @@ function onTimer(m: Model, fx: Effect[], timer: TimerName, now: number): Model {
       return m.poll && !m.poll.stopped ? pollTick(m, fx, true) : m;
 
     case "signPrompt":
-      // A deep-link prompt that never re-opened the wallet.
-      return m.sign?.stage === "pull"
+      // A wallet prompt that never resolved. The flow still owns the prompt;
+      // `signFlowFailed` makes any reply arriving after this timer inert.
+      return m.sign
         ? signFlowFailed(m, fx, {
             rejected: false,
             value: "wallet_prompt_timeout",
@@ -1310,6 +1316,10 @@ function beginSign(m: Model, fx: Effect[], now: number): Model {
       chainId: next.ctx.wallet.chainId,
     },
   });
+  // A wallet request can be dismissed without rejecting (mobile deep links in
+  // particular). Bound every prompt, including signature 1, so the ceremony
+  // always returns to an actionable surface.
+  setTimer(fx, "signPrompt", SIGN_PROMPT_TIMEOUT_MS, false);
   return { ...next, sign: { id, origin: "sign", stage: "intent", intentSignature: null } };
 }
 
@@ -1424,7 +1434,7 @@ function onSigned(
   // A status update can carry the intent past `signing` while a prompt is
   // open; its signature then belongs to no ceremony.
   if (m.intent.status !== "signing") return abandonSign(m, fx);
-  if (purpose === "pull") clearTimer(fx, "signPrompt");
+  clearTimer(fx, "signPrompt");
   if (!result.ok) return signFlowFailed(m, fx, result.error);
 
   if (purpose === "pull") {
@@ -1768,7 +1778,7 @@ function endSignFlow(m: Model, flow: SignFlow): Model {
  * affordance, no prompt timer. Nothing signed so far can execute after this.
  */
 function abandonSign(m: Model, fx: Effect[]): Model {
-  if (m.sign?.stage === "pull") clearTimer(fx, "signPrompt");
+  if (m.sign) clearTimer(fx, "signPrompt");
   if (awaitingResend(m)) clearTimer(fx, "execute");
   return { ...m, sign: null, pendingIntentSig: null, awaitingPull: false, isSigningPull: false };
 }
@@ -1782,10 +1792,15 @@ function abandonSign(m: Model, fx: Effect[]): Model {
 function signFlowFailed(m: Model, fx: Effect[], report: ErrorReport): Model {
   const flow = m.sign;
   if (!flow) return m;
-  if (flow.stage === "pull") clearTimer(fx, "signPrompt");
+  clearTimer(fx, "signPrompt");
   const next = endSignFlow(m, flow);
   if (flow.origin === "sign") {
     if (report.rejected) return transition(next, fx, "quoted", { error: "Signature rejected" });
+    if (report.value === "wallet_prompt_timeout") {
+      return transition(next, fx, "quoted", {
+        error: "Couldn't reach the wallet. Press Confirm to try again.",
+      });
+    }
     log(fx, "error", `${LOG} Sign error:`, report.detail);
     return transition(next, fx, "failed", { error: report.value ?? "Signing failed" });
   }
