@@ -173,6 +173,29 @@ describe("encoding rules", () => {
       fixture.signer,
     );
   });
+
+  it("encodes a 0x-prefixed Canton party byte-for-byte (Riddler #1254 encoder vectors)", () => {
+    // A Canton party's hint is free, case-sensitive text and may open with 0x.
+    // Only a value that is entirely 0x-hex folds, so these two vectors -- one deal
+    // paying 0xAlice::... and 0xalice::... -- are two messages, and neither
+    // attestation verifies for the other party's request. No served route carries
+    // such a party today; these pin the encoder.
+    const upper = fixture.vectors.find((v) => v.name === "canton_party_recipient_case_preserved")!;
+    const lower = fixture.vectors.find(
+      (v) => v.name === "canton_party_hint_case_is_a_different_party",
+    )!;
+    expect(upper.quote.recipient.startsWith("0xAlice::1220")).toBe(true);
+    expect(buildDepositAttestationMessage(upper.quote).split("\n")[14]).toBe(upper.quote.recipient);
+    expect(buildDepositAttestationMessage(upper.quote)).not.toBe(
+      buildDepositAttestationMessage(lower.quote),
+    );
+    expect(recoverDepositAttestationSigner(lower.quote, upper.deposit_attestation)).not.toBe(
+      fixture.signer,
+    );
+    expect(recoverDepositAttestationSigner(upper.quote, lower.deposit_attestation)).not.toBe(
+      fixture.signer,
+    );
+  });
 });
 
 describe("the v2 fields each bind independently (Riddler #846)", () => {

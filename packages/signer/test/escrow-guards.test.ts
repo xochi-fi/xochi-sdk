@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assertDepositPartiesCaseBindable,
+  buildDepositAttestationMessage,
   assertDepositQuoteMatchesRequest,
   assertNoEscrowEnvelope,
   assertPullMatchesIntent,
@@ -92,6 +93,47 @@ describe("Canton-aware address comparison", () => {
     expect(() =>
       assertDepositPartiesCaseBindable({ recipient: ESCROW, wallet: OTHER, refund_address: null }),
     ).not.toThrow();
+  });
+
+  it("encodes a 0x-prefixed Canton party case-exactly in the attestation digest", () => {
+    const quote = (recipient: string) =>
+      ({
+        intent_id: "xi_canton01",
+        quote_id: "xq_canton01",
+        wallet: TOKEN,
+        from_chain_id: 728126428,
+        from_token: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        from_amount: "1000000",
+        deposit_address: "TJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX",
+        deposit_deadline: 1750000000,
+        refund_address: null,
+        to_chain_id: 253340876,
+        to_token: "DSO::1220" + "cd".repeat(32),
+        to_amount: "1",
+        min_to_amount: "1",
+        recipient,
+        stealth_spending_pub_key: null,
+        stealth_viewing_pub_key: null,
+        settlement_preference: "public",
+      }) as DepositAttestationFields;
+
+    const upper = buildDepositAttestationMessage(quote(PARTY)).split("\n");
+    const lower = buildDepositAttestationMessage(quote(SWAPPED)).split("\n");
+    expect(upper[14]).toBe(PARTY);
+    expect(lower[14]).toBe(SWAPPED);
+    // The 0x-hex wallet beside it still folds.
+    expect(upper[3]).toBe(TOKEN.toLowerCase());
+
+    // Only to_token and recipient take the hex-only rule. A non-hex 0x stealth key
+    // (unvalidated on a public route, so a served shape) keeps the plain fold, and so
+    // its bytes are what the server signed before Riddler#1254.
+    const keyed = buildDepositAttestationMessage({
+      ...quote(OTHER),
+      stealth_spending_pub_key: PARTY,
+      stealth_viewing_pub_key: "0xDead Beef",
+    }).split("\n");
+    expect(keyed[15]).toBe(PARTY.toLowerCase());
+    expect(keyed[16]).toBe("0xdead beef");
   });
 });
 

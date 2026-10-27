@@ -4,6 +4,10 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`buildDepositAttestationMessage` encodes `to_token` and `recipient` case-exactly unless they are entirely `0x` + hex** (axol-io/Riddler#1254, in lockstep with the server). Those are the fields that can hold a Canton party, so a hint that starts `0x` (`0xAlice::1220...`) is encoded verbatim there. Every other field keeps the plain `0x` fold, because the stealth keys are unvalidated on a public route and can carry a non-hex `0x` value. Every served preimage is unchanged, so `DEPOSIT_ATTESTATION_VERSION` stays `xochi-deposit-attestation:v3`; `assertDepositPartiesCaseBindable` stays, since the unchanged version cannot tell a case-binding server from one that folds.
+
 ## [0.5.1] - 2026-10-25
 
 ### Added

@@ -159,7 +159,7 @@
       "deposit_attestation": "0xa9ccc37aadc7d124dec52718bd1dfb0ec4deefb94b76c186199ae12e323a24355a13f771b487fd81b196dcd476bc86e4d5eadb899de0e7e3afa528632693bad01c",
       "message": "xochi-deposit-attestation:v3\nxi_totron1\nxq_totron1\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n8453\n0x833589fcd6edb6e08f4c7c32d4f71b54bda02913\n1000000\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n1750000000\n\n728126428\nTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t\n997000\n992015\nTJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX\n\n\npublic",
       "name": "base58_recipient_case_preserved",
-      "note": "The v2 field #846 exists for, on a route whose DESTINATION is Tron: recipient and to_token are base58 and case-sensitive. normalize_address/1 leaves them verbatim because it only lowercases a 0x prefix -- folding one yields a different, still-plausible payout address, which is the #826 failure mode moved onto a signing path.",
+      "note": "The v2 field #846 exists for, on a route whose DESTINATION is Tron: recipient and to_token are base58 and case-sensitive. normalize_address/1 leaves them verbatim because it only lowercases a value that is entirely 0x-hex -- folding one yields a different, still-plausible payout address, which is the #826 failure mode moved onto a signing path.",
       "quote": {
         "deposit_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         "deposit_deadline": 1750000000,
@@ -252,6 +252,81 @@
         "to_amount": "997000",
         "to_chain_id": 1,
         "to_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      }
+    },
+    {
+      "deposit_attestation": "0x628e4f471c138ad91ceafcc9e8eae09544e3abb716a07602e46ac1a4e0eedf260d483d164405bfe5becd82fc4337fce2229569774a773006b9f495cc4d17fc661b",
+      "message": "xochi-deposit-attestation:v3\nxi_pubkey01\nxq_pubkey01\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n728126428\nTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t\n1000000\nTJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX\n1750000000\n\n8453\n0x833589fcd6edb6e08f4c7c32d4f71b54bda02913\n997000\n992015\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n0xalice::1220ab\n0xbob::1220cd\npublic",
+      "name": "public_stealth_key_non_hex_lowercased",
+      "note": "A SERVED shape: the stealth keys are validated only on a stealth route, so a public deposit request can carry a non-hex 0x value in them, and the server signs it. Every field except to_token and recipient keeps the plain rule -- anything opening with 0x is lowercased -- so these bytes are the same as before #1254. A verifier that applies the hex-only rule here keeps the value verbatim and fails closed.",
+      "quote": {
+        "deposit_address": "TJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX",
+        "deposit_deadline": 1750000000,
+        "from_amount": "1000000",
+        "from_chain_id": 728126428,
+        "from_token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        "intent_id": "xi_pubkey01",
+        "min_to_amount": "992015",
+        "quote_id": "xq_pubkey01",
+        "recipient": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        "refund_address": null,
+        "settlement_preference": "public",
+        "stealth_spending_pub_key": "0xAlice::1220AB",
+        "stealth_viewing_pub_key": "0xBob::1220CD",
+        "to_amount": "997000",
+        "to_chain_id": 8453,
+        "to_token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      }
+    },
+    {
+      "deposit_attestation": "0xafcf9e63e090a8c760cc3a3cdc1be342e272850479688bc64d7c76f582c81ee06dcc5f401ea5efcee7a2210dda34a492162a4a017d90750c2c7a9c4984c0c4641b",
+      "message": "xochi-deposit-attestation:v3\nxi_canton01\nxq_canton01\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n728126428\nTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t\n1000000\nTJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX\n1750000000\n\n253340876\nDSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc\n4985000000\n4960075000\n0xAlice::12203e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e\n\n\npublic",
+      "name": "canton_party_recipient_case_preserved",
+      "note": "ENCODER vector for the #1254 case rule (no served route carries a Canton party today). A Canton party is hint::1220<64 hex>, and the hint is free, case-sensitive text that may itself open with 0x. In recipient and to_token only a value that is ENTIRELY 0x-hex is lowercased, so this recipient is signed byte-for-byte; folding it to 0xalice::... names a different party. The 0x-hex wallet in the same message is still lowercased.",
+      "quote": {
+        "deposit_address": "TJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX",
+        "deposit_deadline": 1750000000,
+        "from_amount": "1000000",
+        "from_chain_id": 728126428,
+        "from_token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        "intent_id": "xi_canton01",
+        "min_to_amount": "4960075000",
+        "quote_id": "xq_canton01",
+        "recipient": "0xAlice::12203e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e",
+        "refund_address": null,
+        "settlement_preference": "public",
+        "stealth_spending_pub_key": null,
+        "stealth_viewing_pub_key": null,
+        "to_amount": "4985000000",
+        "to_chain_id": 253340876,
+        "to_token": "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
+        "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      }
+    },
+    {
+      "deposit_attestation": "0x30e34d3f10c42ca3cbd7c08049113a27d4b5bbba582e7a378644158f7f34bedb5f379cc49c8a1e14cbd37a4ddd38d1ca3fe544890d7b3a8720a824778eba3ef91b",
+      "message": "xochi-deposit-attestation:v3\nxi_canton01\nxq_canton01\n0x70997970c51812dc3a010c7d01b50e0d17dc79c8\n728126428\nTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t\n1000000\nTJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX\n1750000000\n\n253340876\nDSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc\n4985000000\n4960075000\n0xalice::12203e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e\n\n\npublic",
+      "name": "canton_party_hint_case_is_a_different_party",
+      "note": "ENCODER vector for the #1254 case rule, paired with canton_party_recipient_case_preserved: the same deal paying 0xalice::... instead of 0xAlice::.... Those are two parties, so the messages and signatures differ. A verifier that case-folds every 0x-prefixed recipient produces ONE message for both and verifies either attestation against either request.",
+      "quote": {
+        "deposit_address": "TJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX",
+        "deposit_deadline": 1750000000,
+        "from_amount": "1000000",
+        "from_chain_id": 728126428,
+        "from_token": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        "intent_id": "xi_canton01",
+        "min_to_amount": "4960075000",
+        "quote_id": "xq_canton01",
+        "recipient": "0xalice::12203e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e",
+        "refund_address": null,
+        "settlement_preference": "public",
+        "stealth_spending_pub_key": null,
+        "stealth_viewing_pub_key": null,
+        "to_amount": "4985000000",
+        "to_chain_id": 253340876,
+        "to_token": "DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc",
         "wallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
       }
     }
