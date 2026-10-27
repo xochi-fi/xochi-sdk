@@ -8,7 +8,7 @@ import { buildRiskScoreInputs } from "../src/inputs/risk-score.js";
 import { buildComplianceInputs } from "../src/inputs/compliance.js";
 import { buildMembershipInputs } from "../src/inputs/membership.js";
 import { buildNonMembershipInputs } from "../src/inputs/non-membership.js";
-import { buildPatternInputs } from "../src/inputs/pattern.js";
+import { buildPatternInputs, PatternTimestampPredatesTradeError } from "../src/inputs/pattern.js";
 import { buildAttestationInputs } from "../src/inputs/attestation.js";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
@@ -617,6 +617,73 @@ describe("buildPatternInputs", () => {
     expect(() => buildPatternInputs({ ...base, timestamps: [1700000000 - 86401] })).toThrow(
       "outside the 86400s window",
     );
+  });
+
+  describe("notBefore (the trade's createdAt for finalizeTrade)", () => {
+    const base = {
+      amounts: [9000],
+      numTransactions: 1,
+      analysisType: 1 as const,
+      reportingThreshold: 10000,
+      timeWindow: 86400,
+      txSetHash: "0x",
+      submitter: SUBMITTER,
+      settlementRoot: ZERO_SETTLEMENT_ROOT,
+    };
+
+    it("refuses an explicit timestamp before notBefore, before proving", () => {
+      const opts = {
+        ...base,
+        timestamps: [1700000000],
+        timestamp: "1700000000",
+        notBefore: 1700000001n,
+      };
+      let caught: unknown;
+      try {
+        buildPatternInputs(opts);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(PatternTimestampPredatesTradeError);
+      expect(caught).toMatchObject({ proofTimestamp: 1700000000n, notBefore: 1700000001n });
+      expect(
+        buildPatternInputs({ ...opts, timestamp: "1700000001", notBefore: "1700000001" }).timestamp,
+      ).toBe("1700000001");
+    });
+
+    it("raises the default stamp to notBefore when it is later", () => {
+      const ahead = Math.floor(Date.now() / 1000) + 600;
+      const result = buildPatternInputs({
+        ...base,
+        timestamps: [ahead - 60],
+        notBefore: BigInt(ahead),
+      });
+      expect(result.timestamp).toBe(String(ahead));
+    });
+
+    it("keeps the default stamp when notBefore is earlier", () => {
+      const before = Math.floor(Date.now() / 1000);
+      const ts = Number(
+        buildPatternInputs({
+          ...base,
+          timestamps: [before - 60],
+          notBefore: String(before - 3600),
+        }).timestamp,
+      );
+      expect(ts).toBeGreaterThanOrEqual(before);
+      expect(ts).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+    });
+
+    it.each(["", "soon", "1.5", 1000n, 1n << 40n])("rejects notBefore %s", (notBefore) => {
+      expect(() =>
+        buildPatternInputs({
+          ...base,
+          timestamps: [1700000000],
+          timestamp: "1700000000",
+          notBefore,
+        }),
+      ).toThrow("Timestamp must be an integer in");
+    });
   });
 
   it("rejects >16 amounts", () => {

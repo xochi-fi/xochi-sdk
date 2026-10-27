@@ -7,6 +7,27 @@ export const PATTERN_STRUCTURING = 1;
 export const PATTERN_VELOCITY = 2;
 export const PATTERN_ROUND_AMOUNT = 3;
 
+/**
+ * `buildPatternInputs` / `provePattern` refused before proving: the explicit
+ * `timestamp` is before `notBefore` (the trade's `createdAt`), so
+ * `SettlementRegistry.finalizeTrade` would revert `PatternProofPredatesTrade`
+ * after the Oracle had consumed the proof. Client-side; the contract's revert
+ * decodes to `PatternProofPredatesTradeError`.
+ */
+export class PatternTimestampPredatesTradeError extends Error {
+  constructor(
+    /** The explicit proof timestamp (unix seconds). */
+    readonly proofTimestamp: bigint,
+    /** The earliest allowed proof timestamp (unix seconds). */
+    readonly notBefore: bigint,
+  ) {
+    super(
+      `PATTERN proof timestamp ${String(proofTimestamp)} predates notBefore ${String(notBefore)}: finalizeTrade would revert PatternProofPredatesTrade. Date it at or after the trade's createdAt, or omit timestamp to stamp max(default, notBefore).`,
+    );
+    this.name = "PatternTimestampPredatesTradeError";
+  }
+}
+
 export interface PatternInput {
   amounts: number[];
   timestamps: number[];
@@ -51,6 +72,48 @@ export interface PatternInput {
    * throws for a transaction dated after a chain stamp that trails the clock.
    */
   timestamp?: string;
+  /**
+   * Earliest allowed proof timestamp (unix seconds). For
+   * `SettlementRegistry.finalizeTrade` pass the trade's `createdAt`, e.g.
+   * `(await registry.getSettlement(tradeId)).createdAt`. Without `timestamp`
+   * the stamp is `max(default stamp, notBefore)` (the local clock here, the
+   * chain stamp in a prover built with `client`); `createdAt` is a mined
+   * block's time, so it never exceeds the block that includes the submission.
+   * An explicit `timestamp` before it throws
+   * {@link PatternTimestampPredatesTradeError} before proving.
+   */
+  notBefore?: string | bigint;
+}
+
+/** Validated `notBefore` in unix seconds, or undefined when unset. */
+function parseNotBefore(notBefore: string | bigint | undefined): number | undefined {
+  if (notBefore === undefined) return undefined;
+  const value = Number(notBefore);
+  validateTimestamp(value);
+  return value;
+}
+
+/**
+ * The PATTERN stamp for `opts`: the explicit `timestamp` (validated, refused
+ * below `notBefore`), else `max(defaultStamp, notBefore)`.
+ */
+export function resolvePatternTimestamp(
+  opts: Pick<PatternInput, "timestamp" | "notBefore">,
+  defaultStamp: string,
+): string {
+  const notBefore = parseNotBefore(opts.notBefore);
+  if (opts.timestamp !== undefined) {
+    const timestamp = Number(opts.timestamp);
+    validateTimestamp(timestamp);
+    if (notBefore !== undefined && timestamp < notBefore) {
+      throw new PatternTimestampPredatesTradeError(BigInt(timestamp), BigInt(notBefore));
+    }
+    return opts.timestamp;
+  }
+  validateTimestamp(Number(defaultStamp));
+  return notBefore !== undefined && Number(defaultStamp) < notBefore
+    ? String(notBefore)
+    : defaultStamp;
 }
 
 export function buildPatternInputs(opts: PatternInput): Record<string, string | string[]> {
@@ -72,8 +135,7 @@ export function buildPatternInputs(opts: PatternInput): Record<string, string | 
 
   validateReportingThreshold(opts.reportingThreshold);
   validateSubmitter(opts.submitter);
-  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
-  validateTimestamp(Number(timestamp));
+  const timestamp = resolvePatternTimestamp(opts, String(Math.floor(Date.now() / 1000)));
 
   if (opts.timeWindow < PATTERN_TIME_WINDOW_MIN) {
     throw new Error(

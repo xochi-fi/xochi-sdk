@@ -56,9 +56,10 @@ Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constan
 
 The Oracle rejects a proof whose timestamp is after `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`). There is no tolerance for a future timestamp, so date proofs from the chain, not the local clock: a client whose clock runs ahead of the target chain (clock skew, a chain lagging real time, a test chain behind it), or a proof stamped in the second after the latest block, reverts until a later block lands.
 
-- `new ERC8262Prover(loader, { client })` dates every unsigned proof given no `timestamp` (`currentTimestamp` for attestation) with `chainProofTimestamp(client)`: the earlier of the local clock and the latest block's timestamp (one RPC read per proof).
-- `generateTierProof` / `generateHighestTierProof` take `{ client }` (same default) or an explicit `{ timestamp }`.
+- `new ERC8262Prover(loader, { client })` dates every unsigned proof given no `timestamp` (`currentTimestamp` for attestation) with `chainProofTimestamp(client)`: the earlier of the local clock and the latest block's timestamp (one RPC read per proof). Its chain stamps never go backwards (a high-water mark), so a load-balanced RPC whose `latest` steps back cannot date a later proof of a batch before an earlier one; an explicit `timestamp` neither reads nor moves the mark.
+- `generateTierProof` / `generateHighestTierProof` take `{ client }` (same default) or an explicit `{ timestamp }` (unix seconds as a string, like the builders').
 - Without a client, the builders and tier proofs fall back to the local clock and carry the risk above.
+- A chain more than `MAX_PROOF_AGE` ahead of the local clock (a warped dev or fork chain: `evm_increaseTime`, `vm.warp`) makes `chainProofTimestamp` throw `ChainAheadOfClockError`, since a stamp capped at the local clock would be stale on arrival: pass an explicit `timestamp` there.
 
 ```typescript
 import { chainProofTimestamp } from "@xochi/sdk";
@@ -68,7 +69,7 @@ const result = await prover.proveRiskScore({ ...input, timestamp });
 // submit within MAX_PROOF_AGE (1 hour) of `timestamp`
 ```
 
-For the signed types, read it before requesting the signature: the provider signs the same timestamp, so the prover never re-dates them. `submitCompliance`'s optional `proofTimestamp` pre-check and `OracleLite.verifyProof`'s simulation run against the pending block (the soonest a submission lands), not the latest, so neither refuses a proof the next block accepts.
+For the signed types, read it before requesting the signature: the provider signs the same timestamp, so the prover never re-dates them. A chain stamp is at or below the latest block's timestamp, which never exceeds that of the block that includes the submission, so the latest block is the safe place to check it: `submitCompliance`'s optional `proofTimestamp` pre-check and `OracleLite.verifyProof`'s simulation (`verifyBlockTag`, default `"latest"`) both run there, as viem's gas estimation does. A local-clock stamp ahead of the head is refused there; date proofs from the chain. `verifyBlockTag: "pending"` is opt-in and unsafe on OP-stack chains: on Base mainnet the `eth_call` context at `pending` runs 0–8 s (up to 4 blocks) behind `latest`, so chain-stamped proofs checked within a few seconds failed there 7/10–13/15 times against 0/15 at `latest` (see [OracleLite](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#oraclelite-no-viem)).
 
 ## Provider-signed proofs
 

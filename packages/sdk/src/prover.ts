@@ -23,7 +23,11 @@ import {
 } from "./inputs/compliance-multi-signed.js";
 import { buildMembershipInputs, type MembershipInput } from "./inputs/membership.js";
 import { buildNonMembershipInputs, type NonMembershipInput } from "./inputs/non-membership.js";
-import { buildPatternInputs, type PatternInput } from "./inputs/pattern.js";
+import {
+  buildPatternInputs,
+  resolvePatternTimestamp,
+  type PatternInput,
+} from "./inputs/pattern.js";
 import { buildAttestationInputs, type AttestationInput } from "./inputs/attestation.js";
 import { chainProofTimestamp } from "./recency.js";
 
@@ -35,9 +39,15 @@ export interface ProverOptions {
    * `proveAttestation` date a proof given no `timestamp` (`currentTimestamp`
    * for attestation) with `chainProofTimestamp(client)`, the earlier of the
    * local clock and the latest block's timestamp (one RPC read per proof).
-   * Without a client they keep the builders' local-clock default, which the
-   * Oracle rejects while it is ahead of the chain head. The signed provers
-   * take the timestamp the provider signed and never read the chain.
+   * Chain stamps never go backwards within one prover: each is
+   * `max(previous chain stamp, chainProofTimestamp(client))`, so a
+   * load-balanced RPC whose `latest` steps back cannot date a later proof of a
+   * batch before an earlier one (COMPLIANCE ratchets on-chain, and
+   * `proveBatch` proves in order). An explicit timestamp neither reads nor
+   * moves that mark. Without a client they keep the builders' local-clock
+   * default, which the Oracle rejects while it is ahead of the chain head.
+   * The signed provers take the timestamp the provider signed and never read
+   * the chain.
    */
   client?: Client;
 }
@@ -45,6 +55,7 @@ export interface ProverOptions {
 export class ERC8262Prover {
   private api: Barretenberg | null = null;
   private readonly client: Client | undefined;
+  private lastChainStamp = 0n;
 
   constructor(
     private loader: CircuitLoader,
@@ -56,7 +67,9 @@ export class ERC8262Prover {
   /** The given proof timestamp, else the chain's when a client is configured. */
   private async stamp(given: string | undefined): Promise<string | undefined> {
     if (given !== undefined || !this.client) return given;
-    return chainProofTimestamp(this.client);
+    const stamp = BigInt(await chainProofTimestamp(this.client));
+    if (stamp > this.lastChainStamp) this.lastChainStamp = stamp;
+    return String(this.lastChainStamp);
   }
 
   private async getApi(): Promise<Barretenberg> {
@@ -164,15 +177,23 @@ export class ERC8262Prover {
     return this.prove("non_membership", inputs);
   }
 
+  /**
+   * Generate a PATTERN proof. Without `timestamp`, a configured client dates
+   * it `max(chain stamp, notBefore)`; see {@link PatternInput.notBefore}.
+   */
   async provePattern(opts: PatternInput): Promise<ProofResult> {
-    const inputs = buildPatternInputs({ ...opts, timestamp: await this.stamp(opts.timestamp) });
+    const chainStamp = await this.stamp(opts.timestamp);
+    const timestamp =
+      opts.timestamp === undefined && chainStamp !== undefined
+        ? resolvePatternTimestamp(opts, chainStamp)
+        : opts.timestamp;
+    const inputs = buildPatternInputs({ ...opts, timestamp });
     return this.prove("pattern", inputs);
   }
 
   async proveAttestation(opts: AttestationInput): Promise<ProofResult> {
     const currentTimestamp =
-      opts.currentTimestamp ??
-      (this.client ? Number(await chainProofTimestamp(this.client)) : undefined);
+      opts.currentTimestamp ?? (this.client ? Number(await this.stamp(undefined)) : undefined);
     const inputs = buildAttestationInputs({ ...opts, currentTimestamp });
     return this.prove("attestation", inputs);
   }

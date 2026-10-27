@@ -16,6 +16,7 @@ import {
   verifyTierProof,
   type TierProof,
 } from "../src/tier-proofs.js";
+import { DEFAULT_MAX_PROOF_AGE } from "../src/recency.js";
 
 const loader = new BundledCircuitLoader();
 const SUBMITTER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
@@ -25,7 +26,7 @@ let trusted: TierProof; // score 25, exactly at the Trusted boundary
 let institutional: TierProof; // score 110, above the circuit's signal cap, explicit timestamp
 let provedFrom: number; // unix seconds before proving
 let provedTo: number; // unix seconds after proving
-const EXPLICIT_TIMESTAMP = 1_800_000_000;
+const EXPLICIT_TIMESTAMP = "1800000000";
 
 beforeAll(async () => {
   provedFrom = Math.floor(Date.now() / 1000);
@@ -69,15 +70,42 @@ describe("tier proof generation", () => {
   });
 
   it("binds an explicit timestamp option instead of the local clock", () => {
-    expect(institutional.timestamp).toBe(EXPLICIT_TIMESTAMP);
+    expect(institutional.timestamp).toBe(Number(EXPLICIT_TIMESTAMP));
     expect(BigInt(institutional.publicInputs[7])).toBe(BigInt(EXPLICIT_TIMESTAMP));
   });
 
-  it.each([Date.now(), 1.5, -1])("rejects timestamp %s before proving", async (timestamp) => {
-    await expect(generateTierProof(loader, 25, 25, SUBMITTER, { timestamp })).rejects.toThrow(
-      /Timestamp must be an integer in/,
+  it("expires at the Oracle's submission deadline, MAX_PROOF_AGE after its timestamp", () => {
+    expect(trusted.expiresAt).toBe((trusted.timestamp + DEFAULT_MAX_PROOF_AGE) * 1000);
+    expect(institutional.expiresAt).toBe(
+      (Number(EXPLICIT_TIMESTAMP) + DEFAULT_MAX_PROOF_AGE) * 1000,
     );
   });
+
+  it.each([String(Date.now()), "1.5", "-1", "", "soon"])(
+    "rejects timestamp %j before proving",
+    async (timestamp) => {
+      await expect(generateTierProof(loader, 25, 25, SUBMITTER, { timestamp })).rejects.toThrow(
+        /Timestamp must be an integer in/,
+      );
+    },
+  );
+
+  it.each([`0x${"11".repeat(32)}`, null, 42])(
+    "refuses a non-object options argument (%j, the 0.4.0 positional configHash) before proving",
+    async (options) => {
+      const message =
+        /since 0\.5\.0 the last argument is \{ configHash\?, timestamp\?, client\? \}/;
+      await expect(
+        generateTierProof(loader, 25, 25, SUBMITTER, options as never),
+      ).rejects.toBeInstanceOf(TypeError);
+      await expect(generateTierProof(loader, 25, 25, SUBMITTER, options as never)).rejects.toThrow(
+        message,
+      );
+      await expect(
+        generateHighestTierProof(loader, 60, SUBMITTER, options as never),
+      ).rejects.toThrow(message);
+    },
+  );
 
   it("has no proof for Standard", async () => {
     await expect(generateTierProof(loader, 10, 0, SUBMITTER)).rejects.toThrow(

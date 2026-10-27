@@ -37,9 +37,10 @@ export interface SubmitComplianceParams {
   providerSetHash: Hex;
   /**
    * Unix timestamp (seconds) of proof generation. When set, recency is checked
-   * before submission against the pending block's time (the soonest the
-   * submission can land), as the Oracle does against `block.timestamp` (one
-   * extra RPC read).
+   * before submission against the latest block's time, as the Oracle does
+   * against `block.timestamp` (one extra RPC read). The latest block, as viem's
+   * `eth_estimateGas` runs there: a chain-stamped proof is at or below it, so
+   * it passes; a local-clock stamp ahead of the head is refused.
    */
   proofTimestamp?: number;
   /** Max proof age in seconds (default: 3600). Only used when proofTimestamp is set. */
@@ -89,15 +90,14 @@ export class ERC8262Oracle {
 
     if (params.proofTimestamp !== undefined) {
       // Chain time, not the local clock: a client clock behind (or ahead of)
-      // the chain would otherwise refuse proofs the Oracle accepts. The pending
-      // block, not the latest: the transaction lands in a later block, so a
-      // proof stamped in the second after the latest block is not future-dated
-      // when mined.
-      const pending = await getBlock(this.publicClient, { blockTag: "pending" });
+      // the chain would otherwise refuse proofs the Oracle accepts. The latest
+      // block, as viem's gas estimation runs at latest: on OP-stack RPCs the
+      // pending context can lag latest, or be minutes stale.
+      const latest = await getBlock(this.publicClient, { blockTag: "latest" });
       assertProofRecent(
         params.proofTimestamp,
         params.maxProofAge ?? DEFAULT_MAX_PROOF_AGE,
-        Number(pending.timestamp),
+        Number(latest.timestamp),
       );
     }
 

@@ -15,8 +15,8 @@ import type { CircuitLoader } from "./types.js";
 import { encodeProof, encodePublicInputs } from "./encoding.js";
 import { DEFAULT_CONFIG_HASH, PROOF_TYPES, PUBLIC_INPUT_COUNTS } from "./constants.js";
 import { validateSubmitter, validateTimestamp } from "./inputs/validate.js";
-import { chainProofTimestamp } from "./recency.js";
-import { type TierThreshold, type TierName, getTierName, TIER_PROOF_EXPIRY_MS } from "./tiers.js";
+import { chainProofTimestamp, DEFAULT_MAX_PROOF_AGE } from "./recency.js";
+import { type TierThreshold, type TierName, getTierName } from "./tiers.js";
 
 export type { TierThreshold };
 
@@ -44,7 +44,9 @@ export interface TierProof {
   timestamp: number;
   /**
    * Prover-side bookkeeping only, not bound to the proof: `verifyTierProof`
-   * ignores them. Bound freshness with `timestamp` instead.
+   * ignores them. `createdAt` is when it was generated (ms); `expiresAt` is
+   * the Oracle's submission deadline in ms, `(timestamp + MAX_PROOF_AGE) * 1000`,
+   * after which it refuses the proof as `ProofTimestampStale`.
    */
   createdAt: number;
   expiresAt: number;
@@ -76,19 +78,20 @@ export interface TierProofOptions {
   /** Config hash the proof commits to (default `DEFAULT_CONFIG_HASH`). */
   configHash?: string;
   /**
-   * Proof timestamp (unix seconds), public input 7. Takes precedence over
-   * `client`. The Oracle rejects it when after `block.timestamp`
-   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
-   * (`ProofTimestampStale`).
+   * Proof timestamp (unix seconds, as a string like every builder's
+   * `timestamp` and `chainProofTimestamp()`'s result), public input 7,
+   * validated before proving. Takes precedence over `client`. The Oracle
+   * rejects it when after `block.timestamp` (`ProofTimestampInFuture`) or
+   * more than `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`).
    */
-  timestamp?: number;
+  timestamp?: string;
   /**
    * Any viem client on the Oracle's chain. Without `timestamp`, the proof is
    * dated `chainProofTimestamp(client)`: the earlier of the local clock and
    * the latest block's timestamp (one RPC read). With neither, it is dated by
-   * the local clock, which the Oracle (and `OracleLite.verifyProof` at
-   * `"latest"`) rejects while it is ahead of the chain head: a client clock
-   * running fast, or a proof stamped in the second after the latest block.
+   * the local clock, which the Oracle (and `OracleLite.verifyProof` at its
+   * default `"latest"`) rejects while it is ahead of the chain head: a client
+   * clock running fast, or a proof stamped in the second after the latest block.
    */
   client?: Client;
 }
@@ -275,6 +278,18 @@ export function createScoreCommitment(
 // Tier Proof Generation
 // ============================================================
 
+/**
+ * Throw unless `options` is a plain options object: 0.4.0 took `configHash`
+ * positionally, which an untyped caller would otherwise see silently ignored.
+ */
+function assertTierProofOptions(options: unknown): void {
+  if (typeof options !== "object" || options === null || Array.isArray(options)) {
+    throw new TypeError(
+      `Tier proof options must be an object, got ${options === null ? "null" : typeof options}; since 0.5.0 the last argument is { configHash?, timestamp?, client? } (was configHash: pass { configHash })`,
+    );
+  }
+}
+
 function assertScore(score: number): void {
   if (!Number.isFinite(score) || score < 0) {
     throw new Error(`Score must be a finite non-negative number, got ${String(score)}`);
@@ -298,6 +313,7 @@ export async function generateTierProof(
   submitter: Address,
   options: TierProofOptions = {},
 ): Promise<TierProof> {
+  assertTierProofOptions(options);
   assertScore(score);
   if (!isProvableThreshold(threshold)) {
     throw new Error(
@@ -314,14 +330,15 @@ export async function generateTierProof(
     throw new Error(`Score ${String(score)} does not meet threshold ${String(threshold)}`);
   }
 
+  const now = Date.now();
+  const timestamp = Number(
+    options.timestamp ??
+      (options.client ? await chainProofTimestamp(options.client) : Math.floor(now / 1000)),
+  );
+  validateTimestamp(timestamp);
+
   const { Noir } = await import("@noir-lang/noir_js");
   const { Barretenberg, UltraHonkBackend } = await import("@aztec/bb.js");
-
-  const now = Date.now();
-  const timestamp =
-    options.timestamp ??
-    (options.client ? Number(await chainProofTimestamp(options.client)) : Math.floor(now / 1000));
-  validateTimestamp(timestamp);
 
   // Single-provider risk_score witness: signals[0] = score, weights[0] = 100,
   // threshold proof (proof_type 1), direction GT, bound_lower = T*100 - 1.
@@ -366,7 +383,7 @@ export async function generateTierProof(
       scoreCommitment: commitment.commitment,
       timestamp,
       createdAt: now,
-      expiresAt: now + TIER_PROOF_EXPIRY_MS,
+      expiresAt: (timestamp + DEFAULT_MAX_PROOF_AGE) * 1000,
     };
   } finally {
     await api.destroy();
@@ -383,6 +400,7 @@ export async function generateHighestTierProof(
   submitter: Address,
   options: TierProofOptions = {},
 ): Promise<TierProof | null> {
+  assertTierProofOptions(options);
   assertScore(score);
   const threshold = PROVABLE_THRESHOLDS.find((t) => score >= t);
   if (threshold === undefined) return null;

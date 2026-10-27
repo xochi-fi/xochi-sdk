@@ -589,6 +589,7 @@ export const ORACLE_ABI = [
   // --- Errors ---
   { type: "error", name: "ProofVerificationFailed", inputs: [] },
   { type: "error", name: "ProofAlreadyUsed", inputs: [{ name: "proofHash", type: "bytes32" }] },
+  { type: "error", name: "NonCanonicalProof", inputs: [{ name: "wordIndex", type: "uint256" }] },
   { type: "error", name: "InvalidTTL", inputs: [] },
   { type: "error", name: "AttestationNotFound", inputs: [{ name: "proofHash", type: "bytes32" }] },
   { type: "error", name: "PublicInputMismatch", inputs: [] },

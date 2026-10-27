@@ -362,7 +362,10 @@ export class SettlementRegistryClient {
    * stored `publicInputsHash` and (b) `analysis_type == 1` (anti-structuring).
    * VELOCITY (2) and ROUND_AMOUNT (3) PATTERN proofs are rejected. The proof's own
    * `timestamp` (public input 7) must be at or after the trade's `createdAt`,
-   * else `PatternProofPredatesTradeError`: prove it after `registerTrade` lands.
+   * else `PatternProofPredatesTradeError`: prove it after `registerTrade` lands
+   * with `notBefore: (await this.getSettlement(tradeId)).createdAt`, which
+   * raises a default stamp to `createdAt` (a local clock or chain stamp can
+   * trail it) and refuses an earlier explicit `timestamp` before proving.
    *
    * @param tradeId trade identifier
    * @param patternProofHash proofHash of the PATTERN attestation (anti-structuring)

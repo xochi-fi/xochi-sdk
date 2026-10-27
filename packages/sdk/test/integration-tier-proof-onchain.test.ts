@@ -7,10 +7,11 @@
  * RISK_SCORE attestation, which ERC-8262's `checkCompliance` reports as valid,
  * does not read as compliance through the SDK clients (with a real proof
  * instead of a stub verifier). Proofs are dated from the chain
- * (`{ client }`); a proof dated one second past the latest block, which a
- * wall-clock stamp produced whenever the clock crossed a second after the
- * last mined block (xochi-sdk#50), verifies at `pending` and is refused at
- * `latest`.
+ * (`{ client }`) and verify at the default `latest`; a proof dated one second
+ * past the latest block, which a wall-clock stamp produced whenever the clock
+ * crossed a second after the last mined block (xochi-sdk#50), is refused at
+ * `latest` and verifies only at an opted-in `pending` (anvil's pending block
+ * runs ahead of latest; on OP-stack RPCs it can lag behind).
  *
  * Requires anvil and `forge build` output in ../ERC-8262/out.
  */
@@ -174,17 +175,19 @@ describe("tier proofs on the real Oracle (anvil)", () => {
     expect(BigInt(institutional.publicInputs[7])).toBe(BigInt(institutional.timestamp));
   });
 
-  it("verifies a proof dated one second past the latest block at pending, not at latest", async () => {
+  it("refuses a proof dated one second past the latest block at the default latest, not at an opted-in pending", async () => {
     const latest = await publicClient.getBlock({ blockTag: "latest" });
     const timestamp = Number(latest.timestamp) + 1;
-    const ahead = await generateTierProof(loader, 110, 100, ALICE, { timestamp });
-    const atLatest = new OracleLite({
+    const ahead = await generateTierProof(loader, 110, 100, ALICE, {
+      timestamp: String(timestamp),
+    });
+    const atPending = new OracleLite({
       address: oracleAddress,
       rpcUrl: ANVIL_URL,
-      verifyBlockTag: "latest",
+      verifyBlockTag: "pending",
     });
 
-    const refused = await atLatest.verifyProof(
+    const refused = await lite.verifyProof(
       ALICE,
       PROOF_TYPES.RISK_SCORE,
       ahead.proofHex,
@@ -195,7 +198,7 @@ describe("tier proofs on the real Oracle (anvil)", () => {
     expect(refused.valid).toBe(false);
     expect(refused.error).toContain(toFunctionSelector("ProofTimestampInFuture(uint256,uint256)"));
 
-    const accepted = await lite.verifyProof(
+    const accepted = await atPending.verifyProof(
       ALICE,
       PROOF_TYPES.RISK_SCORE,
       ahead.proofHex,

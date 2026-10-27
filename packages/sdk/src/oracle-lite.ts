@@ -19,14 +19,19 @@ export interface OracleLiteConfig {
   /** Timeout applied to every eth_call, in milliseconds (default 15000). */
   timeoutMs?: number;
   /**
-   * Block `verifyProof` simulates `submitCompliance` at (default `"pending"`).
-   * At `"pending"` the Oracle reads the next block's `block.timestamp`, the
-   * soonest a submission could land, so a proof stamped by a clock that runs
-   * just past the latest block (the second after it was mined, or a chain
-   * that lags real time) passes as it would when mined. At `"latest"` the
-   * same proof reverts `ProofTimestampInFuture` until a newer block lands;
-   * use it only for an RPC that does not serve `"pending"`, with proofs
-   * dated by `chainProofTimestamp`. Reads always use `"latest"`.
+   * Block `verifyProof` simulates `submitCompliance` at (default `"latest"`).
+   * A chain-stamped proof (`chainProofTimestamp`, or a prover or tier proof
+   * built with `client`) is at or below the latest block's timestamp, so
+   * `"latest"` never refuses it; a local-clock stamp ahead of the head is
+   * refused there (`ProofTimestampInFuture`): date proofs from the chain.
+   *
+   * `"pending"` is opt-in and unsafe on OP-stack chains: on Base mainnet the
+   * `eth_call` context at `pending` runs 0-8 s (up to 4 blocks) behind
+   * `latest` (below it in 11/15 and 31/40 samples, a sawtooth), so a
+   * chain-stamped proof checked within a few seconds failed at `pending`
+   * 7/10-13/15 times against 0/15 at `latest`, and one RPC served a `pending`
+   * about 22 minutes stale. Use it only with an RPC whose pending context is
+   * at or ahead of `latest` (typical of L1). Reads always use `"latest"`.
    */
   verifyBlockTag?: SimulationBlockTag;
 }
@@ -115,7 +120,7 @@ export class OracleLite {
       );
     }
     this.timeoutMs = timeoutMs;
-    const verifyBlockTag = config.verifyBlockTag ?? "pending";
+    const verifyBlockTag = config.verifyBlockTag ?? "latest";
     if (verifyBlockTag !== "pending" && verifyBlockTag !== "latest") {
       throw new Error(
         `OracleLite: config.verifyBlockTag must be "pending" or "latest", got ${String(verifyBlockTag)}`,
@@ -195,7 +200,7 @@ export class OracleLite {
 
   /**
    * Verify a ZK proof by simulating submitCompliance() via eth_call, at
-   * `config.verifyBlockTag` (default `"pending"`).
+   * `config.verifyBlockTag` (default `"latest"`).
    *
    * Runs the on-chain UltraHonk verifier without gas. The `from` field
    * is set to `wallet` because the oracle uses msg.sender as subject.

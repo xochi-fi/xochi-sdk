@@ -48,6 +48,23 @@ export class ProofAlreadyUsedError extends ERC8262ContractError {
   }
 }
 
+/**
+ * A full 32-byte proof word at `wordIndex` is not below the BN254 scalar
+ * modulus r. The Oracle refuses it before verification: `word + r` would
+ * verify as `word` under a second `proofHash`, replaying the proof.
+ */
+export class NonCanonicalProofError extends ERC8262ContractError {
+  readonly wordIndex: bigint;
+  constructor(wordIndex: bigint) {
+    super(
+      "NonCanonicalProof",
+      [wordIndex],
+      `Proof word ${String(wordIndex)} is not a canonical field element (>= BN254 scalar modulus)`,
+    );
+    this.wordIndex = wordIndex;
+  }
+}
+
 export class ProofTimestampStaleError extends ERC8262ContractError {
   readonly proofTimestamp: bigint;
   readonly blockTimestamp: bigint;
@@ -386,6 +403,8 @@ export function decodeContractError(err: unknown, abi: Abi): ERC8262ContractErro
       return new SubmitterMismatchError();
     case "ProofAlreadyUsed":
       return new ProofAlreadyUsedError(args[0] as string);
+    case "NonCanonicalProof":
+      return new NonCanonicalProofError(args[0] as bigint);
     case "ProofTimestampStale":
       return new ProofTimestampStaleError(args[0] as bigint, args[1] as bigint);
     case "ProofTimestampInFuture":

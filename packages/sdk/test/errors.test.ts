@@ -12,6 +12,7 @@ import {
   ERC8262ContractError,
   SubmitterMismatchError,
   ProofAlreadyUsedError,
+  NonCanonicalProofError,
   ProofTimestampStaleError,
   ProofTimestampInFutureError,
   ProofTimestampNotMonotonicError,
@@ -58,6 +59,13 @@ describe("decodeContractError", () => {
     const err = decodeContractError(makeRevert("ProofAlreadyUsed", [hash]), ORACLE_ABI);
     expect(err).toBeInstanceOf(ProofAlreadyUsedError);
     expect((err as ProofAlreadyUsedError).proofHash).toBe(hash);
+  });
+
+  it("decodes NonCanonicalProof with the offending word index", () => {
+    const err = decodeContractError(makeRevert("NonCanonicalProof", [3n]), ORACLE_ABI);
+    expect(err).toBeInstanceOf(NonCanonicalProofError);
+    expect((err as NonCanonicalProofError).wordIndex).toBe(3n);
+    expect(err?.message).toMatch(/Proof word 3 is not a canonical field element/);
   });
 
   it("decodes ProofTimestampStale with bigint args", () => {

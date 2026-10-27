@@ -3,7 +3,14 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isProofRecent, assertProofRecent, DEFAULT_MAX_PROOF_AGE } from "../src/recency.js";
+import {
+  isProofRecent,
+  assertProofRecent,
+  chainProofTimestamp,
+  ChainAheadOfClockError,
+  DEFAULT_MAX_PROOF_AGE,
+} from "../src/recency.js";
+import { startScriptedBlockRpc } from "./scripted-block-rpc.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -59,6 +66,45 @@ describe("assertProofRecent", () => {
     expect(() => assertProofRecent(chainNow + 1, 3600, chainNow)).toThrow("is in the future");
     expect(isProofRecent(chainNow, 3600, chainNow)).toBe(true);
     expect(() => assertProofRecent(chainNow, 3600, Number.NaN)).toThrow("Reference time");
+  });
+});
+
+describe("chainProofTimestamp", () => {
+  it("returns the latest block's timestamp when it trails the local clock", async () => {
+    const latest = BigInt(Math.floor(Date.now() / 1000) - 100);
+    const rpc = await startScriptedBlockRpc([latest]);
+    try {
+      expect(await chainProofTimestamp(rpc.client)).toBe(String(latest));
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("caps a head less than MAX_PROOF_AGE ahead at the local clock", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const rpc = await startScriptedBlockRpc([BigInt(before + DEFAULT_MAX_PROOF_AGE / 2)]);
+    try {
+      const stamp = Number(await chainProofTimestamp(rpc.client));
+      expect(stamp).toBeGreaterThanOrEqual(before);
+      expect(stamp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("throws ChainAheadOfClockError for a head more than MAX_PROOF_AGE ahead", async () => {
+    const latest = BigInt(Math.floor(Date.now() / 1000) + 2 * DEFAULT_MAX_PROOF_AGE);
+    const rpc = await startScriptedBlockRpc([latest]);
+    try {
+      const err: unknown = await chainProofTimestamp(rpc.client).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ChainAheadOfClockError);
+      const { latestBlockTimestamp, localTimestamp, message } = err as ChainAheadOfClockError;
+      expect(latestBlockTimestamp).toBe(latest);
+      expect(latestBlockTimestamp - localTimestamp).toBeGreaterThan(BigInt(DEFAULT_MAX_PROOF_AGE));
+      expect(message).toMatch(/pass an explicit timestamp/);
+    } finally {
+      await rpc.close();
+    }
   });
 });
 

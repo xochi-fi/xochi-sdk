@@ -164,16 +164,19 @@ describe("OracleLite query validation", () => {
     expect(rpc.tags).toEqual(["latest", "latest"]);
   });
 
-  it("rejects a verifyBlockTag other than pending or latest", () => {
-    expect(
-      () =>
-        new OracleLite({
-          address: ORACLE,
-          rpcUrl: "http://127.0.0.1:1",
-          verifyBlockTag: "safe" as never,
-        }),
-    ).toThrow(/verifyBlockTag must be "pending" or "latest", got safe/);
-  });
+  it.each(["safe", "finalized", "PENDING", ""])(
+    "rejects verifyBlockTag %j (only pending or latest)",
+    (tag) => {
+      expect(
+        () =>
+          new OracleLite({
+            address: ORACLE,
+            rpcUrl: "http://127.0.0.1:1",
+            verifyBlockTag: tag as never,
+          }),
+      ).toThrow(`verifyBlockTag must be "pending" or "latest", got ${tag}`);
+    },
+  );
 });
 
 describe("OracleLite.checkCompliance", () => {
@@ -328,15 +331,17 @@ describe("OracleLite.verifyProof", () => {
         ],
       }),
     );
-    // The next block's clock, not the latest's: see OracleLiteConfig.verifyBlockTag.
-    expect(rpc.tags).toEqual(["pending"]);
+    // A chain-stamped proof is at or below latest: see OracleLiteConfig.verifyBlockTag.
+    expect(rpc.tags).toEqual(["latest"]);
   });
 
-  it("simulates at latest when configured", async () => {
-    const rpc = await startRpc(() => ({
-      result: `0x${attestationHex({ subject: WALLET, jurisdictionId: US, proofType: 1 })}`,
-    }));
-    const lite = new OracleLite({ address: ORACLE, rpcUrl: rpc.url, verifyBlockTag: "latest" });
+  it("simulates at pending when opted in, and reads stay at latest", async () => {
+    const rpc = await startRpc((call) =>
+      call.from === undefined
+        ? checkResult(true, { subject: WALLET, jurisdictionId: US, proofType: 1 })
+        : { result: `0x${attestationHex({ subject: WALLET, jurisdictionId: US, proofType: 1 })}` },
+    );
+    const lite = new OracleLite({ address: ORACLE, rpcUrl: rpc.url, verifyBlockTag: "pending" });
 
     const result = await lite.verifyProof(
       WALLET,
@@ -347,7 +352,8 @@ describe("OracleLite.verifyProof", () => {
       US,
     );
     expect(result.valid).toBe(true);
-    expect(rpc.tags).toEqual(["latest"]);
+    expect((await lite.checkCompliance(WALLET, US))?.valid).toBe(true);
+    expect(rpc.tags).toEqual(["pending", "latest"]);
   });
 
   it("is invalid when the simulated attestation is not bound to the request", async () => {

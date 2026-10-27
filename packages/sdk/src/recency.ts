@@ -14,6 +14,27 @@ import { getBlock } from "viem/actions";
 export const DEFAULT_MAX_PROOF_AGE = 3600;
 
 /**
+ * `chainProofTimestamp` refused: the latest block's timestamp is more than
+ * `DEFAULT_MAX_PROOF_AGE` (1 hour) ahead of the local clock, so a stamp capped
+ * at the local clock would be refused as `ProofTimestampStale` on arrival.
+ * Typical of warped dev or fork chains (`evm_increaseTime`, `vm.warp`): pass
+ * an explicit `timestamp` (e.g. the latest block's) there.
+ */
+export class ChainAheadOfClockError extends Error {
+  constructor(
+    /** The latest block's timestamp (unix seconds). */
+    readonly latestBlockTimestamp: bigint,
+    /** The local clock when it was read (unix seconds). */
+    readonly localTimestamp: bigint,
+  ) {
+    super(
+      `Latest block timestamp ${String(latestBlockTimestamp)} is ${String(latestBlockTimestamp - localTimestamp)}s ahead of the local clock ${String(localTimestamp)}, more than MAX_PROOF_AGE (${String(DEFAULT_MAX_PROOF_AGE)}s): a proof dated by the local clock would be stale on arrival. On a warped dev or fork chain, pass an explicit timestamp.`,
+    );
+    this.name = "ChainAheadOfClockError";
+  }
+}
+
+/**
  * Proof timestamp read from the target chain: the earlier of the local clock
  * and the latest block's timestamp, in unix seconds, as the string the input
  * builders' `timestamp` option takes.
@@ -23,9 +44,15 @@ export const DEFAULT_MAX_PROOF_AGE = 3600;
  * (`ProofTimestampStale`). The builders default to the local wall clock, so a
  * client whose clock runs ahead of the chain head, or one that stamps in the
  * second after the latest block, makes proofs that revert until a later block
- * lands. The latest block's timestamp never exceeds that of the block that
- * includes the submission, and the local clock caps a head that runs ahead of
- * real time; submit within an hour of reading it.
+ * lands. This stamp is at or below the latest block's timestamp, which never
+ * exceeds that of the block that includes the submission, so a simulation at
+ * `latest` never refuses it as future-dated; the local clock caps a head that
+ * runs ahead of real time. Submit within an hour of reading it.
+ *
+ * Throws {@link ChainAheadOfClockError} when the latest block is more than
+ * `DEFAULT_MAX_PROOF_AGE` ahead of the local clock (a warped dev or fork
+ * chain): the capped stamp would be stale on arrival, so pass an explicit
+ * `timestamp` there.
  *
  * `generateTierProof`'s `client` option and `new ERC8262Prover(loader, { client })`
  * stamp with this when no timestamp is given.
@@ -35,7 +62,11 @@ export const DEFAULT_MAX_PROOF_AGE = 3600;
  */
 export async function chainProofTimestamp(client: Client): Promise<string> {
   const block = await getBlock(client, { blockTag: "latest" });
-  return String(Math.min(localNow(), Number(block.timestamp)));
+  const now = BigInt(localNow());
+  if (block.timestamp - now > BigInt(DEFAULT_MAX_PROOF_AGE)) {
+    throw new ChainAheadOfClockError(block.timestamp, now);
+  }
+  return String(block.timestamp < now ? block.timestamp : now);
 }
 
 /**
