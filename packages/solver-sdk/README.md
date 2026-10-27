@@ -104,7 +104,9 @@ npm run example:escrow -w @xochi/solver-sdk             # escrowed award: prepar
   `onError`.
 - **Bids are SolverBid v2** (RFC §5.1), pinned by `@xochi/spec`'s
   `conformance/solver-bid-v2.json`; sign the announcement's `orderId` verbatim, `validUntilMs` is
-  absolute unix ms, `output` is canonical decimal.
+  absolute unix ms, `output` is canonical decimal. On a quote-through announcement
+  (`quoteThrough: true`, RFC §2.5) bid `validUntilMs >= minValidUntilMs`, or the bid is admitted
+  and never selected.
 - **`minOutput` is admissibility, not the reserve.** A bid at `minOutput + 1` is admissible and
   still loses.
 - **Handle `onFeedGap`.** `dropped` and `reset` mean intents you will never see.

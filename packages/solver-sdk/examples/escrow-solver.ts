@@ -292,8 +292,14 @@ export class EscrowSolver implements Solver {
     // once the taker has executed AND the open is final on the origin, so the bid
     // must stand that long. And the exclusive window must cover everything from
     // the award to the fill landing, or `accept` refuses for lack of headroom.
+    // On a quote-through corridor (RFC §2.5) the venue names the least
+    // validUntilMs it will select: never bid below it, or the bid is admitted
+    // and never chosen.
     const c = this.cfg;
-    const validUntilMs = a.closesAt + (c.quoteTtlSec + c.originFinalitySec) * 1000;
+    const validUntilMs = Math.max(
+      a.closesAt + (c.quoteTtlSec + c.originFinalitySec) * 1000,
+      a.minValidUntilMs ?? 0,
+    );
     this.bids.set(a.auctionId, { announcement: a, output: output.toString(), validUntilMs });
     say(`bid   ${a.auctionId}: ${output} (floor ${a.minOutput})`);
     return {

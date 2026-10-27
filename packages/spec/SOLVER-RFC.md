@@ -86,7 +86,9 @@ check and vice versa.
 - **Quote-through corridors** (§2.5, Riddler #1193): on a corridor the venue
   cannot fill, `/xochi/quote` waits out the sealed window and the taker's price
   IS the panel's best firm bid, settled **second-price** against `minOutput`
-  as the reserve. Such an announcement carries `quoteThrough: true` and
+  as the reserve -- a **public** reserve there: the announced floor is the
+  only one, so the reserve-privacy claims of §2.1 do not apply to these
+  corridors. Such an announcement carries `quoteThrough: true` and
   `minValidUntilMs`; a bid whose `validUntilMs` is below it is admissible and
   never awarded. `GET /solver/capabilities` gains `quoteThrough`
   (`settleRule`, `quoteTtlSeconds`, `corridors`) while a corridor is listed.
@@ -217,7 +219,9 @@ publishes the venue's reserve.
 
 - `reserveOutput` → **`minOutput`** (§4.2). The field now carries the
   **admissibility floor** — the lowest output the venue will settle at for this
-  intent — and NOT the venue's reserve bid. The reserve is private (§2.1).
+  intent — and NOT the venue's reserve bid. The reserve is private (§2.1),
+  except on a quote-through corridor (§2.5, `0.6.0-draft`), where the floor IS
+  the reserve and is therefore public.
 - **`trustScore` removed** (§4.2). It had no legitimate solver use: the taker's
   fee tier discounts the *venue* and *routing* layers, never the solver spread,
   which is the never-discounted floor. Its actual effect was to hand the panel
@@ -346,8 +350,11 @@ the winner receives an exclusive fill window (§6).
   quote. A third-party solver wins only by **strictly** beating the reserve —
   equal output loses, so the taker is never settled below the venue's own quote.
 - **The reserve is NOT disclosed to the panel — which is not the same as
-  unpredictable.** The announcement carries `minOutput`, the admissibility
-  floor (§4.2); the reserve bid is private to the auctioneer. These are two
+  unpredictable.** (This and the paragraphs below describe a corridor the
+  venue fills itself. On a quote-through corridor, §2.5, there is no private
+  reserve: the announced `minOutput` is the reserve.) The announcement carries
+  `minOutput`, the admissibility floor (§4.2); the reserve bid is private to
+  the auctioneer. These are two
   different numbers and a solver MUST NOT treat `minOutput` as the value it has
   to beat: a bid at `minOutput + ε` is *admissible* and still loses to the
   reserve. Publishing the reserve makes `reserve + ε` dominant and yields zero
@@ -387,12 +394,16 @@ setting says.
 - **Synchronous.** The venue holds the taker's `/quote` open for the sealed
   window and quotes the outcome. No admissible bid, no quote: the taker is
   told to retry (a new quote opens a new auction).
-- **Second-price, private reserve.** The winner is the best standing bid.
-  The reserve is `minOutput` itself, so a bid AT `minOutput` is eligible.
-  The taker is quoted, and the winner MUST deliver, `max(next-best standing
-  bid, minOutput)`: the award's `output` (§5.2) carries that settled amount,
-  at or below the winner's own bid, and the escrow FillAuth authorizes exactly
-  it. Bid your true price.
+- **Second-price, PUBLIC reserve.** The winner is the best standing bid.
+  The reserve is `minOutput` itself -- the announced, oracle-bounded floor --
+  so it is published, not private: every panel member knows the price it is
+  settled against when nobody else bids, and a bid AT `minOutput` is eligible.
+  The privacy claims of §2.1 do not hold here; what keeps bidding truthful is
+  the second-price rule, not a hidden reserve. The taker is quoted, and the
+  winner MUST deliver, `max(next-best standing bid, minOutput)`: the award's
+  `output` (§5.2) carries that settled amount, at or below the winner's own
+  bid, and the escrow FillAuth authorizes exactly it. With one bidder the
+  taker gets the floor. Bid your true price.
 - **Firm.** The announcement carries `quoteThrough: true` and
   `minValidUntilMs` (absolute unix ms): the quote's expiry (60 s after the
   quote) plus the origin's finality budget, the §5.1 sizing rule computed by
@@ -403,8 +414,14 @@ setting says.
   recorded on the escrow order before the quote is answered, and is delivered
   (§5.2) when the taker's lock is final. A bid past its `validUntilMs` by then
   is never awarded (the escrow node refuses the winner's FillAuth).
-- **Escrow only.** A quote-through quote is always escrowed (§7); there is no
-  un-escrowed path for a third-party fill.
+- **Escrow only, no backstop.** A quote-through quote is always escrowed
+  (§7); there is no un-escrowed path for a third-party fill, and no venue
+  reserve or backstop fill: a winner that does not fill leaves the lock to
+  refund at `refundableAt`.
+- **Authenticated outcome.** The venue seals the selection (winner's bid,
+  second price, floor, order, expiry) before it answers the quote and verifies
+  that seal before it records the award, so a write to its shared store
+  cannot substitute another bid or price.
 
 ### 2.2 Size privacy  `[IMPLEMENTED]`; public-only withdrawal `[PROPOSED]`
 
