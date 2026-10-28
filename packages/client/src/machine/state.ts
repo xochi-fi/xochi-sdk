@@ -61,10 +61,11 @@ export interface IntentState {
   /**
    * True while the latest status poll was the server's anonymous view of a
    * stealth or shielded intent (xochi#563): its on-chain legs were withheld, so
-   * null hashes mean "not shown", not "not there". The host offers wallet SIWE
-   * recovery on it; a later owner read (no marker) clears it. Never a token.
+   * null hashes mean "not shown", not "not there". False after an owner read.
+   * Null until the first status reply, so the host does not render an owner
+   * verdict before it has read one. Never a token.
    */
-  legsWithheld: boolean;
+  legsWithheld: boolean | null;
   reconciling: boolean;
   /** Plain-language refund explanation; set only on a `refunded` status. */
   refundReason: string | null;
@@ -171,7 +172,7 @@ export const INITIAL_INTENT_STATE: IntentState = {
   settlementTxHash: null,
   settlementChainId: null,
   substatus: null,
-  legsWithheld: false,
+  legsWithheld: null,
   reconciling: false,
   refundReason: null,
   quotedAddress: null,

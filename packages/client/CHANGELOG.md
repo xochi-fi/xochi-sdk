@@ -8,6 +8,17 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 - **Transport**: a valid server-directed `Retry-After` is honored up to the existing 600-second safety ceiling instead of being shortened to `retry.maxDelayMs`; the fallback exponential-backoff cap applies only when no valid integer delta-seconds interval is supplied (zero included). Pending quote deduplication now lasts for the whole request, including long server-directed retry waits.
 
+## [0.1.3] - 2026-10-28
+
+### Fixed
+
+- A live execute whose later status read returns `quoted` now enters the `not-sent` phase instead of remaining at "Still confirming". The first status read waits for the execute reply, so a pre-acceptance `quoted` row cannot produce that verdict.
+- Returning to a visible tab restarts an exhausted in-flight status poll with a fresh budget.
+- `IntentState.legsWithheld` is `null` until the first status reply, instead of claiming the initial read was an owner view.
+
+### Added
+
+- Exported `NOT_SENT_SWEPT_ERROR` for hosts that need to identify the machine's expired-without-send Retry result.
 ## [0.1.2] - 2026-10-27
 
 ### Added

@@ -15,6 +15,7 @@ export {
   QUOTE_REFRESH_BUFFER_MS,
   RECONCILE_AFTER_ATTEMPTS,
   SIGN_PROMPT_TIMEOUT_MS,
+  NOT_SENT_SWEPT_ERROR,
   type Model,
   type Msg,
   type MsgBody,
