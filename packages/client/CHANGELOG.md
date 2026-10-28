@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Fixed
+
+- **Transport**: a valid server-directed `Retry-After` is honored up to the existing 600-second safety ceiling instead of being shortened to `retry.maxDelayMs`; the fallback exponential-backoff cap applies only when no valid integer delta-seconds interval is supplied (zero included). Pending quote deduplication now lasts for the whole request, including long server-directed retry waits.
+
 ## [0.1.2] - 2026-10-27
 
 ### Added
@@ -62,4 +66,3 @@ None of these was published with the old behavior.
   - Confirm on a deposit route with under `DEPOSIT_MIN_WINDOW_SECONDS` of attested window left expires instead of revealing the address.
   - `StreamStatus` frames for another intent are ignored; "Sign 2 of 2" after expiry lands in `expired` instead of stranding in `signing`; clearing the amount ends a half-finished two-step ceremony.
 - **Transport**: quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated), so a malformed field is `Invalid response format`, not a raw `TypeError` or silent cast. The per-attempt timeout covers the body, so a stalled body no longer hangs `getIntentStatus` / `execute`; a timed-out or aborted request cancels its body even when an injected `fetch` ignores the signal, and unread non-ok bodies are cancelled. A reason phrase the `Response` constructor rejects (non-ASCII, control bytes) no longer throws out of the re-wrap.
-- **Transport**: a valid server-directed `Retry-After` is honored up to the existing 600-second safety ceiling instead of being shortened to `retry.maxDelayMs`; the fallback exponential-backoff cap still applies only when no valid interval is supplied.

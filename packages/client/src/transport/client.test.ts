@@ -1,7 +1,7 @@
 /**
  * The transport against a scripted Worker: an injected `fetch` that records each
- * request and answers with a real `Response`. Backoff runs at zero delay through
- * the injected retry policy, so no timer is faked.
+ * request and answers with a real `Response`. Most backoff runs at zero delay
+ * through the injected retry policy; pacing regressions use fake timers.
  */
 
 import {
@@ -11,7 +11,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   ApiError,
   DEFAULT_RETRY,
@@ -91,6 +91,10 @@ const rejection = async (p: Promise<unknown>): Promise<unknown> =>
     (e: unknown) => e,
   );
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 const req: QuoteRequest = {
   wallet: "0x1111111111111111111111111111111111111111",
   fromChainId: 8453,
@@ -121,8 +125,9 @@ const execRequest = { intentId: "intent-1", quoteId: "quote-1", signature: "0xsi
 // value must never stall the client, and an absent header falls back to null so
 // the caller uses its own exponential backoff.
 describe("parseRetryAfterMs", () => {
-  it("converts integer seconds to milliseconds", () => {
+  it("converts integer seconds to milliseconds, including zero", () => {
     expect(parseRetryAfterMs("2")).toBe(2000);
+    expect(parseRetryAfterMs("0")).toBe(0);
   });
 
   it("preserves server-directed waits above the client backoff cap", () => {
@@ -138,10 +143,12 @@ describe("parseRetryAfterMs", () => {
     expect(parseRetryAfterMs(null)).toBeNull();
   });
 
-  it("returns null for a non-numeric or negative value", () => {
-    expect(parseRetryAfterMs("soon")).toBeNull();
-    expect(parseRetryAfterMs("-5")).toBeNull();
-  });
+  it.each(["soon", "-5", "+5", "1.5", "1e2", "0x10", "Infinity", "NaN", "5 seconds"])(
+    "returns null for the malformed delta %s",
+    (header) => {
+      expect(parseRetryAfterMs(header)).toBeNull();
+    },
+  );
 });
 
 // resolveRetryAfterSeconds produces the ABSOLUTE unix-seconds countdown target
@@ -166,6 +173,19 @@ describe("resolveRetryAfterSeconds", () => {
       reset,
     );
   });
+
+  it.each(["1.5", "1e2", "0x10", "soon"])(
+    "falls back to X-RateLimit-Reset when Retry-After is %s",
+    (header) => {
+      const reset = Math.floor(Date.now() / 1000) + 42;
+      expect(
+        resolveRetryAfterSeconds(
+          new Headers({ "Retry-After": header, "X-RateLimit-Reset": String(reset) }),
+          "",
+        ),
+      ).toBe(reset);
+    },
+  );
 
   it("reads an absolute retryAfter from a JSON body when no header is present", () => {
     const abs = Math.floor(Date.now() / 1000) + 30;
@@ -319,6 +339,8 @@ describe("execute: the not-accepted refusal", () => {
     // An earlier header is not the server's wait for this answer.
     expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "2" })), 7);
     expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "11" })), 11);
+    expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "1e2" })), 7);
+    expectWait(await refused(() => json(notAccepted(), 503, { "Retry-After": "0" })), 7);
     // Absolute hints, which lead the countdown of any other 429/503, never apply.
     const reset = String(nowSec() + 300);
     const r = await refused(() =>
@@ -684,6 +706,60 @@ describe("quote retries only a transient gateway status", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("caps a custom fallback policy at maxDelayMs", async () => {
+    vi.useFakeTimers();
+    const { c, calls, logged } = client(
+      (call) => (call === 1 ? new Response("busy", { status: 503 }) : okQuote()),
+      { retry: { maxAttempts: 2, baseDelayMs: 8_000, maxDelayMs: 5_000 } },
+    );
+    const quoted = c.getQuote(req);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(calls).toHaveLength(2);
+    await expect(quoted).resolves.toMatchObject({ success: true });
+    expect(logged.some((l) => l.message.includes("in 5000ms"))).toBe(true);
+  });
+
+  it.each(["1.5", "1e2", "0x10"])(
+    "uses fallback backoff when Retry-After is %s",
+    async (header) => {
+      vi.useFakeTimers();
+      const { c, calls } = client(
+        (call) =>
+          call === 1
+            ? new Response("busy", { status: 503, headers: { "Retry-After": header } })
+            : okQuote(),
+        { retry: { maxAttempts: 2, baseDelayMs: 4_000, maxDelayMs: 4_000 } },
+      );
+      const quoted = c.getQuote(req);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(3_999);
+      expect(calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(calls).toHaveLength(2);
+      await expect(quoted).resolves.toMatchObject({ success: true });
+    },
+  );
+
+  it("honors a zero Retry-After instead of applying fallback backoff", async () => {
+    vi.useFakeTimers();
+    const { c, calls } = client(
+      (call) =>
+        call === 1
+          ? new Response("busy", { status: 503, headers: { "Retry-After": "0" } })
+          : okQuote(),
+      { retry: { maxAttempts: 2, baseDelayMs: 60_000, maxDelayMs: 60_000 } },
+    );
+    const quoted = c.getQuote(req);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(2);
+    await expect(quoted).resolves.toMatchObject({ success: true });
+  });
+
   it("rejects a 200 that is not a quote", async () => {
     const { c } = client(() => json({ hello: "world" }));
     const err = await rejection(c.getQuote(req));
@@ -862,6 +938,29 @@ describe("getQuote cache", () => {
     const [a, b] = await Promise.all([c.getQuote(req), c.getQuote(req)]);
     expect(a).toBe(b);
     expect(calls).toHaveLength(1);
+  });
+
+  it("keeps deduplicating throughout a 120-second server-directed retry", async () => {
+    vi.useFakeTimers();
+    const { c, calls } = client((call) =>
+      call === 1
+        ? new Response("busy", { status: 503, headers: { "Retry-After": "120" } })
+        : okQuote(),
+    );
+    const first = c.getQuote(req);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(16_000);
+    const duplicate = c.getQuote(req);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(104_000);
+    await expect(first).resolves.toMatchObject({ success: true });
+    await expect(duplicate).resolves.toMatchObject({ success: true });
+    expect(await first).toBe(await duplicate);
+    expect(calls).toHaveLength(2);
   });
 
   // trustScore drives the fee tier; the refund address is bound into the intent

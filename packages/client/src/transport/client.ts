@@ -247,10 +247,18 @@ function isNotAcceptedExecuteBody(
  * MAX_RETRY_WAIT_SEC.
  */
 function notAcceptedRetryAt(headers: Headers, retryAfter: number): number {
-  const header = headers.get("Retry-After");
-  const headerDelta = header === null || header.trim() === "" ? NaN : Number(header);
-  const wait = Number.isFinite(headerDelta) && headerDelta > retryAfter ? headerDelta : retryAfter;
+  const headerDelta = retryAfterDeltaSeconds(headers.get("Retry-After"));
+  const wait = headerDelta !== null && headerDelta > retryAfter ? headerDelta : retryAfter;
   return Math.ceil((Date.now() + Math.min(wait, MAX_RETRY_WAIT_SEC) * 1000) / 1000);
+}
+
+/** Retry-After's delta-seconds grammar: optional HTTP whitespace around 1*DIGIT. */
+function retryAfterDeltaSeconds(headerValue: string | null): number | null {
+  const value = headerValue?.trim();
+  if (!value || !/^\d+$/.test(value)) return null;
+  const seconds = Number(value);
+  // Syntactically valid integers beyond Number's range still take the 600 s cap.
+  return Number.isFinite(seconds) ? seconds : Number.MAX_SAFE_INTEGER;
 }
 
 /**
@@ -781,9 +789,8 @@ export function parseRetryAfterMs(
   headerValue: string | null,
   maxDelayMs: number = MAX_RETRY_WAIT_SEC * 1000,
 ): number | null {
-  if (!headerValue) return null;
-  const seconds = Number(headerValue);
-  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const seconds = retryAfterDeltaSeconds(headerValue);
+  if (seconds === null) return null;
   return Math.min(seconds * 1000, maxDelayMs);
 }
 
@@ -833,11 +840,8 @@ export function resolveRetryAfterSeconds(headers: Headers, body: string): number
 }
 
 function deriveRetryTarget(headers: Headers, body: string, nowSec: number): number | undefined {
-  const retryAfterHeader = headers.get("Retry-After");
-  if (retryAfterHeader !== null) {
-    const delta = Number(retryAfterHeader);
-    if (Number.isFinite(delta) && delta >= 0) return nowSec + delta;
-  }
+  const delta = retryAfterDeltaSeconds(headers.get("Retry-After"));
+  if (delta !== null) return nowSec + delta;
 
   const reset = headers.get("X-RateLimit-Reset");
   if (reset !== null) {
@@ -1024,11 +1028,6 @@ interface CachedQuote {
   timestamp: number;
 }
 
-interface PendingRequest<T> {
-  promise: Promise<T>;
-  timestamp: number;
-}
-
 const WALLET_SESSION_REAUTH_CATEGORIES: Readonly<Record<string, true>> = {
   auth_invalid: true,
   wallet_auth_required: true,
@@ -1047,7 +1046,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
   const retry: RetryPolicy = { ...DEFAULT_RETRY, ...options.retry };
 
   const quoteCache = new Map<string, CachedQuote>();
-  const pendingQuotes = new Map<string, PendingRequest<QuoteResponse>>();
+  const pendingQuotes = new Map<string, Promise<QuoteResponse>>();
   // Ids already warned about a non-ok status poll. getIntentStatus runs in the
   // poll loop, so a persistently failing id would flood the log; warn once per
   // id instead. Cleared when it grows past a bound so a long session can't leak.
@@ -1322,7 +1321,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         if (lastError.name === "AbortError") break;
 
         if (attempt < maxAttempts - 1) {
-          const delay = retryAfterMs ?? retry.baseDelayMs * Math.pow(2, attempt);
+          const delay =
+            retryAfterMs ?? Math.min(retry.baseDelayMs * Math.pow(2, attempt), retry.maxDelayMs);
           // A retry means the request already failed once: that is the context
           // for the error below if the retries run out.
           log("warn", `[xochi-client] Retry ${attempt + 1}/${maxAttempts} in ${delay}ms`);
@@ -1443,13 +1443,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
       }
 
       const pending = pendingQuotes.get(requestHash);
-      if (pending && Date.now() - pending.timestamp < timeouts.requestTimeoutMs) {
+      if (pending) {
         log("debug", "[xochi-client] Deduplicating quote request");
-        return pending.promise;
+        return pending;
       }
 
       const promise = fetchQuote(request);
-      pendingQuotes.set(requestHash, { promise, timestamp: Date.now() });
+      pendingQuotes.set(requestHash, promise);
 
       try {
         const quote = await promise;
