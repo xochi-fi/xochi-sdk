@@ -6,7 +6,12 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
-- **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod** after the shielded preview deployment: `0 BREAKING, 8 STALE`. Adds the three pxe-bridge readiness relay endpoints and their schemas, Canton TestNet chain id `4149314359`, and the `readiness_not_enabled` / `readiness_unavailable` error codes.
+- **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod** after the shielded preview deployment. The structural differ reports `0 BREAKING, 8 STALE`: three pxe-bridge readiness relay endpoints and their schemas, Canton TestNet chain id `4149314359`, and the `readiness_not_enabled` / `readiness_unavailable` error codes. That classification deliberately excludes description-only changes; the generated contract also synchronizes these material rules:
+  - deposit-attestation v3 signs exactly 18 fixed lines, adds `refund_address`, and corrects normalization so `to_token` and `recipient` are lowercased only when the entire value is `0x`-prefixed hex;
+  - quote-through requests wait for the sealed solver window and return its best firm bid under second-price settlement, are escrow-only and exact-input-only, and distinguish no-bid and preview behavior;
+  - same-chain settlement is eligible only for opted-in floating conversion pairs, for public settlement or stealth on a supported EVM destination, and never for the same token;
+  - Canton TestNet is destination-only and validates its network-specific Canton Coin instrument id, party recipient, public settlement, and testnet enablement; and
+  - package references use the published `@xochi/spec` name.
 
 ## [0.10.0] - 2026-10-27
 
