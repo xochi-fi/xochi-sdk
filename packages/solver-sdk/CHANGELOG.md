@@ -57,6 +57,13 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   `VenueVersionSkewError` (nothing signed) if the venue now serves another
   `rfcVersion`, as after a feed `reset`. An injected transport without it is
   re-checked only before its awards.
+- `examples/canton-test-solver.ts` (`npm run example:canton`), TESTNET ONLY:
+  an operator-driven solver for one Base Sepolia USDC -> Canton TestNet CC
+  order through the M6 escrow (Riddler #1356). It registers, bids a firm
+  quote-through price, prints the hand transfer for the Metatarz wallet, posts
+  the `canton_update` receipt and claims the escrow with the attestation
+  (viem). It refuses any chain but Base Sepolia and Canton TestNet. `viem` is
+  a new devDependency (examples only; nothing in the package imports it).
 
 ### Changed
 
