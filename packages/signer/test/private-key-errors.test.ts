@@ -27,6 +27,30 @@ function expectSafeError(error: Error, expectedMessage: string): void {
 }
 
 describe("private-key errors", () => {
+  it("signs a bare private key without exposing it to ethers parsing", () => {
+    const key = "11".repeat(32);
+    const digest = "0x" + "22".repeat(32);
+
+    expect(signUserOpHash(digest, key)).toBe(signUserOpHash(digest, "0x" + key));
+  });
+  it("rejects non-string runtime values with the fixed error", () => {
+    expect(() => stealthAddressFromPrivateKey(Symbol("secret") as unknown as string)).toThrowError(
+      "privHex must be a valid secp256k1 private key",
+    );
+  });
+  it("validates and consumes one ERC-3009 private-key read", async () => {
+    let reads = 0;
+    const config = {
+      get PRIVATE_KEY() {
+        reads += 1;
+        return reads === 1 ? "0x" + "11".repeat(32) : SECRET;
+      },
+    };
+
+    await capturedError(() => signERC3009({} as never, "ethereum", config as never));
+    expect(reads).toBe(1);
+  });
+
   it.each([
     ["zero", "0x" + "00".repeat(32)],
     ["curve order", "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"],

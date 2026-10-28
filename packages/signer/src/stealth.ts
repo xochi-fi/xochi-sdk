@@ -34,12 +34,16 @@ export function deriveStealthPrivateKey(
   viewingPrivHex: string,
   ephemeralPubHex: string,
 ): string {
-  assertValidPrivateKey(spendingPrivHex, "spendingPrivHex");
-  assertValidPrivateKey(viewingPrivHex, "viewingPrivHex");
+  const spendingPrivateKey = assertValidPrivateKey(spendingPrivHex, "spendingPrivHex");
+  const viewingPrivateKey = assertValidPrivateKey(viewingPrivHex, "viewingPrivHex");
 
-  const shared = secp256k1.getSharedSecret(strip0x(viewingPrivHex), strip0x(ephemeralPubHex), true);
+  const shared = secp256k1.getSharedSecret(
+    strip0x(viewingPrivateKey),
+    strip0x(ephemeralPubHex),
+    true,
+  );
   const hashSs = BigInt(ethers.keccak256(shared));
-  const spendingInt = BigInt("0x" + strip0x(spendingPrivHex));
+  const spendingInt = BigInt(spendingPrivateKey);
   const stealthInt = (spendingInt + hashSs) % N;
   return "0x" + stealthInt.toString(16).padStart(64, "0");
 }
@@ -48,8 +52,8 @@ export function deriveStealthPrivateKey(
 // uncompressed pubkey). Used to verify the derived key controls the intent's
 // stealth address before signing anything.
 export function stealthAddressFromPrivateKey(privHex: string): string {
-  assertValidPrivateKey(privHex, "privHex");
-  return new ethers.Wallet(privHex).address;
+  const privateKey = assertValidPrivateKey(privHex, "privHex");
+  return new ethers.Wallet(privateKey).address;
 }
 
 // Sign the 32-byte userOpHash with the stealth key. Raw ECDSA over the digest --
@@ -57,8 +61,8 @@ export function stealthAddressFromPrivateKey(privHex: string): string {
 // Returns 0x + r(32) + s(32) + v(1), with v in {27,28}; ethers normalizes to
 // low-s, which OpenZeppelin ECDSA.recover requires.
 export function signUserOpHash(userOpHash: string, stealthPrivHex: string): string {
-  assertValidPrivateKey(stealthPrivHex, "stealthPrivHex");
-  return new ethers.SigningKey(stealthPrivHex).sign(userOpHash).serialized;
+  const privateKey = assertValidPrivateKey(stealthPrivHex, "stealthPrivHex");
+  return new ethers.SigningKey(privateKey).sign(userOpHash).serialized;
 }
 
 /** What a prepared claim op does. Anything other than a sweep binds the action. */
@@ -131,7 +135,7 @@ export function signClaimPrepareProof(
     action?: ClaimAction;
   },
 ): string {
-  assertValidPrivateKey(stealthPrivHex, "stealthPrivHex");
+  const privateKey = assertValidPrivateKey(stealthPrivHex, "stealthPrivHex");
   const digest = ethers.keccak256(ethers.toUtf8Bytes(claimPrepareChallenge(params)));
-  return new ethers.SigningKey(stealthPrivHex).sign(digest).serialized;
+  return new ethers.SigningKey(privateKey).sign(digest).serialized;
 }

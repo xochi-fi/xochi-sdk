@@ -113,8 +113,8 @@ async function signStruct(
   allowedSchemas: Eip712Schema[],
   label: string,
 ): Promise<string> {
-  assertValidPrivateKey(privateKeyHex, "privateKeyHex");
-  const wallet = new ethers.Wallet(privateKeyHex);
+  const privateKey = assertValidPrivateKey(privateKeyHex, "privateKeyHex");
+  const wallet = new ethers.Wallet(privateKey);
 
   const { EIP712Domain: _EIP712Domain, ...messageTypes } = (signable && signable.types) || {};
 
