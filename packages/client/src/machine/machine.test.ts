@@ -853,6 +853,24 @@ describe("one signature (no origin pull)", () => {
       expect(s.intent.pollExhausted).toBe(false);
     });
 
+    it("bounds a live not-sent poll when quoted never becomes terminal", () => {
+      const { s, flow } = executing();
+      s.send({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: true,
+          response: { success: true, intentId: "xi_1", status: "executing" },
+        },
+      });
+      pollReads(s, statusData({ status: "quoted" }), 1);
+      expect(s.receipt.phase).toBe("not-sent");
+
+      const ran = pollReads(s, statusData({ status: "quoted" }), 5000);
+      expect(ran).toBeLessThan(5000);
+      expect(s.intent.pollExhausted).toBe(true);
+    });
+
     it("treats a reply for another intent as in doubt", () => {
       const { s, flow } = executing();
       s.send({
@@ -1707,6 +1725,22 @@ describe("status", () => {
       pollReads(s, statusData({ status: "quoted" }), 1);
       expect(s.intent.notSent).toBe(true);
       expect(s.receipt.phase).toBe("not-sent");
+
+      // The inverse ordering is equally monotonic: once the newer read proves
+      // the intent is unclaimed, an older in-flight read cannot undo it.
+      const inverse = resumed("executing");
+      answer(inverse.s, inverse.poll, statusData({ status: "executing" }));
+      const oldExecuting = only(
+        apiCalls(inverse.s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const newQuoted = only(
+        apiCalls(inverse.s.send({ type: "VisibilityChanged" }, 100), "status"),
+      );
+      answer(inverse.s, newQuoted, statusData({ status: "quoted" }));
+      expect(inverse.s.receipt.phase).toBe("not-sent");
+      answer(inverse.s, oldExecuting, statusData({ status: "executing" }));
+      expect(inverse.s.intent.notSent).toBe(true);
+      expect(inverse.s.receipt.phase).toBe("not-sent");
 
       // A thrown newer read answers nothing: the older `quoted` still rebuilds.
       const thrown = resumed("executing");

@@ -1887,6 +1887,10 @@ function onStatus(
   // A reply from a disarmed poll (a phase change, a reset, a stop) is dropped.
   if (!poll || poll.gen !== gen || poll.stopped) return m;
   const id = poll.intentId;
+  // Replies can race (an interval read and a visibility read). Once a newer
+  // reply has answered, an older one cannot regress lifecycle or receipt
+  // fields, including clearing a newer not-sent verdict.
+  if (result.ok && attempt < poll.answered) return m;
   let next = m;
 
   // An `executing` intent that reads `quoted` after /execute has answered is
@@ -2001,15 +2005,15 @@ function onStatus(
       next = patch(next, { legsWithheld });
     }
     // The server owns the active-polling decision; a phase change refills the
-    // give-up budget, so the ceiling bounds a swap that is not moving. A read
-    // the intent cannot move to (`quoted` after an execute) is no change: the
-    // ceiling, sized past the Worker's finish (`pollCeilingAttempts`), holds.
-    // A not-sent intent's `quoted` reads refill the budget: the Worker's read
-    // finish ends the row past its deadline, which this poll's own reads
-    // trigger. A resumed intent has no quote from which to size that finish.
+    // give-up budget, so the ceiling bounds a swap that is not moving. A
+    // resumed not-sent intent has no quote from which to size the Worker's
+    // finish, so each `quoted` read refills its budget until the Worker ends
+    // the row. A live intent has a quote and remains bounded by its fixed
+    // ceiling even after it enters not-sent.
+    const resumedNotSent = unsentRead && next.intent.notSent && next.intent.quote === null;
     verdict = s.terminal
       ? "stop"
-      : next.intent.status !== previous || (unsentRead && next.intent.notSent)
+      : next.intent.status !== previous || resumedNotSent
         ? "progress"
         : undefined;
   }
