@@ -1462,7 +1462,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         }
         return quote;
       } finally {
-        pendingQuotes.delete(requestHash);
+        if (pendingQuotes.get(requestHash) === promise) pendingQuotes.delete(requestHash);
       }
     },
 
