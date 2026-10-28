@@ -186,7 +186,7 @@
                   "type": "number"
                 },
                 "roles": {
-                  "description": "Present only on a chain that is not both a route origin and a destination; absent means both. `[\"destination\"]` marks a destination-only chain (Canton): no route originates there and no origin token is advertised for it. Its only destination token is Canton Coin, named by `to_token` = the instrument id `DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`.\n",
+                  "description": "Present only on a chain that is not both a route origin and a destination; absent means both. `[\"destination\"]` marks a destination-only chain (Canton, Canton TestNet): no route originates there and no origin token is advertised for it. Its only destination token is Canton Coin, named by `to_token` = that network's instrument id: MainNet `DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`, TestNet `DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337`.\n",
                   "items": {
                     "enum": [
                       "origin",
@@ -229,7 +229,7 @@
             "type": "array"
           },
           "cross_chain_only": {
-            "description": "When true, origin and destination chains must differ. When false,\na same-chain route is additionally fillable for a PUBLIC\nsettlement of an advertised `conversion_pairs` entry that carries\n`strategy: float` and `same_chain: true`, on an EVM chain both\nits tokens sit on. It reads false only while such an entry exists\n(XOCHI_SAME_CHAIN_FILLS on AND the row opted in), never merely\nbecause the switch is on. Same-token same-chain is never fillable;\nevery other same-chain request is refused with\n`same_chain_unsupported`, whose message names the failing rule.\n",
+            "description": "When true, origin and destination chains must differ. When false,\na same-chain route is additionally fillable for a public settlement,\nor stealth on a supported EVM destination, of an advertised\n`conversion_pairs` entry that carries `strategy: float` and\n`same_chain: true`, on a routed EVM or TVM chain where both tokens\nare registered. It reads false only while such an entry exists\n(XOCHI_SAME_CHAIN_FILLS on AND the row opted in), never merely\nbecause the switch is on. Same-token same-chain is never fillable;\nevery other same-chain request is refused with\n`same_chain_unsupported`, whose message names the failing rule.\n",
             "example": true,
             "type": "boolean"
           },
@@ -320,7 +320,7 @@
             "type": "object"
           },
           "spec_version": {
-            "description": "SemVer of the `@riddler/spec` document this server conforms to.\nLets a taker gate on the normative layered fee model (SPEC section\n4) rather than inferring support from a quote's shape. MAJOR\nsignals a breaking wire or signature-construction change.\n",
+            "description": "SemVer of the `@xochi/spec` document this server conforms to.\nLets a taker gate on the normative layered fee model (SPEC section\n4) rather than inferring support from a quote's shape. MAJOR\nsignals a breaking wire or signature-construction change.\n",
             "example": "0.6.0",
             "type": "string"
           },
@@ -379,7 +379,7 @@
         ]
       },
       "ChainId": {
-        "description": "1=Ethereum, 10=Optimism, 100=Gnosis, 137=Polygon, 4663=Robinhood Chain,\n5042=Arc, 8453=Base, 42161=Arbitrum, 84532=Base Sepolia,\n421614=Arbitrum Sepolia, 11155111=Sepolia,\n11155420=Optimism Sepolia, 253340876=Canton, 728126428=Tron.\n\n253340876 is synthetic: the last 4 bytes of the Canton MainNet global\nsynchronizer fingerprint (`...0f19accc`), the rule that gives Tron\n728126428. Canton is a destination only.\n\nThis enum is every chain the server can advertise, NOT every chain a\ngiven deploy serves. Flag-gated chains (Arc behind `ENABLE_ARC`, Gnosis\nbehind `ENABLE_GNOSIS`, Tron behind `ENABLE_TRON`, Canton behind\n`ENABLE_CANTON_DESTINATION`) are absent from `GET /xochi/chains` until\ntheir flag is on, and a quote naming one is rejected `unsupported_chain`.\nRead `/xochi/chains` for what this deploy actually serves.\n\nTestnet IDs (84532, 11155111, 421614, 11155420) are enabled by\n`TESTNET_ONLY=true`.\n",
+        "description": "1=Ethereum, 10=Optimism, 100=Gnosis, 137=Polygon, 4663=Robinhood Chain,\n5042=Arc, 8453=Base, 42161=Arbitrum, 84532=Base Sepolia,\n421614=Arbitrum Sepolia, 11155111=Sepolia,\n11155420=Optimism Sepolia, 253340876=Canton, 728126428=Tron,\n4149314359=Canton TestNet.\n\n253340876 and 4149314359 are synthetic: the last 4 bytes of the Canton\nMainNet (`...0f19accc`) and TestNet (`...f7518337`) global synchronizer\nfingerprints, the rule that gives Tron 728126428. Canton is a\ndestination only.\n\nThis enum is every chain the server can advertise, NOT every chain a\ngiven deploy serves. Flag-gated chains (Arc behind `ENABLE_ARC`, Gnosis\nbehind `ENABLE_GNOSIS`, Tron behind `ENABLE_TRON`, Canton and Canton\nTestNet behind `ENABLE_CANTON_DESTINATION`) are absent from\n`GET /xochi/chains` until their flag is on, and a quote naming one is\nrejected `unsupported_chain`.\nRead `/xochi/chains` for what this deploy actually serves.\n\nTestnet IDs (84532, 11155111, 421614, 11155420, 4149314359) are enabled\nby `TESTNET_ONLY=true`.\n",
         "enum": [
           1,
           10,
@@ -394,7 +394,8 @@
           11155111,
           11155420,
           253340876,
-          728126428
+          728126428,
+          4149314359
         ],
         "type": "integer"
       },
@@ -1535,6 +1536,7 @@
           "announcer_not_configured",
           "tron_fee_misconfigured",
           "escrow_refused",
+          "readiness_not_enabled",
           "shielded_terms_refused",
           "insufficient_balance",
           "insufficient_liquidity",
@@ -1547,6 +1549,7 @@
           "pull_failed",
           "announcement_unreadable",
           "escrow_unavailable",
+          "readiness_unavailable",
           "service_unavailable",
           "rate_limit_exceeded",
           "not_implemented",
@@ -1558,7 +1561,7 @@
         "properties": {
           "details": {
             "additionalProperties": true,
-            "description": "Structured, machine-readable context for the rejection. The not-accepted marker: `accepted` (always the boolean `false` when present) with `retry_after` means this request did nothing -- load shedding, a rate limit, or an /execute refused before its claim and before any origin pull -- so the SAME request may be resent after `retry_after` seconds (also sent as `Retry-After`). It speaks only for this request, not for other requests of the same intent. Only a 503 or 429 carries it; without it a 5xx or 409 from /execute is in doubt (poll status, never resend). The not-executed marker: `funds_moved` (always the boolean `false` when present) means nothing moved -- an /execute was refused before its claim and before any origin pull while the intent it names had no execute claim (read after the request's lock was released). Any status carries it, a permanent 4xx included (beside the field-keyed messages of `validation_failed`, where it is not a field); it does not invite a resend. Only the /execute adapter sets it, since only it reads the claim: never on load shedding, a rate limit, a body that does not parse, an execute by a `kid` that does not own the quote, an `intent_id` that is not the quote's, a lock store this node cannot reach, a held lock, `already_executed`, a refusal after the claim, a crash, an escrow or deposit-route quote once read, or a refusal whose lock release was unconfirmed. Absent means funds may have moved. The xochi Worker relies on it, and on its own `accepted: false` refusals, as the quote's sole caller (`/xochi/execute`'s ownership check). Other notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (every not-accepted refusal, rate_limit_exceeded, pre_positioning, quote_store_unavailable, escrow_unavailable with `reason: depositor_open_auths_exhausted`), `reason` (escrow_refused and escrow_unavailable: the escrow check; conversion_unavailable: `conversion_rate_moved` with `drift_bps`, `conversion_rate_unverifiable` or `conversion_price_contested`; rate_limit_exceeded on an escrow /quote: `escrow_issuance_rate` with `scope` `depositor` or `caller`), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap; `fx_inventory_limit` when the route COLLECTS an FX token (EURe, ZCHF) and the solver's holdings of it plus this order exceed its aggregate inventory ceiling -- then `max_order_usd`, when present, is the origin notional that may still be collected -- or `fx_inventory_unverified` when those holdings cannot be read; both at /quote and at /execute, where nothing has been pulled), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
+            "description": "Structured, machine-readable context for the rejection. The not-accepted marker: `accepted` (always the boolean `false` when present) with `retry_after` means this request did nothing -- load shedding, a rate limit, or an /execute refused before its claim and before any origin pull -- so the SAME request may be resent after `retry_after` seconds (also sent as `Retry-After`). It speaks only for this request, not for other requests of the same intent. Only a 503 or 429 carries it; without it a 5xx or 409 from /execute is in doubt (poll status, never resend). The not-executed marker: `funds_moved` (always the boolean `false` when present) means nothing moved -- an /execute was refused before its claim and before any origin pull while the intent it names had no execute claim (read after the request's lock was released). Any status carries it, a permanent 4xx included (beside the field-keyed messages of `validation_failed`, where it is not a field); it does not invite a resend. Only the /execute adapter sets it, since only it reads the claim: never on load shedding, a rate limit, a body that does not parse, an execute by a `kid` that does not own the quote, an `intent_id` that is not the quote's, a lock store this node cannot reach, a held lock, `already_executed`, a refusal after the claim, a crash, an escrow or deposit-route quote once read, or a refusal whose lock release was unconfirmed. Absent means funds may have moved. The xochi Worker relies on it, and on its own `accepted: false` refusals, as the quote's sole caller (`/xochi/execute`'s ownership check). Other notable keys by code: `min_order_usd` (amount_below_minimum), `max_order_usd` (amount_above_maximum), `min_fillable_usd` (unprofitable), `supported_chains` (unsupported_chain), `available` (settlement_not_allowed), `retry_after` (every not-accepted refusal, rate_limit_exceeded, pre_positioning, quote_store_unavailable, escrow_unavailable with `reason: depositor_open_auths_exhausted`), `reason` (escrow_refused and escrow_unavailable: the escrow check; conversion_unavailable: `conversion_rate_moved` with `drift_bps`, `conversion_rate_unverifiable` or `conversion_price_contested`; rate_limit_exceeded on an escrow /quote: `escrow_issuance_rate` with `scope` `depositor` or `caller`), `token` (insufficient_liquidity, pre_positioning), `reason` + `scope` (insufficient_liquidity: `reason` is absent for a genuine shortfall, `inventory_unverified` when the float cannot be read, `float_committed` when, at /execute, a deposit that landed since the quote committed the float it was admitted against -- the quote stays executable, retry shortly or requote -- or `quote_holds_exhausted` when unexecuted quotes hold it -- then `scope` is `caller` for the credential's own cap or `recipient` for the per-recipient sub-cap; `fx_inventory_limit` when the route COLLECTS an FX token (EURe, ZCHF) and the solver's holdings of it plus this order exceed its aggregate inventory ceiling -- then `max_order_usd`, when present, is the origin notional that may still be collected -- or `fx_inventory_unverified` when those holdings cannot be read; both at /quote and at /execute, where nothing has been pulled; `no_solver_quote` at /quote on a quote-through corridor (#1193) when no solver bid stands -- with `retry_after`, a new quote opens a new auction), `reason` on a quote-through /quote (escrow_refused: `quote_through_requires_escrow`, `quote_through_exact_input_only`, `quote_through_not_announceable`; rate_limit_exceeded: `quote_through_announce_rate`), `oracle` + `chain_id` (gas_price_unavailable), field-keyed message arrays (validation_failed).\n",
             "type": "object"
           },
           "error": {
@@ -2535,7 +2538,7 @@
             "type": "string"
           },
           "deposit_attestation": {
-            "description": "Present on deposit-address routes: a `0x` + 65-byte secp256k1\nEIP-191 `personal_sign` signature over the quote's binding fields.\nThe client MUST verify it recovers to\n`capabilities.deposit_attestation_signer` before sending funds to\n`deposit_address`, and fail closed otherwise. Null only when the\nsigner key is unconfigured.\n\nThe signed message is 17 `\\n`-joined lines opening with the version\ntag `xochi-deposit-attestation:v2`, in order: intent_id, quote_id,\nwallet, from_chain_id, from_token, from_amount, deposit_address,\ndeposit_deadline, to_chain_id, to_token, to_amount, min_to_amount,\nrecipient, stealth_spending_pub_key, stealth_viewing_pub_key,\nsettlement_preference.\n\nv1 signed only the six origin-side fields, which proved the venue\nissued this address for this intent but nothing about whose intent\nit was -- an attacker holding the channel could substitute an\nentire valid quote of their own and every client check passed. v2\nsigns the destination side too, so a substituted quote has to be\neconomically identical to the one requested.\n\nEncoding: a `0x`-prefixed value is lowercased (case-sensitive\nprefix check); everything else is verbatim, because base58 Tron\naddresses are case-sensitive and folding one yields a different,\nstill-plausible address. Absent optional values\n(`deposit_deadline`, either stealth key) are an EMPTY line, never\nomitted and never `null` -- the line count is fixed at 17. See\ndocs/api/xochi.md for the full spec.\n",
+            "description": "Present on deposit-address routes: a `0x` + 65-byte secp256k1\nEIP-191 `personal_sign` signature over the quote's binding fields.\nThe client MUST verify it recovers to\n`capabilities.deposit_attestation_signer` before sending funds to\n`deposit_address`, and fail closed otherwise. Null only when the\nsigner key is unconfigured.\n\nThe signed message is 18 `\\n`-joined lines opening with the version\ntag `xochi-deposit-attestation:v3`, in order: intent_id, quote_id,\nwallet, from_chain_id, from_token, from_amount, deposit_address,\ndeposit_deadline, refund_address, to_chain_id, to_token, to_amount,\nmin_to_amount, recipient, stealth_spending_pub_key,\nstealth_viewing_pub_key, settlement_preference.\n\nv1 signed only the six origin-side fields, which proved the venue\nissued this address for this intent but nothing about whose intent\nit was -- an attacker holding the channel could substitute an\nentire valid quote of their own and every client check passed. v2\nsigns the destination side too, so a substituted quote has to be\neconomically identical to the one requested. v3 adds\nrefund_address, the destination of a failed deposit.\n\nEncoding: a `0x`-prefixed value is lowercased (case-sensitive\nprefix check), except in `to_token` and `recipient`, where only a\nvalue that is entirely `0x` + hex is lowercased (#1254): a Canton\nparty `0xAlice::1220...` is not `0xalice::1220...`. Everything\nelse is verbatim, because base58 Tron addresses and Canton party\nids are case-sensitive and folding one yields a different,\nstill-plausible address. Absent optional\nvalues (`deposit_deadline`, `refund_address`, either stealth key)\nare an EMPTY line, never omitted and never `null` -- the line count\nis fixed at 18. See docs/api/xochi.md for the full spec.\n",
             "nullable": true,
             "type": "string"
           },
@@ -2643,6 +2646,130 @@
           "route",
           "eip712",
           "fee"
+        ],
+        "type": "object"
+      },
+      "ReadinessAttestationResponse": {
+        "properties": {
+          "attestation": {
+            "description": "pxe-bridge's JSON-RPC `result`, verbatim. Xochi verifies it.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "attestation"
+        ],
+        "type": "object"
+      },
+      "ReadinessRequest": {
+        "additionalProperties": false,
+        "description": "Recipient-side facts only (pxe-bridge#50 decision 10). Forwarded to the bridge under the §7 EIP-712 member names (`recipient`, `descriptorDigest`, `networkIdentity{aztecChainId, protocolVersion, rollupAddress, l1ChainId, genesisOrNetworkDigest}`, `corridor{corridorId, corridorRevision, manifestDigest}`). Hex is lowercased.",
+        "properties": {
+          "corridor": {
+            "additionalProperties": false,
+            "properties": {
+              "corridor_id": {
+                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "manifest_digest": {
+                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 4294967295,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "corridor_id",
+              "revision",
+              "manifest_digest"
+            ],
+            "type": "object"
+          },
+          "descriptor": {
+            "description": "The full recipient descriptor, opaque to Riddler (<= 16 KiB, <= 8 levels). Refused if any key at any depth names the source wallet, the source chain or the binding id.",
+            "type": "object"
+          },
+          "descriptor_digest": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "network": {
+            "additionalProperties": false,
+            "properties": {
+              "aztec_chain_id": {
+                "pattern": "^[1-9][0-9]*$",
+                "type": "string"
+              },
+              "genesis_or_network_digest": {
+                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "l1_chain_id": {
+                "pattern": "^[1-9][0-9]*$",
+                "type": "string"
+              },
+              "protocol_version": {
+                "pattern": "^[1-9][0-9]*$",
+                "type": "string"
+              },
+              "rollup_address": {
+                "pattern": "^0x[0-9a-fA-F]{40}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "aztec_chain_id",
+              "protocol_version",
+              "rollup_address",
+              "l1_chain_id",
+              "genesis_or_network_digest"
+            ],
+            "type": "object"
+          },
+          "recipient_address": {
+            "description": "AztecAddress; nonzero, below the BN254 scalar field modulus.",
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "descriptor",
+          "recipient_address",
+          "descriptor_digest",
+          "network",
+          "corridor"
+        ],
+        "type": "object"
+      },
+      "RootUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "attestedAt": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "root": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "rootBlock": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "signature": {
+            "pattern": "^0x([0-9a-fA-F]{2})+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "rootBlock",
+          "attestedAt",
+          "signature"
         ],
         "type": "object"
       },
@@ -4409,7 +4536,7 @@
     },
     "/xochi/quote": {
       "post": {
-        "description": "Returns a quote keyed by `quote_id` and `intent_id` with tier-based\nlayered fees (solver spread + price impact + venue + routing, itemized in\n`fee_breakdown`. No settlement-type premium: the venue and routing layers\nprice identically for public, stealth and shielded; the gas floor reflects\neach route's real cost (stealth and shielded include the claim leg) and the full EIP-712 typed data the user signs. Quotes are\nvalid for ~30s (configurable).\n\nRequired scope: `quote`.\n\n**Deposit-address origins allocate.** A Tron-origin quote binds a\nper-intent deposit address, an intent record and a signed attestation\nto one `intent_id`, so a retry after a timeout or a lost 2xx would\nmint a second route while the first still accepts funds. Send\n`idempotency_key` (a caller-minted UUID, one per allocation attempt)\nto make such a retry safe: the same authenticated caller repeating the\nsame deal under the same key receives the ORIGINAL quote (same\n`intent_id`, `quote_id`, `deposit_address`, `deposit_attestation`,\n`deposit_deadline`) and allocates nothing, for as long as that route\nstill accepts deposits. It binds only deposit-address routes; an EVM\nquote allocates nothing and is re-priced on every call, key or not.\n`preview: true` prices a route without allocating anything at all.\n",
+        "description": "Returns a quote keyed by `quote_id` and `intent_id` with tier-based\nlayered fees (solver spread + price impact + venue + routing, itemized in\n`fee_breakdown`. No settlement-type premium: the venue and routing layers\nprice identically for public, stealth and shielded; the gas floor reflects\neach route's real cost (stealth and shielded include the claim leg) and the full EIP-712 typed data the user signs. Quotes are\nvalid for ~30s (configurable).\n\nRequired scope: `quote`.\n\n**Deposit-address origins allocate.** A Tron-origin quote binds a\nper-intent deposit address, an intent record and a signed attestation\nto one `intent_id`, so a retry after a timeout or a lost 2xx would\nmint a second route while the first still accepts funds. Send\n`idempotency_key` (a caller-minted UUID, one per allocation attempt)\nto make such a retry safe: the same authenticated caller repeating the\nsame deal under the same key receives the ORIGINAL quote (same\n`intent_id`, `quote_id`, `deposit_address`, `deposit_attestation`,\n`deposit_deadline`) and allocates nothing, for as long as that route\nstill accepts deposits. It binds only deposit-address routes; an EVM\nquote allocates nothing and is re-priced on every call, key or not.\n`preview: true` prices a route without allocating anything at all.\n\n**Quote-through corridors (#1193).** On a corridor the deploy lists in\n`SOLVER_QUOTE_THROUGH_CORRIDORS_JSON` (none by default), Riddler has no\nprice of its own: the request waits out the solver panel's sealed\nwindow (~`SOLVER_AUCTION_WINDOW_MS`) and the quote IS the panel's best\nfirm bid, settled second-price. `to_amount` is `max(next-best standing\nbid, floor)`, the floor being the announced, oracle-bounded `minOutput`;\n`min_to_amount` and `escrow.dest_opening.to_amount` are that floor;\n`expires_at` is 60s after issuance, not the ordinary TTL. These quotes\nare escrowed only (the `escrow` envelope is always present): a request\nthat cannot be escrowed is 422 `escrow_refused` (`reason:\nquote_through_requires_escrow`; `quote_through_exact_input_only` for\n`exact_output`). No standing bid is 503 `insufficient_liquidity`\n(`reason: no_solver_quote`, with `retry_after`). The award goes to the\nbidder whose price was quoted and is never re-auctioned. `preview: true`\nopens no auction and is Riddler's indicative oracle price, not a firm\none.\n",
         "operationId": "xochi_quote",
         "requestBody": {
           "content": {
@@ -4471,7 +4598,7 @@
                 }
               }
             },
-            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n\nOn an escrow corridor (`EscrowCapability`), `escrow_refused` is the\npermanent escrow decline, `details.reason` naming the check; and\n`token_mismatch` with `details.reason: cross_token_fills_disabled`\nis the issuance price band finding the pair switched off.\n\nCanton (253340876, behind `ENABLE_CANTON_DESTINATION`) is a\ndestination-only escrow corridor that is not live yet (#1183): a\nvalid Canton-destination request is declined `escrow_refused` with\n`details.reason: canton_destination_not_live`, and a Canton origin\nis `origin_not_enabled`. Both are permanent. A Canton\n`recipient_address` that is not a party id (`hint::1220<64\nlowercase hex>`, never case-folded), a `to_token` other than the\nCanton Coin instrument id\n`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`,\nor a non-public `settlement_preference` is `validation_failed`.\n"
+            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n\nOn an escrow corridor (`EscrowCapability`), `escrow_refused` is the\npermanent escrow decline, `details.reason` naming the check; and\n`token_mismatch` with `details.reason: cross_token_fills_disabled`\nis the issuance price band finding the pair switched off.\n\nCanton (253340876, and Canton TestNet 4149314359 under\n`TESTNET_ONLY=true`, both behind `ENABLE_CANTON_DESTINATION`) is a\ndestination-only escrow corridor that is not live yet (#1183): a\nvalid Canton-destination request is declined `escrow_refused` with\n`details.reason: canton_destination_not_live`, and a Canton origin\nis `origin_not_enabled`. Both are permanent. A Canton\n`recipient_address` that is not a party id (`hint::1220<64\nlowercase hex>`, never case-folded), a `to_token` other than the\ndestination network's Canton Coin instrument id (MainNet\n`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`,\nTestNet\n`DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337`;\neither network's id on the other is refused),\nor a non-public `settlement_preference` is `validation_failed`.\n"
           },
           "426": {
             "$ref": "#/components/responses/TlsRequired"
@@ -4535,6 +4662,208 @@
         "summary": "Generate a quote",
         "tags": [
           "quote"
+        ]
+      }
+    },
+    "/xochi/readiness/deployment": {
+      "post": {
+        "description": "Same request, relay rules and refusals as `/xochi/readiness/membership`;\nthe bridge answers its `RecipientDeployment` record\n(`{descriptorDigest, recipient, classId, deployed, finalBlock,\nattestedAt, signature}`), returned verbatim under `attestation`.\n\n`422 readiness_not_enabled` (permanent) when this deployment names no\npxe-bridge operation for it (`XOCHI_READINESS_DEPLOYMENT_METHOD`\nunset). Required scope: `readiness`.\n",
+        "operationId": "xochi_readiness_deployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessAttestationResponse"
+                }
+              }
+            },
+            "description": "The bridge's attestation, verbatim"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "pxe-bridge did not attest -- retry after `Retry-After`",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Relay a RecipientDeployment attestation request to pxe-bridge",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/xochi/readiness/membership": {
+      "post": {
+        "description": "Interim relay (xochi-fi/pxe-bridge#50 decision 10, until M6): forwards\nONLY the recipient-side fields to pxe-bridge with Riddler's\nattestation-only credential and returns the bridge's signed\n`{descriptorDigest, root, member, rootBlock, attestedAt, signature}`\nverbatim under `attestation`. Riddler neither verifies nor interprets\nit; Xochi does.\n\nThe schema is strict: any other field -- the source wallet, the\nsource chain and the binding id in particular, at any depth including\ninside `descriptor` -- is refused with 422, never silently dropped.\n\nEvery failure to obtain an attestation (a bridge refusal, an HTTP\nerror, a timeout, an unreachable bridge) is a transient\n`503 readiness_unavailable` with `Retry-After` and a bounded\n`details.reason` (a pxe-bridge#50 refusal class such as\n`snapshot_root_mismatch`, or `bridge_refused`, `bridge_timeout`,\n`bridge_unreachable`, `bridge_http_error`, `bridge_rate_limited`,\n`bridge_credential_rejected`, `bridge_malformed_response`,\n`method_refused`, `bridge_not_configured`, `credential_not_configured`).\n\nOff (`XOCHI_READINESS_RELAY_ENABLED=false`, the default), the path\nanswers the router's ordinary 404. Required scope: `readiness`.\n",
+        "operationId": "xochi_readiness_membership",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessAttestationResponse"
+                }
+              }
+            },
+            "description": "The bridge's attestation, verbatim"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "details": {
+                    "reason": "snapshot_root_mismatch",
+                    "retry_after": 5
+                  },
+                  "error": "readiness_unavailable",
+                  "message": "pxe-bridge did not attest -- retry after the indicated interval"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "pxe-bridge did not attest -- retry after `Retry-After`",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Relay a recipient membership attestation request to pxe-bridge",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/xochi/readiness/root-update": {
+      "post": {
+        "description": "Called by pxe-bridge, not by Xochi. Records the notice in a durable\noutbox (`Stores.Durable`) before answering, then delivers it to the\nbackend of every `readiness`-scoped caller, retrying with backoff;\non restart Riddler re-pushes the current root once. A byte-identical\nnotice is acknowledged again and enqueues nothing.\n\nExactly `root`, `rootBlock`, `attestedAt`, `signature`: any other field\n(a recipient, a position) is refused. Not verified here. `503\nreadiness_unavailable` + `Retry-After` when the outbox cannot be\nwritten. Required scope: `readiness_push`.\n",
+        "operationId": "xochi_readiness_root_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RootUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Recorded for delivery"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The outbox could not be written -- retry after `Retry-After`",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "pxe-bridge pushes a signed RootUpdate for delivery to Xochi",
+        "tags": [
+          "readiness"
         ]
       }
     },
@@ -4910,6 +5239,10 @@
     {
       "description": "Supported chains, routes, payment methods",
       "name": "metadata"
+    },
+    {
+      "description": "Shielded readiness relay (#1333): pxe-bridge recipient attestations and RootUpdate notices, relayed and never verified; XOCHI_READINESS_RELAY_ENABLED",
+      "name": "readiness"
     },
     {
       "description": "Liveness and readiness probes",
