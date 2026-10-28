@@ -125,8 +125,12 @@ describe("parseRetryAfterMs", () => {
     expect(parseRetryAfterMs("2")).toBe(2000);
   });
 
-  it("clamps to the retry policy's maxDelayMs", () => {
-    expect(parseRetryAfterMs("9999")).toBe(DEFAULT_RETRY.maxDelayMs);
+  it("preserves server-directed waits above the client backoff cap", () => {
+    expect(parseRetryAfterMs("120")).toBe(120_000);
+  });
+
+  it("clamps to the maximum retry wait by default and honors a custom ceiling", () => {
+    expect(parseRetryAfterMs("9999")).toBe(MAX_RETRY_WAIT_SEC * 1000);
     expect(parseRetryAfterMs("9999", 3000)).toBe(3000);
   });
 

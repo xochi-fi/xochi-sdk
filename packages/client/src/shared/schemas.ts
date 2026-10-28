@@ -457,9 +457,9 @@ export const QuoteResponseSchema = z
     // Optional: the POST omits it, and the GET omits it too on a pull-less route.
     nonce: z.number().int().min(0).optional(),
     error: z.string().optional(),
-    // Present on the unsolvable-200 branch: `error_category` is a stable machine
-    // key for the reject class, `detail` the solver's raw reason. Absent on
-    // solvable quotes.
+    // Present on declined quotes: `error_category` is a stable machine key for
+    // the reject class, `detail` the solver's raw reason. Absent on solvable
+    // quotes.
     //
     // Enumerated so the generated spec documents the vocabulary agents branch on,
     // and so adding a category without declaring it fails the contract tests.
@@ -475,7 +475,7 @@ export const QuoteResponseSchema = z
       .string()
       .optional()
       .describe(
-        "Stable machine key for a declined quote. Branch on this rather than on `error`, whose prose may change. Known values: gas_floor_unpriced (transient, retry), origin_pull_amount_mismatch, served_payout_mismatch, settlement_type_unavailable, stealth_factory_untrusted, refund_address_invalid, amount_too_large, amount_too_small, no_liquidity, route_unsupported, invalid_request (the request shape was rejected, not the route -- see `detail` for the offending field), auth, unknown. Treat an unrecognized value as a non-retryable decline.",
+        "Stable machine key for a declined quote. Branch on this rather than on `error`, whose prose may change. Known values: gas_floor_unpriced (transient, retry), conversion_unavailable (transient price verification, retry), inventory_unverified (transient, retry), quote_holds_exhausted (transient, retry), idempotency_key_in_flight (transient, retry with the same key), idempotency_unavailable (transient, retry with the same key), origin_pull_amount_mismatch, served_payout_mismatch, settlement_type_unavailable, stealth_factory_untrusted, refund_address_invalid, amount_too_large, amount_too_small, no_liquidity, route_unsupported, invalid_request (the request shape was rejected, not the route -- see `detail` for the offending field), auth, unknown. Treat an unrecognized value as a non-retryable decline.",
       ),
     detail: z.string().optional(),
     // Present when `error_category` is `amount_too_small` because the route's

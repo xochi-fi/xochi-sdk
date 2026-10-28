@@ -70,7 +70,7 @@ export interface RetryPolicy {
   maxAttempts: number;
   /** First exponential backoff step. */
   baseDelayMs: number;
-  /** Clamp on a server-supplied `Retry-After` used for internal pacing. */
+  /** Clamp on client-generated exponential backoff delays. */
   maxDelayMs: number;
 }
 
@@ -773,12 +773,13 @@ function readTokenFromPrefix(prefix: string, intentId: string): string | undefin
 /**
  * Parse a Retry-After header (our API sends integer seconds) into milliseconds,
  * clamped to [0, maxDelayMs] so a malformed or hostile value can't stall the
- * client. Returns null when absent/unparseable so the caller falls back to its
- * own exponential backoff.
+ * client. The default safety ceiling preserves server-directed waits up to
+ * MAX_RETRY_WAIT_SEC; a custom ceiling can narrow them. Returns null when
+ * absent/unparseable so the caller falls back to its own exponential backoff.
  */
 export function parseRetryAfterMs(
   headerValue: string | null,
-  maxDelayMs: number = DEFAULT_RETRY.maxDelayMs,
+  maxDelayMs: number = MAX_RETRY_WAIT_SEC * 1000,
 ): number | null {
   if (!headerValue) return null;
   const seconds = Number(headerValue);
@@ -1258,10 +1259,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
             // A 503 is a transient solver blip (saturation / gas-oracle
             // unavailable); pace the retry off the server's Retry-After.
             if (response.status === 503) {
-              retryAfterMs = parseRetryAfterMs(
-                response.headers.get("Retry-After"),
-                retry.maxDelayMs,
-              );
+              retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"));
             }
             // A cut body does not parse, so it never carries the marker.
             const record = truncated ? undefined : parseJsonObject(errorBody);
