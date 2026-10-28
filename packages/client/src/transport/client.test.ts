@@ -940,6 +940,36 @@ describe("getQuote cache", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("keeps a forced replacement pending when the replaced quote rejects", async () => {
+    const replacedResponse = Promise.withResolvers<Response>();
+    const replacementResponse = Promise.withResolvers<Response>();
+    const calls: Recorded[] = [];
+    const c = createXochiClient({
+      baseUrl: "https://api.example.test/",
+      fetch: (url, init) => {
+        calls.push({ url, init });
+        return calls.length === 1 ? replacedResponse.promise : replacementResponse.promise;
+      },
+      log: () => {},
+      retry: { baseDelayMs: 0 },
+    });
+    const replaced = c.getQuote(req);
+    const replacedOutcome = rejection(replaced);
+    const replacement = c.getQuote(req, { forceRefresh: true });
+    expect(calls).toHaveLength(2);
+
+    replacedResponse.resolve(fetched(new Response("no", { status: 400 }), calls[0].url));
+    expect(((await replacedOutcome) as ApiError).code).toBe(400);
+
+    const joined = c.getQuote(req);
+    expect(calls).toHaveLength(2);
+    replacementResponse.resolve(fetched(okQuote(), calls[1].url));
+    await expect(replacement).resolves.toMatchObject({ success: true });
+    await expect(joined).resolves.toMatchObject({ success: true });
+    expect(await replacement).toBe(await joined);
+    expect(calls).toHaveLength(2);
+  });
+
   it("keeps deduplicating throughout a 120-second server-directed retry", async () => {
     vi.useFakeTimers();
     const { c, calls } = client((call) =>
