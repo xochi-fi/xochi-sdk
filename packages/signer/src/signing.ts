@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { debugEnabled } from "./debug";
+import { assertValidPrivateKey } from "./private-key.js";
 import type { Eip712TypeField, SignerConfig, SignResult } from "./types";
 
 const DEBUG = debugEnabled();
@@ -111,6 +112,7 @@ export async function signERC3009(
   inputChain: string,
   config: SignerConfig,
 ): Promise<SignResult> {
+  assertValidPrivateKey(config.PRIVATE_KEY, "config.PRIVATE_KEY");
   const wallet = new ethers.Wallet(config.PRIVATE_KEY);
   const chainConfig = requireChain(config, inputChain);
 
@@ -222,6 +224,7 @@ export async function signPermit2(
   config: SignerConfig,
   inputTokenAddress: string | null = null,
 ): Promise<SignResult> {
+  assertValidPrivateKey(config.PRIVATE_KEY, "config.PRIVATE_KEY");
   const wallet = new ethers.Wallet(config.PRIVATE_KEY);
   const chainConfig = requireChain(config, inputChain);
 

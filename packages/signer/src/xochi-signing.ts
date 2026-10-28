@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { debugEnabled } from "./debug";
+import { assertValidPrivateKey } from "./private-key.js";
 import { ERC3009_TYPES, PERMIT2_TYPES } from "./signing";
 import type { Eip712Signable, Eip712TypeField } from "./types";
 
@@ -112,6 +113,7 @@ async function signStruct(
   allowedSchemas: Eip712Schema[],
   label: string,
 ): Promise<string> {
+  assertValidPrivateKey(privateKeyHex, "privateKeyHex");
   const wallet = new ethers.Wallet(privateKeyHex);
 
   const { EIP712Domain: _EIP712Domain, ...messageTypes } = (signable && signable.types) || {};
