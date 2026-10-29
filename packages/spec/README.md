@@ -96,11 +96,12 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   changing a member, type, purpose or ordering requires a new primary type/version.
   `backupFormatId` is exactly
   `keccak256(UTF8("xochi.shielded.backup-format.v1"))`. Signature recovery alone never proves
-  current authorization: acknowledgement consumers also pin the binding, verified descriptor
-  key and challenge nonce, check `challengeExpiry`, and atomically consume the nonce; readiness
-  consumers pin the attester and trusted domain, enforce age/future-skew limits, and require a
-  caller-chosen minimum finalized block. `@xochi/signer` exposes `verifyRecipientAck` and
-  `verifyReadinessRecord` so those checks do not get reimplemented inconsistently.
+  current authorization. `verifyRecipientAck` verifies the descriptor, derives its signing key,
+  reconstructs the binding domain from trusted inputs, checks the exact binding, recipient,
+  nonce and expiry, then awaits a durable shared atomic nonce-consumption operation.
+  `verifyReadinessRecord` reconstructs its domain from trusted corridor inputs, pins the attester
+  and expected subject, requires positive membership/deployment, and enforces consumer-selected
+  age/future-skew and nonzero minimum-finalized-block policy under library misuse ceilings.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the

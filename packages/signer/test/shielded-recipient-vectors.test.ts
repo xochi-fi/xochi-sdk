@@ -251,6 +251,18 @@ function refusalOf(
   }
 }
 
+async function asyncRefusalOf(
+  fn: () => Promise<unknown>,
+  as: typeof AckEncodingError,
+): Promise<{ code: string; field: string } | null> {
+  try {
+    await fn();
+    return null;
+  } catch (e) {
+    if (!(e instanceof as)) throw e;
+    return { code: e.code, field: e.field };
+  }
+}
 describe("package surface", () => {
   it("exports the approved recipient and acknowledgement APIs", () => {
     for (const name of [
@@ -575,59 +587,79 @@ describe("acknowledgements", () => {
     }
   });
 
-  it("pins the backup format and atomically consumes a valid challenge once", () => {
+  it("pins the backup format and atomically consumes a valid challenge once", async () => {
     expect(BACKUP_FORMAT_V1_ID).toBe(ethers.id(BACKUP_FORMAT_V1_NAME));
     expect(BACKUP_FORMAT_V1_NAME).toBe("xochi.shielded.backup-format.v1");
     const v = file.acknowledgements.vectors[0]!;
     const message = v.message as never;
+    const bindingVector = file.recipientMessage.bindingMessages.find(
+      (candidate) => candidate.digest === v.message.bindingDigest,
+    )!;
+    const binding = bindingVector.message as unknown as RecipientBinding;
+    const descriptorVector = file.descriptor.vectors.find(
+      (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
+    )!;
     const consumed = new Set<string>();
     const policy = {
-      expectedBindingDigest: v.message.bindingDigest as string,
+      binding,
+      descriptor: descriptorVector.descriptor,
+      profile: profileOf(descriptorVector.profile),
+      environment: v.environment,
+      network: v.network,
       expectedNonce: v.message.nonce as string,
       now: 1_900_000_299,
-      expectedPublicKey: v.publicKey,
-      consumeNonce: (nonce: string) => {
+      consumeNonce: async (nonce: string) => {
         if (consumed.has(nonce)) return false;
         consumed.add(nonce);
         return true;
       },
     };
-    expect(verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy).digest).toBe(
+    expect((await verifyRecipientAck(v.primaryType, message, v.signature, policy)).digest).toBe(
       v.digest,
     );
     expect(
-      refusalOf(
-        () => verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy),
+      await asyncRefusalOf(
+        () => verifyRecipientAck(v.primaryType, message, v.signature, policy),
         AckEncodingError,
       ),
     ).toEqual({ code: "nonce_replayed", field: "nonce" });
     expect(consumed.size).toBe(1);
   });
 
-  it("rejects expired, mismatched and invalid acknowledgement challenges before consumption", () => {
+  it("rejects expired, mismatched and invalid acknowledgement challenges before consumption", async () => {
     const v = file.acknowledgements.vectors[0]!;
     const message = v.message as never;
+    const bindingVector = file.recipientMessage.bindingMessages.find(
+      (candidate) => candidate.digest === v.message.bindingDigest,
+    )!;
+    const binding = bindingVector.message as unknown as RecipientBinding;
+    const descriptorVector = file.descriptor.vectors.find(
+      (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
+    )!;
     let consumeCalls = 0;
     const policy = {
-      expectedBindingDigest: v.message.bindingDigest as string,
+      binding,
+      descriptor: descriptorVector.descriptor,
+      profile: profileOf(descriptorVector.profile),
+      environment: v.environment,
+      network: v.network,
       expectedNonce: v.message.nonce as string,
       now: 1_900_000_301,
-      expectedPublicKey: v.publicKey,
-      consumeNonce: () => {
+      consumeNonce: async () => {
         consumeCalls++;
         return true;
       },
     };
     expect(
-      refusalOf(
-        () => verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy),
+      await asyncRefusalOf(
+        () => verifyRecipientAck(v.primaryType, message, v.signature, policy),
         AckEncodingError,
       ),
     ).toEqual({ code: "challenge_expired", field: "challengeExpiry" });
     expect(
-      refusalOf(
+      await asyncRefusalOf(
         () =>
-          verifyRecipientAck(v.primaryType, message, v.domain, v.signature, {
+          verifyRecipientAck(v.primaryType, message, v.signature, {
             ...policy,
             now: 1_900_000_299,
             expectedNonce: "0x" + "11".repeat(32),
@@ -636,26 +668,68 @@ describe("acknowledgements", () => {
       ),
     ).toEqual({ code: "nonce_mismatch", field: "nonce" });
     expect(
-      refusalOf(
+      await asyncRefusalOf(
         () =>
-          verifyRecipientAck(v.primaryType, message, v.domain, v.signature, {
-            ...policy,
-            now: 1_900_000_299,
-            expectedBindingDigest: "0x" + "22".repeat(32),
-          }),
+          verifyRecipientAck(
+            v.primaryType,
+            { ...v.message, bindingDigest: "0x" + "22".repeat(32) } as never,
+            v.signature,
+            { ...policy, now: 1_900_000_299 },
+          ),
         AckEncodingError,
       ),
     ).toEqual({ code: "binding_mismatch", field: "bindingDigest" });
     expect(
-      refusalOf(
+      await asyncRefusalOf(
         () =>
-          verifyRecipientAck(v.primaryType, message, v.domain, "0x" + "00".repeat(64), {
+          verifyRecipientAck(v.primaryType, message, "0x" + "00".repeat(64), {
             ...policy,
             now: 1_900_000_299,
           }),
         AckEncodingError,
       ),
     ).toEqual({ code: "signature_invalid", field: "signature" });
+    const otherDescriptor = file.descriptor.vectors.find(
+      (candidate) =>
+        candidate.profile === descriptorVector.profile &&
+        candidate.descriptorDigest !== descriptorVector.descriptorDigest,
+    )!;
+    expect(
+      await asyncRefusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.signature, {
+            ...policy,
+            descriptor: otherDescriptor.descriptor,
+            now: 1_900_000_299,
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "descriptor_mismatch", field: "descriptor" });
+    expect(
+      await asyncRefusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.signature, {
+            ...policy,
+            environment: `${v.environment}-untrusted`,
+            now: 1_900_000_299,
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "binding_mismatch", field: "bindingDigest" });
+    expect(
+      await asyncRefusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.signature, {
+            ...policy,
+            network: {
+              ...v.network,
+              genesisOrNetworkDigest: "0x" + "33".repeat(32),
+            },
+            now: 1_900_000_299,
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "network_mismatch", field: "descriptor.network" });
     expect(consumeCalls).toBe(0);
   });
 });

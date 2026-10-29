@@ -63,7 +63,10 @@ export type ReadinessRefusal =
   | "signer_mismatch"
   | "attestation_stale"
   | "attestation_from_future"
-  | "block_before_minimum";
+  | "block_before_minimum"
+  | "negative_readiness"
+  | "subject_mismatch"
+  | "policy_out_of_range";
 
 export class ReadinessEncodingError extends Error {
   readonly code: ReadinessRefusal;
@@ -84,6 +87,9 @@ const readinessRules = <T>(fn: () => T): T =>
   withRefusalsAs(fn, (code, field, detail) => new ReadinessEncodingError(code, field, detail));
 
 export const SHIELDED_READINESS_DOMAIN_NAME = "Xochi Shielded Readiness";
+/** Hard misuse ceilings; deployments select stricter values per readiness consumer. */
+export const READINESS_MAX_AGE_SECONDS = 86_400n;
+export const READINESS_MAX_FUTURE_SKEW_SECONDS = 300n;
 
 export const READINESS_TYPE_STRINGS = {
   Membership:
@@ -135,7 +141,7 @@ const MEMBERS: Record<ReadinessType, readonly string[]> = {
 };
 
 function assertReadinessType(primaryType: string): asserts primaryType is ReadinessType {
-  if (!(primaryType in MEMBERS)) {
+  if (!Object.prototype.hasOwnProperty.call(MEMBERS, primaryType)) {
     refuseReadiness("unknown_primary_type", "primaryType", `got ${JSON.stringify(primaryType)}`);
   }
 }
@@ -317,16 +323,33 @@ function recoverReadinessAddress(digest: Hex, signature: Hex): Hex {
   }
 }
 
-export interface ReadinessVerificationPolicy {
+export interface ReadinessDomainInputs {
+  sourceChainId: UintLike;
+  environment: string;
+  network: NetworkIdentity;
+  manifestDigest: string;
+}
+
+export interface ReadinessExpectedSubjects {
+  Membership: { descriptorDigest: string };
+  RecipientDeployment: { descriptorDigest: string; recipient: string; classId: string };
+  RootUpdate: { root: string };
+}
+
+export interface ReadinessVerificationPolicy<T extends ReadinessType> {
+  /** Trusted corridor inputs used to reconstruct the readiness domain. */
+  domain: ReadinessDomainInputs;
   /** Pinned dedicated readiness-attestation key for this corridor. */
   expectedSigner: string;
+  /** Expected subject and positive state for this use. */
+  expected: ReadinessExpectedSubjects[T];
   /** Caller-controlled Unix time in seconds. */
   now: UintLike;
-  /** Maximum accepted age in seconds. */
+  /** Maximum accepted age, no greater than READINESS_MAX_AGE_SECONDS. */
   maxAgeSeconds: UintLike;
-  /** Maximum accepted clock lead in seconds. */
+  /** Maximum clock lead, no greater than READINESS_MAX_FUTURE_SKEW_SECONDS. */
   maxFutureSkewSeconds: UintLike;
-  /** Lowest finalized block acceptable to the caller for this readiness type. */
+  /** Nonzero lowest finalized block acceptable for this readiness type. */
   minBlock: UintLike;
 }
 
@@ -337,18 +360,22 @@ export interface VerifiedReadiness<T extends ReadinessType> {
 }
 
 /**
- * Fail-closed readiness verification. The caller rebuilds `domain` from its trusted
- * corridor record and supplies freshness/finality policy; signature recovery alone is
- * intentionally insufficient for mutable readiness state.
+ * Fail-closed readiness verification. The domain is reconstructed from trusted corridor
+ * inputs; positive state, exact subject, freshness and finality are all required.
  */
 export function verifyReadinessRecord<T extends ReadinessType>(
   primaryType: T,
   record: unknown,
-  domain: ShieldedDomain,
-  policy: ReadinessVerificationPolicy,
+  policy: ReadinessVerificationPolicy<T>,
 ): VerifiedReadiness<T> {
   assertReadinessType(primaryType);
   const { attestation, signature } = parseReadinessRecord(primaryType, record);
+  const domain = readinessDomain(
+    policy.domain.sourceChainId,
+    policy.domain.environment,
+    policy.domain.network,
+    policy.domain.manifestDigest,
+  );
   const expectedSigner = readinessRules(() => evmAddress("expectedSigner", policy.expectedSigner));
   const signer = recoverReadinessAddress(
     readinessDigest(primaryType, attestation, domain),
@@ -358,10 +385,57 @@ export function verifyReadinessRecord<T extends ReadinessType>(
     refuseReadiness("signer_mismatch", "signature", `recovered ${signer}`);
   }
 
+  if (primaryType === "Membership") {
+    const membership = attestation as MembershipAttestation;
+    const expected = policy.expected as ReadinessExpectedSubjects["Membership"];
+    if (!membership.member) {
+      refuseReadiness("negative_readiness", "member", "membership is false");
+    }
+    const expectedDescriptor = readinessRules(() =>
+      bytes32("expected.descriptorDigest", expected.descriptorDigest),
+    );
+    if (membership.descriptorDigest !== expectedDescriptor) {
+      refuseReadiness("subject_mismatch", "descriptorDigest", `expected ${expectedDescriptor}`);
+    }
+  } else if (primaryType === "RecipientDeployment") {
+    const deployment = attestation as RecipientDeploymentAttestation;
+    const expected = policy.expected as ReadinessExpectedSubjects["RecipientDeployment"];
+    if (!deployment.deployed) {
+      refuseReadiness("negative_readiness", "deployed", "deployment is false");
+    }
+    const expectedDescriptor = readinessRules(() =>
+      bytes32("expected.descriptorDigest", expected.descriptorDigest),
+    );
+    const expectedRecipient = readinessRules(() =>
+      assertAztecBytes32("expected.recipient", expected.recipient),
+    );
+    const expectedClass = readinessRules(() =>
+      assertAztecBytes32("expected.classId", expected.classId),
+    );
+    if (deployment.descriptorDigest !== expectedDescriptor) {
+      refuseReadiness("subject_mismatch", "descriptorDigest", `expected ${expectedDescriptor}`);
+    }
+    if (deployment.recipient !== expectedRecipient) {
+      refuseReadiness("subject_mismatch", "recipient", `expected ${expectedRecipient}`);
+    }
+    if (deployment.classId !== expectedClass) {
+      refuseReadiness("subject_mismatch", "classId", `expected ${expectedClass}`);
+    }
+  } else {
+    const update = attestation as RootUpdateAttestation;
+    const expected = policy.expected as ReadinessExpectedSubjects["RootUpdate"];
+    const expectedRoot = readinessRules(() => bytes32("expected.root", expected.root));
+    if (update.root !== expectedRoot) {
+      refuseReadiness("subject_mismatch", "root", `expected ${expectedRoot}`);
+    }
+  }
+
   const now = readinessRules(() => uint("now", policy.now, UINT64_MAX));
-  const maxAge = readinessRules(() => uint("maxAgeSeconds", policy.maxAgeSeconds, UINT64_MAX));
+  const maxAge = readinessRules(() =>
+    uint("maxAgeSeconds", policy.maxAgeSeconds, READINESS_MAX_AGE_SECONDS),
+  );
   const maxFutureSkew = readinessRules(() =>
-    uint("maxFutureSkewSeconds", policy.maxFutureSkewSeconds, UINT64_MAX),
+    uint("maxFutureSkewSeconds", policy.maxFutureSkewSeconds, READINESS_MAX_FUTURE_SKEW_SECONDS),
   );
   const attestedAt = BigInt(attestation.attestedAt);
   if (attestedAt > now + maxFutureSkew) {
@@ -372,6 +446,9 @@ export function verifyReadinessRecord<T extends ReadinessType>(
   }
 
   const minBlock = readinessRules(() => uint("minBlock", policy.minBlock, UINT64_MAX));
+  if (minBlock === 0n) {
+    refuseReadiness("policy_out_of_range", "minBlock", "must be nonzero");
+  }
   const block =
     primaryType === "RecipientDeployment"
       ? (attestation as RecipientDeploymentAttestation).finalBlock

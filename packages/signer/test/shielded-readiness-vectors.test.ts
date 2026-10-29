@@ -241,61 +241,165 @@ describe("attestations", () => {
     }
   });
 
-  it("enforces signer, freshness, finality and runtime primary type", () => {
+  it("enforces trusted domain, positive subject, signer, freshness, finality and runtime type", () => {
     const v = file.vectors[0]!;
+    const domainVector = file.domain.vectors.find(
+      (candidate) => candidate.domainSeparator === v.domainSeparator,
+    )!;
     const policy = {
+      domain: {
+        sourceChainId: domainVector.chainId,
+        environment: domainVector.environment,
+        network: domainVector.network,
+        manifestDigest: domainVector.manifestDigest,
+      },
       expectedSigner: v.signer,
+      expected:
+        v.primaryType === "Membership"
+          ? { descriptorDigest: v.record.descriptorDigest as string }
+          : v.primaryType === "RecipientDeployment"
+            ? {
+                descriptorDigest: v.record.descriptorDigest as string,
+                recipient: v.record.recipient as string,
+                classId: v.record.classId as string,
+              }
+            : { root: v.record.root as string },
       now: 1_793_000_100,
       maxAgeSeconds: 100,
       maxFutureSkewSeconds: 0,
       minBlock: "3061",
     };
-    expect(verifyReadinessRecord(v.primaryType, v.record, v.domain, policy).signer).toBe(v.signer);
+    expect(verifyReadinessRecord(v.primaryType, v.record, policy as never).signer).toBe(v.signer);
+    const wrongExpected =
+      v.primaryType === "Membership"
+        ? { descriptorDigest: "0x" + "11".repeat(32) }
+        : v.primaryType === "RecipientDeployment"
+          ? {
+              descriptorDigest: "0x" + "11".repeat(32),
+              recipient: v.record.recipient as string,
+              classId: v.record.classId as string,
+            }
+          : { root: "0x" + "11".repeat(32) };
     expect(
       refusalOf(() =>
-        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+        verifyReadinessRecord(v.primaryType, v.record, {
+          ...policy,
+          expected: wrongExpected,
+        } as never),
+      ),
+    ).toEqual({
+      code: "subject_mismatch",
+      field: v.primaryType === "RootUpdate" ? "root" : "descriptorDigest",
+    });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, {
           ...policy,
           now: 1_793_000_101,
-        }),
+        } as never),
       ),
     ).toEqual({ code: "attestation_stale", field: "attestedAt" });
     expect(
       refusalOf(() =>
-        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+        verifyReadinessRecord(v.primaryType, v.record, {
           ...policy,
           now: 1_792_999_999,
-        }),
+        } as never),
       ),
     ).toEqual({ code: "attestation_from_future", field: "attestedAt" });
     expect(
       refusalOf(() =>
-        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+        verifyReadinessRecord(v.primaryType, v.record, {
           ...policy,
           minBlock: "3062",
-        }),
+        } as never),
       ),
     ).toEqual({ code: "block_before_minimum", field: "minBlock" });
     expect(
       refusalOf(() =>
-        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+        verifyReadinessRecord(v.primaryType, v.record, {
           ...policy,
           expectedSigner: "0x0000000000000000000000000000000000000001",
-        }),
+        } as never),
       ),
     ).toEqual({ code: "signer_mismatch", field: "signature" });
-    expect(refusalOf(() => parseReadinessRecord("Unknown" as never, v.record))).toEqual({
-      code: "unknown_primary_type",
-      field: "primaryType",
-    });
+    for (const primaryType of ["Unknown", "constructor", "toString", "__proto__"]) {
+      expect(refusalOf(() => parseReadinessRecord(primaryType as never, v.record))).toEqual({
+        code: "unknown_primary_type",
+        field: "primaryType",
+      });
+    }
     expect(
       refusalOf(() =>
         verifyReadinessRecord(
           v.primaryType,
           { ...v.record, signature: "0x" + "00".repeat(65) },
-          v.domain,
-          policy,
+          policy as never,
         ),
       ),
     ).toEqual({ code: "signature_malformed", field: "signature" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, {
+          ...policy,
+          minBlock: 0,
+        } as never),
+      ),
+    ).toEqual({ code: "policy_out_of_range", field: "minBlock" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, {
+          ...policy,
+          maxAgeSeconds: 86_401,
+        } as never),
+      ),
+    ).toEqual({ code: "uint_out_of_range", field: "maxAgeSeconds" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, {
+          ...policy,
+          maxFutureSkewSeconds: 301,
+        } as never),
+      ),
+    ).toEqual({ code: "uint_out_of_range", field: "maxFutureSkewSeconds" });
+  });
+
+  it("refuses signed negative and mismatched readiness subjects", () => {
+    for (const v of file.vectors.filter(
+      (candidate) => candidate.record.member === false || candidate.record.deployed === false,
+    )) {
+      const domainVector = file.domain.vectors.find(
+        (candidate) => candidate.domainSeparator === v.domainSeparator,
+      )!;
+      const expected =
+        v.primaryType === "Membership"
+          ? { descriptorDigest: v.record.descriptorDigest as string }
+          : {
+              descriptorDigest: v.record.descriptorDigest as string,
+              recipient: v.record.recipient as string,
+              classId: v.record.classId as string,
+            };
+      expect(
+        refusalOf(() =>
+          verifyReadinessRecord(v.primaryType, v.record, {
+            domain: {
+              sourceChainId: domainVector.chainId,
+              environment: domainVector.environment,
+              network: domainVector.network,
+              manifestDigest: domainVector.manifestDigest,
+            },
+            expected,
+            expectedSigner: v.signer,
+            now: v.record.attestedAt as number,
+            maxAgeSeconds: 100,
+            maxFutureSkewSeconds: 0,
+            minBlock: "1",
+          } as never),
+        ),
+      ).toEqual({
+        code: "negative_readiness",
+        field: v.primaryType === "Membership" ? "member" : "deployed",
+      });
+    }
   });
 });

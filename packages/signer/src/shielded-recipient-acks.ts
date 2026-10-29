@@ -15,12 +15,22 @@ import { ethers } from "ethers";
 
 import {
   NETWORK_IDENTITY_TYPE_STRING,
+  bindingDomain,
   hashNetworkIdentity,
+  hashRecipientBinding,
   shieldedDomainSeparator,
   type NetworkIdentity,
+  type RecipientBinding,
   type ShieldedDomain,
 } from "./shielded";
-import { recipientMessage, verifyRecipientSchnorr } from "./shielded-recipient";
+import {
+  hashRecipientDescriptor,
+  recipientMessage,
+  verifyRecipientDescriptor,
+  verifyRecipientSchnorr,
+  type AztecRecipientProfile,
+  type RecipientDescriptor,
+} from "./shielded-recipient";
 import {
   UINT64_MAX,
   assertAztecBytes32,
@@ -44,7 +54,10 @@ export type AckRefusal =
   | "nonce_mismatch"
   | "challenge_expired"
   | "signature_invalid"
-  | "nonce_replayed";
+  | "nonce_replayed"
+  | "descriptor_mismatch"
+  | "recipient_mismatch"
+  | "network_mismatch";
 
 export class AckEncodingError extends Error {
   readonly code: AckRefusal;
@@ -226,17 +239,24 @@ export function recipientAckDigest<T extends RecipientAckType>(
 }
 
 export interface RecipientAckVerificationPolicy {
-  expectedBindingDigest: string;
+  /** Trusted binding previously accepted from the source-wallet ceremony. */
+  binding: RecipientBinding;
+  /** Descriptor named by `binding`; verified and used to derive the signing key. */
+  descriptor: RecipientDescriptor;
+  /** Exact pinned Aztec SDK profile for `descriptor`. */
+  profile: AztecRecipientProfile;
+  /** Trusted deployment environment used to reconstruct Domain (binding). */
+  environment: string;
+  /** Trusted network identity used to reconstruct Domain (binding). */
+  network: NetworkIdentity;
   expectedNonce: string;
   /** Caller-controlled Unix time in seconds. */
   now: UintLike;
-  /** Signing key from the verified descriptor named by the binding. */
-  expectedPublicKey: { x: string; y: string };
   /**
-   * Atomically marks this nonce consumed and returns true only for its first use.
-   * Called last, after every encoding, policy and signature check succeeds.
+   * Durably and atomically marks this nonce consumed. Resolves true only for its first
+   * committed use across every process. Called last after all other checks succeed.
    */
-  consumeNonce: (nonce: Hex) => boolean;
+  consumeNonce: (nonce: Hex) => Promise<boolean>;
 }
 
 export interface VerifiedRecipientAck {
@@ -246,24 +266,54 @@ export interface VerifiedRecipientAck {
 }
 
 /**
- * Fail-closed acknowledgement verification. Exact binding/nonce checks and expiry run
- * before signature verification; nonce consumption runs last and must be atomic.
+ * Fail-closed acknowledgement verification. The binding domain and recipient signing key
+ * are reconstructed from trusted inputs; durable nonce consumption runs last.
  */
-export function verifyRecipientAck<T extends RecipientAckType>(
+export async function verifyRecipientAck<T extends RecipientAckType>(
   primaryType: T,
   message: RecipientAckMessages[T],
-  domain: ShieldedDomain,
   signature: string,
   policy: RecipientAckVerificationPolicy,
-): VerifiedRecipientAck {
-  const digest = recipientAckDigest(primaryType, message, domain);
-  const bindingDigest = nonzeroDigest("bindingDigest", message.bindingDigest);
-  const expectedBindingDigest = nonzeroDigest(
-    "expectedBindingDigest",
-    policy.expectedBindingDigest,
+): Promise<VerifiedRecipientAck> {
+  verifyRecipientDescriptor(policy.descriptor, policy.profile);
+  const descriptorDigest = hashRecipientDescriptor(policy.descriptor);
+  const bindingDescriptorDigest = nonzeroDigest(
+    "binding.descriptorDigest",
+    policy.binding.descriptorDigest,
   );
+  if (descriptorDigest !== bindingDescriptorDigest) {
+    refuseAck("descriptor_mismatch", "descriptor", `expected ${bindingDescriptorDigest}`);
+  }
+  const descriptorRecipient = assertAztecBytes32(
+    "descriptor.aztecAddress",
+    policy.descriptor.aztecAddress,
+  );
+  const bindingRecipient = assertAztecBytes32(
+    "binding.aztecRecipient",
+    policy.binding.aztecRecipient,
+  );
+  if (descriptorRecipient !== bindingRecipient) {
+    refuseAck("recipient_mismatch", "binding.aztecRecipient", `expected ${descriptorRecipient}`);
+  }
+  if (hashNetworkIdentity(policy.descriptor.network) !== hashNetworkIdentity(policy.network)) {
+    refuseAck("network_mismatch", "descriptor.network", "not the trusted network");
+  }
+  const expectedBindingDigest = keccak(
+    ethers.concat([
+      "0x1901",
+      shieldedDomainSeparator(
+        bindingDomain(policy.binding.sourceChainId, policy.environment, policy.network),
+      ),
+      hashRecipientBinding(policy.binding),
+    ]),
+  );
+  const bindingDigest = nonzeroDigest("bindingDigest", message.bindingDigest);
   if (bindingDigest !== expectedBindingDigest) {
     refuseAck("binding_mismatch", "bindingDigest", `expected ${expectedBindingDigest}`);
+  }
+  const messageRecipient = assertAztecBytes32("aztecRecipient", message.aztecRecipient);
+  if (messageRecipient !== bindingRecipient) {
+    refuseAck("recipient_mismatch", "aztecRecipient", `expected ${bindingRecipient}`);
   }
   const nonce = nonzeroDigest("nonce", message.nonce);
   const expectedNonce = nonzeroDigest("expectedNonce", policy.expectedNonce);
@@ -275,11 +325,17 @@ export function verifyRecipientAck<T extends RecipientAckType>(
   if (expiry < now) {
     refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
   }
+  const domain = bindingDomain(policy.binding.sourceChainId, policy.environment, policy.network);
+  const digest = recipientAckDigest(primaryType, message, domain);
   const messageField = recipientMessage(digest).messageField;
-  if (!verifyRecipientSchnorr(policy.expectedPublicKey, messageField, signature)) {
+  const expectedPublicKey = {
+    x: policy.descriptor.signingPublicKeyX,
+    y: policy.descriptor.signingPublicKeyY,
+  };
+  if (!verifyRecipientSchnorr(expectedPublicKey, messageField, signature)) {
     refuseAck("signature_invalid", "signature", "not valid for the acknowledgement");
   }
-  if (!policy.consumeNonce(nonce)) {
+  if (!(await policy.consumeNonce(nonce))) {
     refuseAck("nonce_replayed", "nonce", "already consumed");
   }
   return { digest, messageField, nonce };
