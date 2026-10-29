@@ -257,6 +257,23 @@ export const AZTEC_RECIPIENT_PROFILES = {
   },
 } as const satisfies Record<string, AztecRecipientProfile>;
 
+function pinnedProfile(profile: AztecRecipientProfile): AztecRecipientProfile {
+  const pinned = AZTEC_RECIPIENT_PROFILES[profile.id as keyof typeof AZTEC_RECIPIENT_PROFILES];
+  if (
+    pinned === undefined ||
+    profile.sdk !== pinned.sdk ||
+    profile.pinnedClassId.toLowerCase() !== pinned.pinnedClassId ||
+    profile.contractAddressSeparator !== pinned.contractAddressSeparator
+  ) {
+    return refuseRecipient(
+      "class_not_pinned",
+      "profile",
+      `${profile.id} does not match an AZTEC_RECIPIENT_PROFILES entry`,
+    );
+  }
+  return pinned;
+}
+
 // stdlib DomainSeparator values, identical in both pinned SDK lines.
 const SEP_FUNCTION_ARGS = 3576554347n;
 const SEP_INITIALIZER = 385396519n;
@@ -289,6 +306,7 @@ export function deriveRecipientAddress(
   d: RecipientDescriptor,
   profile: AztecRecipientProfile,
 ): RecipientDerivation {
+  const pinned = pinnedProfile(profile);
   const f = descriptorFields(d);
   const argsHash = poseidon2Hash([SEP_FUNCTION_ARGS, f.signingPublicKeyX, f.signingPublicKeyY]);
   const initializationHash = poseidon2Hash([
@@ -315,7 +333,7 @@ export function deriveRecipientAddress(
     f.fbpkMHash,
   ]);
   const preaddress = poseidon2Hash([
-    profile.contractAddressSeparator,
+    pinned.contractAddressSeparator,
     publicKeysHash,
     partialAddress,
   ]);
@@ -349,10 +367,11 @@ export function verifyRecipientDescriptor(
   d: RecipientDescriptor,
   profile: AztecRecipientProfile,
 ): RecipientDerivation {
+  const pinned = pinnedProfile(profile);
   const f = descriptorFields(d);
   recipientRules(() => hashNetworkIdentity(d.network));
-  if (hex32(f.classId) !== profile.pinnedClassId.toLowerCase()) {
-    refuseRecipient("class_not_pinned", "classId", `not ${profile.sdk} ${profile.pinnedClassId}`);
+  if (hex32(f.classId) !== pinned.pinnedClassId) {
+    refuseRecipient("class_not_pinned", "classId", `not ${pinned.sdk} ${pinned.pinnedClassId}`);
   }
   if (!isGrumpkinPoint({ x: f.signingPublicKeyX, y: f.signingPublicKeyY })) {
     refuseRecipient("signing_key_invalid", "signingPublicKeyY", "not a finite Grumpkin point");
@@ -360,7 +379,7 @@ export function verifyRecipientDescriptor(
   if (!isGrumpkinPoint({ x: f.ivpkMX, y: f.ivpkMY })) {
     refuseRecipient("ivpk_invalid", "ivpkMY", "not a finite Grumpkin point");
   }
-  const derivation = deriveRecipientAddress(d, profile);
+  const derivation = deriveRecipientAddress(d, pinned);
   if (derivation.address !== hex32(f.aztecAddress)) {
     refuseRecipient(
       "address_mismatch",

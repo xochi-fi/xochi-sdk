@@ -336,6 +336,21 @@ describe("RecipientDescriptor", () => {
     expect(BigInt(file.descriptor.constructorSelector)).toBe(SCHNORR_ACCOUNT_CONSTRUCTOR_SELECTOR);
   });
 
+  it("refuses a caller-supplied profile that tampers with pinned derivation constants", () => {
+    const vector = file.descriptor.vectors[0]!;
+    const profile = profileOf(vector.profile);
+    expect(
+      refusalOf(
+        () =>
+          deriveRecipientAddress(vector.descriptor, {
+            ...profile,
+            contractAddressSeparator: profile.contractAddressSeparator + 1n,
+          }),
+        RecipientEncodingError,
+      ),
+    ).toEqual({ code: "class_not_pinned", field: "profile" });
+  });
+
   it("reproduces every descriptorDigest, by reference and by ethers", () => {
     for (const v of file.descriptor.vectors) {
       expect(hashRecipientDescriptor(v.descriptor), v.name).toBe(v.descriptorDigest);

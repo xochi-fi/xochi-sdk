@@ -16,9 +16,10 @@
 // NOT here, because §7 leaves them open: ShieldedTermsV1 (no member names or types are
 // fixed, and `fee_breakdown` has no typed shape) and the manifestDigest struct (its identity
 // fields are listed but not typed). A vector for either would be a guess other
-// implementations are then held to. The descriptorDigest encoding, the recipient message
-// wrapper and its field reduction, and the DRAFT acknowledgement structs are in
-// `shielded-recipient.ts`; the readiness attestations in `shielded-readiness.ts`.
+// implementations are then held to. The descriptorDigest encoding, recipient message
+// wrapper and field reduction are in `shielded-recipient.ts`; the DRAFT acknowledgement
+// structs are internal in `shielded-recipient-acks.ts`; readiness is in
+// `shielded-readiness.ts`.
 //
 // Every hash is built by hand from `abi.encode`, so the vector suite can cross-check it
 // against ethers' TypedDataEncoder as an independent implementation.
