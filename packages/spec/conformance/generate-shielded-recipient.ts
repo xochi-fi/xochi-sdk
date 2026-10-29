@@ -1016,8 +1016,7 @@ const ackMessage = (
   bindingDigest: string,
   bindingChallenge: Challenge,
 ): Record<string, unknown> => {
-  const challenge =
-    primaryType === "PaymentReceiptAck" ? RECEIPT_CHALLENGE : bindingChallenge;
+  const challenge = primaryType === "PaymentReceiptAck" ? RECEIPT_CHALLENGE : bindingChallenge;
   const common = {
     bindingDigest,
     aztecRecipient: ackAccount.descriptor.aztecAddress,
