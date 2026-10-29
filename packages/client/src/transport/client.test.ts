@@ -766,6 +766,48 @@ describe("quote retries only a transient gateway status", () => {
     expect((err as Error).message).toBe("Invalid response format");
   });
 
+  it("accepts a Permit2 quote whose EIP-712 domain omits version", async () => {
+    const pullAuthorization = {
+      domain: {
+        name: "Permit2",
+        chainId: 8453,
+        verifyingContract: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      },
+      types: {
+        PermitWitnessTransferFrom: [
+          { name: "permitted", type: "TokenPermissions" },
+          { name: "spender", type: "address" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "witness", type: "OriginPullWitness" },
+        ],
+        TokenPermissions: [
+          { name: "token", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+        OriginPullWitness: [{ name: "orderId", type: "bytes32" }],
+      },
+      primaryType: "PermitWitnessTransferFrom",
+      message: {
+        permitted: {
+          token: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+          amount: "1000000",
+        },
+        spender: "0x3333333333333333333333333333333333333333",
+        nonce: "0",
+        deadline: "1793289630",
+        witness: { orderId: "0x" + "ab".repeat(32) },
+      },
+    };
+    const { c } = client(() => okQuote({ pull_authorization: pullAuthorization }));
+
+    const quote = await c.getQuote(req);
+
+    expect(quote.canSolve).toBe(true);
+    expect(quote.pullAuthorization).toEqual(pullAuthorization);
+    expect(quote.pullAuthorization?.domain.version).toBeUndefined();
+  });
+
   it("rejects a 200 whose declared fields break the contract, as an invalid response", async () => {
     const breakdown = {
       tier: "standard",

@@ -64,6 +64,39 @@ const pullAuthorization = {
   },
 };
 
+const permit2PullAuthorization = {
+  domain: {
+    name: "Permit2",
+    chainId: 8453,
+    verifyingContract: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  },
+  types: {
+    PermitWitnessTransferFrom: [
+      { name: "permitted", type: "TokenPermissions" },
+      { name: "spender", type: "address" },
+      { name: "nonce", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "witness", type: "OriginPullWitness" },
+    ],
+    TokenPermissions: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    OriginPullWitness: [{ name: "orderId", type: "bytes32" }],
+  },
+  primaryType: "PermitWitnessTransferFrom",
+  message: {
+    permitted: {
+      token: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+      amount: "1000000",
+    },
+    spender: "0x3333333333333333333333333333333333333333",
+    nonce: "0",
+    deadline: "1793289630",
+    witness: { orderId: "0x" + "ab".repeat(32) },
+  },
+};
+
 const canonicalQuote = {
   success: true,
   intent_id: INTENT_ID,
@@ -184,6 +217,30 @@ describe("QuoteResponseSchema (snake_case wire contract)", () => {
     expect(parsed.pull_authorization?.domain.verifyingContract).toBe(
       "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     );
+  });
+
+  it("accepts Permit2 typed data whose domain omits version", () => {
+    const withPull = { ...canonicalQuote, pull_authorization: permit2PullAuthorization };
+    const result = QuoteResponseSchema.safeParse(withPull);
+    expect(result.success).toBe(true);
+    const parsed = QuoteResponseSchema.parse(withPull);
+    expect(parsed.pull_authorization).toEqual(permit2PullAuthorization);
+    expect(parsed.pull_authorization?.domain.version).toBeUndefined();
+  });
+
+  it("preserves the versioned XochiIntent v3 domain", () => {
+    const versionedIntent = {
+      ...eip712,
+      domain: {
+        name: "Xochi",
+        version: "3-prod",
+        chainId: 8453,
+        salt: "0x" + "cd".repeat(32),
+      },
+      primaryType: "XochiIntent",
+    };
+    const parsed = QuoteResponseSchema.parse({ ...canonicalQuote, eip712: versionedIntent });
+    expect(parsed.eip712).toEqual(versionedIntent);
   });
 });
 

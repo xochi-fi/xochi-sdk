@@ -2,6 +2,12 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [0.1.5] - 2026-10-29
+
+### Fixed
+
+- **Transport**: Permit2 `PermitWitnessTransferFrom` quotes now validate when their EIP-712 domain omits the optional `version` field. ERC-3009 and XochiIntent v3 versioned domains remain supported.
+
 ## [0.1.4] - 2026-10-29
 
 ### Changed

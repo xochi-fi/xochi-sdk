@@ -10,7 +10,8 @@
 
 export interface Eip712Domain {
   name: string;
-  version: string;
+  /** Optional under EIP-712; Permit2 omits it, while ERC-3009 and XochiIntent carry it. */
+  version?: string;
   chainId: number;
   /**
    * Present on Xochi-owned structs (Intent/LimitOrder/Mandate) and token-pull
