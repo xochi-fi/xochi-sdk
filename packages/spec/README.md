@@ -32,8 +32,9 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   2026-10-24/25 and 2026-10-29: `descriptorDigest`, stock `SchnorrAccount` address derivation
   for pinned Aztec 5.2.0 and `@aztec-labs` 6.0.0, the recipient message wide reduction,
   recipient Schnorr signatures, and approved `BackupPersistenceAck`, `SenderRegistrationAck`
-  and `PaymentReceiptAck` contracts. Design A's testnet tracer has no standardized
-  acknowledgement. TEST ONLY keys.
+  and `PaymentReceiptAck` contracts. The two enrollment acknowledgements reuse the named
+  binding's exact nonce and expiry; a payment receipt uses its own receipt challenge. Design A's
+  testnet tracer has no standardized acknowledgement. TEST ONLY keys.
 - **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
   attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the
   `Xochi Shielded Readiness` domain, with replay and record-parse refusals. Public test key.

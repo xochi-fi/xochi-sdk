@@ -8,8 +8,9 @@
 // and `backupFormatId` identifies the format. SenderRegistrationAck is the production
 // B-panel enrollment acknowledgement. PaymentReceiptAck binds exact credited value and
 // transaction evidence. Design A's testnet tracer has no standardized acknowledgement.
-// All three name the binding by its EIP-712 digest and carry a server-issued single-use
-// challenge (`nonce`, `challengeExpiry`; for the receipt, the receipt challenge).
+// All three name the binding by its EIP-712 digest. BackupPersistenceAck and
+// SenderRegistrationAck reuse that binding's exact `nonce` and `challengeExpiry`;
+// PaymentReceiptAck carries a separate server-issued single-use receipt challenge.
 
 import { ethers } from "ethers";
 

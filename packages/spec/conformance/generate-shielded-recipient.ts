@@ -245,8 +245,9 @@ const BINDING_TYPE_STRING =
 
 // Approved acknowledgement structs (decision 3, 2026-10-29). Each has its own primary
 // type and purpose string; all are signed under `Domain (binding)` through the recipient
-// message wrapper. They share the binding's challenge members (nonce, challengeExpiry) and
-// name the binding by its EIP-712 digest, so an acknowledgement is scoped to one binding.
+// message wrapper and name the binding by its EIP-712 digest. The enrollment acknowledgements
+// reuse that binding's nonce and challengeExpiry exactly; PaymentReceiptAck uses its own receipt
+// challenge.
 const ACKS = [
   {
     primaryType: "BackupPersistenceAck",
@@ -989,25 +990,38 @@ const ackDomain = bindingDomain(ENVIRONMENT, SOURCE_CHAIN_ID, ackAccount.descrip
 const bindingX = bindingMessages.find((b) => b.account === ackAccount.name)!;
 const BINDING_X = bindingX.digest;
 // Another binding of the same recipient (a fresh enrollment: new challenge nonce).
-const BINDING_Y = ethers.TypedDataEncoder.hash(
-  ackDomain,
-  BINDING_TYPES,
-  bindingFor(ackAccount, "0x" + "0f".repeat(32)),
-);
-const ACK_NONCE = "0x" + "a5".repeat(32);
-const ACK_EXPIRY = "1900000300";
+const bindingYMessage = bindingFor(ackAccount, "0x" + "0f".repeat(32));
+const BINDING_Y = ethers.TypedDataEncoder.hash(ackDomain, BINDING_TYPES, bindingYMessage);
+type Challenge = { nonce: string; challengeExpiry: string };
+const challengeFrom = (message: Record<string, unknown>): Challenge => {
+  if (typeof message.nonce !== "string" || typeof message.challengeExpiry !== "string") {
+    throw new Error("challenge members must be strings");
+  }
+  return { nonce: message.nonce, challengeExpiry: message.challengeExpiry };
+};
+const BINDING_X_CHALLENGE = challengeFrom(bindingX.message);
+const BINDING_Y_CHALLENGE = challengeFrom(bindingYMessage);
+const RECEIPT_CHALLENGE: Challenge = {
+  nonce: "0x" + "a5".repeat(32),
+  challengeExpiry: "1900000300",
+};
 const BACKUP_FORMAT_V1_NAME = "xochi.shielded.backup-format.v1";
 const BACKUP_FORMAT_V1_ID = ethers.id(BACKUP_FORMAT_V1_NAME);
 const SENDERS = ["0x" + "17".repeat(32), "0x" + "05".padStart(64, "0"), "0x" + "2c".repeat(32)]
   .map((s) => s.toLowerCase())
   .sort();
 
-const ackMessage = (primaryType: AckType, bindingDigest: string): Record<string, unknown> => {
+const ackMessage = (
+  primaryType: AckType,
+  bindingDigest: string,
+  bindingChallenge: Challenge,
+): Record<string, unknown> => {
+  const challenge =
+    primaryType === "PaymentReceiptAck" ? RECEIPT_CHALLENGE : bindingChallenge;
   const common = {
     bindingDigest,
     aztecRecipient: ackAccount.descriptor.aztecAddress,
-    nonce: ACK_NONCE,
-    challengeExpiry: ACK_EXPIRY,
+    ...challenge,
   };
   const purpose = ACKS.find((a) => a.primaryType === primaryType)!.purpose;
   switch (primaryType) {
@@ -1039,13 +1053,19 @@ const ackMessage = (primaryType: AckType, bindingDigest: string): Record<string,
 
 const ackVectors = ACKS.map((a) => ({
   name: `${a.primaryType} (binding X)`,
-  ...signAs(ackAccount, a.primaryType, ENVIRONMENT, ackMessage(a.primaryType, BINDING_X)),
+  ...signAs(
+    ackAccount,
+    a.primaryType,
+    ENVIRONMENT,
+    ackMessage(a.primaryType, BINDING_X, BINDING_X_CHALLENGE),
+  ),
 }));
 
 const recipientSigned: Signed[] = [{ ...bindingX }, ...ackVectors];
 
-// Cross-type replay: every recipient-signed type's signature, presented as every other type
-// over the same challenge and binding. Each must fail.
+// Cross-type replay: every recipient-signed type's signature, presented as every other type's
+// positive vector. Enrollment types share binding X's challenge; PaymentReceiptAck carries the
+// independent receipt challenge. Each presentation must fail.
 const crossTypeReplays = recipientSigned.flatMap((signed) =>
   recipientSigned
     .filter((other) => other.primaryType !== signed.primaryType)
@@ -1071,9 +1091,10 @@ const crossTypeReplays = recipientSigned.flatMap((signed) =>
 );
 
 // Cross-binding replay: an acknowledgement signed for binding X, presented for binding Y of
-// the same recipient (and, separately, under another environment's domain).
+// the same recipient (and, separately, under another environment's domain). An enrollment
+// acknowledgement follows binding Y's challenge members; a receipt keeps its receipt challenge.
 const crossBindingReplays = ackVectors.flatMap((v) => {
-  const asY = { ...v.message, bindingDigest: BINDING_Y };
+  const asY = ackMessage(v.primaryType, BINDING_Y, BINDING_Y_CHALLENGE);
   const yDigest = ethers.TypedDataEncoder.hash(ackDomain, typesFor(v.primaryType), asY);
   const prodDomain = bindingDomain("production", SOURCE_CHAIN_ID, ackAccount.descriptor.network);
   const prodDigest = ethers.TypedDataEncoder.hash(prodDomain, typesFor(v.primaryType), v.message);
@@ -1102,6 +1123,24 @@ const crossBindingReplays = ackVectors.flatMap((v) => {
     };
   });
 });
+
+const enrollmentAckTypes: AckType[] = ["BackupPersistenceAck", "SenderRegistrationAck"];
+for (const primaryType of enrollmentAckTypes) {
+  const message = ackVectors.find((v) => v.primaryType === primaryType)!.message;
+  if (
+    message.nonce !== bindingX.message.nonce ||
+    message.challengeExpiry !== bindingX.message.challengeExpiry
+  ) {
+    throw new Error(`${primaryType} must reuse binding X's challenge members`);
+  }
+}
+const receiptMessage = ackVectors.find((v) => v.primaryType === "PaymentReceiptAck")!.message;
+if (
+  receiptMessage.nonce === bindingX.message.nonce ||
+  receiptMessage.challengeExpiry === bindingX.message.challengeExpiry
+) {
+  throw new Error("PaymentReceiptAck must use its independent receipt challenge");
+}
 
 // Encoding refusals for the acknowledgements: each differs from its valid vector in one input.
 const ackRefusals = (() => {
@@ -1332,7 +1371,8 @@ const out = {
     rules: [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
       `BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8("${BACKUP_FORMAT_V1_NAME}")) = ${BACKUP_FORMAT_V1_ID}; neither value contains plaintext`,
-      "nonce / challengeExpiry: a server-issued single-use challenge and its signing window, as for RecipientBinding (for PaymentReceiptAck, the receipt challenge)",
+      "BackupPersistenceAck and SenderRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
+      "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
     ],

@@ -531,6 +531,42 @@ describe("acknowledgements", () => {
     );
   });
 
+  it("reuses the named binding challenge for enrollment acknowledgements only", () => {
+    const enrollmentTypes: RecipientAckType[] = [
+      "BackupPersistenceAck",
+      "SenderRegistrationAck",
+    ];
+    for (const primaryType of enrollmentTypes) {
+      const acknowledgement = file.acknowledgements.vectors.find(
+        (candidate) => candidate.primaryType === primaryType,
+      )!;
+      const binding = file.recipientMessage.bindingMessages.find(
+        (candidate) => candidate.digest === acknowledgement.message.bindingDigest,
+      )!;
+      expect(binding.message, primaryType).toMatchObject({
+        nonce: "0x" + "0e".repeat(32),
+        challengeExpiry: "1900000000",
+      });
+      expect(acknowledgement.message.nonce, primaryType).toBe(binding.message.nonce);
+      expect(acknowledgement.message.challengeExpiry, primaryType).toBe(
+        binding.message.challengeExpiry,
+      );
+    }
+
+    const receipt = file.acknowledgements.vectors.find(
+      (candidate) => candidate.primaryType === "PaymentReceiptAck",
+    )!;
+    const receiptBinding = file.recipientMessage.bindingMessages.find(
+      (candidate) => candidate.digest === receipt.message.bindingDigest,
+    )!;
+    expect(receipt.message).toMatchObject({
+      nonce: "0x" + "a5".repeat(32),
+      challengeExpiry: "1900000300",
+    });
+    expect(receipt.message.nonce).not.toBe(receiptBinding.message.nonce);
+    expect(receipt.message.challengeExpiry).not.toBe(receiptBinding.message.challengeExpiry);
+  });
+
   it("reproduces every acknowledgement and verifies its signature", () => {
     for (const v of file.acknowledgements.vectors) {
       expect(hashRecipientAck(v.primaryType, v.message as never), v.name).toBe(v.structHash);
@@ -607,7 +643,7 @@ describe("acknowledgements", () => {
       environment: v.environment,
       network: v.network,
       expectedNonce: v.message.nonce as string,
-      now: 1_900_000_299,
+      now: Number(binding.challengeExpiry) - 1,
       consumeNonce: async (nonce: string) => {
         if (consumed.has(nonce)) return false;
         consumed.add(nonce);
@@ -636,6 +672,8 @@ describe("acknowledgements", () => {
     const descriptorVector = file.descriptor.vectors.find(
       (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
     )!;
+    const validNow = Number(binding.challengeExpiry) - 1;
+    const expiredNow = Number(binding.challengeExpiry) + 1;
     let consumeCalls = 0;
     const policy = {
       binding,
@@ -644,7 +682,7 @@ describe("acknowledgements", () => {
       environment: v.environment,
       network: v.network,
       expectedNonce: v.message.nonce as string,
-      now: 1_900_000_301,
+      now: expiredNow,
       consumeNonce: async () => {
         consumeCalls++;
         return true;
@@ -661,7 +699,7 @@ describe("acknowledgements", () => {
         () =>
           verifyRecipientAck(v.primaryType, message, v.signature, {
             ...policy,
-            now: 1_900_000_299,
+            now: validNow,
             expectedNonce: "0x" + "11".repeat(32),
           }),
         AckEncodingError,
@@ -674,7 +712,7 @@ describe("acknowledgements", () => {
             v.primaryType,
             { ...v.message, bindingDigest: "0x" + "22".repeat(32) } as never,
             v.signature,
-            { ...policy, now: 1_900_000_299 },
+            { ...policy, now: validNow },
           ),
         AckEncodingError,
       ),
@@ -684,7 +722,7 @@ describe("acknowledgements", () => {
         () =>
           verifyRecipientAck(v.primaryType, message, "0x" + "00".repeat(64), {
             ...policy,
-            now: 1_900_000_299,
+            now: validNow,
           }),
         AckEncodingError,
       ),
@@ -700,7 +738,7 @@ describe("acknowledgements", () => {
           verifyRecipientAck(v.primaryType, message, v.signature, {
             ...policy,
             descriptor: otherDescriptor.descriptor,
-            now: 1_900_000_299,
+            now: validNow,
           }),
         AckEncodingError,
       ),
@@ -711,7 +749,7 @@ describe("acknowledgements", () => {
           verifyRecipientAck(v.primaryType, message, v.signature, {
             ...policy,
             environment: `${v.environment}-untrusted`,
-            now: 1_900_000_299,
+            now: validNow,
           }),
         AckEncodingError,
       ),
@@ -725,7 +763,7 @@ describe("acknowledgements", () => {
               ...v.network,
               genesisOrNetworkDigest: "0x" + "33".repeat(32),
             },
-            now: 1_900_000_299,
+            now: validNow,
           }),
         AckEncodingError,
       ),
