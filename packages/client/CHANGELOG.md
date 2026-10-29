@@ -2,6 +2,12 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [0.1.6] - 2026-10-29
+
+### Fixed
+
+- **Stealth settlement**: the canonical SimpleAccountFactory is now trusted on Base (8453) as well as Ethereum, matching the solver's advertised capabilities (xochi#683). The allowlist remains per-chain, so the same factory on an unlisted chain is still refused.
+
 ## [0.1.5] - 2026-10-29
 
 ### Fixed

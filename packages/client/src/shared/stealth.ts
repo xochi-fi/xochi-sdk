@@ -36,10 +36,10 @@ export const STEALTH_ACCOUNT_SALT = 0;
  * the solver, but only into a factory this build already knows.
  *
  * Keyed by chain rather than a flat list because the capability matrix is
- * expected to go per-chain, and a flat list would then accept a factory
- * legitimate on one chain as authorization for another. Stealth is pinned to
- * Ethereum L1 today (STEALTH_SETTLEMENT_CHAIN_ID), so there is exactly one
- * entry; an unlisted chain has no trusted factory and fails closed.
+ * per-chain: a flat list would accept a factory legitimate on one chain as
+ * authorization for another. Only chains with an explicitly verified factory
+ * deployment are listed; an unlisted chain has no trusted factory and fails
+ * closed.
  *
  * ROTATION: ship a build listing both the old and new factory for that chain,
  * let the solver flip, then drop the old one. Staging it that way keeps the
@@ -47,6 +47,11 @@ export const STEALTH_ACCOUNT_SALT = 0;
  */
 export const TRUSTED_STEALTH_FACTORIES: Readonly<Record<number, readonly string[]>> = {
   [CHAIN_IDS.ethereum]: [SIMPLE_ACCOUNT_FACTORY],
+  // Riddler#1104. Checked 2026-10-23: runtime codehash identical to chain 1's
+  // (0xa2e63515...b991b7) and getAddress(owner, 0) returns the same account, so
+  // a recipient's counterfactual is the same address on both chains. Staging
+  // E2E 2026-10-22: settle, announce, scan and claim on 8453.
+  [CHAIN_IDS.base]: [SIMPLE_ACCOUNT_FACTORY],
 };
 
 /**

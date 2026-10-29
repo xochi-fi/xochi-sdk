@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import { SIMPLE_ACCOUNT_FACTORY } from "../shared/index.js";
 import { claimInfoError } from "./claimInfo.js";
 
-/** Stealth is pinned to Ethereum L1, the only chain with a trusted factory. */
+/** Tests use Ethereum L1, one of the chains with a trusted factory. */
 const MAINNET = 1;
 
 const ATTACKER_FACTORY = "0xAbC0000000000000000000000000000000000123";

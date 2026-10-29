@@ -21,14 +21,16 @@ import {
 
 const ATTACKER_FACTORY = "0xAbC0000000000000000000000000000000000123";
 
-/** Stealth is pinned to Ethereum L1; it is the only chain with a listed factory. */
+/** Chains whose shipped allowlist trusts the same factory. */
 const MAINNET = 1;
-/** A supported chain that lists no stealth factory. */
 const BASE = 8453;
+/** A supported chain that lists no stealth factory. */
+const UNTRUSTED_CHAIN = 10;
 
 describe("isTrustedStealthFactory", () => {
-  it("accepts the shipped factory", () => {
+  it("accepts the shipped factory on Ethereum and Base", () => {
     expect(isTrustedStealthFactory(SIMPLE_ACCOUNT_FACTORY, MAINNET)).toBe(true);
+    expect(isTrustedStealthFactory(SIMPLE_ACCOUNT_FACTORY, BASE)).toBe(true);
   });
 
   // EVM addresses compare case-insensitively, and the capability matrix
@@ -53,15 +55,16 @@ describe("isTrustedStealthFactory", () => {
     expect(isTrustedStealthFactory("", MAINNET)).toBe(false);
   });
 
-  it("keeps the shipped factory in the allowlist for L1", () => {
+  it("keeps the shipped factory in the allowlist for Ethereum and Base", () => {
     expect(TRUSTED_STEALTH_FACTORIES[MAINNET]).toContain(SIMPLE_ACCOUNT_FACTORY);
+    expect(TRUSTED_STEALTH_FACTORIES[BASE]).toContain(SIMPLE_ACCOUNT_FACTORY);
   });
 
   // A factory is authorization for ONE chain. A flat list would let a factory
-  // legitimate on L1 stand in as approval on any chain stealth later reaches.
-  it("does not accept the L1 factory on a chain that lists none", () => {
-    expect(isTrustedStealthFactory(SIMPLE_ACCOUNT_FACTORY, BASE)).toBe(false);
-    expect(TRUSTED_STEALTH_FACTORIES[BASE]).toBeUndefined();
+  // legitimate on Ethereum or Base stand in as approval on any other chain.
+  it("rejects cross-chain factory reuse on a chain that lists none", () => {
+    expect(isTrustedStealthFactory(SIMPLE_ACCOUNT_FACTORY, UNTRUSTED_CHAIN)).toBe(false);
+    expect(TRUSTED_STEALTH_FACTORIES[UNTRUSTED_CHAIN]).toBeUndefined();
   });
 
   it("refuses an absent chain id", () => {
