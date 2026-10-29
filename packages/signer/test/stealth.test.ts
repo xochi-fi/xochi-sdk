@@ -63,6 +63,51 @@ function senderDerive(spendingPriv: string, viewingPriv: string, ephemeralPriv: 
 }
 
 describe("stealth", () => {
+  it("does not expose a malformed spending private key", () => {
+    const secret = "not-a-private-key";
+
+    expect(() =>
+      deriveStealthPrivateKey(secret, "0x" + "11".repeat(32), "0x02" + "22".repeat(32)),
+    ).toThrowError("spendingPrivHex must be a valid secp256k1 private key");
+
+    try {
+      deriveStealthPrivateKey(secret, "0x" + "11".repeat(32), "0x02" + "22".repeat(32));
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secret);
+      expect((error as Error).stack).not.toContain(secret);
+    }
+  });
+  it("does not expose a malformed viewing private key", () => {
+    const secret = "viewing-key-secret";
+    const derive = () =>
+      deriveStealthPrivateKey("0x" + "11".repeat(32), secret, "0x02" + "22".repeat(32));
+
+    expect(derive).toThrowError("viewingPrivHex must be a valid secp256k1 private key");
+    try {
+      derive();
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secret);
+      expect((error as Error).stack).not.toContain(secret);
+    }
+  });
+
+  it.each([
+    ["spendingPrivHex", 0, "0x" + "00".repeat(32)],
+    ["viewingPrivHex", 1, "0x" + N.toString(16).padStart(64, "0")],
+  ])("rejects an out-of-range %s", (label, keyIndex, secret) => {
+    const keys = ["0x" + "11".repeat(32), "0x" + "22".repeat(32)] as [string, string];
+    keys[keyIndex as 0 | 1] = secret;
+    const derive = () => deriveStealthPrivateKey(keys[0], keys[1], "0x02" + "33".repeat(32));
+
+    expect(derive).toThrowError(`${label} must be a valid secp256k1 private key`);
+    try {
+      derive();
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secret);
+      expect((error as Error).stack).not.toContain(secret);
+    }
+  });
+
   it(
     "round-trip: derived key controls sender stealth address",
     () => {

@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { debugEnabled } from "./debug";
+import { assertValidPrivateKey } from "./private-key.js";
 import type { Eip712TypeField, SignerConfig, SignResult } from "./types";
 
 const DEBUG = debugEnabled();
@@ -111,7 +112,8 @@ export async function signERC3009(
   inputChain: string,
   config: SignerConfig,
 ): Promise<SignResult> {
-  const wallet = new ethers.Wallet(config.PRIVATE_KEY);
+  const privateKey = assertValidPrivateKey(config.PRIVATE_KEY, "config.PRIVATE_KEY");
+  const wallet = new ethers.Wallet(privateKey);
   const chainConfig = requireChain(config, inputChain);
 
   debug("\n   Signing ERC-3009 ReceiveWithAuthorization...");
@@ -222,7 +224,8 @@ export async function signPermit2(
   config: SignerConfig,
   inputTokenAddress: string | null = null,
 ): Promise<SignResult> {
-  const wallet = new ethers.Wallet(config.PRIVATE_KEY);
+  const privateKey = assertValidPrivateKey(config.PRIVATE_KEY, "config.PRIVATE_KEY");
+  const wallet = new ethers.Wallet(privateKey);
   const chainConfig = requireChain(config, inputChain);
 
   if (!quote.gasless || !quote.gasless.orderId) {
