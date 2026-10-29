@@ -2,6 +2,16 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [0.1.4] - 2026-10-29
+
+### Changed
+
+- Upgraded the schema runtime to Zod 4.6.7. The client, spec and reference suites pass against the same workspace client and schema version.
+
+### Fixed
+
+- **Machine**: status responses are applied only when their `intent_id` matches the active poll. A stale or misrouted terminal response for another intent can no longer complete or fail the current trade; the mismatch is ignored without advancing the poll, and a later matching response still applies.
+
 ## [0.1.3] - 2026-10-29
 
 ### Added
@@ -11,11 +21,9 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 ### Changed
 
 - **BREAKING: `IntentState.legsWithheld` is `boolean | null`** (was `boolean`): `null` means no status reply has established whether the current view is anonymous or owner-authorized. Migration: test `legsWithheld === true` before offering SIWE recovery; do not interpret `null` as an owner read.
-- Upgraded the schema runtime to Zod 4.6.7. The client, spec and reference suites pass against the same workspace client and schema version.
 
 ### Fixed
 
-- **Machine**: status responses are applied only when their `intent_id` matches the active poll. A stale or misrouted terminal response for another intent can no longer complete or fail the current trade; the mismatch is ignored without advancing the poll, and a later matching response still applies.
 - A live execute whose later status read returns `quoted` now enters the `not-sent` phase instead of remaining at "Still confirming". The first status read waits for the execute reply, so a pre-acceptance `quoted` row cannot produce that verdict. Status replies older than the latest answered attempt are ignored, preventing them from undoing a newer not-sent verdict.
 - Returning to a visible tab restarts an exhausted in-flight status poll with a fresh budget. A live not-sent poll remains bounded by its original ceiling; only a resumed intent without a quote refills its budget on each `quoted` read.
 - **Transport**: a valid server-directed `Retry-After` is honored up to the existing 600-second safety ceiling instead of being shortened to `retry.maxDelayMs`; the fallback exponential-backoff cap applies only when no valid integer delta-seconds interval is supplied (zero included). Pending quote deduplication now lasts for the whole request, including long server-directed retry waits.
