@@ -1225,14 +1225,15 @@ shrinking or fabricating an award no longer produces a slash: each leaves the
 solver without an acceptance, or with one for a window it signed.
 
 The solver's obligation starts when it SENDS the acceptance, not when the venue
-acknowledges it, and the venue enforces an acceptance window: a `:winner` with
-no verified acceptance by its `acceptBy` (`SOLVER-RFC.md` §5.3) is abandoned to a
-`:backstop` FillAuth for the same `fillId` (at most one fill can land),
-except on a shielded leg, which gets no backstop and refunds at
-`refundableAt` (§5.1 MUST NOT, §6). The
-venue records the award as abandoned (`winner_abandoned` on the order), and
-repeated abandonment is the operator's grounds for removing the solver from the
-panel directory (`SOLVER-RFC.md` §5.3).
+acknowledges it, and the venue enforces an acceptance window. For a
+non-shielded `:winner` with no verified acceptance by its `acceptBy`,
+`SOLVER-RFC.md` §5.3 records abandonment and §13.2 decides whether a `firm`
+award selected in `feed_degraded` is re-auctioned once before the
+`:backstop` FillAuth for the same `fillId`; at most one fill can land. A
+shielded leg gets neither and refunds at `refundableAt` (§5.1 MUST NOT, §6).
+The venue records `winner_abandoned` on the order, and repeated abandonment is
+the operator's grounds for removing the solver from the panel directory
+(`SOLVER-RFC.md` §5.3).
 
 ---
 
@@ -1707,9 +1708,9 @@ Flip the capability in production for a **single** allowlisted solver, with a
 per-intent notional cap and a corridor whitelist. Real funds, bounded loss.
 
 - **Owner:** ops + server.
-- **Entry gate:** `SOLVER-RFC.md` §5.3 (no escrowed `:winner` to a solver
-  other than the venue's own until that RFC's Appendix C questions 1, 5 and
-  7 are settled).
+- **Entry gate:** `SOLVER-RFC.md` §5.3 controls every third-party escrowed
+  `:winner`; a shielded leg additionally satisfies §5.1 "Shielded admission",
+  the single home of its admission preconditions.
 - **Exit gate:** a sustained run with zero releases lacking a `verified` verdict;
   the backstop exercised **at least once** (an arranged no-show) so the path
   that protects the taker is known to work before it is needed; the kill switch

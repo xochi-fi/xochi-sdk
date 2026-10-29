@@ -65,12 +65,12 @@
 //                       from the FillAuth's issue by default): a missed window gives
 //                       the order to the reserve (no slash, award lost). Where it
 //                       cannot fit, that venue's window is too short for you; until
-//                       SOLVER-RFC Appendix C settles the window, the venue awards no
-//                       escrowed order to any solver but its own (§5.3). Where the
-//                       venue serves `awardToAcceptAllowanceMs` (§13.3, `[PROPOSED]`)
-//                       it MUST be at least that / 1000, or `auth_expired` declines
-//                       are yours; this example does not read that field yet (§13.3
-//                       (d)).
+//                       SOLVER-RFC §13.3 scoring applies after every Appendix C
+//                       question is settled, the venue awards no escrowed order to
+//                       any solver but its own (§5.3). Where the venue serves
+//                       `awardToAcceptAllowanceMs` (§13.3, `[PROPOSED]`), it MUST be
+//                       at least that / 1000, or `auth_expired` declines are yours;
+//                       this example does not read that field yet (§13.3 (d)).
 //   FILLER_ALLOWANCE    standing ERC-20 allowance to DEST_FILLER, set once at startup so
 //                       no approval transaction sits between award and accept; base
 //                       units, default unlimited (2^256-1). Safe to leave standing:

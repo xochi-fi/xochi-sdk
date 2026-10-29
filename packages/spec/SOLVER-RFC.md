@@ -1250,12 +1250,12 @@ award is lost. The venue records it as abandoned (`winner_abandoned` on the
 order, the `[:riddler, :escrow, :award, :abandoned]` event and the
 `riddler_escrow_award_abandoned_total` metric), and repeated abandonment is the
 operator's grounds for removing the solver from the panel directory, which is
-static operator config. Until Appendix C questions 1, 5 and 7 are settled in
-§13.3, the venue issues no escrowed `:winner` FillAuth to a solver other than
-its own (ESCROW-RFC §11 M6.3 waits on it), so no third party abandons an
-award, or is removed for abandoning one, because the window is too short for
-an honest finality wait or its own bids spent the limit its award's read
-needed (§13.3 **Limits**). Acceptance is therefore not
+static operator config. Until §13.3 scoring applies after every Appendix C
+question is settled, the venue issues no escrowed `:winner` FillAuth to a
+solver other than its own (ESCROW-RFC §11 M6.3 waits on §5.3 and, for a
+shielded leg, §5.1 "Shielded admission"). Thus no third party abandons an
+award, or is removed for abandoning one, under timing or request-limit bounds
+that the RFC has not yet settled. Acceptance is therefore not
 optional: a winner that never accepts does not hold the exclusive window as a
 free option (§13.3 scores a fill made without a recorded acceptance Lapsed,
 never Honored, `[PROPOSED]`). Award delivery, `prepare` and the accept round-trip MUST fit before
@@ -1985,9 +1985,14 @@ replayed onto a later award of the same `fillId`, even to the same solver.
 
 Acceptance and decline of one award are a single compare-and-set on the
 venue's shared order store, on every API node: whichever is recorded first
-wins, and the other is refused `409` and changes nothing. A decline is also
-refused `409` after `acceptBy`. An accepted award is owed (§5.3) and is never
-moved to the reserve, so its only failure outcome is the slashable no-show
+wins, and the other is refused `409` and changes nothing. An acceptance is
+well-formed only if no decline of the award was stored before it; a decline is
+well-formed only if no acceptance was stored before it. Either request that
+arrived in full at the outermost hop before `acceptBy` participates in the
+compare-and-set before abandonment is written, even if verification or the
+store completes after `acceptBy`. A request arriving after `acceptBy` is
+refused `409`. An accepted award is owed (§5.3) and is never moved to the
+reserve, so its only failure outcome is the slashable no-show
 below; a refused acceptance is never stored, so the slash attester cannot act
 on it (ESCROW-RFC §6.1 `no_fill_acceptance`). A solver MUST post a decline
 when its re-gate refuses an award it received, instead of letting `acceptBy`
@@ -2170,17 +2175,20 @@ nothing new answered with an empty page at `longPollHoldMs`, never ended by
 a hop; on SSE the venue MUST write to an idle stream more often than that
 timeout. The venue refuses to boot otherwise. An acceptance is
 **well-formed** when it is authenticated as the awardee, its signature
-verifies against the stored `:winner` FillAuth as §5.3 requires, and it
-**arrives in full** before `acceptBy`: the outermost hop received its whole
-body by then, from that hop's own record. The venue MUST forward, verify
-and store a well-formed acceptance once its body has arrived there, whether
-or not the client is still connected: a client close or reset after that
-cancels neither the forward nor the store, so no hop may cancel an
-acceptance upstream on a client abort. A decline is **well-formed** on the
-same terms: authenticated as the awardee, a `SolverDecline` the venue would
-record (above: the awardee's signature, the issued FillAuth's
-`fillAuthDigest`), arrived in full before `acceptBy`, and no acceptance of
-the award stored before it; the venue forwards and stores it the same way.
+verifies against the stored `:winner` FillAuth as §5.3 requires, it
+**arrives in full** before `acceptBy` (the outermost hop received its whole
+body by then, from that hop's own record), and no decline of the award was
+stored before it. The venue MUST forward, verify and store a well-formed
+acceptance once its body has arrived there, whether or not the client is
+still connected: a client close or reset after that cancels neither the
+forward nor the store, so no hop may cancel an acceptance upstream on a
+client abort. A decline is **well-formed** on the same terms: authenticated
+as the awardee, a `SolverDecline` the venue would record (above: the
+awardee's signature, the issued FillAuth's `fillAuthDigest`), arrived in full
+before `acceptBy`, and no acceptance of the award stored before it; the venue
+forwards and stores it the same way. Abandonment at `acceptBy` waits for every
+acceptance or decline whose full-body arrival was recorded before that instant
+to finish verification and the shared compare-and-set.
 The venue-side delivery failures, and the only ones, are:
 
 - the append was never made, or was made after `deliveryCutoffMs`;
@@ -2215,8 +2223,8 @@ cause, never by its status. The venue serves its per-solver limits as
 `solverRequestLimit: { windowMs, maxRequests, maxOpenReads }` (absent means
 the venue limits no solver): every `/solver/*` request authenticated as the
 solver, well-formed or not, counts against `maxRequests` within any
-`windowMs`, except a held-award response (below), and its feed reads open at
-once (long polls and SSE connections) against `maxOpenReads`.
+`windowMs`, except a well-formed held-award response (below), and its feed
+reads open at once (long polls and SSE connections) against `maxOpenReads`.
 `maxOpenReads` is at least 1, `maxRequests` at least
 `2 × ⌈windowMs / 1000⌉`, and `windowMs` at most `minAcceptBudgetMs`. A
 request that a served limit refused or reset while the solver's own requests
@@ -2236,19 +2244,23 @@ awardee that spends its own budget and then reads gets no venue-side failure
 for it, and a venue cannot refuse an awardee inside its limits to make a
 delivery failure the solver's.
 
-A **held-award response** is an acceptance or decline POST (§5.3, §13.3)
-for an award the solver holds (issued to it, `acceptBy` not passed), up to
-4 per award; a fifth and later POST for the same award counts like any other
-request. Held-award responses neither count against `maxRequests` nor are
-refused or reset by a served limit, so a solver's own bids and reads never
-cost it the acceptance or decline of an award it holds. Their load is
-bounded by what the venue issues, not by the solver's round-trip time: 4 per
-award, on at most `maxPendingAwardsPerToken` held awards per destination
-`(chainId, token)`. And since `windowMs` is at most `minAcceptBudgetMs`, a
-solver over its limit when its award is delivered (by `deliveryCutoffMs`)
-that sends nothing else meanwhile can read the award after the
-`Retry-After` it is given and still respond before `acceptBy`; that wait is
-award latency, and its own.
+A **held-award response** is a well-formed acceptance or decline POST (§5.3,
+§13.3) for an award the solver holds (issued to it, `acceptBy` not passed), up
+to 4 per award; malformed, foreign or signature-invalid POSTs always count
+like any other request. The exemption counter is shared and atomic across all
+API nodes. A fifth and later well-formed POST for the same award also counts.
+Exempt held-award responses neither count against `maxRequests` nor are
+refused or reset by a served limit.
+
+The exemption guarantees that an award response can be sent; it does not
+guarantee that an over-limit solver can read the award soon enough to retain
+its acceptance budget. The relationship among `windowMs`, `Retry-After`, the
+settled award-to-accept allowance and the SDK's accept budget is Appendix C
+question 7. Scoring remains `[PROPOSED]` until that question supplies and the
+venue enforces a bound that leaves both the read wait and accept budget before
+`acceptBy`. Exempt-response load is bounded by the venue's award issuance rate,
+not by `maxPendingAwardsPerToken`, because an accepted award no longer counts
+against that pending cap.
 
 The venue refuses to boot when a served `solverRequestLimit` breaks these
 bounds. No other request is exempt from a served limit; how bids and feed
@@ -2556,20 +2568,16 @@ are ESCROW-RFC §5.1's and §6's and are not restated here:
   corridor (next row). ESCROW-RFC §5.1 states the residual (an awardee can
   trade a no-show slash for the order's payout by burning its own tag), and
   how a burn could be sanctioned is open (ESCROW-RFC Appendix C Q1);
-- **shielded halt** (ESCROW-RFC §5.1 "Shielded halt"): from every
-  `tag_burned` record, and from the venue's record of a venue-side path
-  holding `fillSalt` values, until a cause is recorded for each (ESCROW-RFC
-  §5.1 states how), the venue quotes no shielded order, signs no
-  OpenAuth for one and issues no new shielded FillAuth on any corridor to
-  any awardee, the venue's own solver included. ESCROW-RFC §5.1's other
-  "Exposure stops" (a halted registry, the corridor's Aztec node lagging, a
-  disclosure due for `T_hold` that is neither refused on content nor backed
-  by both venue records, the in-flight notional cap) do the same only on
-  their own corridor. Either way, orders already awarded run on under their
-  own rows, and an order opened but not yet awarded when a stop starts is
-  the first row's; a stop that outlasts its bound on an in-flight order is
-  ESCROW-RFC §5.1's residual, borne by the solver up to the corridor's
-  in-flight notional cap.
+- **shielded halt and exposure stops:** ESCROW-RFC §5.1 "Shielded halt" is
+  the sole definition of every opener, closer and affected corridor; this RFC
+  does not duplicate that state machine. While it applies, the venue follows
+  its quote, OpenAuth and FillAuth refusals. ESCROW-RFC §5.1 "Exposure stops"
+  is likewise the sole list of per-corridor stops and defines when the
+  issued-notional cap is acquired and released. Orders already awarded run on
+  under their own rows; an order opened but not yet awarded when a stop starts
+  is the first row's. A stop that outlasts its bound on an issued order is
+  ESCROW-RFC §5.1's residual, borne by the solver up to that corridor's
+  issued-notional cap.
 
 Known limit, open until §2.4 re-admits shielded flow to the panel: the
 decline row costs a declining awardee nothing but the record (no
@@ -2683,9 +2691,9 @@ response, award log, concentration handicap (§13).
 ## Appendix C — Open questions: §13.3 timing and limits
 
 §13.3 scoring stays `[PROPOSED]` until every question below, timing and
-limits alike, is settled in §13.3 ("Reading while committed" (f)), and
-questions 1, 5 and 7 also gate the first escrowed award to a solver other than
-the venue's own (§5.3). Each names the review findings that make it hard
+limits alike, is settled in §13.3 ("Reading while committed" (f)). The same
+gate controls the first escrowed award to a solver other than the venue's own
+(§5.3). Each question names the review findings that make it hard
 (review rounds of xochi-fi/xochi-sdk#33: `R10ASab`/`R11ASab` the saboteur,
 `R10ASecurity`/`R11ASecurity` the security auditor, `R10ANewHire` the new
 hire).
@@ -2786,11 +2794,11 @@ the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
    time, and a shed that load caused is the venue's, so its own award's read
    failing in the delivery window turned a decline it wanted into Lapsed.
    Round 10 removed both exemptions, which let a solver's own bids starve
-   its acceptances. §13.3 now exempts only held-award responses, at most 4
-   per award, so their load is bounded by the awards the venue issues;
-   bounds `windowMs` by `minAcceptBudgetMs` and `Retry-After` by the
-   window; and gates scoring on an SDK that survives a `429` ("Reading while
-   committed" (e)). Open:
+   its acceptances. §13.3 now exempts only well-formed held-award responses,
+   at most 4 per award, under one shared atomic counter, while malformed
+   requests count. It does not claim that the exemption protects the award
+   read or leaves the SDK's accept budget: scoring and third-party awards stay
+   gated until this question settles that timing bound. Open:
    - how bids and feed reads share `maxRequests`: the venue sets the
      announcement rate, each bid counts, and the floor is about 2 requests
      a second, so on a busier feed an honest solver that bids on every
