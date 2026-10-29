@@ -1785,28 +1785,16 @@
     ]
   },
   "acknowledgements": {
-    "status": "DRAFT",
-    "note": "DRAFT: proposed 2026-10-25 for the product owner's approval at PR review. Not approved; do not implement against these bytes until the status changes.",
     "domain": "Domain (binding): every acknowledgement is a statement by the recipient about one binding, so it is scoped to that binding's environment, network and source chain. Primary type and purpose string separate the types inside the domain; a dedicated domain would add no separation those two do not.",
     "types": [
       {
-        "status": "DRAFT",
-        "primaryType": "MessagingEnrollmentAck",
-        "scope": "design-A testnet tracer only",
-        "purpose": "xochi.shielded.messaging-enrollment-ack.v1",
-        "typeString": "MessagingEnrollmentAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 enrolledSender,bytes32 nonce,uint64 challengeExpiry,string purpose)",
-        "typehash": "0xc0e652f7834fdb1e261eb13e7ddd98a69749c594dc636537e1d83e95977f6434"
-      },
-      {
-        "status": "DRAFT",
         "primaryType": "BackupPersistenceAck",
         "scope": "both designs",
         "purpose": "xochi.shielded.backup-persistence-ack.v1",
-        "typeString": "BackupPersistenceAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)",
-        "typehash": "0x8de3e7781ea5f130dffae393739a81efc52772df9d1b3da1b396410c8ac07b38"
+        "typeString": "BackupPersistenceAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 backupCommitment,bytes32 backupFormatId,bytes32 nonce,uint64 challengeExpiry,string purpose)",
+        "typehash": "0xed3674ce6e36f0b89d6827f073d358c74049685ac68b45b2d847162022bc4539"
       },
       {
-        "status": "DRAFT",
         "primaryType": "SenderRegistrationAck",
         "scope": "B-panel",
         "purpose": "xochi.shielded.sender-registration-ack.v1",
@@ -1814,7 +1802,6 @@
         "typehash": "0x2bb00a3b4420a9ec1f7fb6c50f516602d361f82e4f2edb567241b27d4c0011eb"
       },
       {
-        "status": "DRAFT",
         "primaryType": "PaymentReceiptAck",
         "scope": "both designs",
         "purpose": "xochi.shielded.payment-receipt-ack.v1",
@@ -1824,53 +1811,13 @@
     ],
     "rules": [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
+      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId identifies their decoder/schema contract; neither value contains plaintext",
       "nonce / challengeExpiry: a server-issued single-use challenge and its signing window, as for RecipientBinding (for PaymentReceiptAck, the receipt challenge)",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire"
     ],
     "vectors": [
       {
-        "status": "DRAFT",
-        "name": "MessagingEnrollmentAck (binding X)",
-        "primaryType": "MessagingEnrollmentAck",
-        "environment": "staging",
-        "network": {
-          "aztecChainId": "11155111",
-          "protocolVersion": "679261766",
-          "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
-          "l1ChainId": "11155111",
-          "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
-        },
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "structHash": "0x842b4c3af22c6afdce50a08cf43f05cf5623d7951fc0d806e09bb21e8954d98e",
-        "digest": "0xa97253c98bf38dfcc499c77c9d47e381e00fb2071db3e7eb783b95e7829cc88a",
-        "wrapper": {
-          "u": "0x0f58f3016349112a4117a4ff198e36f57e2d1e2372639a23fca9c38d9c8fc2cadbe56edc3d980a87fc9aeb8782a75729bf06ad94136e6cfcf16ed0778068e25c",
-          "u48": "0x0f58f3016349112a4117a4ff198e36f57e2d1e2372639a23fca9c38d9c8fc2cadbe56edc3d980a87fc9aeb8782a75729",
-          "messageField": "0x1b2dbd557c46b230358e63759068c6a17c22cbb6328fc954b7881a1cdb3fd4bb",
-          "provisionalPlainModR": "0x18456870e85ead7f9ba8f65918c3da6a6773f92db0879637ac95b52bb29cc887"
-        },
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae"
-      },
-      {
-        "status": "DRAFT",
         "name": "BackupPersistenceAck (binding X)",
         "primaryType": "BackupPersistenceAck",
         "environment": "staging",
@@ -1892,24 +1839,25 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "structHash": "0x903fe23b7514fc3d511f737942af802cc67d0c6ffd8e033f071f03063c3060cc",
-        "digest": "0x58372a78460636aa9b349295c07b29ee1c9060c923e5a620bc53feabe5d52651",
+        "structHash": "0x67f3c849a53537cb6a7a9f16af9c31144f717805d164767b7d93350726f72ebf",
+        "digest": "0x1116ee0dc9cca8e93723c9d7ea73dee65b44a8a42c7e74cb09ab2cbeafaed207",
         "wrapper": {
-          "u": "0x2d19cbd683c916f6bfccd8465f15df8c5ef4d7c332a3f5e8f2db1cb4aecc8c70cf0c8f40c3418b6c89562beba86521745956e85ec8bc51aef896bce6757ae814",
-          "u48": "0x2d19cbd683c916f6bfccd8465f15df8c5ef4d7c332a3f5e8f2db1cb4aecc8c70cf0c8f40c3418b6c89562beba8652174",
-          "messageField": "0x00f9f8dea6a3aec1c7b4c18cad211bc6218409457a6b253520b22fe0af317e16",
-          "provisionalPlainModR": "0x27d2dc0564d49680e2e44cdf3ef9d190f45c7880aa2c358f78720917f5d52650"
+          "u": "0x52e3d22fe2ae39b09fec3136ef033a50152a7ebb89545be7c41cf642c98a46314f6a5c10e9a80efdc054d0e51f1d78cd94237457a867f430ecf643e421966181",
+          "u48": "0x52e3d22fe2ae39b09fec3136ef033a50152a7ebb89545be7c41cf642c98a46314f6a5c10e9a80efdc054d0e51f1d78cd",
+          "messageField": "0x1ed7c7bd0ae0f6764a2fefccdab1e8cb1141912aa4f5088fbaa06cdb9565779b",
+          "provisionalPlainModR": "0x1116ee0dc9cca8e93723c9d7ea73dee65b44a8a42c7e74cb09ab2cbeafaed207"
         },
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156"
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106"
       },
       {
-        "status": "DRAFT",
         "name": "SenderRegistrationAck (binding X)",
         "primaryType": "SenderRegistrationAck",
         "environment": "staging",
@@ -1953,7 +1901,6 @@
         "signature": "0x074de56fbb9dbbd9ac8c7e37681f0aec00b75b9800219d890ec373466fdc8fda2a7b4f8f6b970dea6f0e7078b6c517d5e8f47747a15520b1bc2c320b940e0126"
       },
       {
-        "status": "DRAFT",
         "name": "PaymentReceiptAck (binding X)",
         "primaryType": "PaymentReceiptAck",
         "environment": "staging",
@@ -2007,33 +1954,6 @@
     ],
     "crossTypeReplays": [
       {
-        "name": "RecipientBinding signature presented as MessagingEnrollmentAck",
-        "signedAs": "RecipientBinding",
-        "presentedAs": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0xa97253c98bf38dfcc499c77c9d47e381e00fb2071db3e7eb783b95e7829cc88a",
-        "messageField": "0x1b2dbd557c46b230358e63759068c6a17c22cbb6328fc954b7881a1cdb3fd4bb",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x04edd8adb3cf3e85d285a9be3dc445e2ba0b8e4ebbb9327b543951d0c451b8171e4536736d7820a79714dfadf408590226b3b2f5fe6d5b5e72a88e60992ed217",
-        "valid": false
-      },
-      {
         "name": "RecipientBinding signature presented as BackupPersistenceAck",
         "signedAs": "RecipientBinding",
         "presentedAs": "BackupPersistenceAck",
@@ -2048,10 +1968,12 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "digest": "0x58372a78460636aa9b349295c07b29ee1c9060c923e5a620bc53feabe5d52651",
-        "messageField": "0x00f9f8dea6a3aec1c7b4c18cad211bc6218409457a6b253520b22fe0af317e16",
+        "digest": "0x1116ee0dc9cca8e93723c9d7ea73dee65b44a8a42c7e74cb09ab2cbeafaed207",
+        "messageField": "0x1ed7c7bd0ae0f6764a2fefccdab1e8cb1141912aa4f5088fbaa06cdb9565779b",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
@@ -2130,134 +2052,6 @@
         "valid": false
       },
       {
-        "name": "MessagingEnrollmentAck signature presented as RecipientBinding",
-        "signedAs": "MessagingEnrollmentAck",
-        "presentedAs": "RecipientBinding",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "sourceChainId": "84532",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
-          "descriptorDigest": "0x657b333db2a51e6254297c2f406f84539825f5d76c7f9836e29ef8f2c0431f1b",
-          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
-          "corridorRevision": "1",
-          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
-          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
-          "challengeExpiry": "1900000000",
-          "purpose": "xochi.shielded.recipient-binding.v1"
-        },
-        "digest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-        "messageField": "0x0bcfeeaf78020b9b49266d608f084fbaec89052e51bd38cbba5313b57867d9f9",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
-        "name": "MessagingEnrollmentAck signature presented as BackupPersistenceAck",
-        "signedAs": "MessagingEnrollmentAck",
-        "presentedAs": "BackupPersistenceAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "purpose": "xochi.shielded.backup-persistence-ack.v1"
-        },
-        "digest": "0x58372a78460636aa9b349295c07b29ee1c9060c923e5a620bc53feabe5d52651",
-        "messageField": "0x00f9f8dea6a3aec1c7b4c18cad211bc6218409457a6b253520b22fe0af317e16",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
-        "name": "MessagingEnrollmentAck signature presented as SenderRegistrationAck",
-        "signedAs": "MessagingEnrollmentAck",
-        "presentedAs": "SenderRegistrationAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "registeredSenders": [
-            "0x0000000000000000000000000000000000000000000000000000000000000005",
-            "0x1717171717171717171717171717171717171717171717171717171717171717",
-            "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
-          ],
-          "purpose": "xochi.shielded.sender-registration-ack.v1"
-        },
-        "digest": "0xfa194c5cef9612a3c252db2beb61acedd34abf7c4161c2cdce3a196a068f505e",
-        "messageField": "0x2f94fa56b2e29dd5395ad4a859a1cd873b8f6f2dd2440ea11a7f2978480f5d8e",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
-        "name": "MessagingEnrollmentAck signature presented as PaymentReceiptAck",
-        "signedAs": "MessagingEnrollmentAck",
-        "presentedAs": "PaymentReceiptAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "termsDigest": "0x7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
-          "operationId": "0x0909090909090909090909090909090909090909090909090909090909090909",
-          "network": {
-            "aztecChainId": "11155111",
-            "protocolVersion": "679261766",
-            "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
-            "l1ChainId": "11155111",
-            "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
-          },
-          "txHash": "0x1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
-          "blockNumber": "3062",
-          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
-          "amount": "1000000",
-          "purpose": "xochi.shielded.payment-receipt-ack.v1"
-        },
-        "digest": "0xa3db1a2533b9a0f56c5d1e0b584e43501d4d7a09015d1c5a8c4682013585b3e9",
-        "messageField": "0x048cfa15c596c5e13f54aba9feb58b1bf3b66b3a77eba89516a2401cb5520f84",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
         "name": "BackupPersistenceAck signature presented as RecipientBinding",
         "signedAs": "BackupPersistenceAck",
         "presentedAs": "RecipientBinding",
@@ -2286,34 +2080,7 @@
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
-        "valid": false
-      },
-      {
-        "name": "BackupPersistenceAck signature presented as MessagingEnrollmentAck",
-        "signedAs": "BackupPersistenceAck",
-        "presentedAs": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0xa97253c98bf38dfcc499c77c9d47e381e00fb2071db3e7eb783b95e7829cc88a",
-        "messageField": "0x1b2dbd557c46b230358e63759068c6a17c22cbb6328fc954b7881a1cdb3fd4bb",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106",
         "valid": false
       },
       {
@@ -2344,7 +2111,7 @@
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106",
         "valid": false
       },
       {
@@ -2383,7 +2150,7 @@
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106",
         "valid": false
       },
       {
@@ -2419,33 +2186,6 @@
         "valid": false
       },
       {
-        "name": "SenderRegistrationAck signature presented as MessagingEnrollmentAck",
-        "signedAs": "SenderRegistrationAck",
-        "presentedAs": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0xa97253c98bf38dfcc499c77c9d47e381e00fb2071db3e7eb783b95e7829cc88a",
-        "messageField": "0x1b2dbd557c46b230358e63759068c6a17c22cbb6328fc954b7881a1cdb3fd4bb",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x074de56fbb9dbbd9ac8c7e37681f0aec00b75b9800219d890ec373466fdc8fda2a7b4f8f6b970dea6f0e7078b6c517d5e8f47747a15520b1bc2c320b940e0126",
-        "valid": false
-      },
-      {
         "name": "SenderRegistrationAck signature presented as BackupPersistenceAck",
         "signedAs": "SenderRegistrationAck",
         "presentedAs": "BackupPersistenceAck",
@@ -2460,10 +2200,12 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "digest": "0x58372a78460636aa9b349295c07b29ee1c9060c923e5a620bc53feabe5d52651",
-        "messageField": "0x00f9f8dea6a3aec1c7b4c18cad211bc6218409457a6b253520b22fe0af317e16",
+        "digest": "0x1116ee0dc9cca8e93723c9d7ea73dee65b44a8a42c7e74cb09ab2cbeafaed207",
+        "messageField": "0x1ed7c7bd0ae0f6764a2fefccdab1e8cb1141912aa4f5088fbaa06cdb9565779b",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
@@ -2543,33 +2285,6 @@
         "valid": false
       },
       {
-        "name": "PaymentReceiptAck signature presented as MessagingEnrollmentAck",
-        "signedAs": "PaymentReceiptAck",
-        "presentedAs": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0xa97253c98bf38dfcc499c77c9d47e381e00fb2071db3e7eb783b95e7829cc88a",
-        "messageField": "0x1b2dbd557c46b230358e63759068c6a17c22cbb6328fc954b7881a1cdb3fd4bb",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d",
-        "valid": false
-      },
-      {
         "name": "PaymentReceiptAck signature presented as BackupPersistenceAck",
         "signedAs": "PaymentReceiptAck",
         "presentedAs": "BackupPersistenceAck",
@@ -2584,10 +2299,12 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "digest": "0x58372a78460636aa9b349295c07b29ee1c9060c923e5a620bc53feabe5d52651",
-        "messageField": "0x00f9f8dea6a3aec1c7b4c18cad211bc6218409457a6b253520b22fe0af317e16",
+        "digest": "0x1116ee0dc9cca8e93723c9d7ea73dee65b44a8a42c7e74cb09ab2cbeafaed207",
+        "messageField": "0x1ed7c7bd0ae0f6764a2fefccdab1e8cb1141912aa4f5088fbaa06cdb9565779b",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
@@ -2629,58 +2346,6 @@
     ],
     "crossBindingReplays": [
       {
-        "name": "MessagingEnrollmentAck signed for binding X, presented for binding Y",
-        "primaryType": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
-        },
-        "message": {
-          "bindingDigest": "0x82d8becf934e7f95053dcc62034613e1e365640eed8f2e1556892c25090b2614",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0x672747ea52d5543fd5d683b95d5b7822dc6751601be3c3de03c6ff415d642ebd",
-        "messageField": "0x22deb8f267a55a36cb66582d6284f7c9bf601e5284fe553c7e573dfffc1b0193",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
-        "name": "MessagingEnrollmentAck signed for binding X, presented under the production domain",
-        "primaryType": "MessagingEnrollmentAck",
-        "domain": {
-          "name": "Xochi Shielded Recipient",
-          "version": "1",
-          "chainId": "84532",
-          "salt": "0x097df4610637793b4614b900bbef7a1f53185d75dcd5d121fe62169e13e2d823"
-        },
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "digest": "0x1a7ac12e4213b51f10c572625729a83c1f57ce23ae62fcfa47fed12c50cbb3c4",
-        "messageField": "0x2b3b843e6dd07095c9759cf4e26da0eff3a8362f7f5faee838bb2f182481105a",
-        "publicKey": {
-          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
-          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
-        },
-        "signature": "0x23591365d0dc9fc011eefe426f294f86f8c7e7aa205127748113c0faebafb24c115fa48d53aea5bab3b09affc1ad7aee8b3e6a5e39005760fb73aa3085c657ae",
-        "valid": false
-      },
-      {
         "name": "BackupPersistenceAck signed for binding X, presented for binding Y",
         "primaryType": "BackupPersistenceAck",
         "domain": {
@@ -2694,15 +2359,17 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "digest": "0x82c92ff03656dbcb1e69675daa8eab910d9258ed864354b881fb1e85f7785822",
-        "messageField": "0x1b0bf0bf1ecbb2859241f824d0860e3b20b1e36c9ecec4aee53991fca2628977",
+        "digest": "0x698bdfdbdf6f0072456daab88c5ce24b1c2502be881a1fc9b7afe6dd5ddb0085",
+        "messageField": "0x09518c5fde9c22ee71d9db8646f2aecb2f875d0eabf3c79c60cff71e40acb7e4",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106",
         "valid": false
       },
       {
@@ -2719,15 +2386,17 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
-        "digest": "0x9e746e7db665f0809748c5a8b3d2e858177648e5bb39de438e55294882e5c166",
-        "messageField": "0x2af65a50f45c19ef661a9accddd3e0d4ab23c17a8df454fa02421caf897e5b74",
+        "digest": "0x2a4b7d8971aac5b51d7177bf3a3d898a146a93c89fe13a70f432e1481a312eb3",
+        "messageField": "0x30141c3ccbc1c3d925a83359b0e44089ebe1d0c15902c8e93542737d78a680b4",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
-        "signature": "0x24aa79d14de17a25972afa7c19f7d849e1a1742694d18b197c7b2e53aefe54291c26f282e666212dd2673835f35bff38a3854299065761d294dc3e9b9e3a0156",
+        "signature": "0x203656e1cc9a8599316c5d0262851257a67a4f3bf4e7ba6ea14052fdfebe1e2316fe3c79e963444e88360aa320efc35e37b7e32cee0d8e454c6d9210726cb106",
         "valid": false
       },
       {
@@ -2869,70 +2538,6 @@
     ],
     "refusals": [
       {
-        "name": "MessagingEnrollmentAck: another acknowledgement's purpose",
-        "primaryType": "MessagingEnrollmentAck",
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.backup-persistence-ack.v1"
-        },
-        "error": {
-          "code": "purpose_mismatch",
-          "field": "purpose"
-        }
-      },
-      {
-        "name": "MessagingEnrollmentAck: the binding purpose",
-        "primaryType": "MessagingEnrollmentAck",
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.recipient-binding.v1"
-        },
-        "error": {
-          "code": "purpose_mismatch",
-          "field": "purpose"
-        }
-      },
-      {
-        "name": "MessagingEnrollmentAck: aztecRecipient zero",
-        "primaryType": "MessagingEnrollmentAck",
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x0000000000000000000000000000000000000000000000000000000000000000",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "1900000300",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "error": {
-          "code": "aztec_zero",
-          "field": "aztecRecipient"
-        }
-      },
-      {
-        "name": "MessagingEnrollmentAck: challengeExpiry above uint64",
-        "primaryType": "MessagingEnrollmentAck",
-        "message": {
-          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
-          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
-          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-          "challengeExpiry": "18446744073709551616",
-          "enrolledSender": "0x1717171717171717171717171717171717171717171717171717171717171717",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
-        },
-        "error": {
-          "code": "uint_out_of_range",
-          "field": "challengeExpiry"
-        }
-      },
-      {
         "name": "BackupPersistenceAck: another acknowledgement's purpose",
         "primaryType": "BackupPersistenceAck",
         "message": {
@@ -2940,7 +2545,9 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
+          "purpose": "xochi.shielded.sender-registration-ack.v1"
         },
         "error": {
           "code": "purpose_mismatch",
@@ -2955,6 +2562,8 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.recipient-binding.v1"
         },
         "error": {
@@ -2970,6 +2579,8 @@
           "aztecRecipient": "0x0000000000000000000000000000000000000000000000000000000000000000",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
         "error": {
@@ -2985,6 +2596,8 @@
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "18446744073709551616",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
           "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
         "error": {
@@ -3005,7 +2618,7 @@
             "0x1717171717171717171717171717171717171717171717171717171717171717",
             "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
           ],
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
         "error": {
           "code": "purpose_mismatch",
@@ -3093,7 +2706,7 @@
           "blockNumber": "3062",
           "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
           "amount": "1000000",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
         "error": {
           "code": "purpose_mismatch",
@@ -3403,19 +3016,37 @@
         }
       },
       {
-        "name": "MessagingEnrollmentAck: enrolledSender zero",
-        "primaryType": "MessagingEnrollmentAck",
+        "name": "BackupPersistenceAck: backupCommitment zero",
+        "primaryType": "BackupPersistenceAck",
         "message": {
           "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
           "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
           "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
           "challengeExpiry": "1900000300",
-          "enrolledSender": "0x0000000000000000000000000000000000000000000000000000000000000000",
-          "purpose": "xochi.shielded.messaging-enrollment-ack.v1"
+          "backupCommitment": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
         },
         "error": {
-          "code": "aztec_zero",
-          "field": "enrolledSender"
+          "code": "digest_zero",
+          "field": "backupCommitment"
+        }
+      },
+      {
+        "name": "BackupPersistenceAck: backupFormatId zero",
+        "primaryType": "BackupPersistenceAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+          "challengeExpiry": "1900000300",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
+        },
+        "error": {
+          "code": "digest_zero",
+          "field": "backupFormatId"
         }
       }
     ]

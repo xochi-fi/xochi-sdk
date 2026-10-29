@@ -435,13 +435,9 @@ describe("refusal contract", () => {
 
 describe("open items", () => {
   it("publishes no vector for what §7 leaves open, and names each one", () => {
-    expect(file.open.map((o) => o.item)).toEqual([
-      "ShieldedTermsV1",
-      "manifestDigest",
-      "recipientAcknowledgements",
-    ]);
+    expect(file.open.map((o) => o.item)).toEqual(["ShieldedTermsV1", "manifestDigest"]);
     expect(Object.keys(file)).not.toContain("terms");
-    // The descriptor digest, the wrapper and the DRAFT acknowledgements live in
+    // The descriptor digest, wrapper and approved acknowledgements live in
     // shielded-recipient.json, never here.
     expect(Object.keys(file)).not.toContain("recipientMessage");
     // xochi-sdk#42: the class is pinned, so no open item may still cite it as the blocker.

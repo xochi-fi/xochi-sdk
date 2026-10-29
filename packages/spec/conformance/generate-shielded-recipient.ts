@@ -8,7 +8,7 @@
 //      recomputes the descriptor's Aztec address for the stock SchnorrAccount pinned on each
 //      network (Aztec 5.2.0 and the @aztec-labs 6.0.0 public testnet);
 //   2. the recipient message wrapper and its WIDE reduction into the BN254 scalar field;
-//   3. four acknowledgement structs, DRAFT until the owner approves them at PR review.
+//   3. three approved acknowledgement structs.
 //
 // INDEPENDENT OF @xochi/signer, deliberately (the #41 rule). Every value is derived here
 // with generic primitives only: ethers (TypedDataEncoder, keccak256, AbiCoder), node's
@@ -243,24 +243,11 @@ const BINDING_TYPE_STRING =
   "bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision," +
   "bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)";
 
-// DRAFT acknowledgement structs (decision 3). Each has its own primary type AND its own
-// purpose string; all are signed under `Domain (binding)` through the recipient message
-// wrapper. They share the binding's challenge members (nonce, challengeExpiry) and name the
-// binding by its EIP-712 digest, so an acknowledgement is scoped to one binding.
+// Approved acknowledgement structs (decision 3, 2026-10-29). Each has its own primary
+// type and purpose string; all are signed under `Domain (binding)` through the recipient
+// message wrapper. They share the binding's challenge members (nonce, challengeExpiry) and
+// name the binding by its EIP-712 digest, so an acknowledgement is scoped to one binding.
 const ACKS = [
-  {
-    primaryType: "MessagingEnrollmentAck",
-    purpose: "xochi.shielded.messaging-enrollment-ack.v1",
-    scope: "design-A testnet tracer only",
-    members: [
-      { name: "bindingDigest", type: "bytes32" },
-      { name: "aztecRecipient", type: "bytes32" },
-      { name: "enrolledSender", type: "bytes32" },
-      { name: "nonce", type: "bytes32" },
-      { name: "challengeExpiry", type: "uint64" },
-      { name: "purpose", type: "string" },
-    ],
-  },
   {
     primaryType: "BackupPersistenceAck",
     purpose: "xochi.shielded.backup-persistence-ack.v1",
@@ -268,6 +255,8 @@ const ACKS = [
     members: [
       { name: "bindingDigest", type: "bytes32" },
       { name: "aztecRecipient", type: "bytes32" },
+      { name: "backupCommitment", type: "bytes32" },
+      { name: "backupFormatId", type: "bytes32" },
       { name: "nonce", type: "bytes32" },
       { name: "challengeExpiry", type: "uint64" },
       { name: "purpose", type: "string" },
@@ -993,7 +982,7 @@ if (!reductionVectors.some((v) => v.notTheRule.truncated256ModR !== v.messageFie
   throw new Error("need a vector where the 256-bit reduction differs");
 }
 
-// --- Acknowledgements (decision 3, DRAFT) ----------------------------------------------------
+// --- Acknowledgements (decision 3, approved 2026-10-29) -------------------------------------
 
 const ackAccount = acct("aztec-6.0.0-stock");
 const ackDomain = bindingDomain(ENVIRONMENT, SOURCE_CHAIN_ID, ackAccount.descriptor.network);
@@ -1020,10 +1009,15 @@ const ackMessage = (primaryType: AckType, bindingDigest: string): Record<string,
   };
   const purpose = ACKS.find((a) => a.primaryType === primaryType)!.purpose;
   switch (primaryType) {
-    case "MessagingEnrollmentAck":
-      return { ...common, enrolledSender: "0x" + "17".repeat(32), purpose };
     case "BackupPersistenceAck":
-      return { ...common, purpose };
+      return {
+        ...common,
+        backupCommitment: ethers.keccak256(
+          ethers.toUtf8Bytes("xochi-spec TEST ONLY randomized encrypted backup"),
+        ),
+        backupFormatId: ethers.id("xochi.shielded.backup-format.v1"),
+        purpose,
+      };
     case "SenderRegistrationAck":
       return { ...common, registeredSenders: SENDERS, purpose };
     case "PaymentReceiptAck":
@@ -1200,20 +1194,19 @@ const ackRefusals = (() => {
     message: { ...pr, blockNumber: "03062" },
     error: { code: "uint_not_canonical", field: "blockNumber" },
   });
-  const me = base("MessagingEnrollmentAck");
-  out.push({
-    name: "MessagingEnrollmentAck: enrolledSender zero",
-    primaryType: "MessagingEnrollmentAck",
-    message: { ...me, enrolledSender: hex32(0n) },
-    error: { code: "aztec_zero", field: "enrolledSender" },
-  });
+  const bp = base("BackupPersistenceAck");
+  for (const field of ["backupCommitment", "backupFormatId"]) {
+    out.push({
+      name: `BackupPersistenceAck: ${field} zero`,
+      primaryType: "BackupPersistenceAck",
+      message: { ...bp, [field]: hex32(0n) },
+      error: { code: "digest_zero", field },
+    });
+  }
   return out;
 })();
 
 // --- Output ------------------------------------------------------------------------------
-
-const DRAFT_NOTE =
-  "DRAFT: proposed 2026-10-25 for the product owner's approval at PR review. Not approved; do not implement against these bytes until the status changes.";
 
 const out = {
   version: 1,
@@ -1303,12 +1296,9 @@ const out = {
     refusals: messageRefusals,
   },
   acknowledgements: {
-    status: "DRAFT",
-    note: DRAFT_NOTE,
     domain:
       "Domain (binding): every acknowledgement is a statement by the recipient about one binding, so it is scoped to that binding's environment, network and source chain. Primary type and purpose string separate the types inside the domain; a dedicated domain would add no separation those two do not.",
     types: ACKS.map((a) => ({
-      status: "DRAFT",
       primaryType: a.primaryType,
       scope: a.scope,
       purpose: a.purpose,
@@ -1317,11 +1307,12 @@ const out = {
     })),
     rules: [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
+      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId identifies their decoder/schema contract; neither value contains plaintext",
       "nonce / challengeExpiry: a server-issued single-use challenge and its signing window, as for RecipientBinding (for PaymentReceiptAck, the receipt challenge)",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
     ],
-    vectors: ackVectors.map((v) => ({ status: "DRAFT", ...v })),
+    vectors: ackVectors,
     crossTypeReplays,
     crossBindingReplays,
     refusals: ackRefusals,
@@ -1410,8 +1401,8 @@ const schema = {
   description:
     "RecipientDescriptor hashStruct (descriptorDigest) and the stock SchnorrAccount address derivation for the pinned " +
     "Aztec 5.2.0 and @aztec-labs 6.0.0 classes; the recipient message wrapper with its wide reduction and Schnorr " +
-    "signatures; and the DRAFT acknowledgement structs with cross-type and cross-binding replay refusals (xochi " +
-    "shielded-execution.md §7; product-owner decisions 2026-10-24/25). Generated independently of @xochi/signer; " +
+    "signatures; and the approved acknowledgement structs with cross-type and cross-binding replay refusals (xochi " +
+    "shielded-execution.md §7; product-owner decisions 2026-10-24/25 and 2026-10-29). Generated independently of @xochi/signer; " +
     "held to the real SDKs by packages/spec/aztec-crosscheck. All keys are TEST ONLY synthetic scalars.",
   ...obj({
     version: { const: 1 },
@@ -1514,12 +1505,9 @@ const schema = {
       ),
     }),
     acknowledgements: obj({
-      status: { const: "DRAFT" },
-      note: STR,
       domain: STR,
       types: arr(
         obj({
-          status: { const: "DRAFT" },
           primaryType: STR,
           scope: STR,
           purpose: STR,
@@ -1528,7 +1516,7 @@ const schema = {
         }),
       ),
       rules: arr(STR),
-      vectors: arr(obj({ status: { const: "DRAFT" }, name: STR, ...SIGNED })),
+      vectors: arr(obj({ name: STR, ...SIGNED })),
       crossTypeReplays: arr(obj({ ...REPLAY_BASE, signedAs: STR, presentedAs: STR })),
       crossBindingReplays: arr(obj({ ...REPLAY_BASE, primaryType: STR })),
       refusals: arr(obj({ name: STR, primaryType: STR, message: LOOSE, error: ERROR })),
@@ -1545,7 +1533,7 @@ fs.writeFileSync(
 console.log(
   `wrote shielded-recipient.json: ${descriptorVectors.length} descriptors, ` +
     `${descriptorRefusals.length} descriptor refusals, ${reductionVectors.length} reductions, ` +
-    `${bindingMessages.length} binding messages, ${ackVectors.length} DRAFT acks, ` +
+    `${bindingMessages.length} binding messages, ${ackVectors.length} approved acks, ` +
     `${crossTypeReplays.length} cross-type and ${crossBindingReplays.length} cross-binding replays`,
 );
 for (const v of descriptorVectors) console.log(`  ${v.name.padEnd(30)} ${v.derivation.address}`);

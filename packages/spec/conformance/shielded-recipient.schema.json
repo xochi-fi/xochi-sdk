@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xochi.fi/spec/conformance/shielded-recipient.schema.json",
   "title": "Shielded settlement v1 recipient encodings vector set",
-  "description": "RecipientDescriptor hashStruct (descriptorDigest) and the stock SchnorrAccount address derivation for the pinned Aztec 5.2.0 and @aztec-labs 6.0.0 classes; the recipient message wrapper with its wide reduction and Schnorr signatures; and the DRAFT acknowledgement structs with cross-type and cross-binding replay refusals (xochi shielded-execution.md §7; product-owner decisions 2026-10-24/25). Generated independently of @xochi/signer; held to the real SDKs by packages/spec/aztec-crosscheck. All keys are TEST ONLY synthetic scalars.",
+  "description": "RecipientDescriptor hashStruct (descriptorDigest) and the stock SchnorrAccount address derivation for the pinned Aztec 5.2.0 and @aztec-labs 6.0.0 classes; the recipient message wrapper with its wide reduction and Schnorr signatures; and the approved acknowledgement structs with cross-type and cross-binding replay refusals (xochi shielded-execution.md §7; product-owner decisions 2026-10-24/25 and 2026-10-29). Generated independently of @xochi/signer; held to the real SDKs by packages/spec/aztec-crosscheck. All keys are TEST ONLY synthetic scalars.",
   "type": "object",
   "required": [
     "version",
@@ -883,8 +883,6 @@
     "acknowledgements": {
       "type": "object",
       "required": [
-        "status",
-        "note",
         "domain",
         "types",
         "rules",
@@ -895,12 +893,6 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "status": {
-          "const": "DRAFT"
-        },
-        "note": {
-          "type": "string"
-        },
         "domain": {
           "type": "string"
         },
@@ -910,7 +902,6 @@
           "items": {
             "type": "object",
             "required": [
-              "status",
               "primaryType",
               "scope",
               "purpose",
@@ -919,9 +910,6 @@
             ],
             "additionalProperties": false,
             "properties": {
-              "status": {
-                "const": "DRAFT"
-              },
               "primaryType": {
                 "type": "string"
               },
@@ -954,7 +942,6 @@
           "items": {
             "type": "object",
             "required": [
-              "status",
               "name",
               "primaryType",
               "environment",
@@ -969,9 +956,6 @@
             ],
             "additionalProperties": false,
             "properties": {
-              "status": {
-                "const": "DRAFT"
-              },
               "name": {
                 "type": "string"
               },

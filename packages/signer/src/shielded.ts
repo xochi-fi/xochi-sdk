@@ -17,9 +17,8 @@
 // fixed, and `fee_breakdown` has no typed shape) and the manifestDigest struct (its identity
 // fields are listed but not typed). A vector for either would be a guess other
 // implementations are then held to. The descriptorDigest encoding, recipient message
-// wrapper and field reduction are in `shielded-recipient.ts`; the DRAFT acknowledgement
-// structs are internal in `shielded-recipient-acks.ts`; readiness is in
-// `shielded-readiness.ts`.
+// wrapper and field reduction are in `shielded-recipient.ts`; approved acknowledgement
+// structs are in `shielded-recipient-acks.ts`; readiness is in `shielded-readiness.ts`.
 //
 // Every hash is built by hand from `abi.encode`, so the vector suite can cross-check it
 // against ethers' TypedDataEncoder as an independent implementation.

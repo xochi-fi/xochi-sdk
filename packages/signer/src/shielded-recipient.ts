@@ -9,8 +9,7 @@
 //     (`AZTEC_RECIPIENT_PROFILES`) and the fail-closed descriptor check;
 //   - the recipient message wrapper and its wide reduction into the BN254 scalar field;
 //   - a Schnorr-over-Grumpkin verifier for the account's signature over that field value;
-//   - (the acknowledgement structs are DRAFT and live in the internal
-//     `shielded-recipient-acks.ts`, not exported until the owner approves them).
+//   - approved recipient acknowledgements live in `shielded-recipient-acks.ts`.
 //
 // VERIFY-ONLY: the recipient signs with its own tooling, which rebuilds the full typed
 // preimage and applies the wrapper itself; it never signs a value supplied by Xochi. No

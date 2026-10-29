@@ -10,6 +10,7 @@ export * from "./escrow";
 export * from "./xsp";
 export * from "./shielded";
 export * from "./shielded-recipient";
+export * from "./shielded-recipient-acks";
 export * from "./shielded-readiness";
 export * from "./permit2";
 export * from "./intent-verify";

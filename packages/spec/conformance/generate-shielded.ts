@@ -23,8 +23,8 @@
 // (and not an EVM address) is established by descriptor/address derivation, not by its size.
 //
 // ShieldedTermsV1 and the manifestDigest struct are NOT here: §7 leaves them open. The
-// descriptorDigest encoding, the recipient message wrapper and its field reduction, and the
-// DRAFT acknowledgement structs are in shielded-recipient.json (generate-shielded-recipient.ts).
+// descriptorDigest encoding, recipient message wrapper, field reduction and approved
+// acknowledgement structs are in shielded-recipient.json (generate-shielded-recipient.ts).
 //
 // Every network, corridor, digest and Aztec value below is a FIXTURE. The signer keys are
 // the PUBLIC Hardhat/Anvil test keys #0 and #1: known to everyone, never to hold funds.
@@ -508,11 +508,6 @@ const out = {
       item: "manifestDigest",
       reason:
         "§7 lists the manifest identity fields but not their typed encoding; manifestDigest is an opaque bytes32 input here.",
-    },
-    {
-      item: "recipientAcknowledgements",
-      reason:
-        "Drafted in shielded-recipient.json and marked DRAFT there until the product owner approves them. The descriptorDigest encoding and the recipient message wrapper with its wide field reduction were decided 2026-10-24/25 and are specified in that file; descriptorDigest is an opaque bytes32 input to RecipientBinding here.",
     },
   ],
 };

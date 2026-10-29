@@ -1,5 +1,5 @@
 // Recipient encodings: `@xochi/spec`'s conformance/shielded-recipient.json (xochi
-// shielded-execution.md §7; product-owner decisions of 2026-10-24/25).
+// shielded-execution.md §7; product-owner decisions of 2026-10-24/25 and 2026-10-29).
 //
 // The generator derives every value with generic primitives and never imports @xochi/signer,
 // and packages/spec/aztec-crosscheck holds the same file to the real Aztec SDKs (5.2.0 and
@@ -7,8 +7,6 @@
 // derivation, reduction, signature verdict and refusal is reproduced by @xochi/signer;
 // (2) the EIP-712 values again with ethers' TypedDataEncoder from type definitions written
 // out here; (3) anchors this repo cannot edit: the decided prefix bytes, L = 48 and BN254 r.
-// The DRAFT acknowledgements are not exported from the package root; they are imported from
-// the internal module so their vectors still have a second implementation.
 
 import { describe, it, expect } from "vitest";
 import fs from "fs";
@@ -18,6 +16,7 @@ import { ethers } from "ethers";
 
 import * as signer from "@xochi/signer";
 import {
+  AckEncodingError,
   AZTEC_RECIPIENT_PROFILES,
   GRUMPKIN_ORDER,
   RECIPIENT_DESCRIPTOR_TYPEHASH,
@@ -27,30 +26,26 @@ import {
   RecipientEncodingError,
   SCHNORR_ACCOUNT_CONSTRUCTOR_SELECTOR,
   SCHNORR_CHALLENGE_DST,
+  RECIPIENT_ACK_PURPOSES,
+  RECIPIENT_ACK_TYPE_STRINGS,
   ShieldedEncodingError,
   bindingDomain,
   deriveRecipientAddress,
   hashRecipientBinding,
   hashRecipientDescriptor,
+  hashRecipientAck,
   recipientMessage,
+  recipientAckDigest,
   reduceWideToField,
   shieldedDomainSeparator,
   verifyRecipientDescriptor,
   verifyRecipientSchnorr,
   type AztecRecipientProfile,
+  type RecipientAckType,
   type RecipientBinding,
   type RecipientDescriptor,
   type ShieldedDomain,
 } from "@xochi/signer";
-import {
-  AckEncodingError,
-  RECIPIENT_ACK_PURPOSES,
-  RECIPIENT_ACK_STATUS,
-  RECIPIENT_ACK_TYPE_STRINGS,
-  hashRecipientAck,
-  recipientAckDigest,
-  type RecipientAckType,
-} from "../src/shielded-recipient-acks";
 
 type Point = { x: string; y: string };
 type Wrapper = { u: string; u48: string; messageField: string; provisionalPlainModR: string };
@@ -128,15 +123,13 @@ interface RecipientFile {
     }[];
   };
   acknowledgements: {
-    status: string;
     types: {
-      status: string;
       primaryType: RecipientAckType;
       purpose: string;
       typeString: string;
       typehash: string;
     }[];
-    vectors: (Signed & { status: string; primaryType: RecipientAckType })[];
+    vectors: (Signed & { primaryType: RecipientAckType })[];
     crossTypeReplays: (Replay & { signedAs: string; presentedAs: string })[];
     crossBindingReplays: (Replay & { primaryType: RecipientAckType })[];
     refusals: {
@@ -209,14 +202,11 @@ const TYPES: Record<string, Record<string, { name: string; type: string }[]>> = 
       ...CHALLENGE,
     ],
   },
-  MessagingEnrollmentAck: {
-    MessagingEnrollmentAck: [
-      ...b32("bindingDigest", "aztecRecipient", "enrolledSender"),
+  BackupPersistenceAck: {
+    BackupPersistenceAck: [
+      ...b32("bindingDigest", "aztecRecipient", "backupCommitment", "backupFormatId"),
       ...CHALLENGE,
     ],
-  },
-  BackupPersistenceAck: {
-    BackupPersistenceAck: [...b32("bindingDigest", "aztecRecipient"), ...CHALLENGE],
   },
   SenderRegistrationAck: {
     SenderRegistrationAck: [
@@ -259,25 +249,20 @@ function refusalOf(
 }
 
 describe("package surface", () => {
-  it("exports the approved recipient APIs and none of the DRAFT acknowledgement APIs", () => {
+  it("exports the approved recipient and acknowledgement APIs", () => {
     for (const name of [
       "hashRecipientDescriptor",
       "verifyRecipientDescriptor",
       "recipientMessage",
       "verifyRecipientSchnorr",
       "RecipientEncodingError",
-    ]) {
-      expect(signer, name).toHaveProperty(name);
-    }
-    for (const name of [
       "hashRecipientAck",
       "recipientAckDigest",
       "RECIPIENT_ACK_TYPE_STRINGS",
       "RECIPIENT_ACK_PURPOSES",
-      "RECIPIENT_ACK_STATUS",
       "AckEncodingError",
     ]) {
-      expect(signer, name).not.toHaveProperty(name);
+      expect(signer, name).toHaveProperty(name);
     }
   });
 
@@ -506,12 +491,14 @@ describe("recipient message wrapper", () => {
   });
 });
 
-describe("acknowledgements (DRAFT)", () => {
-  it("are all marked DRAFT, with their own primary types and purpose strings", () => {
-    expect(file.acknowledgements.status).toBe("DRAFT");
-    expect(RECIPIENT_ACK_STATUS).toBe("DRAFT");
+describe("acknowledgements", () => {
+  it("publishes the three approved primary types and purpose strings", () => {
+    expect(Object.keys(RECIPIENT_ACK_TYPE_STRINGS).sort()).toEqual([
+      "BackupPersistenceAck",
+      "PaymentReceiptAck",
+      "SenderRegistrationAck",
+    ]);
     for (const t of file.acknowledgements.types) {
-      expect(t.status, t.primaryType).toBe("DRAFT");
       expect(t.typeString, t.primaryType).toBe(RECIPIENT_ACK_TYPE_STRINGS[t.primaryType]);
       expect(
         ethers.TypedDataEncoder.from(TYPES[t.primaryType]!).encodeType(t.primaryType),
@@ -527,7 +514,6 @@ describe("acknowledgements (DRAFT)", () => {
     expect(new Set([...purposes, "xochi.shielded.recipient-binding.v1"]).size).toBe(
       purposes.length + 1,
     );
-    for (const v of file.acknowledgements.vectors) expect(v.status, v.name).toBe("DRAFT");
   });
 
   it("reproduces every acknowledgement and verifies its signature", () => {

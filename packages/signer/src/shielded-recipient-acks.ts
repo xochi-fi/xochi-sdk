@@ -1,13 +1,15 @@
-// DRAFT recipient acknowledgements (xochi#633; proposed 2026-10-25 for the product owner's
-// approval). INTERNAL: the package root does NOT export this module, so nothing a consumer
-// installs can be built against unapproved bytes. It exists for the vector suite, which
-// holds `@xochi/spec`'s shielded-recipient.json `acknowledgements` section (marked DRAFT
-// there) to a second implementation. On approval it moves to the root exports.
+// Approved recipient acknowledgements (xochi#633; product-owner decision 2026-10-29).
+// The package root exports this module. Each acknowledgement has its own primary type and
+// purpose string and is signed under `Domain (binding)` through the recipient message
+// wrapper (`recipientMessage`).
 //
-// Each acknowledgement has its own primary type and purpose string and is signed under
-// `Domain (binding)` through the recipient message wrapper (`recipientMessage`). All four
-// name the binding by its EIP-712 digest and carry a server-issued single-use challenge
-// (`nonce`, `challengeExpiry`; for the receipt, the receipt challenge).
+// BackupPersistenceAck binds the exact randomized encrypted backup bytes and decoder
+// contract without exposing plaintext: `backupCommitment = keccak256(encryptedBackupBytes)`
+// and `backupFormatId` identifies the format. SenderRegistrationAck is the production
+// B-panel enrollment acknowledgement. PaymentReceiptAck binds exact credited value and
+// transaction evidence. Design A's testnet tracer has no standardized acknowledgement.
+// All three name the binding by its EIP-712 digest and carry a server-issued single-use
+// challenge (`nonce`, `challengeExpiry`; for the receipt, the receipt challenge).
 
 import { ethers } from "ethers";
 
@@ -32,8 +34,6 @@ import {
 } from "./shielded-values";
 import type { Hex } from "./types";
 
-export const RECIPIENT_ACK_STATUS = "DRAFT";
-
 export type AckRefusal = ShieldedRefusal | "senders_not_canonical" | "senders_empty";
 
 export class AckEncodingError extends Error {
@@ -51,18 +51,13 @@ const refuseAck = (code: AckRefusal, field: string, detail: string): never => {
   throw new AckEncodingError(code, field, detail);
 };
 
-export interface MessagingEnrollmentAck {
-  bindingDigest: string;
-  aztecRecipient: string;
-  /** The sender account the recipient completed the interactive handshake with. */
-  enrolledSender: string;
-  nonce: string;
-  challengeExpiry: UintLike;
-  purpose: string;
-}
 export interface BackupPersistenceAck {
   bindingDigest: string;
   aztecRecipient: string;
+  /** keccak256 of the randomized encrypted backup bytes, never plaintext. */
+  backupCommitment: string;
+  /** bytes32 identifier of the decoder/schema contract for those encrypted bytes. */
+  backupFormatId: string;
   nonce: string;
   challengeExpiry: UintLike;
   purpose: string;
@@ -91,7 +86,6 @@ export interface PaymentReceiptAck {
   purpose: string;
 }
 export interface RecipientAckMessages {
-  MessagingEnrollmentAck: MessagingEnrollmentAck;
   BackupPersistenceAck: BackupPersistenceAck;
   SenderRegistrationAck: SenderRegistrationAck;
   PaymentReceiptAck: PaymentReceiptAck;
@@ -99,10 +93,8 @@ export interface RecipientAckMessages {
 export type RecipientAckType = keyof RecipientAckMessages;
 
 export const RECIPIENT_ACK_TYPE_STRINGS: Record<RecipientAckType, string> = {
-  MessagingEnrollmentAck:
-    "MessagingEnrollmentAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 enrolledSender,bytes32 nonce,uint64 challengeExpiry,string purpose)",
   BackupPersistenceAck:
-    "BackupPersistenceAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)",
+    "BackupPersistenceAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 backupCommitment,bytes32 backupFormatId,bytes32 nonce,uint64 challengeExpiry,string purpose)",
   SenderRegistrationAck:
     "SenderRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32[] registeredSenders,bytes32 nonce,uint64 challengeExpiry,string purpose)",
   PaymentReceiptAck:
@@ -110,7 +102,6 @@ export const RECIPIENT_ACK_TYPE_STRINGS: Record<RecipientAckType, string> = {
     NETWORK_IDENTITY_TYPE_STRING,
 };
 export const RECIPIENT_ACK_PURPOSES: Record<RecipientAckType, string> = {
-  MessagingEnrollmentAck: "xochi.shielded.messaging-enrollment-ack.v1",
   BackupPersistenceAck: "xochi.shielded.backup-persistence-ack.v1",
   SenderRegistrationAck: "xochi.shielded.sender-registration-ack.v1",
   PaymentReceiptAck: "xochi.shielded.payment-receipt-ack.v1",
@@ -129,9 +120,15 @@ function registeredSendersHash(senders: string[]): Hex {
   return keccak(ethers.concat(values));
 }
 
+function nonzeroDigest(field: string, value: string): Hex {
+  const parsed = bytes32(field, value);
+  if (BigInt(parsed) === 0n) refuseAck("digest_zero", field, "zero");
+  return parsed;
+}
+
 /**
- * DRAFT. The EIP-712 struct hash of an acknowledgement. Members are encoded in type-string
- * order: bindingDigest, the type's own members, then nonce, challengeExpiry, purpose.
+ * The EIP-712 struct hash of an acknowledgement. Members are encoded in type-string order:
+ * bindingDigest, the type's own members, then nonce, challengeExpiry, purpose.
  */
 export function hashRecipientAck<T extends RecipientAckType>(
   primaryType: T,
@@ -143,14 +140,13 @@ export function hashRecipientAck<T extends RecipientAckType>(
         refuseAck("purpose_mismatch", "purpose", `expected ${RECIPIENT_ACK_PURPOSES[primaryType]}`);
       }
       let own: [string, unknown][];
-      if (primaryType === "MessagingEnrollmentAck") {
-        const a = message as MessagingEnrollmentAck;
+      if (primaryType === "BackupPersistenceAck") {
+        const a = message as BackupPersistenceAck;
         own = [
           ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-          ["bytes32", assertAztecBytes32("enrolledSender", a.enrolledSender)],
+          ["bytes32", nonzeroDigest("backupCommitment", a.backupCommitment)],
+          ["bytes32", nonzeroDigest("backupFormatId", a.backupFormatId)],
         ];
-      } else if (primaryType === "BackupPersistenceAck") {
-        own = [["bytes32", assertAztecBytes32("aztecRecipient", message.aztecRecipient)]];
       } else if (primaryType === "SenderRegistrationAck") {
         const a = message as SenderRegistrationAck;
         own = [
@@ -191,7 +187,7 @@ export function hashRecipientAck<T extends RecipientAckType>(
   );
 }
 
-/** DRAFT. The acknowledgement's EIP-712 digest under `Domain (binding)` (`bindingDomain`). */
+/** The acknowledgement's EIP-712 digest under `Domain (binding)` (`bindingDomain`). */
 export function recipientAckDigest<T extends RecipientAckType>(
   primaryType: T,
   message: RecipientAckMessages[T],

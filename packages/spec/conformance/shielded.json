@@ -1048,10 +1048,6 @@
     {
       "item": "manifestDigest",
       "reason": "§7 lists the manifest identity fields but not their typed encoding; manifestDigest is an opaque bytes32 input here."
-    },
-    {
-      "item": "recipientAcknowledgements",
-      "reason": "Drafted in shielded-recipient.json and marked DRAFT there until the product owner approves them. The descriptorDigest encoding and the recipient message wrapper with its wide field reduction were decided 2026-10-24/25 and are specified in that file; descriptorDigest is an opaque bytes32 input to RecipientBinding here."
     }
   ]
 }
