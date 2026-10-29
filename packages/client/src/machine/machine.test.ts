@@ -217,9 +217,9 @@ describe("one signature (no origin pull)", () => {
     expect(exec.request.pullSignature).toBeUndefined();
     expect(s.intent.status).toBe("executing");
     expect(s.receipt.signing).toEqual({ kind: "submitted" });
-    // The poll arms with the phase: an immediate read plus the interval.
-    expect(apiCalls(fx, "status")).toHaveLength(1);
-    expect(timers(fx)).toContain("set:poll");
+    // Status waits for /execute: a pre-acceptance `quoted` read is stale.
+    expect(apiCalls(fx, "status")).toEqual([]);
+    expect(timers(fx)).not.toContain("set:poll");
     expect(timers(fx)).toContain("clear:signPrompt");
 
     const settled = s.send(
@@ -534,20 +534,42 @@ describe("one signature (no origin pull)", () => {
       pollReads(s, statusData({ status: "failed", terminal: true, substatus: "not_executed" }), 1);
       expect(s.receipt.phase).toBe("failed");
 
-      // An execute the poll already escalated to "Still confirming" stays so.
-      const slow = executing();
-      pollReads(slow.s, statusData({ status: "executing" }), RECONCILE_AFTER_ATTEMPTS);
-      expect(slow.s.intent.reconciling).toBe(true);
-      slow.s.send({
+      // A live execute can answer accepted before the Worker's status read
+      // returns to `quoted`. That is the same not-sent verdict as an execute
+      // reply carrying `quoted`, not "Still confirming".
+      const live = executing();
+      live.s.send({
         type: "ExecuteReplied",
-        flow: slow.flow,
+        flow: live.flow,
         result: {
           ok: true,
-          response: { success: false, intentId: "xi_1", status: "quoted", reconciling: true },
+          response: { success: true, intentId: "xi_1", status: "executing" },
         },
       });
-      expect(slow.s.intent.notSent).toBe(false);
-      expect(slow.s.receipt.phase).toBe("pending");
+      pollReads(live.s, statusData({ status: "quoted" }), 1);
+      expect(live.s.intent.notSent).toBe(true);
+      expect(live.s.intent.reconciling).toBe(false);
+      expect(live.s.receipt.phase).toBe("not-sent");
+      expect(live.s.model.poll?.stopped).toBe(false);
+    });
+
+    it("waits for the execute reply before the first status read", () => {
+      const { s, flow } = executing();
+      expect(s.model.sign?.stage).toBe("execute");
+      expect(s.model.poll).toBeNull();
+      expect(
+        apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      ).toEqual([]);
+
+      const fx = s.send({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: true,
+          response: { success: true, intentId: "xi_1", status: "executing" },
+        },
+      });
+      expect(apiCalls(fx, "status")).toHaveLength(1);
     });
 
     // The poll answers with what the transport decodes: a granular
@@ -616,12 +638,12 @@ describe("one signature (no origin pull)", () => {
     };
 
     /** The terminal "may have moved" view: no Retry, no poll, no quote until Reset. */
-    const expectMayHaveMoved = (s: Session, fx: Effect[], label: string) => {
+    const expectMayHaveMoved = (s: Session, fx: Effect[], label: string, clearedPoll = true) => {
       expect(s.intent.status, label).toBe("failed");
       expect(s.intent.mayHaveMoved, label).toBe(true);
       expect(s.intent.reconciling, label).toBe(false);
       expect(s.receipt.phase, label).toBe("may-have-moved");
-      expect(timers(fx), label).toContain("clear:poll");
+      if (clearedPoll) expect(timers(fx), label).toContain("clear:poll");
       expect(s.model.poll, label).toBeNull();
     };
 
@@ -663,11 +685,11 @@ describe("one signature (no origin pull)", () => {
       const final = { success: false, intentId: "xi_1", reconciling: false };
       for (const status of ["failed", "fill_failed", "refund_failed", "pull_failed"]) {
         const { s, fx } = reply({ ...final, status });
-        expectMayHaveMoved(s, fx, status);
+        expectMayHaveMoved(s, fx, status, false);
       }
       // A granular status names what the pull did, whatever substatus rides with it.
       const granular = reply({ ...final, status: "fill_failed", substatus: "not_executed" });
-      expectMayHaveMoved(granular.s, granular.fx, "granular with the marker");
+      expectMayHaveMoved(granular.s, granular.fx, "granular with the marker", false);
       const marked = reply({ ...final, status: "failed", substatus: "not_executed" });
       expect(marked.s.intent.status).toBe("failed");
       expect(marked.s.intent.mayHaveMoved).toBe(false);
@@ -824,6 +846,29 @@ describe("one signature (no origin pull)", () => {
       expect(ran).toBeLessThan(5000);
       expect(s.now).toBeGreaterThan(workerFinishMs(s));
       expect(s.intent.pollExhausted).toBe(true);
+
+      const restarted = s.send({ type: "VisibilityChanged" });
+      expect(apiCalls(restarted, "status")).toHaveLength(1);
+      expect(s.model.poll?.stopped).toBe(false);
+      expect(s.intent.pollExhausted).toBe(false);
+    });
+
+    it("bounds a live not-sent poll when quoted never becomes terminal", () => {
+      const { s, flow } = executing();
+      s.send({
+        type: "ExecuteReplied",
+        flow,
+        result: {
+          ok: true,
+          response: { success: true, intentId: "xi_1", status: "executing" },
+        },
+      });
+      pollReads(s, statusData({ status: "quoted" }), 1);
+      expect(s.receipt.phase).toBe("not-sent");
+
+      const ran = pollReads(s, statusData({ status: "quoted" }), 5000);
+      expect(ran).toBeLessThan(5000);
+      expect(s.intent.pollExhausted).toBe(true);
     });
 
     it("treats a reply for another intent as in doubt", () => {
@@ -918,7 +963,7 @@ describe("one signature (no origin pull)", () => {
       expect(s.intent.status).toBe("executing");
       expect(s.intent.reconciling).toBe(false);
       expect(apiCalls(fx, "status")).toEqual([]);
-      expect(timers(fx)).toContain("clear:poll");
+      expect(timers(fx)).not.toContain("clear:poll");
       expect(s.receipt.phase).toBe("submitting");
       expect(s.receipt.signing).toEqual({ kind: "busy", retryAt, resend: 1, of: 3 });
       const delay = only(timerSet(fx, "execute"));
@@ -933,7 +978,7 @@ describe("one signature (no origin pull)", () => {
       expect(again.request).toEqual(exec.request);
       expect(again.flow).not.toBe(exec.flow);
       expect(s.receipt.signing).toEqual({ kind: "submitted" });
-      expect(only(apiCalls(resent, "status")).intentId).toBe("xi_1");
+      expect(apiCalls(resent, "status")).toEqual([]);
 
       s.send({
         type: "ExecuteReplied",
@@ -1051,7 +1096,6 @@ describe("one signature (no origin pull)", () => {
       const late = s.send({ type: "TimerFired", timer: "poll" }, 1);
       expect(only(apiCalls(late, "execute")).request).toEqual(exec.request);
       expect(timers(late)).toContain("clear:execute");
-      expect(only(apiCalls(late, "status")).intentId).toBe("xi_1");
       expect(s.receipt.signing).toEqual({ kind: "submitted" });
       // The dropped timer firing after all sends nothing more.
       expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }), "execute")).toEqual([]);
@@ -1224,29 +1268,24 @@ describe("one signature (no origin pull)", () => {
       }
     });
 
-    it("never resends once the poll escalated the execute to reconciling", () => {
-      // A quote that outlives the escalation, so only the in-doubt guard stops a resend.
+    it("never resends after the execute answer put the intent in doubt", () => {
       const { s, exec } = executing(quote({ expiry: new Date(T0 + 600_000).toISOString() }));
-      for (let attempt = 1; attempt < RECONCILE_AFTER_ATTEMPTS; attempt++) {
-        const tick = only(
-          apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
-        );
-        s.send({
-          type: "StatusReplied",
-          gen: tick.gen,
-          attempt: tick.attempt,
-          result: { ok: true, status: statusData() },
-        });
-      }
+      s.send({
+        type: "ExecuteReplied",
+        flow: exec.flow,
+        result: {
+          ok: false,
+          error: { rejected: false, value: "timeout", detail: "timeout" },
+        },
+      });
       expect(s.intent.reconciling).toBe(true);
+
       const fx = s.send(busy(exec.flow, nowSec(s) + 5));
       expect(timerSet(fx, "execute")).toEqual([]);
+      expect(apiCalls(fx, "execute")).toEqual([]);
       expect(s.intent.status).toBe("executing");
       expect(s.intent.reconciling).toBe(true);
       expect(s.receipt.phase).toBe("pending");
-      expect(apiCalls(s.send({ type: "TimerFired", timer: "execute" }, 5000), "execute")).toEqual(
-        [],
-      );
     });
 
     it("drops the pending resend when the intent moves on or the user resets", () => {
@@ -1602,7 +1641,7 @@ describe("status", () => {
       expect(s.intent.notSent).toBe(true);
       expect(s.intent.reconciling).toBe(false);
       expect(s.receipt.phase).toBe("not-sent");
-      expect(logs(fx, "warn").join(" ")).toMatch(/reads quoted: not sent yet/);
+      expect(logs(fx, "warn").join(" ")).toMatch(/reads quoted after execute: not sent yet/);
       // No quote to size the ceiling by: each `quoted` read refills it, past
       // the flat ceiling and the "Still confirming" escalation.
       const flat = Math.ceil(STATUS_POLL_FLAT_CEILING_MS / STATUS_POLL_MS);
@@ -1639,8 +1678,8 @@ describe("status", () => {
       expect(odd.s.intent.notSent).toBe(false);
       expect(odd.s.receipt.phase).toBe("pending");
 
-      // This tab executed it (it holds the quote): a `quoted` read may be a
-      // stale answer racing the accepted execute, so it is no rebuild.
+      // This tab gets the same verdict after /execute answers. The poll was
+      // not armed before then, so the read cannot predate acceptance.
       const own = new Session();
       own.quoteWith(quote());
       const prompt = signIntent(own);
@@ -1663,8 +1702,8 @@ describe("status", () => {
       expect(own.model.sign).toBeNull();
       expect(own.intent.reconciling).toBe(false);
       pollReads(own, statusData({ status: "quoted" }), 1);
-      expect(own.intent.notSent).toBe(false);
-      expect(own.receipt.phase).toBe("submitting");
+      expect(own.intent.notSent).toBe(true);
+      expect(own.receipt.phase).toBe("not-sent");
     });
 
     it("is not rebuilt by a late quoted reply after a newer executing or 404 reply", () => {
@@ -1686,6 +1725,22 @@ describe("status", () => {
       pollReads(s, statusData({ status: "quoted" }), 1);
       expect(s.intent.notSent).toBe(true);
       expect(s.receipt.phase).toBe("not-sent");
+
+      // The inverse ordering is equally monotonic: once the newer read proves
+      // the intent is unclaimed, an older in-flight read cannot undo it.
+      const inverse = resumed("executing");
+      answer(inverse.s, inverse.poll, statusData({ status: "executing" }));
+      const oldExecuting = only(
+        apiCalls(inverse.s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const newQuoted = only(
+        apiCalls(inverse.s.send({ type: "VisibilityChanged" }, 100), "status"),
+      );
+      answer(inverse.s, newQuoted, statusData({ status: "quoted" }));
+      expect(inverse.s.receipt.phase).toBe("not-sent");
+      answer(inverse.s, oldExecuting, statusData({ status: "executing" }));
+      expect(inverse.s.intent.notSent).toBe(true);
+      expect(inverse.s.receipt.phase).toBe("not-sent");
 
       // A thrown newer read answers nothing: the older `quoted` still rebuilds.
       const thrown = resumed("executing");
@@ -1851,7 +1906,7 @@ describe("status", () => {
 
   it("tracks each poll's withheld-legs verdict: set by an anonymous read, cleared by an owner read", () => {
     const { s, poll } = resumed("settling");
-    expect(s.intent.legsWithheld).toBe(false);
+    expect(s.intent.legsWithheld).toBeNull();
     s.send({
       type: "StatusReplied",
       gen: poll.gen,

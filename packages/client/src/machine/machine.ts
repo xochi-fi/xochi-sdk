@@ -116,7 +116,7 @@ const QUOTE_DEADLINE_SECS = 3600;
 /** Log prefix. The host hook is still `useIntent`, and its logs are grepped for it. */
 const LOG = "[useIntent]";
 /** The error of a not-sent intent the poll finds gone (`onStatus`): the Retry view. */
-const NOT_SENT_SWEPT_ERROR = "This order expired without being sent. Nothing moved.";
+export const NOT_SENT_SWEPT_ERROR = "This order expired without being sent. Nothing moved.";
 
 // ============================================================
 // Context: what the host knows that the machine does not own
@@ -591,9 +591,13 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       // Mobile throttles timers while backgrounded (a wallet deep-link
       // round-trip), so snap the in-flight phase forward rather than wait out
       // the interval. Off-interval: it spends no give-up budget. A pending
-      // resend reads no status; a return long past its time resends now.
+      // resend reads no status; a return long past its time resends now. A
+      // poll that exhausted its budget gets a fresh budget when the user
+      // returns instead of leaving a permanently stale receipt.
       if (awaitingResend(next)) next = resendBackstop(next, fx, msg.now);
-      else if (next.poll && !next.poll.stopped) next = pollTick(next, fx, false);
+      else if (next.poll?.stopped) {
+        next = { ...patch(next, { pollExhausted: false }), poll: null };
+      } else if (next.poll) next = pollTick(next, fx, false);
       return next;
     }
 
@@ -1883,16 +1887,20 @@ function onStatus(
   // A reply from a disarmed poll (a phase change, a reset, a stop) is dropped.
   if (!poll || poll.gen !== gen || poll.stopped) return m;
   const id = poll.intentId;
+  // Replies can race (an interval read and a visibility read). Once a newer
+  // reply has answered, an older one cannot regress lifecycle or receipt
+  // fields, including clearing a newer not-sent verdict.
+  if (result.ok && attempt < poll.answered) return m;
   let next = m;
 
-  // A resumed `executing` intent (a reload: no quote in this tab, so no sign
-  // flow and no execute from it can be in flight or answer late) that reads
-  // `quoted`: the Worker's row is unclaimed and the signed request, held
-  // elsewhere, executes until its deadline. Not sent yet, as after a give-up,
-  // never "Still confirming" (whose Close invites a second signature). An
-  // intent in doubt stays so, and so does one a newer reply already answered:
-  // a late `quoted` is no answer after a newer `executing`.
-  const resumedUnsent =
+  // An `executing` intent that reads `quoted` after /execute has answered is
+  // unclaimed. Its signed request remains executable until the deadline, so
+  // this is "not sent yet", never "Still confirming" (whose Close invites a
+  // second signature). Do not use a status read while /execute is outstanding:
+  // `armPoll` delays the first read until that reply, preventing a stale
+  // pre-acceptance `quoted` answer from winning. An intent already in doubt
+  // stays so, as does one whose newer status reply already answered.
+  const unsentRead =
     attempt >= poll.answered &&
     result.ok &&
     !!result.status &&
@@ -1901,14 +1909,14 @@ function onStatus(
     result.status.unmapped !== true &&
     next.intent.intentId === id &&
     next.intent.status === "executing" &&
-    next.intent.quote === null &&
+    next.sign === null &&
     !next.intent.reconciling;
   // A throw answers nothing, so only a reply (a 404 included) moves it.
   const answered: PollState = result.ok
     ? { ...poll, answered: Math.max(poll.answered, attempt) }
     : poll;
-  if (resumedUnsent && !next.intent.notSent) {
-    log(fx, "warn", `${LOG} Resumed intent ${id} reads quoted: not sent yet`);
+  if (unsentRead && !next.intent.notSent) {
+    log(fx, "warn", `${LOG} Intent ${id} reads quoted after execute: not sent yet`);
     next = patch(next, { notSent: true });
   }
 
@@ -1997,15 +2005,15 @@ function onStatus(
       next = patch(next, { legsWithheld });
     }
     // The server owns the active-polling decision; a phase change refills the
-    // give-up budget, so the ceiling bounds a swap that is not moving. A read
-    // the intent cannot move to (`quoted` after an execute) is no change: the
-    // ceiling, sized past the Worker's finish (`pollCeilingAttempts`), holds.
-    // A resumed not-sent intent has no quote to size it by, so each `quoted`
-    // read refills it: the Worker's read finish ends the row past its
-    // deadline, which this poll's own reads trigger.
+    // give-up budget, so the ceiling bounds a swap that is not moving. A
+    // resumed not-sent intent has no quote from which to size the Worker's
+    // finish, so each `quoted` read refills its budget until the Worker ends
+    // the row. A live intent has a quote and remains bounded by its fixed
+    // ceiling even after it enters not-sent.
+    const resumedNotSent = unsentRead && next.intent.notSent && next.intent.quote === null;
     verdict = s.terminal
       ? "stop"
-      : next.intent.status !== previous || (resumedUnsent && next.intent.notSent)
+      : next.intent.status !== previous || resumedNotSent
         ? "progress"
         : undefined;
   }
@@ -2177,8 +2185,12 @@ function armExpiry(m: Model, fx: Effect[], now: number): Model {
 function armPoll(m: Model, fx: Effect[], now: number): Model {
   const { intentId, status } = m.intent;
   const waiting = awaitingResend(m);
+  // The execute reply establishes whether the request was accepted. Reading
+  // status before it answers can return the pre-acceptance `quoted` row and
+  // falsely decide "not sent"; the reply (including a timeout) arms the poll.
+  const executePending = m.sign?.stage === "execute" && !waiting;
   const key =
-    POLL_INFLIGHT_STATES.includes(status) && intentId
+    !executePending && POLL_INFLIGHT_STATES.includes(status) && intentId
       ? `${intentId}:${status}${waiting ? ":resend" : ""}`
       : null;
   if (key === (m.poll?.key ?? null)) return m;
