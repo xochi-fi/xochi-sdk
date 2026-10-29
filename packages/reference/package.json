@@ -25,7 +25,7 @@
     "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "@xochi/client": "0.1.4",
+    "@xochi/client": "0.1.5",
     "@xochi/spec": "0.10.0",
     "fast-check": "^4.9.0"
   }

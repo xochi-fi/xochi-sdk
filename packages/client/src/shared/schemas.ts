@@ -181,10 +181,12 @@ export const Eip712TypedDataSchema = z.object({
   // `salt` (keccak256(version)) and NO verifyingContract. Both fields are
   // optional so either shape validates and both survive the parse verbatim -- a
   // stripped `salt` or an injected `verifyingContract` would change the domain
-  // separator and strand the signature.
+  // separator and strand the signature. `version` is optional because EIP-712
+  // domain fields are optional and Permit2 legitimately omits it; ERC-3009 and
+  // XochiIntent domains continue to carry it.
   domain: z.object({
     name: z.string(),
-    version: z.string(),
+    version: z.string().optional(),
     chainId: z.number().int(),
     verifyingContract: ethAddress.optional(),
     salt: z.string().optional(),
