@@ -101,8 +101,9 @@ describe("fee_breakdown wire object", () => {
   // Read from the zod schema rather than transcribed: a transcription drifts from
   // `@xochi/client`'s `fee.ts` independently of the server and turns this into a third opinion.
   const shape = LayeredFeeBreakdownSchema.shape;
-  const sdkKeys = Object.keys(shape).sort();
-  const sdkRequired = Object.entries(shape)
+  const fields: Record<string, { isOptional(): boolean }> = shape;
+  const sdkKeys = Object.keys(fields).sort();
+  const sdkRequired = Object.entries(fields)
     .filter(([, field]) => !field.isOptional())
     .map(([key]) => key)
     .sort();
