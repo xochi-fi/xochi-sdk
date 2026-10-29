@@ -824,18 +824,19 @@ stealth or shielded intent: on `/api/intent/:id` only `id`, `status`,
 `from_chain_id`, `to_chain_id`, `settlement_type` and
 `settlement_confirmed`; on `/status` only `intent_id`, `status`,
 `terminal`, the two chain ids, `settlement_type` and
-`settlement_confirmed`. It also adds a bearer read token (`@xochi/client`'s
-`X-Xochi-Read-Token`), which whoever holds it can present and which reads
-the full record. Before shielded is offered, a read-token read of a
-shielded intent MUST get that status-only view and nothing more, in
-lockstep with the Worker (xochi#565 as drafted gives a token holder the
-full record for a shielded intent too): every other field (the tokens and
-amounts, `quote_id`, `tier`, `fee_rate`, the Aztec note hash, every tx hash
-with its chain id, `created_at` and `updated_at`, and any error, substatus
-or refund text, under whatever names the Worker serves them) goes only to
-a session for the intent's wallet. The view is an allowlist, so a field
-the Worker adds later stays owner-only until it is added deliberately. A
-list of withheld fields would not hold: the origin `tx_hash` is a public
+`settlement_confirmed`. It also proposes a bearer read token
+(`X-Xochi-Read-Token`), which whoever holds it can present and which reads the
+full record. Before shielded is offered, **every read not authenticated as the
+intent wallet's session MUST receive the status-only view**, whether or not it
+presents a read token; no token may reveal the Aztec note hash, amounts,
+transaction hashes or error. This must land in lockstep with the Worker before
+`SHIELDED_SETTLEMENT_LIVE` can be enabled.
+Every other field (the tokens and amounts, `quote_id`, `tier`, `fee_rate`, the
+Aztec note hash, every tx hash with its chain id, `created_at` and `updated_at`,
+and any error, substatus or refund text, under whatever names the Worker serves
+them) goes only to a session for the intent's wallet. The view is an allowlist,
+so a field the Worker adds later stays owner-only until it is added deliberately.
+A list of withheld fields would not hold: the origin `tx_hash` is a public
 transaction whose block dates the move and whose transfer gives the
 amount, which `fee_rate` and `tier` map to `from_amount` through the
 published fee schedule (§4); a note hash and a nullifier are public
