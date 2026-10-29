@@ -17,6 +17,8 @@ import { ethers } from "ethers";
 import * as signer from "@xochi/signer";
 import {
   AckEncodingError,
+  BACKUP_FORMAT_V1_ID,
+  BACKUP_FORMAT_V1_NAME,
   AZTEC_RECIPIENT_PROFILES,
   GRUMPKIN_ORDER,
   RECIPIENT_DESCRIPTOR_TYPEHASH,
@@ -40,6 +42,7 @@ import {
   shieldedDomainSeparator,
   verifyRecipientDescriptor,
   verifyRecipientSchnorr,
+  verifyRecipientAck,
   type AztecRecipientProfile,
   type RecipientAckType,
   type RecipientBinding,
@@ -570,5 +573,89 @@ describe("acknowledgements", () => {
         r.name,
       ).toEqual(r.error);
     }
+  });
+
+  it("pins the backup format and atomically consumes a valid challenge once", () => {
+    expect(BACKUP_FORMAT_V1_ID).toBe(ethers.id(BACKUP_FORMAT_V1_NAME));
+    expect(BACKUP_FORMAT_V1_NAME).toBe("xochi.shielded.backup-format.v1");
+    const v = file.acknowledgements.vectors[0]!;
+    const message = v.message as never;
+    const consumed = new Set<string>();
+    const policy = {
+      expectedBindingDigest: v.message.bindingDigest as string,
+      expectedNonce: v.message.nonce as string,
+      now: 1_900_000_299,
+      expectedPublicKey: v.publicKey,
+      consumeNonce: (nonce: string) => {
+        if (consumed.has(nonce)) return false;
+        consumed.add(nonce);
+        return true;
+      },
+    };
+    expect(verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy).digest).toBe(
+      v.digest,
+    );
+    expect(
+      refusalOf(
+        () => verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "nonce_replayed", field: "nonce" });
+    expect(consumed.size).toBe(1);
+  });
+
+  it("rejects expired, mismatched and invalid acknowledgement challenges before consumption", () => {
+    const v = file.acknowledgements.vectors[0]!;
+    const message = v.message as never;
+    let consumeCalls = 0;
+    const policy = {
+      expectedBindingDigest: v.message.bindingDigest as string,
+      expectedNonce: v.message.nonce as string,
+      now: 1_900_000_301,
+      expectedPublicKey: v.publicKey,
+      consumeNonce: () => {
+        consumeCalls++;
+        return true;
+      },
+    };
+    expect(
+      refusalOf(
+        () => verifyRecipientAck(v.primaryType, message, v.domain, v.signature, policy),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "challenge_expired", field: "challengeExpiry" });
+    expect(
+      refusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.domain, v.signature, {
+            ...policy,
+            now: 1_900_000_299,
+            expectedNonce: "0x" + "11".repeat(32),
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "nonce_mismatch", field: "nonce" });
+    expect(
+      refusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.domain, v.signature, {
+            ...policy,
+            now: 1_900_000_299,
+            expectedBindingDigest: "0x" + "22".repeat(32),
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "binding_mismatch", field: "bindingDigest" });
+    expect(
+      refusalOf(
+        () =>
+          verifyRecipientAck(v.primaryType, message, v.domain, "0x" + "00".repeat(64), {
+            ...policy,
+            now: 1_900_000_299,
+          }),
+        AckEncodingError,
+      ),
+    ).toEqual({ code: "signature_invalid", field: "signature" });
+    expect(consumeCalls).toBe(0);
   });
 });

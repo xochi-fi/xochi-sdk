@@ -996,6 +996,8 @@ const BINDING_Y = ethers.TypedDataEncoder.hash(
 );
 const ACK_NONCE = "0x" + "a5".repeat(32);
 const ACK_EXPIRY = "1900000300";
+const BACKUP_FORMAT_V1_NAME = "xochi.shielded.backup-format.v1";
+const BACKUP_FORMAT_V1_ID = ethers.id(BACKUP_FORMAT_V1_NAME);
 const SENDERS = ["0x" + "17".repeat(32), "0x" + "05".padStart(64, "0"), "0x" + "2c".repeat(32)]
   .map((s) => s.toLowerCase())
   .sort();
@@ -1015,7 +1017,7 @@ const ackMessage = (primaryType: AckType, bindingDigest: string): Record<string,
         backupCommitment: ethers.keccak256(
           ethers.toUtf8Bytes("xochi-spec TEST ONLY randomized encrypted backup"),
         ),
-        backupFormatId: ethers.id("xochi.shielded.backup-format.v1"),
+        backupFormatId: BACKUP_FORMAT_V1_ID,
         purpose,
       };
     case "SenderRegistrationAck":
@@ -1136,6 +1138,14 @@ const ackRefusals = (() => {
       message: { ...base(a.primaryType), challengeExpiry: (1n << 64n).toString() },
       error: { code: "uint_out_of_range", field: "challengeExpiry" },
     });
+    for (const field of ["bindingDigest", "nonce"]) {
+      out.push({
+        name: `${a.primaryType}: ${field} zero`,
+        primaryType: a.primaryType,
+        message: { ...base(a.primaryType), [field]: hex32(0n) },
+        error: { code: "digest_zero", field },
+      });
+    }
   }
   const sr = base("SenderRegistrationAck");
   const senders = sr.registeredSenders as string[];
@@ -1188,6 +1198,14 @@ const ackRefusals = (() => {
     message: { ...pr, aztecToken: hex32(0n) },
     error: { code: "aztec_zero", field: "aztecToken" },
   });
+  for (const field of ["termsDigest", "operationId", "txHash"]) {
+    out.push({
+      name: `PaymentReceiptAck: ${field} zero`,
+      primaryType: "PaymentReceiptAck",
+      message: { ...pr, [field]: hex32(0n) },
+      error: { code: "digest_zero", field },
+    });
+  }
   out.push({
     name: "PaymentReceiptAck: blockNumber not canonical",
     primaryType: "PaymentReceiptAck",
@@ -1203,6 +1221,12 @@ const ackRefusals = (() => {
       error: { code: "digest_zero", field },
     });
   }
+  out.push({
+    name: "BackupPersistenceAck: unknown backupFormatId",
+    primaryType: "BackupPersistenceAck",
+    message: { ...bp, backupFormatId: ethers.id("xochi.shielded.backup-format.unknown") },
+    error: { code: "backup_format_mismatch", field: "backupFormatId" },
+  });
   return out;
 })();
 
@@ -1307,7 +1331,7 @@ const out = {
     })),
     rules: [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
-      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId identifies their decoder/schema contract; neither value contains plaintext",
+      `BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8("${BACKUP_FORMAT_V1_NAME}")) = ${BACKUP_FORMAT_V1_ID}; neither value contains plaintext`,
       "nonce / challengeExpiry: a server-issued single-use challenge and its signing window, as for RecipientBinding (for PaymentReceiptAck, the receipt challenge)",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",

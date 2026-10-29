@@ -94,6 +94,13 @@ A changed vector is a wire change. Never regenerate one to make a check pass. Pe
   `aztec-crosscheck`; `npm run crosscheck:aztec`), so an equality there is never between two
   copies of this repo's own code. Its `acknowledgements` section is approved protocol bytes:
   changing a member, type, purpose or ordering requires a new primary type/version.
+  `backupFormatId` is exactly
+  `keccak256(UTF8("xochi.shielded.backup-format.v1"))`. Signature recovery alone never proves
+  current authorization: acknowledgement consumers also pin the binding, verified descriptor
+  key and challenge nonce, check `challengeExpiry`, and atomically consume the nonce; readiness
+  consumers pin the attester and trusted domain, enforce age/future-skew limits, and require a
+  caller-chosen minimum finalized block. `@xochi/signer` exposes `verifyRecipientAck` and
+  `verifyReadinessRecord` so those checks do not get reimplemented inconsistently.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
   discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
   of independently floored layers). A schedule change lands on both sides and regenerates the

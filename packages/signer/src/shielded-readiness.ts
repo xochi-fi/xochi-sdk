@@ -39,8 +39,9 @@ import {
   keccak,
   uint,
   withRefusalsAs,
-  type ShieldedRefusal,
+  evmAddress,
   type UintLike,
+  type ShieldedRefusal,
 } from "./shielded-values";
 import type { Hex } from "./types";
 
@@ -57,7 +58,12 @@ export type ReadinessRefusal =
   | "not_bool"
   | "block_not_string"
   | "timestamp_not_integer"
-  | "signature_malformed";
+  | "signature_malformed"
+  | "unknown_primary_type"
+  | "signer_mismatch"
+  | "attestation_stale"
+  | "attestation_from_future"
+  | "block_before_minimum";
 
 export class ReadinessEncodingError extends Error {
   readonly code: ReadinessRefusal;
@@ -127,6 +133,12 @@ const MEMBERS: Record<ReadinessType, readonly string[]> = {
   ],
   RootUpdate: ["root", "rootBlock", "attestedAt"],
 };
+
+function assertReadinessType(primaryType: string): asserts primaryType is ReadinessType {
+  if (!(primaryType in MEMBERS)) {
+    refuseReadiness("unknown_primary_type", "primaryType", `got ${JSON.stringify(primaryType)}`);
+  }
+}
 /** Never part of a readiness record (§7: the leaf position must not be recoverable). */
 const FORBIDDEN = ["leafIndex", "leafPath", "siblingPath", "path", "witness"];
 
@@ -189,6 +201,7 @@ export function parseReadinessRecord<T extends ReadinessType>(
   primaryType: T,
   record: unknown,
 ): { attestation: ReadinessRecords[T]; signature: Hex } {
+  assertReadinessType(primaryType);
   if (record === null || typeof record !== "object" || Array.isArray(record)) {
     throw new TypeError("a readiness record is a JSON object");
   }
@@ -249,6 +262,7 @@ export function hashReadinessRecord<T extends ReadinessType>(
   primaryType: T,
   a: ReadinessRecords[T],
 ): Hex {
+  assertReadinessType(primaryType);
   const typehash = ethers.id(READINESS_TYPE_STRINGS[primaryType]);
   if (primaryType === "Membership") {
     const m = a as MembershipAttestation;
@@ -295,6 +309,79 @@ export function readinessDigest<T extends ReadinessType>(
   );
 }
 
+function recoverReadinessAddress(digest: Hex, signature: Hex): Hex {
+  try {
+    return ethers.recoverAddress(digest, signature).toLowerCase() as Hex;
+  } catch {
+    return refuseReadiness("signature_malformed", "signature", "not a recoverable ECDSA signature");
+  }
+}
+
+export interface ReadinessVerificationPolicy {
+  /** Pinned dedicated readiness-attestation key for this corridor. */
+  expectedSigner: string;
+  /** Caller-controlled Unix time in seconds. */
+  now: UintLike;
+  /** Maximum accepted age in seconds. */
+  maxAgeSeconds: UintLike;
+  /** Maximum accepted clock lead in seconds. */
+  maxFutureSkewSeconds: UintLike;
+  /** Lowest finalized block acceptable to the caller for this readiness type. */
+  minBlock: UintLike;
+}
+
+export interface VerifiedReadiness<T extends ReadinessType> {
+  attestation: ReadinessRecords[T];
+  signature: Hex;
+  signer: Hex;
+}
+
+/**
+ * Fail-closed readiness verification. The caller rebuilds `domain` from its trusted
+ * corridor record and supplies freshness/finality policy; signature recovery alone is
+ * intentionally insufficient for mutable readiness state.
+ */
+export function verifyReadinessRecord<T extends ReadinessType>(
+  primaryType: T,
+  record: unknown,
+  domain: ShieldedDomain,
+  policy: ReadinessVerificationPolicy,
+): VerifiedReadiness<T> {
+  assertReadinessType(primaryType);
+  const { attestation, signature } = parseReadinessRecord(primaryType, record);
+  const expectedSigner = readinessRules(() => evmAddress("expectedSigner", policy.expectedSigner));
+  const signer = recoverReadinessAddress(
+    readinessDigest(primaryType, attestation, domain),
+    signature,
+  );
+  if (signer !== expectedSigner) {
+    refuseReadiness("signer_mismatch", "signature", `recovered ${signer}`);
+  }
+
+  const now = readinessRules(() => uint("now", policy.now, UINT64_MAX));
+  const maxAge = readinessRules(() => uint("maxAgeSeconds", policy.maxAgeSeconds, UINT64_MAX));
+  const maxFutureSkew = readinessRules(() =>
+    uint("maxFutureSkewSeconds", policy.maxFutureSkewSeconds, UINT64_MAX),
+  );
+  const attestedAt = BigInt(attestation.attestedAt);
+  if (attestedAt > now + maxFutureSkew) {
+    refuseReadiness("attestation_from_future", "attestedAt", `${attestedAt} > ${now}`);
+  }
+  if (attestedAt + maxAge < now) {
+    refuseReadiness("attestation_stale", "attestedAt", `${attestedAt} is too old at ${now}`);
+  }
+
+  const minBlock = readinessRules(() => uint("minBlock", policy.minBlock, UINT64_MAX));
+  const block =
+    primaryType === "RecipientDeployment"
+      ? (attestation as RecipientDeploymentAttestation).finalBlock
+      : (attestation as MembershipAttestation | RootUpdateAttestation).rootBlock;
+  if (block < minBlock) {
+    refuseReadiness("block_before_minimum", "minBlock", `${block} < ${minBlock}`);
+  }
+  return { attestation, signature, signer };
+}
+
 /**
  * Parses a wire record and returns the address that signed it under `domain`, lowercase.
  * The caller compares it to the attestation key it pins for the corridor; any other
@@ -307,5 +394,5 @@ export function recoverReadinessSigner(
 ): Hex {
   const { attestation, signature } = parseReadinessRecord(primaryType, record);
   const digest = readinessDigest(primaryType, attestation, domain);
-  return ethers.recoverAddress(digest, signature).toLowerCase() as Hex;
+  return recoverReadinessAddress(digest, signature);
 }

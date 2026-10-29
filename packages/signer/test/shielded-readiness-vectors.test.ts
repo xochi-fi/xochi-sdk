@@ -24,6 +24,7 @@ import {
   readinessDomain,
   readinessDomainSalt,
   recoverReadinessSigner,
+  verifyReadinessRecord,
   shieldedDomainSeparator,
   type NetworkIdentity,
   type ReadinessType,
@@ -238,5 +239,63 @@ describe("attestations", () => {
         f,
       ).toBe(true);
     }
+  });
+
+  it("enforces signer, freshness, finality and runtime primary type", () => {
+    const v = file.vectors[0]!;
+    const policy = {
+      expectedSigner: v.signer,
+      now: 1_793_000_100,
+      maxAgeSeconds: 100,
+      maxFutureSkewSeconds: 0,
+      minBlock: "3061",
+    };
+    expect(verifyReadinessRecord(v.primaryType, v.record, v.domain, policy).signer).toBe(v.signer);
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+          ...policy,
+          now: 1_793_000_101,
+        }),
+      ),
+    ).toEqual({ code: "attestation_stale", field: "attestedAt" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+          ...policy,
+          now: 1_792_999_999,
+        }),
+      ),
+    ).toEqual({ code: "attestation_from_future", field: "attestedAt" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+          ...policy,
+          minBlock: "3062",
+        }),
+      ),
+    ).toEqual({ code: "block_before_minimum", field: "minBlock" });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(v.primaryType, v.record, v.domain, {
+          ...policy,
+          expectedSigner: "0x0000000000000000000000000000000000000001",
+        }),
+      ),
+    ).toEqual({ code: "signer_mismatch", field: "signature" });
+    expect(refusalOf(() => parseReadinessRecord("Unknown" as never, v.record))).toEqual({
+      code: "unknown_primary_type",
+      field: "primaryType",
+    });
+    expect(
+      refusalOf(() =>
+        verifyReadinessRecord(
+          v.primaryType,
+          { ...v.record, signature: "0x" + "00".repeat(65) },
+          v.domain,
+          policy,
+        ),
+      ),
+    ).toEqual({ code: "signature_malformed", field: "signature" });
   });
 });
