@@ -532,10 +532,7 @@ describe("acknowledgements", () => {
   });
 
   it("reuses the named binding challenge for enrollment acknowledgements only", () => {
-    const enrollmentTypes: RecipientAckType[] = [
-      "BackupPersistenceAck",
-      "SenderRegistrationAck",
-    ];
+    const enrollmentTypes: RecipientAckType[] = ["BackupPersistenceAck", "SenderRegistrationAck"];
     for (const primaryType of enrollmentTypes) {
       const acknowledgement = file.acknowledgements.vectors.find(
         (candidate) => candidate.primaryType === primaryType,
