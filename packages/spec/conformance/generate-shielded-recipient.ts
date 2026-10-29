@@ -847,8 +847,8 @@ const bindingFor = (a: Account, nonce: string) => ({
 });
 
 type Domain = { name: string; version: string; chainId: string; salt: string };
-type Signed = {
-  primaryType: string;
+type Signed<PrimaryType extends string = string> = {
+  primaryType: PrimaryType;
   environment: string;
   network: Network;
   domain: Domain;
@@ -860,12 +860,12 @@ type Signed = {
   signature: string;
 };
 /** Signs under `Domain (binding)` for the account's network and the corridor's source chain. */
-function signAs(
+function signAs<PrimaryType extends string>(
   a: Account,
-  primaryType: string,
+  primaryType: PrimaryType,
   environment: string,
   message: Record<string, unknown>,
-): Signed {
+): Signed<PrimaryType> {
   const network = a.descriptor.network;
   const domain = bindingDomain(environment, SOURCE_CHAIN_ID, network);
   const types = typesFor(primaryType);
