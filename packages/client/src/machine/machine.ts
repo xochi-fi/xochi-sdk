@@ -1891,6 +1891,23 @@ function onStatus(
   // reply has answered, an older one cannot regress lifecycle or receipt
   // fields, including clearing a newer not-sent verdict.
   if (result.ok && attempt < poll.answered) return m;
+  if (
+    result.ok &&
+    result.status &&
+    !("notFound" in result.status) &&
+    result.status.intentId !== id
+  ) {
+    log(
+      fx,
+      "warn",
+      `${LOG} Ignoring a status response for another intent; keeping the poll active`,
+      {
+        response: result.status.intentId,
+        current: id,
+      },
+    );
+    return m;
+  }
   let next = m;
 
   // An `executing` intent that reads `quoted` after /execute has answered is

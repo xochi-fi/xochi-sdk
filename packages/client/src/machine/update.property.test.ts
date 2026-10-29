@@ -227,7 +227,12 @@ function answer(effect: Effect, variant: number, now: number): MsgBody | null {
         : variant === 1
           ? null
           : variant === 2
-            ? statusData({ status: "executing", unmapped: true, terminal: variant % 2 === 0 })
+            ? statusData({
+                intentId: call.intentId,
+                status: "executing",
+                unmapped: true,
+                terminal: variant % 2 === 0,
+              })
             : statusData({
                 intentId: call.intentId,
                 status: STATUSES[variant % STATUSES.length],

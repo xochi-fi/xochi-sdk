@@ -1573,6 +1573,40 @@ describe("status", () => {
     return { s, poll: only(apiCalls(fx, "status")) };
   };
 
+  for (const terminal of ["completed", "failed"] as const) {
+    it(`ignores a ${terminal} response for another intent and accepts the next valid poll`, () => {
+      const { s, poll } = resumed("settling");
+      const before = { intent: s.intent, poll: s.model.poll };
+      const mismatched = s.send({
+        type: "StatusReplied",
+        gen: poll.gen,
+        attempt: poll.attempt,
+        result: {
+          ok: true,
+          status: statusData({ intentId: "xi_other", status: terminal, terminal: true }),
+        },
+      });
+
+      expect(s.intent).toEqual(before.intent);
+      expect(s.model.poll).toEqual(before.poll);
+      expect(s.model.poll?.answered).toBe(0);
+      expect(timers(mismatched)).not.toContain("clear:poll");
+      expect(logs(mismatched, "warn").join(" ")).toMatch(/another intent/);
+
+      const next = only(
+        apiCalls(s.send({ type: "TimerFired", timer: "poll" }, STATUS_POLL_MS), "status"),
+      );
+      const valid = s.send({
+        type: "StatusReplied",
+        gen: next.gen,
+        attempt: next.attempt,
+        result: { ok: true, status: statusData({ status: terminal, terminal: true }) },
+      });
+      expect(s.intent.status).toBe(terminal);
+      expect(timers(valid)).toContain("clear:poll");
+    });
+  }
+
   it("resumes a stored failed as Retry only with the not_executed marker", () => {
     const resume = (substatus?: string | null) => {
       const s = new Session();

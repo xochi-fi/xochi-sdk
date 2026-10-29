@@ -2,10 +2,11 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.1.3] - 2026-10-29
 
 ### Fixed
 
+- **Machine**: status responses are applied only when their `intent_id` matches the active poll. A stale or misrouted terminal response for another intent can no longer complete or fail the current trade; the mismatch is ignored without advancing the poll, and a later matching response still applies.
 - **Transport**: a valid server-directed `Retry-After` is honored up to the existing 600-second safety ceiling instead of being shortened to `retry.maxDelayMs`; the fallback exponential-backoff cap applies only when no valid integer delta-seconds interval is supplied (zero included). Pending quote deduplication now lasts for the whole request, including long server-directed retry waits.
 
 ## [0.1.3] - 2026-10-29
