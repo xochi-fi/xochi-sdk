@@ -50,6 +50,7 @@ import type { Hex } from "./types";
 
 export type AckRefusal =
   | ShieldedRefusal
+  | "unknown_primary_type"
   | "senders_not_canonical"
   | "senders_empty"
   | "backup_format_mismatch"
@@ -172,6 +173,7 @@ export function hashRecipientAck<T extends RecipientAckType>(
 ): Hex {
   return withRefusalsAs(
     () => {
+      assertAckType(primaryType);
       if (message.purpose !== RECIPIENT_ACK_PURPOSES[primaryType]) {
         refuseAck("purpose_mismatch", "purpose", `expected ${RECIPIENT_ACK_PURPOSES[primaryType]}`);
       }
@@ -198,7 +200,7 @@ export function hashRecipientAck<T extends RecipientAckType>(
           ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
           ["bytes32", registeredSendersHash(a.registeredSenders)],
         ];
-      } else if (primaryType === "PaymentReceiptAck") {
+      } else {
         const a = message as PaymentReceiptAck;
         own = [
           ["bytes32", nonzeroDigest("termsDigest", a.termsDigest)],
@@ -210,8 +212,6 @@ export function hashRecipientAck<T extends RecipientAckType>(
           ["uint256", parseShieldedAmount("amount", a.amount)],
           ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
         ];
-      } else {
-        throw new TypeError(`unknown acknowledgement type ${String(primaryType)}`);
       }
       const members: [string, unknown][] = [
         ["bytes32", ethers.id(RECIPIENT_ACK_TYPE_STRINGS[primaryType])],
@@ -301,9 +301,10 @@ export interface VerifiedRecipientAck {
   replayKey: Hex;
 }
 
+// Untrusted wire input names the type, so an unknown one is a refusal, not a programming error.
 function assertAckType(primaryType: string): asserts primaryType is RecipientAckType {
   if (!Object.prototype.hasOwnProperty.call(RECIPIENT_ACK_TYPE_STRINGS, primaryType)) {
-    throw new TypeError(`unknown acknowledgement type ${String(primaryType)}`);
+    refuseAck("unknown_primary_type", "primaryType", `got ${JSON.stringify(primaryType)}`);
   }
 }
 

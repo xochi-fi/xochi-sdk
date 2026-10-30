@@ -836,4 +836,38 @@ describe("acknowledgements", () => {
     }
     expect(consumeCalls).toBe(0);
   });
+
+  it("refuses an unknown primary type from the wire as AckEncodingError", async () => {
+    let consumeCalls = 0;
+    const v = ackOf("BackupPersistenceAck");
+    const policy = ackPolicy(v, async () => {
+      consumeCalls++;
+      return true;
+    });
+    const unknown = { code: "unknown_primary_type", field: "primaryType" };
+    // Own-property lookups only: prototype names are not types either.
+    for (const primaryType of ["UnknownAck", "constructor", "toString", "__proto__"]) {
+      const asType = primaryType as RecipientAckType;
+      expect(await verify({ ...v, primaryType: asType }, v.message, policy), primaryType).toEqual(
+        unknown,
+      );
+      expect(
+        refusalOf(
+          () =>
+            recipientAckReplayKey(
+              asType,
+              v.message.bindingDigest as string,
+              v.message.nonce as string,
+            ),
+          AckEncodingError,
+        ),
+        primaryType,
+      ).toEqual(unknown);
+      expect(
+        refusalOf(() => hashRecipientAck(asType, v.message as never), AckEncodingError),
+        primaryType,
+      ).toEqual(unknown);
+    }
+    expect(consumeCalls).toBe(0);
+  });
 });
