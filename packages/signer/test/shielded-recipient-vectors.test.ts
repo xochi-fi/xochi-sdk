@@ -38,12 +38,14 @@ import {
   hashRecipientAck,
   recipientMessage,
   recipientAckDigest,
+  recipientAckReplayKey,
   reduceWideToField,
   shieldedDomainSeparator,
   verifyRecipientDescriptor,
   verifyRecipientSchnorr,
   verifyRecipientAck,
   type AztecRecipientProfile,
+  type RecipientAckVerificationPolicy,
   type RecipientAckType,
   type RecipientBinding,
   type RecipientDescriptor,
@@ -620,151 +622,218 @@ describe("acknowledgements", () => {
     }
   });
 
-  it("pins the backup format and atomically consumes a valid challenge once", async () => {
+  type AckVector = RecipientFile["acknowledgements"]["vectors"][number];
+  // The policy with `expected` loosened, so a case can swap one member; `otherDescriptor`
+  // is a second descriptor on the same profile, for the mismatch case.
+  type AckPolicy = Omit<RecipientAckVerificationPolicy<RecipientAckType>, "expected"> & {
+    expected: Record<string, unknown>;
+    otherDescriptor: RecipientDescriptor;
+  };
+  const ackOf = (primaryType: RecipientAckType): AckVector =>
+    file.acknowledgements.vectors.find((v) => v.primaryType === primaryType)!;
+  // The trusted inputs a verifier holds for vector `v`, with `expected` read off the message.
+  function ackPolicy(v: AckVector, consumeReplayKey: (key: string) => Promise<boolean>): AckPolicy {
+    const binding = file.recipientMessage.bindingMessages.find(
+      (candidate) => candidate.digest === v.message.bindingDigest,
+    )!.message as unknown as RecipientBinding;
+    const descriptorVector = file.descriptor.vectors.find(
+      (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
+    )!;
+    const m = v.message as Record<string, string & string[]>;
+    const expected =
+      v.primaryType === "BackupPersistenceAck"
+        ? { backupCommitment: m.backupCommitment }
+        : v.primaryType === "SenderRegistrationAck"
+          ? { registeredSenders: m.registeredSenders }
+          : {
+              nonce: m.nonce,
+              termsDigest: m.termsDigest,
+              operationId: m.operationId,
+              txHash: m.txHash,
+              blockNumber: m.blockNumber,
+              amount: m.amount,
+            };
+    return {
+      binding,
+      descriptor: descriptorVector.descriptor,
+      otherDescriptor: file.descriptor.vectors.find(
+        (candidate) =>
+          candidate.profile === descriptorVector.profile &&
+          candidate.descriptorDigest !== descriptorVector.descriptorDigest,
+      )!.descriptor,
+      profile: profileOf(descriptorVector.profile),
+      environment: v.environment,
+      network: v.network,
+      expected,
+      now: Number(binding.challengeExpiry) - 1,
+      consumeReplayKey,
+    };
+  }
+  const verify = (v: AckVector, message: unknown, policy: AckPolicy) =>
+    asyncRefusalOf(
+      () => verifyRecipientAck(v.primaryType, message as never, v.signature, policy as never),
+      AckEncodingError,
+    );
+
+  it("pins the backup format and consumes one replay key per type and binding", async () => {
     expect(BACKUP_FORMAT_V1_ID).toBe(ethers.id(BACKUP_FORMAT_V1_NAME));
     expect(BACKUP_FORMAT_V1_NAME).toBe("xochi.shielded.backup-format.v1");
-    const v = file.acknowledgements.vectors[0]!;
-    const message = v.message as never;
-    const bindingVector = file.recipientMessage.bindingMessages.find(
-      (candidate) => candidate.digest === v.message.bindingDigest,
-    )!;
-    const binding = bindingVector.message as unknown as RecipientBinding;
-    const descriptorVector = file.descriptor.vectors.find(
-      (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
-    )!;
+    // One durable store, as a verifier runs it. Both enrollment acks reuse binding X's
+    // nonce, so a store keyed by the bare nonce would refuse the second.
     const consumed = new Set<string>();
-    const policy = {
-      binding,
-      descriptor: descriptorVector.descriptor,
-      profile: profileOf(descriptorVector.profile),
-      environment: v.environment,
-      network: v.network,
-      expectedNonce: v.message.nonce as string,
-      now: Number(binding.challengeExpiry) - 1,
-      consumeNonce: async (nonce: string) => {
-        if (consumed.has(nonce)) return false;
-        consumed.add(nonce);
-        return true;
-      },
+    const consume = async (key: string) => {
+      if (consumed.has(key)) return false;
+      consumed.add(key);
+      return true;
     };
-    expect((await verifyRecipientAck(v.primaryType, message, v.signature, policy)).digest).toBe(
-      v.digest,
-    );
-    expect(
-      await asyncRefusalOf(
-        () => verifyRecipientAck(v.primaryType, message, v.signature, policy),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "nonce_replayed", field: "nonce" });
-    expect(consumed.size).toBe(1);
+    const enrollment = [ackOf("BackupPersistenceAck"), ackOf("SenderRegistrationAck")];
+    expect(enrollment[0]!.message.nonce).toBe(enrollment[1]!.message.nonce);
+    for (const v of file.acknowledgements.vectors) {
+      const verified = await verifyRecipientAck(
+        v.primaryType,
+        v.message as never,
+        v.signature,
+        ackPolicy(v, consume) as never,
+      );
+      expect(verified.digest, v.name).toBe(v.digest);
+      expect(verified.replayKey, v.name).toBe(
+        recipientAckReplayKey(
+          v.primaryType,
+          v.message.bindingDigest as string,
+          v.message.nonce as string,
+        ),
+      );
+    }
+    expect(consumed.size).toBe(file.acknowledgements.vectors.length);
+    for (const v of file.acknowledgements.vectors) {
+      expect(await verify(v, v.message, ackPolicy(v, consume)), v.name).toEqual({
+        code: "nonce_replayed",
+        field: "nonce",
+      });
+    }
   });
 
-  it("rejects expired, mismatched and invalid acknowledgement challenges before consumption", async () => {
-    const v = file.acknowledgements.vectors[0]!;
-    const message = v.message as never;
-    const bindingVector = file.recipientMessage.bindingMessages.find(
-      (candidate) => candidate.digest === v.message.bindingDigest,
-    )!;
-    const binding = bindingVector.message as unknown as RecipientBinding;
-    const descriptorVector = file.descriptor.vectors.find(
-      (candidate) => candidate.descriptorDigest === binding.descriptorDigest,
-    )!;
-    const validNow = Number(binding.challengeExpiry) - 1;
-    const expiredNow = Number(binding.challengeExpiry) + 1;
+  it("rejects expired, mismatched and invalid acknowledgements before consumption", async () => {
     let consumeCalls = 0;
-    const policy = {
-      binding,
-      descriptor: descriptorVector.descriptor,
-      profile: profileOf(descriptorVector.profile),
-      environment: v.environment,
-      network: v.network,
-      expectedNonce: v.message.nonce as string,
-      now: expiredNow,
-      consumeNonce: async () => {
-        consumeCalls++;
-        return true;
-      },
+    const consume = async () => {
+      consumeCalls++;
+      return true;
     };
+    const v = ackOf("BackupPersistenceAck");
+    const policy = ackPolicy(v, consume);
+    const expiredNow = Number(policy.binding.challengeExpiry) + 1;
+    const refusals: [unknown, AckPolicy, string, string][] = [
+      [v.message, { ...policy, now: expiredNow }, "challenge_expired", "challengeExpiry"],
+      [{ ...v.message, nonce: "0x" + "11".repeat(32) }, policy, "nonce_mismatch", "nonce"],
+      [
+        { ...v.message, challengeExpiry: "1900000001" },
+        policy,
+        "expiry_mismatch",
+        "challengeExpiry",
+      ],
+      [
+        v.message,
+        { ...policy, expected: { backupCommitment: "0x" + "44".repeat(32) } as never },
+        "subject_mismatch",
+        "backupCommitment",
+      ],
+      [
+        { ...v.message, bindingDigest: "0x" + "22".repeat(32) },
+        policy,
+        "binding_mismatch",
+        "bindingDigest",
+      ],
+      [
+        v.message,
+        { ...policy, descriptor: policy.otherDescriptor },
+        "descriptor_mismatch",
+        "descriptor",
+      ],
+      [
+        v.message,
+        { ...policy, environment: `${v.environment}-untrusted` },
+        "binding_mismatch",
+        "bindingDigest",
+      ],
+      [
+        v.message,
+        {
+          ...policy,
+          network: { ...v.network, genesisOrNetworkDigest: "0x" + "33".repeat(32) },
+        },
+        "network_mismatch",
+        "descriptor.network",
+      ],
+      // Malformed trusted or wire input refuses as AckEncodingError, never escaping as the
+      // shielded.ts error.
+      [v.message, { ...policy, now: "-1" }, "uint_not_canonical", "now"],
+      [{ ...v.message, nonce: "0xzz" }, policy, "not_bytes32", "nonce"],
+    ];
+    for (const [message, p, code, field] of refusals) {
+      expect(await verify(v, message, p), `${code} ${field}`).toEqual({ code, field });
+    }
+    expect(await verify({ ...v, signature: "0x" + "00".repeat(64) }, v.message, policy)).toEqual({
+      code: "signature_invalid",
+      field: "signature",
+    });
+
+    const s = ackOf("SenderRegistrationAck");
+    const sPolicy = ackPolicy(s, consume);
+    // One panel solver dropped: still canonical, no longer the set the verifier registered.
+    const fewer = (s.message.registeredSenders as string[]).slice(0, -1);
+    expect(fewer.length).toBeGreaterThan(0);
     expect(
-      await asyncRefusalOf(
-        () => verifyRecipientAck(v.primaryType, message, v.signature, policy),
-        AckEncodingError,
+      await verify(s, s.message, { ...sPolicy, expected: { registeredSenders: fewer } }),
+    ).toEqual({ code: "subject_mismatch", field: "registeredSenders" });
+
+    const r = ackOf("PaymentReceiptAck");
+    const rPolicy = ackPolicy(r, consume);
+    const receiptRefusals: [unknown, AckPolicy, string, string][] = [
+      [
+        r.message,
+        { ...rPolicy, expected: { ...rPolicy.expected, nonce: "0x" + "11".repeat(32) } },
+        "nonce_mismatch",
+        "nonce",
+      ],
+      [
+        { ...r.message, aztecToken: "0x" + "2c".repeat(32) },
+        rPolicy,
+        "token_mismatch",
+        "aztecToken",
+      ],
+      [
+        {
+          ...r.message,
+          network: { ...v.network, genesisOrNetworkDigest: "0x" + "33".repeat(32) },
+        },
+        rPolicy,
+        "network_mismatch",
+        "network",
+      ],
+      ...(["termsDigest", "operationId", "txHash"] as const).map(
+        (f): [unknown, AckPolicy, string, string] => [
+          r.message,
+          { ...rPolicy, expected: { ...rPolicy.expected, [f]: "0x" + "55".repeat(32) } },
+          "subject_mismatch",
+          f,
+        ],
       ),
-    ).toEqual({ code: "challenge_expired", field: "challengeExpiry" });
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(v.primaryType, message, v.signature, {
-            ...policy,
-            now: validNow,
-            expectedNonce: "0x" + "11".repeat(32),
-          }),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "nonce_mismatch", field: "nonce" });
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(
-            v.primaryType,
-            { ...v.message, bindingDigest: "0x" + "22".repeat(32) } as never,
-            v.signature,
-            { ...policy, now: validNow },
-          ),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "binding_mismatch", field: "bindingDigest" });
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(v.primaryType, message, "0x" + "00".repeat(64), {
-            ...policy,
-            now: validNow,
-          }),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "signature_invalid", field: "signature" });
-    const otherDescriptor = file.descriptor.vectors.find(
-      (candidate) =>
-        candidate.profile === descriptorVector.profile &&
-        candidate.descriptorDigest !== descriptorVector.descriptorDigest,
-    )!;
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(v.primaryType, message, v.signature, {
-            ...policy,
-            descriptor: otherDescriptor.descriptor,
-            now: validNow,
-          }),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "descriptor_mismatch", field: "descriptor" });
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(v.primaryType, message, v.signature, {
-            ...policy,
-            environment: `${v.environment}-untrusted`,
-            now: validNow,
-          }),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "binding_mismatch", field: "bindingDigest" });
-    expect(
-      await asyncRefusalOf(
-        () =>
-          verifyRecipientAck(v.primaryType, message, v.signature, {
-            ...policy,
-            network: {
-              ...v.network,
-              genesisOrNetworkDigest: "0x" + "33".repeat(32),
-            },
-            now: validNow,
-          }),
-        AckEncodingError,
-      ),
-    ).toEqual({ code: "network_mismatch", field: "descriptor.network" });
+      [
+        r.message,
+        { ...rPolicy, expected: { ...rPolicy.expected, blockNumber: "1" } },
+        "subject_mismatch",
+        "blockNumber",
+      ],
+      [
+        r.message,
+        { ...rPolicy, expected: { ...rPolicy.expected, amount: "1" } },
+        "subject_mismatch",
+        "amount",
+      ],
+    ];
+    for (const [message, p, code, field] of receiptRefusals) {
+      expect(await verify(r, message, p), `${code} ${field}`).toEqual({ code, field });
+    }
     expect(consumeCalls).toBe(0);
   });
 });

@@ -9,8 +9,10 @@
 // B-panel enrollment acknowledgement. PaymentReceiptAck binds exact credited value and
 // transaction evidence. Design A's testnet tracer has no standardized acknowledgement.
 // All three name the binding by its EIP-712 digest. BackupPersistenceAck and
-// SenderRegistrationAck reuse that binding's exact `nonce` and `challengeExpiry`;
-// PaymentReceiptAck carries a separate server-issued single-use receipt challenge.
+// SenderRegistrationAck reuse that binding's exact `nonce` and `challengeExpiry`, which
+// `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate server-issued
+// single-use receipt challenge. Replay is scoped per (primary type, binding, nonce)
+// (`recipientAckReplayKey`), so the two enrollment acks of one binding never collide.
 
 import { ethers } from "ethers";
 
@@ -58,7 +60,10 @@ export type AckRefusal =
   | "nonce_replayed"
   | "descriptor_mismatch"
   | "recipient_mismatch"
-  | "network_mismatch";
+  | "network_mismatch"
+  | "expiry_mismatch"
+  | "token_mismatch"
+  | "subject_mismatch";
 
 export class AckEncodingError extends Error {
   readonly code: AckRefusal;
@@ -74,6 +79,9 @@ export class AckEncodingError extends Error {
 const refuseAck = (code: AckRefusal, field: string, detail: string): never => {
   throw new AckEncodingError(code, field, detail);
 };
+// The shared value rules, refusing as AckEncodingError.
+const ackRules = <T>(fn: () => T): T =>
+  withRefusalsAs(fn, (code, field, detail) => new AckEncodingError(code, field, detail));
 
 export interface BackupPersistenceAck {
   bindingDigest: string;
@@ -239,94 +247,220 @@ export function recipientAckDigest<T extends RecipientAckType>(
   );
 }
 
-export interface RecipientAckVerificationPolicy {
+/** What the verifier expects the acknowledgement to say, beyond the binding it names. */
+export interface RecipientAckExpected {
+  /** keccak256 of the encrypted backup bytes the verifier holds. */
+  BackupPersistenceAck: { backupCommitment: string };
+  /** The exact panel sender set the verifier registered, strictly ascending. */
+  SenderRegistrationAck: { registeredSenders: string[] };
+  /** The receipt challenge the verifier issued and the settlement it recorded. */
+  PaymentReceiptAck: {
+    nonce: string;
+    termsDigest: string;
+    operationId: string;
+    txHash: string;
+    blockNumber: UintLike;
+    amount: string;
+  };
+}
+
+export interface RecipientAckVerificationPolicy<T extends RecipientAckType> {
   /** Trusted binding previously accepted from the source-wallet ceremony. */
   binding: RecipientBinding;
   /** Descriptor named by `binding`; verified and used to derive the signing key. */
   descriptor: RecipientDescriptor;
-  /** Exact pinned Aztec SDK profile for `descriptor`. */
+  /**
+   * Exact pinned Aztec SDK profile for `descriptor`, chosen from the caller's own corridor
+   * record for `network`, never from the descriptor or the recipient.
+   */
   profile: AztecRecipientProfile;
   /** Trusted deployment environment used to reconstruct Domain (binding). */
   environment: string;
   /** Trusted network identity used to reconstruct Domain (binding). */
   network: NetworkIdentity;
-  expectedNonce: string;
+  /**
+   * The exact subject for this use. The enrollment acks take their nonce and expiry from
+   * `binding`; PaymentReceiptAck's receipt challenge is `expected.nonce`.
+   */
+  expected: RecipientAckExpected[T];
   /** Caller-controlled Unix time in seconds. */
   now: UintLike;
   /**
-   * Durably and atomically marks this nonce consumed. Resolves true only for its first
-   * committed use across every process. Called last after all other checks succeed.
+   * Durably and atomically marks `replayKey` (`recipientAckReplayKey`) consumed. Resolves
+   * true only for its first committed use across every process. Called last, after every
+   * other check succeeds. The key differs from the bare nonce, so the binding ceremony's
+   * own use of that nonce does not consume it.
    */
-  consumeNonce: (nonce: Hex) => Promise<boolean>;
+  consumeReplayKey: (replayKey: Hex) => Promise<boolean>;
 }
 
 export interface VerifiedRecipientAck {
   digest: Hex;
   messageField: Hex;
   nonce: Hex;
+  replayKey: Hex;
+}
+
+function assertAckType(primaryType: string): asserts primaryType is RecipientAckType {
+  if (!Object.prototype.hasOwnProperty.call(RECIPIENT_ACK_TYPE_STRINGS, primaryType)) {
+    throw new TypeError(`unknown acknowledgement type ${String(primaryType)}`);
+  }
 }
 
 /**
- * Fail-closed acknowledgement verification. The binding domain and recipient signing key
- * are reconstructed from trusted inputs; durable nonce consumption runs last.
+ * `keccak256(abi.encode(typehash(primaryType), bindingDigest, nonce))`: one acceptance per
+ * acknowledgement type, binding and challenge.
  */
-export async function verifyRecipientAck<T extends RecipientAckType>(
+export function recipientAckReplayKey(
+  primaryType: RecipientAckType,
+  bindingDigest: string,
+  nonce: string,
+): Hex {
+  assertAckType(primaryType);
+  return ackRules(() =>
+    keccak(
+      coder.encode(
+        ["bytes32", "bytes32", "bytes32"],
+        [
+          ethers.id(RECIPIENT_ACK_TYPE_STRINGS[primaryType]),
+          nonzeroDigest("bindingDigest", bindingDigest),
+          nonzeroDigest("nonce", nonce),
+        ],
+      ),
+    ),
+  );
+}
+
+function expectSame(code: AckRefusal, field: string, actual: unknown, expected: unknown): void {
+  if (actual !== expected) refuseAck(code, field, `expected ${String(expected)}`);
+}
+
+// The type's own members against `expected`, and the enrollment acks against the binding.
+function assertAckSubject<T extends RecipientAckType>(
+  primaryType: T,
+  message: RecipientAckMessages[T],
+  policy: RecipientAckVerificationPolicy<T>,
+  nonce: Hex,
+  expiry: bigint,
+): void {
+  if (primaryType === "BackupPersistenceAck" || primaryType === "SenderRegistrationAck") {
+    const binding = policy.binding;
+    expectSame("nonce_mismatch", "nonce", nonce, nonzeroDigest("binding.nonce", binding.nonce));
+    expectSame(
+      "expiry_mismatch",
+      "challengeExpiry",
+      expiry,
+      uint("binding.challengeExpiry", binding.challengeExpiry, UINT64_MAX),
+    );
+  }
+  if (primaryType === "BackupPersistenceAck") {
+    const m = message as BackupPersistenceAck;
+    const e = policy.expected as RecipientAckExpected["BackupPersistenceAck"];
+    expectSame(
+      "subject_mismatch",
+      "backupCommitment",
+      nonzeroDigest("backupCommitment", m.backupCommitment),
+      nonzeroDigest("expected.backupCommitment", e.backupCommitment),
+    );
+  } else if (primaryType === "SenderRegistrationAck") {
+    const m = message as SenderRegistrationAck;
+    const e = policy.expected as RecipientAckExpected["SenderRegistrationAck"];
+    expectSame(
+      "subject_mismatch",
+      "registeredSenders",
+      registeredSendersHash(m.registeredSenders),
+      registeredSendersHash(e.registeredSenders),
+    );
+  } else {
+    const m = message as PaymentReceiptAck;
+    const e = policy.expected as RecipientAckExpected["PaymentReceiptAck"];
+    expectSame("nonce_mismatch", "nonce", nonce, nonzeroDigest("expected.nonce", e.nonce));
+    expectSame(
+      "token_mismatch",
+      "aztecToken",
+      assertAztecBytes32("aztecToken", m.aztecToken),
+      assertAztecBytes32("binding.aztecToken", policy.binding.aztecToken),
+    );
+    expectSame(
+      "network_mismatch",
+      "network",
+      hashNetworkIdentity(m.network),
+      hashNetworkIdentity(policy.network),
+    );
+    for (const f of ["termsDigest", "operationId", "txHash"] as const) {
+      expectSame(
+        "subject_mismatch",
+        f,
+        nonzeroDigest(f, m[f]),
+        nonzeroDigest(`expected.${f}`, e[f]),
+      );
+    }
+    expectSame(
+      "subject_mismatch",
+      "blockNumber",
+      uint("blockNumber", m.blockNumber, UINT64_MAX),
+      uint("expected.blockNumber", e.blockNumber, UINT64_MAX),
+    );
+    expectSame(
+      "subject_mismatch",
+      "amount",
+      parseShieldedAmount("amount", m.amount),
+      parseShieldedAmount("expected.amount", e.amount),
+    );
+  }
+}
+
+// Every check but replay consumption; synchronous, so its value-rule refusals are rewrapped.
+function checkRecipientAck<T extends RecipientAckType>(
   primaryType: T,
   message: RecipientAckMessages[T],
   signature: string,
-  policy: RecipientAckVerificationPolicy,
-): Promise<VerifiedRecipientAck> {
-  verifyRecipientDescriptor(policy.descriptor, policy.profile);
+  policy: RecipientAckVerificationPolicy<T>,
+): VerifiedRecipientAck {
+  const binding = policy.binding;
   const descriptorDigest = hashRecipientDescriptor(policy.descriptor);
-  const bindingDescriptorDigest = nonzeroDigest(
-    "binding.descriptorDigest",
-    policy.binding.descriptorDigest,
+  expectSame(
+    "descriptor_mismatch",
+    "descriptor",
+    descriptorDigest,
+    nonzeroDigest("binding.descriptorDigest", binding.descriptorDigest),
   );
-  if (descriptorDigest !== bindingDescriptorDigest) {
-    refuseAck("descriptor_mismatch", "descriptor", `expected ${bindingDescriptorDigest}`);
-  }
-  const descriptorRecipient = assertAztecBytes32(
-    "descriptor.aztecAddress",
-    policy.descriptor.aztecAddress,
-  );
-  const bindingRecipient = assertAztecBytes32(
+  const bindingRecipient = assertAztecBytes32("binding.aztecRecipient", binding.aztecRecipient);
+  expectSame(
+    "recipient_mismatch",
     "binding.aztecRecipient",
-    policy.binding.aztecRecipient,
+    bindingRecipient,
+    assertAztecBytes32("descriptor.aztecAddress", policy.descriptor.aztecAddress),
   );
-  if (descriptorRecipient !== bindingRecipient) {
-    refuseAck("recipient_mismatch", "binding.aztecRecipient", `expected ${descriptorRecipient}`);
-  }
-  if (hashNetworkIdentity(policy.descriptor.network) !== hashNetworkIdentity(policy.network)) {
-    refuseAck("network_mismatch", "descriptor.network", "not the trusted network");
-  }
-  const expectedBindingDigest = keccak(
-    ethers.concat([
-      "0x1901",
-      shieldedDomainSeparator(
-        bindingDomain(policy.binding.sourceChainId, policy.environment, policy.network),
-      ),
-      hashRecipientBinding(policy.binding),
-    ]),
+  expectSame(
+    "network_mismatch",
+    "descriptor.network",
+    hashNetworkIdentity(policy.descriptor.network),
+    hashNetworkIdentity(policy.network),
   );
+  const domain = bindingDomain(binding.sourceChainId, policy.environment, policy.network);
   const bindingDigest = nonzeroDigest("bindingDigest", message.bindingDigest);
-  if (bindingDigest !== expectedBindingDigest) {
-    refuseAck("binding_mismatch", "bindingDigest", `expected ${expectedBindingDigest}`);
-  }
-  const messageRecipient = assertAztecBytes32("aztecRecipient", message.aztecRecipient);
-  if (messageRecipient !== bindingRecipient) {
-    refuseAck("recipient_mismatch", "aztecRecipient", `expected ${bindingRecipient}`);
-  }
+  expectSame(
+    "binding_mismatch",
+    "bindingDigest",
+    bindingDigest,
+    keccak(
+      ethers.concat(["0x1901", shieldedDomainSeparator(domain), hashRecipientBinding(binding)]),
+    ),
+  );
+  expectSame(
+    "recipient_mismatch",
+    "aztecRecipient",
+    assertAztecBytes32("aztecRecipient", message.aztecRecipient),
+    bindingRecipient,
+  );
   const nonce = nonzeroDigest("nonce", message.nonce);
-  const expectedNonce = nonzeroDigest("expectedNonce", policy.expectedNonce);
-  if (nonce !== expectedNonce) {
-    refuseAck("nonce_mismatch", "nonce", `expected ${expectedNonce}`);
-  }
-  const now = uint("now", policy.now, UINT64_MAX);
   const expiry = uint("challengeExpiry", message.challengeExpiry, UINT64_MAX);
+  assertAckSubject(primaryType, message, policy, nonce, expiry);
+  const now = uint("now", policy.now, UINT64_MAX);
   if (expiry < now) {
     refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
   }
-  const domain = bindingDomain(policy.binding.sourceChainId, policy.environment, policy.network);
   const digest = recipientAckDigest(primaryType, message, domain);
   const messageField = recipientMessage(digest).messageField;
   const expectedPublicKey = {
@@ -336,8 +470,32 @@ export async function verifyRecipientAck<T extends RecipientAckType>(
   if (!verifyRecipientSchnorr(expectedPublicKey, messageField, signature)) {
     refuseAck("signature_invalid", "signature", "not valid for the acknowledgement");
   }
-  if (!(await policy.consumeNonce(nonce))) {
-    refuseAck("nonce_replayed", "nonce", "already consumed");
+  return {
+    digest,
+    messageField,
+    nonce,
+    replayKey: recipientAckReplayKey(primaryType, bindingDigest, nonce),
+  };
+}
+
+/**
+ * Fail-closed acknowledgement verification. The binding domain and recipient signing key
+ * are reconstructed from trusted inputs; the exact subject is pinned (`expected`, and the
+ * binding's nonce and expiry for the enrollment acks); durable replay consumption runs
+ * last. Refuses with `AckEncodingError`; a trusted descriptor or profile that fails its own
+ * check throws `RecipientEncodingError` (`verifyRecipientDescriptor`).
+ */
+export async function verifyRecipientAck<T extends RecipientAckType>(
+  primaryType: T,
+  message: RecipientAckMessages[T],
+  signature: string,
+  policy: RecipientAckVerificationPolicy<T>,
+): Promise<VerifiedRecipientAck> {
+  assertAckType(primaryType);
+  verifyRecipientDescriptor(policy.descriptor, policy.profile);
+  const verified = ackRules(() => checkRecipientAck(primaryType, message, signature, policy));
+  if (!(await policy.consumeReplayKey(verified.replayKey))) {
+    refuseAck("nonce_replayed", "nonce", "already consumed for this type and binding");
   }
-  return { digest, messageField, nonce };
+  return verified;
 }
