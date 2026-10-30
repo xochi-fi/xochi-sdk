@@ -67,6 +67,7 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
+- `@xochi/signer` dependency range is `^0.6.0` (was `^0.5.1`).
 - **BREAKING: the `apiKey` option is removed** from `SolverClient` and
   `HttpSolverTransport`, and `HttpSolverTransport`'s `solverId` option with it:
   pass `solverKey` (and preferably `bond`) instead. Neither sends `X-API-Key`

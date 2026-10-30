@@ -53,7 +53,7 @@
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@xochi/signer": "^0.5.1",
+    "@xochi/signer": "^0.6.0",
     "viem": "^2.21.0",
     "zod": "^4.6.7"
   },

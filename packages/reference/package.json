@@ -21,12 +21,12 @@
     "test:fee": "vitest run test/fee.test.ts"
   },
   "dependencies": {
-    "@xochi/signer": "0.5.1",
+    "@xochi/signer": "0.6.0",
     "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "@xochi/client": "0.1.5",
-    "@xochi/spec": "0.10.0",
+    "@xochi/client": "0.1.6",
+    "@xochi/spec": "0.11.0",
     "fast-check": "^4.9.0"
   }
 }

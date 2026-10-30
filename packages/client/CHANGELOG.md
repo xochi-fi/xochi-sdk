@@ -2,6 +2,12 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `@xochi/signer` dependency range is `^0.6.0` (was `^0.5.1`). The client calls no new signer API; through `buildDepositAttestationMessage` it picks up 0.6.0's case-exact `to_token` / `recipient` encoding for values that are not entirely `0x` + hex (Canton parties).
+
 ## [0.1.6] - 2026-10-29
 
 ### Fixed
