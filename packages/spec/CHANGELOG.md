@@ -4,6 +4,17 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-31
+
+### Changed
+
+- **Version 0.12.0** (MINOR by judgement; SPEC.md §0.3): carries the wire refresh below. Every vector, schema and fee artifact is byte-identical to `0.11.0`; no taker signed struct changes. Riddler must advertise `spec_version: "0.12.0"` in lockstep.
+- **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod (2026-10-31, `--allow-breaking`)** after Riddler #1370, #1371 and #1388 deployed. The structural differ reports `18 BREAKING, 8 STALE`:
+  - BREAKING, readiness relay (`/xochi/readiness/*`, off by default, `404` in prod): `ReadinessRequest` requires `recipient_authorization`; its 32-byte hex fields refuse zero; its decimal chain and protocol-version fields admit `0`, as does `corridor.revision`; `descriptor` is a `RecipientDescriptor` `$ref`; `ReadinessAttestationResponse` refuses extra keys; `POST /xochi/readiness/root-update` takes a `RootUpdateEnvelope` and answers `204` (its `200` and the `RootUpdate` schema are gone).
+  - BREAKING: `ErrorCode` withdraws `readiness_not_enabled`, which a deploy with the relay off answered (`422`) from `0.11.0`'s refresh until Riddler #1388; a disabled relay now answers `404`. SPEC.md §3.5 records the exception to "append-only".
+  - STALE: `POST /xochi/shielded/quote` (the design-A tracer quote, flag-gated); the non-terminal `IntentLifecycleStatus` `source_finalized` (SPEC.md §3.4: served only on the tracer path, never `completed` there); the optional `IntentStatus.cantonUpdateId`; the `RecipientDescriptor`, `RootUpdateEnvelope` and `RootUpdateRecord` schemas; and the error codes `shielded_terms_conflict`, `shielded_unavailable` and `insufficient_inventory`.
+- The `@xochi/reference` and `@xochi/sdk` dev pins move to `0.12.0`.
+
 ## [0.11.0] - 2026-10-30
 
 ### Added

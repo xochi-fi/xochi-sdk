@@ -1536,8 +1536,8 @@
           "announcer_not_configured",
           "tron_fee_misconfigured",
           "escrow_refused",
-          "readiness_not_enabled",
           "shielded_terms_refused",
+          "shielded_terms_conflict",
           "insufficient_balance",
           "insufficient_liquidity",
           "pre_positioning",
@@ -1545,6 +1545,8 @@
           "price_unavailable",
           "origin_unavailable",
           "quote_store_unavailable",
+          "shielded_unavailable",
+          "insufficient_inventory",
           "gas_price_unavailable",
           "pull_failed",
           "announcement_unreadable",
@@ -1911,6 +1913,7 @@
           "executing",
           "bridging",
           "settling",
+          "source_finalized",
           "completed",
           "refund_pending",
           "refunded",
@@ -1929,6 +1932,10 @@
               "downgraded"
             ],
             "nullable": true,
+            "type": "string"
+          },
+          "cantonUpdateId": {
+            "description": "Canton destination only (#1183): the Canton update id the tier-0 attester verified the solver's delivery against -- the Canton counterpart of a fill transaction hash, to be looked up on a Canton explorer for `settlementChainId` (the Canton chain). Present once the delivery is attested; absent before and on every other route.\n",
             "type": "string"
           },
           "counterfactualAddress": {
@@ -2650,9 +2657,10 @@
         "type": "object"
       },
       "ReadinessAttestationResponse": {
+        "additionalProperties": false,
         "properties": {
           "attestation": {
-            "description": "pxe-bridge's JSON-RPC `result`, verbatim. Xochi verifies it.",
+            "description": "Opaque exact bridge signed record.",
             "type": "object"
           }
         },
@@ -2663,22 +2671,22 @@
       },
       "ReadinessRequest": {
         "additionalProperties": false,
-        "description": "Recipient-side facts only (pxe-bridge#50 decision 10). Forwarded to the bridge under the §7 EIP-712 member names (`recipient`, `descriptorDigest`, `networkIdentity{aztecChainId, protocolVersion, rollupAddress, l1ChainId, genesisOrNetworkDigest}`, `corridor{corridorId, corridorRevision, manifestDigest}`). Hex is lowercased.",
+        "description": "Strict Worker-facing recipient-side facts.",
         "properties": {
           "corridor": {
             "additionalProperties": false,
             "properties": {
               "corridor_id": {
-                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
                 "type": "string"
               },
               "manifest_digest": {
-                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
                 "type": "string"
               },
               "revision": {
                 "maximum": 4294967295,
-                "minimum": 1,
+                "minimum": 0,
                 "type": "integer"
               }
             },
@@ -2690,30 +2698,29 @@
             "type": "object"
           },
           "descriptor": {
-            "description": "The full recipient descriptor, opaque to Riddler (<= 16 KiB, <= 8 levels). Refused if any key at any depth names the source wallet, the source chain or the binding id.",
-            "type": "object"
+            "$ref": "#/components/schemas/RecipientDescriptor"
           },
           "descriptor_digest": {
-            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
             "type": "string"
           },
           "network": {
             "additionalProperties": false,
             "properties": {
               "aztec_chain_id": {
-                "pattern": "^[1-9][0-9]*$",
+                "pattern": "^(0|[1-9][0-9]*)$",
                 "type": "string"
               },
               "genesis_or_network_digest": {
-                "pattern": "^0x[0-9a-fA-F]{64}$",
+                "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
                 "type": "string"
               },
               "l1_chain_id": {
-                "pattern": "^[1-9][0-9]*$",
+                "pattern": "^(0|[1-9][0-9]*)$",
                 "type": "string"
               },
               "protocol_version": {
-                "pattern": "^[1-9][0-9]*$",
+                "pattern": "^(0|[1-9][0-9]*)$",
                 "type": "string"
               },
               "rollup_address": {
@@ -2731,9 +2738,26 @@
             "type": "object"
           },
           "recipient_address": {
-            "description": "AztecAddress; nonzero, below the BN254 scalar field modulus.",
-            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
             "type": "string"
+          },
+          "recipient_authorization": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "signature": {
+                "pattern": "^0x[0-9a-fA-F]{128}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "digest",
+              "signature"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -2741,11 +2765,142 @@
           "recipient_address",
           "descriptor_digest",
           "network",
-          "corridor"
+          "corridor",
+          "recipient_authorization"
         ],
         "type": "object"
       },
-      "RootUpdate": {
+      "RecipientDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "aztecAddress": {
+            "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "classId": {
+            "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "deployer": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "fbpkMHash": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "ivpkMX": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "ivpkMY": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "mspkMHash": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "network": {
+            "additionalProperties": false,
+            "properties": {
+              "aztecChainId": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "genesisOrNetworkDigest": {
+                "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "l1ChainId": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "protocolVersion": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "rollupAddress": {
+                "pattern": "^0x[0-9a-fA-F]{40}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "aztecChainId",
+              "protocolVersion",
+              "rollupAddress",
+              "l1ChainId",
+              "genesisOrNetworkDigest"
+            ],
+            "type": "object"
+          },
+          "npkMHash": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "ovpkMHash": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "salt": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "signingPublicKeyX": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "signingPublicKeyY": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "tpkMHash": {
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aztecAddress",
+          "classId",
+          "salt",
+          "deployer",
+          "signingPublicKeyX",
+          "signingPublicKeyY",
+          "npkMHash",
+          "ivpkMX",
+          "ivpkMY",
+          "ovpkMHash",
+          "tpkMHash",
+          "mspkMHash",
+          "fbpkMHash",
+          "network"
+        ],
+        "type": "object"
+      },
+      "RootUpdateEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "corridor_id": {
+            "pattern": "^0x(?!0{64}$)[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "corridor_revision": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RootUpdateRecord"
+          }
+        },
+        "required": [
+          "corridor_id",
+          "corridor_revision",
+          "record"
+        ],
+        "type": "object"
+      },
+      "RootUpdateRecord": {
         "additionalProperties": false,
         "properties": {
           "attestedAt": {
@@ -2757,11 +2912,11 @@
             "type": "string"
           },
           "rootBlock": {
-            "pattern": "^(0|[1-9][0-9]*)$",
+            "pattern": "^[1-9][0-9]*$",
             "type": "string"
           },
           "signature": {
-            "pattern": "^0x([0-9a-fA-F]{2})+$",
+            "pattern": "^0x[0-9a-fA-F]{130}$",
             "type": "string"
           }
         },
@@ -4598,7 +4753,7 @@
                 }
               }
             },
-            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n\nOn an escrow corridor (`EscrowCapability`), `escrow_refused` is the\npermanent escrow decline, `details.reason` naming the check; and\n`token_mismatch` with `details.reason: cross_token_fills_disabled`\nis the issuance price band finding the pair switched off.\n\nCanton (253340876, and Canton TestNet 4149314359 under\n`TESTNET_ONLY=true`, both behind `ENABLE_CANTON_DESTINATION`) is a\ndestination-only escrow corridor that is not live yet (#1183): a\nvalid Canton-destination request is declined `escrow_refused` with\n`details.reason: canton_destination_not_live`, and a Canton origin\nis `origin_not_enabled`. Both are permanent. A Canton\n`recipient_address` that is not a party id (`hint::1220<64\nlowercase hex>`, never case-folded), a `to_token` other than the\ndestination network's Canton Coin instrument id (MainNet\n`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`,\nTestNet\n`DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337`;\neither network's id on the other is refused),\nor a non-public `settlement_preference` is `validation_failed`.\n"
+            "description": "Validation failed (`validation_failed`, with the offending fields\nin `details`), the route was declined for a documented reason\n(see `ErrorCode`), or the `idempotency_key` cannot be honoured:\nit already names a deposit-route quote with different inputs\n(`idempotency_key_reused`), or the route it named no longer\naccepts deposits (`idempotency_key_expired`). Both are permanent\nfor this request: a key names one deal, so send a new key.\n\nOn an escrow corridor (`EscrowCapability`), `escrow_refused` is the\npermanent escrow decline, `details.reason` naming the check; and\n`token_mismatch` with `details.reason: cross_token_fills_disabled`\nis the issuance price band finding the pair switched off.\n\nCanton (253340876, and Canton TestNet 4149314359 under\n`TESTNET_ONLY=true`, both behind `ENABLE_CANTON_DESTINATION`) is a\ndestination-only corridor served only as an escrowed quote-through\nquote (#1183): a bonded panel solver delivers Canton Coin and\nescrow pays it against Riddler's attestation of the delivery. On a\ndeploy that does not serve the route that way, a valid\nCanton-destination request is declined `escrow_refused` with\n`details.reason: canton_destination_not_live`; a Canton origin is\nalways `origin_not_enabled`. Both are permanent. A Canton\n`recipient_address` that is not a party id (`hint::1220<64\nlowercase hex>`, never case-folded), a `to_token` other than the\ndestination network's Canton Coin instrument id (MainNet\n`DSO::1220b1431ef217342db44d516bb9befde802be7d8899637d290895fa58880f19accc`,\nTestNet\n`DSO::1220f22a8b8f2d813c25b9a684dc4dd52b532a0174d8e73a13cdf2baabfff7518337`;\neither network's id on the other is refused),\nor a non-public `settlement_preference` is `validation_failed`.\n"
           },
           "426": {
             "$ref": "#/components/responses/TlsRequired"
@@ -4667,7 +4822,7 @@
     },
     "/xochi/readiness/deployment": {
       "post": {
-        "description": "Same request, relay rules and refusals as `/xochi/readiness/membership`;\nthe bridge answers its `RecipientDeployment` record\n(`{descriptorDigest, recipient, classId, deployed, finalBlock,\nattestedAt, signature}`), returned verbatim under `attestation`.\n\n`422 readiness_not_enabled` (permanent) when this deployment names no\npxe-bridge operation for it (`XOCHI_READINESS_DEPLOYMENT_METHOD`\nunset). Required scope: `readiness`.\n",
+        "description": "Same strict request, opaque relay and uniform transient refusal contract\nas `/xochi/readiness/membership`, using method\n`aztec_attestRecipientDeployment`. The bridge's signed deployment\nrecord is returned verbatim under `attestation`. Required scope:\n`readiness`.\n",
         "operationId": "xochi_readiness_deployment",
         "requestBody": {
           "content": {
@@ -4728,7 +4883,7 @@
     },
     "/xochi/readiness/membership": {
       "post": {
-        "description": "Interim relay (xochi-fi/pxe-bridge#50 decision 10, until M6): forwards\nONLY the recipient-side fields to pxe-bridge with Riddler's\nattestation-only credential and returns the bridge's signed\n`{descriptorDigest, root, member, rootBlock, attestedAt, signature}`\nverbatim under `attestation`. Riddler neither verifies nor interprets\nit; Xochi does.\n\nThe schema is strict: any other field -- the source wallet, the\nsource chain and the binding id in particular, at any depth including\ninside `descriptor` -- is refused with 422, never silently dropped.\n\nEvery failure to obtain an attestation (a bridge refusal, an HTTP\nerror, a timeout, an unreachable bridge) is a transient\n`503 readiness_unavailable` with `Retry-After` and a bounded\n`details.reason` (a pxe-bridge#50 refusal class such as\n`snapshot_root_mismatch`, or `bridge_refused`, `bridge_timeout`,\n`bridge_unreachable`, `bridge_http_error`, `bridge_rate_limited`,\n`bridge_credential_rejected`, `bridge_malformed_response`,\n`method_refused`, `bridge_not_configured`, `credential_not_configured`).\n\nOff (`XOCHI_READINESS_RELAY_ENABLED=false`, the default), the path\nanswers the router's ordinary 404. Required scope: `readiness`.\n",
+        "description": "Interim opaque relay: forwards the exact recipient-side request as a\ncamelCase params object to the bridge's dedicated POST\n`/api/attestation`, using only the attestation credential and method\n`aztec_attestRecipientMembership`. The signed record is returned\nverbatim under `attestation`; Riddler validates its closed shape but\nneither verifies nor interprets its contents.\n\nThe schema is strict: source wallet, source chain, binding id and every\nother unknown field are refused at every nesting depth, never silently\ndropped.\n\nEvery bridge refusal, timeout, malformed response, credential rejection\nor unavailability is a transient `503 readiness_unavailable` with\n`Retry-After`. A configured collision with a funds-moving method is\nhard-refused.\n\nOff (`XOCHI_READINESS_RELAY_ENABLED=false`, the default), the path\nanswers the router's ordinary 404. Required scope: `readiness`.\n",
         "operationId": "xochi_readiness_membership",
         "requestBody": {
           "content": {
@@ -4768,7 +4923,7 @@
               "application/json": {
                 "example": {
                   "details": {
-                    "reason": "snapshot_root_mismatch",
+                    "reason": "allowlist_root_mismatch",
                     "retry_after": 5
                   },
                   "error": "readiness_unavailable",
@@ -4797,39 +4952,21 @@
     },
     "/xochi/readiness/root-update": {
       "post": {
-        "description": "Called by pxe-bridge, not by Xochi. Records the notice in a durable\noutbox (`Stores.Durable`) before answering, then delivers it to the\nbackend of every `readiness`-scoped caller, retrying with backoff;\non restart Riddler re-pushes the current root once. A byte-identical\nnotice is acknowledged again and enqueues nothing.\n\nExactly `root`, `rootBlock`, `attestedAt`, `signature`: any other field\n(a recipient, a position) is refused. Not verified here. `503\nreadiness_unavailable` + `Retry-After` when the outbox cannot be\nwritten. Required scope: `readiness_push`.\n",
+        "description": "Called by pxe-bridge using the distinct `readiness_push` scope. The\nexact corridor envelope is recorded in a durable outbox before the 204\nresponse, then forwarded unchanged to every `readiness` backend at\n`/api/riddler/shielded/root-update`. All failures retry with backoff,\nduplicate pushes do not duplicate effects, and restart re-pushes the\ncurrent root. The record is shape-checked only and never interpreted.\n",
         "operationId": "xochi_readiness_root_update",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RootUpdate"
+                "$ref": "#/components/schemas/RootUpdateEnvelope"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "accepted": {
-                      "enum": [
-                        true
-                      ],
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "accepted"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Recorded for delivery"
+          "204": {
+            "description": "Durably recorded for delivery"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5016,6 +5153,85 @@
           }
         },
         "summary": "Preview the exact Aztec destination of a shielded corridor (non-executable, never signed)",
+        "tags": [
+          "quote"
+        ]
+      }
+    },
+    "/xochi/shielded/quote": {
+      "post": {
+        "description": "Dark by default: unless `XOCHI_SHIELDED_TRACER_COLLECTION_ENABLED` is on,\nthis path answers the same 404 as any unknown route. On a production\nrelease the flag boots only on a provable testnet tracer deploy: every\nconfigured shielded corridor testnet-to-testnet (source chain and\ndestination L1 both EVM testnets), `RECOVERY_STATE_BACKEND=redis`, and a\nper-deploy `SHIELDED_NAMESPACE`; any of those unmet refuses the boot.\n\nTakes the `/xochi/shielded/preview` body and answers the full\n`ShieldedTermsV1` EIP-712 typed data (sign it as `/xochi/execute`'s\n`signature`) plus an ERC-3009 `ReceiveWithAuthorization` to the\ncorridor's collector (sign it as `pull_signature`). The exact\ndestination amount is reserved until `collect_before` against the\ndeploy's one tracer budget, and each authenticated caller's live quote\nholds are capped (count and units). `/xochi/execute`\non this quote collects the source and stops at the non-terminal\n`source_finalized` status: no EVM destination payout exists on this\npath, and the intent is never `completed` here (#1297).\n\nRequired scope: `quote`.\n",
+        "operationId": "xochi_shielded_quote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShieldedPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The executable terms, their digest and the source authorization to sign."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Permanent refusal (`shielded_terms_refused`, `details.reason` + `details.field`), including `exceeds_capacity`: the amount alone is above the whole tracer budget, so no retry can fit it.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "details": {
+                    "retry_after": 30
+                  },
+                  "error": "insufficient_inventory",
+                  "message": "Shielded tracer inventory is held by other quotes right now -- retry shortly"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Transient, retry after `Retry-After`: the reservation or quote store is unavailable (`shielded_unavailable`), or the tracer budget is held by other quotes and obligations (`insufficient_inventory`), or this caller's own live quote holds are at their cap (`insufficient_inventory` with `details.reason: quote_holds_exhausted` and `details.scope`: `count` | `units`).\n",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Executable design-A shielded TRACER quote (testnet only)",
         "tags": [
           "quote"
         ]
