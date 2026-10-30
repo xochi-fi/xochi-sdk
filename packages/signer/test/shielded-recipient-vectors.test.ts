@@ -839,18 +839,17 @@ describe("acknowledgements", () => {
 
   it("refuses an unknown primary type from the wire as AckEncodingError", async () => {
     let consumeCalls = 0;
-    const v = ackOf("BackupPersistenceAck");
-    const policy = ackPolicy(v, async () => {
+    const consume = async () => {
       consumeCalls++;
       return true;
-    });
+    };
     const unknown = { code: "unknown_primary_type", field: "primaryType" };
-    // Own-property lookups only: prototype names are not types either.
-    for (const primaryType of ["UnknownAck", "constructor", "toString", "__proto__"]) {
+    const refusals = async (v: AckVector, primaryType: unknown, label: string) => {
       const asType = primaryType as RecipientAckType;
-      expect(await verify({ ...v, primaryType: asType }, v.message, policy), primaryType).toEqual(
-        unknown,
-      );
+      expect(
+        await verify({ ...v, primaryType: asType }, v.message, ackPolicy(v, consume)),
+        label,
+      ).toEqual(unknown);
       expect(
         refusalOf(
           () =>
@@ -861,13 +860,42 @@ describe("acknowledgements", () => {
             ),
           AckEncodingError,
         ),
-        primaryType,
+        label,
       ).toEqual(unknown);
       expect(
         refusalOf(() => hashRecipientAck(asType, v.message as never), AckEncodingError),
-        primaryType,
+        label,
       ).toEqual(unknown);
+    };
+    // Own-property lookups only: prototype names are not types either. Non-strings never
+    // reach the lookup, which would coerce them.
+    const v = ackOf("BackupPersistenceAck");
+    for (const primaryType of [
+      "UnknownAck",
+      "constructor",
+      "toString",
+      "__proto__",
+      1n,
+      null,
+      undefined,
+      "x".repeat(10_000),
+    ]) {
+      await refusals(v, primaryType, String(primaryType).slice(0, 20));
+    }
+    // A non-string that coerces to the vector's own type, under that vector's valid
+    // signature and policy: one challenge must never verify under a second replay key.
+    for (const w of file.acknowledgements.vectors) {
+      await refusals(w, [w.primaryType], `[${w.primaryType}]`);
+      await refusals(w, { toString: () => w.primaryType }, `{toString} ${w.primaryType}`);
     }
     expect(consumeCalls).toBe(0);
+    // The refusal names the value without copying an attacker-sized one.
+    expect(() =>
+      recipientAckReplayKey(
+        "x".repeat(10_000) as RecipientAckType,
+        "0x" + "01".repeat(32),
+        "0x" + "02".repeat(32),
+      ),
+    ).toThrow(/^primaryType: unknown_primary_type \(got "x{64}…"\)$/);
   });
 });

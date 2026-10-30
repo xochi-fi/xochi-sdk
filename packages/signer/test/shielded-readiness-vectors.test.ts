@@ -323,11 +323,25 @@ describe("attestations", () => {
         } as never),
       ),
     ).toEqual({ code: "signer_mismatch", field: "signature" });
-    for (const primaryType of ["Unknown", "constructor", "toString", "__proto__"]) {
-      expect(refusalOf(() => parseReadinessRecord(primaryType as never, v.record))).toEqual({
-        code: "unknown_primary_type",
-        field: "primaryType",
-      });
+    // Non-strings never reach the own-property lookup, which would coerce
+    // `[v.primaryType]` or `{toString}` into a match.
+    for (const primaryType of [
+      "Unknown",
+      "constructor",
+      "toString",
+      "__proto__",
+      [v.primaryType],
+      { toString: () => v.primaryType },
+      1n,
+      null,
+    ]) {
+      const unknown = { code: "unknown_primary_type", field: "primaryType" };
+      expect(refusalOf(() => parseReadinessRecord(primaryType as never, v.record))).toEqual(
+        unknown,
+      );
+      expect(
+        refusalOf(() => verifyReadinessRecord(primaryType as never, v.record, policy as never)),
+      ).toEqual(unknown);
     }
     expect(
       refusalOf(() =>

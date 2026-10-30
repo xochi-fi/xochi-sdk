@@ -42,6 +42,7 @@ import {
   keccak,
   parseShieldedAmount,
   uint,
+  describeUntrusted,
   withRefusalsAs,
   type ShieldedRefusal,
   type UintLike,
@@ -301,10 +302,15 @@ export interface VerifiedRecipientAck {
   replayKey: Hex;
 }
 
-// Untrusted wire input names the type, so an unknown one is a refusal, not a programming error.
-function assertAckType(primaryType: string): asserts primaryType is RecipientAckType {
-  if (!Object.prototype.hasOwnProperty.call(RECIPIENT_ACK_TYPE_STRINGS, primaryType)) {
-    refuseAck("unknown_primary_type", "primaryType", `got ${JSON.stringify(primaryType)}`);
+// Untrusted wire input names the type, so an unknown one is a refusal, not a programming
+// error. A non-string is refused before the lookup: `hasOwnProperty` would coerce
+// `["PaymentReceiptAck"]` (or any object whose toString names a type) into a match.
+function assertAckType(primaryType: unknown): asserts primaryType is RecipientAckType {
+  if (
+    typeof primaryType !== "string" ||
+    !Object.prototype.hasOwnProperty.call(RECIPIENT_ACK_TYPE_STRINGS, primaryType)
+  ) {
+    refuseAck("unknown_primary_type", "primaryType", `got ${describeUntrusted(primaryType)}`);
   }
 }
 

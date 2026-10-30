@@ -38,6 +38,7 @@ import {
   environmentHash,
   keccak,
   uint,
+  describeUntrusted,
   withRefusalsAs,
   evmAddress,
   type UintLike,
@@ -141,9 +142,14 @@ const MEMBERS: Record<ReadinessType, readonly string[]> = {
   RootUpdate: ["root", "rootBlock", "attestedAt"],
 };
 
-function assertReadinessType(primaryType: string): asserts primaryType is ReadinessType {
-  if (!Object.prototype.hasOwnProperty.call(MEMBERS, primaryType)) {
-    refuseReadiness("unknown_primary_type", "primaryType", `got ${JSON.stringify(primaryType)}`);
+// A non-string is refused before the lookup: `hasOwnProperty` would coerce
+// `["Membership"]` (or any object whose toString names a type) into a match.
+function assertReadinessType(primaryType: unknown): asserts primaryType is ReadinessType {
+  if (
+    typeof primaryType !== "string" ||
+    !Object.prototype.hasOwnProperty.call(MEMBERS, primaryType)
+  ) {
+    refuseReadiness("unknown_primary_type", "primaryType", `got ${describeUntrusted(primaryType)}`);
   }
 }
 /** Never part of a readiness record (§7: the leaf position must not be recoverable). */

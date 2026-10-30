@@ -74,6 +74,18 @@ export function withRefusalsAs<T>(
   }
 }
 
+/**
+ * An untrusted value for an error message: a string bounded to 64 characters, otherwise
+ * only its kind. Never throws (a bigint breaks `JSON.stringify`) and never copies an
+ * attacker-sized value into the message.
+ */
+export function describeUntrusted(value: unknown): string {
+  if (typeof value === "string") {
+    return JSON.stringify(value.length > 64 ? `${value.slice(0, 64)}…` : value);
+  }
+  return value === null ? "null" : Array.isArray(value) ? "an array" : `a ${typeof value}`;
+}
+
 export function bytes32(field: string, value: string): Hex {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
     refuse("not_bytes32", field, `expected 0x + 64 hex, got ${JSON.stringify(value)}`);
