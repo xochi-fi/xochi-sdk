@@ -37,7 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
-| 0.11.0 | current | 3 | Shielded recipient (descriptor digest, recipient message, three recipient acknowledgements) and pxe-bridge readiness attestation conformance vectors, plus the 2026-10-28 wire refresh (0 differ-BREAKING). Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
+| 0.11.0 | current | 3 | Shielded recipient (descriptor digest, recipient message, three recipient acknowledgements) and pxe-bridge readiness attestation conformance vectors, plus the 2026-10-28 wire refresh (0 differ-BREAKING). Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes. Docs: §3.2 `aztec_proof` is now do-not-send; §3.4/§5.1 shielded status is the served scalars only; `[PROPOSED]` SOLVER-RFC §13 and ESCROW-RFC §5.1 tier 1s (RFC versions unchanged) |
 | 0.10.0 | current | 3 | Shielded terms and preview, corridor manifest, solver registration, and Canton destination order-id conformance vectors. Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
 | 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
 | 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
@@ -159,6 +159,19 @@
   refreshed from prod (`0 BREAKING, 8 STALE`: the readiness relay endpoints,
   Canton TestNet, two readiness error codes). The server MUST advertise
   `spec_version: "0.11.0"` in lockstep.
+
+  `0.11.0` also carries documentation changes with no wire, signature or
+  vector change. §3.2 reverses its instruction on `aztec_proof`: `0.10.0` said
+  to treat "required for `shielded`" as normative and send it; it is unused by
+  every producer and consumer, so do not send it. §3.4 and §5.1 describe the
+  shielded status surface as served, the nullable scalars `noteCommitment`,
+  `nullifierHash` and `l2TxHash` (no array of note hashes or nullifiers is
+  served), with shielded not offered; §5.1 adds that, before shielded is
+  offered, every Worker intent read not authenticated as the intent wallet's
+  session MUST receive the status-only view. `SOLVER-RFC.md` gains
+  `[PROPOSED]` §13 (firm liquidity) and `ESCROW-RFC.md` gains `[PROPOSED]`
+  §5.1 proof-of-fill tier 1s for shielded-Aztec legs, with §6 slash wording
+  and the `[BUILT, UNDEPLOYED]` status; neither `rfcVersion` moves.
 - `0.10.0`: additive conformance for three surfaces. `conformance/shielded-terms.json`
   pins the proposed `ShieldedTermsV1`, non-signable `ShieldedPreviewV1` and
   `CorridorManifestV1` encodings. `conformance/solver-registration.json` pins

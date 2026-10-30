@@ -14,12 +14,9 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 ### Changed
 
 - **Version 0.6.0** (MINOR): new shielded recipient and readiness APIs, a new runtime dependency (`@zkpassport/poseidon2` 0.6.2, exact pin), and the behaviour changes below.
-- **`buildDepositAttestationMessage` encodes `to_token` and `recipient` case-exactly unless they are entirely `0x` + hex** (axol-io/Riddler#1254, in lockstep with the server). Those are the fields that can hold a Canton party, so a hint that starts `0x` (`0xAlice::1220...`) is encoded verbatim there. Every other field keeps the plain `0x` fold, because the stealth keys are unvalidated on a public route and can carry a non-hex `0x` value. Every served preimage is unchanged, so `DEPOSIT_ATTESTATION_VERSION` stays `xochi-deposit-attestation:v3`; `assertDepositPartiesCaseBindable` stays, since the unchanged version cannot tell a case-binding server from one that folds.
+- **`buildDepositAttestationMessage` encodes `to_token` and `recipient` case-exactly unless they are entirely `0x` + hex** (axol-io/Riddler#1254, in lockstep with the server). Those are the fields that can hold a Canton party, so a hint that starts `0x` (`0xAlice::1220...`) is encoded verbatim there. Every other field keeps the plain `0x` fold, because the stealth keys are unvalidated on a public route and can carry a non-hex `0x` value. Every served preimage is unchanged, so `DEPOSIT_ATTESTATION_VERSION` stays `xochi-deposit-attestation:v3`; `assertDepositPartiesCaseBindable` stays, since the unchanged version cannot tell a case-binding server from one that folds. `recipientIsDestinationToken` compares under the same rule, so a recipient and destination token that differ only in the case of a non-hex `0x` value (`0xAlice::1220...` vs `0xalice::1220...`, two Canton parties) are no longer reported as the same address; `0x` + hex addresses still compare case-insensitively.
 - The shielded value rules moved to an internal `shielded-values.ts` shared by the three shielded modules. `shielded.ts`'s public names, `ShieldedRefusal` (still its 14 codes, pinned by a compile-time test) and `ShieldedEncodingError` are unchanged.
-
-### Fixed
-
-- Private-key entry points validate 32-byte secp256k1 scalar shape and range before parsing or signing. Malformed spending, viewing, stealth, intent, ERC-3009 and Permit2 keys now fail with fixed parameter-specific errors that never include the key.
+- **Private-key entry points validate the key before parsing or signing**: exactly 64 hex digits (optional `0x`) and a scalar in `1..n-1` for secp256k1. Malformed spending, viewing, stealth, intent, ERC-3009 and Permit2 keys fail with fixed parameter-specific errors that never include the key. Some keys 0.5.1 accepted now throw: `deriveStealthPrivateKey` used a spending key with fewer than 64 hex digits (an unpadded leading zero) or one not below the curve order without complaint.
 
 ## [0.5.1] - 2026-10-25
 
