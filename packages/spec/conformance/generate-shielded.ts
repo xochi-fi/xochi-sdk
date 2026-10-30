@@ -22,8 +22,9 @@
 // "looks like a padded EVM address" refusal: whether a bytes32 is really an Aztec address
 // (and not an EVM address) is established by descriptor/address derivation, not by its size.
 //
-// ShieldedTermsV1, the manifestDigest struct, the descriptorDigest encoding and the
-// recipient message wrapper/acknowledgements are NOT here: §7 leaves them open.
+// ShieldedTermsV1 and the manifestDigest struct are NOT here: §7 leaves them open. The
+// descriptorDigest encoding, recipient message wrapper, field reduction and approved
+// acknowledgement structs are in shielded-recipient.json (generate-shielded-recipient.ts).
 //
 // Every network, corridor, digest and Aztec value below is a FIXTURE. The signer keys are
 // the PUBLIC Hardhat/Anvil test keys #0 and #1: known to everyone, never to hold funds.
@@ -507,15 +508,6 @@ const out = {
       item: "manifestDigest",
       reason:
         "§7 lists the manifest identity fields but not their typed encoding; manifestDigest is an opaque bytes32 input here.",
-    },
-    {
-      item: "descriptorDigest",
-      reason: "Its encoding is open (§7 'Still open'); it is an opaque bytes32 input here.",
-    },
-    {
-      item: "recipientMessage",
-      reason:
-        "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are open (§7). Selecting the recipient account class (§7 'Recipient authorization') is a prerequisite, not their specification.",
     },
   ],
 };

@@ -1048,14 +1048,6 @@
     {
       "item": "manifestDigest",
       "reason": "§7 lists the manifest identity fields but not their typed encoding; manifestDigest is an opaque bytes32 input here."
-    },
-    {
-      "item": "descriptorDigest",
-      "reason": "Its encoding is open (§7 'Still open'); it is an opaque bytes32 input here."
-    },
-    {
-      "item": "recipientMessage",
-      "reason": "The recipient message wrapper, its 256-bit-to-field reduction and the acknowledgement structs are open (§7). Selecting the recipient account class (§7 'Recipient authorization') is a prerequisite, not their specification."
     }
   ]
 }

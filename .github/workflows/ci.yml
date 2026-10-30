@@ -212,6 +212,8 @@ jobs:
           npm run generate:erc8262
           git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/ packages/spec/erc8262/
 
+      # generate:shielded writes shielded.json, then shielded-recipient.json, then
+      # shielded-readiness.json (which reads the recipient file), each with its schema.
       - name: Solver vector staleness check (bid v2 + registration + escrow + shielded)
         run: |
           npm run generate:solver-bid-v2
@@ -237,6 +239,28 @@ jobs:
         run: |
           npm pack --dry-run -w @xochi/spec
           npm pack --dry-run -w @xochi/signer
+
+  # conformance/shielded-recipient.json held to the real Aztec SDKs: exact-pinned
+  # `@aztec/*` 5.2.0 and `@aztec-labs/*` 6.0.0 (class ids, constructor selector,
+  # separators, key derivation, every descriptor address and intermediate, the wide
+  # reduction, and every Schnorr verdict through bb.js). Its own package and lockfile,
+  # not a workspace, so the ~850 MB of SDK never reaches the other jobs.
+  aztec-crosscheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/spec/aztec-crosscheck/package-lock.json
+
+      - name: Shielded recipient vectors vs Aztec SDK 5.2.0 and 6.0.0
+        working-directory: packages/spec/aztec-crosscheck
+        run: |
+          npm ci
+          npm run crosscheck
 
   python-conformance:
     runs-on: ubuntu-latest

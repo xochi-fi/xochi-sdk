@@ -50,6 +50,10 @@
     "./conformance/shielded.schema.json": "./conformance/shielded.schema.json",
     "./conformance/shielded-terms.json": "./conformance/shielded-terms.json",
     "./conformance/shielded-terms.schema.json": "./conformance/shielded-terms.schema.json",
+    "./conformance/shielded-recipient.json": "./conformance/shielded-recipient.json",
+    "./conformance/shielded-recipient.schema.json": "./conformance/shielded-recipient.schema.json",
+    "./conformance/shielded-readiness.json": "./conformance/shielded-readiness.json",
+    "./conformance/shielded-readiness.schema.json": "./conformance/shielded-readiness.schema.json",
     "./conformance/xsp.json": "./conformance/xsp.json",
     "./conformance/xsp.schema.json": "./conformance/xsp.schema.json",
     "./erc8262/provider-discovery.schema.json": "./erc8262/provider-discovery.schema.json",
@@ -102,8 +106,11 @@
     "generate:solver-registration": "tsx conformance/generate-solver-registration.ts",
     "generate:fill-acceptance": "tsx conformance/generate-fill-acceptance.ts",
     "generate:xsp": "tsx conformance/generate-xsp.ts",
-    "generate:shielded": "tsx conformance/generate-shielded.ts",
+    "generate:shielded": "tsx conformance/generate-shielded.ts && npm run generate:shielded-recipient && npm run generate:shielded-readiness",
     "generate:shielded-terms": "tsx conformance/generate-shielded-terms.ts",
+    "generate:shielded-recipient": "tsx conformance/generate-shielded-recipient.ts",
+    "generate:shielded-readiness": "tsx conformance/generate-shielded-readiness.ts",
+    "crosscheck:aztec": "cd aztec-crosscheck && npm ci && npm run crosscheck",
     "generate:conformance": "tsx conformance/generate.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test"
   },
@@ -113,6 +120,7 @@
     "@xochi/signer": "0.5.1",
     "@xochi/solver-sdk": "0.5.0",
     "ajv": "^8.20.0",
+    "@zkpassport/poseidon2": "0.6.2",
     "ethers": "^6.17.0",
     "tsx": "^4.23.13"
   }

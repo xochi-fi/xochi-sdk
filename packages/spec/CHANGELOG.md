@@ -4,6 +4,12 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Added
+
+- **`conformance/shielded-recipient.json` + `.schema.json`** (xochi#633, xochi#635, xochi-sdk#42; product-owner decisions 2026-10-24/25 and 2026-10-29): `descriptorDigest` is the EIP-712 hashStruct of `RecipientDescriptor` plus the stock `SchnorrAccount` address derivation for pinned Aztec 5.2.0 and `@aztec-labs` 6.0.0, with negative vectors; the recipient message uses a 48-byte wide reduction into BN254 and carries recipient Schnorr signatures from TEST ONLY keys. Three approved acknowledgement byte contracts use `Domain (binding)`: `BackupPersistenceAck` binds `keccak256` of randomized encrypted backup bytes and `keccak256(UTF8("xochi.shielded.backup-format.v1"))`, `SenderRegistrationAck` binds the canonical B-panel sender set, and `PaymentReceiptAck` binds exact transaction evidence and credited value. The enrollment acknowledgements reuse the named binding's exact nonce and expiry; `PaymentReceiptAck` uses its own receipt challenge. The design-A testnet tracer has no standardized acknowledgement. Cross-type and cross-binding replay refusals cover every remaining type; malformed vectors reject zero identifiers, zero challenges, and unknown backup formats. `npm run generate:shielded-recipient`.
+- **`conformance/shielded-readiness.json` + `.schema.json`** (xochi-sdk#42, pxe-bridge#50): `Membership`, `RecipientDeployment` and `RootUpdate` attestations, EIP-712 over secp256k1 under the `Xochi Shielded Readiness` domain (`chainId` = corridor source chain; `salt = keccak256(abi.encode(keccak256(environment), network_identity_digest, manifestDigest))`, so the domain stays the standard `{name, version, chainId, salt}`), wire-form records (decimal-string heights, integer `attestedAt`, no leaf index/path/witness), replays under a wrong primary type, `manifestDigest`, domain name, environment or chain, and strict record-parse refusals. Public test key. `npm run generate:shielded-readiness`.
+- **`aztec-crosscheck/`**: a separate package (not a workspace, own lockfile) that holds `shielded-recipient.json` to the exact-pinned Aztec SDKs 5.2.0 and `@aztec-labs` 6.0.0; CI job `aztec-crosscheck`, `npm run crosscheck:aztec`.
+
 ### Changed
 
 - **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod** after the shielded preview deployment. The structural differ reports `0 BREAKING, 8 STALE`: three pxe-bridge readiness relay endpoints and their schemas, Canton TestNet chain id `4149314359`, and the `readiness_not_enabled` / `readiness_unavailable` error codes. That classification deliberately excludes description-only changes; the generated contract also synchronizes these material rules:
@@ -12,6 +18,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   - same-chain settlement is eligible only for opted-in floating conversion pairs: public settlement on a routed EVM or TVM chain, or stealth on a supported EVM destination; the same token is never eligible;
   - Canton TestNet is destination-only and validates its network-specific Canton Coin instrument id, party recipient, public settlement, and testnet enablement; and
   - package references use the published `@xochi/spec` name.
+- `npm run generate:shielded` regenerates all three shielded files in order. `shielded.json`'s `open` list drops `descriptorDigest` and `recipientMessage` (now specified in `shielded-recipient.json`), leaving `ShieldedTermsV1` and `manifestDigest`, and no longer cites the recipient account class as a blocker (xochi-sdk#42). No vector changes.
 
 ## [0.10.0] - 2026-10-27
 

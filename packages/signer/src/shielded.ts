@@ -14,23 +14,43 @@
 //   - the value rules the approval states (Aztec bytes32, amounts).
 //
 // NOT here, because §7 leaves them open: ShieldedTermsV1 (no member names or types are
-// fixed, and `fee_breakdown` has no typed shape), the manifestDigest struct (its identity
-// fields are listed but not typed), the descriptorDigest encoding, and the recipient
-// message wrapper, field reduction and acknowledgement structs (selecting the recipient
-// account class, §7 "Recipient authorization", is a prerequisite, not their
-// specification). A vector for any of them would be a guess other implementations are
-// then held to.
+// fixed, and `fee_breakdown` has no typed shape) and the manifestDigest struct (its identity
+// fields are listed but not typed). A vector for either would be a guess other
+// implementations are then held to. The descriptorDigest encoding, recipient message
+// wrapper and field reduction are in `shielded-recipient.ts`; approved acknowledgement
+// structs are in `shielded-recipient-acks.ts`; readiness is in `shielded-readiness.ts`.
 //
 // Every hash is built by hand from `abi.encode`, so the vector suite can cross-check it
 // against ethers' TypedDataEncoder as an independent implementation.
 
 import { ethers } from "ethers";
 import type { Hex } from "./types";
+import {
+  UINT32_MAX,
+  UINT64_MAX,
+  assertAztecBytes32,
+  aztecUint,
+  bytes32,
+  chainId,
+  coder,
+  environmentHash,
+  evmAddress,
+  keccak,
+  refuse,
+  uint,
+  type UintLike,
+} from "./shielded-values";
 
-type UintLike = bigint | number | string;
-
-const coder = ethers.AbiCoder.defaultAbiCoder();
-const keccak = (data: ethers.BytesLike): Hex => ethers.keccak256(data) as Hex;
+// The value rules live in `shielded-values.ts` (shared with the recipient and readiness
+// encodings); these are their public names.
+export {
+  AZTEC_FIELD_MODULUS,
+  SHIELDED_AMOUNT_MAX,
+  ShieldedEncodingError,
+  assertAztecBytes32,
+  parseShieldedAmount,
+  type ShieldedRefusal,
+} from "./shielded-values";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,138 +82,6 @@ export const RECIPIENT_BINDING_TYPE_STRING =
   "RecipientBinding(address sourceWallet,uint256 sourceChainId,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision,bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)";
 export const RECIPIENT_BINDING_TYPEHASH = ethers.id(RECIPIENT_BINDING_TYPE_STRING) as Hex;
 export const RECIPIENT_BINDING_PURPOSE = "xochi.shielded.recipient-binding.v1";
-
-/** BN254 scalar field order: every Aztec field element and address is below it. */
-export const AZTEC_FIELD_MODULUS =
-  0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
-/** Largest amount a shielded encoding admits: `0 < amount <= 2^128 - 1`. */
-export const SHIELDED_AMOUNT_MAX = 2n ** 128n - 1n;
-
-const UINT32_MAX = 2n ** 32n - 1n;
-const UINT64_MAX = 2n ** 64n - 1n;
-const UINT256_MAX = 2n ** 256n - 1n;
-
-// ---------------------------------------------------------------------------
-// Refusals
-// ---------------------------------------------------------------------------
-
-/**
- * Why an input is refused before anything is encoded. These are ENCODING refusals,
- * not the enrollment API's refusal classes (`challenge_expired`, `binding_unavailable`):
- * a caller maps any of these to its own wire class.
- */
-export type ShieldedRefusal =
-  | "not_bytes32"
-  | "aztec_zero"
-  | "aztec_out_of_field"
-  | "amount_not_canonical"
-  | "amount_zero"
-  | "amount_over_max"
-  | "not_evm_address"
-  | "evm_address_zero"
-  | "uint_not_canonical"
-  | "uint_out_of_range"
-  | "chain_id_zero"
-  | "environment_empty"
-  | "digest_zero"
-  | "purpose_mismatch";
-
-export class ShieldedEncodingError extends Error {
-  readonly code: ShieldedRefusal;
-  readonly field: string;
-  constructor(code: ShieldedRefusal, field: string, detail: string) {
-    super(`${field}: ${code} (${detail})`);
-    this.name = "ShieldedEncodingError";
-    this.code = code;
-    this.field = field;
-  }
-}
-
-const refuse = (code: ShieldedRefusal, field: string, detail: string): never => {
-  throw new ShieldedEncodingError(code, field, detail);
-};
-
-// ---------------------------------------------------------------------------
-// Value rules
-// ---------------------------------------------------------------------------
-
-function bytes32(field: string, value: string): Hex {
-  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
-    refuse("not_bytes32", field, `expected 0x + 64 hex, got ${JSON.stringify(value)}`);
-  }
-  return value.toLowerCase() as Hex;
-}
-
-/**
- * An Aztec `bytes32`: a nonzero field element below the BN254 modulus. Magnitude is all
- * this checks: that the value is an Aztec address and not an EVM address is established by
- * descriptor/address derivation, not by its size, so a small value is not refused.
- */
-export function assertAztecBytes32(field: string, value: string): Hex {
-  const hex = bytes32(field, value);
-  const v = BigInt(hex);
-  if (v === 0n) refuse("aztec_zero", field, "zero");
-  if (v >= AZTEC_FIELD_MODULUS) refuse("aztec_out_of_field", field, "not below the BN254 modulus");
-  return hex;
-}
-
-/**
- * A shielded amount as it crosses JSON (§7 `BaseUnits`): a canonical positive decimal
- * string (no sign, no leading zero, no exponent, no whitespace), `0 < x <= 2^128 - 1`.
- */
-export function parseShieldedAmount(field: string, value: string): bigint {
-  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) {
-    refuse(
-      "amount_not_canonical",
-      field,
-      `expected a canonical decimal, got ${JSON.stringify(value)}`,
-    );
-  }
-  const v = BigInt(value);
-  if (v === 0n) refuse("amount_zero", field, "zero");
-  if (v > SHIELDED_AMOUNT_MAX) refuse("amount_over_max", field, "above 2^128 - 1");
-  return v;
-}
-
-function evmAddress(field: string, value: string): Hex {
-  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
-    refuse("not_evm_address", field, `expected 0x + 40 hex, got ${JSON.stringify(value)}`);
-  }
-  if (BigInt(value) === 0n) refuse("evm_address_zero", field, "zero address");
-  return value.toLowerCase() as Hex;
-}
-
-// Unsigned integers: a bigint, a safe integer, or a canonical decimal string.
-function uint(field: string, value: UintLike, max: bigint): bigint {
-  let v: bigint;
-  if (typeof value === "bigint") v = value;
-  else if (typeof value === "number" && Number.isSafeInteger(value)) v = BigInt(value);
-  else if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) v = BigInt(value);
-  else return refuse("uint_not_canonical", field, `got ${JSON.stringify(String(value))}`);
-  if (v < 0n || v > max) refuse("uint_out_of_range", field, `${v} outside [0, ${max}]`);
-  return v;
-}
-
-function chainId(field: string, value: UintLike): bigint {
-  const v = uint(field, value, UINT256_MAX);
-  if (v === 0n) refuse("chain_id_zero", field, "zero (no virtual-chain stand-in)");
-  return v;
-}
-
-// An Aztec value typed uint256 (chain id, protocol version): nonzero and in-field.
-function aztecUint(field: string, value: UintLike): bigint {
-  const v = uint(field, value, UINT256_MAX);
-  if (v === 0n) refuse("aztec_zero", field, "zero");
-  if (v >= AZTEC_FIELD_MODULUS) refuse("aztec_out_of_field", field, "not below the BN254 modulus");
-  return v;
-}
-
-function environmentHash(environment: string): Hex {
-  if (typeof environment !== "string" || environment.length === 0) {
-    refuse("environment_empty", "environment", "a domain must name its environment");
-  }
-  return ethers.id(environment) as Hex;
-}
 
 // ---------------------------------------------------------------------------
 // NetworkIdentity and the salted domain

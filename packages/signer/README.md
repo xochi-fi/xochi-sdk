@@ -86,6 +86,17 @@ Stealth is per chain. `stealthChains` lists where the server quotes stealth (`[]
 
 Parsing is tolerant (unknown keys dropped, absent optionals `null`, an unusable payload `null`), with these fail-closed readings, each explained in the source: an unadvertised, duplicated or unknown-VM chain is unserved (`null`, never `evm` / `hex20` / first-wins; a duplicate token symbol likewise); an absent `vm_type` means `evm`, a present but unrecognised one keeps the row unaddressable so the duplicate check still sees it (served `cvm`, Canton, is not `hex20`); chain-id keys must be canonical decimal (`"08453"` collapses onto `8453`); and Canton party ids (`hint::1220<64 hex>`) are case-sensitive even when the hint starts `0x`, so `sameAddressish` folds case only for `0x` + hex.
 
+## Shielded recipient and readiness
+
+Inert: nothing in the signing path calls `shielded*.ts`, and shielded settlement is off. These modules only verify; no key is held or accepted. Signature recovery alone never proves current authorization.
+
+- **`verifyRecipientAck` trusts only your inputs.** `binding` is the one you accepted from the source-wallet ceremony, `descriptor` the one it names, `environment` and `network` your corridor record's, and `profile` the `AZTEC_RECIPIENT_PROFILES` entry your corridor record pins for that network. Never take any of them from the recipient. The descriptor is checked against the profile you pass, not against the network: nothing maps a `NetworkIdentity` to a profile for you.
+- **`expected` is the subject you hold**: the backup commitment you stored, the sender set you registered, or the receipt challenge you issued and the settlement you recorded. The two enrollment acknowledgements are held to the binding's own nonce and expiry, a receipt's token to the binding's and its network to yours.
+- **`consumeReplayKey` keys on `recipientAckReplayKey(primaryType, bindingDigest, nonce)`, never the bare nonce**: both enrollment acknowledgements reuse the binding's nonce, which the binding ceremony itself consumed. It must be durable and atomic across processes; it runs last, after every other check.
+- Refusals are `AckEncodingError`, malformed input included; an unknown `primaryType` (untrusted wire input, any non-string included) refuses as `unknown_primary_type`, never a bare `TypeError`. A descriptor or profile of yours that fails its own check throws `RecipientEncodingError`.
+- **`verifyReadinessRecord`** rebuilds the domain from your corridor record and pins `expectedSigner` to the corridor's dedicated attestation key. Pin `expected.root` on a `Membership` check whenever you hold the latest attested root; without it, `minBlock` must be that root's `rootBlock`, or a member record under a superseded root verifies until it ages out. A `RootUpdate` is how a new root is learned, so its root is usually unpinned. `maxAgeSeconds` and `maxFutureSkewSeconds` are capped at 86 400 and 300; choose stricter values per consumer.
+- `recoverReadinessSigner` returns an address, not a verdict: compare it with your pin, or use `verifyReadinessRecord`.
+
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/signer/CHANGELOG.md).
 
 ## License

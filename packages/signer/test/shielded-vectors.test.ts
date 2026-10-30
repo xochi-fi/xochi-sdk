@@ -41,6 +41,7 @@ import {
   type NetworkIdentity,
   type RecipientBinding,
   type ShieldedDomain,
+  type ShieldedRefusal,
 } from "@xochi/signer";
 
 type Network = Record<keyof NetworkIdentity, string>;
@@ -406,15 +407,40 @@ describe("value rules", () => {
   });
 });
 
+// Exactly the codes shielded.ts has always refused with: Record<ShieldedRefusal, true> fails
+// to compile if the union gains or loses a member (the recipient and readiness modules carry
+// their own unions and errors).
+const SHIELDED_REFUSALS: Record<ShieldedRefusal, true> = {
+  not_bytes32: true,
+  aztec_zero: true,
+  aztec_out_of_field: true,
+  amount_not_canonical: true,
+  amount_zero: true,
+  amount_over_max: true,
+  not_evm_address: true,
+  evm_address_zero: true,
+  uint_not_canonical: true,
+  uint_out_of_range: true,
+  chain_id_zero: true,
+  environment_empty: true,
+  digest_zero: true,
+  purpose_mismatch: true,
+};
+
+describe("refusal contract", () => {
+  it("keeps ShieldedRefusal at its 14 codes", () => {
+    expect(Object.keys(SHIELDED_REFUSALS)).toHaveLength(14);
+  });
+});
+
 describe("open items", () => {
   it("publishes no vector for what §7 leaves open, and names each one", () => {
-    expect(file.open.map((o) => o.item)).toEqual([
-      "ShieldedTermsV1",
-      "manifestDigest",
-      "descriptorDigest",
-      "recipientMessage",
-    ]);
+    expect(file.open.map((o) => o.item)).toEqual(["ShieldedTermsV1", "manifestDigest"]);
     expect(Object.keys(file)).not.toContain("terms");
+    // The descriptor digest, wrapper and approved acknowledgements live in
+    // shielded-recipient.json, never here.
     expect(Object.keys(file)).not.toContain("recipientMessage");
+    // xochi-sdk#42: the class is pinned, so no open item may still cite it as the blocker.
+    for (const o of file.open) expect(o.reason).not.toMatch(/account class/);
   });
 });
