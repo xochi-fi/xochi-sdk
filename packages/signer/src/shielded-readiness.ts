@@ -52,6 +52,7 @@ import type { Hex } from "./types";
  */
 export type ReadinessRefusal =
   | ShieldedRefusal
+  | "record_not_object"
   | "missing_field"
   | "unknown_field"
   | "forbidden_field"
@@ -209,7 +210,7 @@ export function parseReadinessRecord<T extends ReadinessType>(
 ): { attestation: ReadinessRecords[T]; signature: Hex } {
   assertReadinessType(primaryType);
   if (record === null || typeof record !== "object" || Array.isArray(record)) {
-    throw new TypeError("a readiness record is a JSON object");
+    refuseReadiness("record_not_object", "record", "a readiness record is a JSON object");
   }
   const r = record as Record<string, unknown>;
   const allowed = [...MEMBERS[primaryType], "signature"];
@@ -330,10 +331,16 @@ export interface ReadinessDomainInputs {
   manifestDigest: string;
 }
 
+/**
+ * `root` is optional: pin it whenever the caller holds the root it expects (the latest
+ * attested RootUpdate for a Membership check). Unpinned, a member record under a
+ * superseded root still verifies, so `minBlock` must then be the latest attested
+ * `rootBlock`. A RootUpdate is how a new root is learned, so it is usually unpinned.
+ */
 export interface ReadinessExpectedSubjects {
-  Membership: { descriptorDigest: string };
+  Membership: { descriptorDigest: string; root?: string };
   RecipientDeployment: { descriptorDigest: string; recipient: string; classId: string };
-  RootUpdate: { root: string };
+  RootUpdate: { root?: string };
 }
 
 export interface ReadinessVerificationPolicy<T extends ReadinessType> {
@@ -349,7 +356,10 @@ export interface ReadinessVerificationPolicy<T extends ReadinessType> {
   maxAgeSeconds: UintLike;
   /** Maximum clock lead, no greater than READINESS_MAX_FUTURE_SKEW_SECONDS. */
   maxFutureSkewSeconds: UintLike;
-  /** Nonzero lowest finalized block acceptable for this readiness type. */
+  /**
+   * Nonzero lowest finalized block acceptable for this readiness type. For an unpinned
+   * Membership root, the latest attested RootUpdate's `rootBlock`.
+   */
   minBlock: UintLike;
 }
 
@@ -357,6 +367,13 @@ export interface VerifiedReadiness<T extends ReadinessType> {
   attestation: ReadinessRecords[T];
   signature: Hex;
   signer: Hex;
+}
+
+// Membership and RootUpdate: the root, when the caller pins one.
+function assertExpectedRoot(actual: Hex, expectedRoot: string | undefined): void {
+  if (expectedRoot === undefined) return;
+  const root = readinessRules(() => bytes32("expected.root", expectedRoot));
+  if (actual !== root) refuseReadiness("subject_mismatch", "root", `expected ${root}`);
 }
 
 /**
@@ -397,6 +414,7 @@ export function verifyReadinessRecord<T extends ReadinessType>(
     if (membership.descriptorDigest !== expectedDescriptor) {
       refuseReadiness("subject_mismatch", "descriptorDigest", `expected ${expectedDescriptor}`);
     }
+    assertExpectedRoot(membership.root, expected.root);
   } else if (primaryType === "RecipientDeployment") {
     const deployment = attestation as RecipientDeploymentAttestation;
     const expected = policy.expected as ReadinessExpectedSubjects["RecipientDeployment"];
@@ -424,10 +442,7 @@ export function verifyReadinessRecord<T extends ReadinessType>(
   } else {
     const update = attestation as RootUpdateAttestation;
     const expected = policy.expected as ReadinessExpectedSubjects["RootUpdate"];
-    const expectedRoot = readinessRules(() => bytes32("expected.root", expected.root));
-    if (update.root !== expectedRoot) {
-      refuseReadiness("subject_mismatch", "root", `expected ${expectedRoot}`);
-    }
+    assertExpectedRoot(update.root, expected.root);
   }
 
   const now = readinessRules(() => uint("now", policy.now, UINT64_MAX));

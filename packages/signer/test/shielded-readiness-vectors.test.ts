@@ -364,6 +364,60 @@ describe("attestations", () => {
     ).toEqual({ code: "uint_out_of_range", field: "maxFutureSkewSeconds" });
   });
 
+  it("pins the root only when the caller holds one, and refuses a non-object record", () => {
+    // minBlock is nonzero, so the height-0 boundary vector cannot pass any policy.
+    const positive = file.vectors.filter(
+      (candidate) =>
+        ((candidate.primaryType === "Membership" && candidate.record.member === true) ||
+          candidate.primaryType === "RootUpdate") &&
+        candidate.record.rootBlock !== "0",
+    );
+    expect(new Set(positive.map((v) => v.primaryType)).size).toBe(2);
+    for (const v of positive) {
+      const domainVector = file.domain.vectors.find(
+        (candidate) => candidate.domainSeparator === v.domainSeparator,
+      )!;
+      const subject =
+        v.primaryType === "Membership"
+          ? { descriptorDigest: v.record.descriptorDigest as string }
+          : {};
+      const policy = (root?: string) => ({
+        domain: {
+          sourceChainId: domainVector.chainId,
+          environment: domainVector.environment,
+          network: domainVector.network,
+          manifestDigest: domainVector.manifestDigest,
+        },
+        expectedSigner: v.signer,
+        expected: root === undefined ? subject : { ...subject, root },
+        now: v.record.attestedAt as number,
+        maxAgeSeconds: 100,
+        maxFutureSkewSeconds: 0,
+        minBlock: v.record.rootBlock as string,
+      });
+      expect(verifyReadinessRecord(v.primaryType, v.record, policy() as never).signer).toBe(
+        v.signer,
+      );
+      expect(
+        verifyReadinessRecord(v.primaryType, v.record, policy(v.record.root as string) as never)
+          .signer,
+      ).toBe(v.signer);
+      // A member record under a superseded root.
+      expect(
+        refusalOf(() =>
+          verifyReadinessRecord(v.primaryType, v.record, policy("0x" + "11".repeat(32)) as never),
+        ),
+        v.name,
+      ).toEqual({ code: "subject_mismatch", field: "root" });
+    }
+    for (const record of [null, [], "record", 7]) {
+      expect(refusalOf(() => parseReadinessRecord("RootUpdate", record))).toEqual({
+        code: "record_not_object",
+        field: "record",
+      });
+    }
+  });
+
   it("refuses signed negative and mismatched readiness subjects", () => {
     for (const v of file.vectors.filter(
       (candidate) => candidate.record.member === false || candidate.record.deployed === false,
