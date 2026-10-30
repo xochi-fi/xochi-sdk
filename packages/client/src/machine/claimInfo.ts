@@ -2,7 +2,11 @@
  * The stealth claim-info gate, applied at quote ingest.
  */
 
-import { STEALTH_ACCOUNT_SALT, isTrustedStealthFactory } from "../shared/index.js";
+import {
+  STEALTH_ACCOUNT_SALT,
+  isTrustedStealthFactory,
+  type SettlementType,
+} from "../shared/index.js";
 
 /**
  * Why a served `claim_info` cannot be acted on, or null when it is fine.
@@ -18,6 +22,12 @@ import { STEALTH_ACCOUNT_SALT, isTrustedStealthFactory } from "../shared/index.j
  * cannot verify the stealth ADDRESS itself at quote time (the solver picks the
  * ephemeral key, so the address is only derivable once announced), which is
  * exactly why the factory has to carry the weight.
+ *
+ * `requestedSettlement` is the settlement the quote was REQUESTED under. A
+ * stealth request answered with no `claim_info` names no factory at all, so it
+ * is refused as `untrusted_factory`, exactly as a `claim_info` without a
+ * factory is: missing must never read as fine. Any other request carries no
+ * `claim_info`, and its absence passes.
  */
 export type ClaimInfoRejection =
   | { code: "untrusted_factory"; message: string }
@@ -26,8 +36,15 @@ export type ClaimInfoRejection =
 export function claimInfoError(
   claimInfo: { factoryAddress?: string; salt?: number } | undefined | null,
   chainId: number | undefined | null,
+  requestedSettlement?: SettlementType | null,
 ): ClaimInfoRejection | null {
-  if (!claimInfo) return null; // Not a stealth quote; nothing to check.
+  if (!claimInfo) {
+    if (requestedSettlement !== "stealth") return null; // Not a stealth quote; nothing to check.
+    return {
+      code: "untrusted_factory",
+      message: "This private quote names no account factory to check",
+    };
+  }
   if (!isTrustedStealthFactory(claimInfo.factoryAddress, chainId)) {
     return {
       code: "untrusted_factory",

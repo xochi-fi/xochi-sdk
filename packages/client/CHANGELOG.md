@@ -2,11 +2,15 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.1.7] - 2026-10-30
 
 ### Changed
 
-- `@xochi/signer` dependency range is `^0.6.0` (was `^0.5.1`). The client calls no new signer API; through `buildDepositAttestationMessage` it picks up 0.6.0's case-exact `to_token` / `recipient` encoding for values that are not entirely `0x` + hex (Canton parties).
+- `@xochi/signer` dependency range is `^0.6.0` (was `^0.5.1`). The client calls no new signer API, and the signer types it re-exports (`MethodPin`, `PinnedPullRecipients`, `PreparedClaim`) are unchanged. Through `buildDepositAttestationMessage` and `recipientIsDestinationToken` it picks up 0.6.0's case-exact `to_token` / `recipient` handling for values that are not entirely `0x` + hex (Canton parties).
+
+### Fixed
+
+- **Stealth settlement**: an executable quote requested as stealth that carries no `claim_info` is now refused at quote ingest (`untrusted_factory`, "This private quote names no account factory to check") instead of passing as if it were public. `claimInfoError` takes the requested settlement as an optional third argument; without it, or for a public or shielded request, a missing `claim_info` still passes.
 
 ## [0.1.6] - 2026-10-29
 
