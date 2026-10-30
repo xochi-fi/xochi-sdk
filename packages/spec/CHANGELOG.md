@@ -18,6 +18,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   - same-chain settlement is eligible only for opted-in floating conversion pairs: public settlement on a routed EVM or TVM chain, or stealth on a supported EVM destination; the same token is never eligible;
   - Canton TestNet is destination-only and validates its network-specific Canton Coin instrument id, party recipient, public settlement, and testnet enablement; and
   - package references use the published `@xochi/spec` name.
+- `npm run generate:shielded` regenerates all three shielded files in order. `shielded.json`'s `open` list drops `descriptorDigest` and `recipientMessage` (now specified in `shielded-recipient.json`), leaving `ShieldedTermsV1` and `manifestDigest`, and no longer cites the recipient account class as a blocker (xochi-sdk#42). No vector changes.
 
 ## [0.10.0] - 2026-10-27
 
@@ -60,13 +61,10 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 - `package.json` gains description, keywords and homepage.
 - `package.json` declares `repository` with its `directory`, as `npm publish --provenance` requires; releases publish from `.github/workflows/release.yml` with provenance on a `spec-v*` tag.
 - `engines.node` is `>=22`. `prepublishOnly` runs `format:check`, `typecheck` and `test` before every publish. The tarball ships this `CHANGELOG.md`.
-- `npm run generate:shielded` regenerates all three shielded files in order. `shielded.json`'s `open` list drops `descriptorDigest` and `recipientMessage` (now specified in `shielded-recipient.json`) for one `recipientAcknowledgements` item, and no longer cites the recipient account class as a blocker (xochi-sdk#42). No vector changes.
 - SPEC.md no longer links `docs/ARCHITECTURE.md`, which exists nowhere and shipped in no tarball; §5.2 and §9 still cite it by name.
 - SPEC.md §3.2 / §3.4 / §5.1 (docs only, no wire change): `aztec_proof` is recorded as unused by every producer and consumer (its removal from `ExecuteRequest` is a lockstep wire change with Riddler, then `generate:wire`); the shielded row drops "testnet; launch-pending", the "~120s" expected fill and the `noteHashes` / `nullifiers` arrays claim for what is served: scalars `noteCommitment`, `nullifierHash`, `l2TxHash`, with shielded not offered. §5.1 records that `/xochi/status/:intent_id` serving them links an intent to its Aztec transaction, which ESCROW-RFC §5.1 rules out before shielded is offered under it, and that the Worker's intent read (`/api/intent/:id` and its `/status`) today returns the full record to anyone holding the intent id, stealth included. The status-only view and read token of xochi#565 (open) are described as not yet served, and a read-token read of a shielded intent getting only that view is a lockstep requirement before shielded is offered. The transaction-centric receipt is written when Riddler serves it. The §0.3 entry is dated and ships in the next published spec release, whichever version it declares.
 
 ### Fixed
-
-- **Shielded recipient enrollment challenge vectors** now give `BackupPersistenceAck` and `SenderRegistrationAck` the exact nonce and expiry of binding X (`0x0e...0e`, `1900000000`) instead of an independent acknowledgement challenge. `PaymentReceiptAck` keeps the separate receipt challenge (`0xa5...a5`, `1900000300`); all derived hashes, signatures, replay cases, and malformed cases are regenerated from the corrected source.
 
 - **Wire differ** (`wire/compare.mjs`): local `$ref` parameters and request bodies are resolved before grading served-only ones, so a required one is BREAKING, and every served `$ref` that is external, dangling, cyclic or malformed grades BREAKING wherever it sits (it graded STALE outside served-only parameters and request bodies); fragments decode in RFC 6901 §6 order.
 - **`generate:wire`** grades against the `openapi.{json,sha256}` pair committed at HEAD, never the working tree, so a gutted, re-digested local copy cannot launder a BREAKING change; a committed pair that fails its digest is refused with no flag; `--first-vendoring` consents only to an unreadable or unrecognisable baseline (`unrecognisedContract`, shared with `verify:openapi`) and never skips the diff against an intact one; the document is renamed before the digest.
