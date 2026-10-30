@@ -977,8 +977,13 @@ function onQuote(
     });
   }
 
-  // Stealth: the served factory decides who owns the payout account (#302).
-  const claimError = claimInfoError(quote.claimInfo, ctx.toChainId);
+  // Stealth: the served factory decides who owns the payout account (#302). A
+  // stealth REQUEST answered without one is refused, never read as public.
+  const claimError = claimInfoError(
+    quote.claimInfo,
+    ctx.toChainId,
+    flight.request?.settlementPreference ?? ctx.settlementPreference,
+  );
   if (claimError) {
     log(fx, "error", `${LOG} Stealth claim info rejected:`, claimError.code, quote.claimInfo);
     return refuseQuote(m, fx, flight, {
