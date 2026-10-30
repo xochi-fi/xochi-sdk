@@ -1,6 +1,6 @@
 {
   "name": "@xochi/spec",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Xochi protocol spec, wire contract and byte-equality conformance vectors.",
   "keywords": [
     "xochi",
@@ -117,7 +117,7 @@
   "devDependencies": {
     "@xochi/client": "0.1.5",
     "@xochi/reference": "0.0.0",
-    "@xochi/signer": "0.5.1",
+    "@xochi/signer": "0.6.0",
     "@xochi/solver-sdk": "0.5.0",
     "ajv": "^8.20.0",
     "@zkpassport/poseidon2": "0.6.2",

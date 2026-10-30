@@ -4,6 +4,8 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
 ### Added
 
 - **`conformance/shielded-recipient.json` + `.schema.json`** (xochi#633, xochi#635, xochi-sdk#42; product-owner decisions 2026-10-24/25 and 2026-10-29): `descriptorDigest` is the EIP-712 hashStruct of `RecipientDescriptor` plus the stock `SchnorrAccount` address derivation for pinned Aztec 5.2.0 and `@aztec-labs` 6.0.0, with negative vectors; the recipient message uses a 48-byte wide reduction into BN254 and carries recipient Schnorr signatures from TEST ONLY keys. Three approved acknowledgement byte contracts use `Domain (binding)`: `BackupPersistenceAck` binds `keccak256` of randomized encrypted backup bytes and `keccak256(UTF8("xochi.shielded.backup-format.v1"))`, `SenderRegistrationAck` binds the canonical B-panel sender set, and `PaymentReceiptAck` binds exact transaction evidence and credited value. The enrollment acknowledgements reuse the named binding's exact nonce and expiry; `PaymentReceiptAck` uses its own receipt challenge. The design-A testnet tracer has no standardized acknowledgement. Cross-type and cross-binding replay refusals cover every remaining type; malformed vectors reject zero identifiers, zero challenges, and unknown backup formats. `npm run generate:shielded-recipient`.
@@ -12,6 +14,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
+- **Version 0.11.0** (MINOR; SPEC.md §0.3): adds the shielded-recipient and shielded-readiness conformance sets. Existing vectors remain byte-identical; no active taker signed struct or wire field changes. Riddler must advertise `spec_version: "0.11.0"` in lockstep and vendor `shielded`, `shielded-recipient` and `shielded-readiness`.
 - **Wire contract (`wire/openapi.json` + `openapi.sha256`) refreshed from prod** after the shielded preview deployment. The structural differ reports `0 BREAKING, 8 STALE`: three pxe-bridge readiness relay endpoints and their schemas, Canton TestNet chain id `4149314359`, and the `readiness_not_enabled` / `readiness_unavailable` error codes. That classification deliberately excludes description-only changes; the generated contract also synchronizes these material rules:
   - deposit-attestation v3 signs exactly 18 fixed lines, adds `refund_address`, and corrects normalization so `to_token` and `recipient` are lowercased only when the entire value is `0x`-prefixed hex;
   - quote-through requests wait for the sealed solver window and return its best firm bid under second-price settlement, are escrow-only and exact-input-only, and distinguish no-bid and preview behavior;

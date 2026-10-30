@@ -1,6 +1,6 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.10.0`
+- **Spec version:** `0.11.0`
 - **Status:** Draft (signature and fee layers are substantive and
   conformance-tested; transport defers to the server OpenAPI; escrow/solver
   sections are reserved)
@@ -37,6 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
+| 0.11.0 | current | 3 | Shielded recipient (descriptor digest, recipient message, three recipient acknowledgements) and pxe-bridge readiness attestation conformance vectors, plus the 2026-10-28 wire refresh (0 differ-BREAKING). Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
 | 0.10.0 | current | 3 | Shielded terms and preview, corridor manifest, solver registration, and Canton destination order-id conformance vectors. Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
 | 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
 | 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
@@ -146,6 +147,18 @@
   and was moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
+- `0.11.0`: additive conformance for the shielded recipient and its readiness
+  evidence. `conformance/shielded-recipient.json` pins the `RecipientDescriptor`
+  digest and stock `SchnorrAccount` address derivation (Aztec 5.2.0 and 6.0.0),
+  the wide-reduction recipient message, and the `BackupPersistenceAck`,
+  `SenderRegistrationAck` and `PaymentReceiptAck` encodings under
+  `Domain (binding)`. `conformance/shielded-readiness.json` pins the
+  `Membership`, `RecipientDeployment` and `RootUpdate` attestations under the
+  `Xochi Shielded Readiness` domain. `shielded.json`'s `open` list drops the two
+  entries these sets now specify; no prior vector byte moves. The wire copy is
+  refreshed from prod (`0 BREAKING, 8 STALE`: the readiness relay endpoints,
+  Canton TestNet, two readiness error codes). The server MUST advertise
+  `spec_version: "0.11.0"` in lockstep.
 - `0.10.0`: additive conformance for three surfaces. `conformance/shielded-terms.json`
   pins the proposed `ShieldedTermsV1`, non-signable `ShieldedPreviewV1` and
   `CorridorManifestV1` encodings. `conformance/solver-registration.json` pins

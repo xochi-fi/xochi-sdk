@@ -1,6 +1,6 @@
 {
   "name": "@xochi/signer",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Network-free EIP-712 signing and pre-sign checks for Xochi intents: ERC-3009, Permit2, ERC-5564, ERC-4337, escrow.",
   "keywords": [
     "xochi",
