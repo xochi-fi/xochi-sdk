@@ -59,8 +59,15 @@ export interface SolverPinConfig {
 export type SolverPinField =
   | "pull_to"
   | "pull_spender"
+  /**
+   * The pull is not an authorization kind the client signs: its `primaryType`
+   * is neither ERC-3009 `ReceiveWithAuthorization` nor Permit2
+   * `PermitWitnessTransferFrom`, or it is a Permit2 struct whose domain
+   * `verifyingContract` is not the canonical Permit2 (`PERMIT2_ADDRESS`). The
+   * domain decides which contract honors the signature, so a Permit2-shaped
+   * pull bound to any other contract is not a Permit2 authorization.
+   */
   | "pull_type"
-  | "pull_domain"
   | "pull_amount"
   | "payout_amount"
   | "payout_recipient";
@@ -111,12 +118,13 @@ export function validateSolverPin(
       recipient = checkRecipient("pull_to", message.to, "erc3009", config.erc3009Allowlist, config);
       break;
     case PERMIT2_TYPE:
-      // Refused before the approval is requested (SPEC §2.3: Permit2 is one
-      // universal address), so no allowance is granted for any other contract.
+      // Not a Permit2 authorization unless the domain names the canonical
+      // Permit2 (SPEC §2.3: one universal address). Refused before the approval
+      // is requested, so no allowance is granted for any other contract.
       if (!sameAddressish(String(pull.domain?.verifyingContract ?? ""), PERMIT2_ADDRESS)) {
         return {
           ok: false,
-          field: "pull_domain",
+          field: "pull_type",
           reason: `Permit2 pull domain names ${String(pull.domain?.verifyingContract)}, not the canonical Permit2 ${PERMIT2_ADDRESS}`,
         };
       }

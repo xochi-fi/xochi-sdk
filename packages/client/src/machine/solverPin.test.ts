@@ -120,7 +120,7 @@ describe("validateSolverPin", () => {
         AMOUNT,
       );
       expect(r.ok).toBe(false);
-      expect(r).toMatchObject({ field: "pull_domain" });
+      expect(r).toMatchObject({ field: "pull_type" });
     });
 
     it("accepts the canonical Permit2 domain with no version, in any case", () => {
