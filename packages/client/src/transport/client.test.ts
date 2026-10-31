@@ -32,6 +32,7 @@ import {
   feeBreakdownReconcilable,
 } from "../fee.js";
 import type { QuoteRequest } from "../machine/wire.js";
+import { PROMO_NOT_APPLIED_NOTE, REFERRAL_NEUTRAL_NOTE } from "../shared/index.js";
 
 interface Recorded {
   url: string;
@@ -881,6 +882,33 @@ describe("quote retries only a transient gateway status", () => {
       refund_address: "TWd4WrZ9wn84f5x1hZhL4DHvk738ns5jwb",
     });
   });
+
+  it("reads the Worker's verdict on each code", async () => {
+    const { c } = client(() =>
+      okQuote({
+        referral: { neutral: true, note: REFERRAL_NEUTRAL_NOTE },
+        promo_note: PROMO_NOT_APPLIED_NOTE,
+      }),
+    );
+    const quote = await c.getQuote({ ...req, ref: "PARTNER", promo: "LAUNCH10" });
+    expect(quote.referral).toEqual({ neutral: true, note: REFERRAL_NEUTRAL_NOTE });
+    expect(quote.referralNote).toBeUndefined();
+    expect(quote.promo).toBeUndefined();
+    expect(quote.promoNote).toBe(PROMO_NOT_APPLIED_NOTE);
+  });
+
+  it("sends the referral and promo codes as `ref` and `promo`, and neither when unset", async () => {
+    const { c, calls } = client(() => okQuote());
+    await c.getQuote({ ...req, ref: "PARTNER", promo: "LAUNCH10" });
+    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({
+      ref: "PARTNER",
+      promo: "LAUNCH10",
+    });
+    await c.getQuote({ ...req, fromAmount: "2000000" });
+    const plain: Record<string, unknown> = JSON.parse(String(calls[1].init.body));
+    expect(plain).not.toHaveProperty("ref");
+    expect(plain).not.toHaveProperty("promo");
+  });
 });
 
 describe("timeouts cover the response body", () => {
@@ -1047,6 +1075,8 @@ describe("getQuote cache", () => {
       { refundAddress: "TWd4WrZ9wn84f5x1hZhL4DHvk738ns5JWB" },
     ],
     ["preview vs executable", { wallet: undefined, preview: true }, {}],
+    ["referral code", {}, { ref: "PARTNER" }],
+    ["promo code", { promo: "LAUNCH10" }, { promo: "SPRING5" }],
   ] as [string, Partial<QuoteRequest>, Partial<QuoteRequest>][])(
     "refetches when only the %s differs",
     async (_name, a, b) => {

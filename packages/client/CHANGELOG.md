@@ -4,6 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **Referral and promo codes on the quote request** (xochi#583, #584): `QuoteRequest.ref` / `QuoteRequest.promo`, sent to the Worker as `ref` / `promo` and part of the quote-cache key, so each pair of codes is its own quote. The machine's `Context` takes optional `ref` / `promo`; `buildQuoteRequest` sends each trimmed and uppercased, and drops one that does not match `REFERRAL_CODE_REGEX` / `PROMO_CODE_REGEX` rather than send it. A code change is a trade change: it lets go of the held quote. `validateSwapParams` refuses a code that is not in its stored form.
+- **The Worker's verdict on each code** on `QuoteResponse`: `referral`, `referralNote`, `promo`, `promoNote`, mapped from the already-typed wire fields (previously decoded and then dropped by `mapQuoteResponse`).
+
 ### Fixed
 
 - **Origin pull**: the machine now runs the solver pin (`validateSolverPin`) before it asks the integrator for the one-time approval (`ensureApproval`), so a pull the client would refuse to sign never gets an unlimited allowance. The approval covers the same anchor the pin uses, the quoted input (`quotedFromAmount`) before the served `fromAmount`. `validateSolverPin` also refuses a Permit2 pull whose domain names any contract but the canonical Permit2, reported as the existing `SolverPinField` `"pull_type"` (not an authorization kind the client signs); the union is unchanged. Quote ingest already refused both cases through `@xochi/signer`'s `assertIntentMatchesRequest` / `assertPullMatchesIntent`; this is defense in depth at the approval step.

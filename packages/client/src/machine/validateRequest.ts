@@ -19,6 +19,8 @@ import {
   MAX_SLIPPAGE_PERCENT,
   MAX_SLIPPAGE_BPS,
   isValidTronAddress,
+  PROMO_CODE_REGEX,
+  REFERRAL_CODE_REGEX,
 } from "../shared/index.js";
 import type { QuoteRequest } from "./wire.js";
 
@@ -170,6 +172,12 @@ const validateSettlement = (pref: string | undefined): string[] =>
       ? ["Invalid settlement preference"]
       : [];
 
+/** A code is sent only in its stored form (`buildQuoteRequest` normalises it). */
+const validateCode = (code: string | undefined, pattern: RegExp, name: string): string[] =>
+  code === undefined || pattern.test(code)
+    ? []
+    : [`Invalid ${name} code: 3 to 32 of A-Z, 0-9, _ or -, starting with a letter or digit`];
+
 const validateSameToken = (p: Partial<QuoteRequest>): string[] =>
   p.fromToken &&
   p.toToken &&
@@ -194,6 +202,8 @@ export const validateSwapParams = (
     ...validateSlippageBps(params.slippageBps),
     ...validateSettlement(params.settlementPreference),
     ...validateSameToken(params),
+    ...validateCode(params.ref, REFERRAL_CODE_REGEX, "referral"),
+    ...validateCode(params.promo, PROMO_CODE_REGEX, "promo"),
   ];
   return { isValid: errors.length === 0, errors };
 };

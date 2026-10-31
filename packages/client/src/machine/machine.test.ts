@@ -2342,4 +2342,20 @@ describe("the held quote's trade, as the request normalises it", () => {
     s.send({ type: "ContextChanged", ctx: ctx({ recipientAddress: ATTACKER }) });
     expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
+
+  it("sends the context's codes, normalised, and lets go of a quote when one changes", () => {
+    const s = new Session(ctx({ ref: "partner", promo: " launch10 " }));
+    const call = s.requestQuote();
+    expect(call.request).toMatchObject({ ref: "PARTNER", promo: "LAUNCH10" });
+    s.send({ type: "QuoteReplied", flight: call.flight, result: { ok: true, quote: quote() } });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // The same codes in another spelling are the same request.
+    s.send({ type: "ContextChanged", ctx: ctx({ ref: "PARTNER", promo: "LAUNCH10" }) });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // Another promo prices another deal.
+    s.send({ type: "ContextChanged", ctx: ctx({ ref: "PARTNER", promo: "SPRING5" }) });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+  });
 });

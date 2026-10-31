@@ -1403,6 +1403,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           // Refund destination on the origin chain for a deposit-route origin.
           // Omitted for EVM origins, which refund to the connected wallet.
           refund_address: request.refundAddress,
+          // Referral and promo codes (xochi#583, #584); omitted when unset.
+          ref: request.ref,
+          promo: request.promo,
           stealth_meta_address: request.stealthMetaAddress
             ? {
                 spending_pub_key: request.stealthMetaAddress.spendingPubKey,
@@ -1759,5 +1762,9 @@ function hashQuoteRequest(request: QuoteRequest): string {
     // Distinct recipients (non-EVM dest) are distinct quotes.
     (request.recipientAddress ?? "").toLowerCase(),
     request.refundAddress ?? "",
+    // A code changes the price (promo) or who earns the routing layer (ref),
+    // and the response carries its outcome: each pair of codes is its own quote.
+    request.ref ?? "",
+    request.promo ?? "",
   ].join(":");
 }
