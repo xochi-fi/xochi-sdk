@@ -79,7 +79,10 @@ export const MAX_ID_LENGTH = 128;
  * A trade reference as the frame mints it: `tr_` and 128 random bits in
  * lowercase hex, fresh per trade and the same on every event of that trade.
  * Opaque by design: it is not the Worker's intent id and means nothing to the
- * API, so a host can correlate a trade's events but cannot look the trade up.
+ * API, so the events alone let a host correlate a trade but not look it up.
+ * It does not hide the intent id from a host that supplies the wallet
+ * provider: the frame forwards `eth_signTypedData_v4` to that provider, and
+ * the signed `XochiIntent` carries `intentId`.
  */
 export const TRADE_REF_PATTERN = /^tr_[0-9a-f]{32}$/;
 export const MAX_ERROR_MESSAGE_LENGTH = 1_000;
