@@ -594,8 +594,14 @@ describe("update properties", () => {
       fc.property(fc.oneof(scripts, ceremonies), (actions) => {
         for (const t of run(actions)) {
           if (t.prev.intent.refusal !== null || t.next.intent.refusal === null) continue;
-          // Confirm (before any prompt) or the origin-pull leg (before signature 2).
-          expect(["SignRequested", "ApprovalReplied"]).toContain(t.msg.type);
+          // Confirm (before any prompt), the origin-pull pin (after signature 1,
+          // before the approval), or the approval answer (before signature 2).
+          expect([
+            "SignRequested",
+            "SignReplied",
+            "PullSignRequested",
+            "ApprovalReplied",
+          ]).toContain(t.msg.type);
           expect(t.effects.filter((e) => e.type === "Wallet" || e.type === "Api")).toEqual([]);
           expect(t.next.intent.quote).toBe(t.prev.intent.quote);
           if (t.next.intent.status === "expired") {

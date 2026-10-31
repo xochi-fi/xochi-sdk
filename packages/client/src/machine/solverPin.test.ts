@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { PERMIT2_ADDRESS } from "@xochi/signer";
 import { validateSolverPin, validatePayoutPin, type SolverPinConfig } from "./solverPin.js";
 import type { Eip712TypedData } from "../shared/index.js";
 
@@ -34,9 +35,13 @@ function erc3009Pull(to: string, value = "1000000"): Eip712TypedData {
   };
 }
 
-function permit2Pull(spender: string, amount = "1000000"): Eip712TypedData {
+function permit2Pull(
+  spender: string,
+  amount = "1000000",
+  verifyingContract: string = PERMIT2_ADDRESS,
+): Eip712TypedData {
   return {
-    domain: { name: "Permit2", version: "1", chainId: 8453, verifyingContract: ATTACKER },
+    domain: { name: "Permit2", version: "1", chainId: 8453, verifyingContract },
     types: { PermitWitnessTransferFrom: [{ name: "spender", type: "address" }] },
     primaryType: "PermitWitnessTransferFrom",
     message: { spender, nonce: "1", deadline: "9999999999", permitted: { token: TOKEN, amount } },
@@ -104,6 +109,28 @@ describe("validateSolverPin", () => {
       const r = validateSolverPin(permit2Pull(SOLVER), pinned, AMOUNT);
       expect(r.ok).toBe(false);
       expect(r).toMatchObject({ field: "pull_spender" });
+    });
+
+    it("rejects a domain that names any contract but the canonical Permit2", () => {
+      // Checked before the approval is requested, so no allowance can be
+      // granted to a served contract (SPEC §2.3).
+      const r = validateSolverPin(
+        permit2Pull(PERMIT2_CONTRACT, "1000000", ATTACKER),
+        pinned,
+        AMOUNT,
+      );
+      expect(r.ok).toBe(false);
+      expect(r).toMatchObject({ field: "pull_type" });
+    });
+
+    it("accepts the canonical Permit2 domain with no version, in any case", () => {
+      const pull = permit2Pull(PERMIT2_CONTRACT);
+      const domain = {
+        name: "Permit2",
+        chainId: 8453,
+        verifyingContract: PERMIT2_ADDRESS.toLowerCase(),
+      };
+      expect(validateSolverPin({ ...pull, domain }, pinned, AMOUNT)).toEqual({ ok: true });
     });
   });
 

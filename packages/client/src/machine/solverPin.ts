@@ -25,10 +25,15 @@
  * `msg.sender == to`, so an unpinned `to` stays bounded (accepted unless a hard
  * pin is requested). Once an allowlist is configured, both methods enforce it.
  *
+ * A Permit2 pull's domain must also name the canonical Permit2 contract (SPEC
+ * §2.3): the machine runs this pin before asking the integrator for the one-time
+ * approval, so a pull aimed at any other contract never gets that far.
+ *
  * Mirrors the raxol agent-side pin (`solver_allowed?/2`). See GitHub #333
  * (recipient pin) and the #170 origin-leg amount binding.
  */
 
+import { PERMIT2_ADDRESS, sameAddressish } from "@xochi/signer";
 import type { Eip712TypedData } from "../shared/index.js";
 import { extractPullAmount } from "../shared/index.js";
 
@@ -54,6 +59,14 @@ export interface SolverPinConfig {
 export type SolverPinField =
   | "pull_to"
   | "pull_spender"
+  /**
+   * The pull is not an authorization kind the client signs: its `primaryType`
+   * is neither ERC-3009 `ReceiveWithAuthorization` nor Permit2
+   * `PermitWitnessTransferFrom`, or it is a Permit2 struct whose domain
+   * `verifyingContract` is not the canonical Permit2 (`PERMIT2_ADDRESS`). The
+   * domain decides which contract honors the signature, so a Permit2-shaped
+   * pull bound to any other contract is not a Permit2 authorization.
+   */
   | "pull_type"
   | "pull_amount"
   | "payout_amount"
@@ -105,6 +118,16 @@ export function validateSolverPin(
       recipient = checkRecipient("pull_to", message.to, "erc3009", config.erc3009Allowlist, config);
       break;
     case PERMIT2_TYPE:
+      // Not a Permit2 authorization unless the domain names the canonical
+      // Permit2 (SPEC §2.3: one universal address). Refused before the approval
+      // is requested, so no allowance is granted for any other contract.
+      if (!sameAddressish(String(pull.domain?.verifyingContract ?? ""), PERMIT2_ADDRESS)) {
+        return {
+          ok: false,
+          field: "pull_type",
+          reason: `Permit2 pull domain names ${String(pull.domain?.verifyingContract)}, not the canonical Permit2 ${PERMIT2_ADDRESS}`,
+        };
+      }
       recipient = checkRecipient(
         "pull_spender",
         message.spender,

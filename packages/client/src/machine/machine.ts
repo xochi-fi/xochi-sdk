@@ -1361,18 +1361,40 @@ function readAmount(raw: string): bigint | ErrorReport {
   }
 }
 
-/** Origin-pull leg, step 1: the one-time approval (Permit2; ERC-3009 no-ops). */
+/**
+ * Origin-pull leg, step 1: the fail-closed solver pin (#333, #170), then the
+ * one-time approval (Permit2; ERC-3009 no-ops).
+ *
+ * The pin runs BEFORE the approval: the approval is an unlimited on-chain
+ * allowance, so a pull the client would refuse to sign must never get one.
+ * Never sign a pull whose recipient is not the pinned solver, whose Permit2
+ * domain is not the canonical Permit2 contract, or whose amount differs from
+ * the intended input. The amount is anchored to the user's own quoted input
+ * (what the intent was requested and signed at), not a served field and not
+ * the live form, and the approval is asked to cover that same amount, so a
+ * served `fromAmount` below the pull cannot skip a needed approval. The quote
+ * cannot change while signing (`QUOTE_BUSY_STATES`), so the pull approved here
+ * is the pull signed in `onApproval`.
+ */
 function completePull(m: Model, fx: Effect[], flow: SignFlow): Model {
   const pull = m.intent.quote?.pullAuthorization;
   const eip712 = m.intent.quote?.eip712Data;
   if (!pull || !eip712) return endSignFlow(m, flow);
-  const amount = readAmount(
-    (eip712.message?.fromAmount as string) || m.intent.quotedFromAmount || "0",
+  const expected = readAmount(
+    m.intent.quotedFromAmount || (eip712.message?.fromAmount as string) || "0",
   );
-  if (typeof amount !== "bigint") return signFlowFailed({ ...m, sign: flow }, fx, amount);
+  if (typeof expected !== "bigint") return signFlowFailed({ ...m, sign: flow }, fx, expected);
+  const pin = validateSolverPin(pull, m.config.solverPin, expected);
+  if (!pin.ok) {
+    log(fx, "error", `${LOG} Refusing to sign origin pull:`, pin);
+    return transition({ ...m, sign: flow }, fx, "quoted", {
+      error: `Refusing to sign origin pull: ${pin.reason}`,
+      refusal: { kind: "pull_unpinned" },
+    });
+  }
   fx.push({
     type: "Wallet",
-    call: { op: "ensureApproval", flow: flow.id, amount: amount.toString() },
+    call: { op: "ensureApproval", flow: flow.id, amount: expected.toString() },
   });
   return { ...m, sign: { ...flow, stage: "approval" } };
 }
@@ -1394,25 +1416,7 @@ function onApproval(
   }
 
   const pull = m.intent.quote?.pullAuthorization;
-  const eip712 = m.intent.quote?.eip712Data;
-  if (!pull || !eip712) return endSignFlow(m, flow);
-
-  // Fail-closed solver pin (#333, #170): never sign a pull whose recipient is
-  // not the pinned solver, nor whose amount exceeds the intended input. The
-  // amount is anchored to the user's own quoted input (what the intent was
-  // requested and signed at), not a served field and not the live form.
-  const expected = readAmount(
-    m.intent.quotedFromAmount || (eip712.message?.fromAmount as string) || "0",
-  );
-  if (typeof expected !== "bigint") return signFlowFailed(m, fx, expected);
-  const pin = validateSolverPin(pull, m.config.solverPin, expected);
-  if (!pin.ok) {
-    log(fx, "error", `${LOG} Refusing to sign origin pull:`, pin);
-    return transition(m, fx, "quoted", {
-      error: `Refusing to sign origin pull: ${pin.reason}`,
-      refusal: { kind: "pull_unpinned" },
-    });
-  }
+  if (!pull) return endSignFlow(m, flow);
 
   fx.push({
     type: "Wallet",
