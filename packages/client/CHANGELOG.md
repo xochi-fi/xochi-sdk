@@ -4,6 +4,8 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-31
+
 ### Added
 
 - **Referral and promo codes on the quote request** (xochi#583, #584): `QuoteRequest.ref` / `QuoteRequest.promo`, sent to the Worker as `ref` / `promo` and part of the quote-cache key, so each pair of codes is its own quote. The key's fields are now JSON-encoded rather than joined with `:`, so a `:` inside a code cannot make two requests share a cached quote. The machine's `Context` takes optional `ref` / `promo`; `buildQuoteRequest` sends each trimmed and uppercased, drops only an empty one, and sends any other, malformed or not, so the Worker answers with its verdict. A code change is a trade change: it lets go of the held quote. `validateSwapParams` refuses a code over the Worker's 64-character bound.
