@@ -1077,6 +1077,11 @@ describe("getQuote cache", () => {
     ["preview vs executable", { wallet: undefined, preview: true }, {}],
     ["referral code", {}, { ref: "PARTNER" }],
     ["promo code", { promo: "LAUNCH10" }, { promo: "SPRING5" }],
+    [
+      "split between the codes",
+      { ref: "BAD:CODE", promo: "SAVE10" },
+      { ref: "BAD", promo: "CODE:SAVE10" },
+    ],
   ] as [string, Partial<QuoteRequest>, Partial<QuoteRequest>][])(
     "refetches when only the %s differs",
     async (_name, a, b) => {
@@ -1086,6 +1091,13 @@ describe("getQuote cache", () => {
       expect(calls).toHaveLength(2);
     },
   );
+
+  it("serves a request without codes from the cache", async () => {
+    const { c, calls } = client(() => okQuote());
+    const first = await c.getQuote(req);
+    expect(await c.getQuote({ ...req, ref: undefined, promo: undefined })).toBe(first);
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe("auth injection", () => {

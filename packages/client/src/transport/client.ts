@@ -1737,17 +1737,19 @@ function parseJsonObject(text: string): Record<string, unknown> | undefined {
 }
 
 /**
- * Deterministic quote cache key. The composed string is already unique per
- * distinct request. `deadline` is intentionally excluded (the solver overrides
- * it), but `trustScore` MUST be included -- it drives the fee tier -- and so
- * must the refund address: the intent is created at QUOTE time with whatever
- * refund address the request carried (xochi#358), and a cached quote bound to
- * none cannot be flagged by the deposit attestation, because it is genuinely
- * signed for the deal it describes. The refund address is not lowercased: on a
- * Tron origin it is base58, which is case-sensitive.
+ * Deterministic quote cache key. The fields are JSON-encoded as one array, so
+ * no field's content can run into its neighbour (a code may carry `:`) and
+ * each distinct request has its own key. `deadline` is intentionally excluded
+ * (the solver overrides it), but `trustScore` MUST be included -- it drives
+ * the fee tier -- and so must the refund address: the intent is created at
+ * QUOTE time with whatever refund address the request carried (xochi#358),
+ * and a cached quote bound to none cannot be flagged by the deposit
+ * attestation, because it is genuinely signed for the deal it describes. The
+ * refund address is not lowercased: on a Tron origin it is base58, which is
+ * case-sensitive.
  */
 function hashQuoteRequest(request: QuoteRequest): string {
-  return [
+  return JSON.stringify([
     request.wallet?.toLowerCase() ?? "preview",
     request.preview ? "preview" : "execute",
     request.allocationKey ?? "",
@@ -1766,5 +1768,5 @@ function hashQuoteRequest(request: QuoteRequest): string {
     // and the response carries its outcome: each pair of codes is its own quote.
     request.ref ?? "",
     request.promo ?? "",
-  ].join(":");
+  ]);
 }
