@@ -13,11 +13,24 @@ export {
   type XochiWidgetOptions,
 } from "./widget.js";
 export {
+  EMBED_ALLOW_FIELDS,
+  EMBED_CODE_PATTERN,
+  EMBED_HEIGHT,
+  EMBED_LAYOUTS,
+  EMBED_LOCKS,
   EMBED_PARAM,
+  EMBED_THEMES,
+  MAX_EMBED_LIST,
   encodeEmbedParams,
+  normalizeEmbedCode,
+  parseEmbedHeight,
   parseEmbedParams,
+  type EmbedAllowField,
+  type EmbedLayout,
+  type EmbedLock,
   type EmbedParams,
   type EmbedSettlement,
+  type EmbedTheme,
 } from "./params.js";
 export {
   ALLOWED_RPC_METHODS,

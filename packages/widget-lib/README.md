@@ -32,7 +32,32 @@ widget.updateProvider(otherProvider); // or null
 widget.destroy();
 ```
 
-`params` fields: `fromChainId`, `toChainId`, `sellSymbol`, `buySymbol`, `amount` (decimal string), `settlement` (`"public"` | `"stealth"`). These are defaults the user can change. A malformed param or a non-https origin (except localhost) throws `TypeError`.
+### Params
+
+`params` sets what the frame opens on; `{}` opens it on its own defaults. `encodeEmbedParams` writes them as `embedUrl` and `createXochiWidget` do, and `parseEmbedParams` reads them back.
+
+| Field                     | Query key    | Value                                                                                           | Unset                     |
+| ------------------------- | ------------ | ----------------------------------------------------------------------------------------------- | ------------------------- |
+| `fromChainId`             | `fromChain`  | chain id, a positive integer of at most 12 digits                                               | the frame's default route |
+| `toChainId`               | `toChain`    | chain id                                                                                        | the frame's default route |
+| `sellSymbol`              | `sell`       | token symbol, 1-16 letters or digits, any case                                                  | the frame's default route |
+| `buySymbol`               | `buy`        | token symbol                                                                                    | the frame's default route |
+| `amount`                  | `amount`     | plain decimal string, in `sell`                                                                 | none                      |
+| `settlement`              | `settlement` | `"public"` or `"stealth"`                                                                       | `"public"`                |
+| `theme`                   | `theme`      | `EMBED_THEMES`: `"auto"` (follows the OS), `"light"`, `"dim"`, `"contrast"`                     | `"auto"`                  |
+| `layout`                  | `layout`     | `EMBED_LAYOUTS`: `"full"`, or `"swap"` for the swap card without its tab row                    | `"full"`                  |
+| `howItWorks`              | `howItWorks` | boolean, written `1` or `0`; `false` hides the How it works disclosure                          | shown                     |
+| `height`                  | `height`     | whole pixels within `EMBED_HEIGHT` (480 to 1600); the frame scrolls inside it                   | grows to its content      |
+| `locks`                   | `lock`       | `EMBED_LOCKS` the user cannot change: `"fromChain"`, `"sell"`, `"amount"`, `"toChain"`, `"buy"` | none                      |
+| `fromChains`, `toChains`  | same         | chain ids each leg may use                                                                      | any the frame offers      |
+| `sellTokens`, `buyTokens` | same         | token symbols each leg may use                                                                  | any the frame offers      |
+| `ref`, `promo`            | same         | referral and promo codes, uppercase, `EMBED_CODE_PATTERN`                                       | none                      |
+
+- The route, amount and settlement are defaults the user can change, unless `locks` names them, and only within the allow-lists. The frame checks each against what it can serve and ignores, silently, any value it cannot. Locking `amount` locks `fromChain` and `sell` too, since the amount is in them.
+- `locks` and the four allow-lists are lists of 1 to `MAX_EMBED_LIST` (32) entries, none repeated (symbols compare in any case). The frame ignores a list it cannot read whole. `locks` is written in `EMBED_LOCKS` order, and lists are written with plain commas. Locks and allow-lists are conveniences, not policy: a user who edits the URL is not bound by them.
+- With `height`, `createXochiWidget` mounts the iframe at that height, and the frame lays out at it.
+- `ref` and `promo` go with every quote and the server decides. A code the server cannot use still prices, as if absent. `normalizeEmbedCode` turns a typed code into its stored form, or `null`. `EMBED_CODE_PATTERN` is the pattern of `@xochi/client`'s `REFERRAL_CODE_REGEX` and `PROMO_CODE_REGEX`; this package's tests hold them equal.
+- `encodeEmbedParams`, `embedUrl` and `createXochiWidget` throw a `TypeError` naming the field for a value the frame would ignore, and for an unknown key; `createXochiWidget` also throws one for a non-https origin (except localhost). `parseEmbedParams` never throws: it drops what is malformed. Keys are written route first, in table order.
 
 ## Security model
 

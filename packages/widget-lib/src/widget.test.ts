@@ -188,6 +188,22 @@ describe("mounting", () => {
     expect(iframe.src).toBe("http://localhost:5173/embed");
   });
 
+  it("frames the frame's own keys after the route, at the fixed height asked for", () => {
+    const { iframe } = mount({
+      params: { ref: "PARTNER", height: 640, locks: ["buy", "sell"], sellSymbol: "USDT" },
+    });
+    expect(iframe.src).toBe(`${ORIGIN}/embed?sell=USDT&height=640&lock=sell,buy&ref=PARTNER`);
+    // The frame lays out at the iframe's height, so it must start there.
+    expect(iframe.height).toBe("640");
+  });
+
+  it("refuses a frame key the frame would drop before touching the page", () => {
+    const container = document.createElement("div");
+    expect(() => createXochiWidget(container, { params: { height: 2000 } })).toThrow(/height/);
+    expect(() => createXochiWidget(container, { params: { ref: "bad code" } })).toThrow(/ref/);
+    expect(container.childElementCount).toBe(0);
+  });
+
   it("refuses bad params and origins before touching the page", () => {
     const container = document.createElement("div");
     expect(() => createXochiWidget(container, { params: { amount: "1e3" } })).toThrow(/amount/);
@@ -691,6 +707,21 @@ describe("updateParams", () => {
     expect(frame()).toBe(before);
     expect(() => widget.updateParams({ fromChainId: -1 })).toThrow(/fromChainId/);
     expect(iframe.src).toBe(`${ORIGIN}/embed?sell=USDT`);
+  });
+
+  it("resizes the frame to a new fixed height over the height the old document reported", () => {
+    const { widget, iframe, frame } = mount();
+    fromFrame(frame(), { type: "xochi:resize", height: 900 });
+    expect(iframe.style.height).toBe("900px");
+
+    widget.updateParams({ height: 600 });
+    expect(iframe.src).toBe(`${ORIGIN}/embed?height=600`);
+    expect(iframe.height).toBe("600");
+    expect(iframe.style.height).toBe("600px");
+
+    widget.updateParams({ layout: "swap" });
+    expect(iframe.src).toBe(`${ORIGIN}/embed?layout=swap`);
+    expect(iframe.height).toBe("760");
   });
 });
 
