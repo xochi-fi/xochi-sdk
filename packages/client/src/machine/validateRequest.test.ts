@@ -33,7 +33,7 @@ describe("validateSwapParams", () => {
     expect(validateSwapParams(req, Date.now()).isValid).toBe(true);
   });
 
-  it("accepts codes in their stored form and refuses any other", () => {
+  it("accepts any code up to the Worker's 64 characters and refuses a longer one", () => {
     const req: Partial<QuoteRequest> = {
       wallet: EVM_WALLET,
       fromChainId: 8453,
@@ -46,13 +46,15 @@ describe("validateSwapParams", () => {
       settlementPreference: "public",
     };
     const now = Date.now();
-    expect(validateSwapParams({ ...req, ref: "PARTNER", promo: "LAUNCH10" }, now).isValid).toBe(
-      true,
-    );
-    expect(validateSwapParams({ ...req, ref: "partner" }, now).errors).toEqual([
-      "Invalid referral code: 3 to 32 of A-Z, 0-9, _ or -, starting with a letter or digit",
+    expect(
+      validateSwapParams({ ...req, ref: "has space", promo: "X".repeat(64) }, now).isValid,
+    ).toBe(true);
+    expect(validateSwapParams({ ...req, ref: "X".repeat(65) }, now).errors).toEqual([
+      "Invalid referral code: at most 64 characters",
     ]);
-    expect(validateSwapParams({ ...req, promo: "A B" }, now).isValid).toBe(false);
+    expect(validateSwapParams({ ...req, promo: "X".repeat(65) }, now).errors).toEqual([
+      "Invalid promo code: at most 64 characters",
+    ]);
   });
 
   it("accepts an EVM origin -> Tron destination (base58 token)", () => {

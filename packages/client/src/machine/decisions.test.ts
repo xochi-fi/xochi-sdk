@@ -66,7 +66,7 @@ describe("buildQuoteRequest", () => {
     expect(publicReq.stealthMetaAddress).toBeUndefined();
   });
 
-  it("sends referral and promo codes in their stored form, and drops a malformed one", () => {
+  it("sends referral and promo codes trimmed and uppercase, malformed or not", () => {
     const req = buildQuoteRequest({
       ...base,
       settlementPreference: "public",
@@ -76,15 +76,27 @@ describe("buildQuoteRequest", () => {
     expect(req.ref).toBe("PARTNER_1");
     expect(req.promo).toBe("LAUNCH-10");
 
-    for (const bad of ["", "ab", "_LEAD", "has space", "X".repeat(33), null]) {
+    // The Worker decides these: each is sent, so its verdict comes back.
+    for (const odd of ["ab", "_lead", "has space", "x".repeat(33)]) {
+      const sent = buildQuoteRequest({
+        ...base,
+        settlementPreference: "public",
+        ref: odd,
+        promo: odd,
+      });
+      expect(sent.ref, odd).toBe(odd.toUpperCase());
+      expect(sent.promo, odd).toBe(odd.toUpperCase());
+    }
+
+    for (const none of ["", "   ", null, undefined]) {
       const dropped = buildQuoteRequest({
         ...base,
         settlementPreference: "public",
-        ref: bad,
-        promo: bad,
+        ref: none,
+        promo: none,
       });
-      expect(dropped.ref, String(bad)).toBeUndefined();
-      expect(dropped.promo, String(bad)).toBeUndefined();
+      expect(dropped.ref, String(none)).toBeUndefined();
+      expect(dropped.promo, String(none)).toBeUndefined();
     }
   });
 

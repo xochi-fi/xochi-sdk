@@ -2358,4 +2358,13 @@ describe("the held quote's trade, as the request normalises it", () => {
     s.send({ type: "ContextChanged", ctx: ctx({ ref: "PARTNER", promo: "SPRING5" }) });
     expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
+
+  it("refuses a code longer than the Worker accepts rather than quoting without it", () => {
+    const s = new Session(ctx({ promo: "X".repeat(65) }));
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const fx = s.send({ type: "TimerFired", timer: "debounce" }, 500);
+    expect(apiCalls(fx, "quote")).toEqual([]);
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toBe("Invalid promo code: at most 64 characters");
+  });
 });

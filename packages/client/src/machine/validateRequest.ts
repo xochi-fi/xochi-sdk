@@ -19,8 +19,6 @@ import {
   MAX_SLIPPAGE_PERCENT,
   MAX_SLIPPAGE_BPS,
   isValidTronAddress,
-  PROMO_CODE_REGEX,
-  REFERRAL_CODE_REGEX,
 } from "../shared/index.js";
 import type { QuoteRequest } from "./wire.js";
 
@@ -172,11 +170,17 @@ const validateSettlement = (pref: string | undefined): string[] =>
       ? ["Invalid settlement preference"]
       : [];
 
-/** A code is sent only in its stored form (`buildQuoteRequest` normalises it). */
-const validateCode = (code: string | undefined, pattern: RegExp, name: string): string[] =>
-  code === undefined || pattern.test(code)
+/**
+ * The Worker's bound on `ref` and `promo` (its `QuoteRequestSchema`: a string
+ * of at most 64). It checks nothing else: a code within it always quotes, with
+ * the Worker's verdict on it.
+ */
+const MAX_QUOTE_CODE_LENGTH = 64;
+
+const validateCode = (code: string | undefined, name: string): string[] =>
+  code === undefined || code.length <= MAX_QUOTE_CODE_LENGTH
     ? []
-    : [`Invalid ${name} code: 3 to 32 of A-Z, 0-9, _ or -, starting with a letter or digit`];
+    : [`Invalid ${name} code: at most ${MAX_QUOTE_CODE_LENGTH} characters`];
 
 const validateSameToken = (p: Partial<QuoteRequest>): string[] =>
   p.fromToken &&
@@ -202,8 +206,8 @@ export const validateSwapParams = (
     ...validateSlippageBps(params.slippageBps),
     ...validateSettlement(params.settlementPreference),
     ...validateSameToken(params),
-    ...validateCode(params.ref, REFERRAL_CODE_REGEX, "referral"),
-    ...validateCode(params.promo, PROMO_CODE_REGEX, "promo"),
+    ...validateCode(params.ref, "referral"),
+    ...validateCode(params.promo, "promo"),
   ];
   return { isValid: errors.length === 0, errors };
 };
