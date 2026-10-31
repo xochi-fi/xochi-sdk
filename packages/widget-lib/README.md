@@ -21,9 +21,9 @@ const widget = createXochiWidget(document.getElementById("xochi")!, {
   autoConnect: false, // default: connect only on the user's click
   // origin: "https://widget.xochi.fi" (default)
   listeners: {
-    "trade:submitted": ({ intentId }) => console.log("submitted", intentId),
-    "trade:completed": ({ intentId }) => console.log("settled", intentId),
-    "trade:failed": ({ intentId, error }) => console.warn("failed", intentId, error),
+    "trade:submitted": ({ tradeRef }) => console.log("submitted", tradeRef),
+    "trade:completed": ({ tradeRef }) => console.log("settled", tradeRef),
+    "trade:failed": ({ tradeRef, error }) => console.warn("failed", tradeRef, error),
   },
 });
 
@@ -40,6 +40,7 @@ widget.destroy();
 - Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200` without reaching it. Every connection, signature, chain switch and transaction still prompts.
 - Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is deliberately no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
 - Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.
+- Lifecycle events carry `tradeRef`, an opaque reference the frame mints per trade (`TRADE_REF_PATTERN`: `tr_` + 32 lowercase hex, random), the same on every event of one trade. It is not the intent id and the API knows nothing of it, so the host can correlate a trade's events but cannot read the trade from the Worker. Events whose `tradeRef` does not match the pattern are dropped.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
 

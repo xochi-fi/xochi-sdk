@@ -23,6 +23,7 @@ import {
   MAX_PENDING_RPC,
   MESSAGE,
   RPC_ERROR,
+  TRADE_REF_PATTERN,
   type HostMessage,
   type RpcErrorObject,
   type RpcId,
@@ -117,8 +118,8 @@ function isRpcId(value: unknown): value is RpcId {
   );
 }
 
-function isIntentId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= MAX_ID_LENGTH;
+function isTradeRef(value: unknown): value is string {
+  return typeof value === "string" && TRADE_REF_PATTERN.test(value);
 }
 
 function truncate(text: string, max: number): string {
@@ -173,12 +174,12 @@ function toWidgetEvent(value: unknown): XochiWidgetEvent | null {
   switch (value.name) {
     case "trade:submitted":
     case "trade:completed":
-      return isIntentId(value.intentId) ? { name: value.name, intentId: value.intentId } : null;
+      return isTradeRef(value.tradeRef) ? { name: value.name, tradeRef: value.tradeRef } : null;
     case "trade:failed": {
-      const { intentId, error } = value;
-      if (intentId !== null && !isIntentId(intentId)) return null;
+      const { tradeRef, error } = value;
+      if (!isTradeRef(tradeRef)) return null;
       if (typeof error !== "string" || error.length > MAX_ERROR_MESSAGE_LENGTH) return null;
-      return { name: "trade:failed", intentId, error };
+      return { name: "trade:failed", tradeRef, error };
     }
     default:
       return null;
