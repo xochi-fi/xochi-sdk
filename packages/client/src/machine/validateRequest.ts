@@ -170,6 +170,18 @@ const validateSettlement = (pref: string | undefined): string[] =>
       ? ["Invalid settlement preference"]
       : [];
 
+/**
+ * The Worker's bound on `ref` and `promo` (its `QuoteRequestSchema`: a string
+ * of at most 64). It checks nothing else: a code within it always quotes, with
+ * the Worker's verdict on it.
+ */
+const MAX_QUOTE_CODE_LENGTH = 64;
+
+const validateCode = (code: string | undefined, name: string): string[] =>
+  code === undefined || code.length <= MAX_QUOTE_CODE_LENGTH
+    ? []
+    : [`Invalid ${name} code: at most ${MAX_QUOTE_CODE_LENGTH} characters`];
+
 const validateSameToken = (p: Partial<QuoteRequest>): string[] =>
   p.fromToken &&
   p.toToken &&
@@ -194,6 +206,8 @@ export const validateSwapParams = (
     ...validateSlippageBps(params.slippageBps),
     ...validateSettlement(params.settlementPreference),
     ...validateSameToken(params),
+    ...validateCode(params.ref, "referral"),
+    ...validateCode(params.promo, "promo"),
   ];
   return { isValid: errors.length === 0, errors };
 };

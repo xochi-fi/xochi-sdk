@@ -4,6 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **Referral and promo codes on the quote request** (xochi#583, #584): `QuoteRequest.ref` / `QuoteRequest.promo`, sent to the Worker as `ref` / `promo` and part of the quote-cache key, so each pair of codes is its own quote. The key's fields are now JSON-encoded rather than joined with `:`, so a `:` inside a code cannot make two requests share a cached quote. The machine's `Context` takes optional `ref` / `promo`; `buildQuoteRequest` sends each trimmed and uppercased, drops only an empty one, and sends any other, malformed or not, so the Worker answers with its verdict. A code change is a trade change: it lets go of the held quote. `validateSwapParams` refuses a code over the Worker's 64-character bound.
+- **The Worker's outcome for each code** on `QuoteResponse`: `promo` / `promoNote` (the `promo` sent priced the quote, or did not) and `referralNote` (the `ref` sent was not applied), mapped from the already-typed wire fields (previously decoded and then dropped by `mapQuoteResponse`). `referral` is the referral the trade will credit, not a verdict on the `ref` sent: the wallet's existing referral binding wins over a submitted code, so to a session of the quoting wallet it can name another code, or one when no `ref` was sent.
+
 ### Fixed
 
 - **Origin pull**: the machine now runs the solver pin (`validateSolverPin`) before it asks the integrator for the one-time approval (`ensureApproval`), so a pull the client would refuse to sign never gets an unlimited allowance. The approval covers the same anchor the pin uses, the quoted input (`quotedFromAmount`) before the served `fromAmount`. `validateSolverPin` also refuses a Permit2 pull whose domain names any contract but the canonical Permit2, reported as the existing `SolverPinField` `"pull_type"` (not an authorization kind the client signs); the union is unchanged. Quote ingest already refused both cases through `@xochi/signer`'s `assertIntentMatchesRequest` / `assertPullMatchesIntent`; this is defense in depth at the approval step.

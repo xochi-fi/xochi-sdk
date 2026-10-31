@@ -66,6 +66,40 @@ describe("buildQuoteRequest", () => {
     expect(publicReq.stealthMetaAddress).toBeUndefined();
   });
 
+  it("sends referral and promo codes trimmed and uppercase, malformed or not", () => {
+    const req = buildQuoteRequest({
+      ...base,
+      settlementPreference: "public",
+      ref: " partner_1 ",
+      promo: "launch-10",
+    });
+    expect(req.ref).toBe("PARTNER_1");
+    expect(req.promo).toBe("LAUNCH-10");
+
+    // The Worker decides these: each is sent, so its verdict comes back.
+    for (const odd of ["ab", "_lead", "has space", "x".repeat(33)]) {
+      const sent = buildQuoteRequest({
+        ...base,
+        settlementPreference: "public",
+        ref: odd,
+        promo: odd,
+      });
+      expect(sent.ref, odd).toBe(odd.toUpperCase());
+      expect(sent.promo, odd).toBe(odd.toUpperCase());
+    }
+
+    for (const none of ["", "   ", null, undefined]) {
+      const dropped = buildQuoteRequest({
+        ...base,
+        settlementPreference: "public",
+        ref: none,
+        promo: none,
+      });
+      expect(dropped.ref, String(none)).toBeUndefined();
+      expect(dropped.promo, String(none)).toBeUndefined();
+    }
+  });
+
   it("normalizes an empty recipientAddress to undefined", () => {
     const req = buildQuoteRequest({
       ...base,

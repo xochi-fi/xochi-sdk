@@ -285,6 +285,32 @@ export interface BuildQuoteRequestInput {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /** Referral and promo codes as presented (any case); null or absent for none. */
+  ref?: string | null;
+  promo?: string | null;
+}
+
+/**
+ * A presented referral or promo code as sent: trimmed and uppercase (the form
+ * the Worker stores and compares), or undefined when absent or empty. Any other
+ * value is sent, malformed or not, so the Worker answers with its verdict
+ * (`referralNote` / `promoNote`); `validateSwapParams` refuses one over the
+ * Worker's 64-character bound.
+ */
+function normalizeQuoteCode(presented: string | null | undefined): string | undefined {
+  const code = presented?.trim().toUpperCase();
+  return code ? code : undefined;
+}
+
+/** The request's `ref` and `promo`, normalised (`normalizeQuoteCode`). */
+export function normalizeQuoteCodes(input: {
+  ref?: string | null;
+  promo?: string | null;
+}): Pick<QuoteRequest, "ref" | "promo"> {
+  return {
+    ref: normalizeQuoteCode(input.ref),
+    promo: normalizeQuoteCode(input.promo),
+  };
 }
 
 /**
@@ -332,6 +358,7 @@ export function buildQuoteRequest(input: BuildQuoteRequestInput): QuoteRequest {
     trustScore: input.trustScore,
     settlementPreference: input.settlementPreference,
     ...normalizeTradeFields(input),
+    ...normalizeQuoteCodes(input),
   };
 }
 

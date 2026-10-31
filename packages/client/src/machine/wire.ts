@@ -20,6 +20,10 @@ import type {
   QuoteResponseWire,
   ExecuteResponseWire,
   IntentStatus,
+  PROMO_NOT_APPLIED_NOTE,
+  PROMO_TIER_BETTER_NOTE,
+  REFERRAL_NEUTRAL_NOTE,
+  REFERRAL_NOT_APPLIED_NOTE,
 } from "../shared/index.js";
 import {
   ExecuteResponseSchema,
@@ -81,6 +85,18 @@ export interface QuoteRequest {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /**
+   * Referral code (xochi#583), trimmed and uppercase, at most 64 characters.
+   * The Worker decides whether it applies; a code it does not apply, malformed
+   * or unknown, still quotes, with `referralNote`.
+   */
+  ref?: string;
+  /**
+   * Promo code (xochi#584), trimmed and uppercase, at most 64 characters. The
+   * Worker resolves it to a discount; a code it cannot use, malformed or
+   * unknown, still quotes, at the undiscounted price, with `promoNote`.
+   */
+  promo?: string;
 }
 
 /** Stealth settlement claim info (factory + salt for counterfactual SimpleAccount) */
@@ -189,6 +205,27 @@ export interface QuoteResponse {
    * says an unrecognized value is a non-retryable decline.
    */
   errorCategory?: string;
+  /**
+   * The referral this trade will credit (xochi#583), not a verdict on the
+   * `ref` sent: the wallet's open referral binding wins over a submitted
+   * code. Named (`code`, `name`) only to a session of the quoting wallet: the
+   * binding's code, else the applied `ref`, so it can name a code other than
+   * the one sent, or one when no `ref` was sent. Any other caller gets the
+   * neutral line, only when the `ref` sent was applied, and the same whether
+   * or not the wallet is bound. Absent when nothing is said (`referralNote`
+   * for a `ref` not applied) and when the Worker has referrals off.
+   */
+  referral?: { code: string; name: string } | { neutral: true; note: typeof REFERRAL_NEUTRAL_NOTE };
+  /**
+   * A `ref` was sent and not applied, one fixed text for every reason. To a
+   * session of the quoting wallet it means the trade credits no code at all
+   * (a binding that credits one shows as `referral` instead).
+   */
+  referralNote?: typeof REFERRAL_NOT_APPLIED_NOTE;
+  /** The `promo` sent priced this quote (xochi#584), with its discount. */
+  promo?: { code: string; discount_bps: number };
+  /** The `promo` sent did not price this quote: the Worker's inline note. */
+  promoNote?: typeof PROMO_NOT_APPLIED_NOTE | typeof PROMO_TIER_BETTER_NOTE;
   /**
    * Smallest order (USD) that clears this route right now; served on an
    * `amount_too_small` decline. THE number to retry with (it already covers
@@ -422,6 +459,10 @@ export function mapQuoteResponse(
       : undefined,
     error: w.error,
     errorCategory: w.error_category,
+    referral: w.referral,
+    referralNote: w.referral_note,
+    promo: w.promo,
+    promoNote: w.promo_note,
     minimumAmountUsd: w.minimum_amount_usd,
     minFillableUsd: w.min_fillable_usd,
     // Passed through untouched, never interpreted: the signer refuses it.
