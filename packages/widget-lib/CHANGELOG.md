@@ -4,6 +4,14 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+Ships in 0.3.0. Additive: a URL of route keys alone is written and read exactly as before.
+
+### Added
+
+- The widget frame's own embed keys join the route keys in `EMBED_PARAM`, `EmbedParams`, `parseEmbedParams`, `encodeEmbedParams`, `embedUrl` and `createXochiWidget`'s `params`, so this package is their one definition: `theme`, `layout`, `howItWorks`, `height`, `lock` (field `locks`), `fromChains`, `toChains`, `sellTokens`, `buyTokens`, `ref` and `promo`. They are written after the route keys, in that order. `parseEmbedParams` drops a malformed value, and `encodeEmbedParams` throws a `TypeError` naming the field. The rules are in the README under "Params".
+- New exports: `EMBED_THEMES` / `EmbedTheme`, `EMBED_LAYOUTS` / `EmbedLayout`, `EMBED_LOCKS` / `EmbedLock`, `EMBED_ALLOW_FIELDS` / `EmbedAllowField`, `EMBED_HEIGHT` (480 to 1600 px), `MAX_EMBED_LIST` (32), `EMBED_CODE_PATTERN` (the pattern of `@xochi/client`'s `REFERRAL_CODE_REGEX` and `PROMO_CODE_REGEX`, held equal by a test), `normalizeEmbedCode` and `parseEmbedHeight`.
+- `createXochiWidget` mounts the iframe at `params.height` when one is set, and `updateParams` resizes it to a new one, because a fixed-height frame lays out at its iframe's height.
+
 ## [0.2.0] - 2026-10-31
 
 ### Changed

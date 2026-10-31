@@ -205,7 +205,9 @@ export function createXochiWidget(
   iframe.src = src;
   iframe.title = EMBED_FRAME.title;
   iframe.width = String(EMBED_FRAME.width);
-  iframe.height = String(EMBED_FRAME.height);
+  // A fixed-height frame (`height`) lays out at the iframe's height, so the
+  // iframe starts at it; the frame's own resize reports then hold it there.
+  iframe.height = String(options.params.height ?? EMBED_FRAME.height);
   iframe.allow = "clipboard-write";
   iframe.style.border = "0";
   iframe.style.maxWidth = "100%";
@@ -425,6 +427,9 @@ export function createXochiWidget(
       session += 1;
       pending.clear();
       connected = autoConnect;
+      iframe.height = String(params.height ?? EMBED_FRAME.height);
+      // The style height an earlier document reported would override it.
+      if (params.height !== undefined) iframe.style.height = `${params.height}px`;
       iframe.src = next;
     },
     updateProvider(next) {
