@@ -47,6 +47,7 @@ import {
   mergeSameStatusReceipt,
   notFoundDriftWarning,
   pollCeilingAttempts,
+  normalizeQuoteCodes,
   normalizeTradeFields,
   quoteAccessDecision,
   shouldRefreshOnReturn,
@@ -158,6 +159,9 @@ export interface Context {
   /** Refund destination on a deposit-route ORIGIN; null for EVM origins. */
   refundAddress: string | null;
   stealthMetaAddress: StealthMetaAddress | null;
+  /** Referral and promo codes sent on every quote (`buildQuoteRequest` normalises them). */
+  ref?: string | null;
+  promo?: string | null;
   /** The confirm surface is open: pre-expiry refreshes run silently. */
   paused: boolean;
   wallet: WalletContext;
@@ -855,6 +859,8 @@ function sendQuote(m: Model, fx: Effect[], flight: QuoteFlight, now: number): Mo
     recipientAddress: ctx.recipientAddress ?? undefined,
     refundAddress: ctx.refundAddress ?? undefined,
     stealthMetaAddress: ctx.stealthMetaAddress ?? undefined,
+    ref: ctx.ref,
+    promo: ctx.promo,
   });
 
   const validation = validateSwapParams(request, now);
@@ -2090,6 +2096,9 @@ function tradeKey(c: Context): string {
     stealthMetaAddress?.chainId ?? null,
     c.wallet.address,
     c.wallet.chainId,
+    // A code changes the price (promo) or who earns the routing layer (ref).
+    normalizeQuoteCodes(c).ref ?? null,
+    normalizeQuoteCodes(c).promo ?? null,
   ]);
 }
 

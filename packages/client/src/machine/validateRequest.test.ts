@@ -33,6 +33,28 @@ describe("validateSwapParams", () => {
     expect(validateSwapParams(req, Date.now()).isValid).toBe(true);
   });
 
+  it("accepts codes in their stored form and refuses any other", () => {
+    const req: Partial<QuoteRequest> = {
+      wallet: EVM_WALLET,
+      fromChainId: 8453,
+      toChainId: 42161,
+      fromToken: EVM_USDC,
+      toToken: EVM_USDC,
+      fromAmount: "1000000",
+      deadline: soon(),
+      slippageBps: 50,
+      settlementPreference: "public",
+    };
+    const now = Date.now();
+    expect(validateSwapParams({ ...req, ref: "PARTNER", promo: "LAUNCH10" }, now).isValid).toBe(
+      true,
+    );
+    expect(validateSwapParams({ ...req, ref: "partner" }, now).errors).toEqual([
+      "Invalid referral code: 3 to 32 of A-Z, 0-9, _ or -, starting with a letter or digit",
+    ]);
+    expect(validateSwapParams({ ...req, promo: "A B" }, now).isValid).toBe(false);
+  });
+
   it("accepts an EVM origin -> Tron destination (base58 token)", () => {
     const req: Partial<QuoteRequest> = {
       wallet: EVM_WALLET,

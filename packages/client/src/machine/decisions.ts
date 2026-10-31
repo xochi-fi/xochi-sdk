@@ -14,7 +14,9 @@ import {
   IntentStatusFrameSchema,
   MAX_EXECUTE_RESENDS,
   NOT_EXECUTED_SUBSTATUS,
+  PROMO_CODE_REGEX,
   QUOTED_EXPIRY_GRACE_SECS,
+  REFERRAL_CODE_REGEX,
   getRefundReasonLabel,
 } from "../shared/index.js";
 import type {
@@ -285,6 +287,34 @@ export interface BuildQuoteRequestInput {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /** Referral and promo codes as presented (any case); null or absent for none. */
+  ref?: string | null;
+  promo?: string | null;
+}
+
+/**
+ * A presented referral or promo code in its stored form (trimmed, uppercase),
+ * or undefined when it is absent or cannot be one under `pattern`
+ * (`REFERRAL_CODE_REGEX` / `PROMO_CODE_REGEX`). A malformed code is dropped
+ * rather than sent: the Worker would only leave it unapplied.
+ */
+function normalizeQuoteCode(
+  presented: string | null | undefined,
+  pattern: RegExp,
+): string | undefined {
+  const code = presented?.trim().toUpperCase();
+  return code !== undefined && pattern.test(code) ? code : undefined;
+}
+
+/** The request's `ref` and `promo`, normalised (`normalizeQuoteCode`). */
+export function normalizeQuoteCodes(input: {
+  ref?: string | null;
+  promo?: string | null;
+}): Pick<QuoteRequest, "ref" | "promo"> {
+  return {
+    ref: normalizeQuoteCode(input.ref, REFERRAL_CODE_REGEX),
+    promo: normalizeQuoteCode(input.promo, PROMO_CODE_REGEX),
+  };
 }
 
 /**
@@ -332,6 +362,7 @@ export function buildQuoteRequest(input: BuildQuoteRequestInput): QuoteRequest {
     trustScore: input.trustScore,
     settlementPreference: input.settlementPreference,
     ...normalizeTradeFields(input),
+    ...normalizeQuoteCodes(input),
   };
 }
 
