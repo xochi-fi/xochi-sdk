@@ -20,6 +20,10 @@ import type {
   QuoteResponseWire,
   ExecuteResponseWire,
   IntentStatus,
+  PROMO_NOT_APPLIED_NOTE,
+  PROMO_TIER_BETTER_NOTE,
+  REFERRAL_NEUTRAL_NOTE,
+  REFERRAL_NOT_APPLIED_NOTE,
 } from "../shared/index.js";
 import {
   ExecuteResponseSchema,
@@ -207,13 +211,13 @@ export interface QuoteResponse {
    * when it was not applied (`referralNote`), or when the Worker has
    * referrals off (then neither is served).
    */
-  referral?: QuoteResponseWire["referral"];
+  referral?: { code: string; name: string } | { neutral: true; note: typeof REFERRAL_NEUTRAL_NOTE };
   /** The `ref` sent was not applied: one fixed text for every reason. */
-  referralNote?: QuoteResponseWire["referral_note"];
+  referralNote?: typeof REFERRAL_NOT_APPLIED_NOTE;
   /** The `promo` sent priced this quote (xochi#584), with its discount. */
-  promo?: QuoteResponseWire["promo"];
+  promo?: { code: string; discount_bps: number };
   /** The `promo` sent did not price this quote: the Worker's inline note. */
-  promoNote?: QuoteResponseWire["promo_note"];
+  promoNote?: typeof PROMO_NOT_APPLIED_NOTE | typeof PROMO_TIER_BETTER_NOTE;
   /**
    * Smallest order (USD) that clears this route right now; served on an
    * `amount_too_small` decline. THE number to retry with (it already covers
