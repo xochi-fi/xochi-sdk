@@ -4,7 +4,9 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
-Ships in 0.3.0. Additive: a URL of route keys alone is written and read exactly as before.
+## [0.3.0] - 2026-10-31
+
+Additive: a URL of route keys alone is written and read exactly as before.
 
 ### Added
 
