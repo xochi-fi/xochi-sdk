@@ -81,6 +81,18 @@ export interface QuoteRequest {
     viewingPubKey: string;
     chainId: ChainId;
   };
+  /**
+   * Referral code (xochi#583), `REFERRAL_CODE_REGEX`: uppercase, as stored.
+   * Resolved by the Worker; a code it does not apply still quotes, with
+   * `referralNote`.
+   */
+  ref?: string;
+  /**
+   * Promo code (xochi#584), `PROMO_CODE_REGEX`: uppercase, as stored. The
+   * Worker resolves it to a discount; a code it cannot use still quotes, at
+   * the undiscounted price, with `promoNote`.
+   */
+  promo?: string;
 }
 
 /** Stealth settlement claim info (factory + salt for counterfactual SimpleAccount) */
@@ -189,6 +201,19 @@ export interface QuoteResponse {
    * says an unrecognized value is a non-retryable decline.
    */
   errorCategory?: string;
+  /**
+   * The `ref` sent was applied (xochi#583): the named line for a session of
+   * the quoting wallet, else the neutral line. Absent when no `ref` was sent,
+   * when it was not applied (`referralNote`), or when the Worker has
+   * referrals off (then neither is served).
+   */
+  referral?: QuoteResponseWire["referral"];
+  /** The `ref` sent was not applied: one fixed text for every reason. */
+  referralNote?: QuoteResponseWire["referral_note"];
+  /** The `promo` sent priced this quote (xochi#584), with its discount. */
+  promo?: QuoteResponseWire["promo"];
+  /** The `promo` sent did not price this quote: the Worker's inline note. */
+  promoNote?: QuoteResponseWire["promo_note"];
   /**
    * Smallest order (USD) that clears this route right now; served on an
    * `amount_too_small` decline. THE number to retry with (it already covers
@@ -422,6 +447,10 @@ export function mapQuoteResponse(
       : undefined,
     error: w.error,
     errorCategory: w.error_category,
+    referral: w.referral,
+    referralNote: w.referral_note,
+    promo: w.promo,
+    promoNote: w.promo_note,
     minimumAmountUsd: w.minimum_amount_usd,
     minFillableUsd: w.min_fillable_usd,
     // Passed through untouched, never interpreted: the signer refuses it.

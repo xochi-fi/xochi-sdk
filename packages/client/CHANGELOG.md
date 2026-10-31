@@ -2,6 +2,13 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Referral and promo codes on the quote request** (xochi#583, #584): `QuoteRequest.ref` / `QuoteRequest.promo`, sent to the Worker as `ref` / `promo` and part of the quote-cache key, so each pair of codes is its own quote. The machine's `Context` takes optional `ref` / `promo`; `buildQuoteRequest` sends each trimmed and uppercased, and drops one that does not match `REFERRAL_CODE_REGEX` / `PROMO_CODE_REGEX` rather than send it. A code change is a trade change: it lets go of the held quote. `validateSwapParams` refuses a code that is not in its stored form.
+- **The Worker's verdict on each code** on `QuoteResponse`: `referral`, `referralNote`, `promo`, `promoNote`, mapped from the already-typed wire fields (previously decoded and then dropped by `mapQuoteResponse`).
+
 ## [0.1.7] - 2026-10-30
 
 ### Changed

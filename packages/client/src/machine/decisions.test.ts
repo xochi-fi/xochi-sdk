@@ -66,6 +66,28 @@ describe("buildQuoteRequest", () => {
     expect(publicReq.stealthMetaAddress).toBeUndefined();
   });
 
+  it("sends referral and promo codes in their stored form, and drops a malformed one", () => {
+    const req = buildQuoteRequest({
+      ...base,
+      settlementPreference: "public",
+      ref: " partner_1 ",
+      promo: "launch-10",
+    });
+    expect(req.ref).toBe("PARTNER_1");
+    expect(req.promo).toBe("LAUNCH-10");
+
+    for (const bad of ["", "ab", "_LEAD", "has space", "X".repeat(33), null]) {
+      const dropped = buildQuoteRequest({
+        ...base,
+        settlementPreference: "public",
+        ref: bad,
+        promo: bad,
+      });
+      expect(dropped.ref, String(bad)).toBeUndefined();
+      expect(dropped.promo, String(bad)).toBeUndefined();
+    }
+  });
+
   it("normalizes an empty recipientAddress to undefined", () => {
     const req = buildQuoteRequest({
       ...base,
