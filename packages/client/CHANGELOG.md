@@ -2,6 +2,12 @@
 
 All notable changes to `@xochi/client` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Origin pull**: the machine now runs the solver pin (`validateSolverPin`) before it asks the integrator for the one-time approval (`ensureApproval`), so a pull the client would refuse to sign never gets an unlimited allowance. The approval covers the same anchor the pin uses, the quoted input (`quotedFromAmount`) before the served `fromAmount`. `validateSolverPin` also refuses a Permit2 pull whose domain names any contract but the canonical Permit2 (new `SolverPinField` `"pull_domain"`). Quote ingest already refused both cases through `@xochi/signer`'s `assertIntentMatchesRequest` / `assertPullMatchesIntent`; this is defense in depth at the approval step.
+
 ## [0.1.7] - 2026-10-30
 
 ### Changed

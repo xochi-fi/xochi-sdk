@@ -25,10 +25,15 @@
  * `msg.sender == to`, so an unpinned `to` stays bounded (accepted unless a hard
  * pin is requested). Once an allowlist is configured, both methods enforce it.
  *
+ * A Permit2 pull's domain must also name the canonical Permit2 contract (SPEC
+ * §2.3): the machine runs this pin before asking the integrator for the one-time
+ * approval, so a pull aimed at any other contract never gets that far.
+ *
  * Mirrors the raxol agent-side pin (`solver_allowed?/2`). See GitHub #333
  * (recipient pin) and the #170 origin-leg amount binding.
  */
 
+import { PERMIT2_ADDRESS, sameAddressish } from "@xochi/signer";
 import type { Eip712TypedData } from "../shared/index.js";
 import { extractPullAmount } from "../shared/index.js";
 
@@ -55,6 +60,7 @@ export type SolverPinField =
   | "pull_to"
   | "pull_spender"
   | "pull_type"
+  | "pull_domain"
   | "pull_amount"
   | "payout_amount"
   | "payout_recipient";
@@ -105,6 +111,15 @@ export function validateSolverPin(
       recipient = checkRecipient("pull_to", message.to, "erc3009", config.erc3009Allowlist, config);
       break;
     case PERMIT2_TYPE:
+      // Refused before the approval is requested (SPEC §2.3: Permit2 is one
+      // universal address), so no allowance is granted for any other contract.
+      if (!sameAddressish(String(pull.domain?.verifyingContract ?? ""), PERMIT2_ADDRESS)) {
+        return {
+          ok: false,
+          field: "pull_domain",
+          reason: `Permit2 pull domain names ${String(pull.domain?.verifyingContract)}, not the canonical Permit2 ${PERMIT2_ADDRESS}`,
+        };
+      }
       recipient = checkRecipient(
         "pull_spender",
         message.spender,

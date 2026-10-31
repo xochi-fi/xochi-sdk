@@ -1375,10 +1375,19 @@ describe("two signatures (origin pull)", () => {
     return s.send({ type: "ApprovalReplied", flow: approval.flow, result: { ok: true, approved } });
   };
 
-  it("never signs a pull that pays an unpinned address, and says so", () => {
+  it("never approves or signs a pull that pays an unpinned address, and says so", () => {
     const s = new Session();
     s.quoteWith(quote({ pullAuthorization: erc3009Pull(ATTACKER) }));
-    const fx = answerApproval(s, true);
+    const prompt = signIntent(s);
+    const fx = s.send({
+      type: "SignReplied",
+      flow: prompt.flow,
+      purpose: "intent",
+      result: { ok: true, signature: "0xintent" },
+    });
+    // Refused before the approval: an unlimited allowance is never requested
+    // for a pull the client will not sign.
+    expect(walletCalls(fx, "ensureApproval")).toHaveLength(0);
     expect(walletCalls(fx, "signTypedData")).toHaveLength(0);
     expect(apiCalls(fx, "execute")).toHaveLength(0);
     expect(s.intent.status).toBe("quoted");
