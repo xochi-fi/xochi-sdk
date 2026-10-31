@@ -1,6 +1,6 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.11.0`
+- **Spec version:** `0.12.0`
 - **Status:** Draft (signature and fee layers are substantive and
   conformance-tested; transport defers to the server OpenAPI; escrow/solver
   sections are reserved)
@@ -37,6 +37,7 @@
 | 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
 | 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
 | 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
+| 0.12.0 | current | 3 | 2026-10-31 wire refresh (Riddler #1370, #1371, #1388): the readiness relay request is tightened (`recipient_authorization` required, nonzero/decimal patterns, `RootUpdateEnvelope` with `204`), `readiness_not_enabled` is withdrawn (a disabled relay now answers `404`, not `422`), `source_finalized` is a new non-terminal status, plus `/xochi/shielded/quote` and three error codes. 18 differ-BREAKING, all on the readiness relay routes no taker flow calls; MINOR by judgement (§0.3). No taker signed struct, vector or fee artifact changes |
 | 0.11.0 | current | 3 | Shielded recipient (descriptor digest, recipient message, three recipient acknowledgements) and pxe-bridge readiness attestation conformance vectors, plus the 2026-10-28 wire refresh (0 differ-BREAKING). Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes. Docs: §3.2 `aztec_proof` is now do-not-send; §3.4/§5.1 shielded status is the served scalars only; `[PROPOSED]` SOLVER-RFC §13 and ESCROW-RFC §5.1 tier 1s (RFC versions unchanged) |
 | 0.10.0 | current | 3 | Shielded terms and preview, corridor manifest, solver registration, and Canton destination order-id conformance vectors. Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
 | 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
@@ -147,6 +148,27 @@
   and was moving to `0.8.1` (riddler #1285);
   a MINOR here would move the lockstep target a second time for two optional
   fields the served `0.8.0` already carries.
+- `0.12.0`: the wire copy is refreshed from prod on 2026-10-31, after Riddler
+  #1370, #1371 and #1388 deployed (`--allow-breaking`: 18 BREAKING, 8 STALE).
+  STALE: `POST /xochi/shielded/quote` (the design-A tracer quote, `404` unless
+  the tracer is enabled), the non-terminal status `source_finalized` (§3.4),
+  the optional `IntentStatus.cantonUpdateId`, the `RecipientDescriptor`,
+  `RootUpdateEnvelope` and `RootUpdateRecord` schemas, a `204` on
+  `POST /xochi/readiness/root-update`, and the error codes
+  `shielded_terms_conflict`, `shielded_unavailable` and `insufficient_inventory`.
+  BREAKING: every finding but one is on the readiness relay
+  (`/xochi/readiness/*`), which is off by default and answers `404` in prod:
+  `ReadinessRequest` requires `recipient_authorization`, its 32-byte hex fields
+  refuse zero, its decimal chain/version fields admit `0`, `corridor.revision`
+  admits `0`, `descriptor` is a `RecipientDescriptor` `$ref`,
+  `ReadinessAttestationResponse` refuses extra keys, and the root-update body is
+  a `RootUpdateEnvelope` answered `204` (no `200`). The other is the withdrawal
+  of `readiness_not_enabled` from `ErrorCode` (§3.5). **So `0.12.0` is not
+  purely additive.** It is a MINOR by the same judgement as `0.9.0`: each
+  BREAKING finding records a change the producer already serves, on routes no
+  taker flow calls, and none touches a taker signed struct, fee artifact or
+  vector (every vector is byte-identical to `0.11.0`). The server MUST
+  advertise `spec_version: "0.12.0"` in lockstep.
 - `0.11.0`: additive conformance for the shielded recipient and its readiness
   evidence. `conformance/shielded-recipient.json` pins the `RecipientDescriptor`
   digest and stock `SchnorrAccount` address derivation (Aztec 5.2.0 and 6.0.0),
@@ -515,10 +537,15 @@ a deploy with it off answers `unsupported_chain`.
 ### 3.4 Status
 
 Terminal statuses: `completed`, `refunded`, `failed`, `expired`. Non-terminal:
-`pending`, `pull_pending`, `executing`, `bridging`, `settling`, `refund_pending`.
+`pending`, `pull_pending`, `executing`, `bridging`, `settling`,
+`source_finalized`, `refund_pending`.
 That is the served `IntentLifecycleStatus` in full (Riddler
 `lib/riddler/integrations/xochi/schemas/intent_status.ex`, `@terminal_statuses`),
-re-checked 2026-09-24. An earlier revision of this section recorded that
+re-checked 2026-10-31. `source_finalized` is served only on the shielded
+tracer path (`POST /xochi/shielded/quote`, then `/xochi/execute`): the source
+leg is collected and there is no EVM destination payout, so such an intent
+rests there and is never `completed` by this path; a client MUST keep it
+non-terminal. An earlier revision of this section recorded that
 `refunded` "has never been served"; the solver refund path now serves both it
 and `refund_pending`, so a client that rejects unlisted states breaks on a live
 refund, and one that treats `refund_pending` as terminal stops polling one hop
@@ -536,7 +563,11 @@ absent.
 Errors are `HTTP status + { error: <code>, message?, details? }`; only `error`
 is required. Codes come from the served `ErrorCode` enum — append-only, never
 repurposed, and catalogued in `wire/openapi.json` rather than here, because a
-list in prose is a list that goes stale. Its own classification: 4xx is
+list in prose is a list that goes stale. One code has been withdrawn:
+`readiness_not_enabled`, which a deploy with the readiness relay off answered
+(`422`) from the 2026-10-28 refresh (`0.11.0`) until Riddler #1388; the relay
+now answers `404` when it is off, so a client MUST NOT depend on the code.
+Its own classification: 4xx is
 client-actionable (fix the request or re-quote), 503 is transient (except on
 `POST /xochi/execute`, where an unmarked 503 is in doubt, below), 500
 `internal_error` is the server's. Codes carrying a rule beyond that:
