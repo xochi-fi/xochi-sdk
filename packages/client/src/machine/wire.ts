@@ -86,15 +86,15 @@ export interface QuoteRequest {
     chainId: ChainId;
   };
   /**
-   * Referral code (xochi#583), `REFERRAL_CODE_REGEX`: uppercase, as stored.
-   * Resolved by the Worker; a code it does not apply still quotes, with
-   * `referralNote`.
+   * Referral code (xochi#583), trimmed and uppercase, at most 64 characters.
+   * The Worker decides whether it applies; a code it does not apply, malformed
+   * or unknown, still quotes, with `referralNote`.
    */
   ref?: string;
   /**
-   * Promo code (xochi#584), `PROMO_CODE_REGEX`: uppercase, as stored. The
-   * Worker resolves it to a discount; a code it cannot use still quotes, at
-   * the undiscounted price, with `promoNote`.
+   * Promo code (xochi#584), trimmed and uppercase, at most 64 characters. The
+   * Worker resolves it to a discount; a code it cannot use, malformed or
+   * unknown, still quotes, at the undiscounted price, with `promoNote`.
    */
   promo?: string;
 }
@@ -206,13 +206,21 @@ export interface QuoteResponse {
    */
   errorCategory?: string;
   /**
-   * The `ref` sent was applied (xochi#583): the named line for a session of
-   * the quoting wallet, else the neutral line. Absent when no `ref` was sent,
-   * when it was not applied (`referralNote`), or when the Worker has
-   * referrals off (then neither is served).
+   * The referral this trade will credit (xochi#583), not a verdict on the
+   * `ref` sent: the wallet's open referral binding wins over a submitted
+   * code. Named (`code`, `name`) only to a session of the quoting wallet: the
+   * binding's code, else the applied `ref`, so it can name a code other than
+   * the one sent, or one when no `ref` was sent. Any other caller gets the
+   * neutral line, only when the `ref` sent was applied, and the same whether
+   * or not the wallet is bound. Absent when nothing is said (`referralNote`
+   * for a `ref` not applied) and when the Worker has referrals off.
    */
   referral?: { code: string; name: string } | { neutral: true; note: typeof REFERRAL_NEUTRAL_NOTE };
-  /** The `ref` sent was not applied: one fixed text for every reason. */
+  /**
+   * A `ref` was sent and not applied, one fixed text for every reason. To a
+   * session of the quoting wallet it means the trade credits no code at all
+   * (a binding that credits one shows as `referral` instead).
+   */
   referralNote?: typeof REFERRAL_NOT_APPLIED_NOTE;
   /** The `promo` sent priced this quote (xochi#584), with its discount. */
   promo?: { code: string; discount_bps: number };
