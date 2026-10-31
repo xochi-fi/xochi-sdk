@@ -718,24 +718,29 @@ describe("trade lifecycle listeners", () => {
       },
     });
     const send = (event: unknown) => fromFrame(frame(), { type: "xochi:event", event });
+    const ref1 = `tr_${"0123456789abcdef".repeat(2)}`;
+    const ref2 = `tr_${"f".repeat(32)}`;
 
-    send({ name: "trade:submitted", intentId: "int_1", extra: "dropped" });
-    send({ name: "trade:completed", intentId: "int_1" });
-    send({ name: "trade:failed", intentId: null, error: "Quote expired" });
-    send({ name: "trade:failed", intentId: "int_2", error: "Execution failed" });
-    // Malformed: ignored.
+    send({ name: "trade:submitted", tradeRef: ref1, intentId: "xi_1", extra: "dropped" });
+    send({ name: "trade:completed", tradeRef: ref1 });
+    send({ name: "trade:failed", tradeRef: ref2, error: "Execution failed" });
+    // Malformed: ignored. An intent id is never accepted as the reference.
     send({ name: "trade:submitted" });
-    send({ name: "trade:completed", intentId: "x".repeat(129) });
-    send({ name: "trade:failed", intentId: 5, error: "e" });
-    send({ name: "trade:failed", intentId: null });
-    send({ name: "trade:unknown", intentId: "int_3" });
+    send({ name: "trade:submitted", intentId: "xi_1" });
+    send({ name: "trade:completed", tradeRef: "xi_0123456789abcdef0123456789abcdef" });
+    send({ name: "trade:completed", tradeRef: `tr_${"A".repeat(32)}` });
+    send({ name: "trade:completed", tradeRef: `tr_${"0".repeat(31)}` });
+    send({ name: "trade:completed", tradeRef: `${ref1}\n` });
+    send({ name: "trade:failed", tradeRef: null, error: "Quote expired" });
+    send({ name: "trade:failed", tradeRef: ref2 });
+    send({ name: "trade:failed", tradeRef: ref2, error: "e".repeat(1_001) });
+    send({ name: "trade:unknown", tradeRef: ref1 });
     send("trade:completed");
 
     expect(seen).toEqual([
-      { name: "trade:submitted", intentId: "int_1" },
-      { name: "trade:completed", intentId: "int_1" },
-      { name: "trade:failed", intentId: null, error: "Quote expired" },
-      { name: "trade:failed", intentId: "int_2", error: "Execution failed" },
+      { name: "trade:submitted", tradeRef: ref1 },
+      { name: "trade:completed", tradeRef: ref1 },
+      { name: "trade:failed", tradeRef: ref2, error: "Execution failed" },
     ]);
   });
 });

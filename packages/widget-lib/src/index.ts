@@ -31,6 +31,7 @@ export {
   MAX_PENDING_RPC,
   MESSAGE,
   RPC_ERROR,
+  TRADE_REF_PATTERN,
   type AllowedRpcMethod,
   type FrameMessage,
   type HostMessage,

@@ -72,8 +72,19 @@ export const MAX_PENDING_RPC = 16;
 /** Largest height (CSS px) a resize may set. */
 export const MAX_FRAME_HEIGHT = 10_000;
 
-/** Longest request id, trade intent id and error message accepted or forwarded. */
+/** Longest request id and error message accepted or forwarded. */
 export const MAX_ID_LENGTH = 128;
+
+/**
+ * A trade reference as the frame mints it: `tr_` and 128 random bits in
+ * lowercase hex, fresh per trade and the same on every event of that trade.
+ * Opaque by design: it is not the Worker's intent id and means nothing to the
+ * API, so the events alone let a host correlate a trade but not look it up.
+ * It does not hide the intent id from a host that supplies the wallet
+ * provider: the frame forwards `eth_signTypedData_v4` to that provider, and
+ * the signed `XochiIntent` carries `intentId`.
+ */
+export const TRADE_REF_PATTERN = /^tr_[0-9a-f]{32}$/;
 export const MAX_ERROR_MESSAGE_LENGTH = 1_000;
 
 /** The EIP-1193 / EIP-1474 error codes the bridge produces itself. */
@@ -101,14 +112,17 @@ export interface RpcErrorObject {
   data?: unknown;
 }
 
-/** A trade lifecycle event the frame reports to the host. */
+/**
+ * A trade lifecycle event the frame reports to the host. `tradeRef` is the
+ * frame-minted opaque reference (`TRADE_REF_PATTERN`), never an intent id.
+ */
 export type XochiWidgetEvent =
-  /** The intent was signed and accepted by the API. */
-  | { name: "trade:submitted"; intentId: string }
-  /** The intent settled. */
-  | { name: "trade:completed"; intentId: string }
-  /** The trade failed; `intentId` is null when it failed before an intent existed. */
-  | { name: "trade:failed"; intentId: string | null; error: string };
+  /** The trade was signed and accepted by the API. */
+  | { name: "trade:submitted"; tradeRef: string }
+  /** The trade settled. */
+  | { name: "trade:completed"; tradeRef: string }
+  /** The trade failed or was refunded. */
+  | { name: "trade:failed"; tradeRef: string; error: string };
 
 export type XochiWidgetEventName = XochiWidgetEvent["name"];
 
