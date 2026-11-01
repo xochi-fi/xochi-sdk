@@ -7,7 +7,8 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 ### Added
 
 - **`advertisedConversionPairs(caps)`** and the `ConversionPair` type: the served `conversion_pairs[]` (Riddler `Conversion.Config.advertised_pairs/0`) as typed `{from, to, sameChain}` entries in served order. An entry without both symbols is dropped, and `sameChain` is `true` only for the served literal `true`. `SolverCapabilities.conversionPairs` keeps its raw records, so no existing export changes.
-
+- **`verifyClaimUserOp`** (from `@xochi-fi/shared`, xochi#472): the fail-closed claim check for a claimant holding the scanned ERC-5564 announcement and the per-payment spending key. Beyond what `assertPreparedClaimMatchesRequest` checks (the recomputed hash, the pinned EntryPoint, chain, counterfactual sender, recipient, zero native value, a paymaster), it binds the `execute` target to the announced token, `factory` to the announced factory, and `factoryData`'s `createAccount(owner, salt)` to the signing key and the announced salt. Every input is required; a refusal returns `{ok: false, reason}` worded for the user, and success returns the decoded payout and the caller's announcement for display. Unlike shared's copy it also refuses an unsponsored op. `assertPreparedClaimMatchesRequest` is unchanged.
+- **`decodeCreateAccountCall`** and `SIMPLE_ACCOUNT_CREATE_ACCOUNT_SELECTOR`: decodes a claim's `factoryData`, failing closed with `UserOperationError` like `decodeErc20TransferExecute`.
 ## [0.6.0] - 2026-10-30
 
 ### Added

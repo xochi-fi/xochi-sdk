@@ -6,6 +6,7 @@
 
 import {
   computeUserOpHash,
+  decodeCreateAccountCall,
   decodeErc20TransferExecute,
   ENTRYPOINT_V08_ADDRESS,
   UserOperationError,
@@ -243,4 +244,200 @@ export function assertPreparedClaimMatchesRequest(
   }
 
   return { verified: true, token: transfer.token, amount: String(transfer.amount) };
+}
+
+/**
+ * The announcement's decoded ERC-5564 metadata: read off chain during the scan, from bytes
+ * the server does not get to choose. Structural, so a caller's own decoded shape (which may
+ * carry the view tag, selector and amount too) is accepted and echoed back unchanged.
+ */
+export interface ClaimAnnouncement {
+  /** ERC-20 the payment settled in. */
+  token: string;
+  /** SimpleAccountFactory the announcement names for the counterfactual account. */
+  factory: string;
+  /** CREATE2 salt the announcement names. */
+  salt: bigint;
+}
+
+/** What a claim UserOperation actually does, once decoded. */
+export interface DecodedClaimTransfer {
+  /** Account the funds leave. Checked to be the counterfactual that was asked about. */
+  sender: string;
+  /** Contract the outer `execute` calls. Checked to be the announced token. */
+  token: string;
+  /** Where the funds land. Checked to be the requested recipient. */
+  recipient: string;
+  /** Payout in token base units. NOT checked: surfaced for the user to read. */
+  amount: bigint;
+  /** Native value the outer `execute` forwards. Checked to be zero. */
+  value: bigint;
+}
+
+export interface VerifyClaimUserOpParams<A extends ClaimAnnouncement = ClaimAnnouncement> {
+  /** The op the server served, or undefined if it served none. */
+  userOperation: UserOperationV08 | undefined;
+  /** EntryPoint the hash was computed against, as served. */
+  entryPoint: string | undefined;
+  /** The digest the client is being asked to sign. */
+  servedUserOpHash: string;
+  /**
+   * Chain the SERVER says the hash was computed over. Checked against `expectedChainId`
+   * before recomputing: recomputing with a server-chosen chain reproduces the served digest
+   * for any chain and proves only that the server is self-consistent.
+   */
+  servedChainId: number;
+  /** Chain the client actually scanned. The op has to be built for this one. */
+  expectedChainId: number;
+  /** Counterfactual account the client asked about. */
+  counterfactualAddress: string;
+  /** Recipient the client asked for. The field an attacker would swap. */
+  recipientAddress: string;
+  /**
+   * Address of the key about to sign, which must be the deployed account's owner. Derived
+   * from the per-payment spending key, never taken from the server.
+   */
+  expectedOwner: string;
+  /**
+   * The announcement's decoded metadata, or null when the blob was too short to carry any.
+   * Null REFUSES: with no announcement there is nothing server-independent to compare the
+   * token, factory and salt against.
+   */
+  announced: A | null;
+}
+
+export type VerifyClaimUserOpResult<A extends ClaimAnnouncement = ClaimAnnouncement> =
+  /** `announced` is echoed back non-null, so a caller showing the payout need not re-narrow it. */
+  { ok: true; decoded: DecodedClaimTransfer; announced: A } | { ok: false; reason: string };
+
+/**
+ * Decides whether a prepared stealth claim is safe to sign, binding it to the announcement.
+ *
+ * The fail-closed sibling of {@link assertPreparedClaimMatchesRequest}. That one serves a
+ * caller holding only `/xochi/status` and warns on gaps an older server leaves; this one
+ * serves a caller that scanned the announcement and holds the spending key, so it can also
+ * check the account deployment, and it refuses on every gap. Every input is required: an
+ * optional input on a fail-closed verifier is a check with an off switch.
+ *
+ * In order: the op and EntryPoint are present, the announcement decoded, the EntryPoint is
+ * the canonical v0.8 one, the op is built for the scanned chain, it recomputes to the served
+ * hash (the load-bearing check every later one hangs off), its callData is
+ * `execute(token, 0, transfer(recipient, amount))` from the counterfactual to the requested
+ * recipient, the token is the announced one, no native value rides along, a paymaster
+ * sponsors it, and `createAccount(owner, salt)` on the announced factory deploys the account
+ * to the signing key with the announced salt.
+ *
+ * The token check is what a recipient check cannot replace: the inner `transfer` decodes the
+ * same whatever `execute` targets, so an op naming another contract passes the recipient
+ * check and moves none of the settled funds, and the server terminalises the intent on its
+ * receipt. The paymaster check bounds gas: an unsponsored op pays its own prefund from
+ * server-chosen gas fields, draining the account's native balance.
+ *
+ * NOT checked: the payout amount. The caller gets `decoded.amount` and `announced` back to
+ * show the user. Refusals return a reason worded for that user; they never throw for a bad
+ * op, only for a programming error.
+ */
+export function verifyClaimUserOp<A extends ClaimAnnouncement>(
+  params: VerifyClaimUserOpParams<A>,
+): VerifyClaimUserOpResult<A> {
+  const { userOperation: op, entryPoint, servedChainId, announced } = params;
+  const refuse = (reason: string): VerifyClaimUserOpResult<A> => ({ ok: false, reason });
+
+  if (!op || !entryPoint) {
+    return refuse("The server did not send the operation to check, so it cannot be verified.");
+  }
+
+  if (!announced) {
+    return refuse(
+      "This payment's announcement does not say which token it is in, so the operation cannot be checked.",
+    );
+  }
+
+  if (!sameAddressish(String(entryPoint), ENTRYPOINT_V08_ADDRESS)) {
+    return refuse("The operation names an unexpected EntryPoint contract.");
+  }
+
+  if (servedChainId !== params.expectedChainId) {
+    return refuse("The operation was built for a different network.");
+  }
+
+  let recomputed: string;
+  try {
+    recomputed = computeUserOpHash(op, ENTRYPOINT_V08_ADDRESS, servedChainId);
+  } catch (e) {
+    if (e instanceof UserOperationError) {
+      return refuse("The operation could not be read, so it cannot be verified.");
+    }
+    throw e;
+  }
+
+  if (recomputed.toLowerCase() !== String(params.servedUserOpHash).toLowerCase()) {
+    return refuse("The operation does not match the code being signed.");
+  }
+
+  let transfer: ReturnType<typeof decodeErc20TransferExecute>;
+  try {
+    transfer = decodeErc20TransferExecute(op.callData);
+  } catch (e) {
+    if (e instanceof UserOperationError) {
+      return refuse("The operation does not look like a payment, so it was not signed.");
+    }
+    throw e;
+  }
+
+  // Shape-checked by the hash recompute above, so a string.
+  const sender = String(op.sender);
+  if (!sameAddressish(sender, params.counterfactualAddress)) {
+    return refuse("The operation would pay out of a different account.");
+  }
+
+  if (!sameAddressish(transfer.to, params.recipientAddress)) {
+    return refuse("The operation would send the money somewhere else.");
+  }
+
+  if (!sameAddressish(transfer.token, announced.token)) {
+    return refuse("The operation would move a different token than the one received.");
+  }
+
+  if (transfer.value !== 0n) {
+    return refuse("The operation would send ether as well as the payment.");
+  }
+
+  if (op.paymaster === undefined || op.paymaster === null) {
+    return refuse("The operation is not sponsored, so the account would pay its own gas.");
+  }
+
+  if (typeof op.factory !== "string" || !sameAddressish(op.factory, announced.factory)) {
+    return refuse("The operation names an unexpected account factory.");
+  }
+
+  let deployment: ReturnType<typeof decodeCreateAccountCall>;
+  try {
+    deployment = decodeCreateAccountCall(op.factoryData);
+  } catch (e) {
+    if (e instanceof UserOperationError) {
+      return refuse("The operation does not say who would own the account, so it was not signed.");
+    }
+    throw e;
+  }
+
+  if (!sameAddressish(deployment.owner, params.expectedOwner)) {
+    return refuse("The operation would hand the account to a different owner.");
+  }
+
+  if (deployment.salt !== announced.salt) {
+    return refuse("The operation is for a different payment.");
+  }
+
+  return {
+    ok: true,
+    decoded: {
+      sender,
+      token: transfer.token,
+      recipient: transfer.to,
+      amount: transfer.amount,
+      value: transfer.value,
+    },
+    announced,
+  };
 }

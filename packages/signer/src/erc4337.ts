@@ -356,3 +356,44 @@ export function decodeErc20TransferExecute(callData: unknown): DecodedErc20Trans
 
   return { token: dest, value, to, amount };
 }
+
+/** `createAccount(address,uint256)` -- the SimpleAccountFactory call a claim's `factoryData` carries. */
+export const SIMPLE_ACCOUNT_CREATE_ACCOUNT_SELECTOR = "0x5fbfb9cf";
+
+export interface DecodedCreateAccountCall {
+  /** EOA that will own the deployed account, and so the only key able to spend from it. */
+  owner: string;
+  /** CREATE2 salt. Together with the owner and the factory it fixes the account address. */
+  salt: bigint;
+}
+
+/**
+ * Decodes `createAccount(owner, salt)` -- the only `factoryData` shape a stealth claim has.
+ *
+ * Fails closed on anything else: an account whose ownership cannot be read is one a claim
+ * must not deploy. Trailing bytes are tolerated, as in {@link decodeErc20TransferExecute}.
+ */
+export function decodeCreateAccountCall(factoryData: unknown): DecodedCreateAccountCall {
+  const data = toBytes(factoryData, "factoryData");
+
+  const refuse = (why: string): never => {
+    throw new UserOperationError(
+      `UserOperation.factoryData ${why} -- a stealth claim deploys its account with ` +
+        "createAccount(owner, salt), so who would own the account cannot be read. Refusing to sign.",
+    );
+  };
+
+  if (!data.toLowerCase().startsWith(SIMPLE_ACCOUNT_CREATE_ACCOUNT_SELECTOR)) {
+    return refuse(`does not call createAccount(address,uint256) (selector ${data.slice(0, 10)})`);
+  }
+
+  try {
+    const [owner, salt] = ethers.AbiCoder.defaultAbiCoder().decode(
+      ["address", "uint256"],
+      "0x" + data.slice(10),
+    );
+    return { owner: String(owner), salt: BigInt(salt) };
+  } catch {
+    return refuse("does not decode as createAccount(address,uint256)");
+  }
+}

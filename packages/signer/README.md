@@ -30,7 +30,7 @@ const intentSignature = await signXochiIntent(quote.eip712, privateKey);
 const pullSignature = await signPullAuthorization(quote.pull_authorization, privateKey);
 ```
 
-Checks throw on mismatch. Deposit-address routes use `verifyDepositAttestation`, `assertDepositQuoteMatchesRequest` and `recordDepositAddress`; stealth claims use `deriveStealthPrivateKey`, `assertPreparedClaimMatchesRequest` and `signUserOpHash`. See the TSDoc.
+Checks throw on mismatch. Deposit-address routes use `verifyDepositAttestation`, `assertDepositQuoteMatchesRequest` and `recordDepositAddress`; stealth claims use `deriveStealthPrivateKey`, `assertPreparedClaimMatchesRequest` and `signUserOpHash`. A claimant holding the scanned announcement uses `verifyClaimUserOp` instead: it returns `{ok: false, reason}` rather than throwing, refuses every gap, and also binds the token, factory, owner and salt to the announcement and the signing key. See the TSDoc.
 
 ## Safety rules
 
@@ -40,7 +40,7 @@ Checks throw on mismatch. Deposit-address routes use `verifyDepositAttestation`,
 - **Quotes with an `escrow` envelope refuse**; a recipient pin naming the escrow is no substitute for `assertEscrowBinding`.
 - **`exact_output` requires `max_from_amount`.**
 - **`signERC3009` is USDC-only**; use `signPermit2` for other tokens.
-- **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` recomputed.
+- **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` or `verifyClaimUserOp` recomputed.
 - **`recordDepositAddress` needs a store you supply** to refuse an address reused across intents.
 
 ## Pull verification
