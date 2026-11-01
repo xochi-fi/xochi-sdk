@@ -1,6 +1,7 @@
 /**
  * @xochi/widget-lib: embed the Xochi swap widget in any page and lend it the
- * host's wallet. See README.md for usage and the security model.
+ * host's wallet (`createXochiWidget`), and the frame's end of that bridge
+ * (`connectToHost`). See README.md for usage and the security model.
  */
 
 export {
@@ -12,6 +13,14 @@ export {
   type XochiWidgetListeners,
   type XochiWidgetOptions,
 } from "./widget.js";
+export {
+  HostRpcError,
+  connectToHost,
+  mintTradeRef,
+  type HostConnection,
+  type HostConnectionOptions,
+  type HostProvider,
+} from "./frame.js";
 export {
   EMBED_ALLOW_FIELDS,
   EMBED_CODE_PATTERN,

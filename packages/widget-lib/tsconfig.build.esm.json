@@ -3,6 +3,9 @@
   "compilerOptions": {
     "noEmit": false,
     "declaration": true,
+    // Tests may use ES2024's Promise.withResolvers; the library must not: host
+    // pages and frames run in browsers that lack it.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
     "outDir": "dist/esm",
     "rootDir": "src"
