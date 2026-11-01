@@ -25,6 +25,7 @@ import {
   chainAddressFormat,
   originPullMethod,
   advertisedTokenAddress,
+  advertisedConversionPairs,
   depositAttestationVersionSkew,
   orderBoundsViolation,
   stealthNotionalFloor,
@@ -468,6 +469,47 @@ describe("execute ownership (Riddler #1346)", () => {
       expect(parseCapabilities(matrix({ execute_ownership }))!.executeOwnership).toBe(false);
     }
     expect(parseCapabilities({})!.executeOwnership).toBe(false);
+  });
+});
+
+describe("conversion pairs", () => {
+  it("reads the producer's shape (Conversion.Config.advertised_pairs/0), in served order", () => {
+    const c = parseCapabilities(
+      matrix({
+        conversion_pairs: [
+          { from: "USDC", to: "USDG", strategy: "float", max_slippage_bps: 10, same_chain: true },
+          { from: "USDG", to: "USDC", strategy: "float", max_slippage_bps: 10, same_chain: false },
+        ],
+      }),
+    )!;
+    expect(advertisedConversionPairs(c)).toEqual([
+      { from: "USDC", to: "USDG", sameChain: true },
+      { from: "USDG", to: "USDC", sameChain: false },
+    ]);
+  });
+
+  it("reads conversion off as no pairs", () => {
+    expect(advertisedConversionPairs(caps())).toEqual([]);
+    expect(advertisedConversionPairs(parseCapabilities({})!)).toEqual([]);
+  });
+
+  it("drops an entry without both symbols, and grants same-chain only for literal true", () => {
+    const c = parseCapabilities(
+      matrix({
+        conversion_pairs: [
+          { from: "USDC" },
+          { from: "", to: "USDG" },
+          { from: 1, to: "USDG" },
+          "USDC->USDG",
+          { from: "USDT", to: "USDG", same_chain: "true" },
+          { from: "USDC", to: "USDT" },
+        ],
+      }),
+    )!;
+    expect(advertisedConversionPairs(c)).toEqual([
+      { from: "USDT", to: "USDG", sameChain: false },
+      { from: "USDC", to: "USDT", sameChain: false },
+    ]);
   });
 });
 

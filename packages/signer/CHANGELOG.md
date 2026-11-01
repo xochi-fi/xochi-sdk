@@ -4,6 +4,10 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **`advertisedConversionPairs(caps)`** and the `ConversionPair` type: the served `conversion_pairs[]` (Riddler `Conversion.Config.advertised_pairs/0`) as typed `{from, to, sameChain}` entries in served order. An entry without both symbols is dropped, and `sameChain` is `true` only for the served literal `true`. `SolverCapabilities.conversionPairs` keeps its raw records, so no existing export changes.
+
 ## [0.6.0] - 2026-10-30
 
 ### Added
