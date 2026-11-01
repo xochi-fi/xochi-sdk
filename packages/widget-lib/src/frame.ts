@@ -302,10 +302,11 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
         );
       }
       nextId += 1;
-      const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-      pending.set(id, { resolve, reject });
-      post(request as FrameMessage);
-      return promise;
+      // Executor form: the frame runs in browsers without the ES2024 `Promise.withResolvers`.
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        post(request as FrameMessage);
+      });
     },
     on(event, listener) {
       let set = listeners.get(event);

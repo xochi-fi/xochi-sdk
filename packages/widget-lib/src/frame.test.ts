@@ -235,6 +235,28 @@ describe("connectToHost", () => {
     expect(capped.reason.message.endsWith("…")).toBe(true);
     expect(await outcome(unsafe)).toMatchObject({ reason: { code: RPC_ERROR.internal } });
   });
+
+  it("carries requests in a browser without Promise.withResolvers (ES2024)", async () => {
+    const native = Object.getOwnPropertyDescriptor(Promise, "withResolvers");
+    Reflect.deleteProperty(Promise, "withResolvers");
+    try {
+      expect("withResolvers" in Promise).toBe(false);
+      const { frame, connection } = connect();
+      attach(frame);
+      const accounts = connection.provider.request({ method: "eth_accounts" });
+      const rejected = connection.provider.request({ method: "personal_sign", params: [] });
+      frame.receive({ type: "xochi:rpc:result", id: 1, result: ["0xabc"] });
+      frame.receive({
+        type: "xochi:rpc:result",
+        id: 2,
+        error: { code: 4001, message: "User rejected" },
+      });
+      await expect(accounts).resolves.toEqual(["0xabc"]);
+      await expect(rejected).rejects.toMatchObject({ code: 4001, message: "User rejected" });
+    } finally {
+      if (native) Object.defineProperty(Promise, "withResolvers", native);
+    }
+  });
 });
 
 describe("the frame's own refusals", () => {
