@@ -4,6 +4,8 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
 Additive: `createXochiWidget` and every existing export behave as before.
 
 ### Added
