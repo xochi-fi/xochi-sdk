@@ -1796,7 +1796,7 @@
       },
       {
         "primaryType": "SenderRegistrationAck",
-        "scope": "B-panel",
+        "scope": "both designs",
         "purpose": "xochi.shielded.sender-registration-ack.v1",
         "typeString": "SenderRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32[] registeredSenders,bytes32 nonce,uint64 challengeExpiry,string purpose)",
         "typehash": "0x2bb00a3b4420a9ec1f7fb6c50f516602d361f82e4f2edb567241b27d4c0011eb"

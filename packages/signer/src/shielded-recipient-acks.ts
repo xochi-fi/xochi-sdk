@@ -5,9 +5,10 @@
 //
 // BackupPersistenceAck binds the exact randomized encrypted backup bytes and decoder
 // contract without exposing plaintext: `backupCommitment = keccak256(encryptedBackupBytes)`
-// and `backupFormatId` identifies the format. SenderRegistrationAck is the production
-// B-panel enrollment acknowledgement. PaymentReceiptAck binds exact credited value and
-// transaction evidence. Design A's testnet tracer has no standardized acknowledgement.
+// and `backupFormatId` identifies the format. SenderRegistrationAck is the enrollment
+// acknowledgement for address-derived tagging, both designs since the 2026-11-01 D4
+// amendment (the bridge account on the design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited value and
+// transaction evidence.
 // All three name the binding by its EIP-712 digest. BackupPersistenceAck and
 // SenderRegistrationAck reuse that binding's exact `nonce` and `challengeExpiry`, which
 // `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate server-issued
