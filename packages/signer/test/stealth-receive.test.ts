@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { runInNewContext } from "node:vm";
 import { ethers } from "ethers";
 import {
   deriveStealthKeys,
@@ -102,6 +103,22 @@ describe("private scalars as bytes or hex", () => {
     expect(deriveStealthOwner(announcement, spendingHex, viewingHex)).toEqual(
       deriveStealthOwner(announcement, keys.spendingKey, keys.viewingKey),
     );
+  });
+
+  it("accepts bytes from another realm", () => {
+    // A jsdom test environment or an iframe hands over a Uint8Array that fails
+    // ethers' `instanceof` check; the result must not depend on the realm.
+    const sent = computeStealthAddress(meta, EPHEMERAL_PRIV);
+    const announcement = announcementFrom(sent.ephemeralPubKey, sent.viewTag, sent.stealthAddress);
+    const foreign = (bytes: Uint8Array): Uint8Array =>
+      runInNewContext("Uint8Array.from(source)", { source: Array.from(bytes) });
+    expect(foreign(keys.spendingKey) instanceof Uint8Array).toBe(false);
+
+    expect(computeStealthAddress(meta, foreign(EPHEMERAL_PRIV))).toEqual(sent);
+    expect(checkViewTag(announcement, foreign(keys.viewingKey))).toBe(true);
+    expect(
+      deriveStealthOwner(announcement, foreign(keys.spendingKey), foreign(keys.viewingKey)),
+    ).toEqual(deriveStealthOwner(announcement, keys.spendingKey, keys.viewingKey));
   });
 
   it("deriveStealthOwner refuses a zero spending key", () => {

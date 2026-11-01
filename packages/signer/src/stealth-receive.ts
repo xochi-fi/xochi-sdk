@@ -155,8 +155,12 @@ function strip0x(hex: string): string {
   return hex.startsWith("0x") ? hex.slice(2) : hex;
 }
 
+// ethers accepts bytes only if they pass `instanceof Uint8Array`, which a
+// Uint8Array from another realm (an iframe, a jsdom test environment) fails, so
+// those are copied into this realm.
 function toBytes(value: StealthScalar): Uint8Array {
-  return typeof value === "string" ? ethers.getBytes("0x" + strip0x(value)) : value;
+  if (typeof value === "string") return ethers.getBytes("0x" + strip0x(value));
+  return value instanceof Uint8Array ? value : Uint8Array.from(value);
 }
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
@@ -218,7 +222,8 @@ export function deriveStealthKeys(signature: string): StealthKeys {
 
   // keccak256 of the UTF-8 domain-tagged signature hex, reduced mod n, as 32 bytes.
   const deriveKey = (domain: string): Uint8Array => {
-    const hash = ethers.keccak256(new TextEncoder().encode(domain + ":" + cleanSig));
+    const preimage = toBytes(new TextEncoder().encode(domain + ":" + cleanSig));
+    const hash = ethers.keccak256(preimage);
     return ethers.getBytes("0x" + modOrder(ethers.getBytes(hash)).toString(16).padStart(64, "0"));
   };
 
