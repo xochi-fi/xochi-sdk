@@ -5,6 +5,7 @@ export * from "./types";
 export * from "./signing";
 export * from "./xochi-signing";
 export * from "./stealth";
+export * from "./stealth-receive";
 export * from "./erc4337";
 export * from "./escrow";
 export * from "./xsp";

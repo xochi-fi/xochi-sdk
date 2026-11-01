@@ -1,0 +1,38 @@
+[
+  {
+    "name": "rev-sig-a",
+    "signature": "0x2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c1c",
+    "ephemeral_priv": "0x2a2b2c2d2e2f30313233343536373839404142434445464748494a4b4c4d4e4f",
+    "spending_priv": "0x6607905361007cad742c1cc1e2edf8bbfa9f17eb5b5e0daced6e1f9757c3ebc9",
+    "spending_pub": "0x03a3979097316299a554a0d0f5d799b157d100fb56d7784e2ac328daba569f2acb",
+    "viewing_priv": "0x94821d9d7ae4c98fe48b0b789b19c2c076173f0c3f6233dbf66a7f3b827e7f34",
+    "viewing_pub": "0x021b446e53a972c05b5a28c7eae2eb261642df260f191342f4d08ce9a8dec35b27",
+    "stealth_address": "0xeaee0d2344c6ee0a7b3e8882f9127309c98b3879",
+    "ephemeral_pub": "0x03631cecc62f503fa62026c7d7ac0d81d35add5849ba12df6ff30a766f5e620a2a",
+    "view_tag": 179
+  },
+  {
+    "name": "rev-sig-b",
+    "signature": "0xd0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6c8d0e2f4a61b",
+    "ephemeral_priv": "0x63bfab5c9d3e2f10a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5",
+    "spending_priv": "0xe99930640ae6b2cbcec48ac4640eb958914ec6cc7083bc4d4988cf3a13395084",
+    "spending_pub": "0x036a4b646d2a67df28f0e2d9502db869c24cbde61c5d96606b50558454c4604465",
+    "viewing_priv": "0xe1658f49ba145b329255e953623c6caa272a4a3cac92026ed50ab654d3bd4d5a",
+    "viewing_pub": "0x0311fbdde5debf02f57c8a2b02f49908c945ccc06483400ab787b98d1451451cec",
+    "stealth_address": "0x695758ecc0a83df3ed2eb9b1ad07cc95b93c4a03",
+    "ephemeral_pub": "0x037c8ca759c316f9f3ba1d7b3e24e34e897eec8d33ff4519c6509e4472be1d30e8",
+    "view_tag": 148
+  },
+  {
+    "name": "rev-sig-c",
+    "signature": "0x5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1c",
+    "ephemeral_priv": "0x1414141414141414141414141414141414141414141414141414141414141414",
+    "spending_priv": "0x475468455f9352d7dc87653d3f767947785bebdcbef0d4228eb23dd334cb2773",
+    "spending_pub": "0x026d2c6cbf81956605d7f5d9b28b498df734f81fe3b73f88b8756c612f32c8e3a3",
+    "viewing_priv": "0xeb5579ef4e300b6f915a85c2c5763a4a09596fbc93834324fa943a621b50bd96",
+    "viewing_pub": "0x031f1aa0b4bc4c372935921428e2b0e34c8bfca148b517233ee69143dd925f775c",
+    "stealth_address": "0xf428d592af39e2aaf4297e71fb57206c37029524",
+    "ephemeral_pub": "0x03ff8adab52623bcb2717fc71d7edc6f55e98396e6c234dff01f307a12b2af1c99",
+    "view_tag": 115
+  }
+]
