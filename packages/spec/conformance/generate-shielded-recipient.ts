@@ -266,7 +266,7 @@ const ACKS = [
   {
     primaryType: "SenderRegistrationAck",
     purpose: "xochi.shielded.sender-registration-ack.v1",
-    scope: "B-panel",
+    scope: "both designs",
     members: [
       { name: "bindingDigest", type: "bytes32" },
       { name: "aztecRecipient", type: "bytes32" },
