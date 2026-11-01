@@ -41,6 +41,36 @@ export const STEALTH_SCHEME_ID = 1;
 export const STEALTH_DERIVE_MESSAGE =
   "Sign this message to derive your Xochi stealth keys.\n\nThis signature will be used to create receiving addresses that only you can spend from.";
 
+/**
+ * Why `deriveStealthKeys` refused a signature. Worded for the user (the Xochi
+ * app and widget show it verbatim) and identical to the Xochi app's
+ * `STEALTH_SIGNER_UNSUPPORTED`.
+ */
+export const STEALTH_SIGNER_UNSUPPORTED =
+  "Stealth needs a standard wallet. Smart wallets (Safe, Base Account) can't hold stealth keys yet -- send this one public.";
+
+/**
+ * Stealth spending public keys whose PRIVATE keys are public (xochi#679).
+ *
+ * The Safe Apps provider answers `personal_sign` with `0x` for on-chain message
+ * signing, and `0x` derives one fixed key pair, the same for every such wallet
+ * and computable by anyone. A payout to it can be found and swept by anyone.
+ * Same list as `@xochi/shared`'s.
+ */
+export const COMPROMISED_STEALTH_SPENDING_PUB_KEYS: readonly string[] = [
+  "0x027826f41c98a177d441184f2324bbb274db6306cd2e7d54b242f8a399e7eba795",
+];
+
+/**
+ * Whether a spending public key is on `COMPROMISED_STEALTH_SPENDING_PUB_KEYS`.
+ * Use it on a meta-address that did not come from `deriveStealthKeys` (a cached
+ * or registered one), which may predate the refusal.
+ */
+export function isCompromisedStealthSpendingPubKey(spendingPubKey: string): boolean {
+  const normalized = "0x" + strip0x(spendingPubKey).toLowerCase();
+  return COMPROMISED_STEALTH_SPENDING_PUB_KEYS.includes(normalized);
+}
+
 /** A private scalar as bytes or `0x` hex. */
 export type StealthScalar = Uint8Array | string;
 
@@ -213,11 +243,21 @@ function isValidCompressedPubKey(hex: string): boolean {
  * `keccak256(utf8("stealth:spending:" + sigHex))` and
  * `keccak256(utf8("stealth:viewing:" + sigHex))`, `sigHex` without `0x`.
  *
+ * Only a 65-byte (r, s, v) ECDSA signature, as hex with or without `0x`, is a
+ * stable seed; anything else throws `STEALTH_SIGNER_UNSUPPORTED`. The other
+ * answers are smart-account ones: an ERC-6492 envelope, an ERC-1271 blob, or `0x`
+ * from the Safe Apps provider, which derives the same publicly computable keys
+ * for every wallet. A result on `COMPROMISED_STEALTH_SPENDING_PUB_KEYS` throws
+ * the same error.
+ *
  * Both private keys are returned reduced into [1, n-1], the range
  * `deriveStealthPrivateKey` accepts. The reduction cannot change a public key, a
  * stealth address or a view tag: k*G == (k mod n)*G.
  */
 export function deriveStealthKeys(signature: string): StealthKeys {
+  if (typeof signature !== "string" || !/^(0x)?[0-9a-fA-F]{130}$/.test(signature)) {
+    throw new Error(STEALTH_SIGNER_UNSUPPORTED);
+  }
   const cleanSig = strip0x(signature);
 
   // keccak256 of the UTF-8 domain-tagged signature hex, reduced mod n, as 32 bytes.
@@ -236,10 +276,15 @@ export function deriveStealthKeys(signature: string): StealthKeys {
     throw new Error("Derived stealth key is out of range; re-sign to derive keys");
   }
 
+  const spendingPubKey = compressedPublicKey(spendingKey);
+  if (isCompromisedStealthSpendingPubKey(spendingPubKey)) {
+    throw new Error(STEALTH_SIGNER_UNSUPPORTED);
+  }
+
   return {
     spendingKey,
     viewingKey,
-    spendingPubKey: compressedPublicKey(spendingKey),
+    spendingPubKey,
     viewingPubKey: compressedPublicKey(viewingKey),
   };
 }

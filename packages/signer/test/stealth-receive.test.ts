@@ -11,7 +11,11 @@
 import { describe, it, expect } from "vitest";
 import { runInNewContext } from "node:vm";
 import { ethers } from "ethers";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import {
+  STEALTH_SIGNER_UNSUPPORTED,
+  COMPROMISED_STEALTH_SPENDING_PUB_KEYS,
+  isCompromisedStealthSpendingPubKey,
   deriveStealthKeys,
   computeMetaAddressFromKeys,
   computeStealthAddress,
@@ -126,6 +130,52 @@ describe("private scalars as bytes or hex", () => {
     const announcement = announcementFrom(sent.ephemeralPubKey, sent.viewTag, sent.stealthAddress);
     expect(() => deriveStealthOwner(announcement, new Uint8Array(32), keys.viewingKey)).toThrow(
       "spendingPrivHex must be a valid secp256k1 private key",
+    );
+  });
+});
+
+// xochi#679: only a plain EOA signature is a stable seed for stealth keys.
+describe("stealth signer refusal", () => {
+  it("refuses every answer that is not a 65-byte signature", () => {
+    const refused = [
+      "0x", // Safe Apps provider, on-chain message signing
+      "",
+      "0x" + "ab".repeat(64), // 64-byte EIP-2098 compact form
+      "0x" + "ab".repeat(66),
+      // ERC-6492 envelope (undeployed Coinbase Smart Wallet) ends in the magic suffix
+      "0x" + "00".repeat(200) + "6492649264926492649264926492649264926492649264926492649264926492",
+      "0x" + "zz".repeat(65), // not hex
+      " " + SIGNATURE, // surrounding whitespace
+      "0x0x" + "ab".repeat(64),
+    ];
+    for (const signature of refused) {
+      expect(() => deriveStealthKeys(signature), signature.slice(0, 12)).toThrow(
+        STEALTH_SIGNER_UNSUPPORTED,
+      );
+    }
+  });
+
+  it("accepts a 65-byte signature with or without 0x, in either case", () => {
+    expect(() => deriveStealthKeys(SIGNATURE)).not.toThrow();
+    expect(() => deriveStealthKeys(SIGNATURE.slice(2))).not.toThrow();
+    expect(() => deriveStealthKeys("0x" + "AB".repeat(65))).not.toThrow();
+  });
+
+  it("lists the key pair an empty signature used to derive as compromised", () => {
+    // What `0x` derived before the refusal: keccak256("stealth:spending:" + "").
+    // Pinned to its origin so the denylist names the real key.
+    const spendingKey = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes("stealth:spending:")));
+    const pub = ethers.hexlify(secp256k1.getPublicKey(spendingKey, true));
+    expect(COMPROMISED_STEALTH_SPENDING_PUB_KEYS).toContain(pub);
+    expect(isCompromisedStealthSpendingPubKey(pub)).toBe(true);
+  });
+
+  it("matches the denylist with or without 0x and in either case", () => {
+    const listed = COMPROMISED_STEALTH_SPENDING_PUB_KEYS[0]!;
+    expect(isCompromisedStealthSpendingPubKey(listed.slice(2))).toBe(true);
+    expect(isCompromisedStealthSpendingPubKey("0x" + listed.slice(2).toUpperCase())).toBe(true);
+    expect(isCompromisedStealthSpendingPubKey(deriveStealthKeys(SIGNATURE).spendingPubKey)).toBe(
+      false,
     );
   });
 });
