@@ -1,7 +1,10 @@
 // `verifyClaimUserOp`: the fail-closed claim check that binds the served op to the
-// announcement and to the signing key. Ported from `@xochi-fi/shared`'s `userop.test.ts`
-// (xochi#472), which verified the same op with viem; every refusal case there is here,
-// plus the ones it lacked (marked "not in shared").
+// announcement and to the signing key. Ported from `@xochi-fi/shared` 0.2.1 (xochi#472),
+// whose verifier runs `@xochi/client`'s `checkPreparedClaim` (this package's
+// `assertPreparedClaimMatchesRequest` with `requireVerified`) and returns its message as the
+// reason. The widget shows that reason verbatim, so every refusal below is pinned by EXACT
+// text, and the multi-defect cases pin which refusal wins. Every case here was also run
+// through the published shared 0.2.1 and returned the identical result.
 //
 // The op is Riddler's own vector, from `test/riddler/evm/erc4337/user_operation_test.exs`,
 // and `RIDDLER_SPONSORED_HASH` is Riddler's `UserOperation.compute_hash/2` over it on
@@ -185,7 +188,6 @@ describe("decodeCreateAccountCall", () => {
     expect(() => decodeCreateAccountCall(undefined)).toThrow(UserOperationError);
   });
 
-  // Not in shared.
   it("refuses a createAccount selector over truncated arguments rather than reading zeros", () => {
     expect(() => decodeCreateAccountCall("0x5fbfb9cf" + "00".repeat(40))).toThrow(
       UserOperationError,
@@ -210,7 +212,7 @@ describe("verifyClaimUserOp", () => {
     announced: announcementFor(TOKEN),
   });
 
-  /** Re-serve an op under its own (correct) hash, as a hostile prepare would. */
+  /** Re-serve a mutated op under its own (correct) hash, as a hostile prepare would. */
   const served = (mutation: Partial<UserOperationV08>) => {
     const op = { ...SPONSORED_OP, ...mutation };
     return { ...good(), userOperation: op, servedUserOpHash: hashOf(op) };
@@ -222,24 +224,73 @@ describe("verifyClaimUserOp", () => {
     return result.ok ? "" : result.reason;
   };
 
-  it("accepts an operation that matches its hash and pays the right recipient", () => {
+  const BAD_ENTRYPOINT = "0x3333333333333333333333333333333333333333";
+  const BAD_HASH = `0x${"ab".repeat(32)}`;
+  const OTHER_SENDER = "0x2222222222222222222222222222222222222222";
+  const OTHER_KEY = "0x4444444444444444444444444444444444444444";
+  const SWAPPED_RECIPIENT = CALL_DATA.replace(RECIPIENT.slice(2), "1".repeat(40));
+  const MAX_FEE = `0x${"f".repeat(32)}`;
+  const UNSPONSORED: Partial<UserOperationV08> = {
+    paymaster: null,
+    paymasterVerificationGasLimit: null,
+    paymasterPostOpGasLimit: null,
+    paymasterData: null,
+    maxFeePerGas: MAX_FEE,
+  };
+
+  // The verifier's own refusals, in shared's words.
+  const NO_OP = "The server did not send the operation to check, so it cannot be verified.";
+  const NO_ANNOUNCEMENT =
+    "This payment's announcement does not say which token it is in, so the operation cannot be checked.";
+  const WRONG_NETWORK = "The operation was built for a different network.";
+  const BAD_FACTORY = "The operation names an unexpected account factory.";
+  const NO_OWNER = "The operation does not say who would own the account, so it was not signed.";
+  const OTHER_OWNER = "The operation would hand the account to a different owner.";
+  const OTHER_SALT = "The operation is for a different payment.";
+
+  // `assertPreparedClaimMatchesRequest`'s refusals, which shared passes through as the reason.
+  const BAD_ENTRYPOINT_REASON =
+    `claim/prepare names EntryPoint "${BAD_ENTRYPOINT}", but ERC-4337 v0.8 is ` +
+    `${ENTRYPOINT_V08_ADDRESS} on every EVM chain -- recomputing the hash against the served ` +
+    "address would just agree with whatever was sent. Refusing to sign.";
+  const hashMismatchReason = (servedHash: string, recomputed: string) =>
+    `claim/prepare asks for a signature over ${servedHash}, but the UserOperation it served ` +
+    `hashes to ${recomputed} -- the digest is not this op's. Whatever it IS the hash of is not ` +
+    "something this client can see. Refusing to sign.";
+  const BAD_NONCE_REASON =
+    'UserOperation.nonce is "not a number", which is not a non-negative integer quantity -- ' +
+    "the userOpHash cannot be recomputed over it, so what this signature would authorise is " +
+    "unknown. Refusing to sign.";
+  const OTHER_SENDER_REASON =
+    `the UserOperation spends from "${OTHER_SENDER}" but this intent settled to ${SENDER} -- ` +
+    "refusing to sign an operation against a different account.";
+  const OTHER_RECIPIENT_REASON =
+    `the UserOperation transfers to ${HOSTILE} but ${RECIPIENT} was requested -- this is the ` +
+    "field that decides where the settled funds land. Refusing to sign.";
+  const etherReason = (wei: bigint) =>
+    `the UserOperation also sends ${wei} wei of the account's native balance alongside the ` +
+    "token transfer -- a stealth claim carries no value. Refusing to sign.";
+  const UNSPONSORED_REASON =
+    "the UserOperation names no paymaster, so the counterfactual account would pay its own gas " +
+    `at maxFeePerGas="${MAX_FEE}" -- a stealth claim is always sponsored, and an unsponsored one ` +
+    "can drain the account's native balance as gas regardless of the token transfer being " +
+    "correct. Refusing to sign.";
+  const HOSTILE_TOKEN_REASON = `the UserOperation sweeps token ${HOSTILE} but ${TOKEN} was expected -- refusing to sign.`;
+
+  type Case = [name: string, params: () => VerifyClaimUserOpParams, reason: string];
+
+  it("accepts Riddler's sponsored vector under its pinned hash", () => {
     const result = verifyClaimUserOp(good());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.decoded).toEqual({
-      sender: SENDER,
-      token: ethers.getAddress(TOKEN),
-      recipient: ethers.getAddress(RECIPIENT),
-      amount: 1_000_000n,
-      value: 0n,
-    });
+    expect(result.decoded).toEqual({ token: ethers.getAddress(TOKEN), amount: 1_000_000n });
     // Echoed back so the caller can show the payout without re-deriving it.
     expect(result.announced.token).toBe(TOKEN);
     expect(result.announced.amount).toBe(1_000_000n);
   });
 
-  // Not in shared: the announcement comes back as the caller's own object and type, so the
-  // fields the verifier does not read (amount, view tag) survive for display.
+  // Not in shared's tests: the announcement comes back as the caller's own object and type,
+  // so the fields the verifier does not read (amount, view tag) survive for display.
   it("echoes the caller's announcement object unchanged", () => {
     const params = good();
     const result = verifyClaimUserOp(params);
@@ -254,179 +305,260 @@ describe("verifyClaimUserOp", () => {
       counterfactualAddress: upper(SENDER),
       recipientAddress: upper(RECIPIENT),
       expectedOwner: upper(OWNER),
-      // Not in shared: the announced side is folded too.
+      // Not in shared's tests: the announced side is folded too.
       announced: { ...announcementFor(upper(TOKEN)), factory: upper(FACTORY) },
     });
     expect(result.ok).toBe(true);
   });
 
-  it("refuses an operation built for a different network", () => {
-    expect(reasonOf({ ...good(), expectedChainId: 8453 })).toContain("different network");
-  });
+  describe("refuses, with shared's exact reason", () => {
+    const cases: Case[] = [
+      ["no operation", () => ({ ...good(), userOperation: undefined }), NO_OP],
+      ["no EntryPoint", () => ({ ...good(), entryPoint: undefined }), NO_OP],
+      [
+        "an announcement that decoded to nothing",
+        () => ({ ...good(), announced: null }),
+        NO_ANNOUNCEMENT,
+      ],
+      [
+        "an op built for a different network",
+        () => ({ ...good(), expectedChainId: 8453 }),
+        WRONG_NETWORK,
+      ],
+      // The op hashed for 8453 and served as 8453 is internally consistent: only the
+      // expected-chain check catches it.
+      [
+        "a server that renames the chain to make its own hash check out",
+        () => ({ ...good(), servedChainId: 8453, servedUserOpHash: hashOf(SPONSORED_OP, 8453) }),
+        WRONG_NETWORK,
+      ],
+      [
+        "an unrecognised EntryPoint",
+        () => ({ ...good(), entryPoint: BAD_ENTRYPOINT }),
+        BAD_ENTRYPOINT_REASON,
+      ],
+      [
+        "a hash that is not the op's",
+        () => ({ ...good(), servedUserOpHash: BAD_HASH }),
+        hashMismatchReason(BAD_HASH, RIDDLER_SPONSORED_HASH),
+      ],
+      // Not in shared's tests: a prepare response with no hash is a mismatch, not a crash.
+      [
+        "a served hash that is absent at runtime",
+        () => ({ ...good(), servedUserOpHash: undefined as unknown as string }),
+        hashMismatchReason("undefined", RIDDLER_SPONSORED_HASH),
+      ],
+      // Not in shared's tests: fields the hash cannot be recomputed over.
+      [
+        "a nonce that is not a quantity",
+        () => ({ ...good(), userOperation: { ...SPONSORED_OP, nonce: "not a number" } }),
+        BAD_NONCE_REASON,
+      ],
+      [
+        "a sender that is not an address",
+        () => ({ ...good(), userOperation: { ...SPONSORED_OP, sender: "0x1234" } }),
+        'UserOperation.sender is "0x1234", which is not an EVM address. Refusing to sign.',
+      ],
+      [
+        "a gas limit wider than 128 bits",
+        () => ({
+          ...good(),
+          userOperation: { ...SPONSORED_OP, callGasLimit: `0x${"f".repeat(33)}` },
+        }),
+        "UserOperation.callGasLimit is 5444517870735015415413993718908291383295, which does not " +
+          "fit in the 128 bits ERC-4337 packs it into. Refusing to sign: a value this size means " +
+          "the served op is not the one that would execute.",
+      ],
+      [
+        "odd-length paymasterData",
+        () => ({ ...good(), userOperation: { ...SPONSORED_OP, paymasterData: "0xabc" } }),
+        'UserOperation.paymasterData is "0xabc", which is not an even-length 0x-prefixed byte ' +
+          "string. Refusing to sign a hash recomputed over a guess.",
+      ],
+      [
+        "an op paying out of a different account",
+        () => served({ sender: OTHER_SENDER }),
+        OTHER_SENDER_REASON,
+      ],
+      [
+        "calldata that is not a payment",
+        () => served({ callData: "0xdeadbeef" }),
+        "UserOperation.callData does not call execute(address,uint256,bytes) (selector " +
+          "0xdeadbeef) -- a stealth claim is always execute(token, 0, transfer(recipient, " +
+          "amount)), so this op does something else with the account holding your settled " +
+          "funds. Refusing to sign.",
+      ],
+      [
+        "an op that would pay somebody else",
+        () => served({ callData: SWAPPED_RECIPIENT }),
+        OTHER_RECIPIENT_REASON,
+      ],
+      [
+        "an op that ships ether alongside the transfer",
+        () => served({ callData: executeCall(TOKEN, 10n ** 18n, RECIPIENT, 1_000_000n) }),
+        etherReason(10n ** 18n),
+      ],
+      // Shared refuses this through `checkPreparedClaim`'s paymaster check: with no paymaster
+      // the account pays its own gas at server-chosen fees.
+      ["an unsponsored op", () => served(UNSPONSORED), UNSPONSORED_REASON],
+      // `execute(dest, value, transfer(to, amount))` decodes the same whatever `dest` is, so
+      // this op names the right recipient and moves none of the settled USDC.
+      [
+        "an outer call that is not the token received",
+        () => served({ callData: executeCall(HOSTILE, 0n, RECIPIENT, 1_000_000n) }),
+        HOSTILE_TOKEN_REASON,
+      ],
+      [
+        "an announced token that is not the one the op calls",
+        () => ({ ...good(), announced: announcementFor(HOSTILE) }),
+        `the UserOperation sweeps token ${ethers.getAddress(TOKEN)} but ${HOSTILE} was expected ` +
+          "-- refusing to sign.",
+      ],
+      ["an unexpected factory", () => served({ factory: HOSTILE }), BAD_FACTORY],
+      [
+        "an op that deploys no account",
+        () => served({ factory: null, factoryData: null }),
+        BAD_FACTORY,
+      ],
+      // Not in shared's tests: the announced side of the factory swapped.
+      [
+        "an announced factory that is not the op's",
+        () => ({ ...good(), announced: { ...announcementFor(TOKEN), factory: HOSTILE } }),
+        BAD_FACTORY,
+      ],
+      ["factoryData it cannot read", () => served({ factoryData: "0xdeadbeef" }), NO_OWNER],
+      [
+        "an op that would hand the account to someone else",
+        () => served({ factoryData: createAccountCall(HOSTILE, SALT) }),
+        OTHER_OWNER,
+      ],
+      [
+        "an owner that is not the signing key",
+        () => ({ ...good(), expectedOwner: OTHER_KEY }),
+        OTHER_OWNER,
+      ],
+      [
+        "a salt the announcement does not name",
+        () => served({ factoryData: createAccountCall(OWNER, SALT + 1n) }),
+        OTHER_SALT,
+      ],
+      // Not in shared's tests: the announced side of the salt swapped.
+      [
+        "an announced salt that is not the op's",
+        () => ({ ...good(), announced: { ...announcementFor(TOKEN), salt: 0n } }),
+        OTHER_SALT,
+      ],
+    ];
 
-  it("refuses a server that renames the chain to make its own hash check out", () => {
-    // The op hashed for 8453 and served as 8453 is internally consistent: the recompute
-    // would agree. Only the expected-chain check catches it.
-    expect(
-      reasonOf({
-        ...good(),
-        servedChainId: 8453,
-        servedUserOpHash: hashOf(SPONSORED_OP, 8453),
-      }),
-    ).toContain("different network");
-  });
-
-  it("refuses an operation that would pay somebody else", () => {
-    const swapped = CALL_DATA.replace("e9674277e85d7e5ddf1340dce118d1b887bee727", "1".repeat(40));
-    expect(reasonOf(served({ callData: swapped }))).toContain("somewhere else");
-  });
-
-  // `execute(dest, value, transfer(to, amount))` decodes the same whatever `dest` is, so
-  // this op names the right recipient and moves none of the settled USDC.
-  it("refuses an operation whose outer call is not the token that was received", () => {
-    expect(
-      reasonOf(served({ callData: executeCall(HOSTILE, 0n, RECIPIENT, 1_000_000n) })),
-    ).toContain("different token");
-  });
-
-  it("refuses an operation that ships ether alongside the transfer", () => {
-    expect(
-      reasonOf(served({ callData: executeCall(TOKEN, 10n ** 18n, RECIPIENT, 1_000_000n) })),
-    ).toContain("ether");
-  });
-
-  it("refuses when the announcement decoded to nothing", () => {
-    expect(reasonOf({ ...good(), announced: null })).toContain("which token");
-  });
-
-  it("refuses when the announced token is not the one the operation calls", () => {
-    expect(reasonOf({ ...good(), announced: announcementFor(HOSTILE) })).toContain(
-      "different token",
-    );
-  });
-
-  describe("account deployment", () => {
-    it("refuses an operation that would hand the account to someone else", () => {
-      expect(reasonOf(served({ factoryData: createAccountCall(HOSTILE, SALT) }))).toContain(
-        "different owner",
-      );
-    });
-
-    it("refuses an unexpected factory", () => {
-      expect(reasonOf(served({ factory: HOSTILE }))).toContain("account factory");
-    });
-
-    // Not in shared: the announcement is the side that names the factory, so swapping it
-    // has to refuse just as swapping the op does.
-    it("refuses when the announced factory is not the op's", () => {
-      expect(
-        reasonOf({ ...good(), announced: { ...announcementFor(TOKEN), factory: HOSTILE } }),
-      ).toContain("account factory");
-    });
-
-    // Not in shared: an op that deploys nothing names no owner the signing key can be
-    // checked against.
-    it("refuses an operation that names no factory", () => {
-      expect(reasonOf(served({ factory: null, factoryData: "0x" }))).toContain("account factory");
-    });
-
-    it("refuses a salt the announcement does not name", () => {
-      // Shared asserted only the refusal; the reason is pinned here.
-      expect(reasonOf(served({ factoryData: createAccountCall(OWNER, SALT + 1n) }))).toContain(
-        "different payment",
-      );
-    });
-
-    // Not in shared: the op is right and the announcement names another salt.
-    it("refuses when the announced salt is not the op's", () => {
-      expect(reasonOf({ ...good(), announced: { ...announcementFor(TOKEN), salt: 0n } })).toContain(
-        "different payment",
-      );
-    });
-
-    it("refuses factoryData it cannot read", () => {
-      expect(reasonOf(served({ factoryData: "0xdeadbeef" }))).toContain("who would own");
-    });
-  });
-
-  it("refuses when the hash does not belong to the operation", () => {
-    expect(reasonOf({ ...good(), servedUserOpHash: `0x${"ab".repeat(32)}` })).toContain(
-      "does not match",
-    );
-  });
-
-  // Not in shared: a prepare response with no hash at all is a mismatch, not a crash.
-  it("refuses a served hash that is absent at runtime", () => {
-    expect(reasonOf({ ...good(), servedUserOpHash: undefined as unknown as string })).toContain(
-      "does not match",
-    );
-  });
-
-  it("refuses when the operation would pay out of a different account", () => {
-    expect(reasonOf(served({ sender: "0x2222222222222222222222222222222222222222" }))).toContain(
-      "different account",
-    );
-  });
-
-  it("refuses when the operation is missing entirely", () => {
-    expect(reasonOf({ ...good(), userOperation: undefined })).toContain("did not send");
-    expect(reasonOf({ ...good(), entryPoint: undefined })).toContain("did not send");
-  });
-
-  // Not in shared: a missing op is reported ahead of a missing announcement, so the
-  // reason names the server's gap rather than the payment's.
-  it("reports a missing operation before a missing announcement", () => {
-    expect(reasonOf({ ...good(), userOperation: undefined, announced: null })).toContain(
-      "did not send",
-    );
-  });
-
-  it("refuses an unrecognised EntryPoint", () => {
-    expect(
-      reasonOf({ ...good(), entryPoint: "0x3333333333333333333333333333333333333333" }),
-    ).toContain("EntryPoint");
-  });
-
-  it("refuses calldata it cannot read", () => {
-    // Shared asserted only the refusal; the reason is pinned here.
-    expect(reasonOf(served({ callData: "0xdeadbeef" }))).toContain("does not look like a payment");
-  });
-
-  // Not in shared: a field the hash cannot be recomputed over refuses with a reason
-  // rather than throwing out of the verifier.
-  it("refuses an operation it cannot recompute the hash over", () => {
-    for (const mutation of [
-      { nonce: "not a number" },
-      { sender: "0x1234" },
-      { callGasLimit: `0x${"f".repeat(33)}` },
-      { paymasterData: "0xabc" },
-    ] as Partial<UserOperationV08>[]) {
-      expect(
-        reasonOf({ ...good(), userOperation: { ...SPONSORED_OP, ...mutation } }),
-        JSON.stringify(mutation),
-      ).toContain("could not be read");
+    for (const [name, params, reason] of cases) {
+      it(name, () => {
+        expect(reasonOf(params())).toBe(reason);
+      });
     }
   });
 
-  // Not in shared, which accepted this op. `value` bounds what the call spends, not what
-  // the op spends on gas: without a paymaster the account pays its own prefund from
-  // server-chosen gas fields, so maxed fees drain its native balance while the token
-  // transfer still checks out. A claim is always sponsored.
-  it("refuses an unsponsored operation, whose gas the account itself would pay", () => {
-    const params = served({
-      paymaster: null,
-      paymasterVerificationGasLimit: null,
-      paymasterPostOpGasLimit: null,
-      paymasterData: null,
-      maxFeePerGas: `0x${"f".repeat(32)}`,
-    });
-    expect(reasonOf(params)).toContain("not sponsored");
-  });
+  // Not in shared's tests. With more than one defect the reason names the first check in
+  // shared's order: op present, announcement present, chain, then the signer's EntryPoint,
+  // hash, sender, recipient, value, paymaster, token, then factory, owner, salt.
+  describe("precedence: with two defects, the earlier check's reason wins", () => {
+    const cases: Case[] = [
+      [
+        "no op over no announcement",
+        () => ({ ...good(), userOperation: undefined, announced: null }),
+        NO_OP,
+      ],
+      [
+        "no announcement over a wrong network",
+        () => ({ ...good(), announced: null, expectedChainId: 8453 }),
+        NO_ANNOUNCEMENT,
+      ],
+      [
+        "a wrong network over an unrecognised EntryPoint",
+        () => ({ ...good(), expectedChainId: 8453, entryPoint: BAD_ENTRYPOINT }),
+        WRONG_NETWORK,
+      ],
+      [
+        "a wrong network over a hash mismatch",
+        () => ({ ...good(), expectedChainId: 8453, servedUserOpHash: BAD_HASH }),
+        WRONG_NETWORK,
+      ],
+      [
+        "an unrecognised EntryPoint over a hash mismatch",
+        () => ({ ...good(), entryPoint: BAD_ENTRYPOINT, servedUserOpHash: BAD_HASH }),
+        BAD_ENTRYPOINT_REASON,
+      ],
+      [
+        "an unreadable op field over a hash mismatch",
+        () => ({
+          ...good(),
+          userOperation: { ...SPONSORED_OP, nonce: "not a number" },
+          servedUserOpHash: BAD_HASH,
+        }),
+        BAD_NONCE_REASON,
+      ],
+      [
+        "a hash mismatch over a swapped recipient",
+        () => ({ ...good(), userOperation: { ...SPONSORED_OP, callData: SWAPPED_RECIPIENT } }),
+        hashMismatchReason(
+          RIDDLER_SPONSORED_HASH,
+          hashOf({ ...SPONSORED_OP, callData: SWAPPED_RECIPIENT }),
+        ),
+      ],
+      [
+        "a different sender over a swapped recipient",
+        () => served({ sender: OTHER_SENDER, callData: SWAPPED_RECIPIENT }),
+        OTHER_SENDER_REASON,
+      ],
+      [
+        "a swapped recipient over a hostile token",
+        () => served({ callData: executeCall(HOSTILE, 0n, HOSTILE, 1_000_000n) }),
+        OTHER_RECIPIENT_REASON,
+      ],
+      [
+        "native value over a hostile token",
+        () => served({ callData: executeCall(HOSTILE, 1n, RECIPIENT, 1_000_000n) }),
+        etherReason(1n),
+      ],
+      [
+        "native value over a missing paymaster",
+        () => served({ ...UNSPONSORED, callData: executeCall(TOKEN, 1n, RECIPIENT, 1_000_000n) }),
+        etherReason(1n),
+      ],
+      [
+        "a missing paymaster over a hostile token",
+        () => served({ ...UNSPONSORED, callData: executeCall(HOSTILE, 0n, RECIPIENT, 1_000_000n) }),
+        UNSPONSORED_REASON,
+      ],
+      [
+        "a hostile token over an owner that is not the signing key",
+        () => ({
+          ...served({ callData: executeCall(HOSTILE, 0n, RECIPIENT, 1_000_000n) }),
+          expectedOwner: OTHER_KEY,
+        }),
+        HOSTILE_TOKEN_REASON,
+      ],
+      [
+        "a swapped recipient over an unexpected factory",
+        () => served({ callData: SWAPPED_RECIPIENT, factory: HOSTILE }),
+        OTHER_RECIPIENT_REASON,
+      ],
+      [
+        "an unexpected factory over a different owner",
+        () => served({ factory: HOSTILE, factoryData: createAccountCall(HOSTILE, SALT) }),
+        BAD_FACTORY,
+      ],
+      [
+        "a different owner over a different salt",
+        () => served({ factoryData: createAccountCall(HOSTILE, SALT + 1n) }),
+        OTHER_OWNER,
+      ],
+    ];
 
-  it("refuses when the operation's owner is not the signing key", () => {
-    expect(
-      reasonOf({ ...good(), expectedOwner: "0x4444444444444444444444444444444444444444" }),
-    ).toContain("different owner");
+    for (const [name, params, reason] of cases) {
+      it(name, () => {
+        expect(reasonOf(params())).toBe(reason);
+      });
+    }
   });
 
   it("takes no optional parameter, so no check can be skipped by omission", () => {
