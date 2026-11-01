@@ -92,6 +92,17 @@ export interface TokenCapability {
   pullMethods: Readonly<Record<number, TokenChainPull>>;
 }
 
+/**
+ * A cross-token conversion the server says it fills, e.g. USDC to USDG. Directional:
+ * `{from: "USDC", to: "USDG"}` says nothing about the reverse. `sameChain` is per pair,
+ * so one same-chain pair does not make every pair same-chain capable.
+ */
+export interface ConversionPair {
+  from: string;
+  to: string;
+  sameChain: boolean;
+}
+
 /** Who receives an origin pull on one chain, per method. */
 export interface PullRecipients {
   erc3009: string | null;
@@ -165,7 +176,10 @@ export interface SolverCapabilities {
    * size a move, not to decide whether one is possible.
    */
   corridors: readonly Record<string, unknown>[];
-  /** Allowlisted cross-token fill pairs. Empty when conversion is off. */
+  /**
+   * Allowlisted cross-token fill pairs, as served. Empty when conversion is off. Read them
+   * through {@link advertisedConversionPairs}.
+   */
   conversionPairs: readonly Record<string, unknown>[];
 
   raw: Record<string, unknown>;
@@ -536,6 +550,25 @@ export function advertisedTokenAddress(
   return Object.prototype.hasOwnProperty.call(token.addresses, chainId)
     ? token.addresses[chainId]!
     : null;
+}
+
+/**
+ * The cross-token pairs the server advertises (`conversion_pairs[]`), in served order.
+ * An entry without a non-empty `from` and `to` symbol is dropped; `sameChain` is `true`
+ * only for the served literal `true`, so an omitted or malformed flag never grants a
+ * same-chain route. Discovery data like the rest of this module: the quote response
+ * decides whether a route fills, and a stale list must not be read as a refusal.
+ */
+export function advertisedConversionPairs(
+  caps: Pick<SolverCapabilities, "conversionPairs">,
+): ConversionPair[] {
+  const out: ConversionPair[] = [];
+  for (const pair of caps.conversionPairs) {
+    const from = asString(pair.from);
+    const to = asString(pair.to);
+    if (from !== null && to !== null) out.push({ from, to, sameChain: pair.same_chain === true });
+  }
+  return out;
 }
 
 /**
