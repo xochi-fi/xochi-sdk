@@ -6,9 +6,11 @@
 
 import {
   computeUserOpHash,
+  decodeCreateAccountCall,
   decodeErc20TransferExecute,
   ENTRYPOINT_V08_ADDRESS,
   UserOperationError,
+  type DecodedCreateAccountCall,
   type UserOperationV08,
 } from "./erc4337";
 import { sameAddressish, sameNumeric } from "./compare";
@@ -243,4 +245,167 @@ export function assertPreparedClaimMatchesRequest(
   }
 
   return { verified: true, token: transfer.token, amount: String(transfer.amount) };
+}
+
+/**
+ * The announcement's decoded ERC-5564 metadata: read off chain during the scan, from bytes
+ * the server does not get to choose. Structural, so a caller's own decoded shape (which may
+ * carry the view tag, selector and amount too) is accepted and echoed back unchanged.
+ */
+export interface ClaimAnnouncement {
+  /** ERC-20 the payment settled in. */
+  token: string;
+  /** SimpleAccountFactory the announcement names for the counterfactual account. */
+  factory: string;
+  /** CREATE2 salt the announcement names. */
+  salt: bigint;
+}
+
+/** What the verified operation moves, as {@link assertPreparedClaimMatchesRequest} decoded it. */
+export interface VerifiedClaimTransfer {
+  /** ERC-20 the outer `execute` calls; equal to `announced.token` once verified. */
+  token: string;
+  /** Payout in token base units. Surfaced, not enforced; see {@link verifyClaimUserOp}. */
+  amount: bigint;
+}
+
+export interface VerifyClaimUserOpParams<A extends ClaimAnnouncement = ClaimAnnouncement> {
+  /** The op the server served, or undefined if it served none. */
+  userOperation: UserOperationV08 | undefined;
+  /** EntryPoint the hash was computed against, as served. */
+  entryPoint: string | undefined;
+  /** The digest the client is being asked to sign. */
+  servedUserOpHash: string;
+  /**
+   * Chain the SERVER says the hash was computed over. Checked against `expectedChainId`
+   * before recomputing: recomputing with a server-chosen chain reproduces the served digest
+   * for any chain and proves only that the server is self-consistent.
+   */
+  servedChainId: number;
+  /** Chain the client actually scanned. The op has to be built for this one. */
+  expectedChainId: number;
+  /** Counterfactual account the client asked about. */
+  counterfactualAddress: string;
+  /** Recipient the client asked for. The field an attacker would swap. */
+  recipientAddress: string;
+  /**
+   * Address of the key about to sign, which must be the deployed account's owner. Derived
+   * from the per-payment spending key, never taken from the server.
+   */
+  expectedOwner: string;
+  /**
+   * The announcement's decoded metadata, or null when the blob was too short to carry any.
+   * Null REFUSES: with no announcement there is nothing server-independent to compare the
+   * token, factory and salt against.
+   */
+  announced: A | null;
+}
+
+export type VerifyClaimUserOpResult<A extends ClaimAnnouncement = ClaimAnnouncement> =
+  /** `announced` is echoed back non-null, so a caller showing the payout need not re-narrow it. */
+  { ok: true; decoded: VerifiedClaimTransfer; announced: A } | { ok: false; reason: string };
+
+/**
+ * Decides whether a prepared stealth claim is safe to sign, binding it to the announcement.
+ * Ported from `@xochi-fi/shared` 0.2.1's `verifyClaimUserOp` with the same branch order and
+ * refusal text, so a UI showing `reason` verbatim reads the same.
+ *
+ * The protocol half is {@link assertPreparedClaimMatchesRequest} with `requireVerified`
+ * forced on (what `@xochi/client`'s `checkPreparedClaim` runs): the hash recomputed under the
+ * pinned v0.8 EntryPoint, `sender` == the counterfactual, the settlement chain, `callData` ==
+ * `execute(token, 0, transfer(recipient, amount))`, zero native value, a paymaster, and the
+ * token against the announced one. Its refusal message is returned as `reason` unchanged.
+ *
+ * What this adds is what only the claiming client can supply: the on-chain ERC-5564
+ * announcement and the signing key. The factory and salt are read off the announcement, and
+ * the owner `factoryData` deploys the account to is held to the key about to sign.
+ *
+ * In order: the op and EntryPoint are present, the announcement decoded, the served chain is
+ * the scanned one (before hashing, since recomputing with a server-chosen chain proves only
+ * self-consistency), the protocol half, the factory, a readable `createAccount(owner, salt)`,
+ * the owner, the salt. Every input is required: an optional input on a fail-closed verifier
+ * is a check with an off switch.
+ *
+ * NOT checked: the payout amount. The caller gets `decoded.amount` and `announced` back to
+ * show the user.
+ */
+export function verifyClaimUserOp<A extends ClaimAnnouncement>(
+  params: VerifyClaimUserOpParams<A>,
+): VerifyClaimUserOpResult<A> {
+  const { userOperation: op, entryPoint, servedChainId, expectedChainId, announced } = params;
+  const refuse = (reason: string): VerifyClaimUserOpResult<A> => ({ ok: false, reason });
+
+  if (!op || !entryPoint) {
+    return refuse("The server did not send the operation to check, so it cannot be verified.");
+  }
+
+  if (!announced) {
+    return refuse(
+      "This payment's announcement does not say which token it is in, so the operation cannot be checked.",
+    );
+  }
+
+  if (servedChainId !== expectedChainId) {
+    return refuse("The operation was built for a different network.");
+  }
+
+  // `@xochi/client`'s `checkPreparedClaim`, inlined because the client depends on this
+  // package: every gap throws under `requireVerified`, and the thrown message is the reason.
+  let transfer: VerifiedClaimTransfer;
+  try {
+    const verification = assertPreparedClaimMatchesRequest(
+      {
+        userOpHash: params.servedUserOpHash,
+        chainId: servedChainId,
+        entryPoint,
+        userOperation: op,
+      },
+      {
+        recipient: params.recipientAddress,
+        counterfactualAddress: params.counterfactualAddress,
+        settlementChainId: expectedChainId,
+        // The recipient check reads the INNER transfer, which decodes the same against any
+        // target, so the outer call is bound to the token the announcement names.
+        expectedToken: announced.token,
+        requireVerified: true,
+      },
+    );
+    if (!verification.verified || !verification.token || !verification.amount) {
+      return refuse(verification.reason ?? "the claim operation could not be verified");
+    }
+    transfer = { token: verification.token, amount: BigInt(verification.amount) };
+  } catch (err) {
+    return refuse(
+      err instanceof XochiClaimMismatchError
+        ? err.message
+        : `claim verification failed unexpectedly: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (
+    typeof op.factory !== "string" ||
+    op.factory.toLowerCase() !== announced.factory.toLowerCase()
+  ) {
+    return refuse("The operation names an unexpected account factory.");
+  }
+
+  let deployment: DecodedCreateAccountCall;
+  try {
+    deployment = decodeCreateAccountCall(op.factoryData);
+  } catch (e) {
+    if (e instanceof UserOperationError) {
+      return refuse("The operation does not say who would own the account, so it was not signed.");
+    }
+    throw e;
+  }
+
+  if (deployment.owner.toLowerCase() !== params.expectedOwner.toLowerCase()) {
+    return refuse("The operation would hand the account to a different owner.");
+  }
+
+  if (deployment.salt !== announced.salt) {
+    return refuse("The operation is for a different payment.");
+  }
+
+  return { ok: true, decoded: transfer, announced };
 }
