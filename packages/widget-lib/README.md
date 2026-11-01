@@ -1,6 +1,6 @@
 # @xochi/widget-lib
 
-Embeds the Xochi swap widget in an iframe with an EIP-1193 wallet bridge, auto-resize and lifecycle events. No runtime deps; ESM + CommonJS with types.
+Embeds the Xochi swap widget in an iframe with an EIP-1193 wallet bridge, auto-resize and lifecycle events, and implements the frame's end of that bridge. No runtime deps; ESM + CommonJS with types.
 
 > **Third-party embedding is not open yet** (xochi-fi/xochi#573): `widget.xochi.fi` sends `frame-ancestors 'self'`. The deployed widget does not speak this protocol yet.
 
@@ -59,6 +59,29 @@ widget.destroy();
 - `ref` and `promo` go with every quote and the server decides. A code the server cannot use still prices, as if absent. `normalizeEmbedCode` turns a typed code into its stored form, or `null`. `EMBED_CODE_PATTERN` is the pattern of `@xochi/client`'s `REFERRAL_CODE_REGEX` and `PROMO_CODE_REGEX`; this package's tests hold them equal.
 - `encodeEmbedParams`, `embedUrl` and `createXochiWidget` throw a `TypeError` naming the field for a value the frame would ignore, and for an unknown key; `createXochiWidget` also throws one for a non-https origin (except localhost). `parseEmbedParams` never throws: it drops what is malformed. Keys are written route first, in table order.
 
+### Frame side
+
+`connectToHost` is the other end of the bridge, run inside the frame. The Xochi widget uses it; this package's tests run it against `createXochiWidget`.
+
+```ts
+import { connectToHost, mintTradeRef } from "@xochi/widget-lib";
+
+const host = connectToHost(); // null when the window is not framed
+// connectToHost({ hostOrigin: "https://host.example" }) accepts that host only
+if (host) {
+  host.provider; // EIP-1193 provider proxied to the host's wallet; 4900 while none is attached
+  host.onAvailability((available) => {}); // the host attached or detached its wallet
+  host.onAutoConnect(() => connectHostWallet()); // only when the host passed autoConnect: true
+  host.resize(document.body.getBoundingClientRect().height);
+  const tradeRef = mintTradeRef(); // once per trade, on every event of it
+  host.emit({ name: "trade:submitted", tradeRef });
+}
+```
+
+- `onAutoConnect` calls back once per attachment of the host wallet, never on a repeated `xochi:provider`, so a user who disconnects in the frame stays disconnected until the host re-attaches.
+- `emit` throws a `TypeError` for an event the host would drop, and cuts a `trade:failed` error to `MAX_ERROR_MESSAGE_LENGTH`.
+- Wallet errors reject as `HostRpcError` (`name` `"ProviderRpcError"`, `code`, optional `data`).
+
 ## Security model
 
 - Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`.
@@ -67,6 +90,7 @@ widget.destroy();
 - Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.
 - Lifecycle events carry `tradeRef`, an opaque reference the frame mints per trade (`TRADE_REF_PATTERN`: `tr_` + 32 lowercase hex, random), the same on every event of one trade. It is not the intent id and the API knows nothing of it, so the events let the host correlate a trade but not read it from the Worker. Events whose `tradeRef` does not match the pattern are dropped.
 - The events carry no intent id, but a host that supplies `provider` sees the full signed `XochiIntent`, `intentId` included, when the frame asks that wallet to sign it (`eth_signTypedData_v4`). Only a wallet the frame owns keeps the intent id from the host.
+- The frame side, `connectToHost`, posts only `xochi:ready` before the handshake (to `"*"`, or to `hostOrigin` when given). It pins the origin of the first well-formed `xochi:provider` from `window.parent` (only `hostOrigin`, when given; never the opaque `"null"`), then handles only messages from that window and origin and posts only to it. It applies the host's limits before asking: off-allowlist methods (`4200`), bad params (`-32602`), requests over `MAX_MESSAGE_LENGTH` (`-32600`) and more than `MAX_PENDING_RPC` in flight (`-32005`) are refused with the host's own code and message, without posting anything. Host messages over `MAX_MESSAGE_LENGTH` are dropped (an answer that size rejects its request with `-32603`), and host error messages are cut to `MAX_ERROR_MESSAGE_LENGTH`.
 
 ## Migrating to 0.2.0
 

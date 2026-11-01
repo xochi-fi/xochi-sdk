@@ -4,6 +4,13 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+Additive: `createXochiWidget` and every existing export behave as before.
+
+### Added
+
+- `connectToHost`, the frame's end of the bridge, so this package owns both ends of the protocol and tests them against each other. It returns the host wallet as an EIP-1193 `provider`, `available` / `onAvailability`, `autoConnect` / `onAutoConnect`, `resize`, `emit` and `destroy`, or `null` in a window nobody framed. It puts on the wire, byte for byte, what the Xochi widget's own frame sent, held by a test against messages recorded from it. Its origin and source checks match the widget's; it also never pins the opaque `"null"` origin, accepts an optional `hostOrigin` to pin that origin only, and applies `ALLOWED_RPC_METHODS`, `MAX_PENDING_RPC`, `MAX_MESSAGE_LENGTH` and `MAX_ERROR_MESSAGE_LENGTH` itself, refusing with the host's own codes and messages before posting anything.
+- `HostRpcError` (the provider's rejection), `mintTradeRef` (a fresh `TRADE_REF_PATTERN` reference) and the types `HostConnection`, `HostConnectionOptions` and `HostProvider`.
+
 ## [0.3.0] - 2026-10-31
 
 Additive: a URL of route keys alone is written and read exactly as before.

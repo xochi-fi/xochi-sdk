@@ -2,8 +2,8 @@
  * The postMessage protocol between a host page and the Xochi widget frame.
  *
  * Every message is a plain JSON object with a `type` starting `xochi:`. The
- * host side is `createXochiWidget` (widget.ts); the frame side is implemented
- * by the widget app against these types.
+ * host side is `createXochiWidget` (widget.ts); the frame side is
+ * `connectToHost` (frame.ts).
  *
  *   frame -> host   xochi:ready            the frame loaded and listens
  *                   xochi:rpc              an EIP-1193 request for the host wallet

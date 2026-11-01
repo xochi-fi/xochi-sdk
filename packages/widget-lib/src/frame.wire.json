@@ -1,0 +1,879 @@
+[
+  {
+    "do": "connect",
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "*",
+          "message": "{\"type\":\"xochi:ready\"}"
+        }
+      ],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "resize",
+    "height": 400.2,
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "resize",
+    "height": 812.4,
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "emit",
+    "event": {
+      "name": "trade:submitted",
+      "tradeRef": "tr_0123456789abcdef0123456789abcdef"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "before-pin",
+    "method": "eth_accounts",
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "before-pin",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "no host wallet is attached"
+          }
+        }
+      ],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "source": "stranger",
+    "data": {
+      "type": "xochi:provider",
+      "available": true,
+      "autoConnect": true
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "origin": "https://evil.example",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "chainChanged",
+      "data": "0x1"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": "yes"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": true,
+      "autoConnect": false
+    },
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:resize\",\"height\":813}"
+        },
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:event\",\"event\":{\"name\":\"trade:submitted\",\"tradeRef\":\"tr_0123456789abcdef0123456789abcdef\"}}"
+        }
+      ],
+      "observed": [
+        {
+          "availability": true
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "request-accounts",
+    "method": "eth_requestAccounts",
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":1,\"method\":\"eth_requestAccounts\"}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 1,
+      "result": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"]
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "request-accounts",
+          "value": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"]
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "chain-id",
+    "method": "eth_chainId",
+    "params": [],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 2,
+      "result": "0x2105"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "chain-id",
+          "value": "0x2105"
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "personal-sign",
+    "method": "personal_sign",
+    "params": ["0x78636869", "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":3,\"method\":\"personal_sign\",\"params\":[\"0x78636869\",\"0x70997970c51812dc3a010c7d01b50e0d17dc79c8\"]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "origin": "https://evil.example",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 3,
+      "result": "0xevil"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": "3",
+      "result": "0xstring-id"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 3,
+      "error": {
+        "code": 4001,
+        "message": "User rejected the request.",
+        "data": {
+          "reason": "denied"
+        }
+      }
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "personal-sign",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4001,
+            "message": "User rejected the request.",
+            "data": {
+              "reason": "denied"
+            }
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "sign-typed-data",
+    "method": "eth_signTypedData_v4",
+    "params": [
+      "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "{\"types\":{\"EIP712Domain\":[]},\"primaryType\":\"EIP712Domain\",\"domain\":{},\"message\":{}}"
+    ],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":4,\"method\":\"eth_signTypedData_v4\",\"params\":[\"0x70997970c51812dc3a010c7d01b50e0d17dc79c8\",\"{\\\"types\\\":{\\\"EIP712Domain\\\":[]},\\\"primaryType\\\":\\\"EIP712Domain\\\",\\\"domain\\\":{},\\\"message\\\":{}}\"]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 4,
+      "result": "0xabababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab1b"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "sign-typed-data",
+          "value": "0xabababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab1b"
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "switch-chain",
+    "method": "wallet_switchEthereumChain",
+    "params": [
+      {
+        "chainId": "0x2105"
+      }
+    ],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":5,\"method\":\"wallet_switchEthereumChain\",\"params\":[{\"chainId\":\"0x2105\"}]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 5,
+      "error": {
+        "code": 4902,
+        "message": "Unrecognized chain ID."
+      }
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "switch-chain",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4902,
+            "message": "Unrecognized chain ID."
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "add-chain",
+    "method": "wallet_addEthereumChain",
+    "params": [
+      {
+        "chainId": "0x2105",
+        "chainName": "Base",
+        "nativeCurrency": {
+          "name": "Ether",
+          "symbol": "ETH",
+          "decimals": 18
+        },
+        "rpcUrls": ["https://mainnet.base.org"]
+      }
+    ],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":6,\"method\":\"wallet_addEthereumChain\",\"params\":[{\"chainId\":\"0x2105\",\"chainName\":\"Base\",\"nativeCurrency\":{\"name\":\"Ether\",\"symbol\":\"ETH\",\"decimals\":18},\"rpcUrls\":[\"https://mainnet.base.org\"]}]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 6,
+      "result": null
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "add-chain",
+          "value": null
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "send-transaction",
+    "method": "eth_sendTransaction",
+    "params": [
+      {
+        "from": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+        "to": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        "data": "0x095ea7b3",
+        "value": "0x0"
+      }
+    ],
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":7,\"method\":\"eth_sendTransaction\",\"params\":[{\"from\":\"0x70997970c51812dc3a010c7d01b50e0d17dc79c8\",\"to\":\"0x000000000022D473030F116dDEE9F6B43aC78BA3\",\"data\":\"0x095ea7b3\",\"value\":\"0x0\"}]}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "object-params",
+    "method": "eth_accounts",
+    "params": {
+      "note": "object params"
+    },
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":8,\"method\":\"eth_accounts\",\"params\":{\"note\":\"object params\"}}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 8,
+      "result": []
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "object-params",
+          "value": []
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 7,
+      "error": {
+        "code": -32603,
+        "message": "execution reverted"
+      }
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "send-transaction",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": -32603,
+            "message": "execution reverted"
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "resize",
+    "height": 20000,
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:resize\",\"height\":10000}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "resize",
+    "height": 0.1,
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:resize\",\"height\":1}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "resize",
+    "height": 640,
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:resize\",\"height\":640}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "emit",
+    "event": {
+      "name": "trade:completed",
+      "tradeRef": "tr_0123456789abcdef0123456789abcdef"
+    },
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:event\",\"event\":{\"name\":\"trade:completed\",\"tradeRef\":\"tr_0123456789abcdef0123456789abcdef\"}}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "emit",
+    "event": {
+      "name": "trade:failed",
+      "tradeRef": "tr_fedcba9876543210fedcba9876543210",
+      "error": "Refunded on origin"
+    },
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:event\",\"event\":{\"name\":\"trade:failed\",\"tradeRef\":\"tr_fedcba9876543210fedcba9876543210\",\"error\":\"Refunded on origin\"}}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "accountsChanged",
+      "data": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8", 7]
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "providerEvent": "accountsChanged",
+          "arg": ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"]
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "accountsChanged",
+      "data": "0xnot-a-list"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "chainChanged",
+      "data": "0xa4b1"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "providerEvent": "chainChanged",
+          "arg": "0xa4b1"
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "chainChanged",
+      "data": 42161
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "disconnect",
+      "data": {
+        "code": 4900,
+        "message": "Disconnected"
+      }
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "providerEvent": "disconnect",
+          "arg": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "Disconnected"
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider:event",
+      "event": "disconnect",
+      "data": "gone"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "providerEvent": "disconnect",
+          "arg": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": -32603,
+            "message": "malformed error from the host wallet"
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "detached",
+    "method": "eth_requestAccounts",
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":9,\"method\":\"eth_requestAccounts\"}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": false,
+      "autoConnect": false
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "providerEvent": "disconnect",
+          "arg": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "the host detached its wallet"
+          }
+        },
+        {
+          "availability": false
+        },
+        {
+          "settled": "detached",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "the host detached its wallet"
+          }
+        }
+      ],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "while-detached",
+    "method": "eth_accounts",
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "while-detached",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "no host wallet is attached"
+          }
+        }
+      ],
+      "available": false,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": true,
+      "autoConnect": true
+    },
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "availability": true
+        }
+      ],
+      "available": true,
+      "autoConnect": true
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": true,
+      "autoConnect": "true"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:provider",
+      "available": true
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "request",
+    "label": "destroyed",
+    "method": "eth_chainId",
+    "expect": {
+      "posted": [
+        {
+          "targetOrigin": "https://host.example",
+          "message": "{\"type\":\"xochi:rpc\",\"id\":10,\"method\":\"eth_chainId\"}"
+        }
+      ],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "destroy",
+    "expect": {
+      "posted": [],
+      "observed": [
+        {
+          "settled": "destroyed",
+          "reason": {
+            "error": true,
+            "name": "ProviderRpcError",
+            "code": 4900,
+            "message": "the frame closed the bridge"
+          }
+        }
+      ],
+      "available": true,
+      "autoConnect": false
+    }
+  },
+  {
+    "do": "host",
+    "data": {
+      "type": "xochi:rpc:result",
+      "id": 10,
+      "result": "0x1"
+    },
+    "expect": {
+      "posted": [],
+      "observed": [],
+      "available": true,
+      "autoConnect": false
+    }
+  }
+]
