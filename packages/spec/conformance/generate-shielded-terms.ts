@@ -341,8 +341,11 @@ const EIGHTEEN_DECIMAL_POLICY: Partial<Policy> = {
 // are the real ones; the network and every other member stay fixtures, so this pins the 6 -> 18
 // conversion and its rounding, not the production manifest.
 // NOT the production shape: it stays revision 1 / `staging` with the Sepolia fixture network
-// while naming chain-1 tokens, so Riddler's `CorridorManifest.parse` refuses it
-// (`revision_identity_fixed`). Do not copy it as a revision 2 entry.
+// while naming chain-1 tokens. Riddler's conformance test, once it re-vendors this file, reads
+// and digests it (`CorridorManifest.from_typed`). Configured as a corridor entry it is refused:
+// Riddler fails to boot (`decode!/1` raises on the revision 1 fixed values, Base Sepolia USDC ->
+// XTU) and `parse/1` refuses it `revision_identity_fixed`; a revision 2 copy would be refused
+// on the fixed mainnet network. Never configure it.
 const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
   sourceChainId: "1", // fixture: Ethereum, where this USDC address lives
   sourceToken: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Ethereum USDC
@@ -357,8 +360,13 @@ const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
 };
 
 // USD to USD is fee-classed stable: the Standard stable row (8 / 6 / 8 = 22 bps, `FEE_SCHEDULE`
-// in xochi `tiers.ts`, Riddler#1425). Fees are in source base units, so BASE_POLICY's
+// in xochi `tiers.ts`, Riddler#1425 (#1421)). Fees are in source base units, so BASE_POLICY's
 // 5,000-unit ($0.005) floor applies unchanged.
+// Fixture policy, not the price an OXDAI user pays: the xochi Worker admits Verified and above
+// only, since Riddler#1425 each caller pays their own tier's stable row (xochi
+// `expectedTracerAmounts`; the corridor entry's flat rates are not priced), and only the gas
+// floor comes from the corridor entry (`policy.gas_floor`; the decided value is in xochi
+// `OXDAI_REV2_POLICY`). These rates only exercise the conversion and the layer arithmetic.
 const SIX_TO_EIGHTEEN_POLICY: Partial<Policy> = {
   solverFeeBps: 8n,
   venueFeeBps: 6n,
@@ -549,28 +557,47 @@ const PREVIEW_CASES: {
     policy: EIGHTEEN_DECIMAL_POLICY,
     caller: { amount: (5166n * 10n ** 18n).toString() },
   },
-  // 6 -> 18 decimals, 1 : 10^12 units. 1 DAI is an exact multiple: the base is 1,000,000 USDC
-  // units and the floor binds.
+  // 6 -> 18 decimals, 1 : 10^12 units. 1 OXDAI (1e18 base units) is an exact multiple: the base
+  // is 1,000,000 USDC units and the floor binds.
   {
     name: "six-to-eighteen-exact-multiple",
     manifest: SIX_TO_EIGHTEEN_MANIFEST,
     policy: SIX_TO_EIGHTEEN_POLICY,
     caller: { amount: (10n ** 18n).toString() },
   },
-  // 1 DAI + 1 wei is not a multiple of 10^12: ceil-source-units rounds the base up by one
-  // USDC unit (1,000,001), so the exact destination is always covered.
+  // 1e18 + 1 OXDAI base units is not a multiple of 10^12: ceil-source-units rounds the base up
+  // by one USDC unit (1,000,001), so the exact destination is always covered.
   {
     name: "six-to-eighteen-rounds-up",
     manifest: SIX_TO_EIGHTEEN_MANIFEST,
     policy: SIX_TO_EIGHTEEN_POLICY,
     caller: { amount: (10n ** 18n + 1n).toString() },
   },
-  // The corridor's 1,000 DAI per-transaction cap: base 1e9 USDC units, the layers bind.
+  // 1,000 OXDAI: base 1e9 USDC units, the layers bind. The amount is pxe-bridge's current
+  // per-transaction cap (xochi `OXDAI_REV2_OPERATING_INPUTS.maxAmountPerTx`, an operating input,
+  // not a manifest member); no vector enforces that cap.
   {
-    name: "six-to-eighteen-tx-cap",
+    name: "six-to-eighteen-layers-bind",
     manifest: SIX_TO_EIGHTEEN_MANIFEST,
     policy: SIX_TO_EIGHTEEN_POLICY,
     caller: { amount: (1000n * 10n ** 18n).toString() },
+  },
+  // The rounded-up base moves the fee: base 2,500,000 (not 2,499,999), layers 2,000 / 1,500 /
+  // 2,000 = 5,500 above the floor. A fee computed on the rounded-down base gives 5,497.
+  {
+    name: "six-to-eighteen-round-up-moves-layers",
+    manifest: SIX_TO_EIGHTEEN_MANIFEST,
+    policy: SIX_TO_EIGHTEEN_POLICY,
+    caller: { amount: (2499999n * 10n ** 12n + 1n).toString() },
+  },
+  // Every layer has a remainder, inside OXDAI's note and per-transaction caps: base 999,999,999,
+  // layers floor to 799,999 / 599,999 / 799,999 = 2,199,997. One combined
+  // floor(base * 22 / 10000) gives 2,199,999, and rounding each layer up gives 2,200,000.
+  {
+    name: "six-to-eighteen-layer-remainders",
+    manifest: SIX_TO_EIGHTEEN_MANIFEST,
+    policy: SIX_TO_EIGHTEEN_POLICY,
+    caller: { amount: (999999998n * 10n ** 12n + 1n).toString() },
   },
 ];
 
