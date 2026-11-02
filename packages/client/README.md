@@ -87,6 +87,14 @@ Lifecycle rules the machine enforces, beyond the signer checks under [Fund safet
 - `StreamStatus` frames for another intent are ignored. Read stream frames with `mapStatusFrame`: it passes in-flight frames only, so every terminal arrives by the poll with its receipt and reason. A `failed` frame a host dispatches itself follows the poll's rule ([Fund safety](#fund-safety)).
 - An execute reported `notAccepted` (below) waits with no status read and resends from the `execute` timer under a new flow id; a status move off `executing`, Reset, or any end of the ceremony drops the pending resend (`clear:execute`). **Hosts must schedule the `execute` timer** like the others and render the `busy` signing slot. A host that drops the timer is slowed, not stranded: the poll timer stays armed through the wait, and the first poll tick (every `STATUS_POLL_MS`, 4 s) or returning tab (`VisibilityChanged`) at or after the resend time does the timer's work, so the resend goes up to 4 s late. The deadline check still decides: a resend that late can fall inside `EXECUTE_RESEND_MARGIN_SECS`, and then the machine stops resending ("not sent yet", [Fund safety](#fund-safety)) instead.
 
+### Failures
+
+`classifyFailure(intent.error, quote?.errorCategory)` reads a failure into a typed `Failure`: a `kind` to word (`no_liquidity`, `request_rejected`, `pair_unsupported`, `amount_too_small`, ...), the served detail worth showing (`field`, `advice`, `limit`), and `retryable`. Pass `errorCategory` only with the declined quote the error came from; it wins over the prose, as the wire contract asks. Otherwise a `StructuredError`'s HTTP code decides, then the prose.
+
+- `in_doubt` (Riddler's "do not resubmit") is never retryable: origin funds may have moved, and a retry could pull twice. Offer no Retry for any `retryable: false` failure; the identical request fails identically.
+- An unrecognized `errorCategory` is `declined`, final. Unrecognized prose is `unrecognized`, verbatim; truncate it yourself.
+- `settlementFallback({ settlement, status, error, errorCategory })` says when a failed stealth or shielded trade should offer the switch to Public: the route refused the mode (`route_unsupported`), or the solver refused a request field Public drops (`request_rejected`). `isSettlementAvailable` / `settlementRefusalReason` read a quote's `settlementOptions`; `undefined` means the solver has not reported on that mode, so never gate on it.
+
 ## Fund safety
 
 The machine checks every quote against the request (via `@xochi/signer`), the pull against your pins, the payout against what was rendered, and deposit attestations against your signer; claims are checked before signing. All fail closed: a failing quote is never signable, a failing deposit address never shown.
