@@ -108,6 +108,31 @@ describe("decodeShieldedPreview", () => {
     expect(() => decodeShieldedPreview(off)).toThrow(/max\(gas_floor, layers\)/);
   });
 
+  it("decodes an 18-decimal preview at Oxide DAI's note cap, exactly", () => {
+    // 5,166 DAI = 5166e18 base units: every amount is above 2^64 and Number's safe range,
+    // so the totals check must be bigint-exact, down to one wei.
+    const dai = response();
+    dai.preview.source.token_address = "0x6b175474e89094c44da98b954eedeac495271d0f";
+    dai.preview.destination.token_address =
+      "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3";
+    dai.preview.destination.amount = "5166000000000000000000";
+    Object.assign(dai.preview.fee_breakdown, {
+      gas_floor: "5000000000000000",
+      solver_fee: "9298800000000000000",
+      venue_fee: "5166000000000000000",
+      routing_fee: "6199200000000000000",
+      total_fee: "20664000000000000000",
+    });
+    dai.preview.source.amount = "5186664000000000000000";
+    dai.preview.refund_amount = "5186664000000000000000";
+    const decoded = decodeShieldedPreview(dai);
+    expect(decoded.preview.destination.amount).toBe("5166000000000000000000");
+    expect(decoded.preview.fee_breakdown.total_fee).toBe("20664000000000000000");
+
+    dai.preview.fee_breakdown.total_fee = "20664000000000000001";
+    expect(() => decodeShieldedPreview(dai)).toThrow(/max\(gas_floor, layers\)/);
+  });
+
   it("names exactly the members the vendored wire contract requires", () => {
     const schemas = JSON.parse(fs.readFileSync(WIRE, "utf8")).components.schemas;
     const required = (name: string) => [...schemas[name].required].sort();

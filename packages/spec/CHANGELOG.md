@@ -4,6 +4,13 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+### Added
+
+- **18-decimal shielded vectors** (xochi#736: the first production shielded asset is Oxide DAI, 18 decimals; every shielded vector so far was 6 decimals). Additive only: every existing vector, digest and signature is byte-identical.
+  - `conformance/shielded-terms.json`: manifest `eighteen-decimal-corridor` (L1 DAI to OXDAI, 18 decimals both sides, 1:1 units; the network and other members stay fixtures, so it is not the production manifest), and previews plus terms `eighteen-decimal-floor-binds` (1 DAI, the 5e15 floor binds) and `eighteen-decimal-note-cap` (5,166 DAI, every amount above 2^64, the layers bind).
+  - `conformance/shielded.json`: accepted amounts `eighteen-decimal-unit` (1e18) and `oxdai-note-cap` (5166e18).
+  - `conformance/shielded-recipient.json`: `PaymentReceiptAck (binding X, 18-decimal note cap)`, a receipt for 5166e18 under its own receipt nonce.
+
 ### Changed
 
 - **`conformance/shielded-terms.json`**: the `CorridorManifestV1` proposed note now defines the two digest preimages no source defined (decided 2026-11-02, xochi `shielded-execution.md` §7): `aztecTokenArtifactDigest` is sha256 of the raw compiled artifact JSON as published, `solverConstructorDigest` is the solver account's Aztec `initializationHash` (with the instance's salt, deployer, class id and public keys it recomputes the address). Note text only: type strings, typehashes and every digest are byte-identical.

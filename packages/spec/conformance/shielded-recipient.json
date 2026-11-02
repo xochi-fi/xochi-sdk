@@ -1951,6 +1951,57 @@
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
         "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d"
+      },
+      {
+        "name": "PaymentReceiptAck (binding X, 18-decimal note cap)",
+        "primaryType": "PaymentReceiptAck",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "679261766",
+          "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0xa6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+          "challengeExpiry": "1900000300",
+          "termsDigest": "0x7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+          "operationId": "0x0909090909090909090909090909090909090909090909090909090909090909",
+          "network": {
+            "aztecChainId": "11155111",
+            "protocolVersion": "679261766",
+            "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+            "l1ChainId": "11155111",
+            "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+          },
+          "txHash": "0x1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+          "blockNumber": "3062",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "amount": "5166000000000000000000",
+          "purpose": "xochi.shielded.payment-receipt-ack.v1"
+        },
+        "structHash": "0xf6897b78ecedc80ab93583aaf6f1f9ecb76b57d3dda7fcc39a1abefb473f44e5",
+        "digest": "0x99b1adc030cf1368470db8346d6c02e394fba1d8604e4e9e2cf97ecfa7c1d752",
+        "wrapper": {
+          "u": "0x70de644b1b6bd2cd170da7f1bc8eeb541ecdf42e5b3b378432226bb2cd9abb478032b0fbb7457050354c16436caa80249db850af9fac3003ffddaee6e1d0c3cf",
+          "u48": "0x70de644b1b6bd2cd170da7f1bc8eeb541ecdf42e5b3b378432226bb2cd9abb478032b0fbb7457050354c16436caa8024",
+          "messageField": "0x12946515f73709a4a241ce388c2b142d017475b54780596125171198d227e31d",
+          "provisionalPlainModR": "0x0884c2678d3a32eb1e1ce710e8e7f9cc1c5fe8fef321fcea61539e13d7c1d74f"
+        },
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x183f5d12c3d7ed5894d7f6c24bb2bcf7b332211bc8856d20fee452b1499e3391147fcd5ff0e1ac4f78c7095db04e0990e0c6937245ec20674d59f8c4bd5c72cf"
       }
     ],
     "crossTypeReplays": [

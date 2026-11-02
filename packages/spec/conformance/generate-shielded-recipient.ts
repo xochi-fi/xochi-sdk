@@ -1060,6 +1060,19 @@ const ackVectors = ACKS.map((a) => ({
   ),
 }));
 
+// An 18-decimal credit: Oxide DAI's per-note cap, 5,166 tokens = 5166e18 base units, above
+// 2^64. The receipt's amount is uint256, so a value no uint64 holds must hash and verify. Its
+// own receipt challenge nonce, because a verifier consumes one replay key per type, binding
+// and nonce.
+const eighteenDecimalReceipt = {
+  name: "PaymentReceiptAck (binding X, 18-decimal note cap)",
+  ...signAs(ackAccount, "PaymentReceiptAck", ENVIRONMENT, {
+    ...ackMessage("PaymentReceiptAck", BINDING_X, BINDING_X_CHALLENGE),
+    nonce: "0x" + "a6".repeat(32),
+    amount: (5166n * 10n ** 18n).toString(),
+  }),
+};
+
 const recipientSigned: Signed[] = [{ ...bindingX }, ...ackVectors];
 
 // Cross-type replay: every recipient-signed type's signature, presented as every other type's
@@ -1375,7 +1388,7 @@ const out = {
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
     ],
-    vectors: ackVectors,
+    vectors: [...ackVectors, eighteenDecimalReceipt],
     crossTypeReplays,
     crossBindingReplays,
     refusals: ackRefusals,

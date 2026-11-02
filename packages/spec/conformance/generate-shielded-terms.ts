@@ -315,6 +315,27 @@ const BASE_CALLER: Caller = {
   settlementServiceDeadline: "1900003600",
 };
 
+// An 18-decimal corridor: L1 DAI to Oxide DAI (OXDAI), 18 decimals on both sides, 1:1 units
+// (xochi#736). The token identities are the real ones; the network and every other member stay
+// fixtures, so this is decimals coverage, not the production manifest (Riddler pins that as
+// revision 2).
+const EIGHTEEN_DECIMAL_MANIFEST: Partial<Manifest> = {
+  sourceChainId: "1", // fixture: Ethereum, where this DAI address lives
+  sourceToken: "0x6b175474e89094c44da98b954eedeac495271d0f", // L1 DAI
+  sourceDecimals: "18",
+  aztecToken: "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3", // OXDAI
+  destinationDecimals: "18",
+  aztecTokenClassId: "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949", // OXDAI
+  issuerProvenance: "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+  redemptionRules: "fixture: redeemable 1:1 for L1 DAI through the portal",
+};
+
+// BASE_POLICY's 5,000-unit floor is $0.005 at 6 decimals; the same floor at 18 decimals.
+const EIGHTEEN_DECIMAL_POLICY: Partial<Policy> = {
+  gasFloor: 5000n * 10n ** 12n,
+  assetId: "fixture-18-decimal-dai",
+};
+
 // --- Derivation (PROPOSED) ---------------------------------------------------------------
 //
 // Exact output. base = ceil(amount * sourceUnits / destinationUnits) in source base units;
@@ -449,6 +470,7 @@ const MANIFEST_CASES: { name: string; manifest: Partial<Manifest> }[] = [
   { name: "other-source-finality", manifest: { sourceFinality: "fixture: safe" } },
   { name: "other-destination-finality", manifest: { destinationFinality: "fixture: proven" } },
   { name: "other-fee-payer", manifest: { feePayer: "0x" + "0f".repeat(31) + "02" } },
+  { name: "eighteen-decimal-corridor", manifest: EIGHTEEN_DECIMAL_MANIFEST },
 ];
 
 const manifestVectors = MANIFEST_CASES.map(({ name, manifest }) => {
@@ -482,6 +504,20 @@ const PREVIEW_CASES: {
   { name: "other-gas-floor", policy: { gasFloor: 5001n } },
   // 10 test units: the layers (40,000) exceed the 5,000 floor, so the floor does not bind.
   { name: "layers-above-floor", caller: { amount: "10000000" } },
+  // 1 DAI at 18 decimals: the layers (4e15) are below the 5e15 floor, so the floor binds.
+  {
+    name: "eighteen-decimal-floor-binds",
+    manifest: EIGHTEEN_DECIMAL_MANIFEST,
+    policy: EIGHTEEN_DECIMAL_POLICY,
+    caller: { amount: (10n ** 18n).toString() },
+  },
+  // Oxide DAI's per-note cap, 5,166 DAI: every amount is above 2^64 and the layers bind.
+  {
+    name: "eighteen-decimal-note-cap",
+    manifest: EIGHTEEN_DECIMAL_MANIFEST,
+    policy: EIGHTEEN_DECIMAL_POLICY,
+    caller: { amount: (5166n * 10n ** 18n).toString() },
+  },
 ];
 
 const previewVectors = PREVIEW_CASES.map(({ name, caller, manifest, policy }) => {
