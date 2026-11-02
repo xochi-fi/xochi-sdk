@@ -924,7 +924,8 @@ const out = {
         "aztecTokenArtifactDigest = sha256 of the raw bytes of the token's compiled artifact JSON " +
         "as published (rev 1: artifacts/token_contract-Token.json in @aztec-labs/noir-contracts.js " +
         "6.0.0); solverConstructorDigest = the solver account instance's Aztec initializationHash " +
-        "(constructor selector and arguments), which recomputes its address.",
+        "(constructor selector and arguments), which with the instance's salt, deployer, class id and " +
+        "public keys recomputes its address.",
     },
     {
       item: "recipientBindingDigest derivation",
