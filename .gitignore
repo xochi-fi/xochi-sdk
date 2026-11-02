@@ -18,3 +18,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Personal architecture notes (kept locally, not tracked)
+docs/adr/
