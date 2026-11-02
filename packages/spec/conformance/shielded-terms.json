@@ -1012,6 +1012,44 @@
           "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
         },
         "manifestDigest": "0xad99c888a02959f9bc738bb179ab5d42c6d44d37a800e08d1ed58419db6e41f2"
+      },
+      {
+        "name": "six-to-eighteen-decimal-corridor",
+        "message": {
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "revision": "1",
+          "environment": "staging",
+          "rail": "a_tracer",
+          "sourceChainId": "1",
+          "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+          "sourceToken": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "sourceDecimals": "6",
+          "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "network": {
+            "aztecChainId": "11155111",
+            "protocolVersion": "3924331020",
+            "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "l1ChainId": "11155111",
+            "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+          },
+          "aztecSdkVersion": "6.0.0",
+          "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+          "destinationDecimals": "18",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+          "issuerProvenance": "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+          "redemptionRules": "fixture: redeemable 1:1 for L1 DAI through the portal",
+          "sourceUnits": "1",
+          "destinationUnits": "1000000000000",
+          "rounding": "ceil-source-units",
+          "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
+          "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
+          "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
+          "sourceFinality": "fixture: finalized",
+          "destinationFinality": "fixture: finalized",
+          "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+        },
+        "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
       }
     ],
     "refusals": [
@@ -4129,6 +4167,426 @@
         "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
         "structHash": "0x57d1d8c0d4aa58faf13486a5c45db3e2a22a952e2cc86524ac00afda7c57702d",
         "digest": "0x1a0886767ede9ee6c1d12c1ab3b8e4b70cbc3f772a88b81d877d3d576016bb70"
+      },
+      {
+        "name": "six-to-eighteen-exact-multiple",
+        "inputs": {
+          "manifest": {
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "revision": "1",
+            "environment": "staging",
+            "rail": "a_tracer",
+            "sourceChainId": "1",
+            "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+            "sourceToken": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "sourceDecimals": "6",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "aztecSdkVersion": "6.0.0",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "destinationDecimals": "18",
+            "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+            "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "issuerProvenance": "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+            "redemptionRules": "fixture: redeemable 1:1 for L1 DAI through the portal",
+            "sourceUnits": "1",
+            "destinationUnits": "1000000000000",
+            "rounding": "ceil-source-units",
+            "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
+            "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
+            "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
+            "sourceFinality": "fixture: finalized",
+            "destinationFinality": "fixture: finalized",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "policy": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "priceImpactBps": "0",
+            "venueFeeBps": "10",
+            "routingFeeBps": "12",
+            "policyRevision": "1",
+            "assetId": "fixture-usdc-to-oxdai"
+          },
+          "caller": {
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "amount": "1000000000000000000",
+            "recipientBindingId": "bnd_0001",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collectBefore": "1900000000",
+            "settlementServiceDeadline": "1900003600"
+          }
+        },
+        "recipientBinding": {
+          "message": {
+            "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "sourceChainId": "1",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "corridorRevision": "1",
+            "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "purpose": "xochi.shielded.recipient-binding.v1"
+          },
+          "digest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d"
+        },
+        "message": {
+          "protocolVersion": "xochi.shielded.preview.v1",
+          "environment": "staging",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1005000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000",
+            "routingFeeBps": "12",
+            "routingFee": "1200",
+            "totalBps": "40",
+            "totalFee": "5000"
+          },
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1005000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1"
+        },
+        "domain": {
+          "name": "Xochi Shielded Preview",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
+        "structHash": "0x905d05aa414197067faba99128cf71da9c3791d6bea1b25ee854e6843bdda58d",
+        "digest": "0xc28d0f60988db0afe1d91bac4f7cbef17d5a38ef16440f2affe58c07b4d5d5e1"
+      },
+      {
+        "name": "six-to-eighteen-rounds-up",
+        "inputs": {
+          "manifest": {
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "revision": "1",
+            "environment": "staging",
+            "rail": "a_tracer",
+            "sourceChainId": "1",
+            "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+            "sourceToken": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "sourceDecimals": "6",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "aztecSdkVersion": "6.0.0",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "destinationDecimals": "18",
+            "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+            "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "issuerProvenance": "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+            "redemptionRules": "fixture: redeemable 1:1 for L1 DAI through the portal",
+            "sourceUnits": "1",
+            "destinationUnits": "1000000000000",
+            "rounding": "ceil-source-units",
+            "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
+            "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
+            "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
+            "sourceFinality": "fixture: finalized",
+            "destinationFinality": "fixture: finalized",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "policy": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "priceImpactBps": "0",
+            "venueFeeBps": "10",
+            "routingFeeBps": "12",
+            "policyRevision": "1",
+            "assetId": "fixture-usdc-to-oxdai"
+          },
+          "caller": {
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "amount": "1000000000000000001",
+            "recipientBindingId": "bnd_0001",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collectBefore": "1900000000",
+            "settlementServiceDeadline": "1900003600"
+          }
+        },
+        "recipientBinding": {
+          "message": {
+            "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "sourceChainId": "1",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "corridorRevision": "1",
+            "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "purpose": "xochi.shielded.recipient-binding.v1"
+          },
+          "digest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d"
+        },
+        "message": {
+          "protocolVersion": "xochi.shielded.preview.v1",
+          "environment": "staging",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1005001"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000001",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000",
+            "routingFeeBps": "12",
+            "routingFee": "1200",
+            "totalBps": "40",
+            "totalFee": "5000"
+          },
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1005001",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1"
+        },
+        "domain": {
+          "name": "Xochi Shielded Preview",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
+        "structHash": "0x4f24e2e990737521d282960c459fb1879eeea027725a534f94d82fc76b936795",
+        "digest": "0xf68f24eea6aa163317eb320a14e2178134da3dab97bb025a2aa3257d5c1fc39d"
+      },
+      {
+        "name": "six-to-eighteen-tx-cap",
+        "inputs": {
+          "manifest": {
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "revision": "1",
+            "environment": "staging",
+            "rail": "a_tracer",
+            "sourceChainId": "1",
+            "sourceGenesisHash": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+            "sourceToken": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "sourceDecimals": "6",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "aztecSdkVersion": "6.0.0",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "destinationDecimals": "18",
+            "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+            "aztecTokenArtifactDigest": "0xafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "issuerProvenance": "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+            "redemptionRules": "fixture: redeemable 1:1 for L1 DAI through the portal",
+            "sourceUnits": "1",
+            "destinationUnits": "1000000000000",
+            "rounding": "ceil-source-units",
+            "solverAccount": "0x0505050505050505050505050505050505050505050505050505050505050505",
+            "solverClassId": "0x0606060606060606060606060606060606060606060606060606060606060606",
+            "solverConstructorDigest": "0x0707070707070707070707070707070707070707070707070707070707070707",
+            "sourceFinality": "fixture: finalized",
+            "destinationFinality": "fixture: finalized",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "policy": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "priceImpactBps": "0",
+            "venueFeeBps": "10",
+            "routingFeeBps": "12",
+            "policyRevision": "1",
+            "assetId": "fixture-usdc-to-oxdai"
+          },
+          "caller": {
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "amount": "1000000000000000000000",
+            "recipientBindingId": "bnd_0001",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collectBefore": "1900000000",
+            "settlementServiceDeadline": "1900003600"
+          }
+        },
+        "recipientBinding": {
+          "message": {
+            "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "sourceChainId": "1",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "corridorRevision": "1",
+            "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431",
+            "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "challengeExpiry": "1899999700",
+            "purpose": "xochi.shielded.recipient-binding.v1"
+          },
+          "digest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d"
+        },
+        "message": {
+          "protocolVersion": "xochi.shielded.preview.v1",
+          "environment": "staging",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1004000000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800000",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000000",
+            "routingFeeBps": "12",
+            "routingFee": "1200000",
+            "totalBps": "40",
+            "totalFee": "4000000"
+          },
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1004000000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1"
+        },
+        "domain": {
+          "name": "Xochi Shielded Preview",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
+        "structHash": "0xb0e621f9937a16bfed6cc26bc7c7a92d9dccf1049ceb12e3be2d6a4d12577687",
+        "digest": "0x423c240a4bbc5268097ef1c917ccf510954ff17a60cd8a508b801226e018e468"
       }
     ]
   },
@@ -6029,6 +6487,243 @@
         "digest": "0x34f2b0e138f810bf2322a6aa4f650f21b5324ad332dc940404f123287789ffd9",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
         "signature": "0xe628b86963fe80b61bf121126798dbb25d50519216de989d01645bdae3aa52150b8212656d86b8a919c13e5ed8ff66850c9f479ac02869c0805a8851794042231c"
+      },
+      {
+        "name": "six-to-eighteen-exact-multiple",
+        "previewVector": "six-to-eighteen-exact-multiple",
+        "message": {
+          "protocolVersion": "xochi.shielded.terms.v1",
+          "environment": "staging",
+          "intentId": "xi_fixture0001",
+          "quoteId": "xq_fixture0001",
+          "operationId": "op_fixture0001",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1005000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000",
+            "routingFeeBps": "12",
+            "routingFee": "1200",
+            "totalBps": "40",
+            "totalFee": "5000"
+          },
+          "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1005000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1",
+          "reservationId": "rsv_fixture0001"
+        },
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x4ef8e3011d2bf82df59bbe6c3be76dbf27eceeeb580fdaa999a740cb8d59bfa1",
+        "sourceHash": "0x39216d691ac7cd5d36d18085e2b943762dd983f5098d7e188e8c48fe07728a20",
+        "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
+        "destinationHash": "0x3784a1350c78ba3db3fd9d9b5bd75c88722940e0b69f998d77a9439a95c4941d",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x8f412d37cdb047788fa82f681bd5eb6994621c432e0a8a1075c240fedbd934f3",
+        "digest": "0xd5cc005ec0020f853ea75555cd2f140af472b05389d61ba90e656547e6fc7e74",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x1d95fb0f2458aa83016b8f5bb4aa0cb8c4d990786bc404b9de5a219ce2655755352a0c89ca65a6c39034d7d20b6c2f7640ce57ad84bc5e7dba2ad8caac7a4ef91c"
+      },
+      {
+        "name": "six-to-eighteen-rounds-up",
+        "previewVector": "six-to-eighteen-rounds-up",
+        "message": {
+          "protocolVersion": "xochi.shielded.terms.v1",
+          "environment": "staging",
+          "intentId": "xi_fixture0001",
+          "quoteId": "xq_fixture0001",
+          "operationId": "op_fixture0001",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1005001"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000001",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000",
+            "routingFeeBps": "12",
+            "routingFee": "1200",
+            "totalBps": "40",
+            "totalFee": "5000"
+          },
+          "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1005001",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1",
+          "reservationId": "rsv_fixture0001"
+        },
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x4ef8e3011d2bf82df59bbe6c3be76dbf27eceeeb580fdaa999a740cb8d59bfa1",
+        "sourceHash": "0xcb5872cbb97163bc7247da17ef7afb1dcf6d1bb4eddfded0b152b302468b5c5c",
+        "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
+        "destinationHash": "0x110c6b32e85470cb54fff7da389bfe3067df70fa843533b9efea29db66fcfcf7",
+        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
+        "structHash": "0x38fc535b43f8e8d86a6319ea260154a0edb736aca1653f13be7b739abbf76180",
+        "digest": "0x42431b0b3d74c9574a5c1ff2ecd2641464ba61d4267573405fb1f6308cd85150",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x8889db70715012a96f42b4a26fc04f34ad71bb6943b9558bf67a233f80393f763211334c0808233b822c97c0dfe113c763ec83d92b0c31766529378050eaf6c01c"
+      },
+      {
+        "name": "six-to-eighteen-tx-cap",
+        "previewVector": "six-to-eighteen-tx-cap",
+        "message": {
+          "protocolVersion": "xochi.shielded.terms.v1",
+          "environment": "staging",
+          "intentId": "xi_fixture0001",
+          "quoteId": "xq_fixture0001",
+          "operationId": "op_fixture0001",
+          "source": {
+            "chainId": "1",
+            "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "amount": "1004000000"
+          },
+          "destination": {
+            "settlementType": "shielded",
+            "privacyLevel": "private",
+            "disclosureProfile": "recipient-private-public-amount-v1",
+            "rail": "a_tracer",
+            "network": {
+              "aztecChainId": "11155111",
+              "protocolVersion": "3924331020",
+              "rollupAddress": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "l1ChainId": "11155111",
+              "genesisOrNetworkDigest": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e"
+            },
+            "corridor": {
+              "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+              "corridorRevision": "1",
+              "manifestDigest": "0xb8f644bc474c0789f837f4fd593ab5cbb33454b6e960085f06c08fedb0e6b431"
+            },
+            "assetId": "fixture-usdc-to-oxdai",
+            "aztecToken": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+            "recipientBindingId": "bnd_0001",
+            "descriptorDigest": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "aztecRecipient": "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "amount": "1000000000000000000000",
+            "feePayer": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f01"
+          },
+          "feeBreakdown": {
+            "gasFloor": "5000",
+            "solverFeeBps": "18",
+            "solverFee": "1800000",
+            "priceImpactBps": "0",
+            "priceImpact": "0",
+            "venueFeeBps": "10",
+            "venueFee": "1000000",
+            "routingFeeBps": "12",
+            "routingFee": "1200000",
+            "totalBps": "40",
+            "totalFee": "4000000"
+          },
+          "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "refundAmount": "1004000000",
+          "collectBefore": "1900000000",
+          "settlementServiceDeadline": "1900003600",
+          "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
+          "policyRevision": "1",
+          "reservationId": "rsv_fixture0001"
+        },
+        "domain": {
+          "name": "Xochi Shielded Terms",
+          "version": "1",
+          "chainId": "1",
+          "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
+        },
+        "domainSeparator": "0x4ef8e3011d2bf82df59bbe6c3be76dbf27eceeeb580fdaa999a740cb8d59bfa1",
+        "sourceHash": "0x703f7d00420eb450cb24c0e9f7f1abaa521214af8362b8b8506e686b1b358e5f",
+        "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
+        "destinationHash": "0x028f732b9c0ee50af6a10ede5172a2bd141d747202befbaccbcb3825cae63342",
+        "feeBreakdownHash": "0x9910c91ff94a0cc1f2296b2cc600b595d3221b5fa36d216bedfde4838995e501",
+        "structHash": "0xa2f5f9f748b49d4c25d373ccdf7cb25f034584cec857ab1bb03afae277689612",
+        "digest": "0xe1b14e8c73edf74b8251bc22892ef99f56870c4185e25504171073ba68301ad5",
+        "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "signature": "0x2b2d562380e2abbcbf7058ad6a186711d4e3075d9e3200cbd7a69868a2300ea042b3da78d01da90bb1e0639be7cd90030144ea917503cd3cd6300a5be5bfbe071b"
       }
     ],
     "refusals": [

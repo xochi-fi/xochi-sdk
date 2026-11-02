@@ -10,6 +10,8 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   - `conformance/shielded-terms.json`: manifest `eighteen-decimal-corridor` (L1 DAI to OXDAI, 18 decimals both sides, 1:1 units; the network and other members stay fixtures, so it is not the production manifest), and previews plus terms `eighteen-decimal-floor-binds` (1 DAI, the 5e15 floor binds) and `eighteen-decimal-note-cap` (5,166 DAI, every amount above 2^64, the layers bind).
   - `conformance/shielded.json`: accepted amounts `eighteen-decimal-unit` (1e18) and `oxdai-note-cap` (5166e18).
   - `conformance/shielded-recipient.json`: `PaymentReceiptAck (binding X, 18-decimal note cap)`, a receipt for 5166e18 under its own receipt nonce.
+- **6-to-18 decimal shielded vectors** (xochi-sdk#131: the production OXDAI corridor, xochi#757 revision 2, is USDC with 6 decimals to OXDAI with 18, units 1 : 10^12, and no vector exercised a mixed-decimal conversion). Additive only: every existing vector, digest and signature is byte-identical.
+  - `conformance/shielded-terms.json`: manifest `six-to-eighteen-decimal-corridor` (Ethereum USDC to OXDAI, 6 -> 18 decimals, `1` : `1000000000000`, `ceil-source-units`; the network and other members stay fixtures), and previews plus terms `six-to-eighteen-exact-multiple` (1 DAI, base 1,000,000 USDC units), `six-to-eighteen-rounds-up` (1 DAI + 1 wei, base rounded up to 1,000,001) and `six-to-eighteen-tx-cap` (the corridor's 1,000 DAI per-transaction cap, the layers bind).
 
 ### Changed
 
