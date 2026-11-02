@@ -336,6 +336,36 @@ const EIGHTEEN_DECIMAL_POLICY: Partial<Policy> = {
   assetId: "fixture-18-decimal-dai",
 };
 
+// A mixed-decimal corridor: Ethereum USDC (6 decimals) to OXDAI (18 decimals), units 1 : 10^12,
+// the conversion of the production OXDAI corridor (xochi#757, revision 2). The token identities
+// are the real ones; the network and every other member stay fixtures, so this pins the 6 -> 18
+// conversion and its rounding, not the production manifest.
+// NOT the production shape: it stays revision 1 / `staging` with the Sepolia fixture network
+// while naming chain-1 tokens, so Riddler's `CorridorManifest.parse` refuses it
+// (`revision_identity_fixed`). Do not copy it as a revision 2 entry.
+const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
+  sourceChainId: "1", // fixture: Ethereum, where this USDC address lives
+  sourceToken: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Ethereum USDC
+  sourceDecimals: "6",
+  aztecToken: "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3", // OXDAI
+  destinationDecimals: "18",
+  aztecTokenClassId: "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949", // OXDAI
+  issuerProvenance: "fixture: Oxide DAI, backed by L1 DAI held in its portal",
+  redemptionRules: "fixture: redeemable 1:1 for L1 DAI through the portal",
+  sourceUnits: "1",
+  destinationUnits: "1000000000000",
+};
+
+// USD to USD is fee-classed stable: the Standard stable row (8 / 6 / 8 = 22 bps, `FEE_SCHEDULE`
+// in xochi `tiers.ts`, Riddler#1425). Fees are in source base units, so BASE_POLICY's
+// 5,000-unit ($0.005) floor applies unchanged.
+const SIX_TO_EIGHTEEN_POLICY: Partial<Policy> = {
+  solverFeeBps: 8n,
+  venueFeeBps: 6n,
+  routingFeeBps: 8n,
+  assetId: "fixture-usdc-to-oxdai",
+};
+
 // --- Derivation (PROPOSED) ---------------------------------------------------------------
 //
 // Exact output. base = ceil(amount * sourceUnits / destinationUnits) in source base units;
@@ -471,6 +501,7 @@ const MANIFEST_CASES: { name: string; manifest: Partial<Manifest> }[] = [
   { name: "other-destination-finality", manifest: { destinationFinality: "fixture: proven" } },
   { name: "other-fee-payer", manifest: { feePayer: "0x" + "0f".repeat(31) + "02" } },
   { name: "eighteen-decimal-corridor", manifest: EIGHTEEN_DECIMAL_MANIFEST },
+  { name: "six-to-eighteen-decimal-corridor", manifest: SIX_TO_EIGHTEEN_MANIFEST },
 ];
 
 const manifestVectors = MANIFEST_CASES.map(({ name, manifest }) => {
@@ -517,6 +548,29 @@ const PREVIEW_CASES: {
     manifest: EIGHTEEN_DECIMAL_MANIFEST,
     policy: EIGHTEEN_DECIMAL_POLICY,
     caller: { amount: (5166n * 10n ** 18n).toString() },
+  },
+  // 6 -> 18 decimals, 1 : 10^12 units. 1 DAI is an exact multiple: the base is 1,000,000 USDC
+  // units and the floor binds.
+  {
+    name: "six-to-eighteen-exact-multiple",
+    manifest: SIX_TO_EIGHTEEN_MANIFEST,
+    policy: SIX_TO_EIGHTEEN_POLICY,
+    caller: { amount: (10n ** 18n).toString() },
+  },
+  // 1 DAI + 1 wei is not a multiple of 10^12: ceil-source-units rounds the base up by one
+  // USDC unit (1,000,001), so the exact destination is always covered.
+  {
+    name: "six-to-eighteen-rounds-up",
+    manifest: SIX_TO_EIGHTEEN_MANIFEST,
+    policy: SIX_TO_EIGHTEEN_POLICY,
+    caller: { amount: (10n ** 18n + 1n).toString() },
+  },
+  // The corridor's 1,000 DAI per-transaction cap: base 1e9 USDC units, the layers bind.
+  {
+    name: "six-to-eighteen-tx-cap",
+    manifest: SIX_TO_EIGHTEEN_MANIFEST,
+    policy: SIX_TO_EIGHTEEN_POLICY,
+    caller: { amount: (1000n * 10n ** 18n).toString() },
   },
 ];
 
