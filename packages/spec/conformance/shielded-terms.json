@@ -4207,10 +4207,10 @@
           },
           "policy": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
+            "solverFeeBps": "8",
             "priceImpactBps": "0",
-            "venueFeeBps": "10",
-            "routingFeeBps": "12",
+            "venueFeeBps": "6",
+            "routingFeeBps": "8",
             "policyRevision": "1",
             "assetId": "fixture-usdc-to-oxdai"
           },
@@ -4280,15 +4280,15 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
+            "solverFeeBps": "8",
+            "solverFee": "800",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
+            "venueFeeBps": "6",
+            "venueFee": "600",
+            "routingFeeBps": "8",
+            "routingFee": "800",
+            "totalBps": "22",
             "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
@@ -4305,8 +4305,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
-        "structHash": "0x905d05aa414197067faba99128cf71da9c3791d6bea1b25ee854e6843bdda58d",
-        "digest": "0xc28d0f60988db0afe1d91bac4f7cbef17d5a38ef16440f2affe58c07b4d5d5e1"
+        "structHash": "0xf5b19af1fa423d7eddfdc43f31fd56f18bde31c1945510feca489d4bfdb26bbb",
+        "digest": "0x9e47aa291f905680d14170ab530d5de6d86b106f6d1c4c20b9b902a4ef25f8a9"
       },
       {
         "name": "six-to-eighteen-rounds-up",
@@ -4347,10 +4347,10 @@
           },
           "policy": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
+            "solverFeeBps": "8",
             "priceImpactBps": "0",
-            "venueFeeBps": "10",
-            "routingFeeBps": "12",
+            "venueFeeBps": "6",
+            "routingFeeBps": "8",
             "policyRevision": "1",
             "assetId": "fixture-usdc-to-oxdai"
           },
@@ -4420,15 +4420,15 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
+            "solverFeeBps": "8",
+            "solverFee": "800",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
+            "venueFeeBps": "6",
+            "venueFee": "600",
+            "routingFeeBps": "8",
+            "routingFee": "800",
+            "totalBps": "22",
             "totalFee": "5000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
@@ -4445,8 +4445,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
-        "structHash": "0x4f24e2e990737521d282960c459fb1879eeea027725a534f94d82fc76b936795",
-        "digest": "0xf68f24eea6aa163317eb320a14e2178134da3dab97bb025a2aa3257d5c1fc39d"
+        "structHash": "0x25b28c0da7daeb2a8b11c90989d52cc380ee94e23c27ee6029edd88f84f1277f",
+        "digest": "0x9f092a25ab694447baad895ed162ce9c32cbf893bd2931e96d8ea6016202c748"
       },
       {
         "name": "six-to-eighteen-tx-cap",
@@ -4487,10 +4487,10 @@
           },
           "policy": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
+            "solverFeeBps": "8",
             "priceImpactBps": "0",
-            "venueFeeBps": "10",
-            "routingFeeBps": "12",
+            "venueFeeBps": "6",
+            "routingFeeBps": "8",
             "policyRevision": "1",
             "assetId": "fixture-usdc-to-oxdai"
           },
@@ -4531,7 +4531,7 @@
             "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1004000000"
+            "amount": "1002200000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -4560,19 +4560,19 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800000",
+            "solverFeeBps": "8",
+            "solverFee": "800000",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000000",
-            "routingFeeBps": "12",
-            "routingFee": "1200000",
-            "totalBps": "40",
-            "totalFee": "4000000"
+            "venueFeeBps": "6",
+            "venueFee": "600000",
+            "routingFeeBps": "8",
+            "routingFee": "800000",
+            "totalBps": "22",
+            "totalFee": "2200000"
           },
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1004000000",
+          "refundAmount": "1002200000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
@@ -4585,8 +4585,8 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0xe4027241567db4c104a6c96ddce38c490750c06d5511a7be6c4a178cf30b1f5e",
-        "structHash": "0xb0e621f9937a16bfed6cc26bc7c7a92d9dccf1049ceb12e3be2d6a4d12577687",
-        "digest": "0x423c240a4bbc5268097ef1c917ccf510954ff17a60cd8a508b801226e018e468"
+        "structHash": "0x7d3f522c51f972dcc8eb083acc43b6e33a590cb3c84d3a3eea749fc114d5e7c8",
+        "digest": "0x7002d3488d386964d25ebc49f0fd21c3c9ce3ffc9a6358a5b1c53b7d62035137"
       }
     ]
   },
@@ -6531,15 +6531,15 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
+            "solverFeeBps": "8",
+            "solverFee": "800",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
+            "venueFeeBps": "6",
+            "venueFee": "600",
+            "routingFeeBps": "8",
+            "routingFee": "800",
+            "totalBps": "22",
             "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
@@ -6561,11 +6561,11 @@
         "sourceHash": "0x39216d691ac7cd5d36d18085e2b943762dd983f5098d7e188e8c48fe07728a20",
         "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
         "destinationHash": "0x3784a1350c78ba3db3fd9d9b5bd75c88722940e0b69f998d77a9439a95c4941d",
-        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
-        "structHash": "0x8f412d37cdb047788fa82f681bd5eb6994621c432e0a8a1075c240fedbd934f3",
-        "digest": "0xd5cc005ec0020f853ea75555cd2f140af472b05389d61ba90e656547e6fc7e74",
+        "feeBreakdownHash": "0xe53d8a4f5a3cc4dd146cf4e0f920781a6d9e40e891285d13a1e94beb1b42be6c",
+        "structHash": "0x54feed1548dedc0841f537a25facf4b197323a04155457129c4d29ed3597711b",
+        "digest": "0x7bd2a9ebfcca74f5c553e194c86ba2989a6e1f69df56e4e2ff9b13b7775f5069",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x1d95fb0f2458aa83016b8f5bb4aa0cb8c4d990786bc404b9de5a219ce2655755352a0c89ca65a6c39034d7d20b6c2f7640ce57ad84bc5e7dba2ad8caac7a4ef91c"
+        "signature": "0xdbeb3ee4986120f023b06703a21b4aca9cf56398906563227504c105cf5697ac67f58c8c12c6922f37188d3ac9ca82ac6a039aa29feea1d4a79d3f6e0c93b9fc1b"
       },
       {
         "name": "six-to-eighteen-rounds-up",
@@ -6610,15 +6610,15 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800",
+            "solverFeeBps": "8",
+            "solverFee": "800",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000",
-            "routingFeeBps": "12",
-            "routingFee": "1200",
-            "totalBps": "40",
+            "venueFeeBps": "6",
+            "venueFee": "600",
+            "routingFeeBps": "8",
+            "routingFee": "800",
+            "totalBps": "22",
             "totalFee": "5000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
@@ -6640,11 +6640,11 @@
         "sourceHash": "0xcb5872cbb97163bc7247da17ef7afb1dcf6d1bb4eddfded0b152b302468b5c5c",
         "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
         "destinationHash": "0x110c6b32e85470cb54fff7da389bfe3067df70fa843533b9efea29db66fcfcf7",
-        "feeBreakdownHash": "0x3f0348b64237ae90242d15b60af5a64d84c0edfd8b536ee791191004e3962022",
-        "structHash": "0x38fc535b43f8e8d86a6319ea260154a0edb736aca1653f13be7b739abbf76180",
-        "digest": "0x42431b0b3d74c9574a5c1ff2ecd2641464ba61d4267573405fb1f6308cd85150",
+        "feeBreakdownHash": "0xe53d8a4f5a3cc4dd146cf4e0f920781a6d9e40e891285d13a1e94beb1b42be6c",
+        "structHash": "0x524ea2822895a15157fd08de2a7ae56de5a7ac936eb38beddaf33cfbfdd02157",
+        "digest": "0x1284be79a5f62d5f128140e37d7be3fbe1cfdfe15ce812388bc02940cdf1420c",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x8889db70715012a96f42b4a26fc04f34ad71bb6943b9558bf67a233f80393f763211334c0808233b822c97c0dfe113c763ec83d92b0c31766529378050eaf6c01c"
+        "signature": "0x84473d41072732ce1a04983e1634d00c876fcfb0f69e8659e0096c3f8e70f137329b16390490ecbc1a1fdd700a1965ca9eee66a75b4917f5c4adb70ad1ee9d181c"
       },
       {
         "name": "six-to-eighteen-tx-cap",
@@ -6660,7 +6660,7 @@
             "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
             "wallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             "collector": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
-            "amount": "1004000000"
+            "amount": "1002200000"
           },
           "destination": {
             "settlementType": "shielded",
@@ -6689,20 +6689,20 @@
           },
           "feeBreakdown": {
             "gasFloor": "5000",
-            "solverFeeBps": "18",
-            "solverFee": "1800000",
+            "solverFeeBps": "8",
+            "solverFee": "800000",
             "priceImpactBps": "0",
             "priceImpact": "0",
-            "venueFeeBps": "10",
-            "venueFee": "1000000",
-            "routingFeeBps": "12",
-            "routingFee": "1200000",
-            "totalBps": "40",
-            "totalFee": "4000000"
+            "venueFeeBps": "6",
+            "venueFee": "600000",
+            "routingFeeBps": "8",
+            "routingFee": "800000",
+            "totalBps": "22",
+            "totalFee": "2200000"
           },
           "sourceAuthorizationDigest": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
           "refundAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "refundAmount": "1004000000",
+          "refundAmount": "1002200000",
           "collectBefore": "1900000000",
           "settlementServiceDeadline": "1900003600",
           "recipientBindingDigest": "0x65d309c97e2f29f73fae6c4bffc1d06ba2f802c1a86b0a19126795c056b0a19d",
@@ -6716,14 +6716,14 @@
           "salt": "0x1e43ca16c4c6b920f5e665431e698cbd2a249686d4aefb3d13d4acf440f1aa85"
         },
         "domainSeparator": "0x4ef8e3011d2bf82df59bbe6c3be76dbf27eceeeb580fdaa999a740cb8d59bfa1",
-        "sourceHash": "0x703f7d00420eb450cb24c0e9f7f1abaa521214af8362b8b8506e686b1b358e5f",
+        "sourceHash": "0x793fd062800f0e23638e5f9ad5e6cd0a8e549c28f6254cdf3a1333dc76fdf991",
         "corridorHash": "0x27e8374ec0a13344551d76fcd47e79cd1744d204903883b625dcbdb2a72fa4b7",
         "destinationHash": "0x028f732b9c0ee50af6a10ede5172a2bd141d747202befbaccbcb3825cae63342",
-        "feeBreakdownHash": "0x9910c91ff94a0cc1f2296b2cc600b595d3221b5fa36d216bedfde4838995e501",
-        "structHash": "0xa2f5f9f748b49d4c25d373ccdf7cb25f034584cec857ab1bb03afae277689612",
-        "digest": "0xe1b14e8c73edf74b8251bc22892ef99f56870c4185e25504171073ba68301ad5",
+        "feeBreakdownHash": "0xe8945ded37bec6b6d88642ffd2dfb34bc5d47aca88a4e111b047abd0e2521908",
+        "structHash": "0xe9a22f34b1fdf9fcea8fabeb720b5332627d540548be0748a599f73eb7db4fa0",
+        "digest": "0xde02bc3a7aa7b22ceacb42468f508faae364b2bb81c5e699b7f424cc5a866c24",
         "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "signature": "0x2b2d562380e2abbcbf7058ad6a186711d4e3075d9e3200cbd7a69868a2300ea042b3da78d01da90bb1e0639be7cd90030144ea917503cd3cd6300a5be5bfbe071b"
+        "signature": "0x65dab0ea5206f622eebac6daf85f792be2455a20560ec4557fce7a77e78539dd1e41eeaecdb3023e25e80a7f36943640903be5f5ad9cf764b5bdb0b2d304f7c71b"
       }
     ],
     "refusals": [

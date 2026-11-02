@@ -337,10 +337,12 @@ const EIGHTEEN_DECIMAL_POLICY: Partial<Policy> = {
 };
 
 // A mixed-decimal corridor: Ethereum USDC (6 decimals) to OXDAI (18 decimals), units 1 : 10^12,
-// the shape of the production OXDAI corridor (xochi#757, revision 2). The token identities are
-// the real ones; the network and every other member stay fixtures, so this pins the 6 -> 18
-// conversion and its rounding, not the production manifest. Fees stay in source base units, so
-// BASE_POLICY's 5,000-unit ($0.005) floor applies unchanged.
+// the conversion of the production OXDAI corridor (xochi#757, revision 2). The token identities
+// are the real ones; the network and every other member stay fixtures, so this pins the 6 -> 18
+// conversion and its rounding, not the production manifest.
+// NOT the production shape: it stays revision 1 / `staging` with the Sepolia fixture network
+// while naming chain-1 tokens, so Riddler's `CorridorManifest.parse` refuses it
+// (`revision_identity_fixed`). Do not copy it as a revision 2 entry.
 const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
   sourceChainId: "1", // fixture: Ethereum, where this USDC address lives
   sourceToken: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Ethereum USDC
@@ -354,7 +356,15 @@ const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
   destinationUnits: "1000000000000",
 };
 
-const SIX_TO_EIGHTEEN_POLICY: Partial<Policy> = { assetId: "fixture-usdc-to-oxdai" };
+// USD to USD is fee-classed stable: the Standard stable row (8 / 6 / 8 = 22 bps, `FEE_SCHEDULE`
+// in xochi `tiers.ts`, Riddler#1425). Fees are in source base units, so BASE_POLICY's
+// 5,000-unit ($0.005) floor applies unchanged.
+const SIX_TO_EIGHTEEN_POLICY: Partial<Policy> = {
+  solverFeeBps: 8n,
+  venueFeeBps: 6n,
+  routingFeeBps: 8n,
+  assetId: "fixture-usdc-to-oxdai",
+};
 
 // --- Derivation (PROPOSED) ---------------------------------------------------------------
 //
