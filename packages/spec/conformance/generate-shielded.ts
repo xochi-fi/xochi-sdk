@@ -351,6 +351,9 @@ const aztecRefused = [
 const amountAccepted = [
   { name: "one", value: "1" },
   { name: "six-decimal-unit", value: "1000000" },
+  { name: "eighteen-decimal-unit", value: (10n ** 18n).toString() },
+  // Oxide DAI's per-note cap, 5,166 tokens at 18 decimals: above 2^64, far below the max.
+  { name: "oxdai-note-cap", value: (5166n * 10n ** 18n).toString() },
   { name: "max", value: AMOUNT_MAX.toString() },
 ];
 const amountRefused = [
