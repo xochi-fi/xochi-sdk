@@ -2,6 +2,7 @@
 
 **Date**: 2026-10-12
 **Status**: Proposed
+**Amended by**: [0003](0003-widget-frame-in-sdk.md) (Decisions 2 and 8: the frame moves to `@xochi/widget` in this repo)
 
 ## Context
 
