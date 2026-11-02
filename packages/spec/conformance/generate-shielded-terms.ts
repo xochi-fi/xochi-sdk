@@ -360,10 +360,10 @@ const SIX_TO_EIGHTEEN_MANIFEST: Partial<Manifest> = {
 };
 
 // USD to USD is fee-classed stable: the Standard stable row (8 / 6 / 8 = 22 bps, `FEE_SCHEDULE`
-// in xochi `tiers.ts`, Riddler#1425). Fees are in source base units, so BASE_POLICY's
+// in xochi `tiers.ts`, Riddler#1425 (#1421)). Fees are in source base units, so BASE_POLICY's
 // 5,000-unit ($0.005) floor applies unchanged.
 // Fixture policy, not the price an OXDAI user pays: the xochi Worker admits Verified and above
-// only, each caller pays their own tier's stable row (Riddler#1421, xochi
+// only, since Riddler#1425 each caller pays their own tier's stable row (xochi
 // `expectedTracerAmounts`; the corridor entry's flat rates are not priced), and only the gas
 // floor comes from the corridor entry (`policy.gas_floor`; the decided value is in xochi
 // `OXDAI_REV2_POLICY`). These rates only exercise the conversion and the layer arithmetic.
@@ -597,7 +597,7 @@ const PREVIEW_CASES: {
     name: "six-to-eighteen-layer-remainders",
     manifest: SIX_TO_EIGHTEEN_MANIFEST,
     policy: SIX_TO_EIGHTEEN_POLICY,
-    caller: { amount: "999999998000000000001" },
+    caller: { amount: (999999998n * 10n ** 12n + 1n).toString() },
   },
 ];
 
