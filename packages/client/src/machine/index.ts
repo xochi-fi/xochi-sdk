@@ -58,5 +58,6 @@ export * from "./quoteChecks.js";
 export * from "./claimInfo.js";
 export * from "./recipientEcho.js";
 export * from "./solverPin.js";
+export * from "./failure.js";
 export { applyStatusTransition } from "./transition.js";
 export { validateSwapParams, type SwapValidationResult } from "./validateRequest.js";

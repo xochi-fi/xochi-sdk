@@ -4,6 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **`classifyFailure(error, errorCategory?)`**: a trade failure as a typed `Failure` (`kind`, the served detail worth showing, `retryable`), so a host words the failure without re-deriving which failures may be retried. A declined quote's `errorCategory` wins over its prose, then a `StructuredError`'s HTTP code, then the prose (the Worker's `classifyDecline` sentences and Riddler's raw reasons). `in_doubt` ("do not resubmit") and every final decline are `retryable: false`; an unrecognized `errorCategory` is `declined`. The rules are the xochi widget's, which now consumes them, plus the pair-level decline (`pair_unsupported`, keeping the Worker's advice).
+- **`isSettlementAvailable`, `settlementRefusalReason`, `settlementFallback`**: read a quote's `settlementOptions`, and decide when a failed stealth or shielded trade should offer Public. `settlementFallback` reads the failure through `classifyFailure`, so the two cannot disagree.
+
 ## [0.1.8] - 2026-10-31
 
 ### Added
