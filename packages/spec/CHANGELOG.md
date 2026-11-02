@@ -6,6 +6,10 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
+- **`conformance/shielded-terms.json`**: the `CorridorManifestV1` proposed note now defines the two digest preimages no source defined (decided 2026-11-02, xochi `shielded-execution.md` §7): `aztecTokenArtifactDigest` is sha256 of the raw compiled artifact JSON as published, `solverConstructorDigest` is the solver account's Aztec `initializationHash`. Note text only: type strings, typehashes and every digest are byte-identical.
+
+### Changed
+
 - **`conformance/shielded-recipient.json`**: `SenderRegistrationAck` `scope` is now `"both designs"` (was `"B-panel"`). D4 was amended on 2026-11-01 (xochi#719): the design-A testnet tracer delivers with address-derived tagging, so its recipients register the bridge account as a sender and sign this acknowledgement too (xochi#720). Label only: type string, typehash, vectors and signatures are byte-identical.
 
 ## [0.12.0] - 2026-10-31

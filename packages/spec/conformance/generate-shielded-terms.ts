@@ -920,7 +920,11 @@ const out = {
         "2026-10-24), the exact Aztec SDK version inside; rounding literal " +
         `"${ROUNDING}"; provenance, redemption and finality rules as strings. The manifest ` +
         "vectors pin the hash only: a revision's decided identity values are fixed, and changing " +
-        "one is a new revision.",
+        "one is a new revision. Preimages (decided 2026-11-02, xochi shielded-execution.md §7): " +
+        "aztecTokenArtifactDigest = sha256 of the raw bytes of the token's compiled artifact JSON " +
+        "as published (rev 1: artifacts/token_contract-Token.json in @aztec-labs/noir-contracts.js " +
+        "6.0.0); solverConstructorDigest = the solver account instance's Aztec initializationHash " +
+        "(constructor selector and arguments), which recomputes its address.",
     },
     {
       item: "recipientBindingDigest derivation",
