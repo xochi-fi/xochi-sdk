@@ -7,6 +7,14 @@ published package: it pins the `@aztec-labs/*` 6.0.0 SDK in its own lockfile, as
 It runs a stock `SchnorrAccount` from `@aztec-labs/accounts` 6.0.0 on your own Aztec v6 mainnet
 PXE and makes it a qualifying OXDAI recipient.
 
+> [!CAUTION]
+> **Never operate the tool from `fc4a1bc` (xochi-sdk#134).** That merge predates the required
+> ownership-bound terminal recovery, real `sendTx` journal boundary, single-attempt submission,
+> and checkpoint finality guard. The minimum source allowed for any funded recipient operation is
+> signed commit `85f08f0240219079ed592272a446b98f459cd903` on xochi-sdk#137, or the reviewed merge
+> of that PR. This private tool has no package version that can substitute for that source gate.
+> Live use remains prohibited until xochi-sdk#137 merges green.
+
 ## What it contacts
 
 - the Aztec node you choose (`--node-url`);
@@ -52,12 +60,17 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   storage and keep it mode 0700.
 - **Spend/exit ambiguity fails closed.** Before either fund-moving command starts, the tool writes
   and directory-syncs a mode-0600 record under `<data-dir>/operations/`, guarded by an atomic
-  single-flight lock. Exit finalization data is added before broadcast and the L2 transaction hash
-  immediately after the node accepts it. An interruption leaves the record `in_doubt` and blocks
-  every later spend or exit. Run `operations`; when it includes a hash, `operations reconcile
-  --node-url "$NODE"` pins the node identity and unlocks only after observing a mined receipt. A
-  record without a hash cannot be cleared automatically: investigate it with the operator before
-  any retry, and never delete or bypass it.
+  single-flight lock. Exit finalization data is added before proving. Aztec 6.0.0 exposes no
+  pre-submit hook after it computes the transaction hash, so a narrow wrapper around the wallet's
+  real node `sendTx` call writes and directory-syncs that hash immediately before a dedicated
+  single-attempt node client submits it. That write path has no transport retries: a lost response
+  is ambiguous and must not resend. A crash there leaves `broadcast`; a caught send or receipt
+  error leaves `in_doubt`; both block every later spend or exit. A crash after a terminal record
+  was synced but before its lock was removed is recovered only when that exact lock-owned record is
+  terminal and no unresolved record exists. Run `operations`; when it includes a hash, `operations
+  reconcile --node-url "$NODE"` pins the node identity and unlocks only at `CHECKPOINTED`,
+  `PROVEN`, or `FINALIZED`—never `PROPOSED`. A record without a hash cannot be cleared
+  automatically: investigate it with the operator before any retry, and never delete or bypass it.
 - **Exit needs a relayer, and its records.** `exit` refuses a zero tip and any tip that would leave
   the recipient zero. It prints the executor fee and exact recipient proceeds. Signed recovery
   data is in the operation journal before broadcast; after mining, each withdrawal's finalization
@@ -99,7 +112,6 @@ node dist/cli.js operations --data-dir "$DATA"
 `qualify/EVIDENCE.md` contains the complete, fail-fast R1-R6 operator sequence, including spend,
 exit and restore on a second host. `--dry-run` records every node, PXE and API call without making
 it.
-
 
 - **Network pin**: every command refuses a node that is not rollup version 2070860440, rollup
   `0xe37a2663cc9c119ba41572c40fab0bbb23a5402f`, L1 chain 1, node 6.0.x, with block 1's

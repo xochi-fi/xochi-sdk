@@ -1,5 +1,5 @@
-// Modified for the Xochi recipient tool: expose signed-withdrawal and post-broadcast hooks,
-// return the tx hash before waiting, and let the caller durably journal ambiguous sends.
+// Modified for the Xochi recipient tool: expose a signed-withdrawal hook so recovery data can
+// be persisted before proving or sending.
 import type { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
 
 import {
@@ -15,7 +15,7 @@ import { Fr } from '@aztec-labs/aztec.js/fields';
 import { waitForTx, type AztecNode } from '@aztec-labs/aztec.js/node';
 import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
-import type { SimulationStats, TxHash, TxReceipt } from '@aztec-labs/stdlib/tx';
+import type { SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
 
 import { getUserPayloadHash } from '../oxide-lib/content_hash.js';
 import { type BroadcastL1Operation, computeL1OperationId } from '../oxide-lib/l1_operation_calldata.js';
@@ -212,10 +212,6 @@ export async function submit(
     onPreparedWithdrawals?: (
       withdrawals: { withdrawalIndex: number; finalizationData: WithdrawalFinalizationData }[],
     ) => void | Promise<void>;
-    /** Fsync the in-doubt marker immediately before the wallet may send anything. */
-    onBeforeSend?: () => void | Promise<void>;
-    /** Called immediately after the node accepts the transaction, before waiting for its receipt. */
-    onBroadcast?: (txHash: TxHash) => void | Promise<void>;
   },
 ): Promise<SubmitResult> {
   const {
@@ -229,8 +225,6 @@ export async function submit(
     collectStats,
     wait,
     onPreparedWithdrawals,
-    onBeforeSend,
-    onBroadcast,
   } = args;
   if (operations.length === 0) {
     throw new Error('submit called with no operations');
@@ -315,7 +309,6 @@ export async function submit(
       .with({ capsules: buildPublishDaCapsules(contract.address, signOutput, await anchorBlockHeader.hash()) }),
   ];
   onPhase?.('prove-and-send');
-  await onBeforeSend?.();
   const { txHash } = await new BatchCall(wallet, realBatchCalls).send({
     from,
     additionalScopes,
@@ -323,7 +316,6 @@ export async function submit(
     fee: ctx.paymentMethod && { paymentMethod: ctx.paymentMethod },
     wait: NO_WAIT,
   });
-  await onBroadcast?.(txHash);
   const receipt = await waitForTx(chain as AztecNode, txHash, wait);
 
   return {

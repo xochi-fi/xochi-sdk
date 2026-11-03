@@ -57,6 +57,7 @@ import { assertPinnedNetwork } from "./network.js";
 import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
 import { loadTokenArtifact } from "./oxide-token.js";
 import { OperationJournal } from "./operation-journal.js";
+import { durablyIncluded } from "./reconciliation.js";
 import { open, seal } from "./sealed.js";
 
 const USAGE = `xochi-recipient <command> [options]
@@ -626,7 +627,8 @@ export async function run(argv: string[]): Promise<void> {
       const journal = new OperationJournal(join(store.dir, "operations"));
       if (sub === "reconcile") {
         const state = store.readState();
-        const operation = journal.unresolved() ?? fail("no unresolved operation");
+        const operation =
+          journal.activeUnresolved() ?? fail("no exact lock-owned unresolved operation");
         const txHash =
           operation.txHash ??
           fail("the send returned no transaction hash; absence cannot be proven automatically");
@@ -647,10 +649,11 @@ export async function run(argv: string[]): Promise<void> {
           state.corridor,
         );
         const receipt = await node.getTxReceipt(TxHash.fromString(txHash));
-        if (!receipt.isMined()) fail(`operation receipt is ${receipt.status}; it remains blocked`);
+        if (!durablyIncluded(receipt.status))
+          fail(`operation receipt is ${receipt.status}; it remains blocked until checkpointed`);
         journal.update(operation.id, {
           status: "complete",
-          receiptStatus: String(receipt.status),
+          receiptStatus: receipt.status,
         });
         log(`operation ${operation.id}: reconciled from mined receipt ${receipt.status}`);
       } else {

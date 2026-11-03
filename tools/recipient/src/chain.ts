@@ -25,6 +25,8 @@ import type { Corridor } from "./corridor.js";
 import { openEncryptedEphemeralWalletStore } from "./encrypted-wallet-store.js";
 import type { ObservedNetwork } from "./network.js";
 import { OperationJournal, type OperationRecord } from "./operation-journal.js";
+import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
+import { durablyIncluded } from "./reconciliation.js";
 import { assertL1Pinned, OxideFleetRegistry, viemL1Reader } from "./oxide/enclave.js";
 import { oxidePins } from "./oxide/pins.js";
 import { transferEventMetadata } from "./oxide-token.js";
@@ -141,6 +143,7 @@ export class LiveAztec implements AztecPort {
   private constructor(
     private readonly wallet: EmbeddedWallet,
     private readonly node: AztecNode,
+    private readonly nodeSubmission: NodeSubmission,
     private readonly corridor: Corridor,
     private readonly l1RpcUrl: string | null,
     private readonly operationJournal: OperationJournal,
@@ -152,7 +155,12 @@ export class LiveAztec implements AztecPort {
     corridor: Corridor;
     l1RpcUrl: string | null;
   }): Promise<LiveAztec> {
-    const wallet = await EmbeddedWallet.create(args.nodeUrl, {
+    const rawNode = createAztecNodeClient(args.nodeUrl);
+    const nodeSubmission = new NodeSubmission(
+      rawNode,
+      createSingleAttemptAztecNodeBroadcaster(args.nodeUrl),
+    );
+    const wallet = await EmbeddedWallet.create(nodeSubmission.node, {
       pxe: { proverEnabled: true, dataDirectory: args.dataDirectory },
       // Aztec 6.0.0 stores the account secret, salt and signing key in its WalletDB.
       // Keep the DB outside the durable PXE directory and encrypt every account value with
@@ -160,10 +168,10 @@ export class LiveAztec implements AztecPort {
       // Every run restores the account from the sealed keystore.
       walletDb: { store: await openEncryptedEphemeralWalletStore() },
     });
-    const node = createAztecNodeClient(args.nodeUrl);
     return new LiveAztec(
       wallet,
-      node,
+      nodeSubmission.node,
+      nodeSubmission,
       args.corridor,
       args.l1RpcUrl,
       new OperationJournal(join(dirname(args.dataDirectory), "operations")),
@@ -298,7 +306,7 @@ export class LiveAztec implements AztecPort {
     account: RecipientAccount,
     artifact: ContractArtifact,
     build: (contract: Contract) => Operation[],
-    operation?: OperationRecord,
+    operation: OperationRecord,
   ): Promise<SubmitResult> {
     const contract = Contract.at(
       AztecAddress.fromStringUnsafe(this.corridor.token.address),
@@ -314,48 +322,40 @@ export class LiveAztec implements AztecPort {
       signingKey: account.signingKey,
       creationTxHash: TxHash.zero(),
     });
-    const result = await submit({ wallet: this.wallet, chain: this.node }, account.address, {
-      contract,
-      signer,
-      operations: build(contract),
-      resolveSpendMetadata: async (nullified) => {
-        if (!nullified.owner.equals(account.address))
-          throw new Error("spent note is not this account's");
-        return { ...spend, creationTxHash: nullified.creationTxHash };
-      },
-      resolveDepositSpendMetadata: async (recipient) => {
-        if (!recipient.equals(account.address))
-          throw new Error("spent deposit is not this account's");
-        return {
-          ownerAddressPreimage: spend.ownerAddressPreimage,
-          masterNullifierHidingKey: spend.masterNullifierHidingKey,
-        };
-      },
-      onPreparedWithdrawals: operation
-        ? async (withdrawals) => {
-            this.operationJournal.update(operation.id, {
-              withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
-                withdrawalIndex,
-                finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
-              })),
-            });
-          }
-        : undefined,
-      onBeforeSend: operation
-        ? async () => {
-            this.operationJournal.update(operation.id, { status: "sending" });
-          }
-        : undefined,
-      onBroadcast: operation
-        ? async (txHash) => {
-            this.operationJournal.update(operation.id, {
-              status: "broadcast",
-              txHash: txHash.toString(),
-            });
-          }
-        : undefined,
-    });
-    return result;
+    const submitOperation = () =>
+      submit({ wallet: this.wallet, chain: this.node }, account.address, {
+        contract,
+        signer,
+        operations: build(contract),
+        resolveSpendMetadata: async (nullified) => {
+          if (!nullified.owner.equals(account.address))
+            throw new Error("spent note is not this account's");
+          return { ...spend, creationTxHash: nullified.creationTxHash };
+        },
+        resolveDepositSpendMetadata: async (recipient) => {
+          if (!recipient.equals(account.address))
+            throw new Error("spent deposit is not this account's");
+          return {
+            ownerAddressPreimage: spend.ownerAddressPreimage,
+            masterNullifierHidingKey: spend.masterNullifierHidingKey,
+          };
+        },
+        onPreparedWithdrawals: async (withdrawals) => {
+          this.operationJournal.update(operation.id, {
+            withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
+              withdrawalIndex,
+              finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
+            })),
+          });
+        },
+      });
+
+    return this.nodeSubmission.run(async (txHash) => {
+      this.operationJournal.update(operation.id, {
+        status: "broadcast",
+        txHash: txHash.toString(),
+      });
+    }, submitOperation);
   }
 
   async spend(
@@ -384,12 +384,14 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
       );
+      if (!durablyIncluded(result.receipt.status)) {
+        throw new Error("Aztec transaction receipt is not durably included");
+      }
       const txHash = result.receipt.txHash.toString();
       this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
-    } catch (error) {
-      this.operationJournal.failOrAbort(operation.id, error);
-      throw error;
+    } catch {
+      throw this.operationJournal.failOrAbort(operation.id);
     }
   }
 
@@ -454,6 +456,9 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
       );
+      if (!durablyIncluded(result.receipt.status)) {
+        throw new Error("Aztec transaction receipt is not durably included");
+      }
       const txHash = result.receipt.txHash.toString();
       const response = {
         txHash,
@@ -478,9 +483,8 @@ export class LiveAztec implements AztecPort {
         ),
       });
       return response;
-    } catch (error) {
-      this.operationJournal.failOrAbort(operation.id, error);
-      throw error;
+    } catch {
+      throw this.operationJournal.failOrAbort(operation.id);
     }
   }
 
