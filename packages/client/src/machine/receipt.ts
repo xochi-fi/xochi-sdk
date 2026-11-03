@@ -17,7 +17,7 @@
  */
 
 import type { SettlementType } from "../shared/index.js";
-import type { QuoteResponse } from "./wire.js";
+import type { IntentDestination, QuoteResponse } from "./wire.js";
 import type { SwapPhase } from "./phase.js";
 import type { SignRefusal } from "./state.js";
 
@@ -45,11 +45,29 @@ export type CostSlot =
   | { kind: "unavailable" }
   | { kind: "served"; bps: Served<number>; totalUsd: Served<string> | null };
 
-/** What the settlement mode hides and what it leaves on-chain. */
+/** What the settlement mode is called, hides and leaves on-chain. */
 export type SettlementDisclosure =
-  | { mode: "public"; recipient: "visible"; amount: "visible"; recipientAction: "none" }
-  | { mode: "stealth"; recipient: "one_time_address"; amount: "visible"; recipientAction: "claim" }
-  | { mode: "shielded"; recipient: "private_account"; amount: "visible"; recipientAction: "none" };
+  | {
+      mode: "public";
+      label: "Public";
+      recipient: "visible";
+      amount: "visible";
+      recipientAction: "none";
+    }
+  | {
+      mode: "stealth";
+      label: "Stealth";
+      recipient: "one_time_address";
+      amount: "visible";
+      recipientAction: "claim";
+    }
+  | {
+      mode: "shielded";
+      label: "Shielded";
+      recipient: "private_account";
+      amount: "visible";
+      recipientAction: "none";
+    };
 
 /** The held quote, as the receipt panel shows it. */
 export type QuoteSlot =
@@ -119,15 +137,23 @@ export function costOf(quote: QuoteResponse | null): CostSlot {
 }
 
 const DISCLOSURES: { [M in SettlementType]: Extract<SettlementDisclosure, { mode: M }> } = {
-  public: { mode: "public", recipient: "visible", amount: "visible", recipientAction: "none" },
+  public: {
+    mode: "public",
+    label: "Public",
+    recipient: "visible",
+    amount: "visible",
+    recipientAction: "none",
+  },
   stealth: {
     mode: "stealth",
+    label: "Stealth",
     recipient: "one_time_address",
     amount: "visible",
     recipientAction: "claim",
   },
   shielded: {
     mode: "shielded",
+    label: "Shielded",
     recipient: "private_account",
     amount: "visible",
     recipientAction: "none",
@@ -137,4 +163,19 @@ const DISCLOSURES: { [M in SettlementType]: Extract<SettlementDisclosure, { mode
 /** What a settlement mode hides and what it leaves visible. */
 export function settlementDisclosure(mode: SettlementType): SettlementDisclosure {
   return DISCLOSURES[mode];
+}
+
+/**
+ * The settlement disclosure for a destination selected by a host.
+ *
+ * `type` identifies the venue. An Aztec destination is Shielded only when the
+ * independent `shielded` bit says so; Oxide routes land on Aztec as Stealth.
+ */
+export function destinationDisclosure(
+  destination: Pick<IntentDestination, "type" | "shielded">,
+): SettlementDisclosure {
+  if (destination.type === "aztec") {
+    return settlementDisclosure(destination.shielded ? "shielded" : "stealth");
+  }
+  return settlementDisclosure(destination.type === "stealth" ? "stealth" : "public");
 }

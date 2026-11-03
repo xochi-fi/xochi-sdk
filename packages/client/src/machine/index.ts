@@ -41,6 +41,7 @@ export {
   payoutOf,
   costOf,
   settlementDisclosure,
+  destinationDisclosure,
   type Receipt,
   type Served,
   type PayoutSlot,
