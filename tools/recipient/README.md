@@ -7,6 +7,14 @@ published package: it pins the `@aztec-labs/*` 6.0.0 SDK in its own lockfile, as
 It runs a stock `SchnorrAccount` from `@aztec-labs/accounts` 6.0.0 on your own Aztec v6 mainnet
 PXE and makes it a qualifying OXDAI recipient.
 
+> [!CAUTION]
+> **Never operate the tool from `fc4a1bc` (xochi-sdk#134).** That merge predates the required
+> ownership-bound terminal recovery, real `sendTx` journal boundary, single-attempt submission,
+> and checkpoint finality guard. The minimum source allowed for any funded recipient operation is
+> signed commit `85f08f0240219079ed592272a446b98f459cd903` on xochi-sdk#137, or the reviewed merge
+> of that PR. This private tool has no package version that can substitute for that source gate.
+> Live use remains prohibited until xochi-sdk#137 merges green.
+
 ## What it contacts
 
 - the Aztec node you choose (`--node-url`);

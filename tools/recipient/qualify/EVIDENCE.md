@@ -4,6 +4,11 @@ This file separates the local mechanism qualification from the production round 
 mainnet proof. Never add a recipient address, source wallet, binding ID, descriptor digest, private
 allowlist entry, secret, or passphrase here or to an issue comment.
 
+`fc4a1bc` (xochi-sdk#134) is explicitly unsafe for funded use. The minimum allowed source is
+signed commit `85f08f0240219079ed592272a446b98f459cd903` on xochi-sdk#137, or that PR's reviewed
+merge; live use remains prohibited until the PR merges green. Nothing below is live R4 received-note
+discovery, R5 spend/exit, or R6 funded restore evidence.
+
 ## Environment
 
 The recorded mechanism run used:
