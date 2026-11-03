@@ -4,7 +4,8 @@ set -euo pipefail
 : "${ANVIL_FORK_URL:?set ANVIL_FORK_URL to a read-only upstream RPC}"
 : "${REGISTRY_CANONICAL_SLOT:?set the reviewed canonical-rollup storage slot}"
 
-PORTAL="${OXIDE_PORTAL:-0xcb99c58fe81ae6b2cb4835e46f7b703745879042}"
+PORTAL="0xcb99c58fe81ae6b2cb4835e46f7b703745879042"
+EXPECTED_ROLLUP_VERSION="2070860440"
 FORK_RPC="${FORK_RPC:-http://127.0.0.1:8545}"
 FORK_PORT="${FORK_PORT:-8545}"
 ALTERNATE_ROLLUP="${ALTERNATE_ROLLUP:-0x0000000000000000000000000000000000000001}"
@@ -37,7 +38,7 @@ pinned_rollup="$(cast call "$PORTAL" 'ROLLUP()(address)' --rpc-url "$FORK_RPC")"
 rollup_version="$(cast call "$PORTAL" 'ROLLUP_VERSION()(uint256)' --rpc-url "$FORK_RPC")"
 before_canonical="$(cast call "$registry" 'getCanonicalRollup()(address)' --rpc-url "$FORK_RPC")"
 before_frozen="$(cast call "$PORTAL" '$frozen()(bool)' --rpc-url "$FORK_RPC")"
-if [[ "${before_canonical,,}" != "${pinned_rollup,,}" || "$before_frozen" != "false" ]]; then
+if [[ "$rollup_version" != "$EXPECTED_ROLLUP_VERSION" || "${before_canonical,,}" != "${pinned_rollup,,}" || "$before_frozen" != "false" ]]; then
   printf 'fork precondition failed\n' >&2
   exit 1
 fi
@@ -52,7 +53,7 @@ if [[ "${after_override,,}" != "${ALTERNATE_ROLLUP,,}" ]]; then
 fi
 
 cat >"$OBSERVATIONS" <<JSON
-{"schema":"xochi.oxide.portal-observation.v1","phase":"not-canonical","portal":"$PORTAL","rollupVersion":"$rollup_version","pinnedRollup":"$pinned_rollup","canonicalRollup":"$after_override","frozen":false}
+{"schema":"xochi.oxide.portal-observation.v1","phase":"not-canonical","portal":"$PORTAL","rollupVersion":"$rollup_version","pinnedRollup":"$pinned_rollup","canonicalRollup":"$after_override","frozen":false,"metrics":{"xochi_oxide_portal_frozen":0,"xochi_oxide_rollup_canonical":0,"xochi_oxide_portal_rollup_version_match":1}}
 JSON
 cast send "$PORTAL" 'freeze()' --rpc-url "$FORK_RPC" --unlocked --from "$DRILL_CALLER" >/dev/null
 after_frozen="$(cast call "$PORTAL" '$frozen()(bool)' --rpc-url "$FORK_RPC")"
@@ -61,6 +62,6 @@ if [[ "$after_frozen" != "true" ]]; then
   exit 1
 fi
 cat >>"$OBSERVATIONS" <<JSON
-{"schema":"xochi.oxide.portal-observation.v1","phase":"frozen","portal":"$PORTAL","rollupVersion":"$rollup_version","pinnedRollup":"$pinned_rollup","canonicalRollup":"$after_override","frozen":true}
+{"schema":"xochi.oxide.portal-observation.v1","phase":"frozen","portal":"$PORTAL","rollupVersion":"$rollup_version","pinnedRollup":"$pinned_rollup","canonicalRollup":"$after_override","frozen":true,"metrics":{"xochi_oxide_portal_frozen":1,"xochi_oxide_rollup_canonical":0,"xochi_oxide_portal_rollup_version_match":1}}
 JSON
 printf 'F1-F2 fork freeze observations written\n'

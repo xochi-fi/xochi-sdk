@@ -99,9 +99,11 @@ claim.
 
 F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
 overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
-`freeze()` only on the fork, and captures the frozen observation. F3-F4 are deterministic tests:
-stock Schnorr address recomputation with `immutablesHash = 0`, then positive and redirected-payload
-negative verification of the fallback-key migration signature.
+`freeze()` only on the fork, and captures the frozen observation. Its JSONL maps directly to
+xochimilco#61's unchanged no-label `xochi_oxide_portal_frozen`,
+`xochi_oxide_rollup_canonical`, and `xochi_oxide_portal_rollup_version_match` values. F3-F4 are
+deterministic tests: stock Schnorr address recomputation with `immutablesHash = 0`, then positive
+and redirected-payload negative verification of the fallback-key migration signature.
 
 F5-F8 are not claimed. The exact missing upstream execution primitive is the runnable combination
 of zkmoney-public `2764aedc`'s local-enclave registration harness, refund builders, generated Noir
