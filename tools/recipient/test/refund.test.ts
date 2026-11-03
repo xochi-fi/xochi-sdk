@@ -84,6 +84,48 @@ describe("fallback-key refund authorization (F3-F4)", () => {
     ).rejects.toThrow(/destination commitment/);
   });
 
+  it.each([
+    {
+      kind: "frozen-notes",
+      evidence: (owner: string): RefundEvidence => OWNER_EVIDENCE(owner),
+    },
+    {
+      kind: "frozen-deposits",
+      evidence: (owner: string): RefundEvidence => ({
+        format: "xochi.shielded.refund-evidence.v1",
+        kind: "frozen-deposits",
+        owner,
+        amount: "1000000000000000000",
+        nullifiers: [`0x${"23".repeat(32)}`],
+      }),
+    },
+    {
+      kind: "unprocessed-deposit",
+      evidence: (owner: string): RefundEvidence => ({
+        format: "xochi.shielded.refund-evidence.v1",
+        kind: "unprocessed-deposit",
+        owner,
+        amount: "1000000000000000000",
+        siloedNullifier: `0x${"34".repeat(32)}`,
+        messageHash: `0x${"45".repeat(32)}`,
+        messageLeafIndex: "17",
+      }),
+    },
+  ])("authorizes recipient-owned $kind evidence", async ({ evidence }) => {
+    const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
+    const authorization = await authorizeRefund(
+      account,
+      OXDAI_MAINNET_REV2,
+      evidence(account.address.toString().toLowerCase()),
+      DESTINATION,
+      0n,
+    );
+    await expect(
+      validateRefundAuthorization(account, OXDAI_MAINNET_REV2, authorization),
+    ).resolves.toEqual(authorization);
+    expect(refundCalldata(bundleOf(authorization))).toMatch(/^0x[0-9a-f]+$/);
+  });
+
   it("refuses evidence owned by another account and duplicate nullifiers", async () => {
     const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
     await expect(
