@@ -44,7 +44,13 @@ import {
   verifyRecipientDescriptor,
   verifyRecipientSchnorr,
   verifyRecipientAck,
+  OXIDE_TOKEN_CLASS_IDS,
+  OXIDE_TOKEN_IMMUTABLES_SEPARATOR,
+  OxideEncodingError,
+  oxideTokenImmutablesHash,
+  requiredEnrollmentAcks,
   type AztecRecipientProfile,
+  type OxideTokenImmutables,
   type RecipientAckVerificationPolicy,
   type RecipientAckType,
   type RecipientBinding,
@@ -144,6 +150,24 @@ interface RecipientFile {
       error: { code: string; field: string };
     }[];
   };
+  oxideToken: {
+    separator: string;
+    oxideTokenClassIds: string[];
+    requiredEnrollmentAcks: { oxideToken: string[]; otherwise: string[] };
+    vectors: {
+      name: string;
+      immutables: OxideTokenImmutables;
+      serialized: string[];
+      immutablesHash: string;
+      classId: string;
+      address: string | null;
+    }[];
+    refusals: {
+      name: string;
+      immutables: OxideTokenImmutables;
+      error: { code: string; field: string };
+    }[];
+  };
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -233,6 +257,18 @@ const TYPES: Record<string, Record<string, { name: string; type: string }[]>> = 
     ],
     NetworkIdentity: NETWORK_IDENTITY,
   },
+  TokenRegistrationAck: {
+    TokenRegistrationAck: [
+      ...b32(
+        "bindingDigest",
+        "aztecRecipient",
+        "aztecToken",
+        "aztecTokenClassId",
+        "tokenImmutablesHash",
+      ),
+      ...CHALLENGE,
+    ],
+  },
 };
 
 const profileOf = (id: string): AztecRecipientProfile =>
@@ -242,7 +278,7 @@ const profileOf = (id: string): AztecRecipientProfile =>
 // the shielded.ts contract had widened.
 function refusalOf(
   fn: () => unknown,
-  as: typeof RecipientEncodingError | typeof AckEncodingError,
+  as: typeof RecipientEncodingError | typeof AckEncodingError | typeof OxideEncodingError,
 ): { code: string; field: string } | null {
   try {
     fn();
@@ -278,6 +314,10 @@ describe("package surface", () => {
       "RECIPIENT_ACK_TYPE_STRINGS",
       "RECIPIENT_ACK_PURPOSES",
       "AckEncodingError",
+      "oxideTokenImmutablesHash",
+      "requiredEnrollmentAcks",
+      "OXIDE_TOKEN_CLASS_IDS",
+      "OxideEncodingError",
     ]) {
       expect(signer, name).toHaveProperty(name);
     }
@@ -509,11 +549,12 @@ describe("recipient message wrapper", () => {
 });
 
 describe("acknowledgements", () => {
-  it("publishes the three approved primary types and purpose strings", () => {
+  it("publishes the four primary types and purpose strings", () => {
     expect(Object.keys(RECIPIENT_ACK_TYPE_STRINGS).sort()).toEqual([
       "BackupPersistenceAck",
       "PaymentReceiptAck",
       "SenderRegistrationAck",
+      "TokenRegistrationAck",
     ]);
     for (const t of file.acknowledgements.types) {
       expect(t.typeString, t.primaryType).toBe(RECIPIENT_ACK_TYPE_STRINGS[t.primaryType]);
@@ -534,7 +575,11 @@ describe("acknowledgements", () => {
   });
 
   it("reuses the named binding challenge for enrollment acknowledgements only", () => {
-    const enrollmentTypes: RecipientAckType[] = ["BackupPersistenceAck", "SenderRegistrationAck"];
+    const enrollmentTypes: RecipientAckType[] = [
+      "BackupPersistenceAck",
+      "SenderRegistrationAck",
+      "TokenRegistrationAck",
+    ];
     for (const primaryType of enrollmentTypes) {
       const acknowledgement = file.acknowledgements.vectors.find(
         (candidate) => candidate.primaryType === primaryType,
@@ -645,14 +690,19 @@ describe("acknowledgements", () => {
         ? { backupCommitment: m.backupCommitment }
         : v.primaryType === "SenderRegistrationAck"
           ? { registeredSenders: m.registeredSenders }
-          : {
-              nonce: m.nonce,
-              termsDigest: m.termsDigest,
-              operationId: m.operationId,
-              txHash: m.txHash,
-              blockNumber: m.blockNumber,
-              amount: m.amount,
-            };
+          : v.primaryType === "TokenRegistrationAck"
+            ? {
+                aztecTokenClassId: m.aztecTokenClassId,
+                tokenImmutablesHash: m.tokenImmutablesHash,
+              }
+            : {
+                nonce: m.nonce,
+                termsDigest: m.termsDigest,
+                operationId: m.operationId,
+                txHash: m.txHash,
+                blockNumber: m.blockNumber,
+                amount: m.amount,
+              };
     return {
       binding,
       descriptor: descriptorVector.descriptor,
@@ -686,8 +736,13 @@ describe("acknowledgements", () => {
       consumed.add(key);
       return true;
     };
-    const enrollment = [ackOf("BackupPersistenceAck"), ackOf("SenderRegistrationAck")];
+    const enrollment = [
+      ackOf("BackupPersistenceAck"),
+      ackOf("SenderRegistrationAck"),
+      ackOf("TokenRegistrationAck"),
+    ];
     expect(enrollment[0]!.message.nonce).toBe(enrollment[1]!.message.nonce);
+    expect(enrollment[0]!.message.nonce).toBe(enrollment[2]!.message.nonce);
     for (const v of file.acknowledgements.vectors) {
       const verified = await verifyRecipientAck(
         v.primaryType,
@@ -785,6 +840,45 @@ describe("acknowledgements", () => {
     expect(
       await verify(s, s.message, { ...sPolicy, expected: { registeredSenders: fewer } }),
     ).toEqual({ code: "subject_mismatch", field: "registeredSenders" });
+
+    // The token-registration ack names the binding's token, the corridor's token class and
+    // the hash of the immutables the corridor records, and nothing else.
+    const t = ackOf("TokenRegistrationAck");
+    const tPolicy = ackPolicy(t, consume);
+    const tokenRefusals: [unknown, AckPolicy, string, string][] = [
+      [
+        { ...t.message, aztecToken: "0x" + "2c".repeat(32) },
+        tPolicy,
+        "token_mismatch",
+        "aztecToken",
+      ],
+      [
+        t.message,
+        {
+          ...tPolicy,
+          expected: { ...tPolicy.expected, aztecTokenClassId: "0x" + "06".repeat(32) },
+        },
+        "subject_mismatch",
+        "aztecTokenClassId",
+      ],
+      [
+        t.message,
+        {
+          ...tPolicy,
+          expected: {
+            ...tPolicy.expected,
+            // readOxideTokenImmutables' immutables: the underlying ERC-20's name.
+            tokenImmutablesHash: file.oxideToken.vectors[1]!.immutablesHash,
+          },
+        },
+        "subject_mismatch",
+        "tokenImmutablesHash",
+      ],
+      [{ ...t.message, nonce: "0x" + "11".repeat(32) }, tPolicy, "nonce_mismatch", "nonce"],
+    ];
+    for (const [message, p, code, field] of tokenRefusals) {
+      expect(await verify(t, message, p), `${code} ${field}`).toEqual({ code, field });
+    }
 
     const r = ackOf("PaymentReceiptAck");
     const rPolicy = ackPolicy(r, consume);
@@ -897,5 +991,51 @@ describe("acknowledgements", () => {
         "0x" + "02".repeat(32),
       ),
     ).toThrow(/^primaryType: unknown_primary_type \(got "x{64}…"\)$/);
+  });
+});
+
+describe("OxideToken registration (xochi#753)", () => {
+  it("reproduces every published immutables hash", () => {
+    expect(file.oxideToken.separator).toBe(
+      "0x" + OXIDE_TOKEN_IMMUTABLES_SEPARATOR.toString(16).padStart(64, "0"),
+    );
+    for (const v of file.oxideToken.vectors) {
+      expect(oxideTokenImmutablesHash(v.immutables), v.name).toBe(v.immutablesHash);
+    }
+    // The deployed OXDAI token, its class and address (aztec-crosscheck derives the address).
+    const oxdai = file.oxideToken.vectors[0]!;
+    expect(oxdai.address).toBe(
+      "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+    );
+    expect(oxdai.immutables).toMatchObject({ name: "Oxide DAI", symbol: "OXDAI", decimals: 18 });
+  });
+
+  it("refuses every published malformed immutables with its code and field", () => {
+    for (const r of file.oxideToken.refusals) {
+      expect(
+        refusalOf(() => oxideTokenImmutablesHash(r.immutables), OxideEncodingError),
+        r.name,
+      ).toEqual(r.error);
+    }
+  });
+
+  it("requires the token-registration ack exactly for OxideToken corridors", () => {
+    expect([...OXIDE_TOKEN_CLASS_IDS]).toEqual(file.oxideToken.oxideTokenClassIds);
+    for (const classId of file.oxideToken.oxideTokenClassIds) {
+      expect(requiredEnrollmentAcks(classId)).toEqual(
+        file.oxideToken.requiredEnrollmentAcks.oxideToken,
+      );
+      expect(requiredEnrollmentAcks(classId.toUpperCase().replace("0X", "0x"))).toEqual(
+        file.oxideToken.requiredEnrollmentAcks.oxideToken,
+      );
+    }
+    // The testnet tracer's standard Token keeps the two-ack set.
+    const standardToken = "0x067df4ddda0b0872ef604f47f3681d5e8c0de98280ac6b79963851c055ba91e0";
+    expect(requiredEnrollmentAcks(standardToken)).toEqual(
+      file.oxideToken.requiredEnrollmentAcks.otherwise,
+    );
+    expect(
+      refusalOf(() => requiredEnrollmentAcks("0x" + "00".repeat(32)), OxideEncodingError),
+    ).toEqual({ code: "aztec_zero", field: "aztecTokenClassId" });
   });
 });

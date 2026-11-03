@@ -12,6 +12,7 @@ export * from "./xsp";
 export * from "./shielded";
 export * from "./shielded-recipient";
 export * from "./shielded-recipient-acks";
+export * from "./shielded-oxide";
 export * from "./shielded-readiness";
 export * from "./permit2";
 export * from "./intent-verify";

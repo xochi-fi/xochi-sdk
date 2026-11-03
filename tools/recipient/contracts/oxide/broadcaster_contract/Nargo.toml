@@ -1,0 +1,9 @@
+[package]
+name = "broadcaster_contract"
+authors = [""]
+compiler_version = ">=0.25.0"
+type = "contract"
+
+[dependencies]
+aztec = { git = "https://github.com/aztec-labs-eng/aztec-node", tag = "v6.0.0", directory = "noir-projects/aztec-nr/aztec" }
+oxide_lib = { path = "../oxide_lib" }

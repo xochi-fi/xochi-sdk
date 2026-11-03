@@ -1807,15 +1807,23 @@
         "purpose": "xochi.shielded.payment-receipt-ack.v1",
         "typeString": "PaymentReceiptAck(bytes32 bindingDigest,bytes32 termsDigest,bytes32 operationId,NetworkIdentity network,bytes32 txHash,uint64 blockNumber,bytes32 aztecToken,uint256 amount,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)",
         "typehash": "0x20f720432cf92c1195c93ed076046c8de0b5d2b1da33d75c90ba8f4fffa6ab24"
+      },
+      {
+        "primaryType": "TokenRegistrationAck",
+        "scope": "OxideToken corridors (PROPOSED, xochi#753)",
+        "purpose": "xochi.shielded.token-registration-ack.v1",
+        "typeString": "TokenRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 aztecTokenClassId,bytes32 tokenImmutablesHash,bytes32 nonce,uint64 challengeExpiry,string purpose)",
+        "typehash": "0x1e76fb8fb0756c7cda734d03645b52bfda89e258c75270a0042cb8bc998ec45f"
       }
     ],
     "rules": [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
       "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8(\"xochi.shielded.backup-format.v1\")) = 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348; neither value contains plaintext",
-      "BackupPersistenceAck and SenderRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
+      "BackupPersistenceAck, SenderRegistrationAck and TokenRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
-      "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire"
+      "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
+      "TokenRegistrationAck (PROPOSED, xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds"
     ],
     "vectors": [
       {
@@ -1951,6 +1959,47 @@
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
         "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d"
+      },
+      {
+        "name": "TokenRegistrationAck (binding X)",
+        "primaryType": "TokenRegistrationAck",
+        "environment": "staging",
+        "network": {
+          "aztecChainId": "11155111",
+          "protocolVersion": "679261766",
+          "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+          "l1ChainId": "11155111",
+          "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+        },
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "structHash": "0xa36a00af2a63fc3ef609acb23ff99f7bdf3b8069ba32f2203aa7351d23893964",
+        "digest": "0x82be09035f1e8b829db68aae4b9366f3ea3286c3fd8ecedf0bc7ebd1ccbeabdc",
+        "wrapper": {
+          "u": "0x103c7b39771d03fac5ebb802bb45fcdb90f4cc01bd8edb6133dc4ab8b44a063ceb9f28577391e9167d3413ca90b95714163fba39f90d31b9e919775571c2ef8f",
+          "u48": "0x103c7b39771d03fac5ebb802bb45fcdb90f4cc01bd8edb6133dc4ab8b44a063ceb9f28577391e9167d3413ca90b95714",
+          "messageField": "0x0e3c788dadc6541d42bc967b80caf0247a6e03a9644028f046f0fe49b83bdce0",
+          "provisionalPlainModR": "0x21f56c1d9cbb4b2f2d15ff414890b63999cab6330a1bedbc840400a9ecbeabda"
+        },
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9"
       },
       {
         "name": "PaymentReceiptAck (binding X, 18-decimal note cap)",
@@ -2104,6 +2153,35 @@
         "valid": false
       },
       {
+        "name": "RecipientBinding signature presented as TokenRegistrationAck",
+        "signedAs": "RecipientBinding",
+        "presentedAs": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x82be09035f1e8b829db68aae4b9366f3ea3286c3fd8ecedf0bc7ebd1ccbeabdc",
+        "messageField": "0x0e3c788dadc6541d42bc967b80caf0247a6e03a9644028f046f0fe49b83bdce0",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x04edd8adb3cf3e85d285a9be3dc445e2ba0b8e4ebbb9327b543951d0c451b8171e4536736d7820a79714dfadf408590226b3b2f5fe6d5b5e72a88e60992ed217",
+        "valid": false
+      },
+      {
         "name": "BackupPersistenceAck signature presented as RecipientBinding",
         "signedAs": "BackupPersistenceAck",
         "presentedAs": "RecipientBinding",
@@ -2198,6 +2276,35 @@
         },
         "digest": "0xa3db1a2533b9a0f56c5d1e0b584e43501d4d7a09015d1c5a8c4682013585b3e9",
         "messageField": "0x048cfa15c596c5e13f54aba9feb58b1bf3b66b3a77eba89516a2401cb5520f84",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x26b8bc6366b24614524fa012ac7c2157eb68c5c3a8c36f0d79f3614ad97337f02a8576a8b06a03da65d18c1c7f8d2705336d36d756406451e1ffe85c6c271639",
+        "valid": false
+      },
+      {
+        "name": "BackupPersistenceAck signature presented as TokenRegistrationAck",
+        "signedAs": "BackupPersistenceAck",
+        "presentedAs": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x82be09035f1e8b829db68aae4b9366f3ea3286c3fd8ecedf0bc7ebd1ccbeabdc",
+        "messageField": "0x0e3c788dadc6541d42bc967b80caf0247a6e03a9644028f046f0fe49b83bdce0",
         "publicKey": {
           "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
@@ -2305,6 +2412,35 @@
         "valid": false
       },
       {
+        "name": "SenderRegistrationAck signature presented as TokenRegistrationAck",
+        "signedAs": "SenderRegistrationAck",
+        "presentedAs": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x82be09035f1e8b829db68aae4b9366f3ea3286c3fd8ecedf0bc7ebd1ccbeabdc",
+        "messageField": "0x0e3c788dadc6541d42bc967b80caf0247a6e03a9644028f046f0fe49b83bdce0",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x22eae756dbee26d07f99918a60db78de92a76db51c5a52e809147f1b40909a6430269feed92272ef4f4054ffdf2d19e957fabc63fc9f90fc9a3a1dcd9b313485",
+        "valid": false
+      },
+      {
         "name": "PaymentReceiptAck signature presented as RecipientBinding",
         "signedAs": "PaymentReceiptAck",
         "presentedAs": "RecipientBinding",
@@ -2393,6 +2529,165 @@
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
         "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d",
+        "valid": false
+      },
+      {
+        "name": "PaymentReceiptAck signature presented as TokenRegistrationAck",
+        "signedAs": "PaymentReceiptAck",
+        "presentedAs": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x82be09035f1e8b829db68aae4b9366f3ea3286c3fd8ecedf0bc7ebd1ccbeabdc",
+        "messageField": "0x0e3c788dadc6541d42bc967b80caf0247a6e03a9644028f046f0fe49b83bdce0",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signature presented as RecipientBinding",
+        "signedAs": "TokenRegistrationAck",
+        "presentedAs": "RecipientBinding",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "sourceWallet": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "sourceChainId": "84532",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "descriptorDigest": "0x657b333db2a51e6254297c2f406f84539825f5d76c7f9836e29ef8f2c0431f1b",
+          "corridorId": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "corridorRevision": "1",
+          "manifestDigest": "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "digest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+        "messageField": "0x0bcfeeaf78020b9b49266d608f084fbaec89052e51bd38cbba5313b57867d9f9",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signature presented as BackupPersistenceAck",
+        "signedAs": "TokenRegistrationAck",
+        "presentedAs": "BackupPersistenceAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "backupCommitment": "0x89d38145c86cef1776f2ce78a7a34412ac6a8891a2de5a886c11a4fbd4c875ab",
+          "backupFormatId": "0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348",
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
+        },
+        "digest": "0xbd9a7a3b57e671843f29e45e3a680e7def1feaf7f8d7e4c450c15cf5decee462",
+        "messageField": "0x235eb8e15ae9229ac47e945162606cd245775f2a00c9f88980e7abc671936029",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signature presented as SenderRegistrationAck",
+        "signedAs": "TokenRegistrationAck",
+        "presentedAs": "SenderRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "registeredSenders": [
+            "0x0000000000000000000000000000000000000000000000000000000000000005",
+            "0x1717171717171717171717171717171717171717171717171717171717171717",
+            "0x2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
+          ],
+          "purpose": "xochi.shielded.sender-registration-ack.v1"
+        },
+        "digest": "0x45819fb710ce5a09ae40d2d002321c508cb0a27b4ad8ffbe28a7ada5d19859b2",
+        "messageField": "0x013a2cec073ad6846a6abc3f2f9aaf9fae5502326fa89c0a261371f61d1db0df",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signature presented as PaymentReceiptAck",
+        "signedAs": "TokenRegistrationAck",
+        "presentedAs": "PaymentReceiptAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+          "challengeExpiry": "1900000300",
+          "termsDigest": "0x7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+          "operationId": "0x0909090909090909090909090909090909090909090909090909090909090909",
+          "network": {
+            "aztecChainId": "11155111",
+            "protocolVersion": "679261766",
+            "rollupAddress": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+            "l1ChainId": "11155111",
+            "genesisOrNetworkDigest": "0x6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+          },
+          "txHash": "0x1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+          "blockNumber": "3062",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "amount": "1000000",
+          "purpose": "xochi.shielded.payment-receipt-ack.v1"
+        },
+        "digest": "0xa3db1a2533b9a0f56c5d1e0b584e43501d4d7a09015d1c5a8c4682013585b3e9",
+        "messageField": "0x048cfa15c596c5e13f54aba9feb58b1bf3b66b3a77eba89516a2401cb5520f84",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
         "valid": false
       }
     ],
@@ -2585,6 +2880,62 @@
           "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
         },
         "signature": "0x1276a8afa6ac8dd1dbf5cdba8a548263c3e874e5ab5055544dd07b83e06714fc244c79407b81762695f6dfa8a6acf51da02873c0bd8429e1e2ae60f73f21c00d",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signed for binding X, presented for binding Y",
+        "primaryType": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x5d6b354bc9af916994e5873d9e348ccb71428137c0d9180344abd25a615f206a"
+        },
+        "message": {
+          "bindingDigest": "0x82d8becf934e7f95053dcc62034613e1e365640eed8f2e1556892c25090b2614",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x5d596bf39591b4167d2f92089b0d892e634f6cd6980067ddafa06e106f7bef6b",
+        "messageField": "0x1b4f2482d322f3be974ce159dab70971f68534e3e5a8ac32cf852d6c82c0388d",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
+        "valid": false
+      },
+      {
+        "name": "TokenRegistrationAck signed for binding X, presented under the production domain",
+        "primaryType": "TokenRegistrationAck",
+        "domain": {
+          "name": "Xochi Shielded Recipient",
+          "version": "1",
+          "chainId": "84532",
+          "salt": "0x097df4610637793b4614b900bbef7a1f53185d75dcd5d121fe62169e13e2d823"
+        },
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "digest": "0x596e60c2ec8e072bc950c45eab95952d531920c1ca283caeec2d612aa3c3c774",
+        "messageField": "0x0860dfdaf216759442b15b285e821ba4424671e09ef5f01f03d56393bd761d39",
+        "publicKey": {
+          "x": "0x2a7cb3bc90801273e8b55228ad62489d0ee8c72bdf0fcfafa82d3461bcb05ecf",
+          "y": "0x1a2d126b720b34667a7286aabdb35dea906223aca72dbeb4e2c6690565be732b"
+        },
+        "signature": "0x17319b37af12130e531aae1043eb49c693a3b36022307bed9d8363b74d6e09ff1905bcd0bfa80b22fa1df8b1249d3b23758100bd6365b84bd52188565b0aeeb9",
         "valid": false
       }
     ],
@@ -2980,6 +3331,114 @@
         }
       },
       {
+        "name": "TokenRegistrationAck: another acknowledgement's purpose",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.backup-persistence-ack.v1"
+        },
+        "error": {
+          "code": "purpose_mismatch",
+          "field": "purpose"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: the binding purpose",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.recipient-binding.v1"
+        },
+        "error": {
+          "code": "purpose_mismatch",
+          "field": "purpose"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: aztecRecipient zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "aztecRecipient"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: challengeExpiry above uint64",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "18446744073709551616",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "uint_out_of_range",
+          "field": "challengeExpiry"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: bindingDigest zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "digest_zero",
+          "field": "bindingDigest"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: nonce zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "digest_zero",
+          "field": "nonce"
+        }
+      },
+      {
         "name": "SenderRegistrationAck: senders not ascending",
         "primaryType": "SenderRegistrationAck",
         "message": {
@@ -3330,6 +3789,259 @@
         "error": {
           "code": "backup_format_mismatch",
           "field": "backupFormatId"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: aztecToken zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "aztecToken"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: aztecToken not below the BN254 modulus",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_out_of_field",
+          "field": "aztecToken"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: aztecTokenClassId zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "aztecTokenClassId"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: aztecTokenClassId not below the BN254 modulus",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "tokenImmutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_out_of_field",
+          "field": "aztecTokenClassId"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: tokenImmutablesHash zero",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_zero",
+          "field": "tokenImmutablesHash"
+        }
+      },
+      {
+        "name": "TokenRegistrationAck: tokenImmutablesHash not below the BN254 modulus",
+        "primaryType": "TokenRegistrationAck",
+        "message": {
+          "bindingDigest": "0x730dec73ce68b684420e21c48d5387f5f6fa861a2602cd1310c0e53ba5eb64a2",
+          "aztecRecipient": "0x2abc53b778dd33eb5a7d1d752d937764fa162893f536c24c236520e507319ff9",
+          "nonce": "0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "challengeExpiry": "1900000000",
+          "aztecToken": "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "aztecTokenClassId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+          "tokenImmutablesHash": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "purpose": "xochi.shielded.token-registration-ack.v1"
+        },
+        "error": {
+          "code": "aztec_out_of_field",
+          "field": "tokenImmutablesHash"
+        }
+      }
+    ]
+  },
+  "oxideToken": {
+    "proposed": "PROPOSED (xochi#753, OX-12): the token-registration acknowledgement's subject. Required only for corridors whose token class is an OxideToken class.",
+    "source": "zkmoney-public 8fd19841: oxide_token_contract/src/immutables.nr:36 (hash), oxide_lib/src/constants.nr:34 (separator), oxide-lib/src/token_immutables.ts (serialization)",
+    "separator": "0x0000000000000000000000000000000000000000000000000000000067a58cb3",
+    "rule": [
+      "serialize = [portal, teeRegistry, FieldCompressedString(name), FieldCompressedString(symbol), decimals, maxNoteAmount]",
+      "FieldCompressedString(s) = the 32-byte big-endian field 0x00 || UTF8(s) || zero padding; UTF8(s) at most 31 bytes",
+      "portal / teeRegistry: the 20-byte L1 address as a field; decimals: u8; maxNoteAmount: u128",
+      "immutablesHash = poseidon2([DOM_SEP__TOKEN_IMMUTABLES, ...serialize])",
+      "address = the contract address of the instance {classId, salt 0, deployer 0, initializationHash 0, default public keys, immutablesHash} (aztec-crosscheck derives it with the SDK)",
+      "the immutables are the corridor's recorded l2TokenImmutables, never the portal's underlying ERC-20 metadata (upstream readOxideTokenImmutables)"
+    ],
+    "oxideTokenClassIds": [
+      "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949"
+    ],
+    "requiredEnrollmentAcks": {
+      "oxideToken": [
+        "BackupPersistenceAck",
+        "SenderRegistrationAck",
+        "TokenRegistrationAck"
+      ],
+      "otherwise": [
+        "BackupPersistenceAck",
+        "SenderRegistrationAck"
+      ]
+    },
+    "vectors": [
+      {
+        "name": "Oxide v6 mainnet OXDAI",
+        "immutables": {
+          "portal": "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Oxide DAI",
+          "symbol": "OXDAI",
+          "decimals": 18,
+          "maxNoteAmount": "5166000000000000000000"
+        },
+        "serialized": [
+          "0x000000000000000000000000cb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "0x0000000000000000000000008b705c3519169f29850d156574ec377b686bd9cd",
+          "0x004f786964652044414900000000000000000000000000000000000000000000",
+          "0x004f584441490000000000000000000000000000000000000000000000000000",
+          "0x0000000000000000000000000000000000000000000000000000000000000012",
+          "0x0000000000000000000000000000000000000000000001180ca6dd5be3f80000"
+        ],
+        "immutablesHash": "0x22da781ef4bc49891d089089b0280de85a7ee32881a12b79884f3aa5230a7de6",
+        "classId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+        "instance": {
+          "salt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "deployer": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "initializationHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "address": "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3"
+      },
+      {
+        "name": "underlying ERC-20 name (readOxideTokenImmutables), not the deployed token",
+        "immutables": {
+          "portal": "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Dai Stablecoin",
+          "symbol": "DAI",
+          "decimals": 18,
+          "maxNoteAmount": "5166000000000000000000"
+        },
+        "serialized": [
+          "0x000000000000000000000000cb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "0x0000000000000000000000008b705c3519169f29850d156574ec377b686bd9cd",
+          "0x0044616920537461626c65636f696e0000000000000000000000000000000000",
+          "0x0044414900000000000000000000000000000000000000000000000000000000",
+          "0x0000000000000000000000000000000000000000000000000000000000000012",
+          "0x0000000000000000000000000000000000000000000001180ca6dd5be3f80000"
+        ],
+        "immutablesHash": "0x02b9fb039a3ae082dda7066f21bd01674a527e39ad78d26115fcbda271cc9cc0",
+        "classId": "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949",
+        "instance": {
+          "salt": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "deployer": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "initializationHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "address": null
+      }
+    ],
+    "refusals": [
+      {
+        "name": "name longer than 31 bytes",
+        "immutables": {
+          "portal": "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Oxide DAI Oxide DAI Oxide DAI 32",
+          "symbol": "OXDAI",
+          "decimals": 18,
+          "maxNoteAmount": "5166000000000000000000"
+        },
+        "error": {
+          "code": "string_too_long",
+          "field": "name"
+        }
+      },
+      {
+        "name": "decimals above u8",
+        "immutables": {
+          "portal": "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Oxide DAI",
+          "symbol": "OXDAI",
+          "decimals": 256,
+          "maxNoteAmount": "5166000000000000000000"
+        },
+        "error": {
+          "code": "decimals_out_of_range",
+          "field": "decimals"
+        }
+      },
+      {
+        "name": "maxNoteAmount 2^128",
+        "immutables": {
+          "portal": "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Oxide DAI",
+          "symbol": "OXDAI",
+          "decimals": 18,
+          "maxNoteAmount": "340282366920938463463374607431768211456"
+        },
+        "error": {
+          "code": "max_note_amount_out_of_range",
+          "field": "maxNoteAmount"
+        }
+      },
+      {
+        "name": "portal zero",
+        "immutables": {
+          "portal": "0x0000000000000000000000000000000000000000",
+          "teeRegistry": "0x8b705c3519169f29850d156574ec377b686bd9cd",
+          "name": "Oxide DAI",
+          "symbol": "OXDAI",
+          "decimals": 18,
+          "maxNoteAmount": "5166000000000000000000"
+        },
+        "error": {
+          "code": "evm_address_zero",
+          "field": "portal"
         }
       }
     ]

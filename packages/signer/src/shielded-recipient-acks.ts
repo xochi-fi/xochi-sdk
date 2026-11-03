@@ -8,12 +8,14 @@
 // and `backupFormatId` identifies the format. SenderRegistrationAck is the enrollment
 // acknowledgement for address-derived tagging, both designs since the 2026-11-01 D4
 // amendment (the bridge account on the design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited value and
-// transaction evidence.
-// All three name the binding by its EIP-712 digest. BackupPersistenceAck and
-// SenderRegistrationAck reuse that binding's exact `nonce` and `challengeExpiry`, which
-// `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate server-issued
-// single-use receipt challenge. Replay is scoped per (primary type, binding, nonce)
-// (`recipientAckReplayKey`), so the two enrollment acks of one binding never collide.
+// transaction evidence. TokenRegistrationAck (xochi#753, PROPOSED) states that the recipient
+// PXE registered the corridor's OxideToken at its class and stored its immutables; only an
+// OxideToken corridor requires it (`requiredEnrollmentAcks`, `shielded-oxide.ts`).
+// All four name the binding by its EIP-712 digest. BackupPersistenceAck,
+// SenderRegistrationAck and TokenRegistrationAck reuse that binding's exact `nonce` and
+// `challengeExpiry`, which `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate
+// server-issued single-use receipt challenge. Replay is scoped per (primary type, binding,
+// nonce) (`recipientAckReplayKey`), so the enrollment acks of one binding never collide.
 
 import { ethers } from "ethers";
 
@@ -120,10 +122,30 @@ export interface PaymentReceiptAck {
   challengeExpiry: UintLike;
   purpose: string;
 }
+/**
+ * PROPOSED (xochi#753). The recipient PXE registered the OxideToken contract at
+ * `aztecToken` with an artifact of class `aztecTokenClassId` and ran `store_immutables` with
+ * immutables whose hash is `tokenImmutablesHash` (`oxideTokenImmutablesHash`). An assertion,
+ * like the other acks: the independent find-and-spend stays the proof.
+ */
+export interface TokenRegistrationAck {
+  bindingDigest: string;
+  aztecRecipient: string;
+  /** The corridor token's Aztec address; equals the binding's `aztecToken`. */
+  aztecToken: string;
+  /** The class of the artifact the PXE registered. */
+  aztecTokenClassId: string;
+  /** `immutablesHash` of the immutables passed to `store_immutables`. */
+  tokenImmutablesHash: string;
+  nonce: string;
+  challengeExpiry: UintLike;
+  purpose: string;
+}
 export interface RecipientAckMessages {
   BackupPersistenceAck: BackupPersistenceAck;
   SenderRegistrationAck: SenderRegistrationAck;
   PaymentReceiptAck: PaymentReceiptAck;
+  TokenRegistrationAck: TokenRegistrationAck;
 }
 export type RecipientAckType = keyof RecipientAckMessages;
 
@@ -135,11 +157,14 @@ export const RECIPIENT_ACK_TYPE_STRINGS: Record<RecipientAckType, string> = {
   PaymentReceiptAck:
     "PaymentReceiptAck(bytes32 bindingDigest,bytes32 termsDigest,bytes32 operationId,NetworkIdentity network,bytes32 txHash,uint64 blockNumber,bytes32 aztecToken,uint256 amount,bytes32 aztecRecipient,bytes32 nonce,uint64 challengeExpiry,string purpose)" +
     NETWORK_IDENTITY_TYPE_STRING,
+  TokenRegistrationAck:
+    "TokenRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 aztecTokenClassId,bytes32 tokenImmutablesHash,bytes32 nonce,uint64 challengeExpiry,string purpose)",
 };
 export const RECIPIENT_ACK_PURPOSES: Record<RecipientAckType, string> = {
   BackupPersistenceAck: "xochi.shielded.backup-persistence-ack.v1",
   SenderRegistrationAck: "xochi.shielded.sender-registration-ack.v1",
   PaymentReceiptAck: "xochi.shielded.payment-receipt-ack.v1",
+  TokenRegistrationAck: "xochi.shielded.token-registration-ack.v1",
 };
 
 export const BACKUP_FORMAT_V1_NAME = "xochi.shielded.backup-format.v1";
@@ -201,6 +226,14 @@ export function hashRecipientAck<T extends RecipientAckType>(
         own = [
           ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
           ["bytes32", registeredSendersHash(a.registeredSenders)],
+        ];
+      } else if (primaryType === "TokenRegistrationAck") {
+        const a = message as TokenRegistrationAck;
+        own = [
+          ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
+          ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
+          ["bytes32", assertAztecBytes32("aztecTokenClassId", a.aztecTokenClassId)],
+          ["bytes32", assertAztecBytes32("tokenImmutablesHash", a.tokenImmutablesHash)],
         ];
       } else {
         const a = message as PaymentReceiptAck;
@@ -264,6 +297,11 @@ export interface RecipientAckExpected {
     blockNumber: UintLike;
     amount: string;
   };
+  /**
+   * The corridor token's class and immutables hash, from the verifier's trusted corridor
+   * record (never the request). `aztecToken` is checked against the binding's.
+   */
+  TokenRegistrationAck: { aztecTokenClassId: string; tokenImmutablesHash: string };
 }
 
 export interface RecipientAckVerificationPolicy<T extends RecipientAckType> {
@@ -351,7 +389,11 @@ function assertAckSubject<T extends RecipientAckType>(
   nonce: Hex,
   expiry: bigint,
 ): void {
-  if (primaryType === "BackupPersistenceAck" || primaryType === "SenderRegistrationAck") {
+  if (
+    primaryType === "BackupPersistenceAck" ||
+    primaryType === "SenderRegistrationAck" ||
+    primaryType === "TokenRegistrationAck"
+  ) {
     const binding = policy.binding;
     expectSame("nonce_mismatch", "nonce", nonce, nonzeroDigest("binding.nonce", binding.nonce));
     expectSame(
@@ -379,6 +421,23 @@ function assertAckSubject<T extends RecipientAckType>(
       registeredSendersHash(m.registeredSenders),
       registeredSendersHash(e.registeredSenders),
     );
+  } else if (primaryType === "TokenRegistrationAck") {
+    const m = message as TokenRegistrationAck;
+    const e = policy.expected as RecipientAckExpected["TokenRegistrationAck"];
+    expectSame(
+      "token_mismatch",
+      "aztecToken",
+      assertAztecBytes32("aztecToken", m.aztecToken),
+      assertAztecBytes32("binding.aztecToken", policy.binding.aztecToken),
+    );
+    for (const f of ["aztecTokenClassId", "tokenImmutablesHash"] as const) {
+      expectSame(
+        "subject_mismatch",
+        f,
+        assertAztecBytes32(f, m[f]),
+        assertAztecBytes32(`expected.${f}`, e[f]),
+      );
+    }
   } else {
     const m = message as PaymentReceiptAck;
     const e = policy.expected as RecipientAckExpected["PaymentReceiptAck"];

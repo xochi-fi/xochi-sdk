@@ -295,6 +295,23 @@ const ACKS = [
       { name: "purpose", type: "string" },
     ],
   },
+  {
+    // PROPOSED (xochi#753, OX-12): required only for a corridor whose token class is an
+    // OxideToken class (`oxideToken.requiredEnrollmentAcks`).
+    primaryType: "TokenRegistrationAck",
+    purpose: "xochi.shielded.token-registration-ack.v1",
+    scope: "OxideToken corridors (PROPOSED, xochi#753)",
+    members: [
+      { name: "bindingDigest", type: "bytes32" },
+      { name: "aztecRecipient", type: "bytes32" },
+      { name: "aztecToken", type: "bytes32" },
+      { name: "aztecTokenClassId", type: "bytes32" },
+      { name: "tokenImmutablesHash", type: "bytes32" },
+      { name: "nonce", type: "bytes32" },
+      { name: "challengeExpiry", type: "uint64" },
+      { name: "purpose", type: "string" },
+    ],
+  },
 ] as const;
 type AckType = (typeof ACKS)[number]["primaryType"];
 
@@ -1011,6 +1028,103 @@ const SENDERS = ["0x" + "17".repeat(32), "0x" + "05".padStart(64, "0"), "0x" + "
   .map((s) => s.toLowerCase())
   .sort();
 
+// --- OxideToken immutables (xochi#753, PROPOSED) -----------------------------------------
+//
+// `immutablesHash = poseidon2_hash_with_separator(serialize(immutables), DOM_SEP__TOKEN_IMMUTABLES)`
+// (zkmoney-public 8fd19841, oxide_token_contract/src/immutables.nr:36; client copy
+// oxide-lib/src/token_immutables.ts). The OXDAI vector is the Aztec v6 mainnet deployment:
+// its immutables are the Oxide v6 manifest's `l2TokenImmutables` (releases.json dep-v6, bridge
+// brg-dai-v6; pxe-bridge src/oxide/pins.ts), its class the deployed class and its address the
+// deployed address (portal `L2_TOKEN()`). aztec-crosscheck re-derives the address from class
+// id and immutablesHash through the real SDK, so the address is the anchor this repo cannot edit.
+
+const DOM_SEP_TOKEN_IMMUTABLES = 0x67a58cb3n; // oxide_lib/src/constants.nr:34
+type OxideImmutables = {
+  portal: string;
+  teeRegistry: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  maxNoteAmount: string;
+};
+/** Noir FieldCompressedString: a zero byte, then at most 31 UTF-8 bytes, zero-padded right. */
+const fieldCompressedString = (value: string): bigint => {
+  const bytes = ethers.toUtf8Bytes(value);
+  if (bytes.length > 31) throw new Error(`${value} is more than 31 bytes`);
+  const padded = new Uint8Array(32);
+  padded.set(bytes, 1);
+  return os2ip(padded);
+};
+const serializeImmutables = (i: OxideImmutables): bigint[] => [
+  BigInt(i.portal),
+  BigInt(i.teeRegistry),
+  fieldCompressedString(i.name),
+  fieldCompressedString(i.symbol),
+  BigInt(i.decimals),
+  BigInt(i.maxNoteAmount),
+];
+const OXDAI_CLASS_ID = "0x27df40f914de0e4368b39b4d02821d42573dfe703502c3e7a44f5254345f3949";
+const OXDAI_IMMUTABLES: OxideImmutables = {
+  portal: "0xcb99c58fe81ae6b2cb4835e46f7b703745879042",
+  teeRegistry: "0x8b705c3519169f29850d156574ec377b686bd9cd",
+  name: "Oxide DAI",
+  symbol: "OXDAI",
+  decimals: 18,
+  maxNoteAmount: (5166n * 10n ** 18n).toString(),
+};
+const oxideVector = (name: string, immutables: OxideImmutables, address: string | null) => {
+  const serialized = serializeImmutables(immutables);
+  return {
+    name,
+    immutables,
+    serialized: serialized.map(hex32),
+    immutablesHash: hex32(p2([DOM_SEP_TOKEN_IMMUTABLES, ...serialized])),
+    classId: OXDAI_CLASS_ID,
+    instance: { salt: hex32(0n), deployer: hex32(0n), initializationHash: hex32(0n) },
+    address,
+  };
+};
+const oxideVectors = [
+  oxideVector(
+    "Oxide v6 mainnet OXDAI",
+    OXDAI_IMMUTABLES,
+    "0x11d2bed21a36289fd6f6a6af93a546b5be7115caf957f0f700f42d56e25fe0a3",
+  ),
+  // Upstream readOxideTokenImmutables takes the portal's underlying ERC-20 metadata: DAI's
+  // name "Dai Stablecoin". That is not the deployed token, so its hash must differ.
+  oxideVector(
+    "underlying ERC-20 name (readOxideTokenImmutables), not the deployed token",
+    { ...OXDAI_IMMUTABLES, name: "Dai Stablecoin", symbol: "DAI" },
+    null,
+  ),
+];
+if (oxideVectors[0]!.immutablesHash === oxideVectors[1]!.immutablesHash) {
+  throw new Error("the underlying ERC-20 immutables must not hash like the deployed token's");
+}
+const OXDAI_IMMUTABLES_HASH = oxideVectors[0]!.immutablesHash;
+const oxideRefusals = [
+  {
+    name: "name longer than 31 bytes",
+    immutables: { ...OXDAI_IMMUTABLES, name: "Oxide DAI Oxide DAI Oxide DAI 32" },
+    error: { code: "string_too_long", field: "name" },
+  },
+  {
+    name: "decimals above u8",
+    immutables: { ...OXDAI_IMMUTABLES, decimals: 256 },
+    error: { code: "decimals_out_of_range", field: "decimals" },
+  },
+  {
+    name: "maxNoteAmount 2^128",
+    immutables: { ...OXDAI_IMMUTABLES, maxNoteAmount: (1n << 128n).toString() },
+    error: { code: "max_note_amount_out_of_range", field: "maxNoteAmount" },
+  },
+  {
+    name: "portal zero",
+    immutables: { ...OXDAI_IMMUTABLES, portal: "0x" + "00".repeat(20) },
+    error: { code: "evm_address_zero", field: "portal" },
+  },
+];
+
 const ackMessage = (
   primaryType: AckType,
   bindingDigest: string,
@@ -1045,6 +1159,15 @@ const ackMessage = (
         blockNumber: "3062",
         aztecToken: "0x" + "2b".repeat(32),
         amount: "1000000",
+        purpose,
+      };
+    case "TokenRegistrationAck":
+      return {
+        ...common,
+        // Binding X's token: a verifier checks it against the binding's aztecToken.
+        aztecToken: "0x" + "2b".repeat(32),
+        aztecTokenClassId: OXDAI_CLASS_ID,
+        tokenImmutablesHash: OXDAI_IMMUTABLES_HASH,
         purpose,
       };
   }
@@ -1136,7 +1259,11 @@ const crossBindingReplays = ackVectors.flatMap((v) => {
   });
 });
 
-const enrollmentAckTypes: AckType[] = ["BackupPersistenceAck", "SenderRegistrationAck"];
+const enrollmentAckTypes: AckType[] = [
+  "BackupPersistenceAck",
+  "SenderRegistrationAck",
+  "TokenRegistrationAck",
+];
 for (const primaryType of enrollmentAckTypes) {
   const message = ackVectors.find((v) => v.primaryType === primaryType)!.message;
   if (
@@ -1278,6 +1405,21 @@ const ackRefusals = (() => {
     message: { ...bp, backupFormatId: ethers.id("xochi.shielded.backup-format.unknown") },
     error: { code: "backup_format_mismatch", field: "backupFormatId" },
   });
+  const tr = base("TokenRegistrationAck");
+  for (const field of ["aztecToken", "aztecTokenClassId", "tokenImmutablesHash"]) {
+    out.push({
+      name: `TokenRegistrationAck: ${field} zero`,
+      primaryType: "TokenRegistrationAck",
+      message: { ...tr, [field]: hex32(0n) },
+      error: { code: "aztec_zero", field },
+    });
+    out.push({
+      name: `TokenRegistrationAck: ${field} not below the BN254 modulus`,
+      primaryType: "TokenRegistrationAck",
+      message: { ...tr, [field]: hex32(R) },
+      error: { code: "aztec_out_of_field", field },
+    });
+  }
   return out;
 })();
 
@@ -1383,15 +1525,38 @@ const out = {
     rules: [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
       `BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8("${BACKUP_FORMAT_V1_NAME}")) = ${BACKUP_FORMAT_V1_ID}; neither value contains plaintext`,
-      "BackupPersistenceAck and SenderRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
+      "BackupPersistenceAck, SenderRegistrationAck and TokenRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
+      "TokenRegistrationAck (PROPOSED, xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds",
     ],
     vectors: [...ackVectors, eighteenDecimalReceipt],
     crossTypeReplays,
     crossBindingReplays,
     refusals: ackRefusals,
+  },
+  oxideToken: {
+    proposed:
+      "PROPOSED (xochi#753, OX-12): the token-registration acknowledgement's subject. Required only for corridors whose token class is an OxideToken class.",
+    source:
+      "zkmoney-public 8fd19841: oxide_token_contract/src/immutables.nr:36 (hash), oxide_lib/src/constants.nr:34 (separator), oxide-lib/src/token_immutables.ts (serialization)",
+    separator: hex32(DOM_SEP_TOKEN_IMMUTABLES),
+    rule: [
+      "serialize = [portal, teeRegistry, FieldCompressedString(name), FieldCompressedString(symbol), decimals, maxNoteAmount]",
+      "FieldCompressedString(s) = the 32-byte big-endian field 0x00 || UTF8(s) || zero padding; UTF8(s) at most 31 bytes",
+      "portal / teeRegistry: the 20-byte L1 address as a field; decimals: u8; maxNoteAmount: u128",
+      "immutablesHash = poseidon2([DOM_SEP__TOKEN_IMMUTABLES, ...serialize])",
+      "address = the contract address of the instance {classId, salt 0, deployer 0, initializationHash 0, default public keys, immutablesHash} (aztec-crosscheck derives it with the SDK)",
+      "the immutables are the corridor's recorded l2TokenImmutables, never the portal's underlying ERC-20 metadata (upstream readOxideTokenImmutables)",
+    ],
+    oxideTokenClassIds: [OXDAI_CLASS_ID],
+    requiredEnrollmentAcks: {
+      oxideToken: enrollmentAckTypes,
+      otherwise: ["BackupPersistenceAck", "SenderRegistrationAck"],
+    },
+    vectors: oxideVectors,
+    refusals: oxideRefusals,
   },
 };
 
@@ -1456,6 +1621,10 @@ const REFUSAL_CODE = {
     "amount_over_max",
     "senders_not_canonical",
     "senders_empty",
+    "string_too_long",
+    "decimals_out_of_range",
+    "max_note_amount_out_of_range",
+    "evm_address_zero",
   ],
 };
 const ERROR = obj({ code: REFUSAL_CODE, field: STR });
@@ -1596,6 +1765,33 @@ const schema = {
       crossTypeReplays: arr(obj({ ...REPLAY_BASE, signedAs: STR, presentedAs: STR })),
       crossBindingReplays: arr(obj({ ...REPLAY_BASE, primaryType: STR })),
       refusals: arr(obj({ name: STR, primaryType: STR, message: LOOSE, error: ERROR })),
+    }),
+    oxideToken: obj({
+      proposed: STR,
+      source: STR,
+      separator: HEX32,
+      rule: arr(STR),
+      oxideTokenClassIds: arr(HEX32),
+      requiredEnrollmentAcks: obj({ oxideToken: arr(STR), otherwise: arr(STR) }),
+      vectors: arr(
+        obj({
+          name: STR,
+          immutables: obj({
+            portal: ADDR,
+            teeRegistry: ADDR,
+            name: STR,
+            symbol: STR,
+            decimals: { type: "integer", minimum: 0, maximum: 255 },
+            maxNoteAmount: UINT,
+          }),
+          serialized: arr(HEX32),
+          immutablesHash: HEX32,
+          classId: HEX32,
+          instance: obj({ salt: HEX32, deployer: HEX32, initializationHash: HEX32 }),
+          address: { anyOf: [HEX32, { type: "null" }] },
+        }),
+      ),
+      refusals: arr(obj({ name: STR, immutables: LOOSE, error: ERROR })),
     }),
   }),
 };

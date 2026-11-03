@@ -1,0 +1,46 @@
+# Local Aztec 6.0.0 sandbox for the recipient tool's qualification run
+# (`qualify/README.md`). Anvil + the 6.0.0 local network, as pxe-bridge's
+# docker-compose.yml runs them (same images, same anvil flags, same reasons:
+# base fee 0 keeps the L2 fee constant; automine; the clock starts 300 s behind
+# wall time; finalized = latest - 2 L1 blocks). Ports default to 8090 / 8555 so
+# it runs beside another sandbox on 8080 / 8545.
+#
+#   docker compose -p xochi-recipient-qualify -f qualify/docker-compose.yml up -d --wait
+#   docker compose -p xochi-recipient-qualify -f qualify/docker-compose.yml down -v
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry@sha256:32c8ea9ef052a440cb1620175987a3f49eff8b068a0c6a3d09ebf7f5f9a0e043
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        exec anvil --host 0.0.0.0 --chain-id 31337
+        --block-base-fee-per-gas 0 --slots-in-an-epoch 1
+        --timestamp "$$(($$(date +%s) - 300))"
+    ports:
+      - "127.0.0.1:${L1_PORT:-8555}:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aztec-sandbox:
+    image: azteclabs/aztec@sha256:59b10cc8e89bb9226db1f771a5abbe5d5f8d71483c00c7472187e6ddc7adab8d
+    command: ["start", "--local-network"]
+    ports:
+      - "127.0.0.1:${AZTEC_PORT:-8090}:8080"
+    environment:
+      ETHEREUM_HOSTS: http://anvil:8545
+      L1_CHAIN_ID: "31337"
+      MAX_ALLOWED_ETH_CLIENT_DRIFT_SECONDS: "0"
+      LOG_LEVEL: info
+    depends_on:
+      anvil:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
