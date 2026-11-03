@@ -3,16 +3,23 @@ import {
   fsyncSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { OperationJournal } from "../src/operation-journal.js";
+
+const TX_HASH = `0x${"12".repeat(32)}`;
+const ORPHAN_ID = "10000000-0000-4000-8000-000000000000";
+const ORPHAN_NONCE = "20000000-0000-4000-8000-000000000000";
+const MISSING_ID = "30000000-0000-4000-8000-000000000000";
+const MISSING_NONCE = "40000000-0000-4000-8000-000000000000";
+const OTHER_NONCE = "50000000-0000-4000-8000-000000000000";
 
 function durableWrite(path: string, value: unknown): void {
   const fd = openSync(path, "w", 0o600);
@@ -34,6 +41,7 @@ function crashAfterTerminalSync(journal: OperationJournal, id: string): void {
   durableWrite(journal.path(id), {
     ...journal.get(id),
     status: "complete",
+    txHash: TX_HASH,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -45,16 +53,16 @@ describe("fund-moving operation journal", () => {
       const journal = new OperationJournal(dir);
       const first = journal.begin("exit", { amount: "100" });
       expect(statSync(journal.path(first.id)).mode & 0o777).toBe(0o600);
-      journal.update(first.id, { status: "sending" });
       journal.update(first.id, {
         status: "broadcast",
-        txHash: `0x${"12".repeat(32)}`,
+        txHash: TX_HASH,
         withdrawals: [{ withdrawalIndex: 0, finalizationData: `0x${"34".repeat(32)}` }],
       });
       const competingProcess = new OperationJournal(dir);
       expect(() => competingProcess.begin("spend", { amount: "1" })).toThrow(/reconcile/);
       journal.update(first.id, { status: "complete" });
-      expect(() => competingProcess.begin("spend", { amount: "1" })).not.toThrow();
+      const next = competingProcess.begin("spend", { amount: "1" });
+      competingProcess.failOrAbort(next.id);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -71,11 +79,12 @@ describe("fund-moving operation journal", () => {
       const next = restarted.begin("spend", { amount: "1" });
       expect(next.id).not.toBe(finished.id);
       expect(restarted.get(finished.id).status).toBe("complete");
-      restarted.update(next.id, { status: "aborted" });
+      restarted.failOrAbort(next.id);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
   it("serializes concurrent recovery before removing the terminal lock", () => {
     const dir = mkdtempSync(join(tmpdir(), "xochi-operation-journal-"));
     try {
@@ -94,7 +103,7 @@ describe("fund-moving operation journal", () => {
       expect(competitorBlocked).toBe(true);
       expect(restarted.unresolved()?.id).toBe(next.id);
       expect(() => competitor.begin("exit", { amount: "3" })).toThrow(/reconcile/);
-      restarted.update(next.id, { status: "aborted" });
+      restarted.failOrAbort(next.id);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -106,12 +115,12 @@ describe("fund-moving operation journal", () => {
       const crashed = new OperationJournal(dir);
       const finished = crashed.begin("exit", { amount: "100" });
       crashAfterTerminalSync(crashed, finished.id);
-      const deadProcess = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
-      if (deadProcess.pid === undefined) throw new Error("failed to start crash claimant");
-      durableWrite(join(dir, `released-${finished.id}.lock`), {
+      const deadPid = 2_147_483_647;
+      durableWrite(join(dir, `released-${finished.id}-${finished.lockNonce}.lock`), {
         id: finished.id,
-        pid: deadProcess.pid,
-        nonce: "10000000-0000-4000-8000-000000000000",
+        lockNonce: finished.lockNonce,
+        pid: deadPid,
+        nonce: ORPHAN_ID,
       });
 
       const competitor = new OperationJournal(dir);
@@ -123,29 +132,29 @@ describe("fund-moving operation journal", () => {
       const next = restarted.begin("spend", { amount: "1" });
       expect(competitorBlocked).toBe(true);
       expect(next.id).not.toBe(finished.id);
-      restarted.update(next.id, { status: "aborted" });
+      restarted.failOrAbort(next.id);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("keeps stale, nonterminal, and unknown locks held across recovery", () => {
+  it("keeps stale, nonterminal, unknown, and corrupt ownership held across recovery", () => {
     const fixtures = [
       {
         name: "nonterminal",
-        corrupt(journal: OperationJournal, _dir: string, id: string) {
-          journal.update(id, { status: "sending" });
-        },
+        corrupt: () => undefined,
       },
       {
         name: "stale",
         corrupt(journal: OperationJournal, _dir: string, id: string) {
           crashAfterTerminalSync(journal, id);
           const orphan = journal.get(id);
-          durableWrite(journal.path("orphan"), {
+          durableWrite(journal.path(ORPHAN_ID), {
             ...orphan,
-            id: "orphan",
+            id: ORPHAN_ID,
+            lockNonce: ORPHAN_NONCE,
             status: "building",
+            txHash: undefined,
           });
         },
       },
@@ -153,7 +162,32 @@ describe("fund-moving operation journal", () => {
         name: "unknown",
         corrupt(journal: OperationJournal, dir: string, id: string) {
           unlinkSync(journal.path(id));
-          durableWrite(join(dir, "active.lock"), { id: "missing", kind: "spend" });
+          durableWrite(join(dir, "active.lock"), {
+            id: MISSING_ID,
+            lockNonce: MISSING_NONCE,
+            kind: "spend",
+          });
+        },
+      },
+      {
+        name: "owner-mismatch",
+        corrupt(journal: OperationJournal, dir: string, id: string) {
+          crashAfterTerminalSync(journal, id);
+          const lock = JSON.parse(readFileSync(join(dir, "active.lock"), "utf8")) as {
+            id: string;
+            kind: string;
+          };
+          durableWrite(join(dir, "active.lock"), { ...lock, lockNonce: OTHER_NONCE });
+        },
+      },
+      {
+        name: "corrupt-record",
+        corrupt(journal: OperationJournal, _dir: string, id: string) {
+          durableWrite(journal.path(id), {
+            ...journal.get(id),
+            status: "complete",
+            unexpected: "tampered",
+          });
         },
       },
     ] as const;
@@ -176,25 +210,30 @@ describe("fund-moving operation journal", () => {
     }
   });
 
-  it("keeps failures in doubt rather than enabling a blind retry", () => {
+  it("keeps post-boundary failures in doubt and safely aborts pre-boundary failures", () => {
     const dir = mkdtempSync(join(tmpdir(), "xochi-operation-journal-"));
     try {
       const journal = new OperationJournal(dir);
       const operation = journal.begin("spend", { amount: "1" });
-      journal.update(operation.id, { status: "sending" });
-      journal.failOrAbort(operation.id, new Error("connection closed during send"));
+      journal.update(operation.id, { status: "broadcast", txHash: TX_HASH });
+      expect(journal.failOrAbort(operation.id).message).toBe(
+        "operation outcome requires transaction reconciliation",
+      );
       expect(journal.records()[0]).toMatchObject({
         id: operation.id,
         status: "in_doubt",
-        error: "connection closed during send",
+        error: "operation outcome requires transaction reconciliation",
       });
       expect(() => journal.begin("spend", { amount: "2" })).toThrow(/in_doubt/);
-      const preSend = journal.records().find((record) => record.status === "in_doubt")!;
-      journal.update(preSend.id, { status: "complete" });
+      journal.update(operation.id, { status: "complete", receiptStatus: "checkpointed" });
+
       const aborted = journal.begin("spend", { amount: "3" });
-      journal.failOrAbort(aborted.id, new Error("simulation rejected"));
+      expect(journal.failOrAbort(aborted.id).message).toBe(
+        "operation failed before Aztec node submission",
+      );
       expect(journal.get(aborted.id).status).toBe("aborted");
-      expect(() => journal.begin("spend", { amount: "4" })).not.toThrow();
+      const next = journal.begin("spend", { amount: "4" });
+      journal.failOrAbort(next.id);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

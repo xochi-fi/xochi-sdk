@@ -627,7 +627,8 @@ export async function run(argv: string[]): Promise<void> {
       const journal = new OperationJournal(join(store.dir, "operations"));
       if (sub === "reconcile") {
         const state = store.readState();
-        const operation = journal.unresolved() ?? fail("no unresolved operation");
+        const operation =
+          journal.activeUnresolved() ?? fail("no exact lock-owned unresolved operation");
         const txHash =
           operation.txHash ??
           fail("the send returned no transaction hash; absence cannot be proven automatically");
@@ -652,7 +653,7 @@ export async function run(argv: string[]): Promise<void> {
           fail(`operation receipt is ${receipt.status}; it remains blocked until checkpointed`);
         journal.update(operation.id, {
           status: "complete",
-          receiptStatus: String(receipt.status),
+          receiptStatus: receipt.status,
         });
         log(`operation ${operation.id}: reconciled from mined receipt ${receipt.status}`);
       } else {

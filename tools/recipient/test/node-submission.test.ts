@@ -5,33 +5,53 @@ import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NodeSubmission, singleAttemptJsonRpcFetch } from "../src/node-submission.js";
+import {
+  createSingleAttemptAztecNodeBroadcaster,
+  NodeSubmission,
+  singleAttemptJsonRpcFetch,
+} from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
 
 const HASH = TxHash.fromString(`0x${"12".repeat(32)}`);
 const TX = { getTxHash: () => HASH } as Tx;
 
-class SimulatedCrash extends Error {}
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Aztec node submission journal boundary", () => {
-  it("makes exactly one HTTP attempt when an Aztec submission response is lost", async () => {
+  it("makes exactly one non-redirecting HTTP attempt when a response is lost", async () => {
     const fetch = vi.fn().mockRejectedValue(new Error("connection closed after request"));
     vi.stubGlobal("fetch", fetch);
 
     await expect(
-      singleAttemptJsonRpcFetch("http://aztec-node.invalid", {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "aztec_sendTx",
-        params: [],
-      }),
-    ).rejects.toThrow("connection closed after request");
+      createSingleAttemptAztecNodeBroadcaster("http://aztec-node.invalid").sendTx(TX),
+    ).rejects.toThrow("may have been written");
     expect(fetch).toHaveBeenCalledOnce();
     expect(fetch).toHaveBeenCalledWith(
       "http://aztec-node.invalid",
       expect.objectContaining({ method: "POST", redirect: "error" }),
     );
+  });
+
+  it("does not expose a partial node response in the submission error", async () => {
+    const secretResponse = "recipient-note-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(secretResponse, {
+          status: 502,
+          statusText: "Bad Gateway",
+        }),
+      ),
+    );
+
+    let message = "";
+    try {
+      await singleAttemptJsonRpcFetch("http://aztec-node.invalid", []);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("HTTP 502");
+    expect(message).not.toContain(secretResponse);
   });
 
   it("syncs the tx hash before the real node submit and keeps a boundary crash blocked", async () => {
@@ -48,23 +68,31 @@ describe("Aztec node submission journal boundary", () => {
             status: "broadcast",
             txHash: HASH.toString(),
           });
-          throw new SimulatedCrash("crash after the node submission boundary");
+          throw new Error("private transaction material must not escape");
         },
       } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
 
-      await expect(
-        submission.run(
+      let message = "";
+      try {
+        await submission.run(
           async (txHash) => {
             journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
           },
           () => submission.node.sendTx(TX),
-        ),
-      ).rejects.toThrow(SimulatedCrash);
-
+        );
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toBe(
+        "Aztec transaction submission or receipt outcome requires journal reconciliation",
+      );
+      expect(message).not.toContain("private transaction material");
       expect(nodeCalls).toBe(1);
+      journal.failOrAbort(operation.id);
+
       const restarted = new OperationJournal(dir);
-      expect(() => restarted.begin("exit", { amount: "2" })).toThrow(/broadcast/);
+      expect(() => restarted.begin("exit", { amount: "2" })).toThrow(/in_doubt/);
       expect(restarted.get(operation.id).txHash).toBe(HASH.toString());
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -79,7 +107,6 @@ describe("Aztec node submission journal boundary", () => {
       let journaled = false;
       const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
-      const proofFailure = new Error("proof failed before node submission");
 
       await expect(
         submission.run(
@@ -87,11 +114,11 @@ describe("Aztec node submission journal boundary", () => {
             journaled = true;
           },
           async () => {
-            throw proofFailure;
+            throw new Error("proof contains private note data");
           },
         ),
-      ).rejects.toThrow(proofFailure);
-      journal.failOrAbort(operation.id, proofFailure);
+      ).rejects.toThrow("recipient operation failed before Aztec node submission");
+      journal.failOrAbort(operation.id);
 
       expect(journaled).toBe(false);
       expect(journal.get(operation.id).status).toBe("aborted");
@@ -118,11 +145,11 @@ describe("Aztec node submission journal boundary", () => {
         },
         () => submission.node.sendTx(TX),
       ),
-    ).rejects.toThrow("journal fsync failed");
+    ).rejects.toThrow("recipient operation failed before Aztec node submission");
     expect(nodeCalls).toBe(0);
   });
 
-  it("refuses a second node submission while one operation owns the journal boundary", async () => {
+  it("refuses a second node submission while one operation owns the boundary", async () => {
     let nodeCalls = 0;
     const rawNode = {
       async sendTx(_tx: Tx) {
@@ -139,7 +166,39 @@ describe("Aztec node submission journal boundary", () => {
           await submission.node.sendTx(TX);
         },
       ),
-    ).rejects.toThrow("more than one Aztec node submission");
+    ).rejects.toThrow("requires journal reconciliation");
     expect(nodeCalls).toBe(1);
+  });
+
+  it("refuses an armed operation that never reaches node sendTx", async () => {
+    const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
+    const submission = new NodeSubmission(rawNode);
+
+    await expect(
+      submission.run(
+        async () => undefined,
+        async () => undefined,
+      ),
+    ).rejects.toThrow("recipient operation failed before Aztec node submission");
+  });
+
+  it("leaves unrelated unarmed wallet submissions on the original node", async () => {
+    let targetCalls = 0;
+    let broadcasterCalls = 0;
+    const target = {
+      async sendTx(_tx: Tx) {
+        targetCalls += 1;
+      },
+    } as unknown as AztecNode;
+    const broadcaster = {
+      async sendTx(_tx: Tx) {
+        broadcasterCalls += 1;
+      },
+    };
+    const submission = new NodeSubmission(target, broadcaster);
+
+    await submission.node.sendTx(TX);
+    expect(targetCalls).toBe(1);
+    expect(broadcasterCalls).toBe(0);
   });
 });

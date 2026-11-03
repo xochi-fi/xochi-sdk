@@ -25,7 +25,8 @@ import type { Corridor } from "./corridor.js";
 import { openEncryptedEphemeralWalletStore } from "./encrypted-wallet-store.js";
 import type { ObservedNetwork } from "./network.js";
 import { OperationJournal, type OperationRecord } from "./operation-journal.js";
-import { createSingleAttemptAztecNodeClient, NodeSubmission } from "./node-submission.js";
+import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
+import { durablyIncluded } from "./reconciliation.js";
 import { assertL1Pinned, OxideFleetRegistry, viemL1Reader } from "./oxide/enclave.js";
 import { oxidePins } from "./oxide/pins.js";
 import { transferEventMetadata } from "./oxide-token.js";
@@ -157,7 +158,7 @@ export class LiveAztec implements AztecPort {
     const rawNode = createAztecNodeClient(args.nodeUrl);
     const nodeSubmission = new NodeSubmission(
       rawNode,
-      createSingleAttemptAztecNodeClient(args.nodeUrl),
+      createSingleAttemptAztecNodeBroadcaster(args.nodeUrl),
     );
     const wallet = await EmbeddedWallet.create(nodeSubmission.node, {
       pxe: { proverEnabled: true, dataDirectory: args.dataDirectory },
@@ -383,12 +384,14 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
       );
+      if (!durablyIncluded(result.receipt.status)) {
+        throw new Error("Aztec transaction receipt is not durably included");
+      }
       const txHash = result.receipt.txHash.toString();
       this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
-    } catch (error) {
-      this.operationJournal.failOrAbort(operation.id, error);
-      throw error;
+    } catch {
+      throw this.operationJournal.failOrAbort(operation.id);
     }
   }
 
@@ -453,6 +456,9 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
       );
+      if (!durablyIncluded(result.receipt.status)) {
+        throw new Error("Aztec transaction receipt is not durably included");
+      }
       const txHash = result.receipt.txHash.toString();
       const response = {
         txHash,
@@ -477,9 +483,8 @@ export class LiveAztec implements AztecPort {
         ),
       });
       return response;
-    } catch (error) {
-      this.operationJournal.failOrAbort(operation.id, error);
-      throw error;
+    } catch {
+      throw this.operationJournal.failOrAbort(operation.id);
     }
   }
 
