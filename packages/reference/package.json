@@ -21,7 +21,7 @@
     "test:fee": "vitest run test/fee.test.ts"
   },
   "dependencies": {
-    "@xochi/signer": "0.6.1",
+    "@xochi/signer": "0.7.0",
     "ethers": "^6.17.0"
   },
   "devDependencies": {
