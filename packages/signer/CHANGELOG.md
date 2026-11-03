@@ -4,6 +4,8 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-03
+
 ### Added
 
 - **`TokenRegistrationAck`, PROPOSED** (xochi#753, OX-12): the fourth recipient acknowledgement. The recipient PXE registered the corridor's OxideToken at `aztecToken` with an artifact of class `aztecTokenClassId` and ran `store_immutables` with immutables hashing to `tokenImmutablesHash`. An enrollment acknowledgement (reuses the binding's nonce and expiry); `verifyRecipientAck` checks `aztecToken` against the binding (`token_mismatch`) and the class and immutables hash against `expected` (`subject_mismatch`), from the verifier's trusted corridor record. Pinned by `@xochi/spec` `conformance/shielded-recipient.json`.
