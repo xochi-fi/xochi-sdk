@@ -144,6 +144,21 @@ describe("fallback-key refund authorization (F3-F4)", () => {
       authorizeRefund(account, OXDAI_MAINNET_REV2, duplicate, DESTINATION, 0n),
     ).rejects.toThrow(/unique and nonzero/);
   });
+
+  it("refuses a corridor with a moved refund cap", async () => {
+    const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
+    const moved = structuredClone(OXDAI_MAINNET_REV2);
+    moved.token.immutables.maxNoteAmount = "5166000000000000000001";
+    await expect(
+      authorizeRefund(
+        account,
+        moved,
+        OWNER_EVIDENCE(account.address.toString().toLowerCase()),
+        DESTINATION,
+        0n,
+      ),
+    ).rejects.toThrow(/maxNoteAmount/);
+  });
 });
 
 describe("refund submission ambiguity", () => {

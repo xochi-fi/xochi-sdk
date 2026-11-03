@@ -121,6 +121,7 @@ export type RefundBundle = z.infer<typeof RefundBundleSchema>;
 
 const PORTAL_ABI = parseAbi([
   "function ROLLUP_VERSION() view returns (uint256)",
+  "function ROLLUP() view returns (address)",
   "function L2_TOKEN() view returns (bytes32)",
   "function TEE_REGISTRY() view returns (address)",
   "function TX_AMOUNT_CAP() view returns (uint128)",
@@ -138,10 +139,20 @@ function exactCorridor(corridor: Corridor): void {
     ["corridorId", corridor.corridorId, expected.corridorId],
     ["corridorRevision", corridor.corridorRevision, expected.corridorRevision],
     ["manifestDigest", corridor.manifestDigest, expected.manifestDigest],
+    ["l1ChainId", corridor.network.l1ChainId, expected.network.l1ChainId],
+    ["protocolVersion", corridor.network.protocolVersion, expected.network.protocolVersion],
+    ["rollupAddress", corridor.network.rollupAddress, expected.network.rollupAddress],
     ["token.address", corridor.token.address, expected.token.address],
     ["token.classId", corridor.token.classId, expected.token.classId],
     ["token.artifactHash", corridor.token.artifactHash, expected.token.artifactHash],
     ["portal", corridor.token.immutables.portal, expected.token.immutables.portal],
+    ["teeRegistry", corridor.token.immutables.teeRegistry, expected.token.immutables.teeRegistry],
+    ["oxide.teeRegistry", corridor.oxide.teeRegistry, expected.oxide.teeRegistry],
+    [
+      "maxNoteAmount",
+      corridor.token.immutables.maxNoteAmount,
+      expected.token.immutables.maxNoteAmount,
+    ],
     ["executor", corridor.oxide.plainWithdrawalExecutor, expected.oxide.plainWithdrawalExecutor],
   ];
   const moved = checks.filter(([, actual, pinned]) => actual !== pinned).map(([name]) => name);
@@ -365,9 +376,10 @@ async function assertLiveRefundPins(rpcUrl: string, corridor: Corridor): Promise
   const client = createPublicClient({ transport: http(rpcUrl) });
   const portal = corridor.token.immutables.portal as Hex;
   const executor = corridor.oxide.plainWithdrawalExecutor as Hex;
-  const [chainId, rollupVersion, l2Token, teeRegistry, cap, frozen, executorPortal] =
+  const [chainId, rollup, rollupVersion, l2Token, teeRegistry, cap, frozen, executorPortal] =
     await Promise.all([
       client.getChainId(),
+      client.readContract({ address: portal, abi: PORTAL_ABI, functionName: "ROLLUP" }),
       client.readContract({ address: portal, abi: PORTAL_ABI, functionName: "ROLLUP_VERSION" }),
       client.readContract({ address: portal, abi: PORTAL_ABI, functionName: "L2_TOKEN" }),
       client.readContract({ address: portal, abi: PORTAL_ABI, functionName: "TEE_REGISTRY" }),
@@ -377,6 +389,7 @@ async function assertLiveRefundPins(rpcUrl: string, corridor: Corridor): Promise
     ]);
   const mismatch = [
     chainId !== Number(corridor.network.l1ChainId) && "chainId",
+    rollup.toLowerCase() !== corridor.network.rollupAddress && "ROLLUP",
     rollupVersion !== BigInt(corridor.network.protocolVersion) && "ROLLUP_VERSION",
     l2Token.toLowerCase() !== corridor.token.address && "L2_TOKEN",
     teeRegistry.toLowerCase() !== corridor.oxide.teeRegistry && "TEE_REGISTRY",

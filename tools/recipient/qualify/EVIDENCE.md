@@ -91,7 +91,7 @@ and macOS under Node 22. A `recipient-v*-test.*` tag can create only a signed Gi
 Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
 
 Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
-58 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
+59 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
 builds and standalone tarball installation all passed. The installed CLI reported
 `0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
 and backup v1 read/write compatibility. Ubuntu remains a PR-matrix observation rather than a local
