@@ -1,7 +1,7 @@
-// The order-fingerprint case from pxe-bridge's settlement vectors, re-vendored byte for byte:
-// xochi-fi/pxe-bridge#89 (branch oxide-wire, vector commit bd9333af), docs/vectors/settlement-v2.json,
-// git blob 4994ec13e14803397339d295694011a79306081d. The order fingerprint's value (the v2
-// request fingerprint) is PROPOSED by pxe-bridge; re-vendor from the pxe-bridge 0.4.0 release.
+// The order-fingerprint case from pxe-bridge's settlement vectors, re-vendored byte for byte
+// from pxe-bridge 0.4.2. The full vector includes the prepared Oxide payout-note
+// commitment that consumers bind before authorizing broadcast; this test pins
+// the request/order fingerprint subset used by the recipient tool.
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -25,7 +25,7 @@ const v = vectors.oxide.orderFingerprint;
 describe("order fingerprint in OXDAI transfer meta", () => {
   it("reads the vendored vector byte for byte", () => {
     const blob = createHash("sha1").update(`blob ${raw.length}\0`).update(raw).digest("hex");
-    expect(blob).toBe("4994ec13e14803397339d295694011a79306081d");
+    expect(blob).toBe("c95b99970c202996d8bc42910bf6f35b6e3ceddf");
   });
 
   it("decodes pxe-bridge's meta to its order fingerprint", () => {
