@@ -1,5 +1,5 @@
 // The order-fingerprint case from pxe-bridge's settlement vectors, re-vendored byte for byte
-// from pxe-bridge 0.4.2. The full vector includes the prepared Oxide payout-note
+// from pxe-bridge 0.4.3. The full vector includes the prepared Oxide payout-note
 // commitment that consumers bind before authorizing broadcast; this test pins
 // the request/order fingerprint subset used by the recipient tool.
 
