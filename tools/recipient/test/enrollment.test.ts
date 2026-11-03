@@ -36,7 +36,7 @@ const CHALLENGE = {
 const COMMITMENT = `0x${"ab".repeat(32)}`;
 const source = privateKeyToAccount(TEST_SOURCE_KEY);
 
-async function request(corridor: Corridor, submitTokenRegistrationAck = false) {
+async function request(corridor: Corridor) {
   const account = await deriveRecipientAccount(TEST_SECRETS, corridor);
   const binding = buildBinding(corridor, account, source.address, CHALLENGE);
   const { typedData } = bindingTypedData(corridor, binding);
@@ -55,7 +55,6 @@ async function request(corridor: Corridor, submitTokenRegistrationAck = false) {
     sourceSignature,
     backupCommitment: COMMITMENT,
     tokenRegistrationAck,
-    submitTokenRegistrationAck,
     sign: signRecipientDigest,
   });
   return { account, binding, body, tokenRegistrationAck };
@@ -115,7 +114,7 @@ describe("recipient account", () => {
 });
 
 describe("enrollment request", () => {
-  it("is what today's Worker verifies: binding, both signatures, exactly two acks (G1)", async () => {
+  it("matches the Worker's OXDAI binding and required three acknowledgements", async () => {
     const { account, binding, body } = await request(OXDAI_MAINNET_REV2);
     expect(binding).toMatchObject({
       sourceWallet: source.address.toLowerCase(),
@@ -139,22 +138,15 @@ describe("enrollment request", () => {
     expect(body.acknowledgements.map((a) => a.primary_type)).toEqual([
       "BackupPersistenceAck",
       "SenderRegistrationAck",
-    ]);
-    expect(await verifyAll(account, binding, body.acknowledgements)).toBe(2);
-  });
-
-  it("signs the TokenRegistrationAck regardless, and submits it only behind the flag (G2)", async () => {
-    const { account, binding, body, tokenRegistrationAck } = await request(
-      OXDAI_MAINNET_REV2,
-      true,
-    );
-    expect(tokenRegistrationAck?.primary_type).toBe("TokenRegistrationAck");
-    expect(await verifyAll(account, binding, [tokenRegistrationAck!])).toBe(1);
-    expect(body.acknowledgements.map((a) => a.primary_type)).toEqual([
-      "BackupPersistenceAck",
-      "SenderRegistrationAck",
       "TokenRegistrationAck",
     ]);
+    expect(await verifyAll(account, binding, body.acknowledgements)).toBe(3);
+  });
+
+  it("preserves and submits the TokenRegistrationAck signed before backup", async () => {
+    const { account, binding, body, tokenRegistrationAck } = await request(OXDAI_MAINNET_REV2);
+    expect(tokenRegistrationAck?.primary_type).toBe("TokenRegistrationAck");
+    expect(body.acknowledgements[2]).toEqual(tokenRegistrationAck);
     expect(await verifyAll(account, binding, body.acknowledgements)).toBe(3);
   });
 
@@ -173,7 +165,6 @@ describe("enrollment request", () => {
       "BackupPersistenceAck",
       "SenderRegistrationAck",
     ]);
-    await expect(request(tracer, true)).rejects.toThrow(/not an OxideToken/);
   });
 
   it("refuses a source signature from any wallet but the binding's", async () => {
@@ -192,7 +183,6 @@ describe("enrollment request", () => {
         sourceSignature: signature,
         backupCommitment: COMMITMENT,
         tokenRegistrationAck: null,
-        submitTokenRegistrationAck: false,
         sign: signRecipientDigest,
       }),
     ).rejects.toThrow(/not the binding's source wallet/);
@@ -231,7 +221,6 @@ describe("enrollment projection binding", () => {
         { challenge: CHALLENGE, binding, typedData, tokenRegistrationAck },
         sourceSignature,
         COMMITMENT,
-        false,
       ),
     ).rejects.toThrow(/different recipient descriptor/);
     await expect(enrollStatus(ctx, api, "expected-binding", account)).rejects.toThrow(

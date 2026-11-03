@@ -20,14 +20,21 @@ import { z } from "zod4";
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hex = /^0x[0-9a-f]+$/i;
 const txHash = /^0x[0-9a-f]{64}$/i;
+const OperationKindSchema = z.enum([
+  "spend",
+  "exit",
+  "refund-frozen-notes",
+  "refund-frozen-deposits",
+  "refund-unprocessed-deposit",
+]);
 const OperationStatusSchema = z.enum(["building", "broadcast", "complete", "aborted", "in_doubt"]);
 export type OperationStatus = z.infer<typeof OperationStatusSchema>;
 
-const OperationRecordSchema = z
+export const OperationRecordSchema = z
   .object({
     id: z.string().regex(uuidV4),
     lockNonce: z.string().regex(uuidV4),
-    kind: z.enum(["spend", "exit"]),
+    kind: OperationKindSchema,
     status: OperationStatusSchema,
     createdAt: z.string().min(1),
     updatedAt: z.string().min(1),
@@ -86,7 +93,7 @@ const ActiveLockSchema = z
   .object({
     id: z.string().regex(uuidV4),
     lockNonce: z.string().regex(uuidV4),
-    kind: z.enum(["spend", "exit"]),
+    kind: OperationKindSchema,
   })
   .strict();
 type ActiveLock = z.infer<typeof ActiveLockSchema>;
@@ -222,6 +229,34 @@ export class OperationJournal {
       );
     }
     return terminal(record.status) ? null : record;
+  }
+
+  /**
+   * Restores an encrypted backup's journal into a new, empty data directory. An unresolved
+   * operation recreates its exact ownership lock, so the second host can reconcile but cannot
+   * accidentally replace it with another fund-moving operation.
+   */
+  restore(recordsInput: readonly unknown[]): void {
+    if (readdirSync(this.directory).length !== 0) {
+      throw new Error("operation journal restore needs an empty destination");
+    }
+    const records = recordsInput.map((record) => OperationRecordSchema.parse(record));
+    const ids = new Set(records.map((record) => record.id));
+    if (ids.size !== records.length)
+      throw new Error("operation journal backup contains duplicate ids");
+    const unresolved = records.filter((record) => !terminal(record.status));
+    if (unresolved.length > 1) {
+      throw new Error("operation journal backup contains more than one unresolved operation");
+    }
+    for (const record of records) writePrivateJson(this.path(record.id), record);
+    const active = unresolved[0];
+    if (active) {
+      writePrivateJson(this.lockPath, {
+        id: active.id,
+        lockNonce: active.lockNonce,
+        kind: active.kind,
+      });
+    }
   }
 
   begin(kind: OperationRecord["kind"], request: Record<string, string>): OperationRecord {

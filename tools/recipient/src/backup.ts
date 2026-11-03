@@ -10,11 +10,15 @@
 // the same sealed bytes.
 
 import {
+  chmodSync,
   closeSync,
   existsSync,
   fsyncSync,
   linkSync,
+  mkdirSync,
   openSync,
+  readdirSync,
+  readFileSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -28,15 +32,17 @@ import type { AccountSecrets, RecipientAccount } from "./account.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
 import type { SignedAck } from "./enrollment.js";
 import { open, seal } from "./sealed.js";
+import { OperationRecordSchema } from "./operation-journal.js";
 
 const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
 const RECOVERY_INSTRUCTIONS = [
-  "1. Install the Xochi recipient tool on a new machine (Node 22, macOS or Linux).",
+  "1. Install the verified Xochi recipient test artifact on a new Node 22 macOS/Linux/WSL host.",
   "2. Run `xochi-recipient restore --backup <this file>` with the backup passphrase and a fresh data directory.",
   "3. The tool re-creates the stock SchnorrAccount 6.0.0 from `account.secret` and `account.salt`, refuses unless it derives `account.address`, registers each of `registeredSenders` as a sender, registers the OxideToken at `token.address` with an artifact of class `token.classId` and runs `store_immutables` with `token.immutables`.",
-  "4. It then syncs from the Aztec node you choose and shows the OXDAI balance. The scan checkpoint is an optimization only.",
-  "5. Never copy a wallet database between machines, and never send this file's plaintext to anyone: it holds the account's secret key.",
+  "4. It restores the TokenRegistrationAck and operation/exit journals. An unresolved operation recreates its exact lock and must be reconciled; never delete it or retry.",
+  "5. It syncs a fresh PXE from the Aztec node you choose and shows the OXDAI balance. The scan checkpoint is an optimization only.",
+  "6. Never copy a wallet database between machines, and never send this file's plaintext to anyone: it holds the account's secret key.",
 ].join("\n");
 
 export const SignedAckSchema = z
@@ -46,6 +52,40 @@ export const SignedAckSchema = z
     signature: z.string().regex(/^0x[0-9a-f]{128}$/),
   })
   .strict();
+
+const ExitJournalRecordSchema = z
+  .object({
+    txHash: hex32,
+    executorFee: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .nullable(),
+    recipientAmount: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .nullable(),
+    withdrawals: z.array(
+      z
+        .object({
+          txHash: hex32,
+          withdrawalIndex: z.number().int().nonnegative(),
+          operationId: z.string().nullable(),
+          finalizationData: z.string().regex(/^0x[0-9a-f]+$/),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ExitJournalRecord = z.infer<typeof ExitJournalRecordSchema>;
+
+const JournalBackupSchema = z
+  .object({
+    operations: z.array(OperationRecordSchema),
+    exits: z.array(ExitJournalRecordSchema),
+  })
+  .strict()
+  .default({ operations: [], exits: [] });
+export type JournalBackup = z.infer<typeof JournalBackupSchema>;
 
 export const BackupSchema = z
   .object({
@@ -81,6 +121,7 @@ export const BackupSchema = z
      * corridor whose token is not an OxideToken.
      */
     tokenRegistrationAck: SignedAckSchema.nullable(),
+    journals: JournalBackupSchema,
     recovery: z.string().min(1),
   })
   .strict();
@@ -93,6 +134,7 @@ export function backupContents(
   scanCheckpoint: number | null,
   tokenRegistrationAck: SignedAck | null,
   now: number,
+  journals: JournalBackup = { operations: [], exits: [] },
 ): BackupContents {
   return BackupSchema.parse({
     format: BACKUP_FORMAT_V1_NAME,
@@ -118,6 +160,7 @@ export function backupContents(
     registeredSenders: corridor.registeredSenders,
     scanCheckpoint: scanCheckpoint === null ? null : { blockNumber: scanCheckpoint },
     tokenRegistrationAck,
+    journals,
     recovery: RECOVERY_INSTRUCTIONS,
   });
 }
@@ -142,6 +185,42 @@ export function openBackup(bytes: Buffer, passphrase: string): BackupContents {
     throw new Error("backup token immutables do not hash to the recorded immutablesHash");
   }
   return contents;
+}
+
+/** Reads only validated exit recovery records; file names must be the transaction they describe. */
+export function readExitJournal(directory: string): ExitJournalRecord[] {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory)
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => {
+      const record = ExitJournalRecordSchema.parse(
+        JSON.parse(readFileSync(join(directory, entry), "utf8")),
+      );
+      if (entry !== `${record.txHash}.json`) {
+        throw new Error("exit journal record does not own its filename");
+      }
+      return record;
+    })
+    .sort((left, right) => left.txHash.localeCompare(right.txHash));
+}
+
+/** Restores exit recovery records without overwriting anything already present. */
+export function restoreExitJournal(directory: string, recordsInput: readonly unknown[]): void {
+  if (existsSync(directory) && readdirSync(directory).length !== 0) {
+    throw new Error("exit journal restore needs an empty destination");
+  }
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  const records = recordsInput.map((record) => ExitJournalRecordSchema.parse(record));
+  if (new Set(records.map((record) => record.txHash)).size !== records.length) {
+    throw new Error("exit journal backup contains duplicate transaction hashes");
+  }
+  for (const record of records) {
+    writePrivateFileExclusive(
+      join(directory, `${record.txHash}.json`),
+      Buffer.from(`${JSON.stringify(record, null, 2)}\n`),
+    );
+  }
 }
 
 function syncDirectory(path: string): void {

@@ -4,10 +4,11 @@ This file separates the local mechanism qualification from the production round 
 mainnet proof. Never add a recipient address, source wallet, binding ID, descriptor digest, private
 allowlist entry, secret, or passphrase here or to an issue comment.
 
-`fc4a1bc` (xochi-sdk#134) is explicitly unsafe for funded use. The minimum allowed source is
-signed commit `85f08f0240219079ed592272a446b98f459cd903` on xochi-sdk#137, or that PR's reviewed
-merge; live use remains prohibited until the PR merges green. Nothing below is live R4 received-note
-discovery, R5 spend/exit, or R6 funded restore evidence.
+`fc4a1bc` (xochi-sdk#134) is explicitly unsafe for funded use. The crash-safe follow-up merged as
+`a1f2fbd4bc73ec0c671993a4cd01d1d8edb5dc0d` in xochi-sdk#137. The G2 candidate adds a private
+versioned test artifact, three-ack enrollment, journal-preserving restore, and recipient refund
+guards. Nothing below is live R4 received-note discovery, R5 spend/exit, R6 funded restore, or a
+production refund.
 
 ## Environment
 
@@ -53,9 +54,9 @@ check, build, the local test suite and the live-node plaintext-key smoke test pa
 | R1 Register                         | Local Aztec 6.0.0 sandbox                                               | The tool created the stock Schnorr account, verified the `aztec-6.0.0` descriptor, and wrote only a passphrase-sealed keystore.                                                                                                                                                                                                                                                                                                                                                                                             | The production account is intentionally not named here.                                                                                                                                                                                                             |
 | R2 Publish and initialize           | Local Aztec 6.0.0 sandbox                                               | A one-time local L1 EOA deposited Fee Juice, the recipient claimed it, paid its own L2 deployment fee, published its instance, initialized it, and satisfied the mined-receipt, `node.getContract`, and initialization-nullifier assertions.                                                                                                                                                                                                                                                                                | No mainnet deployment occurred. The L1 deposit publicly links its depositor and recipient; production non-linkage depends on an independently funded one-time depositor with no identifiable Xochi funding trail. Amount and timing remain heuristic linkage risks. |
 | R3 Sender registration              | Local Aztec 6.0.0 sandbox                                               | The tool asserted registration of exactly the sandbox corridor sender.                                                                                                                                                                                                                                                                                                                                                                                                                                                      | The production Oxide sender was not registered in this run.                                                                                                                                                                                                         |
-| R4 Token registration and discovery | Local Aztec 6.0.0 sandbox—registration plus zero-balance discovery only | The tool hash-checked and registered the pinned OxideToken artifact, ran `store_immutables`, signed `TokenRegistrationAck`, preserved it in the sealed backup, and asserted a synced zero balance. This is registration/discovery harness evidence, not discovery of a received note.                                                                                                                                                                                                                                       | The sandbox has no registered zk.money enclave, so it cannot produce or discover an enclave-signed payout note.                                                                                                                                                     |
-| R5 Spend and exit                   | Local dry-run port only—no live transaction                             | The dry-run plan emitted the expected pinned-L1-check, enclave-connection, transfer-submission, broadcaster-class-check, positive-relayer-tip, and synthetic-finalization-request calls; it did not execute them. Deterministic tests place the may-have-sent boundary at the real node `sendTx`: the tx hash is synced before that call, node submission makes one HTTP attempt, an ambiguous crash blocks later movement, and reconciliation refuses `PROPOSED`. Unit tests also refuse a relayer tip that consumes the post-executor/prover proceeds. This is tooling/harness evidence only. | No funds moved. There is no observed finalization payload or operation ID, L2 spend transaction, L2 exit transaction, L1 finalization transaction, executor fee or recipient proceeds.                                                                              |
-| R6 Backup restore                   | Local Aztec 6.0.0 sandbox, fresh data directory and fresh PXE           | Restore asserted the same account from the second sealed backup, re-registered the sender and token, reran `store_immutables`, and synced successfully. The backup contained the signed `TokenRegistrationAck`; no wallet database was copied.                                                                                                                                                                                                                                                                              | This was a second local data directory, not a second host. Its balance was zero, so rediscovery of received funds remains a mainnet acceptance item.                                                                                                                |
+| R4 Token registration and discovery | Local Aztec 6.0.0 sandbox—registration plus zero-balance discovery only | The tool hash-checked and registered the pinned OxideToken artifact, ran `store_immutables`, signed the shipped `TokenRegistrationAck`, preserved it in the sealed backup, and asserted a synced zero balance. This is registration/discovery harness evidence, not discovery of a received note. | The sandbox has no registered zk.money enclave, so it cannot produce or discover an enclave-signed payout note. |
+| R5 Spend and exit | Local dry-run port only—no live transaction | The dry-run emitted the pinned checks and deterministic tests place the may-have-sent boundary at the real node `sendTx`. The transaction hash is synced before one submission; ambiguity blocks later movement; reconciliation refuses `PROPOSED`. | No funds moved. There is no observed finalization payload or operation ID, L1 completion, or spend of a received note. |
+| R6 Backup restore | Local Aztec 6.0.0 sandbox, fresh data directory and fresh PXE | Restore asserted the same account, re-registered the sender and OXDAI, reran `store_immutables`, preserved `TokenRegistrationAck`, and synced zero balance. Backup compatibility tests also recreate the exact unresolved spend/exit/refund lock and validated exit records without copying a wallet database. | This is an independent data directory, not an observed separately operated funded host. Rediscovery of received funds remains a G2 acceptance item. |
 
 R4 registration with a discovered zero balance and the R5 dry-run qualify the harness only. They
 are not OX-10 real qualification; OX-10 remains open until the restricted mainnet evidence exists.
@@ -69,9 +70,9 @@ encrypted storage.
 ## Enrollment coverage
 
 The local run used the synthetic API (`--dry-run`), not the production Worker. It built and verified
-the binding, recipient authorization, `BackupPersistenceAck`, `SenderRegistrationAck`, and
-`TokenRegistrationAck`. The G1 request sent only the two acknowledgements production accepts today.
-The synthetic projection remained `pending`.
+the binding, recipient authorization, `BackupPersistenceAck`, `SenderRegistrationAck`, and the
+shipped `TokenRegistrationAck`. The request sends all three acknowledgements required by the
+current OXDAI Worker. The synthetic projection remained `pending`.
 
 A production `ready` binding is not claimed here. It requires all of the following outside this
 repository:
@@ -80,6 +81,34 @@ repository:
 2. the private bridge allowlist contains the descriptor digest without publishing it;
 3. the source wallet has a Member session and signs the binding;
 4. the Worker and bridge return `ready`.
+
+## G2 packaging, restore and freeze/refund drill boundary
+
+The PR pipeline builds the private `0.1.0-test.1` tarball twice, compares bytes, emits SHA-256
+checksums, a normalized CycloneDX SBOM and a release manifest, and installs the tarball on Ubuntu
+and macOS under Node 22. A `recipient-v*-test.*` tag can create only a signed GitHub prerelease;
+`private: true` and the workflow contain no `npm publish` step. WSL consumes the Linux artifact.
+Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
+
+Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
+55 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
+builds and standalone tarball installation all passed. The installed CLI reported
+`0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
+and backup v1 read/write compatibility. Ubuntu remains a PR-matrix observation rather than a local
+claim.
+
+F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
+overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
+`freeze()` only on the fork, and captures the frozen observation. F3-F4 are deterministic tests:
+stock Schnorr address recomputation with `immutablesHash = 0`, then positive and redirected-payload
+negative verification of the fallback-key migration signature.
+
+F5-F8 are not claimed. The exact missing upstream execution primitive is the runnable combination
+of zkmoney-public `2764aedc`'s local-enclave registration harness, refund builders, generated Noir
+refund artifacts under `noir-projects/*/target/*.json`, portal bindings, and an Aztec snapshot with
+recipient-owned notes/deposits. pxe-bridge intentionally vendors none of the builders or generated
+artifacts, and the upstream generated artifacts are absent from that commit's Git tree. The CLI
+therefore accepts only a real externally generated proof bundle and never fabricates a proof.
 
 ## Mainnet operator handoff (not executed by this qualification)
 

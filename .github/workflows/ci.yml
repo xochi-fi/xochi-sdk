@@ -274,16 +274,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            tools/recipient/package-lock.json
+          cache-dependency-path: tools/recipient/package-lock.json
 
-      - name: Build @xochi/signer (the tool depends on it by path)
-        run: |
-          npm ci
-          npm run build -w @xochi/signer
 
-      - name: OXDAI recipient tool (typecheck, format, tests, dry run)
+      - name: OXDAI recipient tool and installable test artifact
         working-directory: tools/recipient
         run: |
           npm ci
@@ -294,7 +288,23 @@ jobs:
           node dist/cli.js plan
           node --check qualify/sandbox.mjs
           node --check scripts/smoke-no-plaintext-keys.mjs
+          node --check scripts/build-release.mjs
           bash -n scripts/build-broadcaster.sh
+          bash -n qualify/freeze-fork.sh
+          bash -n qualify/independent-restore.sh
+          node scripts/build-release.mjs --out release
+          npm install --global ./release/*.tgz
+          [[ "$(xochi-recipient --version)" == "0.1.0-test.1" ]]
+          diagnostics="$(xochi-recipient diagnostics)"
+          [[ "$diagnostics" == *'"corridorRevision":"2"'* ]]
+
+      - uses: actions/upload-artifact@v5
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: xochi-recipient-test-artifact
+          path: tools/recipient/release/*
+          if-no-files-found: error
+          retention-days: 7
 
   python-conformance:
     runs-on: ubuntu-latest

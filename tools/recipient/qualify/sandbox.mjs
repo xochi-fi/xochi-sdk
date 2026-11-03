@@ -367,7 +367,7 @@ const backupA = join(out, "backup-A.bak");
 const backupB = join(out, "backup-B.bak");
 const backupOut = cli(dirA, ["backup", "--out", backupA, "--out", backupB]);
 const commitment = /backupCommitment (0x[0-9a-f]+)/.exec(backupOut)?.[1] ?? fail("no commitment");
-const submitG1 = cli(dirA, [
+const submit = cli(dirA, [
   "enroll",
   "submit",
   "--dry-run",
@@ -381,8 +381,12 @@ const enrollmentState = JSON.parse(readFileSync(join(dirA, "state.json"), "utf8"
 if (typeof enrollmentState.backupTokenAckSignature !== "string") {
   fail("TokenRegistrationAck was not preserved in the sealed backup state");
 }
-if (!submitG1.includes("acknowledgements: [BackupPersistenceAck, SenderRegistrationAck]")) {
-  fail("G1 enrollment did not submit exactly the two accepted acknowledgements");
+if (
+  !submit.includes(
+    "acknowledgements: [BackupPersistenceAck, SenderRegistrationAck, TokenRegistrationAck]",
+  )
+) {
+  fail("OXDAI enrollment did not submit the required three acknowledgements");
 }
 if (!statusOut.includes("is pending")) fail("synthetic enrollment projection was not pending");
 record("E", "Enrollment request built and verified (dry-run API: no Worker on the sandbox)", {
@@ -390,7 +394,7 @@ record("E", "Enrollment request built and verified (dry-run API: no Worker on th
     .split("\n")
     .filter((l) => l.startsWith("enrollment:"))
     .join(" | "),
-  submit: submitG1
+  submit: submit
     .split("\n")
     .filter((l) => l.includes("acknowledgements"))
     .join(" | "),
@@ -415,6 +419,9 @@ const restoreOut = cli(dirB, [
 const stateB = JSON.parse(readFileSync(join(dirB, "state.json"), "utf8"));
 if (stateB.address !== stateA.address) fail("R6 restored a different account");
 if (stateB.tokenRegisteredAt == null) fail("R6 did not re-register the token");
+if (stateB.tokenRegistrationAck?.primary_type !== "TokenRegistrationAck") {
+  fail("R6 did not preserve TokenRegistrationAck");
+}
 if (!/balance: 0(?: OXDAI| base units)/.test(restoreOut)) {
   fail("R6 restored balance was not observed");
 }
@@ -427,6 +434,9 @@ record("R6", "Backup and restore on a fresh data directory", {
     .filter((l) => /^(network|account|senders|token|balance):/.test(l))
     .join(" | "),
   tokenRegisteredAfterRestore: String(stateB.tokenRegisteredAt != null),
+  tokenRegistrationAckAfterRestore: String(
+    stateB.tokenRegistrationAck?.primary_type === "TokenRegistrationAck",
+  ),
 });
 
 // 9. R5: spend and exit need the zk.money enclave; here only the recorded dry-run sequences.

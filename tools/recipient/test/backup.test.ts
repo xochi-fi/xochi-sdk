@@ -84,6 +84,21 @@ describe("recipient-encrypted backup (format v1)", () => {
     const bytes = seal("backup", Buffer.from(JSON.stringify(forged)), PASS);
     expect(() => openBackup(bytes, PASS)).toThrow(/do not hash to the recorded immutablesHash/);
   });
+
+  it("opens pre-upgrade v1 backups with empty journals", async () => {
+    const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
+    const current = backupContents(
+      OXDAI_MAINNET_REV2,
+      TEST_SECRETS,
+      account,
+      null,
+      null,
+      1_800_000_000,
+    );
+    const { journals: _newField, ...legacy } = current;
+    const bytes = seal("backup", Buffer.from(JSON.stringify(legacy)), PASS);
+    expect(openBackup(bytes, PASS).journals).toEqual({ operations: [], exits: [] });
+  });
 });
 
 describe("backup copy persistence", () => {

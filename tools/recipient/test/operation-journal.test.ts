@@ -238,4 +238,23 @@ describe("fund-moving operation journal", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("restores the exact unresolved operation and lock on an independent host", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "xochi-operation-source-"));
+    const restoredDir = mkdtempSync(join(tmpdir(), "xochi-operation-restored-"));
+    try {
+      const source = new OperationJournal(sourceDir);
+      const operation = source.begin("exit", { amount: "100" });
+      source.update(operation.id, { status: "broadcast", txHash: TX_HASH });
+
+      const restored = new OperationJournal(restoredDir);
+      restored.restore(source.records());
+      expect(restored.activeUnresolved()).toEqual(source.activeUnresolved());
+      expect(() => restored.begin("spend", { amount: "1" })).toThrow(/reconcile/);
+      expect(() => restored.restore(source.records())).toThrow(/empty destination/);
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+      rmSync(restoredDir, { recursive: true, force: true });
+    }
+  });
 });

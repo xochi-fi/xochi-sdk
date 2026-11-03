@@ -176,11 +176,7 @@ export async function enrollStart(
   return { challenge, binding, typedData, tokenRegistrationAck };
 }
 
-/**
- * Signs the authorization and acknowledgements and submits the enrollment. Today's Worker
- * takes exactly BackupPersistenceAck + SenderRegistrationAck (G1);
- * `submitTokenRegistrationAck` adds the TokenRegistrationAck once the Worker ships xochi#753 (G2).
- */
+/** Signs and submits the authorization plus the exact acknowledgement set the Worker requires. */
 export async function enrollSubmit(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
@@ -188,7 +184,6 @@ export async function enrollSubmit(
   pending: PendingEnrollment,
   sourceSignature: string,
   backupCommitment: string,
-  submitTokenRegistrationAck: boolean,
 ): Promise<BindingProjection> {
   const request = await buildEnrollmentRequest({
     corridor: ctx.corridor,
@@ -198,7 +193,6 @@ export async function enrollSubmit(
     sourceSignature,
     backupCommitment,
     tokenRegistrationAck: pending.tokenRegistrationAck,
-    submitTokenRegistrationAck,
     sign: signRecipientDigest,
   });
   const projection = await api.enroll(request);
