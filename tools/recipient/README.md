@@ -14,8 +14,14 @@ PXE and makes it a qualifying OXDAI recipient.
   `XOCHI_JWT`;
 - the zk.money enclave and an L1 JSON-RPC you choose (`--l1-rpc`), for `spend` and `exit` only.
 
-No telemetry. Nothing the tool does publishes that the account is a Xochi recipient; the
-published account instance is visible on chain as a stock Schnorr account [INFERENCE].
+No telemetry. The tool itself publishes nothing that names the account a Xochi recipient, but:
+
+- **A sponsored deployment links the funder to your account on L1.** The Fee Juice claim Xochi
+  provides comes from an L1 Fee Juice portal deposit that names the recipient address in public;
+  whoever funded that deposit is linked to your account. Xochi should fund each claim from a
+  one-time L1 address with no other history (an operator matter, xochi#738). Paying the
+  deployment from Fee Juice you bridge yourself avoids the link to Xochi.
+- The published account instance is visible on chain as a stock Schnorr account [INFERENCE].
 
 ## Disclosures
 
@@ -25,6 +31,19 @@ published account instance is visible on chain as a stock Schnorr account [INFER
 - **Exits need a live zk.money enclave** (xochi#739): withdrawal finalization needs an enclave
   signature, and only zk.money runs the registered enclaves. If they are down, your OXDAI stays
   on Aztec until they return (or the portal's frozen-note refund path applies).
+- **What the data directory holds.** The account's secret key and signing key are stored only
+  sealed with your passphrase (`keystore.sealed`, and the backups). The wallet layer of the
+  Aztec SDK writes them in plaintext to its own store, so the tool keeps that store ephemeral
+  (OS temp dir, no fsync, removed when the tool exits; a crash can leave it until the OS clears
+  the temp dir) and re-adds the account from the keystore on every run
+  (`node scripts/smoke-no-plaintext-keys.mjs <node>` checks the data directory). The PXE store
+  under `<data-dir>/pxe` is NOT encrypted: it holds the account's master viewing keys
+  (`ivsk_m`, `ovsk_m`), tagging key (`tsk_m`) and nullifier hiding key (`nhk_m`), the notes and
+  the payout history. Anyone who reads that directory sees what you received and can link your
+  spends; they cannot spend (the signing key is not there). Use full-disk encryption.
+- **Exit needs a relayer, and its record.** `exit` refuses a zero `--relayer-tip`
+  (a request nobody relays can strand the withdrawal) and writes each withdrawal's finalization
+  data and L1 operation id to `<data-dir>/exits/` and stdout, so you or anyone can finalize it.
 
 ## Round trip
 
@@ -78,14 +97,16 @@ The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `m
 is the Worker's candidate and PROPOSED until xochi#778 lands. `--corridor FILE` takes another.
 
 **Token-registration ack (xochi#753).** `enroll start` signs the `TokenRegistrationAck` for an
-OxideToken corridor, and the backup written next carries it as evidence; `enroll submit`
-refuses a backup that does not. Today's production Worker takes exactly two acknowledgements
-(G1, the operator round trip), so the tool submits only `BackupPersistenceAck` and
-`SenderRegistrationAck` unless `--submit-token-registration-ack` is given. When the Worker ships
-#753 (G2), submitting the third ack becomes the default and the flag is removed.
+OxideToken corridor, but only once this data directory recorded a successful token registration
+(`setup`, `balance`, `spend`, `exit` or `restore`); a backup written after `enroll start` carries
+it as evidence. Today's production Worker takes exactly two acknowledgements (G1, the operator
+round trip), so the tool submits only `BackupPersistenceAck` and `SenderRegistrationAck` unless
+`--submit-token-registration-ack` is given; only with the flag does `enroll submit` require the
+backup to carry the ack (the challenge window is 5 minutes). When the Worker ships #753 (G2),
+submitting the third ack becomes the default and the flag is removed.
 
 **Exit artifact.** `npm run build:broadcaster` (aztec-up 6.0.0 on PATH) builds the L2
-Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its class is
-the deployed `0x24f2762a...78ae`.
+Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its
+artifact hash is `0x2d001a2e...7d70` and its class the deployed `0x24f2762a...78ae`.
 
 Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.

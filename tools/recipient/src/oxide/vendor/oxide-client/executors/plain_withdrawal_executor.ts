@@ -1,6 +1,6 @@
 // Modified for the Xochi recipient tool (see ../../VENDORED.md): `readPlainWithdrawalFee`
-// removed with its `@oxide/l1-contracts` and `viem` imports. The tool takes the executor fee
-// from the corridor record instead of an L1 read.
+// removed with its `@oxide/l1-contracts` and `viem` imports. The tool reads the executor's
+// `FEE()` from L1 itself (src/chain.ts `LiveAztec.exit`) and passes it in.
 import type { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
 import type { Fr } from '@aztec-labs/aztec.js/fields';
 

@@ -7,7 +7,7 @@ import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 
 import { signRecipientDigest, type RecipientAccount } from "./account.js";
 import type { BindingProjection, EnrollmentApi } from "./api.js";
-import type { AztecPort, ExitRequest, FeeJuiceClaim } from "./chain.js";
+import type { AztecPort, ExitRequest, ExitResult, FeeJuiceClaim } from "./chain.js";
 import type { Corridor } from "./corridor.js";
 import {
   bindingTypedData,
@@ -80,7 +80,7 @@ export async function registerSenders(ctx: Ctx): Promise<void> {
  * Registers the OxideToken at the corridor's address with the hash-checked artifact and runs
  * `store_immutables` with the corridor's `l2TokenImmutables` (never `readOxideTokenImmutables`).
  */
-export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promise<void> {
+export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promise<number> {
   await assertTokenInstance(artifact, ctx.corridor);
   const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
   if (!(await ctx.port.tokenLockedToArtifact(artifact, token))) {
@@ -92,6 +92,7 @@ export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promi
   ctx.log(
     `token: registered ${token.toString()} (class ${ctx.corridor.token.classId}) and stored its immutables`,
   );
+  return Math.floor(Date.now() / 1000);
 }
 
 const formatUnits = (amount: bigint, decimals: number): string => {
@@ -115,9 +116,15 @@ export async function showBalance(
   const balance = await ctx.port.balance(artifact, token, account.address);
   ctx.log(`balance: ${formatUnits(balance, decimals)} ${symbol}`);
   for (const t of await ctx.port.transfers(artifact, token, account.address)) {
-    const fingerprint = orderFingerprintFromMeta(t.meta);
+    let fingerprint: string;
+    try {
+      fingerprint = orderFingerprintFromMeta(t.meta) ?? "none (not a tagged payout)";
+    } catch (error) {
+      // One malformed tagged meta must not hide the other payouts: name it and go on.
+      fingerprint = `unreadable (${error instanceof Error ? error.message : String(error)})`;
+    }
     ctx.log(
-      `received: ${formatUnits(t.amount, decimals)} ${symbol} in ${t.txHash} (block ${t.blockNumber}) order fingerprint ${fingerprint ?? "none (not a tagged payout)"}`,
+      `received: ${formatUnits(t.amount, decimals)} ${symbol} in ${t.txHash} (block ${t.blockNumber}) order fingerprint ${fingerprint}`,
     );
   }
   return balance;
@@ -141,24 +148,29 @@ export async function enrollStart(
   api: EnrollmentApi,
   account: RecipientAccount,
   sourceWallet: string,
+  tokenRegisteredAt: number | null,
 ): Promise<PendingEnrollment> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(sourceWallet))
     throw new Error("source wallet must be a 20-byte 0x address");
   const challenge = await api.challenge();
   const binding = buildBinding(ctx.corridor, account, sourceWallet, challenge);
   const { typedData, digest } = bindingTypedData(ctx.corridor, binding);
-  const tokenRegistrationAck = await signTokenRegistrationAck(
-    ctx.corridor,
-    account,
-    binding,
-    signRecipientDigest,
-  );
+  // The ack asserts the PXE registered the token and stored its immutables: signed only after
+  // this data directory recorded a successful `registerToken`.
+  const tokenRegistrationAck =
+    tokenRegisteredAt === null
+      ? null
+      : await signTokenRegistrationAck(ctx.corridor, account, binding, signRecipientDigest);
   ctx.log(
     `enrollment: challenge ${challenge.challenge_id}, expires ${new Date(challenge.expires_at * 1000).toISOString()}`,
   );
   ctx.log(`enrollment: the source wallet signs RecipientBinding ${digest} (eth_signTypedData_v4)`);
   if (tokenRegistrationAck) {
     ctx.log("enrollment: TokenRegistrationAck signed; write the backup now so it carries it");
+  } else if (tokenRegisteredAt === null) {
+    ctx.log(
+      "enrollment: TokenRegistrationAck not signed: the token is not registered here yet (run setup)",
+    );
   }
   return { challenge, binding, typedData, tokenRegistrationAck };
 }
@@ -220,14 +232,32 @@ export async function spend(
   return txHash;
 }
 
-/** A withdrawal to L1 DAI through the enclave-signed path; any relayer finalizes it. */
+/**
+ * A withdrawal to L1 DAI through the enclave-signed path; any relayer finalizes it for the
+ * relayer tip, so a zero tip is refused (nobody relays it, and only the owner could finalize).
+ * Each withdrawal's finalization data and L1 operation id are logged; the caller persists them.
+ */
 export async function exit(
   ctx: Ctx,
   account: RecipientAccount,
   artifact: ContractArtifact,
   request: ExitRequest,
-): Promise<string> {
-  const txHash = await ctx.port.exit(account, artifact, request);
-  ctx.log(`exit: ${request.amount} base units to L1 ${request.l1Recipient} in ${txHash}`);
-  return txHash;
+): Promise<ExitResult> {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(request.l1Recipient)) {
+    throw new Error("--l1-recipient must be a 20-byte 0x address");
+  }
+  if (request.amount === 0n) throw new Error("--amount must be positive");
+  if (request.relayerTip === 0n) {
+    throw new Error(
+      "--relayer-tip must be positive: a finalization request with no tip may never be relayed",
+    );
+  }
+  const result = await ctx.port.exit(account, artifact, request);
+  ctx.log(`exit: ${request.amount} base units to L1 ${request.l1Recipient} in ${result.txHash}`);
+  for (const w of result.withdrawals) {
+    ctx.log(
+      `exit: withdrawal ${w.withdrawalIndex} operationId ${w.operationId ?? "none (not broadcast)"} finalizationData ${w.finalizationData}`,
+    );
+  }
+  return result;
 }

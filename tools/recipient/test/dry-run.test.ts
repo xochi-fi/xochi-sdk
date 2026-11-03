@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { deriveRecipientAccount } from "../src/account.js";
 import { DryRunAztec } from "../src/chain.js";
-import { checkNetwork, registerSenders, setupAccount, type Ctx } from "../src/commands.js";
+import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { checkNetwork, exit, registerSenders, setupAccount, type Ctx } from "../src/commands.js";
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NetworkPinRefused } from "../src/network.js";
 import { TEST_SECRETS } from "./fixtures.js";
@@ -47,5 +48,27 @@ describe("dry run", () => {
       "node.getNodeInfo() (synthetic: the pinned identity, node 6.0.0)",
       "node.getBlockData(1)",
     ]);
+  });
+
+  it("refuses an exit with a zero relayer tip before any call (it may never be relayed)", async () => {
+    const port = new DryRunAztec(OXDAI_MAINNET_REV2);
+    const ctx: Ctx = { corridor: OXDAI_MAINNET_REV2, port, log: () => {} };
+    const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
+    const request = {
+      l1Recipient: `0x${"22".repeat(20)}`,
+      amount: 10n ** 18n,
+      proverTip: 0n,
+      relayerTip: 0n,
+      broadcasterArtifact: { name: "Broadcaster" } as ContractArtifact,
+    };
+    // The artifacts are never read on this path: the refusal comes before the port.
+    const artifact = { name: "OxideToken" } as ContractArtifact;
+    await expect(exit(ctx, account, artifact, request)).rejects.toThrow(
+      /relayer-tip must be positive/,
+    );
+    expect(port.calls).toEqual([]);
+    const paid = await exit(ctx, account, artifact, { ...request, relayerTip: 1n });
+    expect(paid.withdrawals).toEqual([]);
+    expect(port.calls.at(-1)).toMatch(/relayerTip 1/);
   });
 });

@@ -189,6 +189,8 @@ describe("enrollment request", () => {
         binding,
         sourceSignature: signature,
         backupCommitment: COMMITMENT,
+        tokenRegistrationAck: null,
+        submitTokenRegistrationAck: false,
         sign: signRecipientDigest,
       }),
     ).rejects.toThrow(/not the binding's source wallet/);

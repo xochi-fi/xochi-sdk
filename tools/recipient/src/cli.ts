@@ -3,8 +3,9 @@
 //
 // It contacts only the Aztec node you name (--node-url), the Xochi enrollment API (--api-url,
 // enroll commands only), the zk.money enclave and an L1 JSON-RPC you name (--l1-rpc; spend and
-// exit only). No telemetry. Secrets stay in this machine's data directory, sealed with your
-// passphrase, and in the backups you write.
+// exit only). No telemetry. The account's secret key and signing key are stored only sealed
+// with your passphrase (keystore, backups); the PXE store under the data directory holds the
+// account's viewing, tagging and nullifier hiding keys in plaintext (README "Disclosures").
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -115,6 +116,8 @@ const StateSchema = z
     bindingId: z.string().optional(),
     /** The TokenRegistrationAck signature the last backup carries, if any. */
     backupTokenAckSignature: z.string().nullable().optional(),
+    /** Unix seconds of this data directory's last successful token registration. */
+    tokenRegisteredAt: z.number().int().positive().optional(),
   })
   .strict();
 type State = z.infer<typeof StateSchema>;
@@ -302,6 +305,16 @@ async function withAccount<T>(
   }
 }
 
+/** Registers the token and records when in the state file (a live run only). */
+async function registerAndRecord(
+  ctx: Ctx,
+  store: Store,
+  artifact: ContractArtifact,
+): Promise<void> {
+  const at = await registerToken(ctx, artifact);
+  if (ctx.port.mode === "live") store.writeState({ ...store.readState(), tokenRegisteredAt: at });
+}
+
 async function tokenArtifact(values: Values, corridor: Corridor): Promise<ContractArtifact> {
   return loadTokenArtifact(required(values, "oxide-token-artifact"), corridor);
 }
@@ -340,12 +353,13 @@ async function plan(values: Values): Promise<void> {
   flush("senders");
   const artifactPath = values["oxide-token-artifact"];
   let artifact: ContractArtifact | null = null;
+  let tokenRegisteredAt: number | null = null;
   if (artifactPath) {
     artifact = await tokenArtifact(values, corridor);
     log(
       `token: artifact class ${corridor.token.classId} and artifactHash ${corridor.token.artifactHash} verified offline`,
     );
-    await registerToken(ctx, artifact);
+    tokenRegisteredAt = await registerToken(ctx, artifact);
     flush("token");
     await showBalance(ctx, artifact, account);
     flush("balance");
@@ -354,7 +368,7 @@ async function plan(values: Values): Promise<void> {
   }
   const sourceKey = keccak256(toHex("xochi-recipient TEST ONLY dry-run source wallet"));
   const source = privateKeyToAccount(sourceKey);
-  const pending = await enrollStart(ctx, xochi, account, source.address);
+  const pending = await enrollStart(ctx, xochi, account, source.address, tokenRegisteredAt);
   const sealed = sealBackup(
     backupContents(
       corridor,
@@ -367,7 +381,7 @@ async function plan(values: Values): Promise<void> {
     "dry-run passphrase TEST ONLY",
   );
   log(
-    `backup: ${sealed.bytes.length} sealed bytes carrying the TokenRegistrationAck, backupCommitment ${sealed.commitment}`,
+    `backup: ${sealed.bytes.length} sealed bytes${pending.tokenRegistrationAck ? " carrying the TokenRegistrationAck" : ""}, backupCommitment ${sealed.commitment}`,
   );
   const sourceSignature = await source.signTypedData(pending.typedData);
   const submitTokenAck = values["submit-token-registration-ack"] === true;
@@ -394,7 +408,7 @@ async function plan(values: Values): Promise<void> {
         l1Recipient: source.address,
         amount: 10n ** 18n,
         proverTip: 0n,
-        relayerTip: 0n,
+        relayerTip: 1n,
         broadcasterArtifact: await loadBroadcasterArtifact(broadcasterPath),
       });
       flush("exit");
@@ -438,12 +452,12 @@ export async function run(argv: string[]): Promise<void> {
           : null;
         await setupAccount(ctx, account, claim);
         await registerSenders(ctx);
-        await registerToken(ctx, await tokenArtifact(values, ctx.corridor));
+        await registerAndRecord(ctx, store, await tokenArtifact(values, ctx.corridor));
       });
     case "balance":
       return withAccount(values, store, async (ctx, account) => {
         const artifact = await tokenArtifact(values, ctx.corridor);
-        await registerToken(ctx, artifact);
+        await registerAndRecord(ctx, store, artifact);
         await showBalance(ctx, artifact, account);
       });
     case "backup": {
@@ -489,7 +503,13 @@ export async function run(argv: string[]): Promise<void> {
       const ctx = { corridor: state.corridor, log };
       const xochi = api(values);
       if (sub === "start") {
-        const pending = await enrollStart(ctx, xochi, account, required(values, "source-wallet"));
+        const pending = await enrollStart(
+          ctx,
+          xochi,
+          account,
+          required(values, "source-wallet"),
+          state.tokenRegisteredAt ?? null,
+        );
         const file = join(store.dir, "binding-typed-data.json");
         writeFileSync(file, typedDataJson(pending.typedData) + "\n");
         store.writeState({
@@ -507,7 +527,11 @@ export async function run(argv: string[]): Promise<void> {
         const saved = state.pending ?? fail("no pending enrollment: run enroll start");
         const commitment =
           state.backupCommitment ?? fail("write the backup first: its commitment is acknowledged");
+        const submitTokenAck = values["submit-token-registration-ack"] === true;
+        // Only the G2 set submits the TokenRegistrationAck; only then must the backup the
+        // BackupPersistenceAck names carry it (the challenge window is 5 minutes).
         if (
+          submitTokenAck &&
           saved.tokenRegistrationAck &&
           state.backupTokenAckSignature !== saved.tokenRegistrationAck.signature
         ) {
@@ -526,7 +550,7 @@ export async function run(argv: string[]): Promise<void> {
           pending,
           required(values, "source-signature"),
           commitment,
-          values["submit-token-registration-ack"] === true,
+          submitTokenAck,
         );
         const { pending: _done, ...rest } = state;
         store.writeState({ ...rest, bindingId: projection.binding_id });
@@ -562,14 +586,14 @@ export async function run(argv: string[]): Promise<void> {
         if (!state.initialized) fail("the backed-up account is not deployed on this network");
         await registerSenders(ctx);
         const artifact = await tokenArtifact(values, ctx.corridor);
-        await registerToken(ctx, artifact);
+        await registerAndRecord(ctx, store, artifact);
         await showBalance(ctx, artifact, restored);
       });
     }
     case "spend":
       return withAccount(values, store, async (ctx, account) => {
         const artifact = await tokenArtifact(values, ctx.corridor);
-        await registerToken(ctx, artifact);
+        await registerAndRecord(ctx, store, artifact);
         await spend(
           ctx,
           account,
@@ -581,8 +605,8 @@ export async function run(argv: string[]): Promise<void> {
     case "exit":
       return withAccount(values, store, async (ctx, account) => {
         const artifact = await tokenArtifact(values, ctx.corridor);
-        await registerToken(ctx, artifact);
-        await exit(ctx, account, artifact, {
+        await registerAndRecord(ctx, store, artifact);
+        const result = await exit(ctx, account, artifact, {
           l1Recipient: required(values, "l1-recipient"),
           amount: baseUnits("amount", required(values, "amount")),
           proverTip: baseUnits("prover-tip", required(values, "prover-tip")),
@@ -591,6 +615,14 @@ export async function run(argv: string[]): Promise<void> {
             required(values, "broadcaster-artifact"),
           ),
         });
+        if (ctx.port.mode === "live") {
+          // The record anyone needs to finalize the withdrawal on L1; written per exit tx.
+          const dir = join(store.dir, "exits");
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+          const file = join(dir, `${result.txHash}.json`);
+          writeFileSync(file, JSON.stringify(result, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+          log(`exit: record written to ${file}`);
+        }
       });
     default:
       fail(`unknown command ${command}\n\n${USAGE}`);
