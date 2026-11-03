@@ -4,6 +4,15 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-11-03
+
+Additive: existing disclosure fields and exports are unchanged.
+
+### Added
+
+- **`SettlementDisclosure.label`**: the canonical `Public`, `Stealth` or `Shielded` settlement label, so hosts do not maintain presentation copies that can drift from the SDK's semantics.
+- **`destinationDisclosure(destination)`**: derives that disclosure from an `IntentDestination`. A non-shielded Aztec destination is Stealth; only an Aztec destination with `shielded: true` is Shielded.
+
 ## [0.1.9] - 2026-11-02
 
 Additive: no existing export changes.
