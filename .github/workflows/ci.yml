@@ -262,6 +262,34 @@ jobs:
           npm ci
           npm run crosscheck
 
+  recipient-tool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/recipient/package-lock.json
+
+      - name: Build @xochi/signer (the tool depends on it by path)
+        run: |
+          npm ci
+          npm run build -w @xochi/signer
+
+      - name: OXDAI recipient tool (typecheck, format, tests, dry run)
+        working-directory: tools/recipient
+        run: |
+          npm ci
+          npm run typecheck
+          npm run format:check
+          npm test
+          npm run build
+          node dist/cli.js plan
+
   python-conformance:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,43 @@
+{
+  "name": "@xochi/recipient",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Xochi OXDAI recipient tool: a stock SchnorrAccount 6.0.0 on the recipient's own Aztec v6 mainnet PXE, made a qualifying OXDAI recipient (xochi#759). Not a workspace, never published until review.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "xochi-recipient": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
+    "dry-run": "node dist/cli.js plan"
+  },
+  "dependencies": {
+    "@aztec-labs/accounts": "6.0.0",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/blob-lib": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/protocol-contracts": "6.0.0",
+    "@aztec-labs/pxe": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
+    "@aztec-labs/wallets": "6.0.0",
+    "@hpke/core": "1.9.0",
+    "@xochi/signer": "file:../../packages/signer",
+    "viem": "2.57.1",
+    "zod4": "npm:zod@4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "prettier": "~3.8.3",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

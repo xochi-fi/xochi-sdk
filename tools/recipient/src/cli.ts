@@ -1,0 +1,553 @@
+#!/usr/bin/env node
+// xochi-recipient: the Xochi OXDAI recipient tool (xochi#759). See README.md.
+//
+// It contacts only the Aztec node you name (--node-url), the Xochi enrollment API (--api-url,
+// enroll commands only), the zk.money enclave and an L1 JSON-RPC you name (--l1-rpc; spend and
+// exit only). No telemetry. Secrets stay in this machine's data directory, sealed with your
+// passphrase, and in the backups you write.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { Writable } from "node:stream";
+import { parseArgs } from "node:util";
+import { loadContractArtifact, type ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { keccak256, toHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { z } from "zod4";
+
+import {
+  deriveRecipientAccount,
+  newAccountSecrets,
+  type AccountSecrets,
+  type RecipientAccount,
+} from "./account.js";
+import { DryRunEnrollmentApi, HttpEnrollmentApi, type EnrollmentApi } from "./api.js";
+import { backupContents, openBackup, sealBackup } from "./backup.js";
+import { DryRunAztec, LiveAztec, type AztecPort } from "./chain.js";
+import {
+  checkNetwork,
+  enrollStart,
+  enrollStatus,
+  enrollSubmit,
+  exit,
+  registerSenders,
+  registerToken,
+  setupAccount,
+  showBalance,
+  spend,
+  type Ctx,
+  type PendingEnrollment,
+} from "./commands.js";
+import { CorridorSchema, OXDAI_MAINNET_REV2, parseCorridor, type Corridor } from "./corridor.js";
+import { bindingTypedData, typedDataJson } from "./enrollment.js";
+import { loadTokenArtifact } from "./oxide-token.js";
+import { open, seal } from "./sealed.js";
+
+const USAGE = `xochi-recipient <command> [options]
+
+Commands (in round-trip order):
+  init                     create the account secrets on this machine (sealed keystore)
+  setup                    check the network; publish + initialize the account; register the
+                           corridor senders and the OxideToken (+ store_immutables)
+  balance                  sync and show the OXDAI balance and received payouts' order fingerprints
+  backup --out A --out B   write two copies of the recipient-encrypted backup
+  enroll start             request a challenge; write the binding the source wallet signs
+  enroll submit            sign the authorization and acknowledgements; submit the enrollment
+  enroll status            show the binding state (pending / ready / revoked)
+  restore --backup FILE    restore into a fresh data directory and find the balance
+  spend --to ADDR --amount BASEUNITS
+  exit --l1-recipient ADDR --amount BASEUNITS --prover-tip N --relayer-tip N --broadcaster-artifact FILE
+  plan                     dry run of the whole sequence with a throwaway account: no network
+
+Options:
+  --data-dir DIR               default ~/.xochi-recipient
+  --node-url URL               Aztec v6 mainnet node of your choice (required live)
+  --corridor FILE              corridor record (default: built-in OXDAI mainnet rev 2)
+  --oxide-token-artifact FILE  OxideToken artifact (class and artifact hash are checked)
+  --fee-juice-claim FILE       Xochi's sponsored Fee Juice claim for the deployment (setup)
+  --api-url URL                Xochi API (enroll); bearer from XOCHI_JWT (the source wallet's session)
+  --source-wallet ADDR         enroll start
+  --source-signature SIG       enroll submit
+  --binding-id ID              enroll status
+  --l1-rpc URL                 L1 JSON-RPC of your choice (spend, exit)
+  --dry-run                    record every node, PXE and API call; perform none
+Passphrase: XOCHI_RECIPIENT_PASSPHRASE, else prompted.`;
+
+const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
+const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/);
+const BindingSchema = z
+  .object({
+    sourceWallet: z.string().regex(/^0x[0-9a-f]{40}$/),
+    sourceChainId: decimal,
+    aztecRecipient: hex32,
+    aztecToken: hex32,
+    descriptorDigest: hex32,
+    corridorId: hex32,
+    corridorRevision: decimal,
+    manifestDigest: hex32,
+    nonce: hex32,
+    challengeExpiry: decimal,
+    purpose: z.string(),
+  })
+  .strict();
+const StateSchema = z
+  .object({
+    corridor: CorridorSchema,
+    address: hex32,
+    backupCommitment: hex32.optional(),
+    pending: z
+      .object({
+        challenge: z
+          .object({ challenge_id: z.string(), nonce: z.string(), expires_at: z.number().int() })
+          .strict(),
+        binding: BindingSchema,
+      })
+      .strict()
+      .optional(),
+    bindingId: z.string().optional(),
+  })
+  .strict();
+type State = z.infer<typeof StateSchema>;
+const SecretsSchema = z.object({ secret: hex32, salt: hex32 }).strict();
+const FeeJuiceClaimSchema = z
+  .object({
+    claimAmount: z.string().regex(/^[1-9][0-9]*$/),
+    claimSecret: hex32,
+    messageLeafIndex: decimal,
+  })
+  .strict();
+
+function fail(message: string): never {
+  throw new Error(message);
+}
+
+/** One line from the terminal, not echoed. */
+async function askHidden(prompt: string): Promise<string> {
+  process.stdout.write(prompt);
+  const muted = new Writable({ write: (_chunk, _encoding, done) => done() });
+  const rl = createInterface({ input: process.stdin, output: muted, terminal: true });
+  const { promise, resolve } = Promise.withResolvers<string>();
+  rl.question("", resolve);
+  const answer = await promise;
+  rl.close();
+  process.stdout.write("\n");
+  return answer;
+}
+
+async function passphrase(confirm: boolean): Promise<string> {
+  const fromEnv = process.env["XOCHI_RECIPIENT_PASSPHRASE"];
+  if (fromEnv) return fromEnv;
+  if (!process.stdin.isTTY) fail("set XOCHI_RECIPIENT_PASSPHRASE or run on a terminal");
+  const first = await askHidden("passphrase: ");
+  if (confirm && (await askHidden("again: ")) !== first) fail("passphrases differ");
+  return first;
+}
+
+interface Values {
+  "data-dir"?: string;
+  "node-url"?: string;
+  corridor?: string;
+  "oxide-token-artifact"?: string;
+  "fee-juice-claim"?: string;
+  "api-url"?: string;
+  "source-wallet"?: string;
+  "source-signature"?: string;
+  "binding-id"?: string;
+  "l1-rpc"?: string;
+  backup?: string;
+  out?: string[];
+  checkpoint?: string;
+  to?: string;
+  amount?: string;
+  "l1-recipient"?: string;
+  "prover-tip"?: string;
+  "relayer-tip"?: string;
+  "broadcaster-artifact"?: string;
+  "dry-run"?: boolean;
+  help?: boolean;
+}
+
+function parse(argv: string[]): { values: Values; positionals: string[] } {
+  const string = { type: "string" } as const;
+  return parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      "data-dir": string,
+      "node-url": string,
+      corridor: string,
+      "oxide-token-artifact": string,
+      "fee-juice-claim": string,
+      "api-url": string,
+      "source-wallet": string,
+      "source-signature": string,
+      "binding-id": string,
+      "l1-rpc": string,
+      backup: string,
+      out: { type: "string", multiple: true },
+      checkpoint: string,
+      to: string,
+      amount: string,
+      "l1-recipient": string,
+      "prover-tip": string,
+      "relayer-tip": string,
+      "broadcaster-artifact": string,
+      "dry-run": { type: "boolean" },
+      help: { type: "boolean" },
+    },
+  });
+}
+
+const readCorridor = (path: string | undefined): Corridor =>
+  path ? parseCorridor(JSON.parse(readFileSync(path, "utf8"))) : OXDAI_MAINNET_REV2;
+
+const required = (
+  values: Values,
+  name: Exclude<keyof Values, "out" | "dry-run" | "help">,
+): string => {
+  const v = values[name];
+  if (typeof v !== "string" || v.length === 0) fail(`--${String(name)} is required`);
+  return v;
+};
+const baseUnits = (name: string, v: string): bigint => {
+  if (!/^(0|[1-9][0-9]*)$/.test(v)) fail(`--${name} must be a decimal number of base units`);
+  return BigInt(v);
+};
+const readArtifact = (path: string): ContractArtifact =>
+  loadContractArtifact(JSON.parse(readFileSync(path, "utf8")));
+
+class Store {
+  constructor(readonly dir: string) {}
+  get keystorePath() {
+    return join(this.dir, "keystore.sealed");
+  }
+  get statePath() {
+    return join(this.dir, "state.json");
+  }
+  get pxeDir() {
+    return join(this.dir, "pxe");
+  }
+  readState(): State {
+    if (!existsSync(this.statePath)) fail(`no account in ${this.dir}: run init or restore first`);
+    return StateSchema.parse(JSON.parse(readFileSync(this.statePath, "utf8")));
+  }
+  writeState(state: State): void {
+    writeFileSync(this.statePath, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+  }
+  async secrets(): Promise<AccountSecrets> {
+    const opened = open("keystore", readFileSync(this.keystorePath), await passphrase(false));
+    return SecretsSchema.parse(JSON.parse(opened.toString("utf8")));
+  }
+  writeKeystore(secrets: AccountSecrets, pass: string): void {
+    if (existsSync(this.keystorePath))
+      fail(`${this.keystorePath} exists: refusing to overwrite an account`);
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    writeFileSync(this.keystorePath, seal("keystore", Buffer.from(JSON.stringify(secrets)), pass), {
+      mode: 0o600,
+    });
+  }
+}
+
+async function port(values: Values, store: Store, corridor: Corridor): Promise<AztecPort> {
+  if (values["dry-run"]) return new DryRunAztec(corridor);
+  mkdirSync(store.pxeDir, { recursive: true, mode: 0o700 });
+  return LiveAztec.connect({
+    nodeUrl: required(values, "node-url"),
+    dataDirectory: store.pxeDir,
+    corridor,
+    l1RpcUrl: values["l1-rpc"] ?? null,
+  });
+}
+
+function api(values: Values): EnrollmentApi {
+  if (values["dry-run"]) return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000));
+  const jwt =
+    process.env["XOCHI_JWT"] ?? fail("XOCHI_JWT (the source wallet's SIWE session) is required");
+  return new HttpEnrollmentApi(required(values, "api-url"), jwt);
+}
+
+const log = (line: string) => process.stdout.write(`${line}\n`);
+
+async function withAccount<T>(
+  values: Values,
+  store: Store,
+  run: (ctx: Ctx, account: RecipientAccount, state: State) => Promise<T>,
+): Promise<T> {
+  const state = store.readState();
+  const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
+  if (account.descriptor.aztecAddress !== state.address) {
+    fail(`keystore derives ${account.descriptor.aztecAddress}, state names ${state.address}`);
+  }
+  const p = await port(values, store, state.corridor);
+  try {
+    const ctx: Ctx = { corridor: state.corridor, port: p, log };
+    await checkNetwork(ctx);
+    await p.addAccount(account);
+    return await run(ctx, account, state);
+  } finally {
+    await p.close();
+    if (p instanceof DryRunAztec) for (const call of p.calls) log(`  [dry-run] ${call}`);
+  }
+}
+
+async function tokenArtifact(values: Values, corridor: Corridor): Promise<ContractArtifact> {
+  return loadTokenArtifact(required(values, "oxide-token-artifact"), corridor);
+}
+
+/** The whole sequence on the dry-run ports with a throwaway account. */
+async function plan(values: Values): Promise<void> {
+  const corridor = readCorridor(values.corridor);
+  const now = Math.floor(Date.now() / 1000);
+  const aztec = new DryRunAztec(corridor);
+  const xochi = new DryRunEnrollmentApi(now);
+  const ctx: Ctx = { corridor, port: aztec, log };
+  const flush = (label: string) => {
+    log(`== ${label}`);
+    for (const call of aztec.calls.splice(0)) log(`  [aztec] ${call}`);
+    for (const call of xochi.calls.splice(0)) log(`  [xochi] ${call}`);
+  };
+  log(
+    `corridor ${corridor.name}: manifest ${corridor.manifestDigest} (PROPOSED until xochi#778 lands)`,
+  );
+
+  const secrets = newAccountSecrets();
+  const account = await deriveRecipientAccount(secrets, corridor);
+  log(
+    `init: throwaway account ${account.address.toString()} (descriptor verified by @xochi/signer)`,
+  );
+
+  await checkNetwork(ctx);
+  flush("network");
+  await setupAccount(ctx, account, {
+    claimAmount: "1000000000000000000",
+    claimSecret: toHex(1n, { size: 32 }),
+    messageLeafIndex: "0",
+  });
+  flush("account");
+  await registerSenders(ctx);
+  flush("senders");
+  const artifactPath = values["oxide-token-artifact"];
+  let artifact: ContractArtifact | null = null;
+  if (artifactPath) {
+    artifact = await tokenArtifact(values, corridor);
+    log(
+      `token: artifact class ${corridor.token.classId} and artifactHash ${corridor.token.artifactHash} verified offline`,
+    );
+    await registerToken(ctx, artifact);
+    flush("token");
+    await showBalance(ctx, artifact, account);
+    flush("balance");
+  } else {
+    log("token, balance, spend, exit: skipped (no --oxide-token-artifact)");
+  }
+  const sealed = sealBackup(
+    backupContents(corridor, secrets, account, null, now),
+    "dry-run passphrase TEST ONLY",
+  );
+  log(`backup: ${sealed.bytes.length} sealed bytes, backupCommitment ${sealed.commitment}`);
+
+  const sourceKey = keccak256(toHex("xochi-recipient TEST ONLY dry-run source wallet"));
+  const source = privateKeyToAccount(sourceKey);
+  const pending = await enrollStart(ctx, xochi, account, source.address);
+  const sourceSignature = await source.signTypedData(pending.typedData);
+  await enrollSubmit(ctx, xochi, account, pending, sourceSignature, sealed.commitment);
+  await enrollStatus(ctx, xochi, "dry-run-binding");
+  flush("enrollment (source wallet: a TEST ONLY key; every signature verified locally)");
+
+  if (artifact) {
+    await spend(ctx, account, artifact, corridor.registeredSenders[0]!, 1n);
+    flush("spend");
+    const broadcasterPath = values["broadcaster-artifact"];
+    if (broadcasterPath) {
+      await exit(ctx, account, artifact, {
+        l1Recipient: source.address,
+        amount: 10n ** 18n,
+        proverTip: 0n,
+        relayerTip: 0n,
+        broadcasterArtifact: readArtifact(broadcasterPath),
+      });
+      flush("exit");
+    } else {
+      log("exit: skipped (no --broadcaster-artifact)");
+    }
+  }
+  await aztec.close();
+  flush("close");
+}
+
+export async function run(argv: string[]): Promise<void> {
+  const { values, positionals } = parse(argv);
+  const [command, sub] = positionals;
+  if (values.help || !command) {
+    log(USAGE);
+    return;
+  }
+  const store = new Store(
+    resolve(values["data-dir"] ?? join(process.env["HOME"] ?? ".", ".xochi-recipient")),
+  );
+  switch (command) {
+    case "plan":
+      return plan(values);
+    case "init": {
+      const corridor = readCorridor(values.corridor);
+      const secrets = newAccountSecrets();
+      const account = await deriveRecipientAccount(secrets, corridor);
+      store.writeKeystore(secrets, await passphrase(true));
+      store.writeState({ corridor, address: account.descriptor.aztecAddress });
+      log(
+        `init: account ${account.descriptor.aztecAddress} on ${corridor.name}; next: backup, then setup`,
+      );
+      return;
+    }
+    case "setup":
+      return withAccount(values, store, async (ctx, account) => {
+        const claimPath = values["fee-juice-claim"];
+        const claim = claimPath
+          ? FeeJuiceClaimSchema.parse(JSON.parse(readFileSync(claimPath, "utf8")))
+          : null;
+        await setupAccount(ctx, account, claim);
+        await registerSenders(ctx);
+        await registerToken(ctx, await tokenArtifact(values, ctx.corridor));
+      });
+    case "balance":
+      return withAccount(values, store, async (ctx, account) => {
+        const artifact = await tokenArtifact(values, ctx.corridor);
+        await registerToken(ctx, artifact);
+        await showBalance(ctx, artifact, account);
+      });
+    case "backup": {
+      const outs = values.out ?? [];
+      if (outs.length !== 2 || resolve(outs[0]!) === resolve(outs[1]!)) {
+        fail("backup needs exactly two different --out paths (two independently retained copies)");
+      }
+      const state = store.readState();
+      const secrets = await store.secrets();
+      const account = await deriveRecipientAccount(secrets, state.corridor);
+      const checkpoint = values.checkpoint
+        ? Number(baseUnits("checkpoint", values.checkpoint))
+        : null;
+      const sealed = sealBackup(
+        backupContents(state.corridor, secrets, account, checkpoint, Math.floor(Date.now() / 1000)),
+        await passphrase(true),
+      );
+      for (const out of outs) {
+        writeFileSync(out, sealed.bytes, { mode: 0o600, flag: "wx" });
+        if (keccak256(readFileSync(out)) !== sealed.commitment) fail(`${out} does not read back`);
+      }
+      store.writeState({ ...state, backupCommitment: sealed.commitment });
+      log(
+        `backup: wrote ${outs.join(" and ")}; backupCommitment ${sealed.commitment}. Keep both copies apart.`,
+      );
+      return;
+    }
+    case "enroll": {
+      const state = store.readState();
+      const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
+      const ctx = { corridor: state.corridor, log };
+      const xochi = api(values);
+      if (sub === "start") {
+        const pending = await enrollStart(ctx, xochi, account, required(values, "source-wallet"));
+        const file = join(store.dir, "binding-typed-data.json");
+        writeFileSync(file, typedDataJson(pending.typedData) + "\n");
+        store.writeState({
+          ...state,
+          pending: { challenge: pending.challenge, binding: pending.binding },
+        });
+        log(
+          `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
+        );
+      } else if (sub === "submit") {
+        const saved = state.pending ?? fail("no pending enrollment: run enroll start");
+        const commitment =
+          state.backupCommitment ?? fail("write the backup first: its commitment is acknowledged");
+        const pending: PendingEnrollment = {
+          ...saved,
+          typedData: bindingTypedData(state.corridor, saved.binding).typedData,
+        };
+        const projection = await enrollSubmit(
+          ctx,
+          xochi,
+          account,
+          pending,
+          required(values, "source-signature"),
+          commitment,
+        );
+        const { pending: _done, ...rest } = state;
+        store.writeState({ ...rest, bindingId: projection.binding_id });
+      } else if (sub === "status") {
+        await enrollStatus(
+          ctx,
+          xochi,
+          values["binding-id"] ?? state.bindingId ?? fail("--binding-id is required"),
+        );
+      } else {
+        fail("enroll start | submit | status");
+      }
+      if (xochi instanceof DryRunEnrollmentApi)
+        for (const call of xochi.calls) log(`  [dry-run] ${call}`);
+      return;
+    }
+    case "restore": {
+      if (existsSync(store.keystorePath))
+        fail(`${store.dir} already holds an account: restore into a fresh --data-dir`);
+      const pass = await passphrase(false);
+      const contents = openBackup(readFileSync(required(values, "backup")), pass);
+      const secrets = { secret: contents.account.secret, salt: contents.account.salt };
+      const account = await deriveRecipientAccount(secrets, contents.corridor);
+      if (account.descriptor.aztecAddress !== contents.account.address) {
+        fail(
+          `backup secrets derive ${account.descriptor.aztecAddress}, not ${contents.account.address}`,
+        );
+      }
+      store.writeKeystore(secrets, pass);
+      store.writeState({ corridor: contents.corridor, address: contents.account.address });
+      return withAccount(values, store, async (ctx, restored) => {
+        const state = await ctx.port.accountState(restored.address);
+        if (!state.initialized) fail("the backed-up account is not deployed on this network");
+        await registerSenders(ctx);
+        const artifact = await tokenArtifact(values, ctx.corridor);
+        await registerToken(ctx, artifact);
+        await showBalance(ctx, artifact, restored);
+      });
+    }
+    case "spend":
+      return withAccount(values, store, async (ctx, account) => {
+        const artifact = await tokenArtifact(values, ctx.corridor);
+        await registerToken(ctx, artifact);
+        await spend(
+          ctx,
+          account,
+          artifact,
+          required(values, "to"),
+          baseUnits("amount", required(values, "amount")),
+        );
+      });
+    case "exit":
+      return withAccount(values, store, async (ctx, account) => {
+        const artifact = await tokenArtifact(values, ctx.corridor);
+        await registerToken(ctx, artifact);
+        await exit(ctx, account, artifact, {
+          l1Recipient: required(values, "l1-recipient"),
+          amount: baseUnits("amount", required(values, "amount")),
+          proverTip: baseUnits("prover-tip", required(values, "prover-tip")),
+          relayerTip: baseUnits("relayer-tip", required(values, "relayer-tip")),
+          broadcasterArtifact: readArtifact(required(values, "broadcaster-artifact")),
+        });
+      });
+    default:
+      fail(`unknown command ${command}\n\n${USAGE}`);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("/cli.js")) {
+  run(process.argv.slice(2)).then(
+    () => process.exit(0),
+    (error: unknown) => {
+      process.stderr.write(
+        `xochi-recipient: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    },
+  );
+}
