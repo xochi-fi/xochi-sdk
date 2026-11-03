@@ -306,5 +306,44 @@ for (const profile of DS.profiles.filter((p: { id: string }) => p.id === PROFILE
   }
 }
 
+// OxideToken immutables (xochi#753, 6.0.0 only: the 5.2.0 instance has no immutablesHash).
+// The hash goes through the SDK's poseidon2HashWithSeparator; the address through
+// computeContractAddressFromInstance for the universal, initializerless, default-keys
+// instance, held to the DEPLOYED OXDAI address the vector records.
+if (PROFILE === "aztec-6.0.0") {
+  const sdk = loaded;
+  // Dynamic like every SDK module here: one SDK line per process (see load52 / load60).
+  const { poseidon2HashWithSeparator } = await import("@aztec-labs/foundation/crypto/poseidon");
+  const OX = file.oxideToken;
+  for (const v of OX.vectors) {
+    const hash = await poseidon2HashWithSeparator(
+      v.serialized.map((s: string) => fr(sdk, s)),
+      Number(BigInt(OX.separator)),
+    );
+    eq(`oxide immutablesHash "${v.name}"`, hash.toString(), v.immutablesHash);
+    if (v.address === null) continue;
+    const instance = {
+      version: 1,
+      salt: fr(sdk, v.instance.salt),
+      deployer: sdk.addr.AztecAddress.fromStringUnsafe(v.instance.deployer),
+      originalContractClassId: fr(sdk, v.classId),
+      currentContractClassId: fr(sdk, v.classId),
+      initializationHash: fr(sdk, v.instance.initializationHash),
+      publicKeys: sdk.keys.PublicKeys.default(),
+      immutablesHash: hash,
+    };
+    // `Sdk` is typed from the 5.2.0 line, whose instance has no immutablesHash; the 6.0.0
+    // computeContractAddressFromInstance reads it.
+    const forSdk = instance as unknown as Parameters<
+      typeof sdk.contract.computeContractAddressFromInstance
+    >[0];
+    eq(
+      `oxide deployed address "${v.name}"`,
+      (await sdk.contract.computeContractAddressFromInstance(forSdk)).toString(),
+      v.address,
+    );
+  }
+}
+
 console.log(`aztec-crosscheck: ${passed} PASS / ${failed} FAIL`);
 process.exit(failed === 0 && passed > 0 ? 0 : 1);

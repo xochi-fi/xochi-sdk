@@ -12,7 +12,8 @@
     "constants",
     "descriptor",
     "recipientMessage",
-    "acknowledgements"
+    "acknowledgements",
+    "oxideToken"
   ],
   "additionalProperties": false,
   "properties": {
@@ -539,7 +540,11 @@
                       "amount_zero",
                       "amount_over_max",
                       "senders_not_canonical",
-                      "senders_empty"
+                      "senders_empty",
+                      "string_too_long",
+                      "decimals_out_of_range",
+                      "max_note_amount_out_of_range",
+                      "evm_address_zero"
                     ]
                   },
                   "field": {
@@ -1316,7 +1321,242 @@
                       "amount_zero",
                       "amount_over_max",
                       "senders_not_canonical",
-                      "senders_empty"
+                      "senders_empty",
+                      "string_too_long",
+                      "decimals_out_of_range",
+                      "max_note_amount_out_of_range",
+                      "evm_address_zero"
+                    ]
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "oxideToken": {
+      "type": "object",
+      "required": [
+        "proposed",
+        "source",
+        "separator",
+        "rule",
+        "oxideTokenClassIds",
+        "requiredEnrollmentAcks",
+        "vectors",
+        "refusals"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposed": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "separator": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "rule": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "oxideTokenClassIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          }
+        },
+        "requiredEnrollmentAcks": {
+          "type": "object",
+          "required": [
+            "oxideToken",
+            "otherwise"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "oxideToken": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "otherwise": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "vectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "immutables",
+              "serialized",
+              "immutablesHash",
+              "classId",
+              "instance",
+              "address"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "immutables": {
+                "type": "object",
+                "required": [
+                  "portal",
+                  "teeRegistry",
+                  "name",
+                  "symbol",
+                  "decimals",
+                  "maxNoteAmount"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "portal": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "teeRegistry": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{40}$"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "symbol": {
+                    "type": "string"
+                  },
+                  "decimals": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "maxNoteAmount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                }
+              },
+              "serialized": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{64}$"
+                }
+              },
+              "immutablesHash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "classId": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "instance": {
+                "type": "object",
+                "required": [
+                  "salt",
+                  "deployer",
+                  "initializationHash"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "salt": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "deployer": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "initializationHash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  }
+                }
+              },
+              "address": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "refusals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "immutables",
+              "error"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "immutables": {
+                "type": "object"
+              },
+              "error": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "field"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "not_bytes32",
+                      "aztec_zero",
+                      "aztec_out_of_field",
+                      "class_not_pinned",
+                      "signing_key_invalid",
+                      "ivpk_invalid",
+                      "address_mismatch",
+                      "purpose_mismatch",
+                      "uint_not_canonical",
+                      "uint_out_of_range",
+                      "amount_not_canonical",
+                      "amount_zero",
+                      "amount_over_max",
+                      "senders_not_canonical",
+                      "senders_empty",
+                      "string_too_long",
+                      "decimals_out_of_range",
+                      "max_note_amount_out_of_range",
+                      "evm_address_zero"
                     ]
                   },
                   "field": {
