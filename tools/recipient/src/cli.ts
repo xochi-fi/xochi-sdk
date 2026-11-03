@@ -57,6 +57,7 @@ import { assertPinnedNetwork } from "./network.js";
 import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
 import { loadTokenArtifact } from "./oxide-token.js";
 import { OperationJournal } from "./operation-journal.js";
+import { durablyIncluded } from "./reconciliation.js";
 import { open, seal } from "./sealed.js";
 
 const USAGE = `xochi-recipient <command> [options]
@@ -647,7 +648,8 @@ export async function run(argv: string[]): Promise<void> {
           state.corridor,
         );
         const receipt = await node.getTxReceipt(TxHash.fromString(txHash));
-        if (!receipt.isMined()) fail(`operation receipt is ${receipt.status}; it remains blocked`);
+        if (!durablyIncluded(receipt.status))
+          fail(`operation receipt is ${receipt.status}; it remains blocked until checkpointed`);
         journal.update(operation.id, {
           status: "complete",
           receiptStatus: String(receipt.status),
