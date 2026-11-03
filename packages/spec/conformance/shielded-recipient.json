@@ -1810,7 +1810,7 @@
       },
       {
         "primaryType": "TokenRegistrationAck",
-        "scope": "OxideToken corridors (PROPOSED, xochi#753)",
+        "scope": "OxideToken corridors (xochi#753)",
         "purpose": "xochi.shielded.token-registration-ack.v1",
         "typeString": "TokenRegistrationAck(bytes32 bindingDigest,bytes32 aztecRecipient,bytes32 aztecToken,bytes32 aztecTokenClassId,bytes32 tokenImmutablesHash,bytes32 nonce,uint64 challengeExpiry,string purpose)",
         "typehash": "0x1e76fb8fb0756c7cda734d03645b52bfda89e258c75270a0042cb8bc998ec45f"
@@ -1823,7 +1823,7 @@
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
-      "TokenRegistrationAck (PROPOSED, xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds"
+      "TokenRegistrationAck (xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds"
     ],
     "vectors": [
       {
@@ -3902,7 +3902,6 @@
     ]
   },
   "oxideToken": {
-    "proposed": "PROPOSED (xochi#753, OX-12): the token-registration acknowledgement's subject. Required only for corridors whose token class is an OxideToken class.",
     "source": "zkmoney-public 8fd19841: oxide_token_contract/src/immutables.nr:36 (hash), oxide_lib/src/constants.nr:34 (separator), oxide-lib/src/token_immutables.ts (serialization)",
     "separator": "0x0000000000000000000000000000000000000000000000000000000067a58cb3",
     "rule": [

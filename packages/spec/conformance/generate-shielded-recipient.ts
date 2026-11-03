@@ -296,11 +296,11 @@ const ACKS = [
     ],
   },
   {
-    // PROPOSED (xochi#753, OX-12): required only for a corridor whose token class is an
-    // OxideToken class (`oxideToken.requiredEnrollmentAcks`).
+    // Required only for a corridor whose token class is an OxideToken class
+    // (`oxideToken.requiredEnrollmentAcks`).
     primaryType: "TokenRegistrationAck",
     purpose: "xochi.shielded.token-registration-ack.v1",
-    scope: "OxideToken corridors (PROPOSED, xochi#753)",
+    scope: "OxideToken corridors (xochi#753)",
     members: [
       { name: "bindingDigest", type: "bytes32" },
       { name: "aztecRecipient", type: "bytes32" },
@@ -1028,7 +1028,7 @@ const SENDERS = ["0x" + "17".repeat(32), "0x" + "05".padStart(64, "0"), "0x" + "
   .map((s) => s.toLowerCase())
   .sort();
 
-// --- OxideToken immutables (xochi#753, PROPOSED) -----------------------------------------
+// --- OxideToken immutables (xochi#753) ---------------------------------------------------
 //
 // `immutablesHash = poseidon2_hash_with_separator(serialize(immutables), DOM_SEP__TOKEN_IMMUTABLES)`
 // (zkmoney-public 8fd19841, oxide_token_contract/src/immutables.nr:36; client copy
@@ -1529,7 +1529,7 @@ const out = {
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
       "PaymentReceiptAck.amount: the exact credited BaseUnits, 0 < amount <= 2^128 - 1; blockNumber: decimal string on the wire",
-      "TokenRegistrationAck (PROPOSED, xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds",
+      "TokenRegistrationAck (xochi#753): aztecToken equals the binding's aztecToken; aztecTokenClassId and tokenImmutablesHash equal the verifier's trusted corridor record (oxideToken); each a nonzero in-field value. Required exactly when the corridor's token class is in oxideToken.oxideTokenClassIds",
     ],
     vectors: [...ackVectors, eighteenDecimalReceipt],
     crossTypeReplays,
@@ -1537,8 +1537,6 @@ const out = {
     refusals: ackRefusals,
   },
   oxideToken: {
-    proposed:
-      "PROPOSED (xochi#753, OX-12): the token-registration acknowledgement's subject. Required only for corridors whose token class is an OxideToken class.",
     source:
       "zkmoney-public 8fd19841: oxide_token_contract/src/immutables.nr:36 (hash), oxide_lib/src/constants.nr:34 (separator), oxide-lib/src/token_immutables.ts (serialization)",
     separator: hex32(DOM_SEP_TOKEN_IMMUTABLES),
@@ -1767,7 +1765,6 @@ const schema = {
       refusals: arr(obj({ name: STR, primaryType: STR, message: LOOSE, error: ERROR })),
     }),
     oxideToken: obj({
-      proposed: STR,
       source: STR,
       separator: HEX32,
       rule: arr(STR),

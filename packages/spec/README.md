@@ -31,10 +31,10 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
 - **`conformance/shielded-recipient.json`** + `.schema.json`: the recipient-side encodings decided
   2026-10-24/25 and 2026-10-29: `descriptorDigest`, stock `SchnorrAccount` address derivation
   for pinned Aztec 5.2.0 and `@aztec-labs` 6.0.0, the recipient message wide reduction,
-  recipient Schnorr signatures, and approved `BackupPersistenceAck`, `SenderRegistrationAck`
-  and `PaymentReceiptAck` contracts, plus the PROPOSED `TokenRegistrationAck` and its
-  `oxideToken` section (xochi#753: OxideToken immutables hash, the OXDAI vector, and which
-  corridors require the ack). The enrollment acknowledgements reuse the named binding's exact
+  recipient Schnorr signatures, and approved `BackupPersistenceAck`, `SenderRegistrationAck`,
+  `PaymentReceiptAck`, and `TokenRegistrationAck` contracts. Its `oxideToken` section records
+  the OxideToken immutables hash, OXDAI vector, and corridors that require the acknowledgement
+  (xochi#753). The enrollment acknowledgements reuse the named binding's exact
   nonce and expiry; a payment receipt uses its own receipt challenge. TEST ONLY keys.
 - **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
   attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the

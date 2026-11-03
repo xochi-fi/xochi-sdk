@@ -388,9 +388,7 @@ async function plan(values: Values): Promise<void> {
     for (const call of aztec.calls.splice(0)) log(`  [aztec] ${call}`);
     for (const call of xochi.calls.splice(0)) log(`  [xochi] ${call}`);
   };
-  log(
-    `corridor ${corridor.name}: manifest ${corridor.manifestDigest} (PROPOSED until xochi#778 lands)`,
-  );
+  log(`corridor ${corridor.name}: manifest ${corridor.manifestDigest}`);
 
   const secrets = newAccountSecrets();
   const account = await deriveRecipientAccount(secrets, corridor);

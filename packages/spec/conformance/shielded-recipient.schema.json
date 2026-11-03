@@ -1341,7 +1341,6 @@
     "oxideToken": {
       "type": "object",
       "required": [
-        "proposed",
         "source",
         "separator",
         "rule",
@@ -1352,9 +1351,6 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "proposed": {
-          "type": "string"
-        },
         "source": {
           "type": "string"
         },
