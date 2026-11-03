@@ -13,8 +13,10 @@ import {
   bindingTypedData,
   buildBinding,
   buildEnrollmentRequest,
+  signTokenRegistrationAck,
   type BindingTypedData,
   type EnrollmentChallenge,
+  type SignedAck,
   type WireBinding,
 } from "./enrollment.js";
 import { assertPinnedNetwork } from "./network.js";
@@ -125,9 +127,15 @@ export interface PendingEnrollment {
   challenge: EnrollmentChallenge;
   binding: WireBinding;
   typedData: BindingTypedData;
+  /** Signed at start for an OxideToken corridor (xochi#753); the next backup carries it. */
+  tokenRegistrationAck: SignedAck | null;
 }
 
-/** Requests the challenge and builds the binding the source wallet must sign. */
+/**
+ * Requests the challenge, builds the binding the source wallet must sign and, for an
+ * OxideToken corridor, signs the `TokenRegistrationAck` (run after `setup` registered the
+ * token), so the backup written before `enroll submit` carries it.
+ */
 export async function enrollStart(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
@@ -139,14 +147,27 @@ export async function enrollStart(
   const challenge = await api.challenge();
   const binding = buildBinding(ctx.corridor, account, sourceWallet, challenge);
   const { typedData, digest } = bindingTypedData(ctx.corridor, binding);
+  const tokenRegistrationAck = await signTokenRegistrationAck(
+    ctx.corridor,
+    account,
+    binding,
+    signRecipientDigest,
+  );
   ctx.log(
     `enrollment: challenge ${challenge.challenge_id}, expires ${new Date(challenge.expires_at * 1000).toISOString()}`,
   );
   ctx.log(`enrollment: the source wallet signs RecipientBinding ${digest} (eth_signTypedData_v4)`);
-  return { challenge, binding, typedData };
+  if (tokenRegistrationAck) {
+    ctx.log("enrollment: TokenRegistrationAck signed; write the backup now so it carries it");
+  }
+  return { challenge, binding, typedData, tokenRegistrationAck };
 }
 
-/** Signs the authorization and acknowledgements and submits the enrollment. */
+/**
+ * Signs the authorization and acknowledgements and submits the enrollment. Today's Worker
+ * takes exactly BackupPersistenceAck + SenderRegistrationAck (G1);
+ * `submitTokenRegistrationAck` adds the TokenRegistrationAck once the Worker ships xochi#753 (G2).
+ */
 export async function enrollSubmit(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
@@ -154,6 +175,7 @@ export async function enrollSubmit(
   pending: PendingEnrollment,
   sourceSignature: string,
   backupCommitment: string,
+  submitTokenRegistrationAck: boolean,
 ): Promise<BindingProjection> {
   const request = await buildEnrollmentRequest({
     corridor: ctx.corridor,
@@ -162,6 +184,8 @@ export async function enrollSubmit(
     binding: pending.binding,
     sourceSignature,
     backupCommitment,
+    tokenRegistrationAck: pending.tokenRegistrationAck,
+    submitTokenRegistrationAck,
     sign: signRecipientDigest,
   });
   const projection = await api.enroll(request);

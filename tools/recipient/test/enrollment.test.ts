@@ -10,9 +10,20 @@ import {
   type RecipientAckType,
 } from "@xochi/signer";
 
-import { deriveRecipientAccount, signRecipientDigest } from "../src/account.js";
+import {
+  deriveRecipientAccount,
+  signRecipientDigest,
+  type RecipientAccount,
+} from "../src/account.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
-import { bindingTypedData, buildBinding, buildEnrollmentRequest } from "../src/enrollment.js";
+import {
+  bindingTypedData,
+  buildBinding,
+  buildEnrollmentRequest,
+  signTokenRegistrationAck,
+  type EnrollmentRequest,
+  type WireBinding,
+} from "../src/enrollment.js";
 import { TEST_SECRETS, TEST_SOURCE_KEY } from "./fixtures.js";
 
 const CHALLENGE = {
@@ -23,11 +34,17 @@ const CHALLENGE = {
 const COMMITMENT = `0x${"ab".repeat(32)}`;
 const source = privateKeyToAccount(TEST_SOURCE_KEY);
 
-async function request(corridor: Corridor) {
+async function request(corridor: Corridor, submitTokenRegistrationAck = false) {
   const account = await deriveRecipientAccount(TEST_SECRETS, corridor);
   const binding = buildBinding(corridor, account, source.address, CHALLENGE);
   const { typedData } = bindingTypedData(corridor, binding);
   const sourceSignature = await source.signTypedData(typedData);
+  const tokenRegistrationAck = await signTokenRegistrationAck(
+    corridor,
+    account,
+    binding,
+    signRecipientDigest,
+  );
   const body = await buildEnrollmentRequest({
     corridor,
     account,
@@ -35,9 +52,53 @@ async function request(corridor: Corridor) {
     binding,
     sourceSignature,
     backupCommitment: COMMITMENT,
+    tokenRegistrationAck,
+    submitTokenRegistrationAck,
     sign: signRecipientDigest,
   });
-  return { account, binding, body };
+  return { account, binding, body, tokenRegistrationAck };
+}
+
+// Each acknowledgement through the Worker's own verifier (`verifyRecipientAck`), with the
+// subject it pins from trusted corridor state (xochi#753 for the token ack).
+async function verifyAll(
+  account: RecipientAccount,
+  binding: WireBinding,
+  acks: EnrollmentRequest["acknowledgements"],
+): Promise<number> {
+  const expected: Record<RecipientAckType, unknown> = {
+    BackupPersistenceAck: { backupCommitment: COMMITMENT },
+    SenderRegistrationAck: { registeredSenders: OXDAI_MAINNET_REV2.registeredSenders },
+    TokenRegistrationAck: {
+      aztecTokenClassId: OXDAI_MAINNET_REV2.token.classId,
+      tokenImmutablesHash: oxideTokenImmutablesHash(OXDAI_MAINNET_REV2.token.immutables),
+    },
+    PaymentReceiptAck: null,
+  };
+  const consumed = new Set<string>();
+  for (const ack of acks) {
+    const verified = await verifyRecipientAck(
+      ack.primary_type,
+      ack.message as never,
+      ack.signature,
+      {
+        binding,
+        descriptor: account.descriptor,
+        profile: AZTEC_RECIPIENT_PROFILES["aztec-6.0.0"],
+        environment: OXDAI_MAINNET_REV2.environment,
+        network: OXDAI_MAINNET_REV2.network,
+        expected: expected[ack.primary_type] as never,
+        now: CHALLENGE.expires_at - 60,
+        consumeReplayKey: async (key) => {
+          if (consumed.has(key)) return false;
+          consumed.add(key);
+          return true;
+        },
+      },
+    );
+    expect(verified.nonce).toBe(CHALLENGE.nonce);
+  }
+  return consumed.size;
 }
 
 describe("recipient account", () => {
@@ -52,7 +113,7 @@ describe("recipient account", () => {
 });
 
 describe("enrollment request", () => {
-  it("is what the Worker verifies: binding, both signatures, and the Oxide ack set", async () => {
+  it("is what today's Worker verifies: binding, both signatures, exactly two acks (G1)", async () => {
     const { account, binding, body } = await request(OXDAI_MAINNET_REV2);
     expect(binding).toMatchObject({
       sourceWallet: source.address.toLowerCase(),
@@ -76,44 +137,23 @@ describe("enrollment request", () => {
     expect(body.acknowledgements.map((a) => a.primary_type)).toEqual([
       "BackupPersistenceAck",
       "SenderRegistrationAck",
+    ]);
+    expect(await verifyAll(account, binding, body.acknowledgements)).toBe(2);
+  });
+
+  it("signs the TokenRegistrationAck regardless, and submits it only behind the flag (G2)", async () => {
+    const { account, binding, body, tokenRegistrationAck } = await request(
+      OXDAI_MAINNET_REV2,
+      true,
+    );
+    expect(tokenRegistrationAck?.primary_type).toBe("TokenRegistrationAck");
+    expect(await verifyAll(account, binding, [tokenRegistrationAck!])).toBe(1);
+    expect(body.acknowledgements.map((a) => a.primary_type)).toEqual([
+      "BackupPersistenceAck",
+      "SenderRegistrationAck",
       "TokenRegistrationAck",
     ]);
-
-    // Each acknowledgement through the Worker's own verifier, with the subject it pins from
-    // trusted corridor state (xochi#753 for the token ack).
-    const expected: Record<RecipientAckType, unknown> = {
-      BackupPersistenceAck: { backupCommitment: COMMITMENT },
-      SenderRegistrationAck: { registeredSenders: OXDAI_MAINNET_REV2.registeredSenders },
-      TokenRegistrationAck: {
-        aztecTokenClassId: OXDAI_MAINNET_REV2.token.classId,
-        tokenImmutablesHash: oxideTokenImmutablesHash(OXDAI_MAINNET_REV2.token.immutables),
-      },
-      PaymentReceiptAck: null,
-    };
-    const consumed = new Set<string>();
-    for (const ack of body.acknowledgements) {
-      const verified = await verifyRecipientAck(
-        ack.primary_type,
-        ack.message as never,
-        ack.signature,
-        {
-          binding,
-          descriptor: account.descriptor,
-          profile: AZTEC_RECIPIENT_PROFILES["aztec-6.0.0"],
-          environment: OXDAI_MAINNET_REV2.environment,
-          network: OXDAI_MAINNET_REV2.network,
-          expected: expected[ack.primary_type] as never,
-          now: CHALLENGE.expires_at - 60,
-          consumeReplayKey: async (key) => {
-            if (consumed.has(key)) return false;
-            consumed.add(key);
-            return true;
-          },
-        },
-      );
-      expect(verified.nonce).toBe(CHALLENGE.nonce);
-    }
-    expect(consumed.size).toBe(3);
+    expect(await verifyAll(account, binding, body.acknowledgements)).toBe(3);
   });
 
   it("sends only the two enrollment acks for a corridor whose token is not an OxideToken", async () => {
@@ -125,11 +165,13 @@ describe("enrollment request", () => {
         classId: "0x067df4ddda0b0872ef604f47f3681d5e8c0de98280ac6b79963851c055ba91e0",
       },
     };
-    const { body } = await request(tracer);
+    const { body, tokenRegistrationAck } = await request(tracer);
+    expect(tokenRegistrationAck).toBeNull();
     expect(body.acknowledgements.map((a) => a.primary_type)).toEqual([
       "BackupPersistenceAck",
       "SenderRegistrationAck",
     ]);
+    await expect(request(tracer, true)).rejects.toThrow(/not an OxideToken/);
   });
 
   it("refuses a source signature from any wallet but the binding's", async () => {

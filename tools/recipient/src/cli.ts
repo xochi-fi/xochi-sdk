@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
-import { loadContractArtifact, type ContractArtifact } from "@aztec-labs/stdlib/abi";
+import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod4";
@@ -40,7 +40,9 @@ import {
   type PendingEnrollment,
 } from "./commands.js";
 import { CorridorSchema, OXDAI_MAINNET_REV2, parseCorridor, type Corridor } from "./corridor.js";
-import { bindingTypedData, typedDataJson } from "./enrollment.js";
+import { bindingTypedData, typedDataJson, type SignedAck } from "./enrollment.js";
+import { SignedAckSchema } from "./backup.js";
+import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
 import { loadTokenArtifact } from "./oxide-token.js";
 import { open, seal } from "./sealed.js";
 
@@ -53,7 +55,11 @@ Commands (in round-trip order):
   balance                  sync and show the OXDAI balance and received payouts' order fingerprints
   backup --out A --out B   write two copies of the recipient-encrypted backup
   enroll start             request a challenge; write the binding the source wallet signs
-  enroll submit            sign the authorization and acknowledgements; submit the enrollment
+  enroll submit            sign the authorization and acknowledgements; submit the enrollment.
+                           Submits BackupPersistenceAck + SenderRegistrationAck, what today's
+                           Worker takes (G1). --submit-token-registration-ack also submits the
+                           TokenRegistrationAck (xochi#753); it becomes the default, and the
+                           flag is removed, when the Worker ships #753 (G2)
   enroll status            show the binding state (pending / ready / revoked)
   restore --backup FILE    restore into a fresh data directory and find the balance
   spend --to ADDR --amount BASEUNITS
@@ -102,10 +108,13 @@ const StateSchema = z
           .object({ challenge_id: z.string(), nonce: z.string(), expires_at: z.number().int() })
           .strict(),
         binding: BindingSchema,
+        tokenRegistrationAck: SignedAckSchema.nullable(),
       })
       .strict()
       .optional(),
     bindingId: z.string().optional(),
+    /** The TokenRegistrationAck signature the last backup carries, if any. */
+    backupTokenAckSignature: z.string().nullable().optional(),
   })
   .strict();
 type State = z.infer<typeof StateSchema>;
@@ -164,6 +173,7 @@ interface Values {
   "prover-tip"?: string;
   "relayer-tip"?: string;
   "broadcaster-artifact"?: string;
+  "submit-token-registration-ack"?: boolean;
   "dry-run"?: boolean;
   help?: boolean;
 }
@@ -193,6 +203,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       "prover-tip": string,
       "relayer-tip": string,
       "broadcaster-artifact": string,
+      "submit-token-registration-ack": { type: "boolean" },
       "dry-run": { type: "boolean" },
       help: { type: "boolean" },
     },
@@ -214,8 +225,8 @@ const baseUnits = (name: string, v: string): bigint => {
   if (!/^(0|[1-9][0-9]*)$/.test(v)) fail(`--${name} must be a decimal number of base units`);
   return BigInt(v);
 };
-const readArtifact = (path: string): ContractArtifact =>
-  loadContractArtifact(JSON.parse(readFileSync(path, "utf8")));
+/** A signed TokenRegistrationAck in the shape the state and backup files hold. */
+const tokenAckForState = (ack: SignedAck | null) => (ack ? SignedAckSchema.parse(ack) : null);
 
 class Store {
   constructor(readonly dir: string) {}
@@ -341,19 +352,38 @@ async function plan(values: Values): Promise<void> {
   } else {
     log("token, balance, spend, exit: skipped (no --oxide-token-artifact)");
   }
-  const sealed = sealBackup(
-    backupContents(corridor, secrets, account, null, now),
-    "dry-run passphrase TEST ONLY",
-  );
-  log(`backup: ${sealed.bytes.length} sealed bytes, backupCommitment ${sealed.commitment}`);
-
   const sourceKey = keccak256(toHex("xochi-recipient TEST ONLY dry-run source wallet"));
   const source = privateKeyToAccount(sourceKey);
   const pending = await enrollStart(ctx, xochi, account, source.address);
+  const sealed = sealBackup(
+    backupContents(
+      corridor,
+      secrets,
+      account,
+      null,
+      tokenAckForState(pending.tokenRegistrationAck),
+      now,
+    ),
+    "dry-run passphrase TEST ONLY",
+  );
+  log(
+    `backup: ${sealed.bytes.length} sealed bytes carrying the TokenRegistrationAck, backupCommitment ${sealed.commitment}`,
+  );
   const sourceSignature = await source.signTypedData(pending.typedData);
-  await enrollSubmit(ctx, xochi, account, pending, sourceSignature, sealed.commitment);
+  const submitTokenAck = values["submit-token-registration-ack"] === true;
+  await enrollSubmit(
+    ctx,
+    xochi,
+    account,
+    pending,
+    sourceSignature,
+    sealed.commitment,
+    submitTokenAck,
+  );
   await enrollStatus(ctx, xochi, "dry-run-binding");
-  flush("enrollment (source wallet: a TEST ONLY key; every signature verified locally)");
+  flush(
+    `enrollment (source wallet: a TEST ONLY key; every signature verified locally; ${submitTokenAck ? "G2 set" : "G1 set: the Worker takes two acks until xochi#753 ships"})`,
+  );
 
   if (artifact) {
     await spend(ctx, account, artifact, corridor.registeredSenders[0]!, 1n);
@@ -365,7 +395,7 @@ async function plan(values: Values): Promise<void> {
         amount: 10n ** 18n,
         proverTip: 0n,
         relayerTip: 0n,
-        broadcasterArtifact: readArtifact(broadcasterPath),
+        broadcasterArtifact: await loadBroadcasterArtifact(broadcasterPath),
       });
       flush("exit");
     } else {
@@ -427,15 +457,27 @@ export async function run(argv: string[]): Promise<void> {
       const checkpoint = values.checkpoint
         ? Number(baseUnits("checkpoint", values.checkpoint))
         : null;
+      const tokenAck = state.pending?.tokenRegistrationAck ?? null;
       const sealed = sealBackup(
-        backupContents(state.corridor, secrets, account, checkpoint, Math.floor(Date.now() / 1000)),
+        backupContents(
+          state.corridor,
+          secrets,
+          account,
+          checkpoint,
+          tokenAck,
+          Math.floor(Date.now() / 1000),
+        ),
         await passphrase(true),
       );
       for (const out of outs) {
         writeFileSync(out, sealed.bytes, { mode: 0o600, flag: "wx" });
         if (keccak256(readFileSync(out)) !== sealed.commitment) fail(`${out} does not read back`);
       }
-      store.writeState({ ...state, backupCommitment: sealed.commitment });
+      store.writeState({
+        ...state,
+        backupCommitment: sealed.commitment,
+        backupTokenAckSignature: tokenAck?.signature ?? null,
+      });
       log(
         `backup: wrote ${outs.join(" and ")}; backupCommitment ${sealed.commitment}. Keep both copies apart.`,
       );
@@ -452,7 +494,11 @@ export async function run(argv: string[]): Promise<void> {
         writeFileSync(file, typedDataJson(pending.typedData) + "\n");
         store.writeState({
           ...state,
-          pending: { challenge: pending.challenge, binding: pending.binding },
+          pending: {
+            challenge: pending.challenge,
+            binding: pending.binding,
+            tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
+          },
         });
         log(
           `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
@@ -461,6 +507,14 @@ export async function run(argv: string[]): Promise<void> {
         const saved = state.pending ?? fail("no pending enrollment: run enroll start");
         const commitment =
           state.backupCommitment ?? fail("write the backup first: its commitment is acknowledged");
+        if (
+          saved.tokenRegistrationAck &&
+          state.backupTokenAckSignature !== saved.tokenRegistrationAck.signature
+        ) {
+          fail(
+            "write the backup after enroll start, so it carries this binding's TokenRegistrationAck",
+          );
+        }
         const pending: PendingEnrollment = {
           ...saved,
           typedData: bindingTypedData(state.corridor, saved.binding).typedData,
@@ -472,6 +526,7 @@ export async function run(argv: string[]): Promise<void> {
           pending,
           required(values, "source-signature"),
           commitment,
+          values["submit-token-registration-ack"] === true,
         );
         const { pending: _done, ...rest } = state;
         store.writeState({ ...rest, bindingId: projection.binding_id });
@@ -532,7 +587,9 @@ export async function run(argv: string[]): Promise<void> {
           amount: baseUnits("amount", required(values, "amount")),
           proverTip: baseUnits("prover-tip", required(values, "prover-tip")),
           relayerTip: baseUnits("relayer-tip", required(values, "relayer-tip")),
-          broadcasterArtifact: readArtifact(required(values, "broadcaster-artifact")),
+          broadcasterArtifact: await loadBroadcasterArtifact(
+            required(values, "broadcaster-artifact"),
+          ),
         });
       });
     default:

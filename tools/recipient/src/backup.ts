@@ -15,6 +15,7 @@ import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
 
 import type { AccountSecrets, RecipientAccount } from "./account.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
+import type { SignedAck } from "./enrollment.js";
 import { open, seal } from "./sealed.js";
 
 const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
@@ -26,6 +27,14 @@ const RECOVERY_INSTRUCTIONS = [
   "4. It then syncs from the Aztec node you choose and shows the OXDAI balance. The scan checkpoint is an optimization only.",
   "5. Never copy a wallet database between machines, and never send this file's plaintext to anyone: it holds the account's secret key.",
 ].join("\n");
+
+export const SignedAckSchema = z
+  .object({
+    primary_type: z.literal("TokenRegistrationAck"),
+    message: z.record(z.string(), z.string()),
+    signature: z.string().regex(/^0x[0-9a-f]{128}$/),
+  })
+  .strict();
 
 export const BackupSchema = z
   .object({
@@ -55,6 +64,12 @@ export const BackupSchema = z
       .strict(),
     registeredSenders: z.array(hex32).min(1),
     scanCheckpoint: z.object({ blockNumber: z.number().int().nonnegative() }).strict().nullable(),
+    /**
+     * The signed TokenRegistrationAck for the pending binding (xochi#753), as evidence that this
+     * PXE registered the token and stored its immutables. Null before `enroll start`, or for a
+     * corridor whose token is not an OxideToken.
+     */
+    tokenRegistrationAck: SignedAckSchema.nullable(),
     recovery: z.string().min(1),
   })
   .strict();
@@ -65,6 +80,7 @@ export function backupContents(
   secrets: AccountSecrets,
   account: RecipientAccount,
   scanCheckpoint: number | null,
+  tokenRegistrationAck: SignedAck | null,
   now: number,
 ): BackupContents {
   return BackupSchema.parse({
@@ -90,6 +106,7 @@ export function backupContents(
     },
     registeredSenders: corridor.registeredSenders,
     scanCheckpoint: scanCheckpoint === null ? null : { blockNumber: scanCheckpoint },
+    tokenRegistrationAck,
     recovery: RECOVERY_INSTRUCTIONS,
   });
 }

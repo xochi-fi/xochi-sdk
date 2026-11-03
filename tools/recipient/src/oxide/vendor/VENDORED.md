@@ -50,8 +50,14 @@ the tool's stricter flags.
   (`--oxide-token-artifact`) and refuses it unless its class id and in-protocol artifact hash
   are the corridor's. pxe-bridge vendors the Noir sources and builds it reproducibly
   (`npm run build:oxide-token` there, toolchain aztec-up 6.0.0).
-- The L2 Broadcaster artifact, for exits. Same rule: a file (`--broadcaster-artifact`), used only
-  if its class is the class of the deployment's `l2Broadcaster` instance on the pinned node.
+- The compiled L2 Broadcaster artifact, for exits. zk.money publishes none, but its source is
+  public: `../../../contracts/oxide/` holds `noir-projects/{broadcaster_contract, oxide_lib}` from
+  the same upstream commit, byte for byte (`Nargo.toml` and `src/`; `oxide_lib` is identical to
+  pxe-bridge's copy), with upstream's `LICENSE` and `NOTICE`. `npm run build:broadcaster`
+  (`scripts/build-broadcaster.sh`) compiles it with pxe-bridge's toolchain and flags and refuses
+  the result unless its class is the deployed `0x24f2762a...78ae`; a native arm64 build on
+  2026-11-03 gave exactly that class. `exit` re-checks the class against the live
+  `l2Broadcaster` instance before use.
 - `@oxide/l1-contracts`: the one L1 view an exit needs (`PlainWithdrawalExecutor.FEE()`) and
   pxe-bridge's TeeRegistry / CertManager / portal views are declared in the tool.
 

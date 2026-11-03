@@ -34,7 +34,14 @@ describe("sealed bytes", () => {
 describe("recipient-encrypted backup (format v1)", () => {
   it("carries the account, the token registration and immutables, and the senders", async () => {
     const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
-    const contents = backupContents(OXDAI_MAINNET_REV2, TEST_SECRETS, account, 1234, 1_800_000_000);
+    const contents = backupContents(
+      OXDAI_MAINNET_REV2,
+      TEST_SECRETS,
+      account,
+      1234,
+      null,
+      1_800_000_000,
+    );
     expect(contents.format).toBe(BACKUP_FORMAT_V1_NAME);
     expect(contents.account.address).toBe(account.descriptor.aztecAddress);
     expect(contents.token).toEqual({
@@ -56,7 +63,14 @@ describe("recipient-encrypted backup (format v1)", () => {
 
   it("refuses a backup whose recorded immutables hash does not match its immutables", async () => {
     const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
-    const contents = backupContents(OXDAI_MAINNET_REV2, TEST_SECRETS, account, null, 1_800_000_000);
+    const contents = backupContents(
+      OXDAI_MAINNET_REV2,
+      TEST_SECRETS,
+      account,
+      null,
+      null,
+      1_800_000_000,
+    );
     const forged = {
       ...contents,
       token: {

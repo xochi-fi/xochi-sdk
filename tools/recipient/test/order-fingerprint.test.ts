@@ -1,8 +1,8 @@
 // The order-fingerprint case from pxe-bridge's settlement vectors, re-vendored byte for byte:
-// xochi-fi/pxe-bridge branch oxide-wire, commit fa574445f85d71c57ce9812b6183ca31b6af7683,
-// docs/vectors/settlement-v2.json (git blob f7393bdebce7c9c38b6c49e84dddcd84028f0aa5). The
-// order fingerprint's value (the v2 request fingerprint) is PROPOSED by pxe-bridge; re-vendor
-// from the pxe-bridge 0.4.0 release when it lands.
+// xochi-fi/pxe-bridge#89 (branch oxide-wire; vector commit 241de03 after a rebase, first seen
+// at fa574445), docs/vectors/settlement-v2.json, git blob
+// f7393bdebce7c9c38b6c49e84dddcd84028f0aa5. The order fingerprint's value (the v2 request
+// fingerprint) is PROPOSED by pxe-bridge; re-vendor from the pxe-bridge 0.4.0 release.
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";

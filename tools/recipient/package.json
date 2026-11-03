@@ -17,7 +17,8 @@
     "test": "vitest run",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
-    "dry-run": "node dist/cli.js plan"
+    "dry-run": "node dist/cli.js plan",
+    "build:broadcaster": "npm run build && bash scripts/build-broadcaster.sh"
   },
   "dependencies": {
     "@aztec-labs/accounts": "6.0.0",

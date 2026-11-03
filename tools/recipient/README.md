@@ -32,17 +32,20 @@ published account instance is visible on chain as a stock Schnorr account [INFER
 npm ci && npm run build
 export XOCHI_RECIPIENT_PASSPHRASE=...           # or answer the prompt
 node dist/cli.js init                          # secrets created and sealed on this machine
-node dist/cli.js backup --out /media/a/xochi.bak --out /media/b/xochi.bak
 node dist/cli.js setup --node-url $NODE --oxide-token-artifact OxideToken.json \
   --fee-juice-claim claim.json                 # Xochi-sponsored deployment + publication
 node dist/cli.js enroll start --api-url https://api.xochi.fi --source-wallet 0x...
 #   sign binding-typed-data.json with the source wallet (eth_signTypedData_v4)
+node dist/cli.js backup --out /media/a/xochi.bak --out /media/b/xochi.bak   # after start: carries the TokenRegistrationAck
 node dist/cli.js enroll submit --api-url https://api.xochi.fi --source-signature 0x...
+#   submits BackupPersistenceAck + SenderRegistrationAck, what today's Worker takes (G1);
+#   --submit-token-registration-ack also submits the TokenRegistrationAck (xochi#753, G2)
 node dist/cli.js enroll status --api-url https://api.xochi.fi
 node dist/cli.js balance --node-url $NODE --oxide-token-artifact OxideToken.json
 node dist/cli.js spend --to 0x... --amount 1000000000000000000 ...  --l1-rpc $L1
 node dist/cli.js exit --l1-recipient 0x... --amount ... --prover-tip ... --relayer-tip ... \
-  --broadcaster-artifact Broadcaster.json --l1-rpc $L1 ...
+  --broadcaster-artifact contracts/oxide/broadcaster_contract/target/broadcaster_contract-Broadcaster.json \
+  --l1-rpc $L1 ...                              # artifact from `npm run build:broadcaster`
 node dist/cli.js restore --backup /media/b/xochi.bak --data-dir /fresh --node-url $NODE \
   --oxide-token-artifact OxideToken.json        # second machine, no copied wallet database
 node dist/cli.js plan --oxide-token-artifact OxideToken.json   # dry run, no network
@@ -61,9 +64,9 @@ node dist/cli.js plan --oxide-token-artifact OxideToken.json   # dry run, no net
   token's own handler, so it never shows in the balance.
 - **Enrollment**: the tool builds the binding, checks viem and `@xochi/signer` agree on its
   digest, checks the source signature recovers the source wallet, signs the recipient
-  authorization and the acknowledgements (`BackupPersistenceAck`, `SenderRegistrationAck`, and
-  for an OxideToken corridor the PROPOSED `TokenRegistrationAck`, xochi#753) and verifies each
-  with `@xochi/signer` before sending. It shows only the state the Worker projects.
+  authorization and the acknowledgements, including the PROPOSED `TokenRegistrationAck` for an
+  OxideToken corridor (xochi#753; see below for which are submitted), and verifies each with
+  `@xochi/signer` before sending. It shows only the state the Worker projects.
 - **Backup** (format `xochi.shielded.backup-format.v1`): account keys, instance and class,
   network, token descriptor with its registration and immutables, senders, scan checkpoint and
   recovery instructions, sealed with your passphrase (scrypt + AES-256-GCM). The
@@ -73,4 +76,16 @@ node dist/cli.js plan --oxide-token-artifact OxideToken.json   # dry run, no net
 
 The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `manifestDigest`
 is the Worker's candidate and PROPOSED until xochi#778 lands. `--corridor FILE` takes another.
+
+**Token-registration ack (xochi#753).** `enroll start` signs the `TokenRegistrationAck` for an
+OxideToken corridor, and the backup written next carries it as evidence; `enroll submit`
+refuses a backup that does not. Today's production Worker takes exactly two acknowledgements
+(G1, the operator round trip), so the tool submits only `BackupPersistenceAck` and
+`SenderRegistrationAck` unless `--submit-token-registration-ack` is given. When the Worker ships
+#753 (G2), submitting the third ack becomes the default and the flag is removed.
+
+**Exit artifact.** `npm run build:broadcaster` (aztec-up 6.0.0 on PATH) builds the L2
+Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its class is
+the deployed `0x24f2762a...78ae`.
+
 Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.

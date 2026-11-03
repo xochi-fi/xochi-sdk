@@ -160,12 +160,23 @@ export async function assertSourceSignature(
   }
 }
 
-/** The enrollment acknowledgement messages for this corridor, in the order the Worker takes. */
+/**
+ * The acknowledgement set today's production Worker takes: exactly these two, in order
+ * (G1, the operator round trip). The G2 rule is `requiredEnrollmentAcks` (`@xochi/signer`),
+ * which adds `TokenRegistrationAck` for an OxideToken corridor once the Worker ships xochi#753.
+ */
+export const WORKER_ENROLLMENT_ACKS_G1: readonly RecipientAckType[] = [
+  "BackupPersistenceAck",
+  "SenderRegistrationAck",
+];
+
+/** The acknowledgement messages of `types`, for this binding. */
 export function enrollmentAckMessages(
   corridor: Corridor,
   binding: RecipientBinding,
   bindingDigest: string,
   backupCommitment: string,
+  types: readonly RecipientAckType[],
 ): { primaryType: RecipientAckType; message: RecipientAckMessages[RecipientAckType] }[] {
   const common = {
     bindingDigest,
@@ -173,7 +184,7 @@ export function enrollmentAckMessages(
     nonce: binding.nonce,
     challengeExpiry: String(binding.challengeExpiry),
   };
-  return requiredEnrollmentAcks(corridor.token.classId).map((primaryType) => {
+  return types.map((primaryType) => {
     const purpose = RECIPIENT_ACK_PURPOSES[primaryType];
     switch (primaryType) {
       case "BackupPersistenceAck":
@@ -203,16 +214,69 @@ export function enrollmentAckMessages(
   });
 }
 
+export interface SignedAck {
+  primary_type: RecipientAckType;
+  message: unknown;
+  signature: string;
+}
+
+export type RecipientSigner = (account: RecipientAccount, digest: string) => Promise<string>;
+
+async function signAcks(
+  corridor: Corridor,
+  account: RecipientAccount,
+  binding: RecipientBinding,
+  backupCommitment: string,
+  types: readonly RecipientAckType[],
+  sign: RecipientSigner,
+): Promise<SignedAck[]> {
+  const bindingDigest = recipientBindingDigest(binding, corridor.environment, corridor.network);
+  const domain = bindingDomain(binding.sourceChainId, corridor.environment, corridor.network);
+  const out: SignedAck[] = [];
+  for (const { primaryType, message } of enrollmentAckMessages(
+    corridor,
+    binding,
+    bindingDigest,
+    backupCommitment,
+    types,
+  )) {
+    const digest = recipientAckDigest(primaryType, message as never, domain);
+    out.push({ primary_type: primaryType, message, signature: await sign(account, digest) });
+  }
+  return out;
+}
+
+/**
+ * The `TokenRegistrationAck` for this binding, signed at `enroll start` once the token is
+ * registered, so the backup written next carries it as evidence (xochi#753). `null` for a
+ * corridor whose token is not an OxideToken.
+ */
+export async function signTokenRegistrationAck(
+  corridor: Corridor,
+  account: RecipientAccount,
+  binding: RecipientBinding,
+  sign: RecipientSigner,
+): Promise<SignedAck | null> {
+  if (!requiredEnrollmentAcks(corridor.token.classId).includes("TokenRegistrationAck")) return null;
+  const [ack] = await signAcks(corridor, account, binding, "", ["TokenRegistrationAck"], sign);
+  return ack ?? null;
+}
+
 export interface EnrollmentRequest {
   challenge_id: string;
   binding: Record<string, string>;
   source_signature: string;
   descriptor: RecipientAccount["descriptor"];
   recipient_authorization: { digest: string; signature: string };
-  acknowledgements: { primary_type: RecipientAckType; message: unknown; signature: string }[];
+  acknowledgements: SignedAck[];
 }
 
-/** Signs the recipient authorization and each acknowledgement, and assembles the request. */
+/**
+ * Signs the recipient authorization and the acknowledgements, and assembles the request.
+ * Submits exactly `WORKER_ENROLLMENT_ACKS_G1` unless `submitTokenRegistrationAck` is set (G2,
+ * xochi#753): then the corridor's `requiredEnrollmentAcks`, with the `TokenRegistrationAck`
+ * signed at `enroll start`.
+ */
 export async function buildEnrollmentRequest(args: {
   corridor: Corridor;
   account: RecipientAccount;
@@ -220,25 +284,37 @@ export async function buildEnrollmentRequest(args: {
   binding: RecipientBinding;
   sourceSignature: string;
   backupCommitment: string;
-  sign: (account: RecipientAccount, digest: string) => Promise<string>;
+  tokenRegistrationAck: SignedAck | null;
+  submitTokenRegistrationAck: boolean;
+  sign: RecipientSigner;
 }): Promise<EnrollmentRequest> {
   const { corridor, account, challenge, binding, sourceSignature, backupCommitment, sign } = args;
   const { typedData, digest: bindingDigest } = bindingTypedData(corridor, binding);
   await assertSourceSignature(typedData, sourceSignature);
-  const domain = bindingDomain(binding.sourceChainId, corridor.environment, corridor.network);
-  const acknowledgements = [];
-  for (const { primaryType, message } of enrollmentAckMessages(
+  const acknowledgements = await signAcks(
     corridor,
+    account,
     binding,
-    bindingDigest,
     backupCommitment,
-  )) {
-    const digest = recipientAckDigest(primaryType, message as never, domain);
-    acknowledgements.push({
-      primary_type: primaryType,
-      message,
-      signature: await sign(account, digest),
-    });
+    WORKER_ENROLLMENT_ACKS_G1,
+    sign,
+  );
+  if (args.submitTokenRegistrationAck) {
+    const required = requiredEnrollmentAcks(corridor.token.classId);
+    if (!required.includes("TokenRegistrationAck")) {
+      throw new Error(
+        "the corridor's token is not an OxideToken: it takes no TokenRegistrationAck",
+      );
+    }
+    const ack =
+      args.tokenRegistrationAck ?? fail("no TokenRegistrationAck: run enroll start again");
+    const [expected] = enrollmentAckMessages(corridor, binding, bindingDigest, "", [
+      "TokenRegistrationAck",
+    ]);
+    if (JSON.stringify(ack.message) !== JSON.stringify(expected!.message)) {
+      throw new Error("the stored TokenRegistrationAck is for another binding or token");
+    }
+    acknowledgements.push(ack);
   }
   return {
     challenge_id: challenge.challenge_id,
@@ -251,4 +327,8 @@ export async function buildEnrollmentRequest(args: {
     },
     acknowledgements,
   };
+}
+
+function fail(message: string): never {
+  throw new Error(message);
 }
