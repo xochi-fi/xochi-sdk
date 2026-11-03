@@ -1,6 +1,10 @@
+// Modified for the Xochi recipient tool: expose signed-withdrawal and post-broadcast hooks,
+// return the tx hash before waiting, and let the caller durably journal ambiguous sends.
 import type { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
+
 import {
   BatchCall,
+  NO_WAIT,
   type Contract,
   type ContractFunctionInteraction,
   type WaitOpts,
@@ -8,9 +12,10 @@ import {
 } from '@aztec-labs/aztec.js/contracts';
 import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
 import { Fr } from '@aztec-labs/aztec.js/fields';
+import { waitForTx, type AztecNode } from '@aztec-labs/aztec.js/node';
 import type { Wallet } from '@aztec-labs/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
-import type { SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
+import type { SimulationStats, TxHash, TxReceipt } from '@aztec-labs/stdlib/tx';
 
 import { getUserPayloadHash } from '../oxide-lib/content_hash.js';
 import { type BroadcastL1Operation, computeL1OperationId } from '../oxide-lib/l1_operation_calldata.js';
@@ -200,6 +205,17 @@ export async function submit(
     collectStats?: boolean;
     /** Mining-wait options for the final send (timeout, poll interval). */
     wait?: WaitOpts;
+    /**
+     * Called after the enclave signs each withdrawal and before proving or sending. Persist this
+     * recovery material before the transaction can reach the network.
+     */
+    onPreparedWithdrawals?: (
+      withdrawals: { withdrawalIndex: number; finalizationData: WithdrawalFinalizationData }[],
+    ) => void | Promise<void>;
+    /** Fsync the in-doubt marker immediately before the wallet may send anything. */
+    onBeforeSend?: () => void | Promise<void>;
+    /** Called immediately after the node accepts the transaction, before waiting for its receipt. */
+    onBroadcast?: (txHash: TxHash) => void | Promise<void>;
   },
 ): Promise<SubmitResult> {
   const {
@@ -212,6 +228,9 @@ export async function submit(
     onPhase,
     collectStats,
     wait,
+    onPreparedWithdrawals,
+    onBeforeSend,
+    onBroadcast,
   } = args;
   if (operations.length === 0) {
     throw new Error('submit called with no operations');
@@ -275,6 +294,12 @@ export async function submit(
 
   // 4. Fill in the signed randomness and signatures.
   const signedFinalizationData = buildSignedFinalizationData(withdrawOps, tokenOperation, signOutput);
+  await onPreparedWithdrawals?.(
+    signedFinalizationData.map((finalizationData, withdrawalIndex) => ({
+      withdrawalIndex,
+      finalizationData,
+    })),
+  );
 
   // 5. Prove and send.
   const capsules = [
@@ -290,13 +315,16 @@ export async function submit(
       .with({ capsules: buildPublishDaCapsules(contract.address, signOutput, await anchorBlockHeader.hash()) }),
   ];
   onPhase?.('prove-and-send');
-  const { receipt } = await new BatchCall(wallet, realBatchCalls).send({
+  await onBeforeSend?.();
+  const { txHash } = await new BatchCall(wallet, realBatchCalls).send({
     from,
     additionalScopes,
     capsules,
     fee: ctx.paymentMethod && { paymentMethod: ctx.paymentMethod },
-    wait,
+    wait: NO_WAIT,
   });
+  await onBroadcast?.(txHash);
+  const receipt = await waitForTx(chain as AztecNode, txHash, wait);
 
   return {
     receipt,

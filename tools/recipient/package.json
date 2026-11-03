@@ -15,8 +15,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"*.json\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "dry-run": "node dist/cli.js plan",
     "build:broadcaster": "npm run build && bash scripts/build-broadcaster.sh",
     "smoke:no-plaintext-keys": "npm run build && node scripts/smoke-no-plaintext-keys.mjs"

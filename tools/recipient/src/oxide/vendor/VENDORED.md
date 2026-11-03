@@ -26,7 +26,7 @@ package, so the code is copied here, as pxe-bridge does for its Oxide sender
 
 | Here                                               | Upstream                                                           | Status                                                                                                                                    |
 | -------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `oxide-client/l2_operations.ts`                    | `oxide-client/src/l2_operations.ts`                                | unmodified                                                                                                                                |
+| `oxide-client/l2_operations.ts`                    | `oxide-client/src/l2_operations.ts`                                | **modified**: pre-send signed-withdrawal and post-broadcast hooks let the tool journal recovery data and the tx hash before waiting |
 | `oxide-client/submitted_withdrawal.ts`             | `oxide-client/src/submitted_withdrawal.ts`                         | unmodified                                                                                                                                |
 | `oxide-client/withdrawal_finalization_request.ts`  | `oxide-client/src/withdrawal_finalization_request.ts`              | unmodified                                                                                                                                |
 | `oxide-client/withdrawal_in_tx.ts`                 | `oxide-client/src/withdrawal_in_tx.ts`                             | unmodified                                                                                                                                |
@@ -64,6 +64,7 @@ the tool's stricter flags.
 ## Updating
 
 Re-copy pxe-bridge's `src/oxide/vendor/` at the commit that moves the Oxide pin, re-add the
-table above from the same upstream commit with the two rewrites, re-apply the one edit, and
+table above from the same upstream commit with the two rewrites, re-apply the
+`l2_operations.ts` journal hooks and `plain_withdrawal_executor.ts` fee-reader removal, and
 update the deployment pins in `../../corridor.ts` together. A new Oxide deployment is a new
 pin, reviewed, never absorbed. Then `npm run typecheck && npm test`.

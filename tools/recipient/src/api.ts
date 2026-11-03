@@ -48,8 +48,11 @@ export class HttpEnrollmentApi implements EnrollmentApi {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     const url = new URL(baseUrl);
-    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
-      throw new Error(`enrollment API must be https (got ${url.protocol}//${url.hostname})`);
+    if (url.origin !== "https://api.xochi.fi") {
+      throw new Error(`enrollment API must be https://api.xochi.fi (got ${url.origin})`);
+    }
+    if (url.pathname !== "/" || url.search || url.hash) {
+      throw new Error("enrollment API URL must not contain a path, query or fragment");
     }
   }
 
@@ -67,6 +70,7 @@ export class HttpEnrollmentApi implements EnrollmentApi {
       },
       body: body === undefined ? null : JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
+      redirect: "error",
     });
     const text = await response.text();
     if (!response.ok) throw new EnrollmentApiError(response.status, text, `${method} ${route}`);
@@ -94,7 +98,13 @@ export class HttpEnrollmentApi implements EnrollmentApi {
 /** Records the calls and their bodies' shape; answers as a fresh enrollment would. */
 export class DryRunEnrollmentApi implements EnrollmentApi {
   readonly calls: string[] = [];
-  constructor(private readonly now: number) {}
+  private descriptorDigest: string | null;
+  constructor(
+    private readonly now: number,
+    descriptorDigest: string | null = null,
+  ) {
+    this.descriptorDigest = descriptorDigest;
+  }
 
   async challenge(): Promise<EnrollmentChallenge> {
     this.calls.push("POST /api/shielded/recipients/challenge {} (synthetic challenge)");
@@ -109,6 +119,7 @@ export class DryRunEnrollmentApi implements EnrollmentApi {
     this.calls.push(
       `POST /api/shielded/recipients { challenge_id, binding, source_signature, descriptor, recipient_authorization, acknowledgements: [${request.acknowledgements.map((a) => a.primary_type).join(", ")}] } (synthetic: pending)`,
     );
+    this.descriptorDigest = request.binding["descriptorDigest"]!;
     return {
       binding_id: "dry-run-binding",
       descriptor_digest: request.binding["descriptorDigest"]!,
@@ -121,7 +132,11 @@ export class DryRunEnrollmentApi implements EnrollmentApi {
     this.calls.push(`GET /api/shielded/recipients/${bindingId} (synthetic: pending)`);
     return {
       binding_id: bindingId,
-      descriptor_digest: `0x${"00".repeat(32)}`,
+      descriptor_digest:
+        this.descriptorDigest ??
+        (() => {
+          throw new Error("dry-run projection requested before enrollment");
+        })(),
       state: "pending",
       policy_revision: 1,
     };

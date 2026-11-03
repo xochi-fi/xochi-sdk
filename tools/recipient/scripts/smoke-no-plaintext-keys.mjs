@@ -23,7 +23,8 @@ if (!nodeUrl) {
   process.exit(2);
 }
 const R = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
-const field = (label) => `0x${(BigInt(keccak256(toHex(label))) % R).toString(16).padStart(64, "0")}`;
+const field = (label) =>
+  `0x${(BigInt(keccak256(toHex(label))) % R).toString(16).padStart(64, "0")}`;
 const secrets = {
   secret: field("xochi-recipient TEST ONLY smoke secret"),
   salt: field("xochi-recipient TEST ONLY smoke salt"),
@@ -66,4 +67,6 @@ if (hits.length > 0) {
   console.error(`FAIL: account key bytes in the data directory:\n  ${hits.join("\n  ")}`);
   process.exit(1);
 }
-console.log(`PASS: no secret key or signing key bytes under the data directory (${account.address})`);
+console.log(
+  `PASS: no secret key or signing key bytes under the data directory (${account.address})`,
+);

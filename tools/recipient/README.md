@@ -1,8 +1,8 @@
 # xochi-recipient (OXDAI recipient tool)
 
-Private, unpublished until review (xochi-fi/xochi#759, OX-10). Not a workspace: it pins the
-`@aztec-labs/*` 6.0.0 SDK (~850 MB) in its own lockfile, as `packages/spec/aztec-crosscheck`
-does, so the SDK stays out of every other CI job. macOS and Linux on Node 22; Windows via WSL.
+Operator-only recipient software for xochi-fi/xochi#759 (OX-10). It is not an npm workspace or
+published package: it pins the `@aztec-labs/*` 6.0.0 SDK in its own lockfile, as
+`packages/spec/aztec-crosscheck` does. Supported hosts are macOS and Linux on Node 22, and WSL.
 
 It runs a stock `SchnorrAccount` from `@aztec-labs/accounts` 6.0.0 on your own Aztec v6 mainnet
 PXE and makes it a qualifying OXDAI recipient.
@@ -16,11 +16,21 @@ PXE and makes it a qualifying OXDAI recipient.
 
 No telemetry. The tool itself publishes nothing that names the account a Xochi recipient, but:
 
-- **A sponsored deployment links the funder to your account on L1.** The Fee Juice claim Xochi
-  provides comes from an L1 Fee Juice portal deposit that names the recipient address in public;
-  whoever funded that deposit is linked to your account. Xochi should fund each claim from a
-  one-time L1 address with no other history (an operator matter, xochi#738). Paying the
-  deployment from Fee Juice you bridge yourself avoids the link to Xochi.
+- **Sponsored deployment (what pays, and what it links).** `setup --fee-juice-claim` deploys
+  the account with `FeeJuicePaymentMethodWithClaim`: the L2 fee payer is the recipient
+  account itself, from Fee Juice it claims in the same transaction. There is no Xochi account
+  and no fee-paying contract in the transaction, and no shared sponsor contract exists on
+  mainnet (6.0.0's `SponsoredFPC` is `aztec.js/fee/testing`, deployed on sandbox and testnet
+  only). What Xochi funds is the L1 deposit behind the claim:
+  `FeeJuicePortal.depositToAztecPublic(to, amount, secretHash)` (mainnet portal
+  `0x534361be805ca30bdb6404ec5e6cdaffb3e9f3b3`, fee asset
+  `0xa27ec0006e59f245217ff08cd52a7e8b169e62d2`), whose event names the depositing L1 address
+  and the recipient's L2 address. So the depositor is what links, and the operator rule is:
+  one fresh L1 EOA per recipient, used for this one deposit, funded with no on-chain hop from
+  an address identifiable as Xochi's (xochi#738, OX-3). Residual: the one-time EOAs' funding
+  source and the repeated amount/timing pattern are a heuristic link; the recipient's own
+  Fee Juice (bridged from the recipient's own L1 address) avoids any Xochi link at the cost
+  of linking that L1 address.
 - The published account instance is visible on chain as a stock Schnorr account [INFERENCE].
 
 ## Disclosures
@@ -29,48 +39,67 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   zk.money enclave** (xochi#740). The enclave needs it to check the notes you spend, and it sees
   the sender, recipient, token and amount. Its image is unpublished.
 - **Exits need a live zk.money enclave** (xochi#739): withdrawal finalization needs an enclave
-  signature, and only zk.money runs the registered enclaves. If they are down, your OXDAI stays
-  on Aztec until they return (or the portal's frozen-note refund path applies).
-- **What the data directory holds.** The account's secret key and signing key are stored only
-  sealed with your passphrase (`keystore.sealed`, and the backups). The wallet layer of the
-  Aztec SDK writes them in plaintext to its own store, so the tool keeps that store ephemeral
-  (OS temp dir, no fsync, removed when the tool exits; a crash can leave it until the OS clears
-  the temp dir) and re-adds the account from the keystore on every run
-  (`node scripts/smoke-no-plaintext-keys.mjs <node>` checks the data directory). The PXE store
-  under `<data-dir>/pxe` is NOT encrypted: it holds the account's master viewing keys
-  (`ivsk_m`, `ovsk_m`), tagging key (`tsk_m`) and nullifier hiding key (`nhk_m`), the notes and
-  the payout history. Anyone who reads that directory sees what you received and can link your
-  spends; they cannot spend (the signing key is not there). Use full-disk encryption.
-- **Exit needs a relayer, and its record.** `exit` refuses a zero `--relayer-tip`
-  (a request nobody relays can strand the withdrawal) and writes each withdrawal's finalization
-  data and L1 operation id to `<data-dir>/exits/` and stdout, so you or anyone can finalize it.
+  signature, and only zk.money runs the registered enclaves. If they are down, OXDAI stays on
+  Aztec. A portal freeze requires the separate G2 refund path listed below; this tool cannot run it.
+- **What the data directory holds.** The account secret and signing key are sealed with the
+  passphrase in `keystore.sealed` and the backups. Aztec 6.0.0's WalletDB normally persists those
+  values verbatim; this tool encrypts every account-map value with AES-256-GCM before it reaches
+  the temporary LMDB. Its random key exists only in the process and is zeroed on close, so normal
+  shutdown removes the database and crash residue is ciphertext. The PXE store under
+  `<data-dir>/pxe` is NOT encrypted: it holds master viewing keys (`ivsk_m`, `ovsk_m`), the tagging
+  key (`tsk_m`), nullifier hiding key (`nhk_m`), notes and payout history. Anyone who reads it can
+  see receipts and link spends, though cannot spend. Put the durable data directory on encrypted
+  storage and keep it mode 0700.
+- **Spend/exit ambiguity fails closed.** Before either fund-moving command starts, the tool writes
+  and directory-syncs a mode-0600 record under `<data-dir>/operations/`, guarded by an atomic
+  single-flight lock. Exit finalization data is added before broadcast and the L2 transaction hash
+  immediately after the node accepts it. An interruption leaves the record `in_doubt` and blocks
+  every later spend or exit. Run `operations`; when it includes a hash, `operations reconcile
+  --node-url "$NODE"` pins the node identity and unlocks only after observing a mined receipt. A
+  record without a hash cannot be cleared automatically: investigate it with the operator before
+  any retry, and never delete or bypass it.
+- **Exit needs a relayer, and its records.** `exit` refuses a zero tip and any tip that would leave
+  the recipient zero. It prints the executor fee and exact recipient proceeds. Signed recovery
+  data is in the operation journal before broadcast; after mining, each withdrawal's finalization
+  data and L1 operation ID are also written under `<data-dir>/exits/`.
 
 ## Round trip
 
 ```bash
-npm ci && npm run build
-export XOCHI_RECIPIENT_PASSPHRASE=...           # or answer the prompt
-node dist/cli.js init                          # secrets created and sealed on this machine
-node dist/cli.js setup --node-url $NODE --oxide-token-artifact OxideToken.json \
-  --fee-juice-claim claim.json                 # Xochi-sponsored deployment + publication
-node dist/cli.js enroll start --api-url https://api.xochi.fi --source-wallet 0x...
-#   sign binding-typed-data.json with the source wallet (eth_signTypedData_v4)
-node dist/cli.js backup --out /media/a/xochi.bak --out /media/b/xochi.bak   # after start: carries the TokenRegistrationAck
-node dist/cli.js enroll submit --api-url https://api.xochi.fi --source-signature 0x...
-#   submits BackupPersistenceAck + SenderRegistrationAck, what today's Worker takes (G1);
-#   --submit-token-registration-ack also submits the TokenRegistrationAck (xochi#753, G2)
-node dist/cli.js enroll status --api-url https://api.xochi.fi
-node dist/cli.js balance --node-url $NODE --oxide-token-artifact OxideToken.json
-node dist/cli.js spend --to 0x... --amount 1000000000000000000 ...  --l1-rpc $L1
-node dist/cli.js exit --l1-recipient 0x... --amount ... --prover-tip ... --relayer-tip ... \
-  --broadcaster-artifact contracts/oxide/broadcaster_contract/target/broadcaster_contract-Broadcaster.json \
-  --l1-rpc $L1 ...                              # artifact from `npm run build:broadcaster`
-node dist/cli.js restore --backup /media/b/xochi.bak --data-dir /fresh --node-url $NODE \
-  --oxide-token-artifact OxideToken.json        # second machine, no copied wallet database
-node dist/cli.js plan --oxide-token-artifact OxideToken.json   # dry run, no network
+# From a reviewed checkout. Building the local signer package is a clean-checkout prerequisite.
+npm ci
+npm run build -w @xochi/signer
+cd tools/recipient
+npm ci
+npm run build
+
+export XOCHI_RECIPIENT_PASSPHRASE=... # or answer the prompt
+export XOCHI_JWT=...                  # source wallet's current Member session; never logged
+DATA="${XDG_STATE_HOME:-$HOME/.local/state}/xochi-recipient"
+install -d -m 700 "$DATA"
+
+node dist/cli.js init --data-dir "$DATA"
+node dist/cli.js setup --data-dir "$DATA" --node-url "$NODE" \
+  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT" --fee-juice-claim "$CLAIM_JSON"
+node dist/cli.js enroll start --data-dir "$DATA" --node-url "$NODE" \
+  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT" --api-url https://api.xochi.fi \
+  --source-wallet "$SOURCE_WALLET"
+# Sign $DATA/binding-typed-data.json with SOURCE_WALLET via eth_signTypedData_v4.
+# BACKUP_A and BACKUP_B are distinct, nonexistent destination paths whose parent directories
+# are writable, on independently retained encrypted media.
+node dist/cli.js backup --data-dir "$DATA" --out "$BACKUP_A" --out "$BACKUP_B"
+node dist/cli.js enroll submit --data-dir "$DATA" --api-url https://api.xochi.fi \
+  --source-signature "$SOURCE_SIGNATURE"
+node dist/cli.js enroll status --data-dir "$DATA" --api-url https://api.xochi.fi
+node dist/cli.js balance --data-dir "$DATA" --node-url "$NODE" \
+  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT"
+node dist/cli.js operations --data-dir "$DATA"
 ```
 
-`--dry-run` on any command records every node, PXE and API call instead of making it.
+`qualify/EVIDENCE.md` contains the complete, fail-fast R1-R6 operator sequence, including spend,
+exit and restore on a second host. `--dry-run` records every node, PXE and API call without making
+it.
+
 
 - **Network pin**: every command refuses a node that is not rollup version 2070860440, rollup
   `0xe37a2663cc9c119ba41572c40fab0bbb23a5402f`, L1 chain 1, node 6.0.x, with block 1's
@@ -94,19 +123,34 @@ node dist/cli.js plan --oxide-token-artifact OxideToken.json   # dry run, no net
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
 The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `manifestDigest`
-is the Worker's candidate and PROPOSED until xochi#778 lands. `--corridor FILE` takes another.
+`0x80b6abd7...865e` is the agreed rev 2 digest (#736 sync 2026-11-03; Riddler#1437 records the
+same value, xochi#778 pins it). `--corridor FILE` takes another record, validated by the same schema.
 
-**Token-registration ack (xochi#753).** `enroll start` signs the `TokenRegistrationAck` for an
-OxideToken corridor, but only once this data directory recorded a successful token registration
-(`setup`, `balance`, `spend`, `exit` or `restore`); a backup written after `enroll start` carries
-it as evidence. Today's production Worker takes exactly two acknowledgements (G1, the operator
-round trip), so the tool submits only `BackupPersistenceAck` and `SenderRegistrationAck` unless
-`--submit-token-registration-ack` is given; only with the flag does `enroll submit` require the
-backup to carry the ack (the challenge window is 5 minutes). When the Worker ships #753 (G2),
-submitting the third ack becomes the default and the flag is removed.
+**Token-registration ack (xochi#753).** `enroll start` now opens the current PXE, verifies the
+pinned network, re-registers the corridor sender and token, stores its immutables, and only then
+signs `TokenRegistrationAck`. A backup written after `enroll start` carries the ack. Today's
+production Worker takes exactly two acknowledgements (G1), so the tool submits only
+`BackupPersistenceAck` and `SenderRegistrationAck` unless
+`--submit-token-registration-ack` is given; only with the flag does `enroll submit` require that
+backup copy. When the Worker ships #753 (G2), the third ack becomes the default and the flag is
+removed.
 
 **Exit artifact.** `npm run build:broadcaster` (aztec-up 6.0.0 on PATH) builds the L2
 Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its
 artifact hash is `0x2d001a2e...7d70` and its class the deployed `0x24f2762a...78ae`.
 
 Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.
+
+## Qualification (R1-R6)
+
+`qualify/` holds the local Aztec 6.0.0 mechanism run for spec section 15 R1-R6 and its evidence
+(`EVIDENCE.md`): exactly what ran in the sandbox, what did not run on mainnet, and the commands an
+authorized operator uses for the private mainnet round trip (xochi#748 OX-10 / OX-18 step 4).
+
+## G2 follow-ups (not in this tool yet)
+
+- `enroll submit` sends the `TokenRegistrationAck` by default once the Worker takes three
+  acknowledgements (xochi#753); the flag goes away.
+- A `refund` command for the portal-freeze / rollup-migration path: `refundFrozenNotes` with
+  the recipient's own fallback-key migration signature (`fbsk_m` from `deriveKeys(secret)`;
+  upstream `oxide-client/src/sign_migration.ts`, `frozen_notes.ts`), per xochi#795's runbook.

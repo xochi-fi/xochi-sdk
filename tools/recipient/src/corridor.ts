@@ -85,10 +85,10 @@ export type Corridor = z.infer<typeof CorridorSchema>;
 
 /**
  * OXDAI on Aztec v6 mainnet, manifest revision 2. Every value is from xochi#778's
- * `OXDAI_REV2_ENTRY` (draft) and pxe-bridge `src/oxide/pins.ts` (`OXIDE_V6_MAINNET`), except
- * `manifestDigest`: the Worker's candidate digest, PROPOSED until xochi#778 merges with
- * Riddler's matching record (OX-4). `environment` is the Worker's `SHIELDED_CORRIDOR_CONFIG`
- * environment for production (the manifest's `environment`).
+ * `OXDAI_REV2_ENTRY` and pxe-bridge `src/oxide/pins.ts` (`OXIDE_V6_MAINNET`). `manifestDigest`
+ * is the agreed rev 2 digest (#736 sync 2026-11-03): Riddler#1437 records the same value in
+ * `approved_mainnet/0` and xochi#778 pins it in the Worker (OX-4). `environment` is the Worker's
+ * `SHIELDED_CORRIDOR_CONFIG` environment for production (the manifest's `environment`).
  */
 export const OXDAI_MAINNET_REV2: Corridor = CorridorSchema.parse({
   name: "oxdai-mainnet-rev2",
@@ -97,7 +97,7 @@ export const OXDAI_MAINNET_REV2: Corridor = CorridorSchema.parse({
   // keccak256("xochi.shielded.corridor.ethereum-usdc.aztec-mainnet-oxdai.a-tracer")
   corridorId: "0x2e6bcdd1a54e69d67e053620c8eb9451fe7ea0a81ffcd7da17627bd448739bc0",
   corridorRevision: "2",
-  // PROPOSED: the Worker-computed rev 2 candidate (xochi#778), not yet pinned by Riddler.
+  // Agreed rev 2 digest (#736 sync 2026-11-03); equal in Riddler, ansible-riddler and pxe-bridge.
   manifestDigest: "0x80b6abd7253f55f0014b37bc20e4c02b71dfc718e1181a730c0699b979d9865e",
   profile: "aztec-6.0.0",
   network: {

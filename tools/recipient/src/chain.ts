@@ -4,6 +4,7 @@
 // commands (`commands.ts`) run unchanged on either, so `--dry-run` shows the exact sequence a
 // live run makes.
 
+import { dirname, join } from "node:path";
 import { NO_FROM } from "@aztec-labs/aztec.js/account";
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import { Contract } from "@aztec-labs/aztec.js/contracts";
@@ -12,7 +13,6 @@ import { Fr } from "@aztec-labs/aztec.js/fields";
 import { createAztecNodeClient, type AztecNode } from "@aztec-labs/aztec.js/node";
 import { ContractInitializationStatus } from "@aztec-labs/aztec.js/wallet";
 import { BlockNumber } from "@aztec-labs/foundation/branded-types";
-import { openEphemeralStore } from "@aztec-labs/kv-store/lmdb-v2";
 import { EthAddress } from "@aztec-labs/stdlib/block";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
@@ -22,11 +22,14 @@ import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 
 import type { RecipientAccount } from "./account.js";
 import type { Corridor } from "./corridor.js";
+import { openEncryptedEphemeralWalletStore } from "./encrypted-wallet-store.js";
 import type { ObservedNetwork } from "./network.js";
+import { OperationJournal, type OperationRecord } from "./operation-journal.js";
 import { assertL1Pinned, OxideFleetRegistry, viemL1Reader } from "./oxide/enclave.js";
 import { oxidePins } from "./oxide/pins.js";
 import { transferEventMetadata } from "./oxide-token.js";
 import { buildPlainWithdrawal } from "./oxide/vendor/oxide-client/executors/plain_withdrawal_executor.js";
+import { plainWithdrawalNetAmount } from "./oxide/vendor/oxide-lib/plain_withdrawal_executor.js";
 import { FleetSigner } from "./oxide/vendor/oxide-client/fleet_signer.js";
 import {
   submit,
@@ -81,6 +84,10 @@ export interface WithdrawalRecord {
 
 export interface ExitResult {
   txHash: string;
+  /** Decimal base units read from the deployed executor immediately before submission. */
+  executorFee: string | null;
+  /** Decimal base units the L1 recipient receives after prover tip, executor fee and relayer tip. */
+  recipientAmount: string | null;
   withdrawals: WithdrawalRecord[];
 }
 
@@ -136,6 +143,7 @@ export class LiveAztec implements AztecPort {
     private readonly node: AztecNode,
     private readonly corridor: Corridor,
     private readonly l1RpcUrl: string | null,
+    private readonly operationJournal: OperationJournal,
   ) {}
 
   static async connect(args: {
@@ -146,16 +154,20 @@ export class LiveAztec implements AztecPort {
   }): Promise<LiveAztec> {
     const wallet = await EmbeddedWallet.create(args.nodeUrl, {
       pxe: { proverEnabled: true, dataDirectory: args.dataDirectory },
-      // The wallet DB stores each account's secret key, salt and signing key in plaintext
-      // (@aztec-labs/wallets 6.0.0 wallet_db.js `storeAccount`), so it never goes under the data
-      // directory: an ephemeral store in the OS temp dir (no fsync, removed when the wallet
-      // stops; a crash can leave it there until the OS clears it). Every run re-adds the account
-      // from the sealed keystore. The PXE's own store, on disk, still holds the account's
-      // viewing, tagging and nullifier hiding keys (README).
-      walletDb: { store: await openEphemeralStore("wallet_data") },
+      // Aztec 6.0.0 stores the account secret, salt and signing key in its WalletDB.
+      // Keep the DB outside the durable PXE directory and encrypt every account value with
+      // a random process-only key, so a crash cannot leave key bytes in temporary LMDB pages.
+      // Every run restores the account from the sealed keystore.
+      walletDb: { store: await openEncryptedEphemeralWalletStore() },
     });
     const node = createAztecNodeClient(args.nodeUrl);
-    return new LiveAztec(wallet, node, args.corridor, args.l1RpcUrl);
+    return new LiveAztec(
+      wallet,
+      node,
+      args.corridor,
+      args.l1RpcUrl,
+      new OperationJournal(join(dirname(args.dataDirectory), "operations")),
+    );
   }
 
   async observeNetwork(): Promise<ObservedNetwork> {
@@ -286,6 +298,7 @@ export class LiveAztec implements AztecPort {
     account: RecipientAccount,
     artifact: ContractArtifact,
     build: (contract: Contract) => Operation[],
+    operation?: OperationRecord,
   ): Promise<SubmitResult> {
     const contract = Contract.at(
       AztecAddress.fromStringUnsafe(this.corridor.token.address),
@@ -318,6 +331,29 @@ export class LiveAztec implements AztecPort {
           masterNullifierHidingKey: spend.masterNullifierHidingKey,
         };
       },
+      onPreparedWithdrawals: operation
+        ? async (withdrawals) => {
+            this.operationJournal.update(operation.id, {
+              withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
+                withdrawalIndex,
+                finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
+              })),
+            });
+          }
+        : undefined,
+      onBeforeSend: operation
+        ? async () => {
+            this.operationJournal.update(operation.id, { status: "sending" });
+          }
+        : undefined,
+      onBroadcast: operation
+        ? async (txHash) => {
+            this.operationJournal.update(operation.id, {
+              status: "broadcast",
+              txHash: txHash.toString(),
+            });
+          }
+        : undefined,
     });
     return result;
   }
@@ -328,16 +364,33 @@ export class LiveAztec implements AztecPort {
     to: AztecAddress,
     amount: bigint,
   ): Promise<string> {
-    const result = await this.submitOperations(account, artifact, (contract) => [
-      {
-        kind: "transfer",
-        from: account.address,
-        to,
-        amount,
-        meta: Array(getTransferMetaLen(contract.artifact)).fill(Fr.ZERO),
-      },
-    ]);
-    return result.receipt.txHash.toString();
+    const operation = this.operationJournal.begin("spend", {
+      from: account.address.toString(),
+      to: to.toString(),
+      amount: amount.toString(),
+    });
+    try {
+      const result = await this.submitOperations(
+        account,
+        artifact,
+        (contract) => [
+          {
+            kind: "transfer",
+            from: account.address,
+            to,
+            amount,
+            meta: Array(getTransferMetaLen(contract.artifact)).fill(Fr.ZERO),
+          },
+        ],
+        operation,
+      );
+      const txHash = result.receipt.txHash.toString();
+      this.operationJournal.update(operation.id, { status: "complete", txHash });
+      return txHash;
+    } catch (error) {
+      this.operationJournal.failOrAbort(operation.id, error);
+      throw error;
+    }
   }
 
   async exit(
@@ -364,32 +417,71 @@ export class LiveAztec implements AztecPort {
       abi: parseAbi(["function FEE() view returns (uint256)"]),
       functionName: "FEE",
     });
-    const broadcaster = Contract.at(broadcasterAddress, request.broadcasterArtifact, this.wallet);
-    const result = await this.submitOperations(account, artifact, () => [
-      buildPlainWithdrawal({
-        from: account.address,
-        executor: { address: EthAddress.fromString(executor), fee: executorFee },
-        recipient: EthAddress.fromString(request.l1Recipient),
-        relayerTip: request.relayerTip,
-        amount: request.amount,
-        proverTip: request.proverTip,
-        finalizationRequestBroadcastParams: {
-          broadcaster: broadcaster as unknown as L1OperationBroadcaster,
-          portal: EthAddress.fromString(this.corridor.token.immutables.portal),
-          payoutToken: EthAddress.fromString(this.corridor.oxide.payoutToken),
-        },
-      }),
-    ]);
-    const txHash = result.receipt.txHash.toString();
-    return {
-      txHash,
-      withdrawals: result.withdrawals.map((w) => ({
+    const netAmount = plainWithdrawalNetAmount(request.amount, request.proverTip, executorFee);
+    if (request.relayerTip >= netAmount) {
+      throw new Error(
+        `--relayer-tip must be less than the post-fee amount ${netAmount}; the recipient must receive funds`,
+      );
+    }
+    const operation = this.operationJournal.begin("exit", {
+      from: account.address.toString(),
+      l1Recipient: request.l1Recipient,
+      amount: request.amount.toString(),
+      proverTip: request.proverTip.toString(),
+      relayerTip: request.relayerTip.toString(),
+      executorFee: executorFee.toString(),
+      recipientAmount: (netAmount - request.relayerTip).toString(),
+    });
+    try {
+      const broadcaster = Contract.at(broadcasterAddress, request.broadcasterArtifact, this.wallet);
+      const result = await this.submitOperations(
+        account,
+        artifact,
+        () => [
+          buildPlainWithdrawal({
+            from: account.address,
+            executor: { address: EthAddress.fromString(executor), fee: executorFee },
+            recipient: EthAddress.fromString(request.l1Recipient),
+            relayerTip: request.relayerTip,
+            amount: request.amount,
+            proverTip: request.proverTip,
+            finalizationRequestBroadcastParams: {
+              broadcaster: broadcaster as unknown as L1OperationBroadcaster,
+              portal: EthAddress.fromString(this.corridor.token.immutables.portal),
+              payoutToken: EthAddress.fromString(this.corridor.oxide.payoutToken),
+            },
+          }),
+        ],
+        operation,
+      );
+      const txHash = result.receipt.txHash.toString();
+      const response = {
         txHash,
-        withdrawalIndex: w.withdrawalIndex,
-        operationId: w.finalizationRequest?.operationId ?? null,
-        finalizationData: `0x${encodeFinalizationData(w.finalizationData).toString("hex")}`,
-      })),
-    };
+        executorFee: executorFee.toString(),
+        recipientAmount: (netAmount - request.relayerTip).toString(),
+        withdrawals: result.withdrawals.map((w) => ({
+          txHash,
+          withdrawalIndex: w.withdrawalIndex,
+          operationId: w.finalizationRequest?.operationId ?? null,
+          finalizationData: `0x${encodeFinalizationData(w.finalizationData).toString("hex")}`,
+        })),
+      };
+      this.operationJournal.update(operation.id, {
+        status: "complete",
+        txHash,
+        withdrawals: response.withdrawals.map(
+          ({ withdrawalIndex, finalizationData, operationId }) => ({
+            withdrawalIndex,
+            finalizationData,
+            operationId,
+          }),
+        ),
+      });
+      return response;
+    } catch (error) {
+      this.operationJournal.failOrAbort(operation.id, error);
+      throw error;
+    }
   }
 
   async close(): Promise<void> {
@@ -539,7 +631,12 @@ export class DryRunAztec implements AztecPort {
     this.record(
       `submit(withdraw ${request.amount} from ${account.address.toString()} via PlainWithdrawalExecutor ${this.corridor.oxide.plainWithdrawalExecutor} to L1 ${request.l1Recipient}, proverTip ${request.proverTip}, relayerTip ${request.relayerTip}, finalization request broadcast via ${this.corridor.oxide.l2Broadcaster})`,
     );
-    return { txHash: `0x${"00".repeat(32)}`, withdrawals: [] };
+    return {
+      txHash: `0x${"00".repeat(32)}`,
+      executorFee: null,
+      recipientAmount: null,
+      withdrawals: [],
+    };
   }
 
   async close(): Promise<void> {

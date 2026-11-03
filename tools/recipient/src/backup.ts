@@ -9,6 +9,17 @@
 // bytes; Xochi stores only that digest. The user keeps two independently retained copies of
 // the same sealed bytes.
 
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  linkSync,
+  openSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
 import { keccak256, type Hex } from "viem";
 import { z } from "zod4";
 import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
@@ -131,4 +142,104 @@ export function openBackup(bytes: Buffer, passphrase: string): BackupContents {
     throw new Error("backup token immutables do not hash to the recorded immutablesHash");
   }
   return contents;
+}
+
+function syncDirectory(path: string): void {
+  const fd = openSync(path, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Writes a private file without overwrite and durably publishes its directory entry. */
+export function writePrivateFileExclusive(path: string, bytes: Buffer): void {
+  const finalPath = resolve(path);
+  const parent = dirname(finalPath);
+  const temporary = join(parent, `.${basename(finalPath)}.${randomUUID()}.tmp`);
+  let published = false;
+  try {
+    const fd = openSync(temporary, "wx", 0o600);
+    try {
+      writeFileSync(fd, bytes);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    linkSync(temporary, finalPath);
+    published = true;
+    syncDirectory(parent);
+  } catch (error) {
+    if (published) {
+      unlinkSync(finalPath);
+      syncDirectory(parent);
+    }
+    throw error;
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+}
+
+/**
+ * Creates both backup copies as one application-level operation. Final paths appear only after
+ * each complete temp file is fsynced. If either final link fails, the other is rolled back, so a
+ * retry cannot be mistaken for a successful two-copy backup.
+ */
+export function writeBackupCopies(bytes: Buffer, firstPath: string, secondPath: string): void {
+  const first = resolve(firstPath);
+  const second = resolve(secondPath);
+  if (first === second) throw new Error("backup paths must identify two different files");
+  if (existsSync(first) || existsSync(second)) {
+    throw new Error("backup refuses to overwrite an existing copy");
+  }
+
+  const nonce = randomUUID();
+  const firstTmp = join(dirname(first), `.${basename(first)}.${nonce}.tmp`);
+  const secondTmp = join(dirname(second), `.${basename(second)}.${nonce}.tmp`);
+  const createdFinals: string[] = [];
+
+  try {
+    for (const temporary of [firstTmp, secondTmp]) {
+      const fd = openSync(temporary, "wx", 0o600);
+      try {
+        writeFileSync(fd, bytes);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+    }
+
+    linkSync(firstTmp, first);
+    createdFinals.push(first);
+    linkSync(secondTmp, second);
+    createdFinals.push(second);
+    for (const parent of new Set([dirname(first), dirname(second)])) {
+      syncDirectory(parent);
+    }
+  } catch (error) {
+    for (const finalPath of createdFinals) {
+      try {
+        unlinkSync(finalPath);
+      } catch {
+        // Preserve the original failure; a remaining final path is visible and never overwritten.
+      }
+    }
+    for (const parent of new Set(createdFinals.map(dirname))) {
+      try {
+        syncDirectory(parent);
+      } catch {
+        // Preserve the publication failure; the retry still refuses any surviving final path.
+      }
+    }
+    throw error;
+  } finally {
+    for (const temporary of [firstTmp, secondTmp]) {
+      try {
+        unlinkSync(temporary);
+      } catch {
+        // The final path, not a best-effort temp cleanup, determines operation success.
+      }
+    }
+  }
 }

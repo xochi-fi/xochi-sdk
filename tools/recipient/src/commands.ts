@@ -4,6 +4,7 @@
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { hashRecipientDescriptor } from "@xochi/signer";
 
 import { signRecipientDigest, type RecipientAccount } from "./account.js";
 import type { BindingProjection, EnrollmentApi } from "./api.js";
@@ -201,6 +202,11 @@ export async function enrollSubmit(
     sign: signRecipientDigest,
   });
   const projection = await api.enroll(request);
+  if (
+    projection.descriptor_digest.toLowerCase() !== pending.binding.descriptorDigest.toLowerCase()
+  ) {
+    throw new Error("enrollment API returned a projection for a different recipient descriptor");
+  }
   ctx.log(`enrollment: binding ${projection.binding_id} is ${projection.state}`);
   return projection;
 }
@@ -210,8 +216,18 @@ export async function enrollStatus(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
   bindingId: string,
+  account: RecipientAccount,
 ): Promise<BindingProjection> {
   const projection = await api.projection(bindingId);
+  if (projection.binding_id !== bindingId) {
+    throw new Error("enrollment API returned a different binding id");
+  }
+  if (
+    projection.descriptor_digest.toLowerCase() !==
+    hashRecipientDescriptor(account.descriptor).toLowerCase()
+  ) {
+    throw new Error("enrollment API returned a projection for a different recipient descriptor");
+  }
   ctx.log(`enrollment: binding ${projection.binding_id} is ${projection.state}`);
   return projection;
 }
@@ -227,7 +243,11 @@ export async function spend(
   if (!/^0x[0-9a-fA-F]{64}$/.test(to))
     throw new Error("--to must be a 0x-prefixed 32-byte Aztec address");
   if (amount === 0n) throw new Error("--amount must be positive");
-  const txHash = await ctx.port.spend(account, artifact, AztecAddress.fromStringUnsafe(to), amount);
+  const recipient = AztecAddress.fromStringUnsafe(to);
+  if (recipient.isZero() || !(await recipient.isValid())) {
+    throw new Error("--to must be a valid, nonzero Aztec address");
+  }
+  const txHash = await ctx.port.spend(account, artifact, recipient, amount);
   ctx.log(`spend: ${amount} base units to ${to} in ${txHash}`);
   return txHash;
 }
@@ -253,7 +273,9 @@ export async function exit(
     );
   }
   const result = await ctx.port.exit(account, artifact, request);
-  ctx.log(`exit: ${request.amount} base units to L1 ${request.l1Recipient} in ${result.txHash}`);
+  ctx.log(
+    `exit: ${request.amount} base units to L1 ${request.l1Recipient} in ${result.txHash}; recipient receives ${result.recipientAmount ?? "unknown (dry-run)"} base units after executor fee ${result.executorFee ?? "unknown (dry-run)"} and relayer tip ${request.relayerTip}`,
+  );
   for (const w of result.withdrawals) {
     ctx.log(
       `exit: withdrawal ${w.withdrawalIndex} operationId ${w.operationId ?? "none (not broadcast)"} finalizationData ${w.finalizationData}`,

@@ -1,9 +1,12 @@
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { keccak256 } from "viem";
 import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
 
 import { deriveRecipientAccount } from "../src/account.js";
-import { backupContents, openBackup, sealBackup } from "../src/backup.js";
+import { backupContents, openBackup, sealBackup, writeBackupCopies } from "../src/backup.js";
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { open, seal, SealError } from "../src/sealed.js";
 import { TEST_SECRETS } from "./fixtures.js";
@@ -80,5 +83,47 @@ describe("recipient-encrypted backup (format v1)", () => {
     };
     const bytes = seal("backup", Buffer.from(JSON.stringify(forged)), PASS);
     expect(() => openBackup(bytes, PASS)).toThrow(/do not hash to the recorded immutablesHash/);
+  });
+});
+
+describe("backup copy persistence", () => {
+  it("publishes two identical copies without overwriting either", () => {
+    const dir = mkdtempSync(join(tmpdir(), "xochi-backup-test-"));
+    try {
+      const first = join(dir, "first.sealed");
+      const second = join(dir, "second.sealed");
+      const bytes = Buffer.from("sealed backup TEST ONLY");
+      writeBackupCopies(bytes, first, second);
+      expect(readFileSync(first)).toEqual(bytes);
+      expect(readFileSync(second)).toEqual(bytes);
+      expect(() => writeBackupCopies(bytes, first, second)).toThrow(/refuses to overwrite/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back the first final path if the second copy cannot be published", () => {
+    const dir = mkdtempSync(join(tmpdir(), "xochi-backup-test-"));
+    try {
+      const first = join(dir, "first.sealed");
+      const unavailableParent = join(dir, "not-a-directory");
+      writeFileSync(unavailableParent, "blocking file");
+      const second = join(unavailableParent, "second.sealed");
+      expect(() =>
+        writeBackupCopies(Buffer.from("sealed backup TEST ONLY"), first, second),
+      ).toThrow();
+      expect(existsSync(first)).toBe(false);
+      expect(existsSync(second)).toBe(false);
+      mkdirSync(join(dir, "valid-parent"));
+      expect(() =>
+        writeBackupCopies(
+          Buffer.from("sealed backup TEST ONLY"),
+          first,
+          join(dir, "valid-parent", "second.sealed"),
+        ),
+      ).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

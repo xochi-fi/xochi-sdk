@@ -7,12 +7,16 @@
 // with your passphrase (keystore, backups); the PXE store under the data directory holds the
 // account's viewing, tagging and nullifier hiding keys in plaintext (README "Disclosures").
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { hashRecipientDescriptor } from "@xochi/signer";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
+import { BlockNumber } from "@aztec-labs/foundation/branded-types";
+import { TxHash } from "@aztec-labs/stdlib/tx";
 import { keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod4";
@@ -24,7 +28,13 @@ import {
   type RecipientAccount,
 } from "./account.js";
 import { DryRunEnrollmentApi, HttpEnrollmentApi, type EnrollmentApi } from "./api.js";
-import { backupContents, openBackup, sealBackup } from "./backup.js";
+import {
+  backupContents,
+  openBackup,
+  sealBackup,
+  writeBackupCopies,
+  writePrivateFileExclusive,
+} from "./backup.js";
 import { DryRunAztec, LiveAztec, type AztecPort } from "./chain.js";
 import {
   checkNetwork,
@@ -43,8 +53,10 @@ import {
 import { CorridorSchema, OXDAI_MAINNET_REV2, parseCorridor, type Corridor } from "./corridor.js";
 import { bindingTypedData, typedDataJson, type SignedAck } from "./enrollment.js";
 import { SignedAckSchema } from "./backup.js";
+import { assertPinnedNetwork } from "./network.js";
 import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
 import { loadTokenArtifact } from "./oxide-token.js";
+import { OperationJournal } from "./operation-journal.js";
 import { open, seal } from "./sealed.js";
 
 const USAGE = `xochi-recipient <command> [options]
@@ -65,6 +77,7 @@ Commands (in round-trip order):
   restore --backup FILE    restore into a fresh data directory and find the balance
   spend --to ADDR --amount BASEUNITS
   exit --l1-recipient ADDR --amount BASEUNITS --prover-tip N --relayer-tip N --broadcaster-artifact FILE
+  operations [reconcile]   show journal, or reconcile its recorded tx receipt on the pinned node
   plan                     dry run of the whole sequence with a throwaway account: no network
 
 Options:
@@ -233,6 +246,10 @@ const tokenAckForState = (ack: SignedAck | null) => (ack ? SignedAckSchema.parse
 
 class Store {
   constructor(readonly dir: string) {}
+  private secureDirectory(): void {
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    chmodSync(this.dir, 0o700);
+  }
   get keystorePath() {
     return join(this.dir, "keystore.sealed");
   }
@@ -247,7 +264,9 @@ class Store {
     return StateSchema.parse(JSON.parse(readFileSync(this.statePath, "utf8")));
   }
   writeState(state: State): void {
+    this.secureDirectory();
     writeFileSync(this.statePath, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+    chmodSync(this.statePath, 0o600);
   }
   async secrets(): Promise<AccountSecrets> {
     const opened = open("keystore", readFileSync(this.keystorePath), await passphrase(false));
@@ -256,10 +275,11 @@ class Store {
   writeKeystore(secrets: AccountSecrets, pass: string): void {
     if (existsSync(this.keystorePath))
       fail(`${this.keystorePath} exists: refusing to overwrite an account`);
-    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-    writeFileSync(this.keystorePath, seal("keystore", Buffer.from(JSON.stringify(secrets)), pass), {
-      mode: 0o600,
-    });
+    this.secureDirectory();
+    writePrivateFileExclusive(
+      this.keystorePath,
+      seal("keystore", Buffer.from(JSON.stringify(secrets)), pass),
+    );
   }
 }
 
@@ -274,8 +294,10 @@ async function port(values: Values, store: Store, corridor: Corridor): Promise<A
   });
 }
 
-function api(values: Values): EnrollmentApi {
-  if (values["dry-run"]) return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000));
+function api(values: Values, descriptorDigest: string): EnrollmentApi {
+  if (values["dry-run"]) {
+    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest);
+  }
   const jwt =
     process.env["XOCHI_JWT"] ?? fail("XOCHI_JWT (the source wallet's SIWE session) is required");
   return new HttpEnrollmentApi(required(values, "api-url"), jwt);
@@ -394,7 +416,7 @@ async function plan(values: Values): Promise<void> {
     sealed.commitment,
     submitTokenAck,
   );
-  await enrollStatus(ctx, xochi, "dry-run-binding");
+  await enrollStatus(ctx, xochi, "dry-run-binding", account);
   flush(
     `enrollment (source wallet: a TEST ONLY key; every signature verified locally; ${submitTokenAck ? "G2 set" : "G1 set: the Worker takes two acks until xochi#753 ships"})`,
   );
@@ -483,8 +505,8 @@ export async function run(argv: string[]): Promise<void> {
         ),
         await passphrase(true),
       );
+      writeBackupCopies(sealed.bytes, outs[0]!, outs[1]!);
       for (const out of outs) {
-        writeFileSync(out, sealed.bytes, { mode: 0o600, flag: "wx" });
         if (keccak256(readFileSync(out)) !== sealed.commitment) fail(`${out} does not read back`);
       }
       store.writeState({
@@ -500,30 +522,37 @@ export async function run(argv: string[]): Promise<void> {
     case "enroll": {
       const state = store.readState();
       const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
-      const ctx = { corridor: state.corridor, log };
-      const xochi = api(values);
+      const xochi = api(values, hashRecipientDescriptor(account.descriptor));
       if (sub === "start") {
-        const pending = await enrollStart(
-          ctx,
-          xochi,
-          account,
-          required(values, "source-wallet"),
-          state.tokenRegisteredAt ?? null,
-        );
-        const file = join(store.dir, "binding-typed-data.json");
-        writeFileSync(file, typedDataJson(pending.typedData) + "\n");
-        store.writeState({
-          ...state,
-          pending: {
-            challenge: pending.challenge,
-            binding: pending.binding,
-            tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
-          },
+        return withAccount(values, store, async (ctx, liveAccount) => {
+          await registerSenders(ctx);
+          await registerAndRecord(ctx, store, await tokenArtifact(values, ctx.corridor));
+          const registered = store.readState();
+          const pending = await enrollStart(
+            ctx,
+            xochi,
+            liveAccount,
+            required(values, "source-wallet"),
+            registered.tokenRegisteredAt ?? null,
+          );
+          const file = join(store.dir, "binding-typed-data.json");
+          writeFileSync(file, typedDataJson(pending.typedData) + "\n", { mode: 0o600 });
+          chmodSync(file, 0o600);
+          store.writeState({
+            ...registered,
+            pending: {
+              challenge: pending.challenge,
+              binding: pending.binding,
+              tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
+            },
+          });
+          log(
+            `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
+          );
         });
-        log(
-          `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
-        );
-      } else if (sub === "submit") {
+      }
+      const ctx = { corridor: state.corridor, log };
+      if (sub === "submit") {
         const saved = state.pending ?? fail("no pending enrollment: run enroll start");
         const commitment =
           state.backupCommitment ?? fail("write the backup first: its commitment is acknowledged");
@@ -554,11 +583,14 @@ export async function run(argv: string[]): Promise<void> {
         );
         const { pending: _done, ...rest } = state;
         store.writeState({ ...rest, bindingId: projection.binding_id });
+        const bindingFile = join(store.dir, "binding-typed-data.json");
+        if (existsSync(bindingFile)) unlinkSync(bindingFile);
       } else if (sub === "status") {
         await enrollStatus(
           ctx,
           xochi,
           values["binding-id"] ?? state.bindingId ?? fail("--binding-id is required"),
+          account,
         );
       } else {
         fail("enroll start | submit | status");
@@ -589,6 +621,42 @@ export async function run(argv: string[]): Promise<void> {
         await registerAndRecord(ctx, store, artifact);
         await showBalance(ctx, artifact, restored);
       });
+    }
+    case "operations": {
+      const journal = new OperationJournal(join(store.dir, "operations"));
+      if (sub === "reconcile") {
+        const state = store.readState();
+        const operation = journal.unresolved() ?? fail("no unresolved operation");
+        const txHash =
+          operation.txHash ??
+          fail("the send returned no transaction hash; absence cannot be proven automatically");
+        const node = createAztecNodeClient(required(values, "node-url"));
+        const [info, block1] = await Promise.all([
+          node.getNodeInfo(),
+          node.getBlockData(BlockNumber(1)),
+        ]);
+        if (!block1) fail("the node has no block 1; it cannot prove the network identity");
+        assertPinnedNetwork(
+          {
+            l1ChainId: String(info.l1ChainId),
+            rollupVersion: String(info.rollupVersion),
+            rollupAddress: info.l1ContractAddresses.rollupAddress.toString(),
+            block1LastArchiveRoot: block1.header.lastArchive.root.toString(),
+            nodeVersion: info.nodeVersion,
+          },
+          state.corridor,
+        );
+        const receipt = await node.getTxReceipt(TxHash.fromString(txHash));
+        if (!receipt.isMined()) fail(`operation receipt is ${receipt.status}; it remains blocked`);
+        journal.update(operation.id, {
+          status: "complete",
+          receiptStatus: String(receipt.status),
+        });
+        log(`operation ${operation.id}: reconciled from mined receipt ${receipt.status}`);
+      } else {
+        log(JSON.stringify(journal.records(), null, 2));
+      }
+      return;
     }
     case "spend":
       return withAccount(values, store, async (ctx, account) => {

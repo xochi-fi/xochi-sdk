@@ -15,6 +15,8 @@ import {
   signRecipientDigest,
   type RecipientAccount,
 } from "../src/account.js";
+import { HttpEnrollmentApi, type BindingProjection, type EnrollmentApi } from "../src/api.js";
+import { enrollStatus, enrollSubmit } from "../src/commands.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
   bindingTypedData,
@@ -194,5 +196,58 @@ describe("enrollment request", () => {
         sign: signRecipientDigest,
       }),
     ).rejects.toThrow(/not the binding's source wallet/);
+  });
+});
+
+describe("enrollment projection binding", () => {
+  it("refuses API projections for another descriptor or binding", async () => {
+    const { account, binding, tokenRegistrationAck } = await request(OXDAI_MAINNET_REV2);
+    const typedData = bindingTypedData(OXDAI_MAINNET_REV2, binding).typedData;
+    const sourceSignature = await source.signTypedData(typedData);
+    const wrong: BindingProjection = {
+      binding_id: "wrong-binding",
+      descriptor_digest: `0x${"ff".repeat(32)}`,
+      state: "pending",
+      policy_revision: 1,
+    };
+    const api: EnrollmentApi = {
+      async challenge() {
+        return CHALLENGE;
+      },
+      async enroll() {
+        return wrong;
+      },
+      async projection() {
+        return wrong;
+      },
+    };
+    const ctx = { corridor: OXDAI_MAINNET_REV2, log: () => {} };
+
+    await expect(
+      enrollSubmit(
+        ctx,
+        api,
+        account,
+        { challenge: CHALLENGE, binding, typedData, tokenRegistrationAck },
+        sourceSignature,
+        COMMITMENT,
+        false,
+      ),
+    ).rejects.toThrow(/different recipient descriptor/);
+    await expect(enrollStatus(ctx, api, "expected-binding", account)).rejects.toThrow(
+      /different binding id/,
+    );
+  });
+});
+
+describe("enrollment API origin", () => {
+  it("never sends the source-wallet bearer to a caller-selected HTTPS origin", () => {
+    expect(() => new HttpEnrollmentApi("https://attacker.example", "TEST ONLY")).toThrow(
+      /must be https:\/\/api.xochi.fi/,
+    );
+    expect(() => new HttpEnrollmentApi("https://api.xochi.fi/extra", "TEST ONLY")).toThrow(
+      /must not contain a path/,
+    );
+    expect(() => new HttpEnrollmentApi("https://api.xochi.fi", "TEST ONLY")).not.toThrow();
   });
 });
