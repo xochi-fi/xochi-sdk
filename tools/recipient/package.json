@@ -1,6 +1,6 @@
 {
   "name": "@xochi/recipient",
-  "version": "0.1.0-test.2",
+  "version": "0.1.0-test.3",
   "private": true,
   "description": "Installable test artifact for the local Xochi OXDAI recipient CLI. No package publication.",
   "license": "MIT",
@@ -20,14 +20,18 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "npm-shrinkwrap.json"
+    "npm-shrinkwrap.json",
+    "scripts/qualify-extracted-root.mjs",
+    "scripts/seed-locked-cache.mjs",
+    "scripts/verify-installed-closure.mjs"
   ],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc -p tsconfig.test.json",
-    "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
+    "test": "vitest run && npm run test:closure",
+    "test:closure": "node test/release-closure.test.mjs",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "dry-run": "node dist/cli.js plan",
     "prepack": "npm run build",
     "release:artifact": "node scripts/build-release.mjs",

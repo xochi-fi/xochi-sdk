@@ -272,9 +272,12 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: npm
           cache-dependency-path: tools/recipient/package-lock.json
+
+      - name: Pin recipient npm
+        run: npm install --global npm@10.9.9
 
 
       - name: OXDAI recipient tool and installable test artifact
@@ -290,24 +293,50 @@ jobs:
           node --check scripts/smoke-no-plaintext-keys.mjs
           node --check scripts/build-release.mjs
           node --check scripts/seed-locked-cache.mjs
+          node --check scripts/verify-installed-closure.mjs
+          node --check scripts/qualify-extracted-root.mjs
+          node --check scripts/record-release-qualification.mjs
           bash -n scripts/build-broadcaster.sh
           bash -n qualify/freeze-fork.sh
           bash -n qualify/independent-restore.sh
-          node scripts/build-release.mjs --out release
-          tar -xOf release/*.tgz package/npm-shrinkwrap.json >/dev/null
+
+          node scripts/build-release.mjs --out release-a
+          node scripts/build-release.mjs --out release-b
+          cmp release-a/*.tgz release-b/*.tgz
+          cmp release-a/*.cdx.json release-b/*.cdx.json
+          cmp release-a/*.release.json release-b/*.release.json
+          cmp release-a/SHA256SUMS release-b/SHA256SUMS
+
+          stage="$(mktemp -d)"
           locked_cache="$(mktemp -d)"
-          node scripts/seed-locked-cache.mjs --cache "$locked_cache"
-          npm install --global --offline --cache "$locked_cache" ./release/*.tgz
+          receipt="$(mktemp)"
+          tar -xzf release-a/*.tgz -C "$stage"
+          test -f "$stage/package/package.json"
+          test -f "$stage/package/npm-shrinkwrap.json"
+          node "$stage/package/scripts/qualify-extracted-root.mjs" \
+            --package-root "$stage/package" \
+            --release-dir "$PWD/release-a" \
+            --cache "$locked_cache" \
+            --receipt "$receipt"
+          node scripts/record-release-qualification.mjs \
+            --receipt "$receipt" \
+            --release-dir release-a \
+            --release-dir release-b
+
+          cmp release-a/*.tgz release-b/*.tgz
+          cmp release-a/*.cdx.json release-b/*.cdx.json
+          cmp release-a/*.release.json release-b/*.release.json
+          cmp release-a/SHA256SUMS release-b/SHA256SUMS
           version="$(node -p "require('./package.json').version")"
-          [[ "$(xochi-recipient --version)" == "$version" ]]
-          diagnostics="$(xochi-recipient diagnostics)"
+          [[ "$(node "$stage/package/dist/cli.js" --version)" == "$version" ]]
+          diagnostics="$(node "$stage/package/dist/cli.js" diagnostics)"
           [[ "$diagnostics" == *'"corridorRevision":"2"'* ]]
 
       - uses: actions/upload-artifact@v5
         if: matrix.os == 'ubuntu-latest'
         with:
           name: xochi-recipient-test-artifact
-          path: tools/recipient/release/*
+          path: tools/recipient/release-a/*
           if-no-files-found: error
           retention-days: 7
 

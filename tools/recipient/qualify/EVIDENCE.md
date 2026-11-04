@@ -86,21 +86,20 @@ repository:
 
 The PR pipeline builds the private test tarball twice, compares bytes, emits SHA-256 checksums, a
 normalized CycloneDX SBOM from the shipped exact-integrity `npm-shrinkwrap.json`, and a release
-manifest, and installs the tarball on Ubuntu and macOS under Node 22. It also exercises an offline
-install with the registry unreachable after seeding the exact locked cache. A
-`recipient-v*-test.*` tag can create only a signed GitHub prerelease; `private: true` and the
-workflow contain no `npm publish` step. WSL consumes the Linux artifact.
-Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
+manifest. Ubuntu and macOS each extract that tarball into a new empty directory, seed a new cache
+from the extracted shrinkwrap's exact registry tarballs, and run
+`npm ci --omit=dev --offline` from the extracted package root under Node `22.23.4` and npm
+`10.9.9`. The installed-closure verifier rejects packages, versions, or paths absent from the
+shrinkwrap, requires the complete platform-compatible production tree, and rejects installed
+development dependencies. The staged CLI is invoked as `node dist/cli.js`; global tarball
+installation is not a trusted qualification or operator path.
 
-Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
-67 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
-builds and standalone tarball installation all passed. The installed CLI reported
-`0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
-and backup v1 read/write compatibility. Refund tests recover the exact pre-submission hash after a
-crash immediately following the initial lock fsync and reject receipt or transaction inclusion
-that does not match the canonical block. Exit tests accept the exact executor-fee ceiling and
-reject ceiling plus one without creating a journal. Ubuntu remains a PR-matrix observation rather
-than a local claim.
+The release manifest records installation method `extracted-root-npm-ci-v1`, exact Node and npm
+versions, package/SBOM/shrinkwrap digests, lockfile version, cache package count, installed package
+count, and the closure-verification result. A `recipient-v*-test.*` tag can create only a signed
+GitHub prerelease; `private: true` and the workflow contain no `npm publish` step. WSL consumes the
+Linux artifact. Record the exact CI run and both platform verdicts on the PR; this file does not
+pre-claim them.
 
 F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
 overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
@@ -119,19 +118,29 @@ therefore accepts only a real externally generated proof bundle and never fabric
 
 ## Mainnet operator handoff (not executed by this qualification)
 
-The following is the exact release sequence for an authorized operator. Run it from a reviewed
-commit on encrypted storage. Secrets come from the operator vault, not issue comments or shell
-history. The first block deliberately fails before any network action if a prerequisite is absent.
+The following is the exact staged-artifact sequence for an authorized operator. Run it from the
+verified GitHub prerelease directory on encrypted storage. Secrets come from the operator vault,
+not issue comments or shell history. The first block deliberately fails before recipient or
+production access if release qualification is incomplete.
 
 ```bash
-# Clean-checkout bootstrap, from repository root.
-npm ci
-npm run build -w @xochi/signer
-cd tools/recipient
-npm ci
-npm run build
-npm run build:broadcaster
-
+test "$(node --version)" = "v22.23.4"
+test "$(npm --version)" = "10.9.9"
+shasum -a 256 -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
+RELEASE_DIR="$PWD"
+STAGE="$(mktemp -d)"
+CACHE="$(mktemp -d)"
+RECEIPT="$STAGE/closure-verification.json"
+tar -xzf ./xochi-recipient-*.tgz -C "$STAGE"
+test -f "$STAGE/package/package.json"
+test -f "$STAGE/package/npm-shrinkwrap.json"
+node "$STAGE/package/scripts/qualify-extracted-root.mjs" \
+  --package-root "$STAGE/package" --release-dir "$RELEASE_DIR" \
+  --cache "$CACHE" --receipt "$RECEIPT"
+cd "$STAGE/package"
 export XOCHI_RECIPIENT_PASSPHRASE="$(op read 'op://<vault>/<recipient>/passphrase')"
 export XOCHI_JWT="$(op read 'op://<vault>/<recipient>/source-member-session')"
 DATA="$(op read 'op://<vault>/<recipient>/encrypted-data-directory')"
@@ -142,7 +151,7 @@ CLAIM_JSON="$(op read 'op://<vault>/<recipient>/fee-juice-claim-path')"
 SOURCE_WALLET="$(op read 'op://<vault>/<recipient>/source-wallet-address')"
 BACKUP_A="$(op read 'op://<vault>/<recipient>/backup-a-path')"
 BACKUP_B="$(op read 'op://<vault>/<recipient>/backup-b-path')"
-BROADCASTER=contracts/oxide/broadcaster_contract/target/broadcaster_contract-Broadcaster.json
+BROADCASTER="$(op read 'op://<vault>/<recipient>/broadcaster-artifact-path')"
 
 : "${XOCHI_RECIPIENT_PASSPHRASE:?required}" "${XOCHI_JWT:?required}"
 : "${DATA:?required}" "${NODE:?required}" "${L1:?required}" "${ARTIFACT:?required}"
