@@ -94,6 +94,11 @@ shrinkwrap, requires the complete platform-compatible production tree, and rejec
 development dependencies. The staged CLI is invoked as `node dist/cli.js`; global tarball
 installation is not a trusted qualification or operator path.
 
+Before a future signed recipient tag is created, the release operator must run
+`npm run release:preflight` with authenticated repository admin-read access. The preflight fails
+closed unless the versioned GitHub API returns HTTP 200 and confirms effective immutable-release
+enforcement. Tag creation and release publication remain separately authorized actions.
+
 The release manifest records installation method `extracted-root-npm-ci-v1`, exact Node and npm
 versions, package/SBOM/shrinkwrap digests, lockfile version, cache package count, installed package
 count, and the closure-verification result. A `recipient-v*-test.*` tag can create only a signed
@@ -129,9 +134,9 @@ test "$(npm --version)" = "10.9.9"
 shasum -a 256 -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
-PACKAGE=./xochi-recipient-0.1.0-test.3.tgz
-EXPECTED_TAG=recipient-v0.1.0-test.3
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+PACKAGE=./xochi-recipient-0.1.0-test.4.tgz
+EXPECTED_TAG=recipient-v0.1.0-test.4
 test -f "$PACKAGE"
 gh attestation verify "$PACKAGE" \
   --repo xochi-fi/xochi-sdk \

@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+## 0.1.0-test.4 - 2026-11-04
+
 - Validate every required OxideToken artifact before `setup`, `balance`, `enroll start`, `restore`,
   `spend`, or `exit` creates or connects to a PXE, adds an account, registers a token,
   synchronizes, or mutates recipient state.
+- Require a fail-closed GitHub immutable-release API preflight before a release operator creates a
+  future signed recipient tag.
+- Correct the documented Sigstore OIDC issuer to
+  `https://token.actions.githubusercontent.com`.
+- Preserve exact locked-cache seeding, extracted-root offline installation, installed-closure
+  verification, and privacy-safe exit diagnostics.
+- Keep the artifact repository-only and dark; this source preparation does not create a tag,
+  release, npm publication, or production authorization.
 
 ## 0.1.0-test.3 - 2026-11-04
 
