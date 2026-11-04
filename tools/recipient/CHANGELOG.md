@@ -5,8 +5,14 @@
 - Validate every required OxideToken artifact before `setup`, `balance`, `enroll start`, `restore`,
   `spend`, or `exit` creates or connects to a PXE, adds an account, registers a token,
   synchronizes, or mutates recipient state.
-- Preserve only allowlisted phase, category, class, code, and submission-boundary fields from
-  fund-movement failures in private operator diagnostics; journals retain generic errors.
+
+## 0.1.0-test.2 - 2026-11-04
+
+- Add privacy-safe exit simulation diagnostics with allowlisted phase, category, class, code, and
+  submission-boundary fields only.
+- Keep the durable journal error generic and exclude raw error and transaction material.
+- Preserve one-attempt submission behavior without adding retries or automatic reconciliation.
+- Keep the artifact repository-only and dark; this release does not authorize production use.
 
 ## 0.1.0-test.1 - 2026-11-03
 
