@@ -72,11 +72,13 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   `PROVEN`, or `FINALIZED`—never `PROPOSED`. A record without a hash cannot be cleared
   automatically: investigate it with the operator before any retry, and never delete or bypass it.
   A caught fund-movement failure also writes one private operator diagnostic to stderr. It contains
-  only the operation kind, allowlisted pipeline phase, stable category, allowlisted error class and
-  code (when known), and the submission/send boundary booleans. The durable journal keeps its
-  generic error. The diagnostic never contains the upstream message, cause, stack, data, operation
-  ID, address, amount, fee, calldata, note, nullifier, witness, proof, recipient, or transaction
-  material. Retain captured stderr privately; do not attach it to public issues.
+  only operation kind `spend` or `exit`; phase `simulate`, `hydrate`, `tee-sign`, `prove`, or
+  `pre-send`; category `simulation`, `proving`, `submission-ambiguous`, or `unknown`; class
+  `SimulationError`, `ProvingError`, `NoRetryError`, or `UnknownError`; the corresponding fixed
+  `AZTEC_*` code when known; and the submission/send boundary booleans. The durable journal keeps
+  its generic error. The diagnostic never contains the upstream message, cause, stack, data,
+  operation ID, address, amount, fee, calldata, note, nullifier, witness, proof, recipient, or
+  transaction material. Retain captured stderr privately; do not attach it to public issues.
 - **Exit needs a fee ceiling and a relayer.** `exit` requires `--max-executor-fee` in base units,
   reads the live executor `FEE()`, and refuses a fee above that ceiling before creating an exit
   journal, proving, signing, or submitting. The exact ceiling is accepted. It also refuses a zero

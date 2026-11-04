@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import { NoRetryError } from "@aztec-labs/foundation/retry";
+import { ProvingError } from "@aztec-labs/stdlib/errors";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,11 +13,15 @@ import {
   singleAttemptJsonRpcFetch,
 } from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
-import type { SubmissionDiagnosticState } from "../src/safe-diagnostic.js";
+import {
+  createSubmissionDiagnosticState,
+  safeOperationDiagnostic,
+  type SubmissionDiagnosticState,
+} from "../src/safe-diagnostic.js";
 
 const diagnosticState = (
   operationKind: SubmissionDiagnosticState["operationKind"] = "spend",
-): SubmissionDiagnosticState => ({ operationKind, phase: "pre-send" });
+): SubmissionDiagnosticState => createSubmissionDiagnosticState(operationKind);
 
 const HASH = TxHash.fromString(`0x${"12".repeat(32)}`);
 const TX = { getTxHash: () => HASH } as Tx;
@@ -73,27 +79,38 @@ describe("Aztec node submission journal boundary", () => {
             status: "broadcast",
             txHash: HASH.toString(),
           });
-          throw new Error("private transaction material must not escape");
+          throw new NoRetryError("private transaction material must not escape");
         },
       } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
+      const state = diagnosticState();
 
-      let message = "";
+      let caught: unknown;
       try {
         await submission.run(
           async (txHash) => {
             journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
           },
           () => submission.node.sendTx(TX),
-          diagnosticState(),
+          state,
         );
       } catch (error) {
-        message = error instanceof Error ? error.message : String(error);
+        caught = error;
       }
-      expect(message).toBe(
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe(
         "Aztec transaction submission or receipt outcome requires journal reconciliation",
       );
-      expect(message).not.toContain("private transaction material");
+      expect((caught as Error).message).not.toContain("private transaction material");
+      expect(safeOperationDiagnostic(caught)).toEqual({
+        operationKind: "spend",
+        phase: "pre-send",
+        category: "submission-ambiguous",
+        errorClass: "NoRetryError",
+        errorCode: "AZTEC_SUBMISSION_AMBIGUOUS",
+        submissionBoundaryReached: true,
+        sendTxReached: true,
+      });
       expect(nodeCalls).toBe(1);
       journal.failOrAbort(operation.id);
 
@@ -113,18 +130,32 @@ describe("Aztec node submission journal boundary", () => {
       let journaled = false;
       const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
+      const state = diagnosticState();
+      state.phase = "prove";
 
-      await expect(
-        submission.run(
+      let caught: unknown;
+      try {
+        await submission.run(
           async () => {
             journaled = true;
           },
           async () => {
-            throw new Error("proof contains private note data");
+            throw new ProvingError("proof contains private note data");
           },
-          diagnosticState(),
-        ),
-      ).rejects.toThrow("recipient operation failed before Aztec node submission");
+          state,
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(safeOperationDiagnostic(caught)).toEqual({
+        operationKind: "spend",
+        phase: "prove",
+        category: "proving",
+        errorClass: "ProvingError",
+        errorCode: "AZTEC_PROVING_FAILED",
+        submissionBoundaryReached: false,
+        sendTxReached: false,
+      });
       journal.failOrAbort(operation.id);
 
       expect(journaled).toBe(false);
@@ -144,16 +175,28 @@ describe("Aztec node submission journal boundary", () => {
       },
     } as unknown as AztecNode;
     const submission = new NodeSubmission(rawNode);
+    const state = diagnosticState();
 
-    await expect(
-      submission.run(
+    let caught: unknown;
+    try {
+      await submission.run(
         async () => {
           throw new Error("journal fsync failed");
         },
         () => submission.node.sendTx(TX),
-        diagnosticState(),
-      ),
-    ).rejects.toThrow("recipient operation failed before Aztec node submission");
+        state,
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(safeOperationDiagnostic(caught)).toEqual({
+      operationKind: "spend",
+      phase: "pre-send",
+      category: "unknown",
+      errorClass: "UnknownError",
+      submissionBoundaryReached: false,
+      sendTxReached: true,
+    });
     expect(nodeCalls).toBe(0);
   });
 

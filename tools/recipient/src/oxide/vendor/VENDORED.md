@@ -26,7 +26,7 @@ package, so the code is copied here, as pxe-bridge does for its Oxide sender
 
 | Here                                                  | Upstream                                                  | Status                                                                                                                                                             |
 | ----------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `oxide-client/l2_operations.ts`                       | `oxide-client/src/l2_operations.ts`                       | **modified**: a signed-withdrawal hook lets the tool persist recovery data before proving or sending; the non-vendored node-submit wrapper owns tx-hash journaling |
+| `oxide-client/l2_operations.ts`                       | `oxide-client/src/l2_operations.ts`                       | **modified**: a signed-withdrawal hook persists recovery data before proving or sending; phase hooks distinguish `simulate`, `hydrate`, `tee-sign`, and `prove`; the non-vendored node-submit wrapper owns the `pre-send` tx-hash boundary |
 | `oxide-client/submitted_withdrawal.ts`                | `oxide-client/src/submitted_withdrawal.ts`                | unmodified                                                                                                                                                         |
 | `oxide-client/withdrawal_finalization_request.ts`     | `oxide-client/src/withdrawal_finalization_request.ts`     | unmodified                                                                                                                                                         |
 | `oxide-client/withdrawal_in_tx.ts`                    | `oxide-client/src/withdrawal_in_tx.ts`                    | unmodified                                                                                                                                                         |
@@ -65,6 +65,7 @@ the tool's stricter flags.
 
 Re-copy pxe-bridge's `src/oxide/vendor/` at the commit that moves the Oxide pin, re-add the
 table above from the same upstream commit with the two rewrites, re-apply the
-`l2_operations.ts` signed-withdrawal journal hook and `plain_withdrawal_executor.ts` fee-reader removal, and
-update the deployment pins in `../../corridor.ts` together. A new Oxide deployment is a new
-pin, reviewed, never absorbed. Then `npm run typecheck && npm test`.
+`l2_operations.ts` signed-withdrawal journal hook and four phase hooks, re-apply
+`plain_withdrawal_executor.ts` fee-reader removal, and update the deployment pins in
+`../../corridor.ts` together. A new Oxide deployment is a new pin, reviewed, never absorbed. Then
+`npm run typecheck && npm test`.

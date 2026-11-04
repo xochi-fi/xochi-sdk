@@ -85,8 +85,6 @@ export function createSingleAttemptAztecNodeBroadcaster(url: string): Pick<Aztec
 interface ArmedSubmission {
   beforeSubmit: BeforeSubmit;
   diagnosticState: SubmissionDiagnosticState;
-  submissionBoundaryReached: boolean;
-  sendTxReached: boolean;
 }
 
 export class NodeSubmission {
@@ -117,30 +115,23 @@ export class NodeSubmission {
     diagnosticState: SubmissionDiagnosticState,
   ): Promise<T> {
     if (this.armed) throw new Error("an Aztec node submission hook is already armed");
-    const armed: ArmedSubmission = {
-      beforeSubmit,
-      diagnosticState,
-      submissionBoundaryReached: false,
-      sendTxReached: false,
-    };
+    diagnosticState.submissionBoundaryReached = false;
+    diagnosticState.sendTxReached = false;
+    const armed: ArmedSubmission = { beforeSubmit, diagnosticState };
     this.armed = armed;
     try {
       const result = await operation();
-      if (!armed.submissionBoundaryReached) {
+      if (!armed.diagnosticState.submissionBoundaryReached) {
         throw new Error("recipient operation completed without an Aztec node submission");
       }
       return result;
     } catch (error) {
       throw safeOperationError(
-        armed.submissionBoundaryReached
+        armed.diagnosticState.submissionBoundaryReached
           ? "Aztec transaction submission or receipt outcome requires journal reconciliation"
           : "recipient operation failed before Aztec node submission",
         error,
         armed.diagnosticState,
-        {
-          submissionBoundaryReached: armed.submissionBoundaryReached,
-          sendTxReached: armed.sendTxReached,
-        },
       );
     } finally {
       this.armed = null;
@@ -153,14 +144,14 @@ export class NodeSubmission {
       await this.target.sendTx(tx);
       return;
     }
-    if (armed.submissionBoundaryReached) {
+    if (armed.diagnosticState.submissionBoundaryReached) {
       throw new Error("an operation attempted more than one Aztec node submission");
     }
     armed.diagnosticState.phase = "pre-send";
-    armed.sendTxReached = true;
+    armed.diagnosticState.sendTxReached = true;
     const txHash = tx.getTxHash();
     await armed.beforeSubmit(txHash);
-    armed.submissionBoundaryReached = true;
+    armed.diagnosticState.submissionBoundaryReached = true;
     await this.broadcaster.sendTx(tx);
   };
 }

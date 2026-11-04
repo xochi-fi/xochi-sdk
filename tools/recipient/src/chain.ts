@@ -28,8 +28,7 @@ import { OperationJournal, type OperationRecord } from "./operation-journal.js";
 import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
 import { durablyIncluded } from "./reconciliation.js";
 import {
-  preserveSafeOperationDiagnostic,
-  safeOperationDiagnostic,
+  createSubmissionDiagnosticState,
   safeOperationError,
   type SubmissionDiagnosticState,
 } from "./safe-diagnostic.js";
@@ -148,9 +147,39 @@ export function failOrAbortWithSafeDiagnostic(
   journal: OperationJournal,
   operationId: string,
   error: unknown,
+  diagnosticState: SubmissionDiagnosticState,
 ): Error {
-  const journalError = journal.failOrAbort(operationId);
-  return preserveSafeOperationDiagnostic(journalError.message, error);
+  const initialMessage = diagnosticState.submissionBoundaryReached
+    ? "operation outcome requires transaction reconciliation"
+    : "operation failed before Aztec node submission";
+  const safeError = safeOperationError(initialMessage, error, diagnosticState);
+  try {
+    const journalError = journal.failOrAbort(
+      operationId,
+      diagnosticState.submissionBoundaryReached,
+    );
+    return safeOperationError(journalError.message, safeError, diagnosticState);
+  } catch {
+    const cleanupMessage = diagnosticState.submissionBoundaryReached
+      ? "operation journal update failed after Aztec node submission; reconciliation remains required"
+      : "operation journal abort or lock release failed before Aztec node submission; restart before moving funds";
+    return safeOperationError(cleanupMessage, safeError, diagnosticState);
+  }
+}
+
+export function sanitizeFundMovementFailure(
+  journal: OperationJournal,
+  operation: OperationRecord | null,
+  error: unknown,
+  diagnosticState: SubmissionDiagnosticState,
+): Error {
+  return operation === null
+    ? safeOperationError(
+        "recipient operation failed before Aztec node submission",
+        error,
+        diagnosticState,
+      )
+    : failOrAbortWithSafeDiagnostic(journal, operation.id, error, diagnosticState);
 }
 
 export function beginExitAfterExecutorFeeCheck(
@@ -352,14 +381,11 @@ export class LiveAztec implements AztecPort {
     artifact: ContractArtifact,
     build: (contract: Contract) => Operation[],
     operation: OperationRecord,
+    diagnosticState: SubmissionDiagnosticState,
   ): Promise<SubmitResult> {
-    if (operation.kind !== "spend" && operation.kind !== "exit") {
-      throw new Error("only spend and exit operations use the Aztec submission boundary");
+    if (operation.kind !== diagnosticState.operationKind) {
+      throw new Error("operation kind does not match its submission diagnostic");
     }
-    const diagnosticState: SubmissionDiagnosticState = {
-      operationKind: operation.kind,
-      phase: "pre-send",
-    };
     try {
       const contract = Contract.at(
         AztecAddress.fromStringUnsafe(this.corridor.token.address),
@@ -417,12 +443,12 @@ export class LiveAztec implements AztecPort {
         diagnosticState,
       );
     } catch (error) {
-      if (safeOperationDiagnostic(error) !== null) throw error;
       throw safeOperationError(
-        "recipient operation failed before Aztec node submission",
+        diagnosticState.submissionBoundaryReached
+          ? "operation outcome requires transaction reconciliation"
+          : "recipient operation failed before Aztec node submission",
         error,
         diagnosticState,
-        { submissionBoundaryReached: false, sendTxReached: false },
       );
     }
   }
@@ -433,12 +459,14 @@ export class LiveAztec implements AztecPort {
     to: AztecAddress,
     amount: bigint,
   ): Promise<string> {
-    const operation = this.operationJournal.begin("spend", {
-      from: account.address.toString(),
-      to: to.toString(),
-      amount: amount.toString(),
-    });
+    const diagnosticState = createSubmissionDiagnosticState("spend");
+    let operation: OperationRecord | null = null;
     try {
+      operation = this.operationJournal.begin("spend", {
+        from: account.address.toString(),
+        to: to.toString(),
+        amount: amount.toString(),
+      });
       const result = await this.submitOperations(
         account,
         artifact,
@@ -452,6 +480,7 @@ export class LiveAztec implements AztecPort {
           },
         ],
         operation,
+        diagnosticState,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -460,7 +489,7 @@ export class LiveAztec implements AztecPort {
       this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
     } catch (error) {
-      throw failOrAbortWithSafeDiagnostic(this.operationJournal, operation.id, error);
+      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
     }
   }
 
@@ -469,32 +498,39 @@ export class LiveAztec implements AztecPort {
     artifact: ContractArtifact,
     request: ExitRequest,
   ): Promise<ExitResult> {
-    if (!this.l1RpcUrl) throw new Error("exit needs --l1-rpc: the executor's fee is read from L1");
-    const broadcasterAddress = AztecAddress.fromStringUnsafe(this.corridor.oxide.l2Broadcaster);
-    // The broadcaster artifact is the caller's file: it is used only if its class is the class
-    // of the deployment's broadcaster instance on the pinned node.
-    const [instance, klass] = await Promise.all([
-      this.node.getContract(broadcasterAddress),
-      getContractClassFromArtifact(request.broadcasterArtifact),
-    ]);
-    if (!instance || !instance.currentContractClassId.equals(klass.id)) {
-      throw new Error(
-        `broadcaster artifact class ${klass.id.toString()} is not the class of ${broadcasterAddress.toString()}`,
-      );
-    }
-    const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
-    const executorFee = await createPublicClient({ transport: http(this.l1RpcUrl) }).readContract({
-      address: executor,
-      abi: parseAbi(["function FEE() view returns (uint256)"]),
-      functionName: "FEE",
-    });
-    const { operation, recipientAmount } = beginExitAfterExecutorFeeCheck(
-      this.operationJournal,
-      account.address.toString(),
-      request,
-      executorFee,
-    );
+    const diagnosticState = createSubmissionDiagnosticState("exit");
+    let operation: OperationRecord | null = null;
     try {
+      if (!this.l1RpcUrl) {
+        throw new Error("exit needs --l1-rpc: the executor's fee is read from L1");
+      }
+      const broadcasterAddress = AztecAddress.fromStringUnsafe(this.corridor.oxide.l2Broadcaster);
+      // The broadcaster artifact is the caller's file: it is used only if its class is the class
+      // of the deployment's broadcaster instance on the pinned node.
+      const [instance, klass] = await Promise.all([
+        this.node.getContract(broadcasterAddress),
+        getContractClassFromArtifact(request.broadcasterArtifact),
+      ]);
+      if (!instance || !instance.currentContractClassId.equals(klass.id)) {
+        throw new Error(
+          `broadcaster artifact class ${klass.id.toString()} is not the class of ${broadcasterAddress.toString()}`,
+        );
+      }
+      const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
+      const executorFee = await createPublicClient({
+        transport: http(this.l1RpcUrl),
+      }).readContract({
+        address: executor,
+        abi: parseAbi(["function FEE() view returns (uint256)"]),
+        functionName: "FEE",
+      });
+      const prepared = beginExitAfterExecutorFeeCheck(
+        this.operationJournal,
+        account.address.toString(),
+        request,
+        executorFee,
+      );
+      operation = prepared.operation;
       const broadcaster = Contract.at(broadcasterAddress, request.broadcasterArtifact, this.wallet);
       const result = await this.submitOperations(
         account,
@@ -515,6 +551,7 @@ export class LiveAztec implements AztecPort {
           }),
         ],
         operation,
+        diagnosticState,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -523,7 +560,7 @@ export class LiveAztec implements AztecPort {
       const response = {
         txHash,
         executorFee: executorFee.toString(),
-        recipientAmount: recipientAmount.toString(),
+        recipientAmount: prepared.recipientAmount.toString(),
         withdrawals: result.withdrawals.map((w) => ({
           txHash,
           withdrawalIndex: w.withdrawalIndex,
@@ -544,7 +581,7 @@ export class LiveAztec implements AztecPort {
       });
       return response;
     } catch (error) {
-      throw failOrAbortWithSafeDiagnostic(this.operationJournal, operation.id, error);
+      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
     }
   }
 

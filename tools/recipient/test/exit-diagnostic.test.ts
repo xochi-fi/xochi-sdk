@@ -4,26 +4,66 @@ import { join } from "node:path";
 
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { SimulationError } from "@aztec-labs/stdlib/errors";
+import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
-import { failOrAbortWithSafeDiagnostic } from "../src/chain.js";
-import { formatCliFailure } from "../src/cli.js";
+import { deriveRecipientAccount } from "../src/account.js";
+import { backupContents } from "../src/backup.js";
+import { sanitizeFundMovementFailure } from "../src/chain.js";
+import { formatCliFailure, writeCliFailure } from "../src/cli.js";
+import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
-import { safeOperationDiagnostic, type SubmissionDiagnosticState } from "../src/safe-diagnostic.js";
+import {
+  createSubmissionDiagnosticState,
+  safeOperationDiagnostic,
+} from "../src/safe-diagnostic.js";
+import { TEST_SECRETS } from "./fixtures.js";
 
-const SENSITIVE_VALUES = [
-  "arbitrary simulation message",
-  "arbitrary cause",
-  "arbitrary stack",
-  "arbitrary data",
-  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "987654321",
-  "arbitrary transaction material",
-] as const;
+const HASH = TxHash.fromString(`0x${"12".repeat(32)}`);
+const TX = { getTxHash: () => HASH } as Tx;
+const SENSITIVE = {
+  message: "private-error-message",
+  cause: "private-error-cause",
+  stack: "private-error-stack",
+  data: "private-error-data",
+  address: "private-error-address",
+  operationId: "private-error-operation-id",
+  amount: "private-error-amount",
+  fee: "private-error-fee",
+  calldata: "private-error-calldata",
+  note: "private-error-note",
+  nullifier: "private-error-nullifier",
+  witness: "private-error-witness",
+  proof: "private-error-proof",
+  recipient: "private-error-recipient",
+  transaction: "private-error-transaction",
+} as const;
+
+const sensitiveValues = Object.values(SENSITIVE);
+
+function privateSimulationError(): SimulationError {
+  const cause = new Error(SENSITIVE.cause);
+  cause.stack = SENSITIVE.stack;
+  return Object.assign(new SimulationError(SENSITIVE.message, [], [], undefined, { cause }), {
+    code: "UNAPPROVED_PRIVATE_CODE",
+    data: SENSITIVE.data,
+    address: SENSITIVE.address,
+    operationId: SENSITIVE.operationId,
+    amount: SENSITIVE.amount,
+    fee: SENSITIVE.fee,
+    calldata: SENSITIVE.calldata,
+    note: SENSITIVE.note,
+    nullifier: SENSITIVE.nullifier,
+    witness: SENSITIVE.witness,
+    proof: SENSITIVE.proof,
+    recipient: SENSITIVE.recipient,
+    transaction: SENSITIVE.transaction,
+  });
+}
 
 describe("privacy-safe exit failure diagnostics", () => {
-  it("preserves a simulation category while the journal and CLI discard private error material", async () => {
+  it("preserves a simulation category through the production journal and CLI failure seams", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-diagnostic-"));
     try {
       const journal = new OperationJournal(directory);
@@ -35,22 +75,10 @@ describe("privacy-safe exit failure diagnostics", () => {
         accountSign: 0,
         sendTx: 0,
       };
-      const rawCause = new Error(SENSITIVE_VALUES[1]);
-      rawCause.stack = SENSITIVE_VALUES[2];
-      const rawError = new SimulationError(SENSITIVE_VALUES[0], [], [], undefined, {
-        cause: rawCause,
-      });
-      Object.assign(rawError, {
-        code: "UNAPPROVED_PRIVATE_CODE",
-        data: { private: SENSITIVE_VALUES[3] },
-        address: SENSITIVE_VALUES[4],
-        amount: SENSITIVE_VALUES[5],
-        transaction: SENSITIVE_VALUES[6],
-      });
       const wallet = {
         async simulateTx(): Promise<never> {
           calls.simulate += 1;
-          throw rawError;
+          throw privateSimulationError();
         },
       };
       const rawNode = {
@@ -59,7 +87,7 @@ describe("privacy-safe exit failure diagnostics", () => {
         },
       } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);
-      const state: SubmissionDiagnosticState = { operationKind: "exit", phase: "pre-send" };
+      const state = createSubmissionDiagnosticState("exit");
 
       let nodeSubmissionError: unknown;
       try {
@@ -90,7 +118,12 @@ describe("privacy-safe exit failure diagnostics", () => {
         sendTxReached: false,
       });
 
-      const finalError = failOrAbortWithSafeDiagnostic(journal, operation.id, nodeSubmissionError);
+      const finalError = sanitizeFundMovementFailure(
+        journal,
+        operation,
+        nodeSubmissionError,
+        state,
+      );
       expect(safeOperationDiagnostic(finalError)).toEqual(
         safeOperationDiagnostic(nodeSubmissionError),
       );
@@ -104,16 +137,24 @@ describe("privacy-safe exit failure diagnostics", () => {
       expect(existsSync(join(directory, "active.lock"))).toBe(false);
       expect(calls).toEqual({ simulate: 1, prove: 0, teeSign: 0, accountSign: 0, sendTx: 0 });
 
-      const cliOutput = formatCliFailure(finalError);
+      let cliOutput = "";
+      writeCliFailure(finalError, (output) => {
+        cliOutput += output;
+      });
       expect(cliOutput).toContain("xochi-recipient: operation failed before Aztec node submission");
-      expect(cliOutput).toContain(
-        'xochi-recipient operator diagnostic: {"operationKind":"exit","phase":"simulate","category":"simulation","errorClass":"SimulationError","errorCode":"AZTEC_SIMULATION_FAILED","submissionBoundaryReached":false,"sendTxReached":false}',
-      );
       const durableJournal = readFileSync(journal.path(operation.id), "utf8");
+      const account = await deriveRecipientAccount(TEST_SECRETS, OXDAI_MAINNET_REV2);
+      const serializedBackup = JSON.stringify(
+        backupContents(OXDAI_MAINNET_REV2, TEST_SECRETS, account, null, null, 1_800_000_000, {
+          operations: journal.records(),
+          exits: [],
+        }),
+      );
       const serializedSafeError = JSON.stringify(finalError);
-      for (const secret of SENSITIVE_VALUES) {
+      for (const secret of sensitiveValues) {
         expect(cliOutput).not.toContain(secret);
         expect(durableJournal).not.toContain(secret);
+        expect(serializedBackup).not.toContain(secret);
         expect(serializedSafeError).not.toContain(secret);
       }
       expect(durableJournal).not.toContain("UNAPPROVED_PRIVATE_CODE");
@@ -123,38 +164,159 @@ describe("privacy-safe exit failure diagnostics", () => {
     }
   });
 
-  it("maps a spoofed class and code to the generic unknown identity", async () => {
-    const rawNode = { sendTx: async () => undefined } as unknown as AztecNode;
-    const submission = new NodeSubmission(rawNode);
-    const state: SubmissionDiagnosticState = { operationKind: "exit", phase: "simulate" };
-    const spoofed = Object.assign(new Error("private unknown message"), {
-      name: "SimulationError",
-      code: "AZTEC_SIMULATION_FAILED",
-    });
-
-    let caught: unknown;
+  it("aborts and clears a hash persisted by a before-submit callback that then fails", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "xochi-exit-pre-submit-"));
     try {
-      await submission.run(
-        async () => undefined,
-        async () => {
-          throw spoofed;
+      const journal = new OperationJournal(directory);
+      const operation = journal.begin("exit", { fixture: "partial-persistence" });
+      let nodeCalls = 0;
+      const rawNode = {
+        async sendTx(): Promise<void> {
+          nodeCalls += 1;
         },
+      } as unknown as AztecNode;
+      const submission = new NodeSubmission(rawNode);
+      const state = createSubmissionDiagnosticState("exit");
+      state.phase = "prove";
+
+      let caught: unknown;
+      try {
+        await submission.run(
+          async (txHash) => {
+            journal.update(operation.id, {
+              status: "broadcast",
+              txHash: txHash.toString(),
+            });
+            throw new Error("private post-rename fsync failure");
+          },
+          () => submission.node.sendTx(TX),
+          state,
+        );
+      } catch (error) {
+        caught = error;
+      }
+
+      const finalError = sanitizeFundMovementFailure(journal, operation, caught, state);
+      expect(safeOperationDiagnostic(finalError)).toEqual({
+        operationKind: "exit",
+        phase: "pre-send",
+        category: "unknown",
+        errorClass: "UnknownError",
+        submissionBoundaryReached: false,
+        sendTxReached: true,
+      });
+      expect(journal.get(operation.id)).toMatchObject({
+        status: "aborted",
+        error: "operation failed before Aztec node submission",
+      });
+      expect(journal.get(operation.id).txHash).toBeUndefined();
+      expect(existsSync(join(directory, "active.lock"))).toBe(false);
+      expect(nodeCalls).toBe(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps post-submit failures in doubt with a sanitized true/true boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "xochi-exit-post-submit-"));
+    try {
+      const journal = new OperationJournal(directory);
+      const operation = journal.begin("exit", { fixture: "post-submit" });
+      journal.update(operation.id, { status: "broadcast", txHash: HASH.toString() });
+      const state = createSubmissionDiagnosticState("exit");
+      state.phase = "pre-send";
+      state.sendTxReached = true;
+      state.submissionBoundaryReached = true;
+
+      const finalError = sanitizeFundMovementFailure(
+        journal,
+        operation,
+        new Error("private post-submit material"),
         state,
       );
-    } catch (error) {
-      caught = error;
-    }
 
-    expect(safeOperationDiagnostic(caught)).toEqual({
-      operationKind: "exit",
-      phase: "simulate",
-      category: "unknown",
-      errorClass: "UnknownError",
-      submissionBoundaryReached: false,
-      sendTxReached: false,
-    });
-    const output = formatCliFailure(caught);
-    expect(output).not.toContain("private unknown message");
-    expect(output).not.toContain("AZTEC_SIMULATION_FAILED");
+      expect(safeOperationDiagnostic(finalError)).toEqual({
+        operationKind: "exit",
+        phase: "pre-send",
+        category: "unknown",
+        errorClass: "UnknownError",
+        submissionBoundaryReached: true,
+        sendTxReached: true,
+      });
+      expect(journal.get(operation.id)).toMatchObject({
+        status: "in_doubt",
+        txHash: HASH.toString(),
+        error: "operation outcome requires transaction reconciliation",
+      });
+      expect(formatCliFailure(finalError)).not.toContain("private post-submit material");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the safe diagnostic when terminal lock release is interrupted", () => {
+    const directory = mkdtempSync(join(tmpdir(), "xochi-exit-lock-release-"));
+    try {
+      let privateOperationId = "";
+      const journal = new OperationJournal(directory, () => {
+        throw new Error(`private lock path for ${privateOperationId}`);
+      });
+      const operation = journal.begin("exit", { fixture: "release-interruption" });
+      privateOperationId = operation.id;
+      const state = createSubmissionDiagnosticState("exit");
+      state.phase = "simulate";
+
+      const finalError = sanitizeFundMovementFailure(
+        journal,
+        operation,
+        privateSimulationError(),
+        state,
+      );
+      const output = formatCliFailure(finalError);
+
+      expect(journal.get(operation.id)).toMatchObject({
+        status: "aborted",
+        error: "operation failed before Aztec node submission",
+      });
+      expect(existsSync(join(directory, "active.lock"))).toBe(true);
+      expect(safeOperationDiagnostic(finalError)?.category).toBe("simulation");
+      expect(output).toContain(
+        "operation journal abort or lock release failed before Aztec node submission",
+      );
+      expect(output).not.toContain(privateOperationId);
+      expect(output).not.toContain("private lock path");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("maps name, code, and prototype spoofing to the generic unknown identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "xochi-exit-spoof-"));
+    try {
+      const journal = new OperationJournal(directory);
+      const state = createSubmissionDiagnosticState("exit");
+      state.phase = "simulate";
+      const spoofed = Object.assign(Object.create(SimulationError.prototype) as Error, {
+        name: "SimulationError",
+        code: "AZTEC_SIMULATION_FAILED",
+        message: "private unknown message",
+      });
+
+      const caught = sanitizeFundMovementFailure(journal, null, spoofed, state);
+
+      expect(safeOperationDiagnostic(caught)).toEqual({
+        operationKind: "exit",
+        phase: "simulate",
+        category: "unknown",
+        errorClass: "UnknownError",
+        submissionBoundaryReached: false,
+        sendTxReached: false,
+      });
+      const output = formatCliFailure(caught);
+      expect(output).not.toContain("private unknown message");
+      expect(output).not.toContain("AZTEC_SIMULATION_FAILED");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

@@ -504,6 +504,13 @@ export function formatCliFailure(error: unknown): string {
   return `${lines.join("\n")}\n`;
 }
 
+export function writeCliFailure(
+  error: unknown,
+  write: (output: string) => void = (output) => process.stderr.write(output),
+): void {
+  write(formatCliFailure(error));
+}
+
 export async function run(argv: string[]): Promise<void> {
   assertSupportedRuntime();
   const { values, positionals } = parse(argv);
@@ -851,7 +858,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   run(process.argv.slice(2)).then(
     () => process.exit(0),
     (error: unknown) => {
-      process.stderr.write(formatCliFailure(error));
+      writeCliFailure(error);
       process.exit(1);
     },
   );
