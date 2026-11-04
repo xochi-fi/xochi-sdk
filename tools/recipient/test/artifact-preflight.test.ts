@@ -13,7 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadContractArtifact } from "@aztec-labs/stdlib/abi";
-import { computeArtifactHash } from "@aztec-labs/stdlib/contract";
+import { computeArtifactHash, getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { deriveRecipientAccount } from "../src/account.js";
@@ -70,6 +70,25 @@ async function invalidArtifacts(root: string): Promise<InvalidArtifact[]> {
     ...OXDAI_MAINNET_REV2,
     token: { ...OXDAI_MAINNET_REV2.token, artifactHash: accountArtifactHash },
   };
+  const initializerlessArtifactPath = join(
+    dirname(accountArtifactPath),
+    "SchnorrInitializerlessAccount.json",
+  );
+  const initializerlessArtifact = loadContractArtifact(
+    JSON.parse(readFileSync(initializerlessArtifactPath, "utf8")),
+  );
+  const [initializerlessHash, initializerlessClass] = await Promise.all([
+    computeArtifactHash(initializerlessArtifact),
+    getContractClassFromArtifact(initializerlessArtifact),
+  ]);
+  const wrongInstanceCorridor: Corridor = {
+    ...OXDAI_MAINNET_REV2,
+    token: {
+      ...OXDAI_MAINNET_REV2.token,
+      artifactHash: initializerlessHash.toString().toLowerCase(),
+      classId: initializerlessClass.id.toString().toLowerCase(),
+    },
+  };
   const unreadable = join(root, "artifact-is-a-directory");
   mkdirSync(unreadable);
   const malformed = join(root, "malformed.json");
@@ -111,6 +130,12 @@ async function invalidArtifacts(root: string): Promise<InvalidArtifact[]> {
       path: accountArtifactPath,
       corridor: wrongClassCorridor,
       error: /class .* is not the corridor's/,
+    },
+    {
+      name: "wrong derived instance",
+      path: initializerlessArtifactPath,
+      corridor: wrongInstanceCorridor,
+      error: /corridor's immutables give .* not the token/,
     },
   ];
 }
