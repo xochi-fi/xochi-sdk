@@ -12,6 +12,20 @@ const output = resolve(process.argv[outFlag + 1]);
 mkdirSync(output, { recursive: true });
 const root = resolve(import.meta.dirname, "..");
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+const shrinkwrapPath = resolve(root, "npm-shrinkwrap.json");
+const shrinkwrap = JSON.parse(readFileSync(shrinkwrapPath, "utf8"));
+const packageLock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
+if (JSON.stringify(shrinkwrap) !== JSON.stringify(packageLock)) {
+  throw new Error("npm-shrinkwrap.json must exactly match package-lock.json");
+}
+if (
+  shrinkwrap.lockfileVersion !== 3 ||
+  shrinkwrap.packages?.[""]?.version !== packageJson.version ||
+  JSON.stringify(shrinkwrap.packages?.[""]?.dependencies) !==
+    JSON.stringify(packageJson.dependencies)
+) {
+  throw new Error("npm-shrinkwrap.json must be the exact package dependency closure");
+}
 if (!/^0\.[0-9]+\.[0-9]+-test\.[0-9]+$/.test(packageJson.version)) {
   throw new Error("recipient artifacts must use a 0.x.y-test.n prerelease version");
 }
@@ -28,6 +42,9 @@ run("npm", ["run", "build"]);
 const packed = JSON.parse(run("npm", ["pack", "--json", "--pack-destination", output]));
 if (!Array.isArray(packed) || packed.length !== 1 || typeof packed[0]?.filename !== "string") {
   throw new Error("npm pack did not return exactly one artifact");
+}
+if (!packed[0].files?.some((file) => file.path === "npm-shrinkwrap.json")) {
+  throw new Error("packed artifact omitted npm-shrinkwrap.json");
 }
 const tarball = resolve(output, packed[0].filename);
 const sbom = JSON.parse(run("npm", ["sbom", "--sbom-format", "cyclonedx", "--package-lock-only"]));
@@ -51,6 +68,11 @@ writeFileSync(
       tokenArtifactHash: "0x128f498e06c59eeecdfcf41b96b3698bae23826ce3fb8608617e0a3084532f5f",
       package: { file: basename(tarball), sha256: sha256(tarball) },
       sbom: { file: basename(sbomPath), sha256: sha256(sbomPath) },
+      dependencyClosure: {
+        file: "package/npm-shrinkwrap.json",
+        sha256: sha256(shrinkwrapPath),
+        lockfileVersion: shrinkwrap.lockfileVersion,
+      },
       publication: "test-artifact-only",
     },
     null,

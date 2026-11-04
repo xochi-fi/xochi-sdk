@@ -259,6 +259,9 @@ export async function authorizeRefund(
   exactCorridor(corridor);
   const evidence = RefundEvidenceSchema.parse(evidenceInput);
   assertEvidence(account, evidence, corridor);
+  if (relayerTip !== 0n) {
+    throw new Error("refund authorization requires a zero relayer tip");
+  }
   const executor = EthAddress.fromString(corridor.oxide.plainWithdrawalExecutor);
   const destinationAddress = EthAddress.fromString(destination);
   const executorCall = buildPlainExecutorCall({
@@ -305,6 +308,9 @@ export async function validateRefundAuthorization(
   exactCorridor(corridor);
   const authorization = RefundAuthorizationSchema.parse(input);
   assertEvidence(account, authorization.evidence, corridor);
+  if (authorization.relayerTip !== "0") {
+    throw new Error("refund authorization requires a zero relayer tip");
+  }
   if (
     authorization.corridorId !== corridor.corridorId ||
     authorization.manifestDigest !== corridor.manifestDigest ||
@@ -423,22 +429,27 @@ export async function submitRefund(args: {
   });
   await (args.assertPins ?? assertLiveRefundPins)(args.rpcUrl, args.corridor);
   const rawTransaction = hexBytes.parse(args.rawTransaction) as Hex;
+  const calldata = refundCalldata(bundle);
   const parsed = parseTransaction(rawTransaction);
   if (
     parsed.chainId !== Number(args.corridor.network.l1ChainId) ||
     parsed.to?.toLowerCase() !== bundle.portal ||
     (parsed.value ?? 0n) !== 0n ||
-    parsed.data?.toLowerCase() !== refundCalldata(bundle).toLowerCase()
+    parsed.data?.toLowerCase() !== calldata.toLowerCase()
   ) {
     throw new Error("signed refund transaction does not exactly match the authorized portal call");
   }
   const txHash = keccak256(rawTransaction);
-  const operation = args.journal.begin(`refund-${bundle.evidence.kind}`, {
-    bundleDigest: keccak256(Buffer.from(JSON.stringify(bundle))),
-    portal: bundle.portal,
-    kind: bundle.evidence.kind,
-  });
-  args.journal.update(operation.id, { status: "broadcast", txHash });
+  const operation = args.journal.beginBroadcast(
+    `refund-${bundle.evidence.kind}`,
+    {
+      bundleDigest: keccak256(Buffer.from(JSON.stringify(bundle))),
+      calldataHash: keccak256(calldata),
+      portal: bundle.portal,
+      kind: bundle.evidence.kind,
+    },
+    txHash,
+  );
   const send = args.send ?? sendRawTransactionOnce;
   try {
     if ((await send(args.rpcUrl, rawTransaction)).toLowerCase() !== txHash) {
@@ -469,29 +480,110 @@ async function sendRawTransactionOnce(rpcUrl: string, rawTransaction: Hex): Prom
   return body.result;
 }
 
-export async function reconcileRefund(
+export type RefundReconciliationObservation = {
+  chainId: number;
+  transaction: {
+    hash: Hex;
+    to: Hex | null;
+    input: Hex;
+    value: bigint;
+  };
+  receipt: {
+    transactionHash: Hex;
+    status: "success" | "reverted";
+    blockNumber: bigint;
+    blockHash: Hex;
+  };
+  finalizedBlockNumber: bigint;
+};
+
+export function applyRefundReconciliation(
   journal: OperationJournal,
-  rpcUrl: string,
   corridor: Corridor,
-): Promise<void> {
+  observation: RefundReconciliationObservation,
+): "finalized" | "finalized-failed" {
+  exactCorridor(corridor);
   const operation = journal.activeUnresolved();
   if (!operation || !operation.kind.startsWith("refund-")) {
     throw new Error("no exact lock-owned unresolved refund operation");
   }
   if (!operation.txHash) throw new Error("refund has no transaction hash; keep it blocked");
-  await assertLiveRefundPins(rpcUrl, corridor);
-  const client = createPublicClient({ transport: http(rpcUrl) });
-  const [receipt, finalized] = await Promise.all([
-    client.getTransactionReceipt({ hash: operation.txHash as Hex }).catch(() => null),
-    client.getBlock({ blockTag: "finalized" }).catch(() => null),
-  ]);
-  if (
-    !receipt ||
-    !finalized ||
-    receipt.status !== "success" ||
-    receipt.blockNumber > finalized.number
-  ) {
-    throw new Error("refund is not an accepted finalized transaction; keep it blocked");
+  const immutableEvidenceMatches =
+    observation.chainId === Number(corridor.network.l1ChainId) &&
+    observation.transaction.hash.toLowerCase() === operation.txHash.toLowerCase() &&
+    observation.receipt.transactionHash.toLowerCase() === operation.txHash.toLowerCase() &&
+    observation.transaction.to?.toLowerCase() === operation.request.portal &&
+    observation.transaction.value === 0n &&
+    keccak256(observation.transaction.input).toLowerCase() === operation.request.calldataHash;
+  if (!immutableEvidenceMatches) {
+    throw new Error("refund transaction evidence does not match the locked authorization");
   }
-  journal.update(operation.id, { status: "complete", receiptStatus: "finalized" });
+  if (observation.receipt.blockNumber > observation.finalizedBlockNumber) {
+    throw new Error("refund transaction is not finalized; keep it blocked");
+  }
+  const receiptEvidence = {
+    receiptBlockNumber: observation.receipt.blockNumber.toString(),
+    receiptBlockHash: observation.receipt.blockHash,
+  };
+  if (observation.receipt.status === "reverted") {
+    journal.update(operation.id, {
+      status: "failed",
+      receiptStatus: "finalized-failed",
+      error: "operation finalized with a reverted receipt",
+      ...receiptEvidence,
+    });
+    return "finalized-failed";
+  }
+  journal.update(operation.id, {
+    status: "complete",
+    receiptStatus: "finalized",
+    ...receiptEvidence,
+  });
+  return "finalized";
+}
+
+export async function reconcileRefund(
+  journal: OperationJournal,
+  rpcUrl: string,
+  corridor: Corridor,
+): Promise<"finalized" | "finalized-failed"> {
+  exactCorridor(corridor);
+  const operation = journal.activeUnresolved();
+  if (!operation || !operation.kind.startsWith("refund-") || !operation.txHash) {
+    throw new Error("no exact lock-owned unresolved refund operation");
+  }
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  try {
+    const [chainId, transaction, receipt, finalized] = await Promise.all([
+      client.getChainId(),
+      client.getTransaction({ hash: operation.txHash as Hex }),
+      client.getTransactionReceipt({ hash: operation.txHash as Hex }),
+      client.getBlock({ blockTag: "finalized" }),
+    ]);
+    return applyRefundReconciliation(journal, corridor, {
+      chainId,
+      transaction: {
+        hash: transaction.hash,
+        to: transaction.to,
+        input: transaction.input,
+        value: transaction.value,
+      },
+      receipt: {
+        transactionHash: receipt.transactionHash,
+        status: receipt.status,
+        blockNumber: receipt.blockNumber,
+        blockHash: receipt.blockHash,
+      },
+      finalizedBlockNumber: finalized.number,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === "refund transaction is not finalized; keep it blocked" ||
+        error.message === "refund transaction evidence does not match the locked authorization")
+    ) {
+      throw error;
+    }
+    throw new Error("refund transaction evidence is unavailable; keep it blocked");
+  }
 }

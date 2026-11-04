@@ -27,7 +27,14 @@ const OperationKindSchema = z.enum([
   "refund-frozen-deposits",
   "refund-unprocessed-deposit",
 ]);
-const OperationStatusSchema = z.enum(["building", "broadcast", "complete", "aborted", "in_doubt"]);
+const OperationStatusSchema = z.enum([
+  "building",
+  "broadcast",
+  "complete",
+  "failed",
+  "aborted",
+  "in_doubt",
+]);
 export type OperationStatus = z.infer<typeof OperationStatusSchema>;
 
 export const OperationRecordSchema = z
@@ -40,7 +47,12 @@ export const OperationRecordSchema = z
     updatedAt: z.string().min(1),
     request: z.record(z.string(), z.string()),
     txHash: z.string().regex(txHash).optional(),
-    receiptStatus: z.enum(["checkpointed", "proven", "finalized"]).optional(),
+    receiptStatus: z.enum(["checkpointed", "proven", "finalized", "finalized-failed"]).optional(),
+    receiptBlockNumber: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .optional(),
+    receiptBlockHash: z.string().regex(txHash).optional(),
     withdrawals: z
       .array(
         z
@@ -56,30 +68,74 @@ export const OperationRecordSchema = z
       .enum([
         "operation failed before Aztec node submission",
         "operation outcome requires transaction reconciliation",
+        "operation finalized with a reverted receipt",
       ])
       .optional(),
   })
   .strict()
   .superRefine((record, ctx) => {
     const crossedSubmissionBoundary =
-      record.status === "broadcast" || record.status === "complete" || record.status === "in_doubt";
+      record.status === "broadcast" ||
+      record.status === "complete" ||
+      record.status === "failed" ||
+      record.status === "in_doubt";
     if (crossedSubmissionBoundary !== (record.txHash !== undefined)) {
       ctx.addIssue({
         code: "custom",
         message: "transaction hash does not match the operation status",
       });
     }
-    if (record.receiptStatus !== undefined && record.status !== "complete") {
+    if (
+      record.receiptStatus !== undefined &&
+      record.status !== "complete" &&
+      record.status !== "failed"
+    ) {
       ctx.addIssue({
         code: "custom",
-        message: "only a complete operation may carry a receipt status",
+        message: "only a terminal submitted operation may carry a receipt status",
+      });
+    }
+    const hasReceiptBlockNumber = record.receiptBlockNumber !== undefined;
+    const hasReceiptBlockHash = record.receiptBlockHash !== undefined;
+    if (hasReceiptBlockNumber !== hasReceiptBlockHash) {
+      ctx.addIssue({
+        code: "custom",
+        message: "receipt block evidence must be complete",
+      });
+    }
+    if (
+      hasReceiptBlockNumber &&
+      record.receiptStatus !== "finalized" &&
+      record.receiptStatus !== "finalized-failed"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "receipt block evidence requires a finalized receipt",
+      });
+    }
+    const finalizedFailureEvidence =
+      record.receiptStatus === "finalized-failed" &&
+      record.receiptBlockNumber !== undefined &&
+      record.receiptBlockHash !== undefined &&
+      record.error === "operation finalized with a reverted receipt";
+    if (record.status === "failed" && !finalizedFailureEvidence) {
+      ctx.addIssue({
+        code: "custom",
+        message: "a failed operation requires finalized reverted receipt evidence",
+      });
+    }
+    if (record.status !== "failed" && record.receiptStatus === "finalized-failed") {
+      ctx.addIssue({
+        code: "custom",
+        message: "only a failed operation may carry finalized-failed receipt status",
       });
     }
     if (
       record.error !== undefined &&
       record.status !== "aborted" &&
       record.status !== "in_doubt" &&
-      record.status !== "complete"
+      record.status !== "complete" &&
+      record.status !== "failed"
     ) {
       ctx.addIssue({
         code: "custom",
@@ -108,13 +164,15 @@ const ReleaseClaimSchema = z
   .strict();
 type ReleaseClaim = z.infer<typeof ReleaseClaimSchema>;
 
-const terminal = (status: OperationStatus) => status === "complete" || status === "aborted";
+const terminal = (status: OperationStatus) =>
+  status === "complete" || status === "failed" || status === "aborted";
 
 const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>> = {
   building: ["broadcast", "aborted"],
-  broadcast: ["complete", "in_doubt"],
-  in_doubt: ["complete", "in_doubt"],
+  broadcast: ["complete", "failed", "in_doubt"],
+  in_doubt: ["complete", "failed", "in_doubt"],
   complete: [],
+  failed: [],
   aborted: [],
 };
 
@@ -260,6 +318,29 @@ export class OperationJournal {
   }
 
   begin(kind: OperationRecord["kind"], request: Record<string, string>): OperationRecord {
+    return this.beginWithState(kind, request, { status: "building" });
+  }
+
+  /**
+   * Persists a precomputed transaction hash in the first operation record write. The caller may
+   * submit only after this method returns, so no returned operation can ever be hashless.
+   */
+  beginBroadcast(
+    kind: OperationRecord["kind"],
+    request: Record<string, string>,
+    initialTxHash: string,
+  ): OperationRecord {
+    return this.beginWithState(kind, request, {
+      status: "broadcast",
+      txHash: initialTxHash,
+    });
+  }
+
+  private beginWithState(
+    kind: OperationRecord["kind"],
+    request: Record<string, string>,
+    initial: { status: "building" } | { status: "broadcast"; txHash: string },
+  ): OperationRecord {
     const owner: ActiveLock = { id: randomUUID(), lockNonce: randomUUID(), kind };
     let lockFd: number;
     for (;;) {
@@ -298,7 +379,7 @@ export class OperationJournal {
       const now = new Date().toISOString();
       const record = OperationRecordSchema.parse({
         ...owner,
-        status: "building",
+        ...initial,
         createdAt: now,
         updatedAt: now,
         request,

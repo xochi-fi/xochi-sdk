@@ -794,8 +794,12 @@ export async function run(argv: string[]): Promise<void> {
         });
         log("refund submission recorded; use refund reconcile");
       } else if (sub === "reconcile") {
-        await reconcileRefund(journal, required(values, "l1-rpc"), state.corridor);
-        log("refund finalized");
+        const outcome = await reconcileRefund(journal, required(values, "l1-rpc"), state.corridor);
+        log(
+          outcome === "finalized"
+            ? "refund finalized"
+            : "refund finalized reverted; lock released; create a new authorization before any attempt",
+        );
       } else {
         fail("refund authorize | submit | reconcile");
       }

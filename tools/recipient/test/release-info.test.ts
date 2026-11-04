@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,13 +8,25 @@ import {
   packageVersion,
   runtimePlatform,
 } from "../src/release-info.js";
+const packageMetadata: unknown = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+if (
+  packageMetadata === null ||
+  typeof packageMetadata !== "object" ||
+  !("version" in packageMetadata) ||
+  typeof packageMetadata.version !== "string"
+) {
+  throw new Error("TEST ONLY package version metadata is invalid");
+}
+const expectedVersion = packageMetadata.version;
 
 describe("release diagnostics", () => {
   it("pins the private test version and privacy-safe public facts", () => {
-    expect(packageVersion()).toBe("0.1.0-test.1");
+    expect(packageVersion()).toBe(expectedVersion);
     expect(diagnostics()).toMatchObject({
       ok: true,
-      version: "0.1.0-test.1",
+      version: expectedVersion,
       nodeMajor: 22,
       telemetry: false,
       hostedPage: false,

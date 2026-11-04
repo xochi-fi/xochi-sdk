@@ -78,12 +78,13 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
 ## Round trip
 
 ```bash
-# From the verified GitHub prerelease directory. No npm registry publication is used.
+# From the verified GitHub prerelease directory. No npm registry publication is used. The tarball
+# carries npm-shrinkwrap.json: the exact-integrity dependency closure used to generate its SBOM.
 shasum -a 256 -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-npm install --global ./xochi-recipient-0.1.0-test.1.tgz
+  --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
+npm install --global ./xochi-recipient-*.tgz
 xochi-recipient diagnostics
 
 # A source checkout remains supported for qualification work.
@@ -166,12 +167,15 @@ authorized operator uses for the private mainnet round trip (xochi#748 OX-10 / O
 `refund authorize` accepts only evidence naming this restored recipient account, recomputes the
 stock Schnorr address with `immutablesHash = 0`, and signs the fixed
 `(plainWithdrawalExecutor, sha256ToField(userPayload))` commitment with `fbsk_m`. The payload fixes
-the L1 destination and relayer tip. `refund submit` accepts a completed upstream proof bundle plus
-an externally signed raw L1 transaction, re-verifies the fallback signature, corridor revision,
-manifest, portal, token, executor, cap, destination and exact calldata, persists the transaction
-hash, and makes one non-redirecting JSON-RPC submission. Any lost or ambiguous response stays
-blocked. `refund reconcile` accepts only a successful transaction included at Ethereum's finalized
-tag.
+the L1 destination and requires a zero relayer tip. `refund submit` accepts a completed upstream
+proof bundle plus an externally signed raw L1 transaction, re-verifies the fallback signature,
+corridor revision, manifest, portal, token, executor, cap, destination and exact calldata, and
+atomically creates the durable broadcast record with its precomputed transaction hash before one
+non-redirecting JSON-RPC submission. Any lost or ambiguous response stays blocked. `refund
+reconcile` validates the locked transaction, receipt, chain, portal, calldata and finalized block;
+it does not depend on the portal still being frozen. Finalized success completes the operation.
+A finalized revert records terminal receipt evidence and releases the lock, but any later attempt
+requires a new explicit authorization.
 
 The command supports recipient-owned `refundFrozenNotes`, `refundFrozenDeposits` and
 `refundUnprocessedDeposit` evidence. It does not generate a proof: pxe-bridge intentionally does

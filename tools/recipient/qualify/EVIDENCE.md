@@ -84,14 +84,16 @@ repository:
 
 ## G2 packaging, restore and freeze/refund drill boundary
 
-The PR pipeline builds the private `0.1.0-test.1` tarball twice, compares bytes, emits SHA-256
-checksums, a normalized CycloneDX SBOM and a release manifest, and installs the tarball on Ubuntu
-and macOS under Node 22. A `recipient-v*-test.*` tag can create only a signed GitHub prerelease;
-`private: true` and the workflow contain no `npm publish` step. WSL consumes the Linux artifact.
+The PR pipeline builds the private test tarball twice, compares bytes, emits SHA-256 checksums, a
+normalized CycloneDX SBOM from the shipped exact-integrity `npm-shrinkwrap.json`, and a release
+manifest, and installs the tarball on Ubuntu and macOS under Node 22. It also exercises an offline
+install with the registry unreachable after seeding the exact locked cache. A
+`recipient-v*-test.*` tag can create only a signed GitHub prerelease; `private: true` and the
+workflow contain no `npm publish` step. WSL consumes the Linux artifact.
 Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
 
 Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
-59 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
+63 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
 builds and standalone tarball installation all passed. The installed CLI reported
 `0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
 and backup v1 read/write compatibility. Ubuntu remains a PR-matrix observation rather than a local
