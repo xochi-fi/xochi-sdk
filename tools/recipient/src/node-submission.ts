@@ -1,10 +1,13 @@
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import type { JsonRpcFetch } from "@aztec-labs/foundation/json-rpc/client";
 import { jsonStringify } from "@aztec-labs/foundation/json-rpc";
-import { NoRetryError } from "@aztec-labs/foundation/retry";
 import type { TxHash } from "@aztec-labs/stdlib/tx";
 
-import { safeOperationError, type SubmissionDiagnosticState } from "./safe-diagnostic.js";
+import {
+  safeOperationError,
+  submissionAmbiguousError,
+  type SubmissionDiagnosticState,
+} from "./safe-diagnostic.js";
 
 type BeforeSubmit = (txHash: TxHash) => void | Promise<void>;
 /**
@@ -22,7 +25,7 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
       redirect: "error",
     });
   } catch {
-    throw new NoRetryError(
+    throw submissionAmbiguousError(
       "Aztec node submission failed after the HTTP request may have been written",
     );
   }
@@ -31,13 +34,15 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
   try {
     responseText = await response.text();
   } catch {
-    throw new NoRetryError("Aztec node submission response ended before its outcome could be read");
+    throw submissionAmbiguousError(
+      "Aztec node submission response ended before its outcome could be read",
+    );
   }
   let responseJson: unknown;
   try {
     responseJson = JSON.parse(responseText);
   } catch {
-    throw new NoRetryError(
+    throw submissionAmbiguousError(
       response.ok
         ? "Aztec node submission returned an invalid JSON response"
         : `Aztec node submission returned HTTP ${response.status}`,
@@ -45,7 +50,7 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
   }
 
   if (!response.ok) {
-    throw new NoRetryError(`Aztec node submission returned HTTP ${response.status}`);
+    throw submissionAmbiguousError(`Aztec node submission returned HTTP ${response.status}`);
   }
   return { response: responseJson, headers: response.headers };
 };
@@ -71,7 +76,9 @@ export function createSingleAttemptAztecNodeBroadcaster(url: string): Pick<Aztec
         "error" in response[0] ||
         !("result" in response[0])
       ) {
-        throw new NoRetryError("Aztec node submission returned an invalid JSON-RPC outcome");
+        throw submissionAmbiguousError(
+          "Aztec node submission returned an invalid JSON-RPC outcome",
+        );
       }
     },
   };

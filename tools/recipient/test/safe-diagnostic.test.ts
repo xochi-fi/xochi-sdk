@@ -1,4 +1,3 @@
-import { NoRetryError } from "@aztec-labs/foundation/retry";
 import { ProvingError, SimulationError } from "@aztec-labs/stdlib/errors";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +6,7 @@ import {
   createSubmissionDiagnosticState,
   operatorDiagnosticLine,
   safeOperationDiagnostic,
+  submissionAmbiguousError,
   safeOperationError,
   type PreSubmissionPhase,
 } from "../src/safe-diagnostic.js";
@@ -39,7 +39,7 @@ describe("safe operation diagnostic allowlists", () => {
       errorCode: "AZTEC_PROVING_FAILED",
     },
     {
-      error: new NoRetryError("private"),
+      error: submissionAmbiguousError("private"),
       category: "submission-ambiguous",
       errorClass: "NoRetryError",
       errorCode: "AZTEC_SUBMISSION_AMBIGUOUS",

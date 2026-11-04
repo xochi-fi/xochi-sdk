@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
-import { NoRetryError } from "@aztec-labs/foundation/retry";
 import { ProvingError } from "@aztec-labs/stdlib/errors";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +15,7 @@ import { OperationJournal } from "../src/operation-journal.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
+  submissionAmbiguousError,
   type SubmissionDiagnosticState,
 } from "../src/safe-diagnostic.js";
 
@@ -79,7 +79,7 @@ describe("Aztec node submission journal boundary", () => {
             status: "broadcast",
             txHash: HASH.toString(),
           });
-          throw new NoRetryError("private transaction material must not escape");
+          throw submissionAmbiguousError("private transaction material must not escape");
         },
       } as unknown as AztecNode;
       const submission = new NodeSubmission(rawNode);

@@ -10,13 +10,14 @@ import { describe, expect, it } from "vitest";
 import { deriveRecipientAccount } from "../src/account.js";
 import { backupContents } from "../src/backup.js";
 import { sanitizeFundMovementFailure } from "../src/chain.js";
-import { formatCliFailure, writeCliFailure } from "../src/cli.js";
+import { closePortAfterCommand, formatCliFailure, writeCliFailure } from "../src/cli.js";
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
+  safeOperationError,
 } from "../src/safe-diagnostic.js";
 import { TEST_SECRETS } from "./fixtures.js";
 
@@ -290,19 +291,23 @@ describe("privacy-safe exit failure diagnostics", () => {
     }
   });
 
-  it("maps name, code, and prototype spoofing to the generic unknown identity", () => {
+  it("maps native prototype spoofing and throwing accessors to unknown before journal cleanup", () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-spoof-"));
     try {
       const journal = new OperationJournal(directory);
+      const operation = journal.begin("exit", { fixture: "native-spoof" });
       const state = createSubmissionDiagnosticState("exit");
       state.phase = "simulate";
-      const spoofed = Object.assign(Object.create(SimulationError.prototype) as Error, {
-        name: "SimulationError",
-        code: "AZTEC_SIMULATION_FAILED",
-        message: "private unknown message",
+      const spoofed = new Error("private unknown message");
+      Object.setPrototypeOf(spoofed, SimulationError.prototype);
+      Object.defineProperty(spoofed, "constructor", {
+        get() {
+          throw new Error("private constructor getter");
+        },
       });
+      Object.assign(spoofed, { code: "AZTEC_SIMULATION_FAILED" });
 
-      const caught = sanitizeFundMovementFailure(journal, null, spoofed, state);
+      const caught = sanitizeFundMovementFailure(journal, operation, spoofed, state);
 
       expect(safeOperationDiagnostic(caught)).toEqual({
         operationKind: "exit",
@@ -312,11 +317,70 @@ describe("privacy-safe exit failure diagnostics", () => {
         submissionBoundaryReached: false,
         sendTxReached: false,
       });
+      expect(journal.get(operation.id).status).toBe("aborted");
+      expect(existsSync(join(directory, "active.lock"))).toBe(false);
       const output = formatCliFailure(caught);
       expect(output).not.toContain("private unknown message");
+      expect(output).not.toContain("private constructor getter");
       expect(output).not.toContain("AZTEC_SIMULATION_FAILED");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("retains a sanitized command failure when PXE shutdown also fails", async () => {
+    const state = createSubmissionDiagnosticState("exit");
+    state.phase = "simulate";
+    const primary = safeOperationError(
+      "operation failed before Aztec node submission",
+      privateSimulationError(),
+      state,
+    );
+    const rawCloseMessage = "private wallet close material";
+    const reports: string[] = [];
+    let caught: unknown;
+    let commandFailed = false;
+
+    try {
+      try {
+        throw primary;
+      } catch (error) {
+        commandFailed = true;
+        throw error;
+      } finally {
+        await closePortAfterCommand(
+          {
+            async close() {
+              throw new Error(rawCloseMessage);
+            },
+          },
+          commandFailed,
+          (line) => reports.push(line),
+        );
+      }
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(primary);
+    expect(safeOperationDiagnostic(caught)?.category).toBe("simulation");
+    expect(reports).toEqual([
+      "close: PXE shutdown failed after command failure; original failure retained",
+    ]);
+    expect(reports.join("\n")).not.toContain(rawCloseMessage);
+
+    await expect(
+      closePortAfterCommand(
+        {
+          async close() {
+            throw new Error(rawCloseMessage);
+          },
+        },
+        false,
+        () => undefined,
+      ),
+    ).rejects.toThrow(
+      "recipient PXE shutdown failed after command completion; inspect the operation journal before any retry",
+    );
   });
 });

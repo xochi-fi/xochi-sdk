@@ -71,31 +71,48 @@ const DIAGNOSTIC_KEYS = [
   "sendTxReached",
 ] as const;
 const trustedSafeErrors = new WeakSet<Error>();
+const trustedSubmissionErrors = new WeakSet<Error>();
 
-const isExactSdkError = <T extends Error>(
+const hasExactPrototype = <T extends Error>(
   error: unknown,
   errorClass: Function & { prototype: T },
-): error is T =>
-  isNativeError(error) &&
-  Object.getPrototypeOf(error) === errorClass.prototype &&
-  error.constructor === errorClass;
+): error is T => isNativeError(error) && Object.getPrototypeOf(error) === errorClass.prototype;
 
-const classify = (error: unknown): SafeErrorIdentity => {
-  if (isExactSdkError(error, SimulationError)) {
+const isTrustedSimulationError = (error: unknown): error is SimulationError => {
+  if (!hasExactPrototype(error, SimulationError)) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(error);
+  return (
+    typeof descriptors.message?.get === "function" &&
+    descriptors.message.configurable === false &&
+    Array.isArray(descriptors.functionErrorStack?.value) &&
+    Array.isArray(descriptors.revertData?.value)
+  );
+};
+
+const isTrustedProvingError = (error: unknown): error is ProvingError => {
+  if (!hasExactPrototype(error, ProvingError)) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(error);
+  return (
+    descriptors.name?.value === "ProvingError" && typeof descriptors.retry?.value === "boolean"
+  );
+};
+
+const classifyKnown = (error: unknown): SafeErrorIdentity => {
+  if (isTrustedSimulationError(error)) {
     return {
       category: "simulation",
       errorClass: "SimulationError",
       errorCode: "AZTEC_SIMULATION_FAILED",
     };
   }
-  if (isExactSdkError(error, ProvingError)) {
+  if (isTrustedProvingError(error)) {
     return {
       category: "proving",
       errorClass: "ProvingError",
       errorCode: "AZTEC_PROVING_FAILED",
     };
   }
-  if (isExactSdkError(error, NoRetryError)) {
+  if (hasExactPrototype(error, NoRetryError) && trustedSubmissionErrors.has(error)) {
     return {
       category: "submission-ambiguous",
       errorClass: "NoRetryError",
@@ -104,6 +121,20 @@ const classify = (error: unknown): SafeErrorIdentity => {
   }
   return { category: "unknown", errorClass: "UnknownError" };
 };
+
+const classify = (error: unknown): SafeErrorIdentity => {
+  try {
+    return classifyKnown(error);
+  } catch {
+    return { category: "unknown", errorClass: "UnknownError" };
+  }
+};
+
+export function submissionAmbiguousError(message: string): Error {
+  const error = new NoRetryError(message);
+  trustedSubmissionErrors.add(error);
+  return error;
+}
 
 const identityIsConsistent = (
   category: SafeErrorCategory,
