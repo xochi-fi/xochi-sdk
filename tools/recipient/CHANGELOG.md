@@ -6,6 +6,18 @@
   `spend`, or `exit` creates or connects to a PXE, adds an account, registers a token,
   synchronizes, or mutates recipient state.
 
+## 0.1.0-test.3 - 2026-11-04
+
+- Replace global tarball installation with extracted-package-root `npm ci --omit=dev --offline`
+  against the artifact's exact npm shrinkwrap.
+- Seed the cold cache from exact locked registry tarballs and verify every installed production
+  package path, name, and version against that shrinkwrap.
+- Record the installation method, exact Node and npm versions, dependency-closure digest, and
+  closure-verification result in the release manifest.
+- Qualify the same extracted-root path on Linux and macOS and retain the reviewed privacy-safe
+  exit diagnostics without changing their behavior.
+- Keep the artifact repository-only and dark; this release does not authorize production use.
+
 ## 0.1.0-test.2 - 2026-11-04
 
 - Add privacy-safe exit simulation diagnostics with allowlisted phase, category, class, code, and

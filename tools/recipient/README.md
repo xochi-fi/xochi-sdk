@@ -92,17 +92,42 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
 ## Round trip
 
 ```bash
-# From the verified GitHub prerelease directory. No npm registry publication is used. The tarball
-# carries npm-shrinkwrap.json: the exact-integrity dependency closure used to generate its SBOM.
+# From the verified GitHub prerelease directory. No npm registry publication is used.
+# The qualification host must provide Node 22.23.4 and npm 10.9.9 exactly.
+test "$(node --version)" = "v22.23.4"
+test "$(npm --version)" = "10.9.9"
 shasum -a 256 -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
   --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
-npm install --global ./xochi-recipient-*.tgz
-xochi-recipient diagnostics
+PACKAGE=./xochi-recipient-0.1.0-test.3.tgz
+EXPECTED_TAG=recipient-v0.1.0-test.3
+test -f "$PACKAGE"
+gh attestation verify "$PACKAGE" \
+  --repo xochi-fi/xochi-sdk \
+  --signer-workflow xochi-fi/xochi-sdk/.github/workflows/recipient-release.yml \
+  --source-ref "refs/tags/$EXPECTED_TAG" \
+  --deny-self-hosted-runners
 
-# A source checkout remains supported for qualification work.
-cd tools/recipient
+
+# The trusted staging path is the extracted package root. Cache seeding fetches only the exact
+# registry tarballs named by the extracted shrinkwrap; npm ci itself is forced offline.
+RELEASE_DIR="$PWD"
+STAGE="$(mktemp -d)"
+CACHE="$(mktemp -d)"
+RECEIPT="$STAGE/closure-verification.json"
+tar -xzf ./xochi-recipient-*.tgz -C "$STAGE"
+test -f "$STAGE/package/package.json"
+test -f "$STAGE/package/npm-shrinkwrap.json"
+node "$STAGE/package/scripts/qualify-extracted-root.mjs" \
+  --package-root "$STAGE/package" --release-dir "$RELEASE_DIR" \
+  --cache "$CACHE" --receipt "$RECEIPT"
+cd "$STAGE/package"
+node dist/cli.js --version
+node dist/cli.js diagnostics
+
+# A source checkout remains supported for qualification work instead.
+cd /path/to/xochi-sdk/tools/recipient
 npm ci
 npm run build
 

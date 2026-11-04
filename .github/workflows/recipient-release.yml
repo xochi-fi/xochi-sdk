@@ -25,15 +25,18 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: npm
           cache-dependency-path: tools/recipient/npm-shrinkwrap.json
+
+      - name: Pin release npm
+        run: npm install --global npm@10.9.9
 
       - name: Install exact dependencies
         working-directory: tools/recipient
         run: npm ci
 
-      - name: Build reproducible test artifacts twice
+      - name: Build and qualify reproducible test artifacts twice
         working-directory: tools/recipient
         run: |
           node scripts/build-release.mjs --out release-a
@@ -42,14 +45,27 @@ jobs:
           cmp release-a/*.cdx.json release-b/*.cdx.json
           cmp release-a/*.release.json release-b/*.release.json
           cmp release-a/SHA256SUMS release-b/SHA256SUMS
-          tar -xOf release-a/*.tgz package/npm-shrinkwrap.json >/dev/null
 
-      - name: Install with registry unavailable from a cold locked cache
-        working-directory: tools/recipient
-        run: |
+          stage="$(mktemp -d)"
           locked_cache="$(mktemp -d)"
-          node scripts/seed-locked-cache.mjs --cache "$locked_cache"
-          npm install --global --offline --cache "$locked_cache" ./release-a/*.tgz
+          receipt="$(mktemp)"
+          tar -xzf release-a/*.tgz -C "$stage"
+          test -f "$stage/package/package.json"
+          test -f "$stage/package/npm-shrinkwrap.json"
+          node "$stage/package/scripts/qualify-extracted-root.mjs" \
+            --package-root "$stage/package" \
+            --release-dir "$PWD/release-a" \
+            --cache "$locked_cache" \
+            --receipt "$receipt"
+          node scripts/record-release-qualification.mjs \
+            --receipt "$receipt" \
+            --release-dir release-a \
+            --release-dir release-b
+
+          cmp release-a/*.tgz release-b/*.tgz
+          cmp release-a/*.cdx.json release-b/*.cdx.json
+          cmp release-a/*.release.json release-b/*.release.json
+          cmp release-a/SHA256SUMS release-b/SHA256SUMS
 
       - name: Require tag to equal the private test version
         id: meta
@@ -120,22 +136,35 @@ jobs:
     steps:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
+          node-version: 22.23.4
+
+      - name: Pin release npm
+        run: npm install --global npm@10.9.9
 
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: ${{ needs.build.outputs.artifact-name }}-signed
           path: recipient-release
 
-      - name: Verify checksums and install the packed CLI
+      - name: Verify checksums and qualify the extracted CLI root
         env:
           EXPECTED_VERSION: ${{ needs.build.outputs.version }}
         run: |
           cd recipient-release
           shasum -a 256 -c SHA256SUMS
-          npm install --global ./*.tgz
-          [[ "$(xochi-recipient --version)" == "$EXPECTED_VERSION" ]]
-          diagnostics="$(xochi-recipient diagnostics)"
+          stage="$(mktemp -d)"
+          locked_cache="$(mktemp -d)"
+          receipt="$(mktemp)"
+          tar -xzf ./*.tgz -C "$stage"
+          test -f "$stage/package/package.json"
+          test -f "$stage/package/npm-shrinkwrap.json"
+          node "$stage/package/scripts/qualify-extracted-root.mjs" \
+            --package-root "$stage/package" \
+            --release-dir "$PWD" \
+            --cache "$locked_cache" \
+            --receipt "$receipt"
+          [[ "$(node "$stage/package/dist/cli.js" --version)" == "$EXPECTED_VERSION" ]]
+          diagnostics="$(node "$stage/package/dist/cli.js" diagnostics)"
           [[ "$diagnostics" == *'"corridorRevision":"2"'* ]]
 
   prerelease:
