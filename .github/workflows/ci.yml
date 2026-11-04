@@ -296,6 +296,7 @@ jobs:
           node --check scripts/verify-installed-closure.mjs
           node --check scripts/qualify-extracted-root.mjs
           node --check scripts/record-release-qualification.mjs
+          node --check scripts/verify-release-immutability.mjs
           bash -n scripts/build-broadcaster.sh
           bash -n qualify/freeze-fork.sh
           bash -n qualify/independent-restore.sh

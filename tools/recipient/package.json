@@ -1,6 +1,6 @@
 {
   "name": "@xochi/recipient",
-  "version": "0.1.0-test.3",
+  "version": "0.1.0-test.4",
   "private": true,
   "description": "Installable test artifact for the local Xochi OXDAI recipient CLI. No package publication.",
   "license": "MIT",
@@ -28,13 +28,15 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc -p tsconfig.test.json",
-    "test": "vitest run && npm run test:closure",
+    "test": "vitest run && npm run test:closure && npm run test:release-preflight",
     "test:closure": "node test/release-closure.test.mjs",
+    "test:release-preflight": "node test/release-immutability.test.mjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "dry-run": "node dist/cli.js plan",
     "prepack": "npm run build",
     "release:artifact": "node scripts/build-release.mjs",
+    "release:preflight": "node scripts/verify-release-immutability.mjs",
     "build:broadcaster": "npm run build && bash scripts/build-broadcaster.sh",
     "smoke:no-plaintext-keys": "npm run build && node scripts/smoke-no-plaintext-keys.mjs"
   },

@@ -1,12 +1,12 @@
 {
   "name": "@xochi/recipient",
-  "version": "0.1.0-test.3",
+  "version": "0.1.0-test.4",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@xochi/recipient",
-      "version": "0.1.0-test.3",
+      "version": "0.1.0-test.4",
       "license": "MIT",
       "os": ["darwin", "linux"],
       "dependencies": {

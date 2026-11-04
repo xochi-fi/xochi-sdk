@@ -89,6 +89,21 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   journal before broadcast; after mining, each withdrawal's finalization data and L1 operation ID
   are written under `<data-dir>/exits/`.
 
+## Release operator preflight
+
+Before creating any future signed recipient tag, authenticate `gh` with repository admin-read
+access and run:
+
+```bash
+cd tools/recipient
+npm run release:preflight
+```
+
+The preflight uses GitHub REST API version `2026-03-10` and fails closed unless
+`GET /repos/xochi-fi/xochi-sdk/immutable-releases` returns HTTP 200 with `enabled: true`.
+Only an exact-head reviewed release whose preflight reports repository- or organization-owned
+enforcement may proceed to a separately authorized signed-tag step.
+
 ## Round trip
 
 ```bash
@@ -99,9 +114,9 @@ test "$(npm --version)" = "10.9.9"
 shasum -a 256 -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
-PACKAGE=./xochi-recipient-0.1.0-test.3.tgz
-EXPECTED_TAG=recipient-v0.1.0-test.3
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+PACKAGE=./xochi-recipient-0.1.0-test.4.tgz
+EXPECTED_TAG=recipient-v0.1.0-test.4
 test -f "$PACKAGE"
 gh attestation verify "$PACKAGE" \
   --repo xochi-fi/xochi-sdk \
