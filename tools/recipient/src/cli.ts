@@ -346,9 +346,9 @@ const log = (line: string) => process.stdout.write(`${line}\n`);
 async function withAccount<T>(
   values: Values,
   store: Store,
+  state: State,
   run: (ctx: Ctx, account: RecipientAccount, state: State) => Promise<T>,
 ): Promise<T> {
-  const state = store.readState();
   const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
   if (account.descriptor.aztecAddress !== state.address) {
     fail(`keystore derives ${account.descriptor.aztecAddress}, state names ${state.address}`);
@@ -377,6 +377,27 @@ async function registerAndRecord(
 
 async function tokenArtifact(values: Values, corridor: Corridor): Promise<ContractArtifact> {
   return loadTokenArtifact(required(values, "oxide-token-artifact"), corridor);
+}
+
+/**
+ * Loads every offline token pin before opening the PXE, then runs an artifact-dependent command.
+ * Reading the existing sealed recipient state is side-effect free; no PXE or journal exists yet.
+ */
+async function withTokenArtifactAccount<T>(
+  values: Values,
+  store: Store,
+  run: (
+    ctx: Ctx,
+    account: RecipientAccount,
+    state: State,
+    artifact: ContractArtifact,
+  ) => Promise<T>,
+): Promise<T> {
+  const state = store.readState();
+  const artifact = await tokenArtifact(values, state.corridor);
+  return withAccount(values, store, state, (ctx, account, current) =>
+    run(ctx, account, current, artifact),
+  );
 }
 
 /** The whole sequence on the dry-run ports with a throwaway account. */
@@ -518,18 +539,17 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     case "setup":
-      return withAccount(values, store, async (ctx, account) => {
+      return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
         const claimPath = values["fee-juice-claim"];
         const claim = claimPath
           ? FeeJuiceClaimSchema.parse(JSON.parse(readFileSync(claimPath, "utf8")))
           : null;
         await setupAccount(ctx, account, claim);
         await registerSenders(ctx);
-        await registerAndRecord(ctx, store, await tokenArtifact(values, ctx.corridor));
+        await registerAndRecord(ctx, store, artifact);
       });
     case "balance":
-      return withAccount(values, store, async (ctx, account) => {
-        const artifact = await tokenArtifact(values, ctx.corridor);
+      return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
         await registerAndRecord(ctx, store, artifact);
         await showBalance(ctx, artifact, account);
       });
@@ -576,38 +596,43 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     case "enroll": {
+      if (sub === "start") {
+        return withTokenArtifactAccount(
+          values,
+          store,
+          async (ctx, liveAccount, _state, artifact) => {
+            const xochi = api(values, hashRecipientDescriptor(liveAccount.descriptor));
+            await registerSenders(ctx);
+            await registerAndRecord(ctx, store, artifact);
+            const registered = store.readState();
+            const pending = await enrollStart(
+              ctx,
+              xochi,
+              liveAccount,
+              required(values, "source-wallet"),
+              registered.tokenRegisteredAt ?? null,
+            );
+            const file = join(store.dir, "binding-typed-data.json");
+            writeFileSync(file, typedDataJson(pending.typedData) + "\n", { mode: 0o600 });
+            chmodSync(file, 0o600);
+            store.writeState({
+              ...registered,
+              tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
+              pending: {
+                challenge: pending.challenge,
+                binding: pending.binding,
+                tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
+              },
+            });
+            log(
+              `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
+            );
+          },
+        );
+      }
       const state = store.readState();
       const account = await deriveRecipientAccount(await store.secrets(), state.corridor);
       const xochi = api(values, hashRecipientDescriptor(account.descriptor));
-      if (sub === "start") {
-        return withAccount(values, store, async (ctx, liveAccount) => {
-          await registerSenders(ctx);
-          await registerAndRecord(ctx, store, await tokenArtifact(values, ctx.corridor));
-          const registered = store.readState();
-          const pending = await enrollStart(
-            ctx,
-            xochi,
-            liveAccount,
-            required(values, "source-wallet"),
-            registered.tokenRegisteredAt ?? null,
-          );
-          const file = join(store.dir, "binding-typed-data.json");
-          writeFileSync(file, typedDataJson(pending.typedData) + "\n", { mode: 0o600 });
-          chmodSync(file, 0o600);
-          store.writeState({
-            ...registered,
-            tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
-            pending: {
-              challenge: pending.challenge,
-              binding: pending.binding,
-              tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
-            },
-          });
-          log(
-            `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
-          );
-        });
-      }
       const ctx = { corridor: state.corridor, log };
       if (sub === "submit") {
         const saved = state.pending ?? fail("no pending enrollment: run enroll start");
@@ -667,21 +692,22 @@ export async function run(argv: string[]): Promise<void> {
           `backup secrets derive ${account.descriptor.aztecAddress}, not ${contents.account.address}`,
         );
       }
-      store.writeKeystore(secrets, pass);
-      store.writeState({
+      const artifact = await tokenArtifact(values, contents.corridor);
+      const restoredState: State = {
         corridor: contents.corridor,
         address: contents.account.address,
         backupCommitment: keccak256(backupBytes),
         backupTokenAckSignature: contents.tokenRegistrationAck?.signature ?? null,
         tokenRegistrationAck: tokenAckForState(contents.tokenRegistrationAck),
-      });
+      };
+      store.writeKeystore(secrets, pass);
+      store.writeState(restoredState);
       new OperationJournal(join(store.dir, "operations")).restore(contents.journals.operations);
       restoreExitJournal(join(store.dir, "exits"), contents.journals.exits);
-      return withAccount(values, store, async (ctx, restored) => {
+      return withAccount(values, store, restoredState, async (ctx, restored) => {
         const state = await ctx.port.accountState(restored.address);
         if (!state.initialized) fail("the backed-up account is not deployed on this network");
         await registerSenders(ctx);
-        const artifact = await tokenArtifact(values, ctx.corridor);
         await registerAndRecord(ctx, store, artifact);
         await showBalance(ctx, artifact, restored);
       });
@@ -728,8 +754,7 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     case "spend":
-      return withAccount(values, store, async (ctx, account) => {
-        const artifact = await tokenArtifact(values, ctx.corridor);
+      return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
         await registerAndRecord(ctx, store, artifact);
         await spend(
           ctx,
@@ -740,8 +765,7 @@ export async function run(argv: string[]): Promise<void> {
         );
       });
     case "exit":
-      return withAccount(values, store, async (ctx, account) => {
-        const artifact = await tokenArtifact(values, ctx.corridor);
+      return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
         await registerAndRecord(ctx, store, artifact);
         const result = await exit(ctx, account, artifact, {
           l1Recipient: required(values, "l1-recipient"),
