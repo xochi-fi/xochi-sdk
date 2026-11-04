@@ -73,9 +73,11 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   automatically: investigate it with the operator before any retry, and never delete or bypass it.
   A caught fund-movement failure also writes one private operator diagnostic to stderr. It contains
   only operation kind `spend` or `exit`; phase `simulate`, `hydrate`, `tee-sign`, `prove`, or
-  `pre-send`; category `simulation`, `proving`, `submission-ambiguous`, or `unknown`; class
-  `SimulationError`, `ProvingError`, `NoRetryError`, or `UnknownError`; the corresponding fixed
-  `AZTEC_*` code when known; and the submission/send boundary booleans. The durable journal keeps
+  `pre-send`; category `simulation`, `submission-ambiguous`, or `unknown`; class
+  `SimulationError`, `NoRetryError`, or `UnknownError`; the corresponding fixed `AZTEC_*` code
+  when the direct wallet-simulation or one-attempt submission boundary minted the identity; and
+  the submission/send boundary booleans. Every other SDK or malformed error remains unknown. The
+  durable journal keeps
   its generic error. The diagnostic never contains the upstream message, cause, stack, data,
   operation ID, address, amount, fee, calldata, note, nullifier, witness, proof, recipient, or
   transaction material. Retain captured stderr privately; do not attach it to public issues.

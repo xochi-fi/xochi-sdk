@@ -353,7 +353,11 @@ export async function closePortAfterCommand(
     await portToClose.close();
   } catch {
     if (commandFailed) {
-      report("close: PXE shutdown failed after command failure; original failure retained");
+      try {
+        report("close: PXE shutdown failed after command failure; original failure retained");
+      } catch {
+        return;
+      }
       return;
     }
     throw new Error(

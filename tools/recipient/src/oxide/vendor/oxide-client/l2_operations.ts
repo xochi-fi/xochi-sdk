@@ -1,5 +1,5 @@
-// Modified for the Xochi recipient tool: expose a signed-withdrawal hook so recovery data can
-// be persisted before proving or sending.
+// Modified for the Xochi recipient tool: expose signed-withdrawal and phase hooks, and replace
+// direct wallet-simulation failures with a privacy-safe internal sentinel.
 import type { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
 
 import {
@@ -13,9 +13,13 @@ import {
 import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
 import { Fr } from '@aztec-labs/aztec.js/fields';
 import { waitForTx, type AztecNode } from '@aztec-labs/aztec.js/node';
-import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import type {
+  SimulateOptions,
+  TxSimulationResultWithAppOffset,
+  Wallet,
+} from '@aztec-labs/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
-import type { SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
+import type { ExecutionPayload, SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
 
 import { getUserPayloadHash } from '../oxide-lib/content_hash.js';
 import { type BroadcastL1Operation, computeL1OperationId } from '../oxide-lib/l1_operation_calldata.js';
@@ -49,6 +53,29 @@ import {
   buildFinalizationRequestOperation,
 } from './withdrawal_finalization_request.js';
 import type { WithdrawalInTx } from './withdrawal_in_tx.js';
+
+const trustedWalletSimulationFailures = new WeakSet<object>();
+
+const walletSimulationFailure = (): Error => {
+  const error = new Error('wallet simulation failed');
+  trustedWalletSimulationFailures.add(error);
+  return error;
+};
+
+export const isTrustedWalletSimulationFailure = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && trustedWalletSimulationFailures.has(error);
+
+export async function simulateWalletTransaction(
+  wallet: Pick<Wallet, 'simulateTx'>,
+  payload: ExecutionPayload,
+  options: SimulateOptions,
+): Promise<TxSimulationResultWithAppOffset> {
+  try {
+    return await wallet.simulateTx(payload, options);
+  } catch {
+    throw walletSimulationFailure();
+  }
+}
 
 /**
  * Wallet + node context shared across submissions.
@@ -265,7 +292,8 @@ export async function submit(
       ...(await buildRecoveryChunkCapsules(contract.address, buildRecoveryData(withdrawOps, simFinalizationData))),
     ],
   });
-  const simResult = await wallet.simulateTx(
+  const simResult = await simulateWalletTransaction(
+    wallet,
     simPayload,
     toSimulateOptions({ from, additionalScopes, includeMetadata: collectStats }),
   );

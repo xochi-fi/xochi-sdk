@@ -1,13 +1,24 @@
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import type { JsonRpcFetch } from "@aztec-labs/foundation/json-rpc/client";
+import { NoRetryError } from "@aztec-labs/foundation/retry";
 import { jsonStringify } from "@aztec-labs/foundation/json-rpc";
+import { isNativeError } from "node:util/types";
 import type { TxHash } from "@aztec-labs/stdlib/tx";
 
-import {
-  safeOperationError,
-  submissionAmbiguousError,
-  type SubmissionDiagnosticState,
-} from "./safe-diagnostic.js";
+import { safeOperationError, type SubmissionDiagnosticState } from "./safe-diagnostic.js";
+
+const trustedSubmissionErrors = new WeakSet<Error>();
+
+const submissionAmbiguousError = (message: string): Error => {
+  const error = new NoRetryError(message);
+  trustedSubmissionErrors.add(error);
+  return error;
+};
+
+export const isTrustedSubmissionAmbiguousError = (error: unknown): error is NoRetryError =>
+  isNativeError(error) &&
+  Object.getPrototypeOf(error) === NoRetryError.prototype &&
+  trustedSubmissionErrors.has(error);
 
 type BeforeSubmit = (txHash: TxHash) => void | Promise<void>;
 /**

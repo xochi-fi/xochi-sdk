@@ -15,7 +15,6 @@ import { OperationJournal } from "../src/operation-journal.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
-  submissionAmbiguousError,
   type SubmissionDiagnosticState,
 } from "../src/safe-diagnostic.js";
 
@@ -70,19 +69,13 @@ describe("Aztec node submission journal boundary", () => {
     try {
       const journal = new OperationJournal(dir);
       const operation = journal.begin("spend", { amount: "1" });
-      let nodeCalls = 0;
-      const rawNode = {
-        async sendTx(tx: Tx) {
-          nodeCalls += 1;
-          expect(tx.getTxHash().equals(HASH)).toBe(true);
-          expect(journal.get(operation.id)).toMatchObject({
-            status: "broadcast",
-            txHash: HASH.toString(),
-          });
-          throw submissionAmbiguousError("private transaction material must not escape");
-        },
-      } as unknown as AztecNode;
-      const submission = new NodeSubmission(rawNode);
+      const fetch = vi.fn().mockRejectedValue(new Error("connection closed after request"));
+      vi.stubGlobal("fetch", fetch);
+      const rawNode = { sendTx: async (_tx: Tx) => undefined } as unknown as AztecNode;
+      const submission = new NodeSubmission(
+        rawNode,
+        createSingleAttemptAztecNodeBroadcaster("http://aztec-node.invalid"),
+      );
       const state = diagnosticState();
 
       let caught: unknown;
@@ -111,7 +104,7 @@ describe("Aztec node submission journal boundary", () => {
         submissionBoundaryReached: true,
         sendTxReached: true,
       });
-      expect(nodeCalls).toBe(1);
+      expect(fetch).toHaveBeenCalledOnce();
       journal.failOrAbort(operation.id);
 
       const restarted = new OperationJournal(dir);
@@ -150,9 +143,8 @@ describe("Aztec node submission journal boundary", () => {
       expect(safeOperationDiagnostic(caught)).toEqual({
         operationKind: "spend",
         phase: "prove",
-        category: "proving",
-        errorClass: "ProvingError",
-        errorCode: "AZTEC_PROVING_FAILED",
+        category: "unknown",
+        errorClass: "UnknownError",
         submissionBoundaryReached: false,
         sendTxReached: false,
       });

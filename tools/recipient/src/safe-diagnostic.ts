@@ -1,7 +1,7 @@
 import { isNativeError } from "node:util/types";
 
-import { NoRetryError } from "@aztec-labs/foundation/retry";
-import { ProvingError, SimulationError } from "@aztec-labs/stdlib/errors";
+import { isTrustedSubmissionAmbiguousError } from "./node-submission.js";
+import { isTrustedWalletSimulationFailure } from "./oxide/vendor/oxide-client/l2_operations.js";
 
 export const ALLOWLISTED_PRE_SUBMISSION_PHASES = [
   "simulate",
@@ -14,7 +14,6 @@ export type PreSubmissionPhase = (typeof ALLOWLISTED_PRE_SUBMISSION_PHASES)[numb
 
 export const ALLOWLISTED_ERROR_CATEGORIES = [
   "simulation",
-  "proving",
   "submission-ambiguous",
   "unknown",
 ] as const;
@@ -22,7 +21,6 @@ export type SafeErrorCategory = (typeof ALLOWLISTED_ERROR_CATEGORIES)[number];
 
 export const ALLOWLISTED_ERROR_CLASSES = [
   "SimulationError",
-  "ProvingError",
   "NoRetryError",
   "UnknownError",
 ] as const;
@@ -30,7 +28,6 @@ export type SafeErrorClass = (typeof ALLOWLISTED_ERROR_CLASSES)[number];
 
 export const ALLOWLISTED_ERROR_CODES = [
   "AZTEC_SIMULATION_FAILED",
-  "AZTEC_PROVING_FAILED",
   "AZTEC_SUBMISSION_AMBIGUOUS",
 ] as const;
 export type SafeErrorCode = (typeof ALLOWLISTED_ERROR_CODES)[number];
@@ -70,49 +67,17 @@ const DIAGNOSTIC_KEYS = [
   "submissionBoundaryReached",
   "sendTxReached",
 ] as const;
-const trustedSafeErrors = new WeakSet<Error>();
-const trustedSubmissionErrors = new WeakSet<Error>();
-
-const hasExactPrototype = <T extends Error>(
-  error: unknown,
-  errorClass: Function & { prototype: T },
-): error is T => isNativeError(error) && Object.getPrototypeOf(error) === errorClass.prototype;
-
-const isTrustedSimulationError = (error: unknown): error is SimulationError => {
-  if (!hasExactPrototype(error, SimulationError)) return false;
-  const descriptors = Object.getOwnPropertyDescriptors(error);
-  return (
-    typeof descriptors.message?.get === "function" &&
-    descriptors.message.configurable === false &&
-    Array.isArray(descriptors.functionErrorStack?.value) &&
-    Array.isArray(descriptors.revertData?.value)
-  );
-};
-
-const isTrustedProvingError = (error: unknown): error is ProvingError => {
-  if (!hasExactPrototype(error, ProvingError)) return false;
-  const descriptors = Object.getOwnPropertyDescriptors(error);
-  return (
-    descriptors.name?.value === "ProvingError" && typeof descriptors.retry?.value === "boolean"
-  );
-};
+const safeDiagnostics = new WeakMap<Error, Readonly<SafeOperationDiagnostic>>();
 
 const classifyKnown = (error: unknown): SafeErrorIdentity => {
-  if (isTrustedSimulationError(error)) {
+  if (isTrustedWalletSimulationFailure(error)) {
     return {
       category: "simulation",
       errorClass: "SimulationError",
       errorCode: "AZTEC_SIMULATION_FAILED",
     };
   }
-  if (isTrustedProvingError(error)) {
-    return {
-      category: "proving",
-      errorClass: "ProvingError",
-      errorCode: "AZTEC_PROVING_FAILED",
-    };
-  }
-  if (hasExactPrototype(error, NoRetryError) && trustedSubmissionErrors.has(error)) {
+  if (isTrustedSubmissionAmbiguousError(error)) {
     return {
       category: "submission-ambiguous",
       errorClass: "NoRetryError",
@@ -130,12 +95,6 @@ const classify = (error: unknown): SafeErrorIdentity => {
   }
 };
 
-export function submissionAmbiguousError(message: string): Error {
-  const error = new NoRetryError(message);
-  trustedSubmissionErrors.add(error);
-  return error;
-}
-
 const identityIsConsistent = (
   category: SafeErrorCategory,
   errorClass: SafeErrorClass,
@@ -144,9 +103,6 @@ const identityIsConsistent = (
   (category === "simulation" &&
     errorClass === "SimulationError" &&
     errorCode === "AZTEC_SIMULATION_FAILED") ||
-  (category === "proving" &&
-    errorClass === "ProvingError" &&
-    errorCode === "AZTEC_PROVING_FAILED") ||
   (category === "submission-ambiguous" &&
     errorClass === "NoRetryError" &&
     errorCode === "AZTEC_SUBMISSION_AMBIGUOUS") ||
@@ -186,13 +142,11 @@ const projectDiagnostic = (value: unknown): SafeOperationDiagnostic | null => {
 };
 
 class SafeOperationError extends Error {
-  constructor(
-    message: string,
-    readonly diagnostic: Readonly<SafeOperationDiagnostic>,
-  ) {
+  constructor(message: string, diagnostic: Readonly<SafeOperationDiagnostic>) {
     super(message);
     this.name = "SafeOperationError";
-    trustedSafeErrors.add(this);
+    safeDiagnostics.set(this, Object.freeze({ ...diagnostic }));
+    Object.freeze(this);
   }
 }
 
@@ -236,9 +190,15 @@ export function safeOperationError(
 }
 
 export function safeOperationDiagnostic(error: unknown): Readonly<SafeOperationDiagnostic> | null {
-  if (!isNativeError(error) || !trustedSafeErrors.has(error)) return null;
-  const diagnostic = projectDiagnostic((error as SafeOperationError).diagnostic);
-  return diagnostic === null ? null : Object.freeze(diagnostic);
+  if (!isNativeError(error)) return null;
+  try {
+    const stored = safeDiagnostics.get(error);
+    if (stored === undefined) return null;
+    const diagnostic = projectDiagnostic(stored);
+    return diagnostic === null ? null : Object.freeze(diagnostic);
+  } catch {
+    return null;
+  }
 }
 
 export function operatorDiagnosticLine(error: unknown): string | null {

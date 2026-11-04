@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import type { SimulateOptions, Wallet } from "@aztec-labs/aztec.js/wallet";
 import { SimulationError } from "@aztec-labs/stdlib/errors";
+import type { ExecutionPayload } from "@aztec-labs/stdlib/tx";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +16,7 @@ import { closePortAfterCommand, formatCliFailure, writeCliFailure } from "../src
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
+import { simulateWalletTransaction } from "../src/oxide/vendor/oxide-client/l2_operations.js";
 import {
   createSubmissionDiagnosticState,
   safeOperationDiagnostic,
@@ -43,7 +46,7 @@ const SENSITIVE = {
 
 const sensitiveValues = Object.values(SENSITIVE);
 
-function privateSimulationError(): SimulationError {
+function privateSdkSimulationError(): SimulationError {
   const cause = new Error(SENSITIVE.cause);
   cause.stack = SENSITIVE.stack;
   return Object.assign(new SimulationError(SENSITIVE.message, [], [], undefined, { cause }), {
@@ -63,6 +66,23 @@ function privateSimulationError(): SimulationError {
   });
 }
 
+async function privateSimulationFailure(): Promise<Error> {
+  try {
+    await simulateWalletTransaction(
+      {
+        async simulateTx() {
+          throw privateSdkSimulationError();
+        },
+      } as Pick<Wallet, "simulateTx">,
+      {} as ExecutionPayload,
+      {} as SimulateOptions,
+    );
+  } catch (error) {
+    if (error instanceof Error) return error;
+  }
+  throw new Error("wallet simulation failure fixture did not fail");
+}
+
 describe("privacy-safe exit failure diagnostics", () => {
   it("preserves a simulation category through the production journal and CLI failure seams", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-diagnostic-"));
@@ -79,7 +99,7 @@ describe("privacy-safe exit failure diagnostics", () => {
       const wallet = {
         async simulateTx(): Promise<never> {
           calls.simulate += 1;
-          throw privateSimulationError();
+          throw privateSdkSimulationError();
         },
       };
       const rawNode = {
@@ -98,7 +118,11 @@ describe("privacy-safe exit failure diagnostics", () => {
           },
           async () => {
             state.phase = "simulate";
-            await wallet.simulateTx();
+            await simulateWalletTransaction(
+              wallet as Pick<Wallet, "simulateTx">,
+              {} as ExecutionPayload,
+              {} as SimulateOptions,
+            );
             calls.teeSign += 1;
             calls.prove += 1;
             calls.accountSign += 1;
@@ -255,7 +279,7 @@ describe("privacy-safe exit failure diagnostics", () => {
     }
   });
 
-  it("retains the safe diagnostic when terminal lock release is interrupted", () => {
+  it("retains the safe diagnostic when terminal lock release is interrupted", async () => {
     const directory = mkdtempSync(join(tmpdir(), "xochi-exit-lock-release-"));
     try {
       let privateOperationId = "";
@@ -270,7 +294,7 @@ describe("privacy-safe exit failure diagnostics", () => {
       const finalError = sanitizeFundMovementFailure(
         journal,
         operation,
-        privateSimulationError(),
+        await privateSimulationFailure(),
         state,
       );
       const output = formatCliFailure(finalError);
@@ -333,9 +357,17 @@ describe("privacy-safe exit failure diagnostics", () => {
     state.phase = "simulate";
     const primary = safeOperationError(
       "operation failed before Aztec node submission",
-      privateSimulationError(),
+      await privateSimulationFailure(),
       state,
     );
+    expect(() =>
+      Object.defineProperty(primary, "diagnostic", {
+        get() {
+          throw new Error("private diagnostic getter");
+        },
+      }),
+    ).toThrow();
+    expect(safeOperationDiagnostic(primary)?.category).toBe("simulation");
     const rawCloseMessage = "private wallet close material";
     const reports: string[] = [];
     let caught: unknown;
@@ -368,6 +400,28 @@ describe("privacy-safe exit failure diagnostics", () => {
       "close: PXE shutdown failed after command failure; original failure retained",
     ]);
     expect(reports.join("\n")).not.toContain(rawCloseMessage);
+
+    let reportFailureCaught: unknown;
+    try {
+      try {
+        throw primary;
+      } finally {
+        await closePortAfterCommand(
+          {
+            async close() {
+              throw new Error(rawCloseMessage);
+            },
+          },
+          true,
+          () => {
+            throw new Error("private report failure");
+          },
+        );
+      }
+    } catch (error) {
+      reportFailureCaught = error;
+    }
+    expect(reportFailureCaught).toBe(primary);
 
     await expect(
       closePortAfterCommand(

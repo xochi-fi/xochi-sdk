@@ -1,4 +1,5 @@
 import { ProvingError, SimulationError } from "@aztec-labs/stdlib/errors";
+import { NoRetryError } from "@aztec-labs/foundation/retry";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,7 +7,6 @@ import {
   createSubmissionDiagnosticState,
   operatorDiagnosticLine,
   safeOperationDiagnostic,
-  submissionAmbiguousError,
   safeOperationError,
   type PreSubmissionPhase,
 } from "../src/safe-diagnostic.js";
@@ -28,21 +28,21 @@ describe("safe operation diagnostic allowlists", () => {
   it.each([
     {
       error: new SimulationError("private", []),
-      category: "simulation",
-      errorClass: "SimulationError",
-      errorCode: "AZTEC_SIMULATION_FAILED",
+      category: "unknown",
+      errorClass: "UnknownError",
+      errorCode: undefined,
     },
     {
       error: new ProvingError("private"),
-      category: "proving",
-      errorClass: "ProvingError",
-      errorCode: "AZTEC_PROVING_FAILED",
+      category: "unknown",
+      errorClass: "UnknownError",
+      errorCode: undefined,
     },
     {
-      error: submissionAmbiguousError("private"),
-      category: "submission-ambiguous",
-      errorClass: "NoRetryError",
-      errorCode: "AZTEC_SUBMISSION_AMBIGUOUS",
+      error: new NoRetryError("private"),
+      category: "unknown",
+      errorClass: "UnknownError",
+      errorCode: undefined,
     },
     {
       error: Object.assign(new Error("private"), { code: "AZTEC_SIMULATION_FAILED" }),
