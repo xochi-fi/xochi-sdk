@@ -72,6 +72,7 @@ export interface ExitRequest {
   amount: bigint;
   proverTip: bigint;
   relayerTip: bigint;
+  maxExecutorFee: bigint;
   broadcasterArtifact: ContractArtifact;
 }
 
@@ -135,6 +136,35 @@ export interface AztecPort {
     request: ExitRequest,
   ): Promise<ExitResult>;
   close(): Promise<void>;
+}
+
+export function beginExitAfterExecutorFeeCheck(
+  journal: OperationJournal,
+  accountAddress: string,
+  request: ExitRequest,
+  executorFee: bigint,
+): { operation: OperationRecord; recipientAmount: bigint } {
+  if (executorFee > request.maxExecutorFee) {
+    throw new Error("live executor fee exceeds --max-executor-fee; exit not started");
+  }
+  const netAmount = plainWithdrawalNetAmount(request.amount, request.proverTip, executorFee);
+  if (request.relayerTip >= netAmount) {
+    throw new Error(
+      `--relayer-tip must be less than the post-fee amount ${netAmount}; the recipient must receive funds`,
+    );
+  }
+  const recipientAmount = netAmount - request.relayerTip;
+  const operation = journal.begin("exit", {
+    from: accountAddress,
+    l1Recipient: request.l1Recipient,
+    amount: request.amount.toString(),
+    proverTip: request.proverTip.toString(),
+    relayerTip: request.relayerTip.toString(),
+    maxExecutorFee: request.maxExecutorFee.toString(),
+    executorFee: executorFee.toString(),
+    recipientAmount: recipientAmount.toString(),
+  });
+  return { operation, recipientAmount };
 }
 
 /** Live port. `l1RpcUrl` is read only by spend and exit (TeeRegistry and portal reads). */
@@ -419,21 +449,12 @@ export class LiveAztec implements AztecPort {
       abi: parseAbi(["function FEE() view returns (uint256)"]),
       functionName: "FEE",
     });
-    const netAmount = plainWithdrawalNetAmount(request.amount, request.proverTip, executorFee);
-    if (request.relayerTip >= netAmount) {
-      throw new Error(
-        `--relayer-tip must be less than the post-fee amount ${netAmount}; the recipient must receive funds`,
-      );
-    }
-    const operation = this.operationJournal.begin("exit", {
-      from: account.address.toString(),
-      l1Recipient: request.l1Recipient,
-      amount: request.amount.toString(),
-      proverTip: request.proverTip.toString(),
-      relayerTip: request.relayerTip.toString(),
-      executorFee: executorFee.toString(),
-      recipientAmount: (netAmount - request.relayerTip).toString(),
-    });
+    const { operation, recipientAmount } = beginExitAfterExecutorFeeCheck(
+      this.operationJournal,
+      account.address.toString(),
+      request,
+      executorFee,
+    );
     try {
       const broadcaster = Contract.at(broadcasterAddress, request.broadcasterArtifact, this.wallet);
       const result = await this.submitOperations(
@@ -463,7 +484,7 @@ export class LiveAztec implements AztecPort {
       const response = {
         txHash,
         executorFee: executorFee.toString(),
-        recipientAmount: (netAmount - request.relayerTip).toString(),
+        recipientAmount: recipientAmount.toString(),
         withdrawals: result.withdrawals.map((w) => ({
           txHash,
           withdrawalIndex: w.withdrawalIndex,
@@ -624,7 +645,7 @@ export class DryRunAztec implements AztecPort {
       `node.getContract(${this.corridor.oxide.l2Broadcaster}): its class must be the broadcaster artifact's (${request.broadcasterArtifact.name})`,
     );
     this.record(
-      `L1: PlainWithdrawalExecutor(${this.corridor.oxide.plainWithdrawalExecutor}).FEE()`,
+      `L1: PlainWithdrawalExecutor(${this.corridor.oxide.plainWithdrawalExecutor}).FEE() must be at most the operator ceiling`,
     );
     this.record(
       "L1: assertL1Pinned (TeeRegistry.PCR0_HASH, CertManager.ROOT_CA_CERT_HASH, OxidePortal views)",

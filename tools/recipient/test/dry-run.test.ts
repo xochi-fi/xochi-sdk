@@ -59,6 +59,7 @@ describe("dry run", () => {
       amount: 10n ** 18n,
       proverTip: 0n,
       relayerTip: 0n,
+      maxExecutorFee: 10n ** 18n,
       broadcasterArtifact: { name: "Broadcaster" } as ContractArtifact,
     };
     // The artifacts are never read on this path: the refusal comes before the port.

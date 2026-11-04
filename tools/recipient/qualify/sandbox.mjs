@@ -480,6 +480,8 @@ const exitOut = cli(dirA, [
   "0",
   "--relayer-tip",
   "1000000000000000",
+  "--max-executor-fee",
+  "1000000000000000000",
   "--l1-rpc",
   l1Rpc,
 ]);

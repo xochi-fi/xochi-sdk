@@ -71,10 +71,13 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   reconcile --node-url "$NODE"` pins the node identity and unlocks only at `CHECKPOINTED`,
   `PROVEN`, or `FINALIZED`—never `PROPOSED`. A record without a hash cannot be cleared
   automatically: investigate it with the operator before any retry, and never delete or bypass it.
-- **Exit needs a relayer, and its records.** `exit` refuses a zero tip and any tip that would leave
-  the recipient zero. It prints the executor fee and exact recipient proceeds. Signed recovery
-  data is in the operation journal before broadcast; after mining, each withdrawal's finalization
-  data and L1 operation ID are also written under `<data-dir>/exits/`.
+- **Exit needs a fee ceiling and a relayer.** `exit` requires `--max-executor-fee` in base units,
+  reads the live executor `FEE()`, and refuses a fee above that ceiling before creating an exit
+  journal, proving, signing, or submitting. The exact ceiling is accepted. It also refuses a zero
+  tip or any tip that would leave the recipient zero. Only the recipient's local CLI output reports
+  the observed fee and calculated proceeds. Signed recovery data is in the private operation
+  journal before broadcast; after mining, each withdrawal's finalization data and L1 operation ID
+  are written under `<data-dir>/exits/`.
 
 ## Round trip
 

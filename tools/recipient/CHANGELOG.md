@@ -11,6 +11,8 @@
 - Ship the exact-integrity npm shrinkwrap used by the SBOM and exercise registry-disabled installation from the locked cache.
 - Make the initial refund lock and hash record crash-recoverable as one durable unit; terminally
   reconcile finalized reverts only after transaction, receipt, and canonical block inclusion match.
+- Require an explicit exit executor-fee ceiling and reject a higher live fee before journaling or
+  any proving, signing, or submission path.
 - Split and least-privilege the signed release jobs, with every external action pinned to a reviewed commit.
 
 This is a test release only. It does not authorize production use, deployment, funding, or package publication.

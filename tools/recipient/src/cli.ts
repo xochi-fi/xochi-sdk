@@ -94,7 +94,7 @@ Commands (in round-trip order):
   enroll status            show the binding state (pending / ready / revoked)
   restore --backup FILE    restore into a fresh data directory/PXE and find the balance
   spend --to ADDR --amount BASEUNITS
-  exit --l1-recipient ADDR --amount BASEUNITS --prover-tip N --relayer-tip N --broadcaster-artifact FILE
+  exit --l1-recipient ADDR --amount BASEUNITS --prover-tip N --relayer-tip N --max-executor-fee N --broadcaster-artifact FILE
   operations [reconcile]   show journal, or reconcile its recorded Aztec transaction
   refund authorize         sign recipient-owned refund evidence to a fixed L1 destination
   refund submit            validate and submit one externally proved, signed L1 refund transaction
@@ -113,6 +113,7 @@ Options:
   --source-signature SIG       enroll submit
   --binding-id ID              enroll status
   --l1-rpc URL                 L1 JSON-RPC of your choice (spend, exit, refund)
+  --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
   --raw-transaction FILE       externally signed exact refund transaction (refund submit)
@@ -217,6 +218,7 @@ interface Values {
   "l1-recipient"?: string;
   "prover-tip"?: string;
   "relayer-tip"?: string;
+  "max-executor-fee"?: string;
   "broadcaster-artifact"?: string;
   "refund-evidence"?: string;
   bundle?: string;
@@ -250,6 +252,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       "l1-recipient": string,
       "prover-tip": string,
       "relayer-tip": string,
+      "max-executor-fee": string,
       "broadcaster-artifact": string,
       "refund-evidence": string,
       bundle: string,
@@ -460,6 +463,7 @@ async function plan(values: Values): Promise<void> {
         amount: 10n ** 18n,
         proverTip: 0n,
         relayerTip: 1n,
+        maxExecutorFee: 10n ** 18n,
         broadcasterArtifact: await loadBroadcasterArtifact(broadcasterPath),
       });
       flush("exit");
@@ -744,6 +748,7 @@ export async function run(argv: string[]): Promise<void> {
           amount: baseUnits("amount", required(values, "amount")),
           proverTip: baseUnits("prover-tip", required(values, "prover-tip")),
           relayerTip: baseUnits("relayer-tip", required(values, "relayer-tip")),
+          maxExecutorFee: baseUnits("max-executor-fee", required(values, "max-executor-fee")),
           broadcasterArtifact: await loadBroadcasterArtifact(
             required(values, "broadcaster-artifact"),
           ),

@@ -93,13 +93,14 @@ workflow contain no `npm publish` step. WSL consumes the Linux artifact.
 Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
 
 Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
-65 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
+67 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
 builds and standalone tarball installation all passed. The installed CLI reported
 `0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
 and backup v1 read/write compatibility. Refund tests recover the exact pre-submission hash after a
 crash immediately following the initial lock fsync and reject receipt or transaction inclusion
-that does not match the canonical block. Ubuntu remains a PR-matrix observation rather than a
-local claim.
+that does not match the canonical block. Exit tests accept the exact executor-fee ceiling and
+reject ceiling plus one without creating a journal. Ubuntu remains a PR-matrix observation rather
+than a local claim.
 
 F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
 overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
@@ -175,9 +176,10 @@ SPEND_BASE_UNITS="$(op read 'op://<vault>/<recipient>/spend-base-units')"
 EXIT_BASE_UNITS="$(op read 'op://<vault>/<recipient>/exit-base-units')"
 PROVER_TIP="$(op read 'op://<vault>/<recipient>/prover-tip')"
 RELAYER_TIP="$(op read 'op://<vault>/<recipient>/relayer-tip')"
+MAX_EXECUTOR_FEE="$(op read 'op://<vault>/<recipient>/max-executor-fee-base-units')"
 : "${SECOND_RECIPIENT:?required}" "${L1_RECIPIENT:?required}"
 : "${SPEND_BASE_UNITS:?required}" "${EXIT_BASE_UNITS:?required}"
-: "${PROVER_TIP:?required}" "${RELAYER_TIP:?required}"
+: "${PROVER_TIP:?required}" "${RELAYER_TIP:?required}" "${MAX_EXECUTOR_FEE:?required}"
 node dist/cli.js balance --data-dir "$DATA" --node-url "$NODE" \
   --oxide-token-artifact "$ARTIFACT"
 node dist/cli.js spend --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
@@ -185,7 +187,8 @@ node dist/cli.js spend --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
 node dist/cli.js exit --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
   --oxide-token-artifact "$ARTIFACT" --broadcaster-artifact "$BROADCASTER" \
   --l1-recipient "$L1_RECIPIENT" --amount "$EXIT_BASE_UNITS" \
-  --prover-tip "$PROVER_TIP" --relayer-tip "$RELAYER_TIP"
+  --prover-tip "$PROVER_TIP" --relayer-tip "$RELAYER_TIP" \
+  --max-executor-fee "$MAX_EXECUTOR_FEE"
 node dist/cli.js operations --data-dir "$DATA"
 ```
 
