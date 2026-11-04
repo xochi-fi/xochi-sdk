@@ -35,7 +35,7 @@ function onlyFile(directory, suffix) {
   return join(directory, matches[0]);
 }
 
-function record(directory, receipt) {
+export function recordReleaseQualification(directory, receipt) {
   const manifestPath = onlyFile(directory, ".release.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const packagePath = join(directory, manifest.package.file);
@@ -43,6 +43,20 @@ function record(directory, receipt) {
 
   if (receipt.format !== "xochi.recipient.closure-verification.v1" || receipt.result !== "passed") {
     throw new Error("closure verification receipt did not pass");
+  }
+  if (
+    receipt.devDependenciesAbsent !== true ||
+    receipt.requiredProductionDependenciesPresent !== true ||
+    receipt.registryRequestDuringOfflineInstall !== false ||
+    receipt.unlockedVersionRequested !== false ||
+    receipt.installedVersion !== receipt.version ||
+    receipt.diagnosticSmoke !== "passed" ||
+    !Number.isSafeInteger(receipt.exactCachePackageCount) ||
+    receipt.exactCachePackageCount <= 0 ||
+    !Number.isSafeInteger(receipt.installedPackageCount) ||
+    receipt.installedPackageCount <= 0
+  ) {
+    throw new Error("closure verification receipt contains a failed invariant");
   }
   if (
     manifest.version !== receipt.version ||
@@ -80,7 +94,7 @@ function record(directory, receipt) {
 function main() {
   const receipt = JSON.parse(readFileSync(resolve(flag("--receipt")), "utf8"));
   for (const directory of repeatedFlag("--release-dir").map((path) => resolve(path))) {
-    record(directory, receipt);
+    recordReleaseQualification(directory, receipt);
   }
 }
 

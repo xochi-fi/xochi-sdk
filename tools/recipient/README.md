@@ -100,6 +100,15 @@ shasum -a 256 -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
   --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
+PACKAGE=./xochi-recipient-0.1.0-test.3.tgz
+EXPECTED_TAG=recipient-v0.1.0-test.3
+test -f "$PACKAGE"
+gh attestation verify "$PACKAGE" \
+  --repo xochi-fi/xochi-sdk \
+  --signer-workflow xochi-fi/xochi-sdk/.github/workflows/recipient-release.yml \
+  --source-ref "refs/tags/$EXPECTED_TAG" \
+  --deny-self-hosted-runners
+
 
 # The trusted staging path is the extracted package root. Cache seeding fetches only the exact
 # registry tarballs named by the extracted shrinkwrap; npm ci itself is forced offline.
