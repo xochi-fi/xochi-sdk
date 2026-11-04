@@ -98,10 +98,10 @@ export interface WithdrawOperation {
 export type Operation = TransferOperation | WithdrawOperation;
 
 /**
- * Pipeline phases of {@link submit}, in order. `prove-and-send` re-executes the private calls inside the wallet
- * before broadcasting; the PXE serves that re-execution from cache when no block has landed since `simulate`.
+ * Pipeline phases of {@link submit}, in order. `prove` re-executes the private calls inside the
+ * wallet before its node proxy reaches the distinct `pre-send` boundary.
  */
-export type SubmitPhase = 'simulate' | 'hydrate' | 'prove-and-send';
+export type SubmitPhase = 'simulate' | 'hydrate' | 'tee-sign' | 'prove';
 
 /** A withdrawal of a {@link submit} tx, with the finalization request that the tx broadcast for it. */
 export interface SubmitResultWithdrawal extends WithdrawalInTx {
@@ -283,6 +283,7 @@ export async function submit(
     resolveDepositSpendMetadata,
   });
 
+  onPhase?.('tee-sign');
   // 3. Sign.
   const signOutput = await signer.signTokenOperation(tokenOperation);
 
@@ -295,7 +296,7 @@ export async function submit(
     })),
   );
 
-  // 5. Prove and send.
+  // 5. Prove, then let the node proxy mark the pre-send boundary.
   const capsules = [
     seedCapsule,
     buildStrictModeCapsule(contract.address),
@@ -308,7 +309,7 @@ export async function submit(
       .publish_da()
       .with({ capsules: buildPublishDaCapsules(contract.address, signOutput, await anchorBlockHeader.hash()) }),
   ];
-  onPhase?.('prove-and-send');
+  onPhase?.('prove');
   const { txHash } = await new BatchCall(wallet, realBatchCalls).send({
     from,
     additionalScopes,

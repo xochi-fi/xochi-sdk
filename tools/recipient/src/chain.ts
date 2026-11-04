@@ -27,6 +27,12 @@ import type { ObservedNetwork } from "./network.js";
 import { OperationJournal, type OperationRecord } from "./operation-journal.js";
 import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
 import { durablyIncluded } from "./reconciliation.js";
+import {
+  preserveSafeOperationDiagnostic,
+  safeOperationDiagnostic,
+  safeOperationError,
+  type SubmissionDiagnosticState,
+} from "./safe-diagnostic.js";
 import { assertL1Pinned, OxideFleetRegistry, viemL1Reader } from "./oxide/enclave.js";
 import { oxidePins } from "./oxide/pins.js";
 import { transferEventMetadata } from "./oxide-token.js";
@@ -136,6 +142,15 @@ export interface AztecPort {
     request: ExitRequest,
   ): Promise<ExitResult>;
   close(): Promise<void>;
+}
+
+export function failOrAbortWithSafeDiagnostic(
+  journal: OperationJournal,
+  operationId: string,
+  error: unknown,
+): Error {
+  const journalError = journal.failOrAbort(operationId);
+  return preserveSafeOperationDiagnostic(journalError.message, error);
 }
 
 export function beginExitAfterExecutorFeeCheck(
@@ -338,54 +353,78 @@ export class LiveAztec implements AztecPort {
     build: (contract: Contract) => Operation[],
     operation: OperationRecord,
   ): Promise<SubmitResult> {
-    const contract = Contract.at(
-      AztecAddress.fromStringUnsafe(this.corridor.token.address),
-      artifact,
-      this.wallet,
-    );
-    const signer = await this.oxideSigner();
-    // #740: the spend metadata carries this account's master nullifier hiding key to the
-    // zk.money enclave, which needs it to check the spent notes.
-    const spend = await buildSpendMetadata({
-      secret: account.secret,
-      salt: account.salt,
-      signingKey: account.signingKey,
-      creationTxHash: TxHash.zero(),
-    });
-    const submitOperation = () =>
-      submit({ wallet: this.wallet, chain: this.node }, account.address, {
-        contract,
-        signer,
-        operations: build(contract),
-        resolveSpendMetadata: async (nullified) => {
-          if (!nullified.owner.equals(account.address))
-            throw new Error("spent note is not this account's");
-          return { ...spend, creationTxHash: nullified.creationTxHash };
-        },
-        resolveDepositSpendMetadata: async (recipient) => {
-          if (!recipient.equals(account.address))
-            throw new Error("spent deposit is not this account's");
-          return {
-            ownerAddressPreimage: spend.ownerAddressPreimage,
-            masterNullifierHidingKey: spend.masterNullifierHidingKey,
-          };
-        },
-        onPreparedWithdrawals: async (withdrawals) => {
+    if (operation.kind !== "spend" && operation.kind !== "exit") {
+      throw new Error("only spend and exit operations use the Aztec submission boundary");
+    }
+    const diagnosticState: SubmissionDiagnosticState = {
+      operationKind: operation.kind,
+      phase: "pre-send",
+    };
+    try {
+      const contract = Contract.at(
+        AztecAddress.fromStringUnsafe(this.corridor.token.address),
+        artifact,
+        this.wallet,
+      );
+      const signer = await this.oxideSigner();
+      // #740: the spend metadata carries this account's master nullifier hiding key to the
+      // zk.money enclave, which needs it to check the spent notes.
+      const spend = await buildSpendMetadata({
+        secret: account.secret,
+        salt: account.salt,
+        signingKey: account.signingKey,
+        creationTxHash: TxHash.zero(),
+      });
+      const submitOperation = () =>
+        submit({ wallet: this.wallet, chain: this.node }, account.address, {
+          contract,
+          signer,
+          operations: build(contract),
+          resolveSpendMetadata: async (nullified) => {
+            if (!nullified.owner.equals(account.address))
+              throw new Error("spent note is not this account's");
+            return { ...spend, creationTxHash: nullified.creationTxHash };
+          },
+          resolveDepositSpendMetadata: async (recipient) => {
+            if (!recipient.equals(account.address))
+              throw new Error("spent deposit is not this account's");
+            return {
+              ownerAddressPreimage: spend.ownerAddressPreimage,
+              masterNullifierHidingKey: spend.masterNullifierHidingKey,
+            };
+          },
+          onPhase: (phase) => {
+            diagnosticState.phase = phase;
+          },
+          onPreparedWithdrawals: async (withdrawals) => {
+            this.operationJournal.update(operation.id, {
+              withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
+                withdrawalIndex,
+                finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
+              })),
+            });
+          },
+        });
+
+      return await this.nodeSubmission.run(
+        async (txHash) => {
           this.operationJournal.update(operation.id, {
-            withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
-              withdrawalIndex,
-              finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
-            })),
+            status: "broadcast",
+            txHash: txHash.toString(),
           });
         },
-      });
-
-    return this.nodeSubmission.run(async (txHash) => {
-      this.operationJournal.update(operation.id, {
-        status: "broadcast",
-        txHash: txHash.toString(),
-      });
-    }, submitOperation);
+        submitOperation,
+        diagnosticState,
+      );
+    } catch (error) {
+      if (safeOperationDiagnostic(error) !== null) throw error;
+      throw safeOperationError(
+        "recipient operation failed before Aztec node submission",
+        error,
+        diagnosticState,
+        { submissionBoundaryReached: false, sendTxReached: false },
+      );
+    }
   }
 
   async spend(
@@ -420,8 +459,8 @@ export class LiveAztec implements AztecPort {
       const txHash = result.receipt.txHash.toString();
       this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
-    } catch {
-      throw this.operationJournal.failOrAbort(operation.id);
+    } catch (error) {
+      throw failOrAbortWithSafeDiagnostic(this.operationJournal, operation.id, error);
     }
   }
 
@@ -504,8 +543,8 @@ export class LiveAztec implements AztecPort {
         ),
       });
       return response;
-    } catch {
-      throw this.operationJournal.failOrAbort(operation.id);
+    } catch (error) {
+      throw failOrAbortWithSafeDiagnostic(this.operationJournal, operation.id, error);
     }
   }
 

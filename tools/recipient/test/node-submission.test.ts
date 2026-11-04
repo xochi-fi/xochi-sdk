@@ -11,6 +11,11 @@ import {
   singleAttemptJsonRpcFetch,
 } from "../src/node-submission.js";
 import { OperationJournal } from "../src/operation-journal.js";
+import type { SubmissionDiagnosticState } from "../src/safe-diagnostic.js";
+
+const diagnosticState = (
+  operationKind: SubmissionDiagnosticState["operationKind"] = "spend",
+): SubmissionDiagnosticState => ({ operationKind, phase: "pre-send" });
 
 const HASH = TxHash.fromString(`0x${"12".repeat(32)}`);
 const TX = { getTxHash: () => HASH } as Tx;
@@ -80,6 +85,7 @@ describe("Aztec node submission journal boundary", () => {
             journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
           },
           () => submission.node.sendTx(TX),
+          diagnosticState(),
         );
       } catch (error) {
         message = error instanceof Error ? error.message : String(error);
@@ -116,6 +122,7 @@ describe("Aztec node submission journal boundary", () => {
           async () => {
             throw new Error("proof contains private note data");
           },
+          diagnosticState(),
         ),
       ).rejects.toThrow("recipient operation failed before Aztec node submission");
       journal.failOrAbort(operation.id);
@@ -144,6 +151,7 @@ describe("Aztec node submission journal boundary", () => {
           throw new Error("journal fsync failed");
         },
         () => submission.node.sendTx(TX),
+        diagnosticState(),
       ),
     ).rejects.toThrow("recipient operation failed before Aztec node submission");
     expect(nodeCalls).toBe(0);
@@ -165,6 +173,7 @@ describe("Aztec node submission journal boundary", () => {
           await submission.node.sendTx(TX);
           await submission.node.sendTx(TX);
         },
+        diagnosticState(),
       ),
     ).rejects.toThrow("requires journal reconciliation");
     expect(nodeCalls).toBe(1);
@@ -178,6 +187,7 @@ describe("Aztec node submission journal boundary", () => {
       submission.run(
         async () => undefined,
         async () => undefined,
+        diagnosticState(),
       ),
     ).rejects.toThrow("recipient operation failed before Aztec node submission");
   });

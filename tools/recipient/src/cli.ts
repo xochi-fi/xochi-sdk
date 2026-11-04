@@ -79,6 +79,7 @@ import {
   submitRefund,
 } from "./refund.js";
 import { assertSupportedRuntime, diagnostics, packageVersion } from "./release-info.js";
+import { operatorDiagnosticLine } from "./safe-diagnostic.js";
 
 const USAGE = `xochi-recipient <command> [options]
 
@@ -496,6 +497,13 @@ async function plan(values: Values): Promise<void> {
   flush("close");
 }
 
+export function formatCliFailure(error: unknown): string {
+  const lines = [`xochi-recipient: ${error instanceof Error ? error.message : String(error)}`];
+  const diagnostic = operatorDiagnosticLine(error);
+  if (diagnostic !== null) lines.push(diagnostic);
+  return `${lines.join("\n")}\n`;
+}
+
 export async function run(argv: string[]): Promise<void> {
   assertSupportedRuntime();
   const { values, positionals } = parse(argv);
@@ -843,9 +851,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   run(process.argv.slice(2)).then(
     () => process.exit(0),
     (error: unknown) => {
-      process.stderr.write(
-        `xochi-recipient: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      process.stderr.write(formatCliFailure(error));
       process.exit(1);
     },
   );
