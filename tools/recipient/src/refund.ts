@@ -487,12 +487,18 @@ export type RefundReconciliationObservation = {
     to: Hex | null;
     input: Hex;
     value: bigint;
+    blockNumber: bigint | null;
+    blockHash: Hex | null;
   };
   receipt: {
     transactionHash: Hex;
     status: "success" | "reverted";
     blockNumber: bigint;
     blockHash: Hex;
+  };
+  canonicalBlock: {
+    number: bigint;
+    hash: Hex;
   };
   finalizedBlockNumber: bigint;
 };
@@ -514,7 +520,12 @@ export function applyRefundReconciliation(
     observation.receipt.transactionHash.toLowerCase() === operation.txHash.toLowerCase() &&
     observation.transaction.to?.toLowerCase() === operation.request.portal &&
     observation.transaction.value === 0n &&
-    keccak256(observation.transaction.input).toLowerCase() === operation.request.calldataHash;
+    keccak256(observation.transaction.input).toLowerCase() === operation.request.calldataHash &&
+    observation.transaction.blockNumber === observation.receipt.blockNumber &&
+    observation.transaction.blockHash?.toLowerCase() ===
+      observation.receipt.blockHash.toLowerCase() &&
+    observation.canonicalBlock.number === observation.receipt.blockNumber &&
+    observation.canonicalBlock.hash.toLowerCase() === observation.receipt.blockHash.toLowerCase();
   if (!immutableEvidenceMatches) {
     throw new Error("refund transaction evidence does not match the locked authorization");
   }
@@ -560,6 +571,10 @@ export async function reconcileRefund(
       client.getTransactionReceipt({ hash: operation.txHash as Hex }),
       client.getBlock({ blockTag: "finalized" }),
     ]);
+    const canonicalBlock = await client.getBlock({ blockNumber: receipt.blockNumber });
+    if (canonicalBlock.hash === null) {
+      throw new Error("refund transaction evidence is unavailable; keep it blocked");
+    }
     return applyRefundReconciliation(journal, corridor, {
       chainId,
       transaction: {
@@ -567,12 +582,18 @@ export async function reconcileRefund(
         to: transaction.to,
         input: transaction.input,
         value: transaction.value,
+        blockNumber: transaction.blockNumber,
+        blockHash: transaction.blockHash,
       },
       receipt: {
         transactionHash: receipt.transactionHash,
         status: receipt.status,
         blockNumber: receipt.blockNumber,
         blockHash: receipt.blockHash,
+      },
+      canonicalBlock: {
+        number: canonicalBlock.number,
+        hash: canonicalBlock.hash,
       },
       finalizedBlockNumber: finalized.number,
     });

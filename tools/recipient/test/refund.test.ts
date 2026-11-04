@@ -105,12 +105,18 @@ function reconciliationObservation(
       to: bundle.portal as Hex,
       input: refundCalldata(bundle),
       value: 0n,
+      blockNumber: 40n,
+      blockHash: `0x${"ab".repeat(32)}` as Hex,
     },
     receipt: {
       transactionHash,
       status,
       blockNumber: 40n,
       blockHash: `0x${"ab".repeat(32)}` as Hex,
+    },
+    canonicalBlock: {
+      number: 40n,
+      hash: `0x${"ab".repeat(32)}` as Hex,
     },
     finalizedBlockNumber: 40n,
   } as const;
@@ -275,14 +281,22 @@ describe("refund submission ambiguity", () => {
     }
   });
 
-  it("restores a broadcast hash after a crash before submission", async () => {
+  it("recovers the broadcast hash after a crash at the initial lock sync boundary", async () => {
     const { bundle, rawTransaction } = await signedRefund();
     const directory = mkdtempSync(join(tmpdir(), "xochi-refund-crash-"));
     try {
-      const operation = beginLockedRefund(new OperationJournal(directory), bundle, rawTransaction);
+      let crashedOperationId = "";
+      const crashing = new OperationJournal(directory, undefined, (id) => {
+        crashedOperationId = id;
+        throw new Error("TEST ONLY crash after initial lock sync");
+      });
+      expect(() => beginLockedRefund(crashing, bundle, rawTransaction)).toThrow(
+        "TEST ONLY crash after initial lock sync",
+      );
+
       const restarted = new OperationJournal(directory);
       expect(restarted.activeUnresolved()).toMatchObject({
-        id: operation.id,
+        id: crashedOperationId,
         status: "broadcast",
         txHash: keccak256(rawTransaction),
       });
@@ -318,6 +332,56 @@ describe("refund submission ambiguity", () => {
         test: "new explicit authorization",
       });
       journal.failOrAbort(explicitlyAuthorizedNext.id);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a receipt orphaned from the canonical chain", async () => {
+    const { bundle, rawTransaction } = await signedRefund();
+    const directory = mkdtempSync(join(tmpdir(), "xochi-refund-orphan-"));
+    try {
+      const journal = new OperationJournal(directory);
+      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const observation = reconciliationObservation(bundle, rawTransaction, "success");
+      expect(() =>
+        applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, {
+          ...observation,
+          canonicalBlock: {
+            ...observation.canonicalBlock,
+            hash: `0x${"cd".repeat(32)}`,
+          },
+        }),
+      ).toThrow("refund transaction evidence does not match the locked authorization");
+      expect(journal.activeUnresolved()).toMatchObject({
+        id: operation.id,
+        status: "broadcast",
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a transaction whose inclusion block differs from its receipt", async () => {
+    const { bundle, rawTransaction } = await signedRefund();
+    const directory = mkdtempSync(join(tmpdir(), "xochi-refund-block-mismatch-"));
+    try {
+      const journal = new OperationJournal(directory);
+      const operation = beginLockedRefund(journal, bundle, rawTransaction);
+      const observation = reconciliationObservation(bundle, rawTransaction, "success");
+      expect(() =>
+        applyRefundReconciliation(journal, OXDAI_MAINNET_REV2, {
+          ...observation,
+          transaction: {
+            ...observation.transaction,
+            blockHash: `0x${"ef".repeat(32)}`,
+          },
+        }),
+      ).toThrow("refund transaction evidence does not match the locked authorization");
+      expect(journal.activeUnresolved()).toMatchObject({
+        id: operation.id,
+        status: "broadcast",
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

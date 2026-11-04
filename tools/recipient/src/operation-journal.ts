@@ -150,8 +150,22 @@ const ActiveLockSchema = z
     id: z.string().regex(uuidV4),
     lockNonce: z.string().regex(uuidV4),
     kind: OperationKindSchema,
+    record: OperationRecordSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((lock, ctx) => {
+    if (
+      lock.record !== undefined &&
+      (lock.record.id !== lock.id ||
+        lock.record.lockNonce !== lock.lockNonce ||
+        lock.record.kind !== lock.kind)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "embedded operation record does not own the active lock",
+      });
+    }
+  });
 type ActiveLock = z.infer<typeof ActiveLockSchema>;
 
 const ReleaseClaimSchema = z
@@ -233,11 +247,11 @@ function sameOwner(left: ActiveLock, right: ActiveLock): boolean {
 }
 
 /**
- * Fund-moving commands are single-flight across processes and restarts. `active.lock` is created
- * with O_EXCL and fsynced before any build work. Its random ownership nonce is also in the record.
- * The record is fsynced again at the ambiguous-send boundary, before the node can receive the
- * transaction. Only an observed durable receipt or a failure proven to precede that boundary
- * releases the lock.
+ * Fund-moving commands are single-flight across processes and restarts. The first durable
+ * `active.lock` write embeds the exact initial record, including a precomputed transaction hash
+ * for broadcast operations. The standalone record is then fsynced before the embedded copy is
+ * removed. A crash at either boundary therefore has one exact recovery source. Only an observed
+ * durable receipt or a failure proven to precede submission releases the lock.
  */
 export class OperationJournal {
   private readonly lockPath: string;
@@ -245,6 +259,7 @@ export class OperationJournal {
   constructor(
     readonly directory: string,
     private readonly afterReleaseClaimed: (id: string) => void = () => undefined,
+    private readonly afterInitialLockSynced: (id: string) => void = () => undefined,
   ) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);
@@ -280,12 +295,7 @@ export class OperationJournal {
   activeUnresolved(): OperationRecord | null {
     if (!existsSync(this.lockPath)) return null;
     const lock = readActiveLock(this.lockPath);
-    const record = this.get(lock.id);
-    if (record.id !== lock.id || record.lockNonce !== lock.lockNonce || record.kind !== lock.kind) {
-      throw new Error(
-        `operation lock ${this.lockPath} does not own its exact record; keep fund movement blocked`,
-      );
-    }
+    const record = this.recordForLock(lock);
     return terminal(record.status) ? null : record;
   }
 
@@ -342,6 +352,15 @@ export class OperationJournal {
     initial: { status: "building" } | { status: "broadcast"; txHash: string },
   ): OperationRecord {
     const owner: ActiveLock = { id: randomUUID(), lockNonce: randomUUID(), kind };
+    const now = new Date().toISOString();
+    const record = OperationRecordSchema.parse({
+      ...owner,
+      ...initial,
+      createdAt: now,
+      updatedAt: now,
+      request,
+    });
+    const recoverableLock: ActiveLock = { ...owner, record };
     let lockFd: number;
     for (;;) {
       try {
@@ -361,13 +380,15 @@ export class OperationJournal {
     }
 
     try {
-      writeSync(lockFd, `${JSON.stringify(owner)}\n`);
+      writeSync(lockFd, `${JSON.stringify(recoverableLock)}\n`);
       fsyncSync(lockFd);
     } finally {
       closeSync(lockFd);
     }
     syncDirectory(this.directory);
+    this.afterInitialLockSynced(owner.id);
 
+    let recordPublished = false;
     try {
       const unresolved = this.unresolved();
       if (unresolved) {
@@ -375,19 +396,12 @@ export class OperationJournal {
           `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`,
         );
       }
-
-      const now = new Date().toISOString();
-      const record = OperationRecordSchema.parse({
-        ...owner,
-        ...initial,
-        createdAt: now,
-        updatedAt: now,
-        request,
-      });
       writePrivateJson(this.path(owner.id), record);
+      recordPublished = true;
+      writePrivateJson(this.lockPath, owner);
       return record;
     } catch (error) {
-      this.releaseLock(owner);
+      if (!recordPublished) this.releaseLock(owner);
       throw error;
     }
   }
@@ -453,6 +467,35 @@ export class OperationJournal {
     }
   }
 
+  private recordForLock(lock: ActiveLock): OperationRecord {
+    const recordPath = this.path(lock.id);
+    let record: OperationRecord;
+    if (existsSync(recordPath)) {
+      record = this.get(lock.id);
+    } else {
+      if (lock.record === undefined) {
+        throw new Error(
+          `operation lock ${this.lockPath} has no recoverable record; keep fund movement blocked`,
+        );
+      }
+      record = lock.record;
+      writePrivateJson(recordPath, record);
+    }
+    if (record.id !== lock.id || record.lockNonce !== lock.lockNonce || record.kind !== lock.kind) {
+      throw new Error(
+        `operation lock ${this.lockPath} does not own its exact record; keep fund movement blocked`,
+      );
+    }
+    if (lock.record !== undefined) {
+      writePrivateJson(this.lockPath, {
+        id: lock.id,
+        lockNonce: lock.lockNonce,
+        kind: lock.kind,
+      });
+    }
+    return record;
+  }
+
   private releaseRecoveredTerminalLock(): boolean {
     let lock: ActiveLock;
     try {
@@ -463,16 +506,11 @@ export class OperationJournal {
 
     let record: OperationRecord;
     try {
-      record = this.get(lock.id);
+      record = this.recordForLock(lock);
     } catch {
       return false;
     }
-    if (
-      record.id !== lock.id ||
-      record.lockNonce !== lock.lockNonce ||
-      record.kind !== lock.kind ||
-      !terminal(record.status)
-    ) {
+    if (!terminal(record.status)) {
       return false;
     }
     try {

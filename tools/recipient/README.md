@@ -58,8 +58,9 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   see receipts and link spends, though cannot spend. Put the durable data directory on encrypted
   storage and keep it mode 0700.
 - **Spend/exit ambiguity fails closed.** Before either fund-moving command starts, the tool writes
-  and directory-syncs a mode-0600 record under `<data-dir>/operations/`, guarded by an atomic
-  single-flight lock. Exit finalization data is added before proving. Aztec 6.0.0 exposes no
+  and directory-syncs a mode-0600 atomic single-flight lock embedding the exact initial record,
+  then publishes that record under `<data-dir>/operations/` before removing the embedded copy.
+  Exit finalization data is added before proving. Aztec 6.0.0 exposes no
   pre-submit hook after it computes the transaction hash, so a narrow wrapper around the wallet's
   real node `sendTx` call writes and directory-syncs that hash immediately before a dedicated
   single-attempt node client submits it. That write path has no transport retries: a lost response
@@ -170,9 +171,10 @@ stock Schnorr address with `immutablesHash = 0`, and signs the fixed
 the L1 destination and requires a zero relayer tip. `refund submit` accepts a completed upstream
 proof bundle plus an externally signed raw L1 transaction, re-verifies the fallback signature,
 corridor revision, manifest, portal, token, executor, cap, destination and exact calldata, and
-atomically creates the durable broadcast record with its precomputed transaction hash before one
+atomically creates the durable broadcast lock with its precomputed transaction hash before one
 non-redirecting JSON-RPC submission. Any lost or ambiguous response stays blocked. `refund
-reconcile` validates the locked transaction, receipt, chain, portal, calldata and finalized block;
+reconcile` requires the transaction and receipt inclusion fields to match each other and the
+canonical block at that height, as well as the locked chain, portal, calldata, and finalized head;
 it does not depend on the portal still being frozen. Finalized success completes the operation.
 A finalized revert records terminal receipt evidence and releases the lock, but any later attempt
 requires a new explicit authorization.

@@ -93,11 +93,13 @@ workflow contain no `npm publish` step. WSL consumes the Linux artifact.
 Record the exact CI run and both platform verdicts on the PR; this file does not pre-claim them.
 
 Local macOS qualification used Node `v22.23.4`: `npm ci`, TypeScript checks, Prettier check,
-63 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
+65 Vitest cases, build, synthetic plan, script syntax checks, byte-for-byte duplicate release
 builds and standalone tarball installation all passed. The installed CLI reported
 `0.1.0-test.1`, `platform: macos`, `telemetry: false`, the pinned manifest/revision/class/artifact,
-and backup v1 read/write compatibility. Ubuntu remains a PR-matrix observation rather than a local
-claim.
+and backup v1 read/write compatibility. Refund tests recover the exact pre-submission hash after a
+crash immediately following the initial lock fsync and reject receipt or transaction inclusion
+that does not match the canonical block. Ubuntu remains a PR-matrix observation rather than a
+local claim.
 
 F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
 overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
