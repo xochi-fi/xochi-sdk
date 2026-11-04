@@ -30,7 +30,10 @@ export class ArtifactRefused extends Error {
   }
 }
 
-/** Loads the artifact and refuses it unless both its class id and artifact hash are pinned. */
+/**
+ * Loads the artifact and completes every offline validation before any caller may open a PXE:
+ * artifact hash, class, derived instance address and immutable hash.
+ */
 export async function loadTokenArtifact(
   path: string,
   corridor: Corridor,
@@ -50,6 +53,7 @@ export async function loadTokenArtifact(
       `class ${klass.id.toString()} is not the corridor's ${corridor.token.classId}`,
     );
   }
+  await assertTokenInstance(artifact, corridor);
   return artifact;
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Validate every required OxideToken artifact before `setup`, `balance`, `enroll start`, `restore`,
+  `spend`, or `exit` creates or connects to a PXE, adds an account, registers a token,
+  synchronizes, or mutates recipient state.
+
 ## 0.1.0-test.1 - 2026-11-03
 
 - Package the Node 22 CLI as an installable private test artifact for macOS, Linux, and WSL.

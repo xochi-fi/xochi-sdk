@@ -21,7 +21,7 @@ import {
   type WireBinding,
 } from "./enrollment.js";
 import { assertPinnedNetwork } from "./network.js";
-import { assertTokenInstance, tokenImmutables } from "./oxide-token.js";
+import { tokenImmutables } from "./oxide-token.js";
 import { orderFingerprintFromMeta } from "./order-fingerprint.js";
 
 export interface Ctx {
@@ -78,11 +78,10 @@ export async function registerSenders(ctx: Ctx): Promise<void> {
 }
 
 /**
- * Registers the OxideToken at the corridor's address with the hash-checked artifact and runs
- * `store_immutables` with the corridor's `l2TokenImmutables` (never `readOxideTokenImmutables`).
+ * Registers the prevalidated OxideToken at the corridor's address and runs `store_immutables`
+ * with the corridor's `l2TokenImmutables` (never `readOxideTokenImmutables`).
  */
 export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promise<number> {
-  await assertTokenInstance(artifact, ctx.corridor);
   const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
   if (!(await ctx.port.tokenLockedToArtifact(artifact, token))) {
     throw new Error(

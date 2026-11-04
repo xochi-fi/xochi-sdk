@@ -127,11 +127,14 @@ it.
   `0xe37a2663cc9c119ba41572c40fab0bbb23a5402f`, L1 chain 1, node 6.0.x, with block 1's
   `lastArchive.root` equal to the manifest's network digest.
 - **Senders**: `registerSender` for exactly the corridor's `registeredSenders` (the Oxide sender).
-- **Token**: the OxideToken artifact is refused unless its class is `0x27df40f9...3f949` and its
-  artifact hash the manifest's; the corridor's immutables must derive the token address; then
-  `registerContract` and `store_immutables` with the manifest's `l2TokenImmutables` (never
-  `readOxideTokenImmutables`). A note without a valid enclave signature is dropped by the
-  token's own handler, so it never shows in the balance.
+- **Token**: before the CLI lets `setup`, `balance`, `enroll start`, `restore`, `spend`, or `exit`
+  create or connect to a PXE, it loads the required OxideToken artifact and refuses an absent or
+  unreadable file, malformed JSON, a class other than `0x27df40f9...3f949`, an artifact hash other
+  than the manifest's, or
+  immutables that do not derive the pinned token address. Only after that offline preflight may it
+  call `registerContract` and `store_immutables` with the manifest's `l2TokenImmutables` (never
+  `readOxideTokenImmutables`). A note without a valid enclave signature is dropped by the token's
+  own handler, so it never shows in the balance.
 - **Enrollment**: the tool builds the binding, checks viem and `@xochi/signer` agree on its
   digest, checks the source signature recovers the source wallet, signs the recipient
   authorization and all acknowledgements required by the Worker. OXDAI always includes the shipped
