@@ -1,11 +1,25 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import {
+  immutableReleaseRequestArgs,
   runImmutableReleasePreflight,
   verifyImmutableReleasesResponse,
 } from "../scripts/verify-release-immutability.mjs";
 const response = (status, body) =>
   `HTTP/2.0 ${status} Result\nContent-Type: application/json\n\n${JSON.stringify(body)}\n`;
+assert.deepEqual(immutableReleaseRequestArgs(), [
+  "api",
+  "--include",
+  "--method",
+  "GET",
+  "--hostname",
+  "github.com",
+  "-H",
+  "Accept: application/vnd.github+json",
+  "-H",
+  "X-GitHub-Api-Version: 2026-03-10",
+  "repos/xochi-fi/xochi-sdk/immutable-releases",
+]);
 assert.deepEqual(
   verifyImmutableReleasesResponse(
     response(200, { enabled: true, enforced_by_owner: false }),
@@ -52,7 +66,11 @@ assert.throws(
     runImmutableReleasePreflight({
       request: () => ({ status: 1, stdout: "", stderr: "private command output" }),
     }),
-  /request failed/,
+  (error) => {
+    assert.equal(error.message, "GitHub immutable-releases request failed");
+    assert.equal(error.message.includes("private command output"), false);
+    return true;
+  },
 );
 const successful = runImmutableReleasePreflight({
   request: () => ({

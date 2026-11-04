@@ -51,23 +51,27 @@ export function verifyImmutableReleasesResponse(output, observedAt = new Date().
   };
 }
 
+export function immutableReleaseRequestArgs() {
+  return [
+    "api",
+    "--include",
+    "--method",
+    "GET",
+    "--hostname",
+    "github.com",
+    "-H",
+    "Accept: application/vnd.github+json",
+    "-H",
+    `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
+    IMMUTABLE_RELEASES_ENDPOINT,
+  ];
+}
+
 export function runImmutableReleasePreflight({
   request = () =>
-    spawnSync(
-      "gh",
-      [
-        "api",
-        "--include",
-        "--method",
-        "GET",
-        "-H",
-        "Accept: application/vnd.github+json",
-        "-H",
-        `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
-        IMMUTABLE_RELEASES_ENDPOINT,
-      ],
-      { encoding: "utf8" },
-    ),
+    spawnSync("gh", immutableReleaseRequestArgs(), {
+      encoding: "utf8",
+    }),
   observedAt = new Date().toISOString(),
 } = {}) {
   const result = request();
