@@ -1,16 +1,27 @@
 {
   "name": "@xochi/recipient",
-  "version": "0.0.0",
+  "version": "0.1.0-test.1",
   "private": true,
-  "description": "Xochi OXDAI recipient tool: a stock SchnorrAccount 6.0.0 on the recipient's own Aztec v6 mainnet PXE, made a qualifying OXDAI recipient (xochi#759). Not a workspace, never published until review.",
+  "description": "Installable test artifact for the local Xochi OXDAI recipient CLI. No package publication.",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <23"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "bin": {
     "xochi-recipient": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "npm-shrinkwrap.json"
+  ],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc -p tsconfig.test.json",
@@ -18,6 +29,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "dry-run": "node dist/cli.js plan",
+    "prepack": "npm run build",
+    "release:artifact": "node scripts/build-release.mjs",
     "build:broadcaster": "npm run build && bash scripts/build-broadcaster.sh",
     "smoke:no-plaintext-keys": "npm run build && node scripts/smoke-no-plaintext-keys.mjs"
   },
@@ -33,7 +46,7 @@
     "@aztec-labs/stdlib": "6.0.0",
     "@aztec-labs/wallets": "6.0.0",
     "@hpke/core": "1.9.0",
-    "@xochi/signer": "file:../../packages/signer",
+    "@xochi/signer": "0.7.0",
     "viem": "2.57.1",
     "zod4": "npm:zod@4.4.3"
   },

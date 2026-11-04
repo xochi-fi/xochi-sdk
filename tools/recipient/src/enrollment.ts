@@ -160,16 +160,6 @@ export async function assertSourceSignature(
   }
 }
 
-/**
- * The acknowledgement set today's production Worker takes: exactly these two, in order
- * (G1, the operator round trip). The G2 rule is `requiredEnrollmentAcks` (`@xochi/signer`),
- * which adds `TokenRegistrationAck` for an OxideToken corridor once the Worker ships xochi#753.
- */
-export const WORKER_ENROLLMENT_ACKS_G1: readonly RecipientAckType[] = [
-  "BackupPersistenceAck",
-  "SenderRegistrationAck",
-];
-
 /** The acknowledgement messages of `types`, for this binding. */
 export function enrollmentAckMessages(
   corridor: Corridor,
@@ -272,10 +262,9 @@ export interface EnrollmentRequest {
 }
 
 /**
- * Signs the recipient authorization and the acknowledgements, and assembles the request.
- * Submits exactly `WORKER_ENROLLMENT_ACKS_G1` unless `submitTokenRegistrationAck` is set (G2,
- * xochi#753): then the corridor's `requiredEnrollmentAcks`, with the `TokenRegistrationAck`
- * signed at `enroll start`.
+ * Signs the recipient authorization and every acknowledgement the current Worker requires.
+ * For an OxideToken corridor the TokenRegistrationAck must be the exact value signed before the
+ * acknowledged backup was written; it is never silently regenerated at submit time.
  */
 export async function buildEnrollmentRequest(args: {
   corridor: Corridor;
@@ -285,27 +274,21 @@ export async function buildEnrollmentRequest(args: {
   sourceSignature: string;
   backupCommitment: string;
   tokenRegistrationAck: SignedAck | null;
-  submitTokenRegistrationAck: boolean;
   sign: RecipientSigner;
 }): Promise<EnrollmentRequest> {
   const { corridor, account, challenge, binding, sourceSignature, backupCommitment, sign } = args;
   const { typedData, digest: bindingDigest } = bindingTypedData(corridor, binding);
   await assertSourceSignature(typedData, sourceSignature);
+  const required = requiredEnrollmentAcks(corridor.token.classId);
   const acknowledgements = await signAcks(
     corridor,
     account,
     binding,
     backupCommitment,
-    WORKER_ENROLLMENT_ACKS_G1,
+    required.filter((type) => type !== "TokenRegistrationAck"),
     sign,
   );
-  if (args.submitTokenRegistrationAck) {
-    const required = requiredEnrollmentAcks(corridor.token.classId);
-    if (!required.includes("TokenRegistrationAck")) {
-      throw new Error(
-        "the corridor's token is not an OxideToken: it takes no TokenRegistrationAck",
-      );
-    }
+  if (required.includes("TokenRegistrationAck")) {
     const ack =
       args.tokenRegistrationAck ?? fail("no TokenRegistrationAck: run enroll start again");
     const [expected] = enrollmentAckMessages(corridor, binding, bindingDigest, "", [

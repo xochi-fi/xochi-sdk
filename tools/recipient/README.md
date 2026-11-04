@@ -1,26 +1,25 @@
 # xochi-recipient (OXDAI recipient tool)
 
-Operator-only recipient software for xochi-fi/xochi#759 (OX-10). It is not an npm workspace or
-published package: it pins the `@aztec-labs/*` 6.0.0 SDK in its own lockfile, as
-`packages/spec/aztec-crosscheck` does. Supported hosts are macOS and Linux on Node 22, and WSL.
+Local-only recipient software for xochi-fi/xochi#759 (OX-10). Versioned private test tarballs install
+on macOS and Linux under Node 22; WSL uses the Linux artifact. The release pipeline creates
+checksums, a CycloneDX SBOM, keyless signatures and GitHub prerelease assets. It never publishes an
+npm package. There is no telemetry or hosted page.
 
 It runs a stock `SchnorrAccount` from `@aztec-labs/accounts` 6.0.0 on your own Aztec v6 mainnet
 PXE and makes it a qualifying OXDAI recipient.
 
 > [!CAUTION]
-> **Never operate the tool from `fc4a1bc` (xochi-sdk#134).** That merge predates the required
-> ownership-bound terminal recovery, real `sendTx` journal boundary, single-attempt submission,
-> and checkpoint finality guard. The minimum source allowed for any funded recipient operation is
-> signed commit `85f08f0240219079ed592272a446b98f459cd903` on xochi-sdk#137, or the reviewed merge
-> of that PR. This private tool has no package version that can substitute for that source gate.
-> Live use remains prohibited until xochi-sdk#137 merges green.
+> Production remains disabled. Only a reviewed `0.x.y-test.n` artifact whose checksum, SBOM,
+> Sigstore bundle and GitHub provenance attestation all match its prerelease is eligible for a
+> qualification drill. The artifact is not a production package and does not authorize deployment,
+> funding, signing, broadcast, payout, collection, or customer intake.
 
 ## What it contacts
 
 - the Aztec node you choose (`--node-url`);
-- the Xochi enrollment API (`--api-url`, `enroll` only), with the SOURCE wallet's SIWE session in
+- the Xochi enrollment API (`--api-url`, `enroll` only), with the source wallet's SIWE session in
   `XOCHI_JWT`;
-- the zk.money enclave and an L1 JSON-RPC you choose (`--l1-rpc`), for `spend` and `exit` only.
+- the zk.money enclave and an L1 JSON-RPC you choose (`--l1-rpc`), for spend, exit and refund only.
 
 No telemetry. The tool itself publishes nothing that names the account a Xochi recipient, but:
 
@@ -46,9 +45,9 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
 - **Every spend and exit sends your account's master nullifier hiding key (`nhk_m`) to the
   zk.money enclave** (xochi#740). The enclave needs it to check the notes you spend, and it sees
   the sender, recipient, token and amount. Its image is unpublished.
-- **Exits need a live zk.money enclave** (xochi#739): withdrawal finalization needs an enclave
-  signature, and only zk.money runs the registered enclaves. If they are down, OXDAI stays on
-  Aztec. A portal freeze requires the separate G2 refund path listed below; this tool cannot run it.
+- **Exits and portal refunds need a live zk.money enclave** (xochi#739): finalization and refund
+  proofs need a registered enclave signature. A frozen portal refund remains blocked if the fleet
+  is down; never replace it with an owner-signature bypass.
 - **What the data directory holds.** The account secret and signing key are sealed with the
   passphrase in `keystore.sealed` and the backups. Aztec 6.0.0's WalletDB normally persists those
   values verbatim; this tool encrypts every account-map value with AES-256-GCM before it reaches
@@ -59,8 +58,9 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   see receipts and link spends, though cannot spend. Put the durable data directory on encrypted
   storage and keep it mode 0700.
 - **Spend/exit ambiguity fails closed.** Before either fund-moving command starts, the tool writes
-  and directory-syncs a mode-0600 record under `<data-dir>/operations/`, guarded by an atomic
-  single-flight lock. Exit finalization data is added before proving. Aztec 6.0.0 exposes no
+  and directory-syncs a mode-0600 atomic single-flight lock embedding the exact initial record,
+  then publishes that record under `<data-dir>/operations/` before removing the embedded copy.
+  Exit finalization data is added before proving. Aztec 6.0.0 exposes no
   pre-submit hook after it computes the transaction hash, so a narrow wrapper around the wallet's
   real node `sendTx` call writes and directory-syncs that hash immediately before a dedicated
   single-attempt node client submits it. That write path has no transport retries: a lost response
@@ -71,17 +71,27 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   reconcile --node-url "$NODE"` pins the node identity and unlocks only at `CHECKPOINTED`,
   `PROVEN`, or `FINALIZED`—never `PROPOSED`. A record without a hash cannot be cleared
   automatically: investigate it with the operator before any retry, and never delete or bypass it.
-- **Exit needs a relayer, and its records.** `exit` refuses a zero tip and any tip that would leave
-  the recipient zero. It prints the executor fee and exact recipient proceeds. Signed recovery
-  data is in the operation journal before broadcast; after mining, each withdrawal's finalization
-  data and L1 operation ID are also written under `<data-dir>/exits/`.
+- **Exit needs a fee ceiling and a relayer.** `exit` requires `--max-executor-fee` in base units,
+  reads the live executor `FEE()`, and refuses a fee above that ceiling before creating an exit
+  journal, proving, signing, or submitting. The exact ceiling is accepted. It also refuses a zero
+  tip or any tip that would leave the recipient zero. Only the recipient's local CLI output reports
+  the observed fee and calculated proceeds. Signed recovery data is in the private operation
+  journal before broadcast; after mining, each withdrawal's finalization data and L1 operation ID
+  are written under `<data-dir>/exits/`.
 
 ## Round trip
 
 ```bash
-# From a reviewed checkout. Building the local signer package is a clean-checkout prerequisite.
-npm ci
-npm run build -w @xochi/signer
+# From the verified GitHub prerelease directory. No npm registry publication is used. The tarball
+# carries npm-shrinkwrap.json: the exact-integrity dependency closure used to generate its SBOM.
+shasum -a 256 -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp 'github.com/xochi-fi/xochi-sdk' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent SHA256SUMS
+npm install --global ./xochi-recipient-*.tgz
+xochi-recipient diagnostics
+
+# A source checkout remains supported for qualification work.
 cd tools/recipient
 npm ci
 npm run build
@@ -124,13 +134,13 @@ it.
   token's own handler, so it never shows in the balance.
 - **Enrollment**: the tool builds the binding, checks viem and `@xochi/signer` agree on its
   digest, checks the source signature recovers the source wallet, signs the recipient
-  authorization and the acknowledgements, including the PROPOSED `TokenRegistrationAck` for an
-  OxideToken corridor (xochi#753; see below for which are submitted), and verifies each with
-  `@xochi/signer` before sending. It shows only the state the Worker projects.
+  authorization and all acknowledgements required by the Worker. OXDAI always includes the shipped
+  `TokenRegistrationAck`; the exact signed value must be present in the acknowledged backup.
 - **Backup** (format `xochi.shielded.backup-format.v1`): account keys, instance and class,
-  network, token descriptor with its registration and immutables, senders, scan checkpoint and
-  recovery instructions, sealed with your passphrase (scrypt + AES-256-GCM). The
-  `backupCommitment` you acknowledge is keccak256 of the sealed bytes. Keep the two copies apart.
+  network, token registration/immutables, senders, scan checkpoint, `TokenRegistrationAck`, and
+  validated spend/exit/refund journals. Restore accepts earlier v1 backups without journals,
+  recreates an unresolved operation's exact lock on the independent host, and never copies a wallet
+  database. The `backupCommitment` is keccak256 of the sealed bytes. Keep the two copies apart.
 - **Order fingerprint**: `balance` prints each received payout's order fingerprint from its
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
@@ -138,14 +148,11 @@ The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `m
 `0x80b6abd7...865e` is the agreed rev 2 digest (#736 sync 2026-11-03; Riddler#1437 records the
 same value, xochi#778 pins it). `--corridor FILE` takes another record, validated by the same schema.
 
-**Token-registration ack (xochi#753).** `enroll start` now opens the current PXE, verifies the
+**Token-registration ack (xochi#753 / OX-12).** `enroll start` opens the current PXE, verifies the
 pinned network, re-registers the corridor sender and token, stores its immutables, and only then
-signs `TokenRegistrationAck`. A backup written after `enroll start` carries the ack. Today's
-production Worker takes exactly two acknowledgements (G1), so the tool submits only
-`BackupPersistenceAck` and `SenderRegistrationAck` unless
-`--submit-token-registration-ack` is given; only with the flag does `enroll submit` require that
-backup copy. When the Worker ships #753 (G2), the third ack becomes the default and the flag is
-removed.
+signs `TokenRegistrationAck`. A backup written after `enroll start` carries it. `enroll submit`
+always sends the Worker's required three acknowledgements for OXDAI. Backup and fresh-PXE restore
+preserve the exact signed acknowledgement; there is no opt-out flag.
 
 **Exit artifact.** `npm run build:broadcaster` (aztec-up 6.0.0 on PATH) builds the L2
 Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its
@@ -159,10 +166,30 @@ Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.
 (`EVIDENCE.md`): exactly what ran in the sandbox, what did not run on mainnet, and the commands an
 authorized operator uses for the private mainnet round trip (xochi#748 OX-10 / OX-18 step 4).
 
-## G2 follow-ups (not in this tool yet)
+## Frozen portal refunds and migration drill
 
-- `enroll submit` sends the `TokenRegistrationAck` by default once the Worker takes three
-  acknowledgements (xochi#753); the flag goes away.
-- A `refund` command for the portal-freeze / rollup-migration path: `refundFrozenNotes` with
-  the recipient's own fallback-key migration signature (`fbsk_m` from `deriveKeys(secret)`;
-  upstream `oxide-client/src/sign_migration.ts`, `frozen_notes.ts`), per xochi#795's runbook.
+`refund authorize` accepts only evidence naming this restored recipient account, recomputes the
+stock Schnorr address with `immutablesHash = 0`, and signs the fixed
+`(plainWithdrawalExecutor, sha256ToField(userPayload))` commitment with `fbsk_m`. The payload fixes
+the L1 destination and requires a zero relayer tip. `refund submit` accepts a completed upstream
+proof bundle plus an externally signed raw L1 transaction, re-verifies the fallback signature,
+corridor revision, manifest, portal, token, executor, cap, destination and exact calldata, and
+atomically creates the durable broadcast lock with its precomputed transaction hash before one
+non-redirecting JSON-RPC submission. Any lost or ambiguous response stays blocked. `refund
+reconcile` requires the transaction and receipt inclusion fields to match each other and the
+canonical block at that height, as well as the locked chain, portal, calldata, and finalized head;
+it does not depend on the portal still being frozen. Finalized success completes the operation.
+A finalized revert records terminal receipt evidence and releases the lock, but any later attempt
+requires a new explicit authorization.
+
+The command supports recipient-owned `refundFrozenNotes`, `refundFrozenDeposits` and
+`refundUnprocessedDeposit` evidence. It does not generate a proof: pxe-bridge intentionally does
+not vendor upstream's refund builders, compiled refund circuit artifacts, portal bindings or local
+enclave harness. Generate the completed bundle from zkmoney-public commit `2764aedc` and retain it
+privately; the CLI never substitutes a fake proof.
+
+`qualify/freeze-fork.sh` automates F1-F2 on an Anvil fork and emits the pre-freeze noncanonical and
+post-freeze observations consumed by the alert drill. `test/refund.test.ts` performs F3 stock
+Schnorr address recomputation plus F4 positive and negative fallback-key verification. F5-F8 remain
+the exact upstream boundary above until the product owner accepts the residual or supplies a
+reviewed runnable enclave/proof environment.

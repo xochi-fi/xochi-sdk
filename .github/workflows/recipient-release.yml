@@ -1,0 +1,162 @@
+name: recipient test release
+
+on:
+  push:
+    tags:
+      - "recipient-v*-test.*"
+
+concurrency:
+  group: recipient-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.artifact-name }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/recipient/npm-shrinkwrap.json
+
+      - name: Install exact dependencies
+        working-directory: tools/recipient
+        run: npm ci
+
+      - name: Build reproducible test artifacts twice
+        working-directory: tools/recipient
+        run: |
+          node scripts/build-release.mjs --out release-a
+          node scripts/build-release.mjs --out release-b
+          cmp release-a/*.tgz release-b/*.tgz
+          cmp release-a/*.cdx.json release-b/*.cdx.json
+          cmp release-a/*.release.json release-b/*.release.json
+          cmp release-a/SHA256SUMS release-b/SHA256SUMS
+          tar -xOf release-a/*.tgz package/npm-shrinkwrap.json >/dev/null
+
+      - name: Install with registry unavailable from a cold locked cache
+        working-directory: tools/recipient
+        run: |
+          locked_cache="$(mktemp -d)"
+          node scripts/seed-locked-cache.mjs --cache "$locked_cache"
+          npm install --global --offline --cache "$locked_cache" ./release-a/*.tgz
+
+      - name: Require tag to equal the private test version
+        id: meta
+        working-directory: tools/recipient
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "$TAG" = "recipient-v$version"
+          printf 'artifact-name=xochi-recipient-%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - id: upload
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ${{ steps.meta.outputs.artifact-name }}
+          path: tools/recipient/release-a/*
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}
+          path: recipient-release
+
+      - name: Verify immutable build outputs
+        working-directory: recipient-release
+        run: sha256sum --check SHA256SUMS
+
+      - uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sign checksums with GitHub OIDC
+        working-directory: recipient-release
+        run: >-
+          cosign sign-blob --yes
+          --bundle SHA256SUMS.sigstore.json
+          SHA256SUMS
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: recipient-release/*.tgz
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}-signed
+          path: recipient-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  install-test:
+    needs: [build, sign]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}-signed
+          path: recipient-release
+
+      - name: Verify checksums and install the packed CLI
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd recipient-release
+          shasum -a 256 -c SHA256SUMS
+          npm install --global ./*.tgz
+          [[ "$(xochi-recipient --version)" == "$EXPECTED_VERSION" ]]
+          diagnostics="$(xochi-recipient diagnostics)"
+          [[ "$diagnostics" == *'"corridorRevision":"2"'* ]]
+
+  prerelease:
+    needs: [build, sign, install-test]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}-signed
+          path: recipient-release
+
+      - name: Publish GitHub prerelease assets only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          recipient-release/*
+          --repo "${{ github.repository }}"
+          --verify-tag
+          --prerelease
+          --title "xochi-recipient ${{ github.ref_name }} test artifact"
+          --notes "Test artifact only. No npm package is published and production use remains disabled."

@@ -8,9 +8,9 @@
 // and `backupFormatId` identifies the format. SenderRegistrationAck is the enrollment
 // acknowledgement for address-derived tagging, both designs since the 2026-11-01 D4
 // amendment (the bridge account on the design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited value and
-// transaction evidence. TokenRegistrationAck (xochi#753, PROPOSED) states that the recipient
-// PXE registered the corridor's OxideToken at its class and stored its immutables; only an
-// OxideToken corridor requires it (`requiredEnrollmentAcks`, `shielded-oxide.ts`).
+// transaction evidence. TokenRegistrationAck (xochi#753) states that the recipient PXE
+// registered the corridor's OxideToken at its class and stored its immutables; only an OxideToken
+// corridor requires it (`requiredEnrollmentAcks`, `shielded-oxide.ts`).
 // All four name the binding by its EIP-712 digest. BackupPersistenceAck,
 // SenderRegistrationAck and TokenRegistrationAck reuse that binding's exact `nonce` and
 // `challengeExpiry`, which `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate
@@ -123,10 +123,10 @@ export interface PaymentReceiptAck {
   purpose: string;
 }
 /**
- * PROPOSED (xochi#753). The recipient PXE registered the OxideToken contract at
- * `aztecToken` with an artifact of class `aztecTokenClassId` and ran `store_immutables` with
- * immutables whose hash is `tokenImmutablesHash` (`oxideTokenImmutablesHash`). An assertion,
- * like the other acks: the independent find-and-spend stays the proof.
+ * The recipient PXE registered the OxideToken contract at `aztecToken` with an artifact of class
+ * `aztecTokenClassId` and ran `store_immutables` with immutables whose hash is
+ * `tokenImmutablesHash` (`oxideTokenImmutablesHash`). An assertion, like the other acks: the
+ * independent find-and-spend stays the proof.
  */
 export interface TokenRegistrationAck {
   bindingDigest: string;

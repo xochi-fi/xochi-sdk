@@ -1,6 +1,5 @@
-// OxideToken registration facts for the enrollment acknowledgement `TokenRegistrationAck`
-// (xochi#753, OX-12). PROPOSED: the ack's fields and the rule below await product-owner
-// confirmation on xochi#753.
+// OxideToken registration facts for the shipped enrollment acknowledgement `TokenRegistrationAck`
+// (xochi#753, OX-12).
 //
 // An OXDAI payout reaches a recipient only if the recipient's PXE has registered the
 // OxideToken contract at the corridor's token address and run `store_immutables` with the
