@@ -1,8 +1,24 @@
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import type { JsonRpcFetch } from "@aztec-labs/foundation/json-rpc/client";
-import { jsonStringify } from "@aztec-labs/foundation/json-rpc";
 import { NoRetryError } from "@aztec-labs/foundation/retry";
+import { jsonStringify } from "@aztec-labs/foundation/json-rpc";
+import { isNativeError } from "node:util/types";
 import type { TxHash } from "@aztec-labs/stdlib/tx";
+
+import { safeOperationError, type SubmissionDiagnosticState } from "./safe-diagnostic.js";
+
+const trustedSubmissionErrors = new WeakSet<Error>();
+
+const submissionAmbiguousError = (message: string): Error => {
+  const error = new NoRetryError(message);
+  trustedSubmissionErrors.add(error);
+  return error;
+};
+
+export const isTrustedSubmissionAmbiguousError = (error: unknown): error is NoRetryError =>
+  isNativeError(error) &&
+  Object.getPrototypeOf(error) === NoRetryError.prototype &&
+  trustedSubmissionErrors.has(error);
 
 type BeforeSubmit = (txHash: TxHash) => void | Promise<void>;
 /**
@@ -20,7 +36,7 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
       redirect: "error",
     });
   } catch {
-    throw new NoRetryError(
+    throw submissionAmbiguousError(
       "Aztec node submission failed after the HTTP request may have been written",
     );
   }
@@ -29,13 +45,15 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
   try {
     responseText = await response.text();
   } catch {
-    throw new NoRetryError("Aztec node submission response ended before its outcome could be read");
+    throw submissionAmbiguousError(
+      "Aztec node submission response ended before its outcome could be read",
+    );
   }
   let responseJson: unknown;
   try {
     responseJson = JSON.parse(responseText);
   } catch {
-    throw new NoRetryError(
+    throw submissionAmbiguousError(
       response.ok
         ? "Aztec node submission returned an invalid JSON response"
         : `Aztec node submission returned HTTP ${response.status}`,
@@ -43,7 +61,7 @@ export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraH
   }
 
   if (!response.ok) {
-    throw new NoRetryError(`Aztec node submission returned HTTP ${response.status}`);
+    throw submissionAmbiguousError(`Aztec node submission returned HTTP ${response.status}`);
   }
   return { response: responseJson, headers: response.headers };
 };
@@ -69,7 +87,9 @@ export function createSingleAttemptAztecNodeBroadcaster(url: string): Pick<Aztec
         "error" in response[0] ||
         !("result" in response[0])
       ) {
-        throw new NoRetryError("Aztec node submission returned an invalid JSON-RPC outcome");
+        throw submissionAmbiguousError(
+          "Aztec node submission returned an invalid JSON-RPC outcome",
+        );
       }
     },
   };
@@ -80,9 +100,14 @@ export function createSingleAttemptAztecNodeBroadcaster(url: string): Pick<Aztec
  * only after proving, immediately before this call; `BatchCall.send` exposes no hook at that point.
  * An armed callback therefore persists the hash before the wrapped node can receive the transaction.
  */
+interface ArmedSubmission {
+  beforeSubmit: BeforeSubmit;
+  diagnosticState: SubmissionDiagnosticState;
+}
+
 export class NodeSubmission {
   readonly node: AztecNode;
-  private armed: { beforeSubmit: BeforeSubmit; submitted: boolean } | null = null;
+  private armed: ArmedSubmission | null = null;
   private readonly boundMethods = new WeakMap<Function, Function>();
   constructor(
     private readonly target: AztecNode,
@@ -102,21 +127,29 @@ export class NodeSubmission {
     });
   }
 
-  async run<T>(beforeSubmit: BeforeSubmit, operation: () => Promise<T>): Promise<T> {
+  async run<T>(
+    beforeSubmit: BeforeSubmit,
+    operation: () => Promise<T>,
+    diagnosticState: SubmissionDiagnosticState,
+  ): Promise<T> {
     if (this.armed) throw new Error("an Aztec node submission hook is already armed");
-    const armed = { beforeSubmit, submitted: false };
+    diagnosticState.submissionBoundaryReached = false;
+    diagnosticState.sendTxReached = false;
+    const armed: ArmedSubmission = { beforeSubmit, diagnosticState };
     this.armed = armed;
     try {
       const result = await operation();
-      if (!armed.submitted) {
+      if (!armed.diagnosticState.submissionBoundaryReached) {
         throw new Error("recipient operation completed without an Aztec node submission");
       }
       return result;
-    } catch {
-      throw new Error(
-        armed.submitted
+    } catch (error) {
+      throw safeOperationError(
+        armed.diagnosticState.submissionBoundaryReached
           ? "Aztec transaction submission or receipt outcome requires journal reconciliation"
           : "recipient operation failed before Aztec node submission",
+        error,
+        armed.diagnosticState,
       );
     } finally {
       this.armed = null;
@@ -129,12 +162,14 @@ export class NodeSubmission {
       await this.target.sendTx(tx);
       return;
     }
-    if (armed.submitted) {
+    if (armed.diagnosticState.submissionBoundaryReached) {
       throw new Error("an operation attempted more than one Aztec node submission");
     }
+    armed.diagnosticState.phase = "pre-send";
+    armed.diagnosticState.sendTxReached = true;
     const txHash = tx.getTxHash();
     await armed.beforeSubmit(txHash);
-    armed.submitted = true;
+    armed.diagnosticState.submissionBoundaryReached = true;
     await this.broadcaster.sendTx(tx);
   };
 }

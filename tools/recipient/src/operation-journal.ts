@@ -183,7 +183,7 @@ const terminal = (status: OperationStatus) =>
 
 const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>> = {
   building: ["broadcast", "aborted"],
-  broadcast: ["complete", "failed", "in_doubt"],
+  broadcast: ["complete", "failed", "aborted", "in_doubt"],
   in_doubt: ["complete", "failed", "in_doubt"],
   complete: [],
   failed: [],
@@ -436,19 +436,25 @@ export class OperationJournal {
     return next;
   }
 
-  failOrAbort(id: string): Error {
+  failOrAbort(id: string, submissionBoundaryReached?: boolean): Error {
     const current = this.get(id);
     if (terminal(current.status)) {
       return new Error(
-        `operation ${id} reached a terminal journal state but lock release was interrupted; restart before moving funds`,
+        "operation reached a terminal journal state but lock release was interrupted; restart before moving funds",
       );
     }
-    const beforeSubmission = current.status === "building";
-    const message = beforeSubmission
+    const beforeSubmission =
+      submissionBoundaryReached === false &&
+      (current.status === "building" || current.status === "broadcast");
+    const inferredBeforeSubmission =
+      submissionBoundaryReached === undefined && current.status === "building";
+    const abort = beforeSubmission || inferredBeforeSubmission;
+    const message = abort
       ? "operation failed before Aztec node submission"
       : "operation outcome requires transaction reconciliation";
     this.update(id, {
-      status: beforeSubmission ? "aborted" : "in_doubt",
+      status: abort ? "aborted" : "in_doubt",
+      txHash: abort ? undefined : current.txHash,
       error: message,
     });
     return new Error(message);

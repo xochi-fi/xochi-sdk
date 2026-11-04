@@ -79,6 +79,7 @@ import {
   submitRefund,
 } from "./refund.js";
 import { assertSupportedRuntime, diagnostics, packageVersion } from "./release-info.js";
+import { operatorDiagnosticLine } from "./safe-diagnostic.js";
 
 const USAGE = `xochi-recipient <command> [options]
 
@@ -343,6 +344,28 @@ function api(values: Values, descriptorDigest: string): EnrollmentApi {
 
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
+export async function closePortAfterCommand(
+  portToClose: Pick<AztecPort, "close">,
+  commandFailed: boolean,
+  report: (line: string) => void = log,
+): Promise<void> {
+  try {
+    await portToClose.close();
+  } catch {
+    if (commandFailed) {
+      try {
+        report("close: PXE shutdown failed after command failure; original failure retained");
+      } catch {
+        return;
+      }
+      return;
+    }
+    throw new Error(
+      "recipient PXE shutdown failed after command completion; inspect the operation journal before any retry",
+    );
+  }
+}
+
 async function withAccount<T>(
   values: Values,
   store: Store,
@@ -354,13 +377,17 @@ async function withAccount<T>(
     fail(`keystore derives ${account.descriptor.aztecAddress}, state names ${state.address}`);
   }
   const p = await port(values, store, state.corridor);
+  let commandFailed = false;
   try {
     const ctx: Ctx = { corridor: state.corridor, port: p, log };
     await checkNetwork(ctx);
     await p.addAccount(account);
     return await run(ctx, account, state);
+  } catch (error) {
+    commandFailed = true;
+    throw error;
   } finally {
-    await p.close();
+    await closePortAfterCommand(p, commandFailed);
     if (p instanceof DryRunAztec) for (const call of p.calls) log(`  [dry-run] ${call}`);
   }
 }
@@ -494,6 +521,20 @@ async function plan(values: Values): Promise<void> {
   }
   await aztec.close();
   flush("close");
+}
+
+export function formatCliFailure(error: unknown): string {
+  const lines = [`xochi-recipient: ${error instanceof Error ? error.message : String(error)}`];
+  const diagnostic = operatorDiagnosticLine(error);
+  if (diagnostic !== null) lines.push(diagnostic);
+  return `${lines.join("\n")}\n`;
+}
+
+export function writeCliFailure(
+  error: unknown,
+  write: (output: string) => void = (output) => process.stderr.write(output),
+): void {
+  write(formatCliFailure(error));
 }
 
 export async function run(argv: string[]): Promise<void> {
@@ -843,9 +884,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   run(process.argv.slice(2)).then(
     () => process.exit(0),
     (error: unknown) => {
-      process.stderr.write(
-        `xochi-recipient: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      writeCliFailure(error);
       process.exit(1);
     },
   );

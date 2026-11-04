@@ -1,5 +1,5 @@
-// Modified for the Xochi recipient tool: expose a signed-withdrawal hook so recovery data can
-// be persisted before proving or sending.
+// Modified for the Xochi recipient tool: expose signed-withdrawal and phase hooks, and replace
+// direct wallet-simulation failures with a privacy-safe internal sentinel.
 import type { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
 
 import {
@@ -13,9 +13,13 @@ import {
 import type { FeePaymentMethod } from '@aztec-labs/aztec.js/fee';
 import { Fr } from '@aztec-labs/aztec.js/fields';
 import { waitForTx, type AztecNode } from '@aztec-labs/aztec.js/node';
-import type { Wallet } from '@aztec-labs/aztec.js/wallet';
+import type {
+  SimulateOptions,
+  TxSimulationResultWithAppOffset,
+  Wallet,
+} from '@aztec-labs/aztec.js/wallet';
 import type { ContractArtifact } from '@aztec-labs/stdlib/abi';
-import type { SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
+import type { ExecutionPayload, SimulationStats, TxReceipt } from '@aztec-labs/stdlib/tx';
 
 import { getUserPayloadHash } from '../oxide-lib/content_hash.js';
 import { type BroadcastL1Operation, computeL1OperationId } from '../oxide-lib/l1_operation_calldata.js';
@@ -49,6 +53,29 @@ import {
   buildFinalizationRequestOperation,
 } from './withdrawal_finalization_request.js';
 import type { WithdrawalInTx } from './withdrawal_in_tx.js';
+
+const trustedWalletSimulationFailures = new WeakSet<object>();
+
+const walletSimulationFailure = (): Error => {
+  const error = new Error('wallet simulation failed');
+  trustedWalletSimulationFailures.add(error);
+  return error;
+};
+
+export const isTrustedWalletSimulationFailure = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && trustedWalletSimulationFailures.has(error);
+
+export async function simulateWalletTransaction(
+  wallet: Pick<Wallet, 'simulateTx'>,
+  payload: ExecutionPayload,
+  options: SimulateOptions,
+): Promise<TxSimulationResultWithAppOffset> {
+  try {
+    return await wallet.simulateTx(payload, options);
+  } catch {
+    throw walletSimulationFailure();
+  }
+}
 
 /**
  * Wallet + node context shared across submissions.
@@ -98,10 +125,10 @@ export interface WithdrawOperation {
 export type Operation = TransferOperation | WithdrawOperation;
 
 /**
- * Pipeline phases of {@link submit}, in order. `prove-and-send` re-executes the private calls inside the wallet
- * before broadcasting; the PXE serves that re-execution from cache when no block has landed since `simulate`.
+ * Pipeline phases of {@link submit}, in order. `prove` re-executes the private calls inside the
+ * wallet before its node proxy reaches the distinct `pre-send` boundary.
  */
-export type SubmitPhase = 'simulate' | 'hydrate' | 'prove-and-send';
+export type SubmitPhase = 'simulate' | 'hydrate' | 'tee-sign' | 'prove';
 
 /** A withdrawal of a {@link submit} tx, with the finalization request that the tx broadcast for it. */
 export interface SubmitResultWithdrawal extends WithdrawalInTx {
@@ -265,7 +292,8 @@ export async function submit(
       ...(await buildRecoveryChunkCapsules(contract.address, buildRecoveryData(withdrawOps, simFinalizationData))),
     ],
   });
-  const simResult = await wallet.simulateTx(
+  const simResult = await simulateWalletTransaction(
+    wallet,
     simPayload,
     toSimulateOptions({ from, additionalScopes, includeMetadata: collectStats }),
   );
@@ -283,6 +311,7 @@ export async function submit(
     resolveDepositSpendMetadata,
   });
 
+  onPhase?.('tee-sign');
   // 3. Sign.
   const signOutput = await signer.signTokenOperation(tokenOperation);
 
@@ -295,7 +324,7 @@ export async function submit(
     })),
   );
 
-  // 5. Prove and send.
+  // 5. Prove, then let the node proxy mark the pre-send boundary.
   const capsules = [
     seedCapsule,
     buildStrictModeCapsule(contract.address),
@@ -308,7 +337,7 @@ export async function submit(
       .publish_da()
       .with({ capsules: buildPublishDaCapsules(contract.address, signOutput, await anchorBlockHeader.hash()) }),
   ];
-  onPhase?.('prove-and-send');
+  onPhase?.('prove');
   const { txHash } = await new BatchCall(wallet, realBatchCalls).send({
     from,
     additionalScopes,

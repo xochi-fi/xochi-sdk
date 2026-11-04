@@ -27,6 +27,11 @@ import type { ObservedNetwork } from "./network.js";
 import { OperationJournal, type OperationRecord } from "./operation-journal.js";
 import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
 import { durablyIncluded } from "./reconciliation.js";
+import {
+  createSubmissionDiagnosticState,
+  safeOperationError,
+  type SubmissionDiagnosticState,
+} from "./safe-diagnostic.js";
 import { assertL1Pinned, OxideFleetRegistry, viemL1Reader } from "./oxide/enclave.js";
 import { oxidePins } from "./oxide/pins.js";
 import { transferEventMetadata } from "./oxide-token.js";
@@ -136,6 +141,45 @@ export interface AztecPort {
     request: ExitRequest,
   ): Promise<ExitResult>;
   close(): Promise<void>;
+}
+
+export function failOrAbortWithSafeDiagnostic(
+  journal: OperationJournal,
+  operationId: string,
+  error: unknown,
+  diagnosticState: SubmissionDiagnosticState,
+): Error {
+  const initialMessage = diagnosticState.submissionBoundaryReached
+    ? "operation outcome requires transaction reconciliation"
+    : "operation failed before Aztec node submission";
+  const safeError = safeOperationError(initialMessage, error, diagnosticState);
+  try {
+    const journalError = journal.failOrAbort(
+      operationId,
+      diagnosticState.submissionBoundaryReached,
+    );
+    return safeOperationError(journalError.message, safeError, diagnosticState);
+  } catch {
+    const cleanupMessage = diagnosticState.submissionBoundaryReached
+      ? "operation journal update failed after Aztec node submission; reconciliation remains required"
+      : "operation journal abort or lock release failed before Aztec node submission; restart before moving funds";
+    return safeOperationError(cleanupMessage, safeError, diagnosticState);
+  }
+}
+
+export function sanitizeFundMovementFailure(
+  journal: OperationJournal,
+  operation: OperationRecord | null,
+  error: unknown,
+  diagnosticState: SubmissionDiagnosticState,
+): Error {
+  return operation === null
+    ? safeOperationError(
+        "recipient operation failed before Aztec node submission",
+        error,
+        diagnosticState,
+      )
+    : failOrAbortWithSafeDiagnostic(journal, operation.id, error, diagnosticState);
 }
 
 export function beginExitAfterExecutorFeeCheck(
@@ -337,55 +381,76 @@ export class LiveAztec implements AztecPort {
     artifact: ContractArtifact,
     build: (contract: Contract) => Operation[],
     operation: OperationRecord,
+    diagnosticState: SubmissionDiagnosticState,
   ): Promise<SubmitResult> {
-    const contract = Contract.at(
-      AztecAddress.fromStringUnsafe(this.corridor.token.address),
-      artifact,
-      this.wallet,
-    );
-    const signer = await this.oxideSigner();
-    // #740: the spend metadata carries this account's master nullifier hiding key to the
-    // zk.money enclave, which needs it to check the spent notes.
-    const spend = await buildSpendMetadata({
-      secret: account.secret,
-      salt: account.salt,
-      signingKey: account.signingKey,
-      creationTxHash: TxHash.zero(),
-    });
-    const submitOperation = () =>
-      submit({ wallet: this.wallet, chain: this.node }, account.address, {
-        contract,
-        signer,
-        operations: build(contract),
-        resolveSpendMetadata: async (nullified) => {
-          if (!nullified.owner.equals(account.address))
-            throw new Error("spent note is not this account's");
-          return { ...spend, creationTxHash: nullified.creationTxHash };
-        },
-        resolveDepositSpendMetadata: async (recipient) => {
-          if (!recipient.equals(account.address))
-            throw new Error("spent deposit is not this account's");
-          return {
-            ownerAddressPreimage: spend.ownerAddressPreimage,
-            masterNullifierHidingKey: spend.masterNullifierHidingKey,
-          };
-        },
-        onPreparedWithdrawals: async (withdrawals) => {
+    if (operation.kind !== diagnosticState.operationKind) {
+      throw new Error("operation kind does not match its submission diagnostic");
+    }
+    try {
+      const contract = Contract.at(
+        AztecAddress.fromStringUnsafe(this.corridor.token.address),
+        artifact,
+        this.wallet,
+      );
+      const signer = await this.oxideSigner();
+      // #740: the spend metadata carries this account's master nullifier hiding key to the
+      // zk.money enclave, which needs it to check the spent notes.
+      const spend = await buildSpendMetadata({
+        secret: account.secret,
+        salt: account.salt,
+        signingKey: account.signingKey,
+        creationTxHash: TxHash.zero(),
+      });
+      const submitOperation = () =>
+        submit({ wallet: this.wallet, chain: this.node }, account.address, {
+          contract,
+          signer,
+          operations: build(contract),
+          resolveSpendMetadata: async (nullified) => {
+            if (!nullified.owner.equals(account.address))
+              throw new Error("spent note is not this account's");
+            return { ...spend, creationTxHash: nullified.creationTxHash };
+          },
+          resolveDepositSpendMetadata: async (recipient) => {
+            if (!recipient.equals(account.address))
+              throw new Error("spent deposit is not this account's");
+            return {
+              ownerAddressPreimage: spend.ownerAddressPreimage,
+              masterNullifierHidingKey: spend.masterNullifierHidingKey,
+            };
+          },
+          onPhase: (phase) => {
+            diagnosticState.phase = phase;
+          },
+          onPreparedWithdrawals: async (withdrawals) => {
+            this.operationJournal.update(operation.id, {
+              withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
+                withdrawalIndex,
+                finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
+              })),
+            });
+          },
+        });
+
+      return await this.nodeSubmission.run(
+        async (txHash) => {
           this.operationJournal.update(operation.id, {
-            withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
-              withdrawalIndex,
-              finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
-            })),
+            status: "broadcast",
+            txHash: txHash.toString(),
           });
         },
-      });
-
-    return this.nodeSubmission.run(async (txHash) => {
-      this.operationJournal.update(operation.id, {
-        status: "broadcast",
-        txHash: txHash.toString(),
-      });
-    }, submitOperation);
+        submitOperation,
+        diagnosticState,
+      );
+    } catch (error) {
+      throw safeOperationError(
+        diagnosticState.submissionBoundaryReached
+          ? "operation outcome requires transaction reconciliation"
+          : "recipient operation failed before Aztec node submission",
+        error,
+        diagnosticState,
+      );
+    }
   }
 
   async spend(
@@ -394,12 +459,14 @@ export class LiveAztec implements AztecPort {
     to: AztecAddress,
     amount: bigint,
   ): Promise<string> {
-    const operation = this.operationJournal.begin("spend", {
-      from: account.address.toString(),
-      to: to.toString(),
-      amount: amount.toString(),
-    });
+    const diagnosticState = createSubmissionDiagnosticState("spend");
+    let operation: OperationRecord | null = null;
     try {
+      operation = this.operationJournal.begin("spend", {
+        from: account.address.toString(),
+        to: to.toString(),
+        amount: amount.toString(),
+      });
       const result = await this.submitOperations(
         account,
         artifact,
@@ -413,6 +480,7 @@ export class LiveAztec implements AztecPort {
           },
         ],
         operation,
+        diagnosticState,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -420,8 +488,8 @@ export class LiveAztec implements AztecPort {
       const txHash = result.receipt.txHash.toString();
       this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
-    } catch {
-      throw this.operationJournal.failOrAbort(operation.id);
+    } catch (error) {
+      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
     }
   }
 
@@ -430,32 +498,39 @@ export class LiveAztec implements AztecPort {
     artifact: ContractArtifact,
     request: ExitRequest,
   ): Promise<ExitResult> {
-    if (!this.l1RpcUrl) throw new Error("exit needs --l1-rpc: the executor's fee is read from L1");
-    const broadcasterAddress = AztecAddress.fromStringUnsafe(this.corridor.oxide.l2Broadcaster);
-    // The broadcaster artifact is the caller's file: it is used only if its class is the class
-    // of the deployment's broadcaster instance on the pinned node.
-    const [instance, klass] = await Promise.all([
-      this.node.getContract(broadcasterAddress),
-      getContractClassFromArtifact(request.broadcasterArtifact),
-    ]);
-    if (!instance || !instance.currentContractClassId.equals(klass.id)) {
-      throw new Error(
-        `broadcaster artifact class ${klass.id.toString()} is not the class of ${broadcasterAddress.toString()}`,
-      );
-    }
-    const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
-    const executorFee = await createPublicClient({ transport: http(this.l1RpcUrl) }).readContract({
-      address: executor,
-      abi: parseAbi(["function FEE() view returns (uint256)"]),
-      functionName: "FEE",
-    });
-    const { operation, recipientAmount } = beginExitAfterExecutorFeeCheck(
-      this.operationJournal,
-      account.address.toString(),
-      request,
-      executorFee,
-    );
+    const diagnosticState = createSubmissionDiagnosticState("exit");
+    let operation: OperationRecord | null = null;
     try {
+      if (!this.l1RpcUrl) {
+        throw new Error("exit needs --l1-rpc: the executor's fee is read from L1");
+      }
+      const broadcasterAddress = AztecAddress.fromStringUnsafe(this.corridor.oxide.l2Broadcaster);
+      // The broadcaster artifact is the caller's file: it is used only if its class is the class
+      // of the deployment's broadcaster instance on the pinned node.
+      const [instance, klass] = await Promise.all([
+        this.node.getContract(broadcasterAddress),
+        getContractClassFromArtifact(request.broadcasterArtifact),
+      ]);
+      if (!instance || !instance.currentContractClassId.equals(klass.id)) {
+        throw new Error(
+          `broadcaster artifact class ${klass.id.toString()} is not the class of ${broadcasterAddress.toString()}`,
+        );
+      }
+      const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
+      const executorFee = await createPublicClient({
+        transport: http(this.l1RpcUrl),
+      }).readContract({
+        address: executor,
+        abi: parseAbi(["function FEE() view returns (uint256)"]),
+        functionName: "FEE",
+      });
+      const prepared = beginExitAfterExecutorFeeCheck(
+        this.operationJournal,
+        account.address.toString(),
+        request,
+        executorFee,
+      );
+      operation = prepared.operation;
       const broadcaster = Contract.at(broadcasterAddress, request.broadcasterArtifact, this.wallet);
       const result = await this.submitOperations(
         account,
@@ -476,6 +551,7 @@ export class LiveAztec implements AztecPort {
           }),
         ],
         operation,
+        diagnosticState,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -484,7 +560,7 @@ export class LiveAztec implements AztecPort {
       const response = {
         txHash,
         executorFee: executorFee.toString(),
-        recipientAmount: recipientAmount.toString(),
+        recipientAmount: prepared.recipientAmount.toString(),
         withdrawals: result.withdrawals.map((w) => ({
           txHash,
           withdrawalIndex: w.withdrawalIndex,
@@ -504,8 +580,8 @@ export class LiveAztec implements AztecPort {
         ),
       });
       return response;
-    } catch {
-      throw this.operationJournal.failOrAbort(operation.id);
+    } catch (error) {
+      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
     }
   }
 
