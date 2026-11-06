@@ -193,8 +193,8 @@ export async function signSlotPayload(
 }
 
 /**
- * Format a signing result for audit logs / debugging. Intentionally hex --
- * raw bytes are awkward to grep.
+ * Format a signing result for audit logs / debugging, as hex (raw bytes are
+ * awkward to grep).
  */
 export function formatSignSignalsResult(r: SignSignalsResult): {
   signature: `0x${string}`;

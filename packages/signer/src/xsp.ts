@@ -1,7 +1,7 @@
 // Xochi Settlement Protocol (XSP) hash primitives.
-// HASH-ONLY: typehashes, EIP-712 digests and the deposit-address derivation. There is
-// deliberately no signing here -- the obligation is signed by the user's wallet and the
-// Depository messages by the Allocator, neither of which this package holds a key for.
+// HASH-ONLY: typehashes, EIP-712 digests and the deposit-address derivation. No signing:
+// the obligation is signed by the user's wallet and the Depository messages by the
+// Allocator, neither of which this package holds a key for.
 //
 // These are a DIFFERENT instrument from the escrow order (escrow.ts): XSP's
 // `destAmount` is EXACT (release predicate `==`), while `DestOpening.toAmount` is a
@@ -12,16 +12,11 @@
 // getCreate2Address as independent implementations.
 
 import { ethers } from "ethers";
+import { EIP712_DOMAIN_TYPEHASH, coder, keccak, typedDigest } from "./primitives";
 import type { Hex } from "./types";
+import { UINT64_MAX, parseUint, type UintLike } from "./uint";
 
-type UintLike = bigint | number | string;
-
-const coder = ethers.AbiCoder.defaultAbiCoder();
-const keccak = (data: ethers.BytesLike): Hex => ethers.keccak256(data) as Hex;
-
-export const EIP712_DOMAIN_TYPEHASH = ethers.id(
-  "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
-) as Hex;
+export { EIP712_DOMAIN_TYPEHASH } from "./primitives";
 
 // ---------------------------------------------------------------------------
 // Obligation (user-signed, origin chain)
@@ -64,11 +59,9 @@ export interface XspDomain {
   verifyingContract: string;
 }
 
-const UINT64_MAX = 2n ** 64n - 1n;
-
 function uint64(value: UintLike, field: string): bigint {
-  const v = BigInt(value);
-  if (v < 0n || v > UINT64_MAX) throw new Error(`${field} out of uint64 range: ${value}`);
+  const v = parseUint(value, field);
+  if (v > UINT64_MAX) throw new Error(`${field} out of uint64 range: ${value}`);
   return v;
 }
 
@@ -85,10 +78,6 @@ export function xspDomainSeparator(domain: XspDomain): Hex {
       ],
     ),
   );
-}
-
-function typedDataDigest(separator: string, structHash: string): Hex {
-  return keccak(ethers.concat(["0x1901", separator, structHash]));
 }
 
 /** Obligation domain: chainId = originChainId, verifyingContract = XochiDepository on origin. */
@@ -155,7 +144,7 @@ export function hashObligation(terms: XochiObligation): Hex {
  * It is also the ERC-3009 nonce and the Permit2 OriginPullWitness.orderId.
  */
 export function computeObligationId(terms: XochiObligation, depository: string): Hex {
-  return typedDataDigest(
+  return typedDigest(
     xspDomainSeparator(obligationDomain(terms.originChainId, depository)),
     hashObligation(terms),
   );
@@ -283,14 +272,14 @@ export function hashMarkConsumed(msg: MarkConsumed): Hex {
 }
 
 export function callRequestDigest(req: CallRequest, chainId: UintLike, depository: string): Hex {
-  return typedDataDigest(
+  return typedDigest(
     xspDomainSeparator(depositoryDomain(chainId, depository)),
     hashCallRequest(req),
   );
 }
 
 export function markConsumedDigest(msg: MarkConsumed, chainId: UintLike, depository: string): Hex {
-  return typedDataDigest(
+  return typedDigest(
     xspDomainSeparator(depositoryDomain(chainId, depository)),
     hashMarkConsumed(msg),
   );

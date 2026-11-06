@@ -10,8 +10,8 @@ import {
   type PrivateKeyLoader,
   type SignCredentialRootRequest,
 } from "../src/index.js";
+import { TEST_PRIVATE_KEY as PRIVATE_KEY } from "./helpers.js";
 
-const PRIVATE_KEY = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 const OTHER_KEY = new Uint8Array(32).fill(7);
 const PUBLIC_KEY = secp256k1.getPublicKey(PRIVATE_KEY, false);
 const REQUEST: SignCredentialRootRequest = {

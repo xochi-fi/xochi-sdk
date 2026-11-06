@@ -1,8 +1,8 @@
 // pxe-bridge readiness attestations for the shielded settlement contract v1 (xochi
-// docs/planning/shielded-execution.md §7, "Decided 2026-10-19: readiness attestation";
-// xochi-fi/pxe-bridge#50; xochi-fi/xochi-sdk#42). INERT and VERIFY-ONLY: the bridge signs
-// with its own dedicated attestation key; Xochi parses, rebuilds the domain from its own
-// corridor record and checks the recovered address. No key is held here.
+// docs/planning/shielded-execution.md §7 "readiness attestation"; xochi-fi/pxe-bridge#50;
+// xochi-fi/xochi-sdk#42). INERT and VERIFY-ONLY: the bridge signs with its own dedicated
+// attestation key; Xochi parses, rebuilds the domain from its own corridor record and checks
+// the recovered address. No key is held here.
 //
 //   Membership          design-A testnet tracer (allowlist root membership)
 //   RecipientDeployment both designs (deployment finality of the pinned class)
@@ -29,6 +29,7 @@ import {
   type ShieldedDomain,
 } from "./shielded";
 import {
+  RefusalError,
   UINT64_MAX,
   assertAztecBytes32,
   aztecField,
@@ -37,6 +38,7 @@ import {
   coder,
   environmentHash,
   keccak,
+  refuser,
   uint,
   describeUntrusted,
   withRefusalsAs,
@@ -44,12 +46,12 @@ import {
   type UintLike,
   type ShieldedRefusal,
 } from "./shielded-values";
+import { typedDigest } from "./primitives";
 import type { Hex } from "./types";
 
 /**
  * Why a readiness record or domain input is refused: the shared value rules
- * (`ShieldedRefusal`) plus the strict record parse. Its own union and error, so
- * `ShieldedEncodingError` keeps the `shielded.ts` contract.
+ * (`ShieldedRefusal`) plus the strict record parse.
  */
 export type ReadinessRefusal =
   | ShieldedRefusal
@@ -70,23 +72,12 @@ export type ReadinessRefusal =
   | "subject_mismatch"
   | "policy_out_of_range";
 
-export class ReadinessEncodingError extends Error {
-  readonly code: ReadinessRefusal;
-  readonly field: string;
-  constructor(code: ReadinessRefusal, field: string, detail: string) {
-    super(`${field}: ${code} (${detail})`);
-    this.name = "ReadinessEncodingError";
-    this.code = code;
-    this.field = field;
-  }
+export class ReadinessEncodingError extends RefusalError<ReadinessRefusal> {
+  override name = "ReadinessEncodingError";
 }
 
-const refuseReadiness = (code: ReadinessRefusal, field: string, detail: string): never => {
-  throw new ReadinessEncodingError(code, field, detail);
-};
-// The shared value rules, refusing as ReadinessEncodingError.
-const readinessRules = <T>(fn: () => T): T =>
-  withRefusalsAs(fn, (code, field, detail) => new ReadinessEncodingError(code, field, detail));
+const refuseReadiness = refuser(ReadinessEncodingError);
+const readinessRules = <T>(fn: () => T): T => withRefusalsAs(fn, ReadinessEncodingError);
 
 export const SHIELDED_READINESS_DOMAIN_NAME = "Xochi Shielded Readiness";
 /** Hard misuse ceilings; deployments select stricter values per readiness consumer. */
@@ -317,9 +308,7 @@ export function readinessDigest<T extends ReadinessType>(
   a: ReadinessRecords[T],
   domain: ShieldedDomain,
 ): Hex {
-  return keccak(
-    ethers.concat(["0x1901", shieldedDomainSeparator(domain), hashReadinessRecord(primaryType, a)]),
-  );
+  return typedDigest(shieldedDomainSeparator(domain), hashReadinessRecord(primaryType, a));
 }
 
 function recoverReadinessAddress(digest: Hex, signature: Hex): Hex {

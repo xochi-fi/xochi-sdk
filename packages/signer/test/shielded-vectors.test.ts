@@ -1,6 +1,5 @@
 // Shielded settlement contract v1 vectors: `@xochi/spec`'s conformance/shielded.json
-// (xochi shielded-execution.md §7, "Approved 2026-10-18: typed encodings"; the
-// NetworkIdentity encoding was approved by the product owner on 2026-10-19).
+// (xochi shielded-execution.md §7 "typed encodings").
 //
 // The generator derives every value from §7 literals with ethers primitives and never
 // imports @xochi/signer, so this suite checks the REFERENCE against an independent

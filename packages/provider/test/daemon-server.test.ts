@@ -40,9 +40,8 @@ import { FileAuditSink, MemoryAuditSink, type AuditSink } from "../daemon/src/au
 import { loadConfig, type DaemonConfig } from "../daemon/src/config.js";
 import { signingPolicy } from "../daemon/src/handlers.js";
 import { formatUnknownError } from "../daemon/src/error-format.js";
+import { TEST_PRIVATE_KEY } from "./helpers.js";
 
-const TEST_PRIVATE_KEY = new Uint8Array(32);
-for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 const TEST_API_KEY = "test-bearer-key-do-not-ship";
 const CREDENTIAL_ROOT_KEY = "test-credential-root-key-do-not-ship";
 

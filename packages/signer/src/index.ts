@@ -20,3 +20,4 @@ export * from "./claim-verify";
 export * from "./deposit-verify";
 export * from "./capabilities";
 export { sameAddressish, sameNumeric } from "./compare";
+export { parseUint, type UintLike } from "./uint";

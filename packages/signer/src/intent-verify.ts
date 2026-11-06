@@ -289,9 +289,8 @@ export function assertFromAmountWithinMax(
  * is a sanity ceiling and not a parity constant. Measured FROM the intent's deadline,
  * which is why `assertPullMatchesIntent` bounds that deadline against the wall clock.
  *
- * Do NOT tighten it to a number read off a live deployment: the buffer was `1500` until
- * 2026-08-12 (Riddler#789 §B), so a hardcoded 600 would have refused every honest quote.
- * The advertised value is applied by {@link pullExpiryBoundSeconds}.
+ * Do NOT tighten it to a number read off a live deployment: the buffer is operator-tunable
+ * (Riddler#789 §B). The advertised value is applied by {@link pullExpiryBoundSeconds}.
  *
  * The two ceilings compose: worst case a signed pull is live for
  * `MAX_INTENT_DEADLINE_AHEAD_OF_NOW_SECONDS` plus this, and the advertised value shrinks
@@ -592,11 +591,8 @@ function assertPullNotToPinnedEscrow(
       `expectedEscrows must map origin chain ids to escrow addresses, got ${JSON.stringify(pins)}. Refusing to sign.`,
     );
   }
-  // Keyed on the canonical chain id, not the server's spelling: `"0x2105"`, `"08453"` and
-  // `" 8453"` all pass the chain checks and sign as uint256 8453, so a raw-string lookup
-  // would miss a `{8453: ESCROW}` pin and let the escrow pull through unguarded. The pin
-  // is read by `resolvePinnedEscrow`, the same reader `assertEscrowBinding` uses, so a key
-  // or value means one thing to both guards.
+  // Keyed on the canonical chain id, not the server's spelling, so a `"0x2105"` intent still
+  // meets a `{8453: ESCROW}` pin. Read by `resolvePinnedEscrow`, as `assertEscrowBinding` does.
   const chainKey = requireIntentChainId(intent, "expectedEscrows");
   const pinned = resolvePinnedEscrow(
     pins,

@@ -27,6 +27,8 @@
  * also why nothing here may *relax* a check. It can only inform one.
  */
 
+import { EVM_ADDRESS } from "./primitives";
+
 /**
  * Virtual machine family a chain runs. Decides address encoding and pull method.
  * `cvm` is Canton: a destination-only chain whose addresses are party ids.
@@ -284,7 +286,7 @@ function asAddressFormat(value: unknown): AddressFormat | null {
 /** An EVM address by SHAPE. Casing is not checked -- see erc4337.ts's `toAddress`. */
 function asEvmAddress(value: unknown): string | null {
   const v = asString(value);
-  return v !== null && /^0x[0-9a-fA-F]{40}$/.test(v) ? v : null;
+  return v !== null && EVM_ADDRESS.test(v) ? v : null;
 }
 
 function asPullMethod(value: unknown): PullMethod | null {

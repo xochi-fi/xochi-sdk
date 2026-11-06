@@ -17,6 +17,7 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { ethers } from "ethers";
 import { deriveStealthPrivateKey, stealthAddressFromPrivateKey } from "./stealth.js";
+import { modOrder, sharedSecretHash, strip0x } from "./stealth-ecdh.js";
 
 /** ERC-5564 Announcer contract address. */
 export const ERC5564_ANNOUNCER = "0x55649E01B5Df198D18D95b5cc5051630cfD45564";
@@ -172,18 +173,11 @@ export interface AnnouncementMetadata {
   salt: bigint;
 }
 
-// secp256k1 group order.
-const N = secp256k1.CURVE.n;
-
 /**
  * Byte layout of the metadata blob:
  * `[viewTag(1)][token(20)][selector(4)][amount(32)][factory(20)][salt(32)]`.
  */
 const METADATA_BYTES = 1 + 20 + 4 + 32 + 20 + 32;
-
-function strip0x(hex: string): string {
-  return hex.startsWith("0x") ? hex.slice(2) : hex;
-}
 
 // ethers accepts bytes only if they pass `instanceof Uint8Array`, which a
 // Uint8Array from another realm (an iframe, a jsdom test environment) fails, so
@@ -193,38 +187,11 @@ function toBytes(value: StealthScalar): Uint8Array {
   return value instanceof Uint8Array ? value : Uint8Array.from(value);
 }
 
-function bytesToBigInt(bytes: Uint8Array): bigint {
-  let result = 0n;
-  for (const byte of bytes) {
-    result = (result << 8n) + BigInt(byte);
-  }
-  return result;
-}
-
-/**
- * Reduce a byte-encoded scalar into [0, n).
- *
- * noble's `ProjectivePoint.multiply` requires a scalar in [1, n-1] and throws
- * otherwise. Stealth scalars come from keccak256 and can land >= n (probability
- * ~2^-128, but nonzero). Since k*P == (k mod n)*P for any point of order n,
- * reducing preserves every valid key and only prevents the edge-case throw.
- * Every scalar is reduced the same way, so sender and receiver agree.
- */
-function modOrder(bytes: Uint8Array): bigint {
-  return bytesToBigInt(bytes) % N;
-}
-
 /** Compressed (33-byte) public key of a private scalar, `0x` hex. */
 function compressedPublicKey(privateKey: Uint8Array): string {
   return ethers.hexlify(
     secp256k1.ProjectivePoint.BASE.multiply(modOrder(privateKey)).toRawBytes(true),
   );
-}
-
-/** `keccak256(compressed(priv * pub))`: the ECDH secret both sides hash. */
-function sharedSecretHash(publicKey: string, privateKey: Uint8Array): string {
-  const point = secp256k1.ProjectivePoint.fromHex(ethers.getBytes("0x" + strip0x(publicKey)));
-  return ethers.keccak256(point.multiply(modOrder(privateKey)).toRawBytes(true));
 }
 
 /**

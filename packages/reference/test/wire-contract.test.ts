@@ -62,7 +62,7 @@ if (actualDigest !== expectedDigest) {
       `  ${DIGEST_PATH}\n    sha256 ${expectedDigest}\n` +
       `Neither file is hand-editable. The usual cause is a bad merge or a partial checkout, ` +
       `so restore both from git (\`git checkout -- packages/spec/wire/\`); re-run ` +
-      `\`npm run generate:wire\` only if a REFRESH is what you actually want, since it ` +
+      `\`npm run generate:wire -w @xochi/spec\` only if a REFRESH is what you actually want, since it ` +
       `refetches and rewrites both files.`,
   );
 }

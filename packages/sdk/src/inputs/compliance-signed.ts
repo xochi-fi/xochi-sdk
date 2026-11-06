@@ -15,9 +15,13 @@
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH, HIGH_RISK_THRESHOLDS_BPS } from "../constants.js";
 import { bytesToHexField } from "./field-bytes.js";
+import {
+  bytesToNumStrings,
+  computeScoreBps,
+  resolveProviders,
+  type SignedDigestBinding,
+} from "./providers.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
-
-const MAX_PROVIDERS = 8;
 
 /** Provider-supplied signing artifacts (from `signSignals` in `@xochi/provider`). */
 export interface SignedSignalsBundle {
@@ -31,18 +35,6 @@ export interface SignedSignalsBundle {
   signerPubkeyHash: Uint8Array;
 }
 
-/**
- * Audit F-6: chain_id and oracle_address are committed in the in-circuit signed
- * digest so a single signature cannot be replayed across chains or alternate
- * Oracle deployments. The on-chain Oracle asserts these match `block.chainid`
- * and `address(this)`. They MUST equal the values the provider used when
- * signing -- otherwise in-circuit signature verification fails.
- */
-interface SignedDigestBinding {
-  chainId: bigint | string | number;
-  oracleAddress: Address;
-}
-
 interface MultiProviderComplianceSigned extends SignedDigestBinding {
   signals: number[];
   weights: number[];
@@ -52,11 +44,8 @@ interface MultiProviderComplianceSigned extends SignedDigestBinding {
   configHash?: string;
   /**
    * Proof timestamp (unix seconds, default the local clock); must equal the
-   * timestamp the provider signed. The Oracle rejects it when after
-   * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
-   * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
-   * chain makes the default revert. Prefer `await chainProofTimestamp(client)`
-   * (the chain's clock), read before requesting the signature.
+   * timestamp the provider signed. Date it from the chain before requesting
+   * the signature: README "Proof timestamps".
    */
   timestamp?: string;
   submitter: Address;
@@ -76,13 +65,6 @@ interface SingleProviderComplianceSigned extends SignedDigestBinding {
 
 export type ComplianceSignedInput = MultiProviderComplianceSigned | SingleProviderComplianceSigned;
 
-function bytesToNumStrings(bytes: Uint8Array, expected: number, label: string): string[] {
-  if (bytes.length !== expected) {
-    throw new Error(`${label} must be ${String(expected)} bytes; got ${String(bytes.length)}`);
-  }
-  return Array.from(bytes, (b) => String(b));
-}
-
 export function buildComplianceSignedInputs(
   opts: ComplianceSignedInput,
 ): Record<string, string | string[]> {
@@ -92,64 +74,32 @@ export function buildComplianceSignedInputs(
     throw new Error(`Unknown jurisdiction ID: ${String(opts.jurisdictionId)}`);
   }
 
-  let signals: string[];
-  let weights: string[];
-  let weightSum: number;
-  let providerIds: string[];
-  let numProviders: number;
-
-  if ("signals" in opts) {
-    const n = opts.signals.length;
-    if (n === 0 || n > MAX_PROVIDERS) {
-      throw new Error(`Provider count must be 1-${String(MAX_PROVIDERS)}, got ${String(n)}`);
-    }
-    if (opts.weights.length !== n || opts.providerIds.length !== n) {
-      throw new Error("signals, weights, and providerIds must have equal length");
-    }
-    const s = [...opts.signals];
-    const w = [...opts.weights];
-    const ids = [...opts.providerIds];
-    while (s.length < MAX_PROVIDERS) {
-      s.push(0);
-      w.push(0);
-      ids.push("0");
-    }
-    weightSum = opts.weights.reduce((a, b) => a + b, 0);
-    signals = s.map(String);
-    weights = w.map(String);
-    providerIds = ids;
-    numProviders = n;
-  } else {
-    signals = [String(opts.score), "0", "0", "0", "0", "0", "0", "0"];
-    weights = ["100", "0", "0", "0", "0", "0", "0", "0"];
-    weightSum = 100;
-    providerIds = ["1", "0", "0", "0", "0", "0", "0", "0"];
-    numProviders = 1;
-  }
-
+  const p = resolveProviders(opts);
   // Score must be below the jurisdiction threshold (same constraint as unsigned).
-  const sum = signals
-    .slice(0, numProviders)
-    .reduce((acc, s, i) => acc + Number(s) * Number(weights[i]), 0);
-  const scoreBps = Math.floor((sum * 100) / weightSum);
+  const scoreBps = computeScoreBps(p);
   if (scoreBps >= threshold) {
     throw new Error(
       `Score ${String(scoreBps)} bps exceeds jurisdiction threshold ${String(threshold)} bps -- not compliant`,
     );
   }
 
-  const ts = Number(opts.timestamp ?? String(Math.floor(Date.now() / 1000)));
-  validateTimestamp(ts);
+  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  validateTimestamp(Number(timestamp));
   validateSubmitter(opts.submitter);
-  validateActiveProviders(signals.map(Number), weights.map(Number), providerIds, numProviders);
+  validateActiveProviders(
+    p.signals.map(Number),
+    p.weights.map(Number),
+    p.providerIds,
+    p.numProviders,
+  );
 
   return {
     // Unsigned-compliance inputs
-    signals,
-    weights,
-    weight_sum: String(weightSum),
-    provider_ids: providerIds,
-    num_providers: String(numProviders),
+    signals: p.signals,
+    weights: p.weights,
+    weight_sum: String(p.weightSum),
+    provider_ids: p.providerIds,
+    num_providers: String(p.numProviders),
 
     // Provider signature private witnesses
     signature: bytesToNumStrings(opts.signedBundle.signature, 64, "signature"),
@@ -160,7 +110,7 @@ export function buildComplianceSignedInputs(
     jurisdiction_id: String(opts.jurisdictionId),
     provider_set_hash: opts.providerSetHash,
     config_hash: configHash,
-    timestamp: opts.timestamp ?? String(Math.floor(Date.now() / 1000)),
+    timestamp,
     meets_threshold: "1",
     signer_pubkey_hash: bytesToHexField(opts.signedBundle.signerPubkeyHash),
     chain_id: BigInt(opts.chainId).toString(),

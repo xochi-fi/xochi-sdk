@@ -28,6 +28,7 @@ import {
 } from "../constants.js";
 import type { JurisdictionId } from "../constants.js";
 import { bytesToHexField, fieldToBytes } from "./field-bytes.js";
+import { bytesToNumStrings, ensureLen } from "./providers.js";
 import { validateSubmitter, validateTimestamp } from "./validate.js";
 
 const SIGNALS_PER_SLOT = 8;
@@ -85,11 +86,8 @@ export interface ComplianceMultiSignedInput {
   configHash?: string;
   /**
    * Proof timestamp (unix seconds, default the local clock); must equal the
-   * timestamp every slot's provider signed. The Oracle rejects it when after
-   * `block.timestamp` (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE`
-   * (1 hour) before it (`ProofTimestampStale`), so a local clock ahead of the
-   * chain makes the default revert. Prefer `await chainProofTimestamp(client)`
-   * (the chain's clock), read before requesting the signatures.
+   * timestamp every slot's provider signed. Date it from the chain before
+   * requesting the signatures: README "Proof timestamps".
    */
   timestamp?: string;
   submitter: Address;
@@ -103,17 +101,6 @@ export interface ComplianceMultiSignedInput {
    * The number of non-null entries MUST be >= thresholdM.
    */
   slots: (MultiSignedSlot | null)[];
-}
-
-function ensureLen(arr: Uint8Array, expected: number, label: string): Uint8Array {
-  if (arr.length !== expected) {
-    throw new Error(`${label} must be ${String(expected)} bytes; got ${String(arr.length)}`);
-  }
-  return arr;
-}
-
-function bytesToNumStrings(bytes: Uint8Array): string[] {
-  return Array.from(bytes, (b) => String(b));
 }
 
 function isAllZero(bytes: Uint8Array): boolean {

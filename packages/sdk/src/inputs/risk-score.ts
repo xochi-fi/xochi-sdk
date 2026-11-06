@@ -1,18 +1,12 @@
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
+import {
+  computeScoreBps,
+  MAX_RISK_SCORE_BPS,
+  resolveProviders,
+  type ProviderInput,
+} from "./providers.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
-
-interface ProviderSignals {
-  signals: number[]; // 1-8 provider risk scores (0-100)
-  weights: number[]; // corresponding weights
-  providerIds: string[]; // provider identifiers
-}
-
-interface SingleProviderShorthand {
-  score: number; // single provider risk score (0-100)
-}
-
-type ProviderInput = ProviderSignals | SingleProviderShorthand;
 
 interface ThresholdBase {
   type: "threshold";
@@ -21,12 +15,8 @@ interface ThresholdBase {
   providerSetHash: string;
   configHash?: string;
   /**
-   * Proof timestamp (unix seconds, default the local clock). Public input 7;
-   * the Oracle rejects it when after `block.timestamp`
-   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
-   * (`ProofTimestampStale`), so a local clock ahead of the chain head makes the
-   * default revert. Prefer `await chainProofTimestamp(client)`, or
-   * `new ERC8262Prover(loader, { client })`, which stamps with it.
+   * Proof timestamp (unix seconds, default the local clock), public input 7.
+   * Date it from the chain: README "Proof timestamps".
    */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
@@ -48,68 +38,6 @@ interface RangeBase {
 export type RiskScoreThresholdInput = ThresholdBase & ProviderInput;
 export type RiskScoreRangeInput = RangeBase & ProviderInput;
 export type RiskScoreInput = RiskScoreThresholdInput | RiskScoreRangeInput;
-
-const MAX_PROVIDERS = 8;
-
-function resolveProviders(opts: ProviderInput): {
-  signals: string[];
-  weights: string[];
-  weightSum: number;
-  providerIds: string[];
-  numProviders: number;
-} {
-  if ("signals" in opts) {
-    const n = opts.signals.length;
-    if (n === 0 || n > MAX_PROVIDERS) {
-      throw new Error(`Provider count must be 1-${String(MAX_PROVIDERS)}, got ${String(n)}`);
-    }
-    if (opts.weights.length !== n || opts.providerIds.length !== n) {
-      throw new Error("signals, weights, and providerIds must have equal length");
-    }
-
-    const signals = [...opts.signals];
-    const weights = [...opts.weights];
-    const providerIds = [...opts.providerIds];
-    while (signals.length < MAX_PROVIDERS) {
-      signals.push(0);
-      weights.push(0);
-      providerIds.push("0");
-    }
-
-    const weightSum = opts.weights.reduce((a, b) => a + b, 0);
-
-    return {
-      signals: signals.map(String),
-      weights: weights.map(String),
-      weightSum,
-      providerIds,
-      numProviders: n,
-    };
-  }
-
-  // Single-provider shorthand
-  return {
-    signals: [String(opts.score), "0", "0", "0", "0", "0", "0", "0"],
-    weights: ["100", "0", "0", "0", "0", "0", "0", "0"],
-    weightSum: 100,
-    providerIds: ["1", "0", "0", "0", "0", "0", "0", "0"],
-    numProviders: 1,
-  };
-}
-
-function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
-  let sum = 0;
-  for (let i = 0; i < p.numProviders; i++) {
-    sum += Number(p.signals[i]) * Number(p.weights[i]);
-  }
-  return Math.floor((sum * 100) / p.weightSum);
-}
-
-/**
- * Maximum risk score in basis points. Mirrors ERC8262Oracle.MAX_RISK_SCORE_BPS.
- * Used for client-side rejection of trivially-true threshold/range claims.
- */
-const MAX_RISK_SCORE_BPS = 10000;
 
 export function buildRiskScoreInputs(opts: RiskScoreInput): Record<string, string | string[]> {
   const configHash = opts.configHash ?? DEFAULT_CONFIG_HASH;

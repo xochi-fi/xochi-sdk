@@ -11,6 +11,7 @@
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { copyBytes, isByteArray } from "./bytes.js";
 
 /**
  * A secp256k1 digest signer whose key identity is stable for its lifetime.
@@ -50,7 +51,7 @@ export interface DestroyableDigestSigner extends DigestSigner {
 }
 
 /**
- * A loader that deliberately exports a fresh, caller-owned 32-byte key.
+ * A loader that exports a fresh, caller-owned 32-byte key.
  *
  * Ownership transfers to `loadLocalSigner`, which may overwrite the returned
  * buffer immediately. A loader must return a new buffer on every call.
@@ -60,21 +61,11 @@ export interface PrivateKeyLoader {
   readonly label: string;
 }
 
-function isByteArray(value: unknown): value is Uint8Array {
-  if (!ArrayBuffer.isView(value) || value instanceof DataView) return false;
-  const view = value as ArrayBufferView & { readonly BYTES_PER_ELEMENT?: unknown };
-  return view.BYTES_PER_ELEMENT === 1;
-}
-
 function copyExactBytes(value: unknown, expectedLength: number, message: string): Uint8Array {
   if (!isByteArray(value) || value.byteLength !== expectedLength) {
     throw new Error(message);
   }
-  const copy = new Uint8Array(expectedLength);
-  for (let index = 0; index < expectedLength; index += 1) {
-    copy[index] = value[index];
-  }
-  return copy;
+  return copyBytes(value);
 }
 
 function wipeBytes(value: unknown): void {
@@ -195,7 +186,7 @@ export interface DigestSignerIdentitySnapshot {
 /**
  * Capture, copy and validate a signer's stable identity synchronously.
  *
- * Internal package helper: intentionally not re-exported from `index.ts`.
+ * Internal package helper; not re-exported from `index.ts`.
  */
 export function snapshotDigestSignerIdentity(signer: DigestSigner): DigestSignerIdentitySnapshot {
   const label = signer.label;

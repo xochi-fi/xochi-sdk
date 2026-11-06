@@ -5,24 +5,7 @@
  * starts the HTTP/HTTPS server, registers signal handlers for graceful
  * shutdown.
  *
- * Runs as TypeScript source under Node's type stripping (Node 22.6+ with
- * `--experimental-strip-types`, on by default from Node 23.6). The signers are
- * imported by package name, `@xochi/provider`: inside this repo that
- * self-references the built `dist/` (run `npm run build` first, which
- * `npm run daemon` does), and a copied daemon resolves the installed package.
- *
- *   SIGNER_PRIVATE_KEY_HEX=0x... \
- *   SIGNER_API_KEY=$(openssl rand -hex 32) \
- *   SIGNER_CHAIN_ID=8453 SIGNER_ORACLE_ADDRESS=0x... \
- *   npm run daemon
- *
- * Or with TLS + mTLS:
- *
- *   SIGNER_PRIVATE_KEY_HEX=0x... \
- *   SIGNER_CHAIN_ID=8453 SIGNER_ORACLE_ADDRESS=0x... \
- *   SIGNER_TLS_CERT=server.crt SIGNER_TLS_KEY=server.key \
- *   SIGNER_CLIENT_CA=clients-ca.crt \
- *   npm run daemon
+ * Usage and environment: ../README.md.
  */
 
 import { Barretenberg } from "@aztec/bb.js";

@@ -29,26 +29,7 @@ import {
   type DestroyableDigestSigner,
   type DigestSigner,
 } from "@xochi/provider";
-
-const SIGNALS = [10, 20, 30, 0, 0, 0, 0, 0];
-const WEIGHTS = [50, 30, 20, 0, 0, 0, 0, 0];
-
-function fixedBytes(length: number, fill: number): Uint8Array {
-  const out = new Uint8Array(length);
-  out.fill(fill);
-  return out;
-}
-
-function makeSlot(byteFill: number): MultiSignedSlot {
-  return {
-    signals: SIGNALS,
-    weights: WEIGHTS,
-    pubkeyX: fixedBytes(32, byteFill),
-    pubkeyY: fixedBytes(32, byteFill + 1),
-    signature: fixedBytes(64, byteFill + 2),
-    signerPubkeyHash: fixedBytes(32, byteFill + 3),
-  };
-}
+import { bytes, makeSlot, SLOT_SIGNALS as SIGNALS, SLOT_WEIGHTS as WEIGHTS } from "./helpers.js";
 
 function baseOpts(slots: (MultiSignedSlot | null)[]): ComplianceMultiSignedInput {
   return {
@@ -164,7 +145,7 @@ describe("buildComplianceMultiSignedInputs", () => {
   it("rejects an active slot whose signerPubkeyHash is the zero field", () => {
     const slot: MultiSignedSlot = {
       ...makeSlot(0x10),
-      signerPubkeyHash: fixedBytes(32, 0),
+      signerPubkeyHash: bytes(32, 0),
     };
     expect(() =>
       buildComplianceMultiSignedInputs(baseOpts([slot, null, null, null, null])),
@@ -229,8 +210,8 @@ describe("compliance_multi_signed with inactive slots", () => {
 
   beforeAll(async () => {
     api = await Barretenberg.new();
-    keyA = await loadLocalSigner(new RawPrivateKeyLoader(fixedBytes(32, 0x0a), "slot-test-a"));
-    keyB = await loadLocalSigner(new RawPrivateKeyLoader(fixedBytes(32, 0x0b), "slot-test-b"));
+    keyA = await loadLocalSigner(new RawPrivateKeyLoader(bytes(32, 0x0a), "slot-test-a"));
+    keyB = await loadLocalSigner(new RawPrivateKeyLoader(bytes(32, 0x0b), "slot-test-b"));
   });
 
   afterAll(async () => {

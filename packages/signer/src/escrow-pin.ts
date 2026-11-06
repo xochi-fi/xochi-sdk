@@ -5,16 +5,12 @@
 // API of its own.
 
 import type { PinnedEscrows } from "./escrow";
+import { EVM_ADDRESS } from "./primitives";
 
-const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const ZERO_ADDRESS = /^0x0{40}$/i;
 const CHAIN_KEY = /^(?:0[xX][0-9a-fA-F]+|[0-9]+)$/;
 
-// A pin key is a positive chain id spelled in decimal (leading zeros allowed)
-// or `0x` hex, surrounded by optional whitespace: `"8453"`, `"08453"`,
-// `"0x2105"` and `" 8453 "` all name chain 8453, the same spellings the chain
-// checks accept for the intent's own `fromChainId`. Anything else -- `""`,
-// `"1e3"`, `"-8453"`, `"0"`, `"__proto__"` -- names no chain and returns null.
+// The chain a pin key names, or null when it names none. Key grammar: `PinnedEscrows`.
 function chainIdOfKey(key: string): bigint | null {
   const trimmed = key.trim();
   if (!CHAIN_KEY.test(trimmed)) return null;

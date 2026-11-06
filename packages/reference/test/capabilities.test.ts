@@ -9,7 +9,7 @@
  * never *invents* a value it did not. The multi-chain stealth fields
  * (`stealth_chains`, `chains[].stealth_factory_address`, the deprecated nullable
  * top-level factory) and `execute_ownership` follow the served `CapabilityMatrix`
- * as vendored by the 2026-10-26 wire refresh (Riddler #1336, #1346).
+ * as vendored in `@xochi/spec` wire (Riddler #1336, #1346).
  *
  * The negative cases carry most of the weight. A tolerant parser's failure mode
  * is silently defaulting a field it should have reported as absent, and absent

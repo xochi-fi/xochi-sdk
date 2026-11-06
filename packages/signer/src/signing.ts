@@ -8,9 +8,9 @@ function debug(...args: unknown[]): void {
   if (DEBUG) console.log(...args);
 }
 
-// Quote shapes are intentionally loose (server-served values must reach the
-// signer untouched -- see types.ts). These interfaces only pin the fields this
-// module reads/writes.
+// Quote shapes are loose (server-served values must reach the signer untouched --
+// see `Eip712Domain` in types.ts). These interfaces only pin the fields this module
+// reads/writes.
 export interface QuoteRequest {
   inputAmount: string | number | bigint;
   refundAddress?: string;
@@ -73,7 +73,7 @@ function requireChain(config: SignerConfig, chainKey: string) {
  * carries a short nonce. The Python/Go/Rust conformance runners instead reject
  * a non-32-byte nonce outright (see each `runners/<lang>/README`) because they are
  * checked against a fixture whose vectors are all full-width; this is the one
- * input class where the reference is deliberately more permissive.
+ * input class where the reference is more permissive.
  *
  * Over-length is not the same case. There is no correct way to fit 33 bytes
  * into `bytes32`, and truncating would sign a nonce the server never issued,

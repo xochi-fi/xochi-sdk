@@ -26,8 +26,10 @@ import { ethers } from "ethers";
 
 import type { RecipientAckType } from "./shielded-recipient-acks";
 import {
+  RefusalError,
   assertAztecBytes32,
   evmAddress,
+  refuser,
   withRefusalsAs,
   type ShieldedRefusal,
 } from "./shielded-values";
@@ -69,20 +71,11 @@ export type OxideRefusal =
   | "decimals_out_of_range"
   | "max_note_amount_out_of_range";
 
-export class OxideEncodingError extends Error {
-  readonly code: OxideRefusal;
-  readonly field: string;
-  constructor(code: OxideRefusal, field: string, detail: string) {
-    super(`${field}: ${code} (${detail})`);
-    this.name = "OxideEncodingError";
-    this.code = code;
-    this.field = field;
-  }
+export class OxideEncodingError extends RefusalError<OxideRefusal> {
+  override name = "OxideEncodingError";
 }
 
-const refuseOxide = (code: OxideRefusal, field: string, detail: string): never => {
-  throw new OxideEncodingError(code, field, detail);
-};
+const refuseOxide = refuser(OxideEncodingError);
 
 /** Noir `FieldCompressedString`: byte 0 is zero, the UTF-8 bytes follow, zero-padded right. */
 function fieldCompressedString(field: string, value: string): bigint {
@@ -109,23 +102,20 @@ function maxNoteAmount(value: string | bigint): bigint {
 
 /** The field list `OxideTokenImmutables::serialize` hashes, in order. */
 export function serializeOxideTokenImmutables(immutables: OxideTokenImmutables): bigint[] {
-  return withRefusalsAs(
-    () => {
-      const d = immutables.decimals;
-      if (!Number.isInteger(d) || d < 0 || d > 0xff) {
-        refuseOxide("decimals_out_of_range", "decimals", "does not fit a u8");
-      }
-      return [
-        BigInt(evmAddress("portal", immutables.portal)),
-        BigInt(evmAddress("teeRegistry", immutables.teeRegistry)),
-        fieldCompressedString("name", immutables.name),
-        fieldCompressedString("symbol", immutables.symbol),
-        BigInt(d),
-        maxNoteAmount(immutables.maxNoteAmount),
-      ];
-    },
-    (code, field, detail) => new OxideEncodingError(code, field, detail),
-  );
+  return withRefusalsAs(() => {
+    const d = immutables.decimals;
+    if (!Number.isInteger(d) || d < 0 || d > 0xff) {
+      refuseOxide("decimals_out_of_range", "decimals", "does not fit a u8");
+    }
+    return [
+      BigInt(evmAddress("portal", immutables.portal)),
+      BigInt(evmAddress("teeRegistry", immutables.teeRegistry)),
+      fieldCompressedString("name", immutables.name),
+      fieldCompressedString("symbol", immutables.symbol),
+      BigInt(d),
+      maxNoteAmount(immutables.maxNoteAmount),
+    ];
+  }, OxideEncodingError);
 }
 
 /** The token instance's `immutablesHash`: `poseidon2([DOM_SEP__TOKEN_IMMUTABLES, ...serialize])`. */
@@ -141,7 +131,7 @@ export function oxideTokenImmutablesHash(immutables: OxideTokenImmutables): Hex 
 export function isOxideTokenClass(aztecTokenClassId: string): boolean {
   const id = withRefusalsAs(
     () => assertAztecBytes32("aztecTokenClassId", aztecTokenClassId),
-    (code, field, detail) => new OxideEncodingError(code, field, detail),
+    OxideEncodingError,
   );
   return OXIDE_TOKEN_CLASS_IDS.includes(id);
 }

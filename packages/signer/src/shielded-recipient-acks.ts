@@ -1,4 +1,4 @@
-// Approved recipient acknowledgements (xochi#633; product-owner decision 2026-10-29).
+// Recipient acknowledgements (xochi shielded-execution.md §7; xochi#633).
 // The package root exports this module. Each acknowledgement has its own primary type and
 // purpose string and is signed under `Domain (binding)` through the recipient message
 // wrapper (`recipientMessage`).
@@ -6,11 +6,11 @@
 // BackupPersistenceAck binds the exact randomized encrypted backup bytes and decoder
 // contract without exposing plaintext: `backupCommitment = keccak256(encryptedBackupBytes)`
 // and `backupFormatId` identifies the format. SenderRegistrationAck is the enrollment
-// acknowledgement for address-derived tagging, both designs since the 2026-11-01 D4
-// amendment (the bridge account on the design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited value and
-// transaction evidence. TokenRegistrationAck (xochi#753) states that the recipient PXE
-// registered the corridor's OxideToken at its class and stored its immutables; only an OxideToken
-// corridor requires it (`requiredEnrollmentAcks`, `shielded-oxide.ts`).
+// acknowledgement for address-derived tagging in both designs (the bridge account on the
+// design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited
+// value and transaction evidence. TokenRegistrationAck (xochi#753) states that the recipient
+// PXE registered the corridor's OxideToken at its class and stored its immutables; only an
+// OxideToken corridor requires it (`requiredEnrollmentAcks`, `shielded-oxide.ts`).
 // All four name the binding by its EIP-712 digest. BackupPersistenceAck,
 // SenderRegistrationAck and TokenRegistrationAck reuse that binding's exact `nonce` and
 // `challengeExpiry`, which `verifyRecipientAck` enforces; PaymentReceiptAck carries a separate
@@ -38,18 +38,21 @@ import {
   type RecipientDescriptor,
 } from "./shielded-recipient";
 import {
+  RefusalError,
   UINT64_MAX,
   assertAztecBytes32,
   bytes32,
   coder,
   keccak,
   parseShieldedAmount,
+  refuser,
   uint,
   describeUntrusted,
   withRefusalsAs,
   type ShieldedRefusal,
   type UintLike,
 } from "./shielded-values";
+import { typedDigest } from "./primitives";
 import type { Hex } from "./types";
 
 export type AckRefusal =
@@ -70,23 +73,12 @@ export type AckRefusal =
   | "token_mismatch"
   | "subject_mismatch";
 
-export class AckEncodingError extends Error {
-  readonly code: AckRefusal;
-  readonly field: string;
-  constructor(code: AckRefusal, field: string, detail: string) {
-    super(`${field}: ${code} (${detail})`);
-    this.name = "AckEncodingError";
-    this.code = code;
-    this.field = field;
-  }
+export class AckEncodingError extends RefusalError<AckRefusal> {
+  override name = "AckEncodingError";
 }
 
-const refuseAck = (code: AckRefusal, field: string, detail: string): never => {
-  throw new AckEncodingError(code, field, detail);
-};
-// The shared value rules, refusing as AckEncodingError.
-const ackRules = <T>(fn: () => T): T =>
-  withRefusalsAs(fn, (code, field, detail) => new AckEncodingError(code, field, detail));
+const refuseAck = refuser(AckEncodingError);
+const ackRules = <T>(fn: () => T): T => withRefusalsAs(fn, AckEncodingError);
 
 export interface BackupPersistenceAck {
   bindingDigest: string;
@@ -198,73 +190,70 @@ export function hashRecipientAck<T extends RecipientAckType>(
   primaryType: T,
   message: RecipientAckMessages[T],
 ): Hex {
-  return withRefusalsAs(
-    () => {
-      assertAckType(primaryType);
-      if (message.purpose !== RECIPIENT_ACK_PURPOSES[primaryType]) {
-        refuseAck("purpose_mismatch", "purpose", `expected ${RECIPIENT_ACK_PURPOSES[primaryType]}`);
-      }
-      let own: [string, unknown][];
-      if (primaryType === "BackupPersistenceAck") {
-        const a = message as BackupPersistenceAck;
-        own = [
-          ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-          ["bytes32", nonzeroDigest("backupCommitment", a.backupCommitment)],
-          [
-            "bytes32",
-            nonzeroDigest("backupFormatId", a.backupFormatId) === BACKUP_FORMAT_V1_ID
-              ? BACKUP_FORMAT_V1_ID
-              : refuseAck(
-                  "backup_format_mismatch",
-                  "backupFormatId",
-                  `expected ${BACKUP_FORMAT_V1_ID}`,
-                ),
-          ],
-        ];
-      } else if (primaryType === "SenderRegistrationAck") {
-        const a = message as SenderRegistrationAck;
-        own = [
-          ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-          ["bytes32", registeredSendersHash(a.registeredSenders)],
-        ];
-      } else if (primaryType === "TokenRegistrationAck") {
-        const a = message as TokenRegistrationAck;
-        own = [
-          ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-          ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
-          ["bytes32", assertAztecBytes32("aztecTokenClassId", a.aztecTokenClassId)],
-          ["bytes32", assertAztecBytes32("tokenImmutablesHash", a.tokenImmutablesHash)],
-        ];
-      } else {
-        const a = message as PaymentReceiptAck;
-        own = [
-          ["bytes32", nonzeroDigest("termsDigest", a.termsDigest)],
-          ["bytes32", nonzeroDigest("operationId", a.operationId)],
-          ["bytes32", hashNetworkIdentity(a.network)],
-          ["bytes32", nonzeroDigest("txHash", a.txHash)],
-          ["uint64", uint("blockNumber", a.blockNumber, UINT64_MAX)],
-          ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
-          ["uint256", parseShieldedAmount("amount", a.amount)],
-          ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-        ];
-      }
-      const members: [string, unknown][] = [
-        ["bytes32", ethers.id(RECIPIENT_ACK_TYPE_STRINGS[primaryType])],
-        ["bytes32", nonzeroDigest("bindingDigest", message.bindingDigest)],
-        ...own,
-        ["bytes32", nonzeroDigest("nonce", message.nonce)],
-        ["uint64", uint("challengeExpiry", message.challengeExpiry, UINT64_MAX)],
-        ["bytes32", ethers.id(message.purpose)],
+  return withRefusalsAs(() => {
+    assertAckType(primaryType);
+    if (message.purpose !== RECIPIENT_ACK_PURPOSES[primaryType]) {
+      refuseAck("purpose_mismatch", "purpose", `expected ${RECIPIENT_ACK_PURPOSES[primaryType]}`);
+    }
+    let own: [string, unknown][];
+    if (primaryType === "BackupPersistenceAck") {
+      const a = message as BackupPersistenceAck;
+      own = [
+        ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
+        ["bytes32", nonzeroDigest("backupCommitment", a.backupCommitment)],
+        [
+          "bytes32",
+          nonzeroDigest("backupFormatId", a.backupFormatId) === BACKUP_FORMAT_V1_ID
+            ? BACKUP_FORMAT_V1_ID
+            : refuseAck(
+                "backup_format_mismatch",
+                "backupFormatId",
+                `expected ${BACKUP_FORMAT_V1_ID}`,
+              ),
+        ],
       ];
-      return keccak(
-        coder.encode(
-          members.map(([t]) => t),
-          members.map(([, v]) => v),
-        ),
-      );
-    },
-    (code, field, detail) => new AckEncodingError(code, field, detail),
-  );
+    } else if (primaryType === "SenderRegistrationAck") {
+      const a = message as SenderRegistrationAck;
+      own = [
+        ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
+        ["bytes32", registeredSendersHash(a.registeredSenders)],
+      ];
+    } else if (primaryType === "TokenRegistrationAck") {
+      const a = message as TokenRegistrationAck;
+      own = [
+        ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
+        ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
+        ["bytes32", assertAztecBytes32("aztecTokenClassId", a.aztecTokenClassId)],
+        ["bytes32", assertAztecBytes32("tokenImmutablesHash", a.tokenImmutablesHash)],
+      ];
+    } else {
+      const a = message as PaymentReceiptAck;
+      own = [
+        ["bytes32", nonzeroDigest("termsDigest", a.termsDigest)],
+        ["bytes32", nonzeroDigest("operationId", a.operationId)],
+        ["bytes32", hashNetworkIdentity(a.network)],
+        ["bytes32", nonzeroDigest("txHash", a.txHash)],
+        ["uint64", uint("blockNumber", a.blockNumber, UINT64_MAX)],
+        ["bytes32", assertAztecBytes32("aztecToken", a.aztecToken)],
+        ["uint256", parseShieldedAmount("amount", a.amount)],
+        ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
+      ];
+    }
+    const members: [string, unknown][] = [
+      ["bytes32", ethers.id(RECIPIENT_ACK_TYPE_STRINGS[primaryType])],
+      ["bytes32", nonzeroDigest("bindingDigest", message.bindingDigest)],
+      ...own,
+      ["bytes32", nonzeroDigest("nonce", message.nonce)],
+      ["uint64", uint("challengeExpiry", message.challengeExpiry, UINT64_MAX)],
+      ["bytes32", ethers.id(message.purpose)],
+    ];
+    return keccak(
+      coder.encode(
+        members.map(([t]) => t),
+        members.map(([, v]) => v),
+      ),
+    );
+  }, AckEncodingError);
 }
 
 /** The acknowledgement's EIP-712 digest under `Domain (binding)` (`bindingDomain`). */
@@ -273,13 +262,7 @@ export function recipientAckDigest<T extends RecipientAckType>(
   message: RecipientAckMessages[T],
   domain: ShieldedDomain,
 ): Hex {
-  return keccak(
-    ethers.concat([
-      "0x1901",
-      shieldedDomainSeparator(domain),
-      hashRecipientAck(primaryType, message),
-    ]),
-  );
+  return typedDigest(shieldedDomainSeparator(domain), hashRecipientAck(primaryType, message));
 }
 
 /** What the verifier expects the acknowledgement to say, beyond the binding it names. */
@@ -511,9 +494,7 @@ function checkRecipientAck<T extends RecipientAckType>(
     "binding_mismatch",
     "bindingDigest",
     bindingDigest,
-    keccak(
-      ethers.concat(["0x1901", shieldedDomainSeparator(domain), hashRecipientBinding(binding)]),
-    ),
+    typedDigest(shieldedDomainSeparator(domain), hashRecipientBinding(binding)),
   );
   expectSame(
     "recipient_mismatch",

@@ -18,6 +18,7 @@
 // wrapper -- see `signUserOpHash` in `stealth.ts`.
 
 import { ethers } from "ethers";
+import { EIP712_DOMAIN_TYPEHASH, EVM_ADDRESS, coder, typedDigest } from "./primitives";
 
 /**
  * Canonical ERC-4337 v0.8 EntryPoint, the same address on every EVM chain
@@ -45,12 +46,6 @@ const PACKED_USEROP_TYPEHASH = ethers.keccak256(
   ),
 );
 
-const EIP712_DOMAIN_TYPEHASH = ethers.keccak256(
-  ethers.toUtf8Bytes(
-    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
-  ),
-);
-
 const DOMAIN_NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("ERC4337"));
 const DOMAIN_VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
 
@@ -60,7 +55,7 @@ const MAX_UINT128 = (1n << 128n) - 1n;
  * A UserOperation as Riddler serves it: unpacked v0.7-style field names, hex
  * quantities, with the paymaster fields filled in by sponsorship.
  *
- * Deliberately loose, for the same reason `Eip712Signable` is: this arrives from
+ * Loose, for the same reason `Eip712Signable` is: this arrives from
  * the network and every field is checked at the point it is used, rather than
  * coerced on the way in by a validator that could quietly change the preimage.
  */
@@ -133,14 +128,14 @@ function toBytes(value: unknown, field: string): string {
 /**
  * Validates an address by SHAPE, not by EIP-55 checksum.
  *
- * Deliberately not `ethers.getAddress`, which throws on a mixed-case address
+ * Not `ethers.getAddress`, which throws on a mixed-case address
  * whose checksum does not verify. Casing is not part of the ABI encoding, so a
  * checksum rule here would buy nothing and would refuse an honest claim over how
  * some server capitalised its own output -- the same reasoning behind
  * `sameAddressish` on the quote path.
  */
 function toAddress(value: unknown, field: string): string {
-  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+  if (typeof value !== "string" || !EVM_ADDRESS.test(value)) {
     throw new UserOperationError(
       `UserOperation.${field} is ${JSON.stringify(value)}, which is not an EVM address. Refusing to sign.`,
     );
@@ -211,7 +206,7 @@ function computeStructHash(op: UserOperationV08): string {
   ]);
 
   return ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
+    coder.encode(
       [
         "bytes32", // typehash
         "address", // sender
@@ -244,7 +239,7 @@ export function computeUserOpDomainSeparator(
   entryPoint: string,
 ): string {
   return ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
+    coder.encode(
       ["bytes32", "bytes32", "bytes32", "uint256", "address"],
       [
         EIP712_DOMAIN_TYPEHASH,
@@ -271,13 +266,7 @@ export function computeUserOpHash(
   entryPoint: string,
   chainId: bigint | number | string,
 ): string {
-  return ethers.keccak256(
-    ethers.concat([
-      "0x1901",
-      computeUserOpDomainSeparator(chainId, entryPoint),
-      computeStructHash(op),
-    ]),
-  );
+  return typedDigest(computeUserOpDomainSeparator(chainId, entryPoint), computeStructHash(op));
 }
 
 export interface DecodedErc20TransferCall {
@@ -308,7 +297,6 @@ export interface DecodedErc20TransferCall {
  */
 export function decodeErc20TransferExecute(callData: unknown): DecodedErc20TransferCall {
   const data = toBytes(callData, "callData");
-  const coder = ethers.AbiCoder.defaultAbiCoder();
 
   const refuse = (why: string): never => {
     throw new UserOperationError(
@@ -388,10 +376,7 @@ export function decodeCreateAccountCall(factoryData: unknown): DecodedCreateAcco
   }
 
   try {
-    const [owner, salt] = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["address", "uint256"],
-      "0x" + data.slice(10),
-    );
+    const [owner, salt] = coder.decode(["address", "uint256"], "0x" + data.slice(10));
     return { owner: String(owner), salt: BigInt(salt) };
   } catch {
     return refuse("does not decode as createAccount(address,uint256)");
