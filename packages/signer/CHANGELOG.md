@@ -4,6 +4,15 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser the signer's own modules use (canonical base-10 string, non-negative safe integer or bigint).
+- The five shielded `*EncodingError` classes expose the refusal `detail` as a property. Names, codes, fields and messages are unchanged.
+
+### Changed
+
+- XSP uint64 fields (`deadline`, `depositedAt`, `expiry`) refuse non-canonical spellings (`""`, `"0x10"`, `" 7"`, `"007"`, `"1e3"`, negatives, unsafe numbers) with "`<field>` must be a non-negative base-10 integer"; they were coerced by `BigInt`. Committed XSP vectors are unchanged.
+
 ## [0.7.0] - 2026-11-03
 
 ### Added
