@@ -22,7 +22,8 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Changed
 
-- **Docs-only restructure, no normative change** (every vector, schema, digest and RFC version is byte-identical): version history moves into this file from `SPEC.md` §0.2-§0.3, `SOLVER-RFC.md`'s "Changes in" sections and `ESCROW-RFC.md` §10; the rules those sections alone held now live in the body (`SOLVER-RFC.md` §4.2: `minOutput` derivation, retired announcement keys, the public-only rollout order and injected-transport validation). `ESCROW-RFC.md` §4 states the `fillId`-keyed `fill`, §10 carries the M6 invariants and kill switch, and §11's delivery plan leaves the RFC. Each rule has one home (escrow pinning `SPEC.md` §2.3; escrow-family type strings `ESCROW-RFC.md` §9.4; reserve derivability and public-only settlement `SOLVER-RFC.md` §4.2); conformance vector counts live only in `README.md`; the status legend is defined once in `SOLVER-RFC.md`. Stale `SolverDirectory` and `docs/ARCHITECTURE.md` references are replaced, and review-round narration leaves both RFCs' Appendix C.
+- **Docs restructure, no normative change**: version history moves here from `SPEC.md` §0.2-§0.3, `SOLVER-RFC.md` "Changes in" and `ESCROW-RFC.md` §10; the rules only those sections held now live in the body (`SOLVER-RFC.md` §4.2, `ESCROW-RFC.md` §4 and §10). Each duplicated rule has one home; `ESCROW-RFC.md` §11's delivery plan and the review-round narration leave the RFCs. Vectors, digests and RFC versions are byte-identical.
+- `exports` uses subpath patterns (`./*.md`, `./conformance/*.json`, `./fee/*.json`, `./erc8262/*.json`, the three `wire/` files). Every previously exported path resolves as before.
 
 - **`TokenRegistrationAck` status cleanup** (xochi#753): remove the stale `PROPOSED` labels and
   descriptive `oxideToken.proposed` field now that `@xochi/signer` 0.7.0 and xochi#805 consume the
@@ -30,6 +31,10 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 - **`conformance/shielded-terms.json`**: the `CorridorManifestV1` proposed note now defines the two digest preimages no source defined (decided 2026-11-02, xochi `shielded-execution.md` §7): `aztecTokenArtifactDigest` is sha256 of the raw compiled artifact JSON as published, `solverConstructorDigest` is the solver account's Aztec `initializationHash` (with the instance's salt, deployer, class id and public keys it recomputes the address). Note text only: type strings, typehashes and every digest are byte-identical.
 - **`conformance/shielded-recipient.json`**: `SenderRegistrationAck` `scope` is now `"both designs"` (was `"B-panel"`). D4 was amended on 2026-11-01 (xochi#719): the design-A testnet tracer delivers with address-derived tagging, so its recipients register the bridge account as a sender and sign this acknowledgement too (xochi#720). Label only: type string, typehash, vectors and signatures are byte-identical.
+
+### Fixed
+
+- `conformance/shielded-recipient.schema.json`: the refusal-code enum lists `digest_zero` and `backup_format_mismatch`, which the committed vectors already use; the vectors failed their own schema. Vectors are byte-identical.
 
 ## [0.12.0] - 2026-10-31
 

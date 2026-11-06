@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- `@xochi/signer` dependency range is `^0.7.0` (was `^0.6.0`); `viem` is `^2.57.7` (was `^2.21.0`).
+
 ## [0.1.10] - 2026-11-03
 
 Additive: existing disclosure fields and exports are unchanged.
