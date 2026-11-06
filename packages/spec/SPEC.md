@@ -26,271 +26,22 @@
 - **XochiIntent domain `version`**: deployment-scoped (`XOCHI_EIP712_VERSION`,
   e.g. `"3"`, `"3-prod"`). Binds signatures to a deployment. Clients MUST read it
   from `quote.eip712.domain.version` and MUST NOT hardcode it.
+- **Bump policy.** A server that advertises `spec_version` (§6) MUST advertise
+  this document's version, so the two move in lockstep. A change confined to a
+  companion RFC (each versions independently) or a documentation correction
+  that moves no wire byte, signed struct, fee artifact or vector does not move
+  the SPEC version. A wire refresh whose differ-BREAKING findings are all shapes
+  the producer already serves, on routes no taker flow calls, with no taker
+  signed struct, fee artifact or vector change, is a MINOR: this document then
+  records a break the server made rather than making one.
 
-### 0.2 Compatibility table
+### 0.2 Compatibility
 
-| SPEC | Server API | XochiIntent domain.version | Notes |
-|---|---|---|---|
-| 0.1.x | current | 3 | Documents today's wire contract |
-| 0.2.x | current | 3 | Layered fee model normative + conformance-tested (§4); additive only, no signature or wire-shape change |
-| 0.3.x | current | 3 | Escrow-reference envelope reserved (§5.2): typed, capability-flagged, absent by default. Additive only — inert until M6; no change to any signed struct or active wire field |
-| 0.4.x | current | 3 | Escrow design pinned in `ESCROW-RFC.md`: canonical `IntentTerms`/`orderId` preimage + fund-safety/proof/activation model. Still RESERVED/inert — no signer wired, conformance unchanged |
-| 0.4.1 | current | 3 | Corrects the §4.2 stable solver spread to the deployed rate (8 bps, not 10). `fee/schedule.json` + `fee/vectors.json` regenerated; every stable-asset vector changes. No wire-shape or signature change |
-| 0.5.0 | current | 3 | Solver bid sealing pinned by `conformance/bid.json` (SOLVER-RFC §5.1). Additive: a new vector artifact for a surface that was previously unpinned. No change to any taker signed struct or wire field |
-| 0.12.0 | current | 3 | 2026-10-31 wire refresh (Riddler #1370, #1371, #1388): the readiness relay request is tightened (`recipient_authorization` required, nonzero/decimal patterns, `RootUpdateEnvelope` with `204`), `readiness_not_enabled` is withdrawn (a disabled relay now answers `404`, not `422`), `source_finalized` is a new non-terminal status, plus `/xochi/shielded/quote` and three error codes. 18 differ-BREAKING, all on the readiness relay routes no taker flow calls; MINOR by judgement (§0.3). No taker signed struct, vector or fee artifact changes |
-| 0.11.0 | current | 3 | Shielded recipient (descriptor digest, recipient message, three recipient acknowledgements) and pxe-bridge readiness attestation conformance vectors, plus the 2026-10-28 wire refresh (0 differ-BREAKING). Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes. Docs: §3.2 `aztec_proof` is now do-not-send; §3.4/§5.1 shielded status is the served scalars only; `[PROPOSED]` SOLVER-RFC §13 and ESCROW-RFC §5.1 tier 1s (RFC versions unchanged) |
-| 0.10.0 | current | 3 | Shielded terms and preview, corridor manifest, solver registration, and Canton destination order-id conformance vectors. Additive: existing vectors remain byte-identical; no active taker signed struct or wire field changes |
-| 0.9.0 | current | 3 | ERC-8262 provider protocol (§10): `/.well-known/erc8262-provider.json` discovery and `/v1/erc8262/` evidence schemas, the `sourceId`/`claimType`/`trustDomainId`/`attestorProviderId` identifiers, native and gateway vectors (`erc8262/`). Also the 2026-10-26 wire refresh (§0.3), which is not purely additive: 8 differ-BREAKING served deltas accepted, and `/xochi/execute` retry behaviour changes (§3.5). No taker signed struct or existing vector changes |
-| 0.8.1 | — | 3 | Never published: ships inside `0.9.0`. Release-hygiene PATCH: no wire field, signed struct or vector changes; carries the corrected `wire/compare.mjs` (unresolvable served `$ref` graded BREAKING) |
-| 0.8.0 | current | 3 | XSP hash primitives (`ESCROW-RFC 0.4.0-draft` §13, riddler #1223): `XochiObligation` EIP-712 `obligationId`, Depository CallRequest/MarkConsumed digests, deposit-address derivation, pinned by `conformance/xsp.json`. Additive; no taker signed struct or wire field changes |
-| 0.7.0 | current | 3 | Slash proof on solver signatures (`SOLVER-RFC 0.4.0-draft`, `ESCROW-RFC 0.3.0-draft`): SolverBid v2 (`conformance/solver-bid-v2.json`, replaces `bid.json`), FillAcceptance (`conformance/fill-acceptance.json`), SolverBond v2 domain `"2"` (`slash-attestation.json` regenerated). No taker signed struct or wire field changes |
-| 0.6.0 | current | 3 | Escrow order v2 (`ESCROW-RFC 0.2.0-draft`): blinded `destCommitment` in `orderId`, venue `OpenAuth`, reserved envelope reshaped (`order_terms` + `dest_opening` + `open_auth`). Still RESERVED/inert; §2.1 and the conformance suite unchanged |
+| SPEC | XochiIntent domain.version |
+|---|---|
+| `0.1.0-draft` to `0.12.0` | `3` |
 
-### 0.3 Change log
-
-- `0.1.0-draft`: initial extraction of the existing wire contract.
-- `0.2.0`: §4 (fee model) promoted from prose to normative, pinned by
-  `fee/schedule.json`, `fee/vectors.json` and `fee/schema.json`.
-- `0.3.0`: §5.2 escrow-reference envelope promoted from prose-reserved to a
-  typed, capability-flagged field catalog on quote/execute/status (§3) and
-  `/capabilities` (§6). **RESERVED and inert:** the fields are absent unless the
-  escrow capability is advertised, and MUST NOT enter any signed struct — the
-  §2.1 XochiIntent stays 12 fields and the §2.3 escrow pull-auth binding stays
-  reserved. Fields are populated and the §2.3 binding activates at M6.
-- `0.4.0`: escrow design pinned in `ESCROW-RFC.md`: the canonical
-  `IntentTerms`/`orderId` preimage (deferred from `0.3.0`, §5.2.2), the
-  `RiddlerEscrow`/`RiddlerFiller` interface, the proof-of-fill verifier tiers
-  and the activation semantics. `@xochi/signer`'s
-  `computeOrderId`/`assertEscrowBinding` and `@xochi/solver-sdk`'s
-  `StubEscrowGateway` are **not** wired into any signer, so conformance is
-  unchanged. Activated at M6.
-- `0.4.1`: **corrects the stable solver spread from 10 bps to 8** in §4.2, the
-  rate a conformant server has charged since 2026-08-01. The venue reverted the
-  rate (riddler #753, xochi #361) hours after `0.4.0` froze the schedule, and
-  the artifacts were never regenerated, so 9 of the 16 `fee/vectors.json`
-  vectors overstated every stable-asset quote by 2 bps. Stable headline totals
-  are `22/19/15/12/10` (were `24/21/17/14/12`); volatile is unchanged.
-- `0.5.0`: solver bid sealing pinned by `conformance/bid.json`, previously
-  covered only by server-side tests. `SOLVER-RFC.md` §5.1 holds the canonical
-  bytes and the vectors' weighting. Drift does not fail loudly; it rejects
-  every honest bid. The scheme was **not frozen** at this version, and has
-  since moved to EIP-712 typed data (`SOLVER-RFC 0.2.0-draft`).
-- **Solver bid sealing moved to EIP-712, and the SPEC version does not move.**
-  `conformance/bid.json` is regenerated under the domain `RiddlerSolver`/`1`
-  with a `hasExpiry` presence member, and the `Bid` wire shape is unchanged.
-  The scheme is normative in `SOLVER-RFC.md` §5.1, which versions
-  independently (§7 reserves the solver surface to it), and no taker signed
-  struct or wire field is touched — so a bump here would claim a change to the
-  taker contract that did not happen, and would redden the `spec_version` drift
-  probe against every server serving `0.5.0`.
-- **Solver announcement break, and the SPEC version does not move either.**
-  `SOLVER-RFC 0.3.0-draft` renames `IntentAnnouncement.reserveOutput` →
-  **`minOutput`** (an admissibility floor, not the venue's reserve) and
-  **removes `trustScore`**. Nothing signed moves: the announcement is read-only
-  for solvers, never enters a signed struct, and `conformance/bid.json`
-  regenerated byte-identical — so no §2 taker struct, no §4 fee artifact and no
-  conformance vector changes, and a bump here would misreport a taker-contract
-  change to every consumer of `spec_version`. Recorded here because the RFC
-  version is the only versioned signal for the break: the announcement is a
-  `/solver/*` field, and a maker's migration checklist is
-  `SOLVER-RFC.md` "Changes in `0.3.0-draft`" plus the `0.2.0` entry of
-  `packages/solver-sdk/CHANGELOG.md`.
-- **Documentation corrections, no version bump and no wire change:** §3.4 and
-  §3.5 recorded facts the server never served. §3.4 listed a terminal
-  `refunded` (absent from `IntentLifecycleStatus`) and omitted the served
-  non-terminal `bridging`; §3.5 named a stable `quote_expired` (absent from the
-  42-member `ErrorCode` enum) and hung a single-retry SHOULD on it. Both now
-  read the served enums, vendored at `wire/openapi.json` and probed against the
-  live document nightly. §3.5's replacement is a bounded re-quote rule keyed on
-  the shared 404 and on session state — whether a `pull_signature` has left the
-  client — rather than on a code that does not exist. The wire did not
-  move, so the version does not: a bump would claim a server change that never
-  happened.
-- **The `refunded` correction above is itself superseded (2026-09-24).** When it
-  was written the server did not serve `refunded`; the solver refund path now
-  serves both `refunded` (terminal) and `refund_pending` (non-terminal), per
-  Riddler `intent_status.ex` `@terminal_statuses`. 3.4 carries the current set.
-  The entry is kept rather than rewritten so the history of what the server
-  served when stays readable.
-- **Wire refresh against served `0.8.0` (2026-10-06), and the SPEC version does
-  not move.** The served document gained the Canton destination (chain
-  `253340876`, `vm_type: cvm`, `address_format: canton_party`, a third
-  `ChainAddress` branch for party ids), the escrow capability and envelope
-  schemas, `chains[].roles`/`escrow_address`, the `escrow_refused` /
-  `escrow_unavailable` codes, and `202`/`503` on `/xochi/execute`; the `/xochi/quote`
-  `429` is now declared inline instead of by `$ref`, with the same schema and
-  headers. §3.2, §3.3, §3.5 and §6 now read those shapes. The server already
-  serves `0.8.0` and the `spec_version` probe requires this document to equal the
-  served label, so a bump would claim a contract the server does not advertise.
-  §6's escrow rule (the advertised escrow addresses are discovery, never a pin,
-  and an escrow-bearing quote is refused without the §2.3 binding) applies §2.3
-  to the newly served fields; it constrains clients and moves no wire byte.
-  The refresh is not purely additive: the differ graded two changes BREAKING and
-  it was installed with `--allow-breaking`. Each is acceptable for a stated
-  reason. (1) `POST /xochi/quote` `429` lost its `$ref`: the inlined response
-  carries the same schema and headers, so no byte a client sends or reads moves.
-  (2) `ChainAddress.oneOf` widened from two branches to three (the Canton party
-  id): no request a client built against the old copy becomes invalid, and only a
-  strict decoder of a response field typed `ChainAddress` (`recipient_address` on
-  `QuoteResponse`/`IntentStatus`) can newly fail, and only on a Canton route,
-  which such a client never requested. The one client-visible hazard is §3.3's: a
-  party id is case-sensitive and may begin `0x`, so folding case on every
-  `0x`-prefixed value names a different party.
-- **Wire refresh against served `0.8.0` (2026-10-12), and the SPEC version does
-  not move.** Prod shipped xochi#584 (promo codes): `QuoteRequest` gained the
-  optional `promo_discount_bps` (integer, `0..10000`, default `0`) and
-  `LayeredFeeBreakdown` the optional `discount {source, bps, amount}`, present
-  only when the request carried a positive `promo_discount_bps`. §3.3 and §4.5
-  read both. The differ graded the delta `0 BREAKING, 2 STALE`; no §2 struct,
-  §4 schedule, vector or reconciliation rule changes (`venue_fee` and
-  `routing_fee` are already net of the discount). The version stayed `0.8.1`
-  (itself folded into `0.9.0`, below): the server still advertised `0.8.0`
-  and was moving to `0.8.1` (riddler #1285);
-  a MINOR here would move the lockstep target a second time for two optional
-  fields the served `0.8.0` already carries.
-- `0.12.0`: the wire copy is refreshed from prod on 2026-10-31, after Riddler
-  #1370, #1371 and #1388 deployed (`--allow-breaking`: 18 BREAKING, 8 STALE).
-  STALE: `POST /xochi/shielded/quote` (the design-A tracer quote, `404` unless
-  the tracer is enabled), the non-terminal status `source_finalized` (§3.4),
-  the optional `IntentStatus.cantonUpdateId`, the `RecipientDescriptor`,
-  `RootUpdateEnvelope` and `RootUpdateRecord` schemas, a `204` on
-  `POST /xochi/readiness/root-update`, and the error codes
-  `shielded_terms_conflict`, `shielded_unavailable` and `insufficient_inventory`.
-  BREAKING: every finding but one is on the readiness relay
-  (`/xochi/readiness/*`), which is off by default and answers `404` in prod:
-  `ReadinessRequest` requires `recipient_authorization`, its 32-byte hex fields
-  refuse zero, its decimal chain/version fields admit `0`, `corridor.revision`
-  admits `0`, `descriptor` is a `RecipientDescriptor` `$ref`,
-  `ReadinessAttestationResponse` refuses extra keys, and the root-update body is
-  a `RootUpdateEnvelope` answered `204` (no `200`). The other is the withdrawal
-  of `readiness_not_enabled` from `ErrorCode` (§3.5). **So `0.12.0` is not
-  purely additive.** It is a MINOR by the same judgement as `0.9.0`: each
-  BREAKING finding records a change the producer already serves, on routes no
-  taker flow calls, and none touches a taker signed struct, fee artifact or
-  vector (every vector is byte-identical to `0.11.0`). The server MUST
-  advertise `spec_version: "0.12.0"` in lockstep.
-- `0.11.0`: additive conformance for the shielded recipient and its readiness
-  evidence. `conformance/shielded-recipient.json` pins the `RecipientDescriptor`
-  digest and stock `SchnorrAccount` address derivation (Aztec 5.2.0 and 6.0.0),
-  the wide-reduction recipient message, and the `BackupPersistenceAck`,
-  `SenderRegistrationAck` and `PaymentReceiptAck` encodings under
-  `Domain (binding)`. `conformance/shielded-readiness.json` pins the
-  `Membership`, `RecipientDeployment` and `RootUpdate` attestations under the
-  `Xochi Shielded Readiness` domain. `shielded.json`'s `open` list drops the two
-  entries these sets now specify; no prior vector byte moves. The wire copy is
-  refreshed from prod (`0 BREAKING, 8 STALE`: the readiness relay endpoints,
-  Canton TestNet, two readiness error codes). The server MUST advertise
-  `spec_version: "0.11.0"` in lockstep.
-
-  `0.11.0` also carries documentation changes with no wire, signature or
-  vector change. §3.2 reverses its instruction on `aztec_proof`: `0.10.0` said
-  to treat "required for `shielded`" as normative and send it; it is unused by
-  every producer and consumer, so do not send it. §3.4 and §5.1 describe the
-  shielded status surface as served, the nullable scalars `noteCommitment`,
-  `nullifierHash` and `l2TxHash` (no array of note hashes or nullifiers is
-  served), with shielded not offered; §5.1 adds that, before shielded is
-  offered, every Worker intent read not authenticated as the intent wallet's
-  session MUST receive the status-only view. `SOLVER-RFC.md` gains
-  `[PROPOSED]` §13 (firm liquidity) and `ESCROW-RFC.md` gains `[PROPOSED]`
-  §5.1 proof-of-fill tier 1s for shielded-Aztec legs, with §6 slash wording
-  and the `[BUILT, UNDEPLOYED]` status; neither `rfcVersion` moves.
-- `0.10.0`: additive conformance for three surfaces. `conformance/shielded-terms.json`
-  pins the proposed `ShieldedTermsV1`, non-signable `ShieldedPreviewV1` and
-  `CorridorManifestV1` encodings. `conformance/solver-registration.json` pins
-  bonded solver registration signatures, outcomes and freshness bounds.
-  `conformance/order-id.json` gains Canton mainnet/testnet destinations and a
-  party-recipient case-sensitivity case; all 11 prior vectors are byte-identical.
-  No active taker signed struct or wire field changes. The server MUST advertise
-  `spec_version: "0.10.0"` in lockstep.
-- `0.9.0`: ERC-8262 provider protocol (§10, xochi-sdk#37). New artifact set
-  `erc8262/`: `provider-discovery.schema.json` (served at
-  `/.well-known/erc8262-provider.json`), `provider-evidence.schema.json`
-  (served at `/v1/erc8262/evidence/{evidenceId}`), and `vectors.json` (+
-  `vectors.schema.json`) with native, gateway, alias and impostor fixtures, 25
-  schema rejections, 322 evaluation cases (§10.5) and 23 quorum cases (§10.6),
-  generated by `npm run generate:erc8262`. Defines `sourceId`, `claimType`,
-  `trustDomainId` and `attestorProviderId` (the Oracle `providerId`), the
-  consumer allowlist that pins each trust domain to one attestor per
-  deployment, the binding of each evidence to the Oracle-verified proof it
-  feeds (its recorded inputs, identity and the consumer's statement), quorum
-  over attestors per (`claimType`, `proofType`), the fetch contract, the
-  durable observation store, and the replay, rotation and revocation rules.
-  The §10 contract is additive, as `0.8.0` was for XSP: no §2 taker struct, §4
-  fee artifact or existing vector changes. The server MUST
-  advertise `spec_version: "0.9.0"` in lockstep; until it does the
-  `spec_version` probe reports DRIFT, which is correct.
-
-  `0.9.0` also carries the wire refresh against served `0.8.0` taken
-  2026-10-26 (xochi-sdk#53). The served document gained Riddler #1315, #1318,
-  #1321, #1336, #1346 and #1347: `QuoteRequest.customer_ref`,
-  `QuoteResponse.input_amount_usd`, `checks`/`timestamp` on
-  `/xochi/health/ready`, multi-chain stealth (`stealth_chains`,
-  `chains[].stealth_factory_address`, `chain_id` on both claim prepare forms),
-  `/xochi/execute`'s not-accepted and not-executed markers with `Retry-After` on
-  its `429`/`503` and the top-level `ErrorResponse.retry_after`,
-  `execute_ownership`, and `intentId`/`claimed` on `ClaimSubmitResult`. §3.2,
-  §3.3, §3.5, §5.1 and §6 read those shapes (§5.1 also reads #1302's shielded
-  refusal, served in prose the differ does not compare). Client behaviour on
-  `/xochi/execute` changes with it (§3.5): an unmarked `503` is in doubt rather
-  than transient, `quote_store_unavailable` is resent only when marked not
-  accepted, and the sole-caller exception relaxes the re-quote bound for the
-  quote's owner.
-
-  **So `0.9.0` is not purely additive.** The refresh was installed with
-  `--allow-breaking`: the differ graded 8 served deltas BREAKING, and §0.1 makes
-  a breaking wire change a MAJOR. The version is a MINOR anyway, by judgement:
-  every one of the 8 is a shape the producer already serves under `0.8.0`, so
-  this document records a break the server made rather than making one, and a
-  MAJOR here would move the lockstep `spec_version` target for a contract
-  change the server shipped without one. Each is acceptable for a stated
-  reason. (1)–(2) The
-  `/xochi/execute` `404` and `429` lost their `$ref`: the inlined responses keep
-  the `ErrorResponse` schema (the `429` adds `Retry-After` and `x-ratelimit-*`
-  headers). (3)–(4) The `/xochi/health/ready` `503` schema became `allOf` of
-  `ErrorResponse` and a `details {checks, timestamp}` object: a narrowing of an
-  operational body no taker flow reads. (5)–(7) `ClaimSubmitResult` gained the
-  required `intentId` and `claimed`: a response gaining fields; only a decoder
-  that refuses unknown keys breaks, and no request changes. (8)
-  `CapabilityMatrix.stealth_factory_address` became nullable (and deprecated):
-  `null` on a deploy whose `stealth_chains` is empty. `@xochi/signer` no longer
-  reads the top-level field; it reads `chains[].stealth_factory_address`
-  through `stealthFactoryFor`. No signed struct,
-  fee artifact or vector changes. Riddler #1286 (merged, not yet deployed)
-  advertises `0.9.0` without touching the OpenAPI.
-- `0.8.1`: never published; its changes ship inside `0.9.0`, the version the
-  server must advertise next (above). PATCH-sized, with no wire, signature or
-  vector change: the second adversarial review's fixes, and the tarball's
-  `wire/compare.mjs` unresolvable-`$ref` fix.
-- `0.8.0`: XSP obligation (riddler #1223; `ESCROW-RFC 0.4.0-draft` §13).
-  New vector artifact `conformance/xsp.json` (+ schema) pinning the
-  user-signed `XochiObligation` EIP-712 digest (`obligationId`, domain
-  `"Xochi Settlement"`/`"4"`, no version field, no flat preimage), the
-  `refundCommitment`, the Allocator-signed `XochiDepository`
-  CallRequest/MarkConsumed digests and the deposit-address derivation (#548).
-  XSP `destAmount` is EXACT, unlike the escrow floor `toAmount`, which is
-  unchanged. Hash-only and additive: no §2 taker struct, §4 fee artifact or
-  existing vector changes.
-- `0.7.0`: slash proof on solver signatures (`SOLVER-RFC 0.4.0-draft`,
-  `ESCROW-RFC 0.3.0-draft` §6.1). Solver-surface only: SolverBid v2 binds the
-  escrow `orderId`, an absolute `validUntilMs` and `minExclusiveMs`
-  (`conformance/solver-bid-v2.json`; `bid.json` and the v1 scheme removed); the
-  winner co-signs a FillAcceptance over its FillAuth on the SolverBond v2 domain
-  (`conformance/fill-acceptance.json`), and that domain's version `"2"`
-  regenerates `slash-attestation.json`. No taker byte-contract changes.
-- `0.6.0`: escrow order v2 (riddler #1208, #1209; `ESCROW-RFC 0.2.0-draft`).
-  The reserved `orderId` preimage is replaced: `orderId = keccak256(abi.encode(
-  ORDER_TYPEHASH, OrderTerms))` whose destination (recipient, token, amount,
-  intentId) enters only as a venue-blinded `destCommitment`, and `fromToken` is
-  now an address. §2.3: under escrow the ERC-3009 nonce MUST equal `orderId`
-  and the witness binds the v2 `orderId`. §5.2: `escrow.intent_terms` becomes
-  `escrow.order_terms` + `escrow.dest_opening`, `escrow.open_auth` is added, and
-  refunds open at `fill_deadline + claimWindow`. Vectors:
-  `conformance/order-id.json` (replaced), `open-auth.json`, `dest-blinding.json`.
-  Still RESERVED: no signer is wired, so §2.1 and the conformance suite are
-  unchanged. `@xochi/signer`'s v1 `IntentTerms` API is removed.
-- XochiIntent domain-version history: `1 → 2` added `recipient`; `2 → 3` retyped
-  `fromToken`/`toToken` from `address` to `string` (cross-VM base58 support) and
-  removed `nonce` from the signed struct.
+History: [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -317,7 +68,7 @@ move escrowed principal to itself or an arbitrary address.
 
 All signatures are EIP-712 typed-data unless stated otherwise. A compliant signer
 MUST reproduce the `digest`, `signature`, and `signed_object` of every vector in
-the conformance suite (§7) byte-for-byte, and `ecrecover(digest, signature)` MUST
+the conformance suite (§8) byte-for-byte, and `ecrecover(digest, signature)` MUST
 equal the expected signer.
 
 ### 2.1 XochiIntent (v3)
@@ -354,7 +105,10 @@ EIP712Domain(string name, string version, uint256 chainId, bytes32 salt)
 
 - `name` = `"Xochi"`.
 - `version` = deployment-scoped (default `"3"`; override `XOCHI_EIP712_VERSION`).
-  Clients MUST take it from the quote, never hardcode.
+  Clients MUST take it from the quote, never hardcode. Domain-version history:
+  `1 → 2` added `recipient`; `2 → 3` retyped `fromToken`/`toToken` from
+  `address` to `string` (cross-VM base58 support) and removed `nonce` from the
+  signed struct.
 - `chainId` = the intent's `fromChainId`.
 - `salt` = `keccak256(utf8Bytes(version))`, binding a signature to the
   deployment.
@@ -401,7 +155,11 @@ with the offset pointer stripped.
 > obtained outside the venue channel, never `escrow.address` or the advertised
 > `escrow_address` (§6): those are the venue's word, and a venue that names
 > its own address everywhere is self-consistent. An absent pin or an uncovered
-> origin chain refuses. A pull whose `to`/`spender` equals a caller-pinned
+> origin chain refuses. A recipient pin naming the escrow (the SDK's
+> `expectedPullRecipients`) is NOT sufficient: it binds only the pull's
+> `to`/`spender`, never the `orderId` (the ERC-3009 nonce or Permit2 witness)
+> whose terms decide where the lock pays. A client MUST refuse an escrow-bearing
+> quote unless it runs this binding. A pull whose `to`/`spender` equals a caller-pinned
 > escrow for its origin chain MUST be treated as escrow-bearing -- run the
 > §2.3 binding or refuse -- whether or not the quote carries `escrow`: the
 > envelope is venue-supplied, and dropping it is how an escrow pull would
@@ -445,16 +203,13 @@ server-parity list in §2.1.
 
 ## 3. HTTP transport
 
-> Source of truth: `GET /xochi/openapi.json` — vendored at `wire/openapi.json`
-> **reformatted** to sorted-key 2-space JSON, so not byte-identical to the served
-> bytes: what is guaranteed is the structure and every numeric literal in the
-> spelling the producer served (the reformat emits each number from its own
-> source token, so a refresh cannot re-spell one and there is no flag that lets
-> it), not the byte layout or key order. It sits
-> beside its digest — of that formatted
-> file — and is compared to the live document nightly by `verify:openapi`, so a
-> claim made here about a served enum is one CI can fail on. This section records
-> auth, the endpoint list, and semantics not expressible in the schema.
+> Source of truth: `GET /xochi/openapi.json`, vendored at `wire/openapi.json`
+> beside its digest and compared to the live document nightly by
+> `verify:openapi`, so a claim made here about a served enum is one CI can fail
+> on. The copy is reformatted: structurally the served document with every
+> numeric literal spelled as served, not byte-identical (see
+> [`wire/README.md`](wire/README.md)). This section records auth, the endpoint
+> list, and semantics not expressible in the schema.
 
 ### 3.1 Auth
 
@@ -483,7 +238,7 @@ no field carrying it, `@xochi/client` never sends it, the xochi Worker accepts
 it and never forwards it, and Riddler parses it as optional and never reads it.
 Do not send it. It stays in the vendored `wire/openapi.json` until it leaves the
 served schema; removing it from `ExecuteRequest` is a lockstep wire change with
-Riddler (then `npm run generate:wire`), and this paragraph goes with it.
+Riddler (then a wire refresh, `wire/README.md`), and this paragraph goes with it.
 
 **Stealth claims are chain-bound by `chain_id`.** The counterfactual account is
 the same CREATE2 address on every chain, so a `/xochi/claim/prepare` without
@@ -540,16 +295,15 @@ Terminal statuses: `completed`, `refunded`, `failed`, `expired`. Non-terminal:
 `pending`, `pull_pending`, `executing`, `bridging`, `settling`,
 `source_finalized`, `refund_pending`.
 That is the served `IntentLifecycleStatus` in full (Riddler
-`lib/riddler/integrations/xochi/schemas/intent_status.ex`, `@terminal_statuses`),
-re-checked 2026-10-31. `source_finalized` is served only on the shielded
+`lib/riddler/integrations/xochi/schemas/intent_status.ex`, `@terminal_statuses`).
+`source_finalized` is served only on the shielded
 tracer path (`POST /xochi/shielded/quote`, then `/xochi/execute`): the source
 leg is collected and there is no EVM destination payout, so such an intent
 rests there and is never `completed` by this path; a client MUST keep it
-non-terminal. An earlier revision of this section recorded that
-`refunded` "has never been served"; the solver refund path now serves both it
-and `refund_pending`, so a client that rejects unlisted states breaks on a live
-refund, and one that treats `refund_pending` as terminal stops polling one hop
-early. Status MAY carry
+non-terminal. A client MUST accept `refunded` and MUST treat `refund_pending`
+as non-terminal: one that rejects unlisted states breaks on a live refund, and
+one that treats `refund_pending` as terminal stops polling one hop early.
+Status MAY carry
 `settlementType`, `settlementConfirmed`, `txHash`/`receivingTxHash`/`refundTxHash`,
 `refundReason`/`substatus`, and stealth (`stealthAddress`, `ephemeralPubKey`,
 `counterfactualAddress`) / shielded (scalars `noteCommitment`, `nullifierHash`,
@@ -561,13 +315,10 @@ absent.
 ### 3.5 Error envelope & retry
 
 Errors are `HTTP status + { error: <code>, message?, details? }`; only `error`
-is required. Codes come from the served `ErrorCode` enum — append-only, never
-repurposed, and catalogued in `wire/openapi.json` rather than here, because a
-list in prose is a list that goes stale. One code has been withdrawn:
-`readiness_not_enabled`, which a deploy with the readiness relay off answered
-(`422`) from the 2026-10-28 refresh (`0.11.0`) until Riddler #1388; the relay
-now answers `404` when it is off, so a client MUST NOT depend on the code.
-Its own classification: 4xx is
+is required. Codes come from the served `ErrorCode` enum, append-only, never
+repurposed, and catalogued in `wire/openapi.json` rather than here. One code is
+withdrawn: `readiness_not_enabled` (a readiness relay that is off answers
+`404`); a client MUST NOT depend on it. Its own classification: 4xx is
 client-actionable (fix the request or re-quote), 503 is transient (except on
 `POST /xochi/execute`, where an unmarked 503 is in doubt, below), 500
 `internal_error` is the server's. Codes carrying a rule beyond that:
@@ -626,19 +377,16 @@ to the answer: it reports what the server read, and says nothing about a claim
 another request makes after it. When the markers may lift the re-quote bound
 below is the sole-caller exception there, and nowhere else.
 
-**A stale quote has no stable code.** This document previously named
-`quote_expired` and hung a single-retry SHOULD on it; that code is not in the
-served enum, and no served response pins one for the condition. On
+**A stale quote has no stable code.** No served response pins one for the
+condition. On
 `POST /xochi/execute` a quote evicted from the store answers `404 not_found`
 ("Quote not found or expired"), which an unknown quote and another `kid`'s quote
 also answer by design, while a stored but expired quote is refused `422
 validation_failed` (`quote: ["quote expired"]`) under the execute lock;
 elsewhere an expired quote answers the shared 404 (`Intent / quote not found or
 expired`), and the enum carries both `not_found` and `quote_not_found` without
-saying which applies. So
-the single-retry SHOULD is not implementable as written: a client cannot tell a
-stale quote from an unknown one. In its place, and until the server pins a
-code:
+saying which applies, so a client cannot tell a stale quote from an unknown
+one. Until the server pins a code:
 
 - On that 404 a client MAY re-quote and retry **at most once**, and MUST
   surface the failure if the retry answers 404 again — but only while **no
@@ -692,9 +440,8 @@ code:
   the re-quote as a recovery of the original intent: the retry is a new quote
   and a new intent, subject to §3.3 in full.
 
-Pinning a distinct code is a server change and **no tracker exists for it yet**
-— file one against Riddler and reference it here, at which point this becomes a
-code-conditional retry rule again.
+Pinning a distinct code is a server change; once one is served, this becomes a
+code-conditional retry rule.
 
 ---
 
@@ -868,31 +615,25 @@ the intent to its Aztec transaction for whoever holds that key.
 `ESCROW-RFC.md` §5.1 ("Recipient") keeps the tx off any such read for its
 `[PROPOSED]` shielded release, so before shielded is offered under it these
 fields leave that read or become owner-scoped there, in lockstep with
-Riddler. The xochi Worker's intent read (`GET /api/intent/:id` and its
-`/status`) carries the same link and more. As served today (xochi `main`)
-it checks no ownership and takes no read token: whoever holds the intent
-id reads the full record (the tokens and amounts, `quote_id`, `tier`,
-`fee_rate`, the Aztec note hash, every tx hash with its chain id,
-`created_at`, `updated_at` and any error), for a stealth intent as for any
-other, so until xochi#565 lands an intent id is a bearer credential for
-all of it. xochi#565 (open, not merged; xochi#563) adds a status-only view
-(`legs_withheld: true`) for a caller that does not prove ownership of a
-stealth or shielded intent: on `/api/intent/:id` only `id`, `status`,
-`from_chain_id`, `to_chain_id`, `settlement_type` and
-`settlement_confirmed`; on `/status` only `intent_id`, `status`,
-`terminal`, the two chain ids, `settlement_type` and
-`settlement_confirmed`. It also proposes a bearer read token
-(`X-Xochi-Read-Token`), which whoever holds it can present and which reads the
-full record. Before shielded is offered, **every read not authenticated as the
-intent wallet's session MUST receive the status-only view**, whether or not it
-presents a read token; no token may reveal the Aztec note hash, amounts,
-transaction hashes or error. This must land in lockstep with the Worker before
-`SHIELDED_SETTLEMENT_LIVE` can be enabled.
-Every other field (the tokens and amounts, `quote_id`, `tier`, `fee_rate`, the
-Aztec note hash, every tx hash with its chain id, `created_at` and `updated_at`,
-and any error, substatus or refund text, under whatever names the Worker serves
-them) goes only to a session for the intent's wallet. The view is an allowlist,
-so a field the Worker adds later stays owner-only until it is added deliberately.
+Riddler.
+
+The xochi Worker's intent read (`GET /api/intent/:id` and its `/status`,
+xochi#565) carries the same link and more. For a stealth or shielded intent it
+serves the full record only to a session for the intent's wallet or to the
+per-intent read token (`X-Xochi-Read-Token`) minted at execute; any other
+caller gets a status-only view (`legs_withheld: true`): on `/api/intent/:id`
+only `id`, `status`, `from_chain_id`, `to_chain_id`, `settlement_type` and
+`settlement_confirmed`; on `/status` only `intent_id`, `status`, `terminal`,
+the two chain ids, `settlement_type` and `settlement_confirmed`. Before
+shielded is offered, **every read not authenticated as the intent wallet's
+session MUST receive the status-only view**, whether or not it presents a read
+token; this lands in lockstep with the Worker before
+`SHIELDED_SETTLEMENT_LIVE` can be enabled. Every other field (the tokens and
+amounts, `quote_id`, `tier`, `fee_rate`, the Aztec note hash, every tx hash
+with its chain id, `created_at` and `updated_at`, and any error, substatus or
+refund text, under whatever names the Worker serves them) goes only to a
+session for the intent's wallet. The view is an allowlist, so a field the
+Worker adds later stays owner-only until it is added deliberately.
 A list of withheld fields would not hold: the origin `tx_hash` is a public
 transaction whose block dates the move and whose transfer gives the
 amount, which `fee_rate` and `tier` map to `from_amount` through the
@@ -900,7 +641,7 @@ published fee schedule (§4); a note hash and a nullifier are public
 effects in the Aztec transaction's block; a timestamp narrows that block
 as a block number does; and a `transfer_to_private` spends a public
 balance, so its amount is public and, with a time, narrows the candidates
-further. Residual, once xochi#565 lands: the status-only view is readable
+further. Residual: the status-only view is readable
 by intent id alone, and polling it dates each lifecycle move, the move to
 `completed` among them, to within the poll interval; closing that needs an
 owner-only status read, which the Worker does not serve.
@@ -980,7 +721,7 @@ activates (§2.3, `ESCROW-RFC.md` §7).
 
 The proof-of-fill surfaced on status once a fill is claimed. `proof_tier` is the
 verifier strength for the corridor (`attested → optimistic → verified`;
-`docs/ARCHITECTURE.md §6`, glossary Appendix C); `proof` mirrors the solver-side
+`ESCROW-RFC.md` §5); `proof` mirrors the solver-side
 `FillProof` tagged union (SOLVER-RFC §6).
 
 | Field | Type | Meaning |
@@ -1042,9 +783,9 @@ corridors[] }`, a per-chain `chains[].escrow_address`, and
 corridor a `public` quote carries `escrow` and its pull `to`/`spender` is the
 escrow address rather than `pull_recipients[chain].erc3009`/`permit2`.
 
-Every escrow address this document advertises -- `chains[].escrow_address` and `pull_recipients[chain].escrow` -- is **discovery only, never a pin**: it arrives over the same channel as the quote (§2.3), and a venue that names its own address everywhere is self-consistent. A client MUST refuse an escrow-bearing quote unless it runs the §2.3 escrow binding against a **caller-pinned** escrow per origin chain, obtained outside the venue channel (`@xochi/signer` `assertEscrowBinding` with `EscrowBinding.expectedEscrows`). A recipient pin naming the escrow (the SDK's `expectedPullRecipients`) is NOT sufficient: it binds only the pull's `to`/`spender`, never the `orderId` (the ERC-3009 nonce or Permit2 witness) whose terms decide where the lock pays.
-
-A pull whose `to`/`spender` equals a caller-pinned escrow for its origin chain MUST be treated as escrow-bearing -- run the §2.3 binding or refuse -- whether or not the quote carries `escrow`: the envelope is venue-supplied, and dropping it is how an escrow pull would reach a client that skips the binding.
+Every escrow address this document advertises (`chains[].escrow_address`,
+`pull_recipients[chain].escrow`) is discovery only, never a pin; the §2.3
+escrow binding applies.
 The TypeScript SDK does not run the escrow binding yet and refuses every
 escrow-bearing quote before signing.
 
@@ -1053,8 +794,8 @@ escrow-bearing quote before signing.
 ## 7. Solver protocol — see the Solver RFC
 
 The maker-side protocol (discovery feed, **sealed-bid best-output RFQ**,
-exclusive window + reserve bid, fill proof, reputation, bonds/slashing,
-`SolverDirectory`) is specified in [`SOLVER-RFC.md`](SOLVER-RFC.md). It is an
+exclusive window + reserve bid, fill proof, reputation, bonded registration,
+bonds/slashing) is specified in [`SOLVER-RFC.md`](SOLVER-RFC.md). It is an
 additive `/solver/*` surface that does not affect §2–§6. The auction is a
 sealed-bid RFQ (the dark-pool / OTC mechanism); the trust-minimized endgame is a
 committed-bid or frequent-batch auction, **not** on-chain Dutch decay. The
@@ -1105,7 +846,7 @@ provider-protocol conformance is separate, with its own vectors (§10.8).
 
 ## 9. Versioning & deprecation policy
 
-See §0.1 and `docs/ARCHITECTURE.md §10`. Server dual-serves SPEC major N and N-1
+See §0.1. Server dual-serves SPEC major N and N-1
 during migrations; deprecations announced one MINOR before removal, enforced no
 sooner than one MAJOR later.
 
@@ -2177,8 +1918,8 @@ configuration (a smaller deployment maximum, its own nodes) instead.
 
 ## Appendix A — Canonical test vectors
 
-- **Signatures:** `conformance/conformance.json` (45 vectors: 9 ERC-3009 + 19
-  Permit2 + 17 Xochi), schema `conformance/schema.json`.
+- **Signatures:** `conformance/conformance.json` (vector counts per protocol:
+  [README.md](README.md)), schema `conformance/schema.json`.
 - **Fees:** `fee/vectors.json` (16 vectors: the tier × asset_class matrix,
   attestation gating, ACP waiver, price impact, per-layer floor truncation),
   schema `fee/schema.json`, schedule `fee/schedule.json`.
@@ -2191,17 +1932,11 @@ configuration (a smaller deployment maximum, its own nodes) instead.
 
 Added as additive MINOR bumps behind capability flags:
 
-- **Escrow-reference envelope (§5.2, reserved at `0.3.0`):** `escrow.address`,
-  `escrow.order_id` (v2 `orderId`), `escrow.fill_deadline`,
-  `escrow.order_terms` + `escrow.dest_opening` (§5.2.2, reshaped at `0.6.0`),
-  `escrow.open_auth`, `escrow.proof_receipt`
-  (`ProofReceipt`, §5.2.3) on quote/execute/status; `escrow { enabled,
-  proof_tiers[] }` + per-chain `escrow_address` on `/capabilities`. Inert until
-  M6 (does not activate the §2.3 pull-auth binding; no signed-struct change).
+- **Escrow envelope:** §5.2, §6.
 - **ZK-attestation fields**, **multi-solver fee attribution (§4).**
 
 ## Appendix C — Glossary
 
 Intent, announcement, bid, award, exclusive window, fill proof, reserve bid,
-backstop, `SolverDirectory`, `SolverReputation`, `OrderTerms`, `DestOpening`, `OpenAuth`, proof-of-fill
+backstop, `SolverRegistration`, `SolverReputation`, `OrderTerms`, `DestOpening`, `OpenAuth`, proof-of-fill
 tier (attested / optimistic / verified).

@@ -17,296 +17,22 @@
 
 ### Implementation-status legend
 
-Every subsection is tagged with where it stands **today** (survey of the Riddler
-server, 2026-08-10). An **As built** note describes what axol-io/riddler
-#770–#774 (merged 2026-08-09) actually serves.
+Shared with `ESCROW-RFC.md`. Each subsection's heading tag is its status;
+**As built** notes describe what Riddler serves; branch and PR state live only
+in Appendix A.
 
-`[IMPLEMENTED]` means merged to axol-io/riddler `master`, not reachable. The
-`/solver/*` surface is served only when `SOLVER_RFQ_ENABLED=true`; with the flag
-off every path 404s, indistinguishable from a deploy that never had the surface.
-Both that flag and `SOLVER_ANNOUNCE_ON_QUOTE` default to off, so a default
-deploy announces nothing and answers nothing.
-
-- **`[IMPLEMENTED]`** — exists in the Riddler server today. The sealed-bid
-  surface landed in #770–#774 (2026-08-09); older entries predate it.
-- **`[PROPOSED]`** — net-new; MUST be built server-side before it is real.
-- **`[DEPRECATED]`** — exists but is being removed; MUST NOT be built on.
-- **`[RESERVED]`** — depends on the non-custodial escrow (`SPEC.md` §5.2, M6);
+- **`[IMPLEMENTED]`**: merged to axol-io/riddler `master`, not necessarily
+  reachable. The `/solver/*` surface is served only when
+  `SOLVER_RFQ_ENABLED=true`; with the flag off every path 404s,
+  indistinguishable from a deploy that never had the surface. Both that flag
+  and `SOLVER_ANNOUNCE_ON_QUOTE` default to off, so a default deploy announces
+  nothing and answers nothing.
+- **`[PROPOSED]`**: net-new; MUST be built server-side before it is real.
+- **`[DEPRECATED]`**: exists but is being removed; MUST NOT be built on.
+- **`[RESERVED]`**: depends on the non-custodial escrow (`SPEC.md` §5.2, M6);
   additive and capability-flagged when it lands.
 
-### Changes in `0.6.0-draft`
-
-Lockstep: the venue's `rfcVersion` and `SOLVER_RFC_VERSION` move together
-(§12), so a `0.5.0-draft` solver refuses a `0.6.0-draft` venue at its pre-bid
-check and vice versa.
-
-- **`canton_update` proof kind** (§6, Riddler #1194): a fill on a Canton
-  destination is proved by `{ kind: "canton_update", updateId }`, the
-  ledger update id of the transfer to the recipient party. A Canton fill has
-  no transaction hash: the id is an opaque string, neither hex nor
-  fixed-length, so it is not squeezed into `tx_hash`. It is **case-sensitive**
-  and travels verbatim; a venue or solver MUST NOT case-fold, trim or
-  re-encode it, and a venue refuses an empty or whitespace-padded id `400`.
-  The kind carries no chain id: the award it binds to names the destination.
-  Additive: every existing kind, signed struct and vector is unchanged, and a
-  `0.5.0-draft` venue answers this kind `400` (unknown kind, fail closed).
-- **Non-EVM destinations on the announcement** (§4.2, clarification): a
-  Canton `toChainId` is the ADR-0014 synthetic id (MainNet `253340876`;
-  TestNet's is above `2^31`, so a port MUST NOT hold it in an int32), and
-  `toToken` is the Canton Coin instrument admin party, a case-sensitive string
-  a solver MUST compare byte-for-byte. Nothing on the wire changes shape.
-- **Canton escrow orders** (ESCROW-RFC §2.4): `order-id.json` gains
-  `canton-mainnet-destination`, `canton-party-recipient-case` (the same order
-  with only the party hint's case changed: every key, commitment and orderId
-  differs) and `canton-testnet-destination`. No encoding moves; existing
-  vectors are byte-identical.
-- **Bonded permissionless admission** (§3.1, Riddler #1198): a solver
-  registers itself at `POST /solver/register` with an EIP-712
-  `SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)`
-  signed by its `solverId` key on the bid's `RiddlerSolver`/`"2"` domain,
-  naming the SolverBond the venue advertises (`admission.bond` on
-  `GET /solver/capabilities`, new; `admission.model` is
-  `bonded_permissionless` while registration is open). The venue admits a key
-  whose active stake meets the bond's minimum and answers a short-lived
-  session token, sent on every other request as `Authorization: Bearer`.
-  **Breaking for every solver:** the `SolverDirectory` allowlist and its
-  operator-issued `X-API-Key` secret are withdrawn, so a `0.5.0-draft`
-  solver's credential is refused `401`. New vector set
-  `conformance/solver-registration.json` (a stale and two wrong-domain
-  cases); no existing signed struct or vector moves.
-- **Reputation, probation and exposure caps** (§8, Riddler #1199): a panel
-  award is scored fill / no-show from its final escrow outcome, every solver
-  starts on probation, and award selection skips a bidder whose in-flight
-  awarded notional would pass its cap (`bondUsd × collateralFactor`, lower on
-  probation, shrunk by no-shows). The solver reads its standing in the
-  registration response. Reputation no longer breaks ties.
-- **Typed refusals** (§9.1): every registration refusal is permanent or
-  transient, and every authentication refusal on the rest of the surface is
-  one `401` whose remedy is registering again.
-- **Quote-through corridors** (§2.5, Riddler #1193): on a corridor the venue
-  cannot fill, `/xochi/quote` waits out the sealed window and the taker's price
-  IS the panel's best firm bid, settled **second-price** against `minOutput`
-  as the reserve -- a **public** reserve there: the announced floor is the
-  only one, so the reserve-privacy claims of §2.1 do not apply to these
-  corridors. Such an announcement carries `quoteThrough: true` and
-  `minValidUntilMs`; a bid whose `validUntilMs` is below it is admissible and
-  never awarded. `GET /solver/capabilities` gains `quoteThrough`
-  (`settleRule`, `quoteTtlSeconds`, `corridors`) while a corridor is listed.
-  Additive: both keys are absent on every other announcement and venue, and no
-  signed struct moves (SolverBid v2 already signs `validUntilMs`).
-
-### Changes in `0.5.0-draft`
-
-**Nothing signed moves**, so `conformance/solver-bid-v2.json`,
-`fill-acceptance.json` and every escrow set regenerate byte-identical. The
-version moves because a solver built to `0.4.0-draft` accepts awards this
-revision tells it to decline, and that skew surfaces as slashed bonds, not as a
-refusal (§12). One announcement-wire change also lands inside this revision
-(the producer withdrawal below): `settlementPreference` narrows to `"public"`
-and `recipientCommitment` is removed. A parser built before it still accepts
-everything a withdrawn producer emits; narrowing the parser (SHOULD, §4.2) is
-defence in depth, not the privacy boundary.
-
-- **Decline, never skip** (§7.1 step 4): a solver MUST NOT accept while the
-  origin escrow's `claimsPaused()` is true or while the origin claim signer
-  lacks gas for the claim. After acceptance both are warnings; only
-  destination time past `fillAuth.deadline` stops an owed fill.
-- **More of the award verified before accepting** (§7.1 steps 1 and 3): new
-  are `fillAuth.amount <= award.output`, `escrow.payee` (when sent) equal to
-  `fillAuth.filler`, and `destOpening.intentId` equal to the award's. The
-  ceiling itself is not new -- `0.4.0-draft` already required `amount <=` the
-  solver's own bid output at acceptance (§5.1, §5.3) -- it is now also checked
-  at step 3, before anything is accepted; `award.output` is a consistency
-  check, not the ceiling.
-- **One acceptance per order** (§5.3): a solver accepts at most one FillAuth
-  per `orderId`. A re-delivered award naming a different `fillId` for an order
-  it already accepted is refused with nothing signed: every per-`fillId` rule
-  passes a fresh `fillId`, and filling it pays the recipient a second time
-  while the lock repays once.
-- **A durable acceptance record before the POST** (§5.3): the record that
-  triggers a resume MUST be durable after the acceptance is signed and before
-  its POST begins (SDK: `accept(prepared, { onSigned })`, awaited between the
-  two; a throw from it stops the POST). One written once `accept` returns
-  misses a process that dies during the POST, which the venue may have
-  stored, and the restart then owes a fill it does not know about. A record
-  written before signing triggers the full pre-signing checks again, never a
-  resume.
-- **One nonce slot per send** (§7.1 steps 6–7): an ambiguous fill or claim is
-  resolved by observation, re-broadcast, and replaced only at the same nonce;
-  a consumed nonce alone does not prove a send never landed. An accepted fill
-  MUST be re-driven, not only observed: re-broadcast while it is unresolved,
-  and sent again when the node refused it or nothing was sent. The SDK's
-  rescue runs only when `fill()` is called again, so a solver calls it on
-  every poll until the fill is `confirmed` or `already_filled`.
-- **A reverted fill is retried, not abandoned** (§7.1 step 6): a fill
-  returned `reverted` is sent again while destination chain time is before
-  `fillAuth.deadline` -- nothing of that send can land, a transient revert
-  (a fill mined behind an allowance reset) clears, and every resend is gated
-  by the preflight's `staticCall`, so a deterministic revert sends nothing.
-  `0.4.0-draft` broadcast a fill at most once.
-- **Claims are retried until `refundableAt`** (§7.1 step 7), and a `Claimed`
-  lock counts as repayment only if its `Claimed` event names this payee.
-- **Producer clarification: the quote-time floor carries no taker-chosen
-  value** (§4.2, "Migrating from `0.2.0-draft`" step 1). The quote-time
-  `minOutput` is the venue's quoted output less a fixed, venue-wide announce
-  margin (`SOLVER_ANNOUNCE_FLOOR_BPS`, default 50), capped on cross-token
-  routes at the pair's advertised `max_slippage_bps`, and no longer the quote
-  less the taker's own `slippage_bps`. That provenance recovered each taker's
-  slippage tolerance to 1 bp from `(fromAmount − minOutput) / fromAmount`, a
-  stable per-integrator quasi-identifier. Nothing signed or parsed changes,
-  so this is a clarification inside `0.5.0-draft` and `rfcVersion` does not
-  move.
-- **Producer withdrawal: the announcement is public-only and carries no
-  `recipientCommitment`** (§§2.2, 2.4, 4.2). `settlementPreference` stays a
-  REQUIRED field, narrowed on the announcement to the single value
-  `"public"`; a venue MUST NOT announce a stealth or shielded intent, and
-  `recipientCommitment` is withdrawn, so the announcement carries no
-  standalone recipient identifier (an escrow `orderId` stays bound to the
-  blinded `destCommitment`, §2.2). A keyed commitment hid the recipient but
-  not the flow: route, size and timing of a private intent were exact to
-  every panel member, and the panel is meant to open to permissionless,
-  bonded admission (§9, P3).
-  Taker settlement types are untouched: stealth and shielded remain taker
-  choices, served (where they are served at all) by the venue's own solver
-  and no longer put to the panel. Nothing signed moves (the announcement is
-  read-only for solvers), so this is a withdrawal inside `0.5.0-draft` and
-  `rfcVersion` does not move. The order is fixed:
-  0. **Prerequisite: the venue serves `0.5.0-draft`.** A solver compares
-     `rfcVersion` exactly before consuming the feed (§12), so no SDK
-     advertising `0.5.0-draft`, before or after this withdrawal, can read a
-     venue still serving `0.4.0-draft`. Riddler's bump is a separate change
-     (Riddler PR #1245, open at this writing) and must be deployed before or
-     with step 1.
-  1. **The producer withdraws first** (Riddler #1200): it stops announcing
-     non-public intents and stops emitting the commitment, then old
-     publishers and the feed's retention ring drain. A private announcement
-     already published is disclosed and cannot be retracted.
-  2. **Consumers filter as defence in depth, not as the privacy boundary.**
-     `@xochi/solver-sdk`'s `HttpSolverTransport` refuses an announcement
-     whose `settlementPreference` is not `"public"` as a malformed feed entry
-     (reported to `onInvalidEvent`, or thrown without one; never passed to
-     `solver.quote()`) and deletes a `recipientCommitment` from the parsed
-     announcement, as it does the keys retired in `0.3.0-draft`. An injected
-     `SolverTransport` bypasses that parse and MUST validate each event
-     itself with the exported `parseSolverEvent`. Like that delete, the
-     filter protects only a panel member who chooses not to look.
-  3. **Private flow comes back only under a separately reviewed design**:
-     an encrypted or commit-reveal auction (§2.4) whose disclosure to the
-     panel is itself reviewed, never by re-admitting a value here.
-
-### Changes in `0.4.0-draft`
-
-**Breaking.** The slash proof moves onto solver signatures, so a compromised
-venue API node can no longer fabricate, withhold or shrink an award and get an
-honest bonded solver slashed.
-
-- **SolverBid v2** (§5.1): domain `RiddlerSolver`/`2`, signs `orderId`,
-  absolute `validUntilMs` and `minExclusiveMs`; `expiryMs`/`hasExpiry` removed.
-  Vectors: `conformance/solver-bid-v2.json` (replaces `bid.json`).
-- `IntentAnnouncement.orderId` (§4.2): the escrow order sold, zero for a
-  non-escrow auction.
-- **FillAcceptance** (§5.3): the winner co-signs the exact FillAuth on the
-  SolverBond v2 domain and records it at `POST /solver/awards/:auctionId/accept`
-  before filling; `Award.escrow.bond` carries that domain. Vectors:
-  `conformance/fill-acceptance.json`. SolverBond v2 verifies it on-chain before a
-  slash (ESCROW-RFC §6), and its domain version `"2"` also changes every
-  `SlashAttestation` digest (`conformance/slash-attestation.json` regenerated).
-
-### Changes in `0.3.0-draft`
-
-**Breaking, and again taken before the panel opens.** The announcement no longer
-publishes the venue's reserve.
-
-- `reserveOutput` → **`minOutput`** (§4.2). The field now carries the
-  **admissibility floor** — the lowest output the venue will settle at for this
-  intent — and NOT the venue's reserve bid. The reserve is private (§2.1),
-  except on a quote-through corridor (§2.5, `0.6.0-draft`), where the floor IS
-  the reserve and is therefore public.
-- **`trustScore` removed** (§4.2). It had no legitimate solver use: the taker's
-  fee tier discounts the *venue* and *routing* layers, never the solver spread,
-  which is the never-discounted floor. Its actual effect was to hand the panel
-  the tier and so collapse 12–18 bps of reserve uncertainty, and it is a
-  quasi-identifier on the same argument the raw score was rejected for.
-
-Rationale, measured rather than argued: publishing the exact reserve makes
-`reserve + ε` the dominant strategy, which is worth **exactly zero** improvement
-to the taker with one third-party solver. Four live prod quotes showed
-`to_amount = from_amount × (1 − total_bps/10000)` exactly — invariant to
-corridor and to a 14× change in the gas floor — so the reserve was a public
-function of the request and withholding it alone changes nothing. The analysis
-and the closed forms are axol.io's internal decision memo (Riddler
-`docs/economics/AUCTION-DISCLOSURE-MEMO.md`, internal); the figures this RFC
-relies on are restated here and in §2.1, so it stands without it.
-
-Also in `0.3.0-draft`, clarifications rather than changes — the bytes were
-already what they are, so `conformance/bid.json` is untouched:
-
-- the `expiryMs` reference point (a **duration** from `closesAt`), its
-  canonical absent spelling (`null`, and an omitted key is the same value) and
-  its `0 .. 2^53−1` range are now normative in §5.1;
-- the lapse boundary at selection is stated (`selectionTime >= closesAt +
-  expiryMs`), so a stated `expiryMs: 0` demonstrably cannot win;
-- `422` (output below `minOutput`) joins the typed-rejection list in §5.1,
-  where only the maker-facing docs and the reference auctioneer had it;
-- §5.1.1 records what the digest does **not** bind (deployment, intent terms,
-  the expiry anchor), each with its successor.
-
-**Migrating from `0.2.0-draft`** (announcement-side only; nothing signed
-moves). Steps 1 and 2 are the **producer's**, and they are the ones that make
-this revision real; steps 3 and 4 are the consumer's:
-
-1. **Emit `minOutput` as a newly computed value. This is NOT a rename of
-   `reserveOutput`.** A venue MUST derive it by one of the two provenances
-   §4.2 defines — under an **execute-time** announcement the taker's signed
-   `XochiIntent.toAmount`; under a **quote-time** announcement the quote the
-   taker is being shown **less the venue-wide announce margin** (never a
-   per-taker parameter; §4.2) — and MUST
-   NOT emit the venue's reserve under the new key. In particular a producer
-   MUST NOT satisfy this step by renaming the field it already emits: §4.2
-   states `minOutput` MUST NOT be the quoted output, which *is* the reserve,
-   and `@xochi/solver-sdk`'s `types.ts` asserts the same to its callers, so
-   a re-labelled reserve ships a number both this RFC and the SDK tell a
-   solver is not the reserve — and the panel prices `minOutput + ε`, which is
-   the `reserve + ε` dominant strategy this revision exists to remove.
-2. **Stop emitting `reserveOutput` and `trustScore`.** The withdrawal is the
-   producer's to make and cannot be delegated to the consumer: the party the
-   reserve is withheld from is the panel member, and the panel member is who
-   runs the client. `@xochi/solver-sdk` deletes both keys from the parsed
-   announcement (`IntentAnnouncementSchema`), which stops them reaching
-   `solver.quote()` through `.passthrough()`, but a delete after `JSON.parse`
-   protects only a member who chooses not to look — `curl` on the feed, a
-   one-line fork, or the `raw` value in the SDK's `onInvalidEvent` hook all
-   still yield both fields while a producer sends them. No probe covers
-   `/solver/*`, so **no check on either side observes whether a deployment has
-   landed this step**; until it has, assume the panel can read both.
-3. **Consumers: re-read §4.2** — `minOutput` is a floor, not the number to
-   beat, so pricing that keyed on `reserveOutput + ε` now bids into a reserve
-   that is not disclosed (§2.1, which is a disclosure claim and not an
-   unpredictability one) and loses. Delete every read of `trustScore`. Both
-   retired keys MAY still arrive until step 2 lands somewhere, and a venue
-   still serving either one is a deployment that has not landed this change,
-   not a signal.
-4. gate on `SOLVER_RFC_VERSION` (§12) rather than a copied literal: the digests
-   did **not** change across this bump, so nothing else in the stack will tell
-   you the two sides disagree.
-
-No signed struct changes: the `Bid` wire shape and `conformance/bid.json` are
-untouched by the announcement change, and the announcement is read-only for
-solvers.
-
-### Changes in `0.2.0-draft`
-
-**Breaking, and deliberately taken before the panel opens (§9 P1).** Bid sealing
-moved from an EIP-191 `personal_sign` over a JSON string to **EIP-712 typed
-data** (§5.1). The `Bid` **wire shape is unchanged** — same five fields, same
-`POST /solver/bids` — only the digest the signature commits to changed, so an
-implementation that did not sign is unaffected.
-
-Pre-1.0, a breaking change lands as a MINOR bump (SemVer §4). It is taken now
-because the old scheme had no domain separation at all and because migrating a
-live panel is the expensive version of this change: the failure mode is silent,
-every honest bid simply stops recovering to its claimed signer.
-`conformance/bid.json` is regenerated and must land in lockstep with the server.
+History: [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -316,7 +42,7 @@ every honest bid simply stops recovering to its claimed signer.
   interacts with solvers directly; the signed intent stays with the venue.
 - **Venue / Auctioneer (Riddler)**: runs the sealed RFQ, picks the winning bid,
   coordinates settlement, and runs its own solver as the reserve/backstop. A
-  **trusted off-chain sealed-RFQ auctioneer** (ARCHITECTURE §12 decision #1):
+  **trusted off-chain sealed-RFQ auctioneer**:
   trusted to run the sealed round honestly and not leak bids. That trust is
   acceptable *because settlement is non-custodial*: origin funds are escrowed
   against a proven fill, never paid to a solver on trust (§7).
@@ -349,30 +75,15 @@ the winner receives an exclusive fill window (§6).
   and a **price floor**: the taker can never do worse than the venue's own
   quote. A third-party solver wins only by **strictly** beating the reserve —
   equal output loses, so the taker is never settled below the venue's own quote.
-- **The reserve is NOT disclosed to the panel — which is not the same as
-  unpredictable.** (This and the paragraphs below describe a corridor the
-  venue fills itself. On a quote-through corridor, §2.5, there is no private
+- **The reserve is NOT disclosed to the panel, which is not the same as
+  unpredictable.** (On a quote-through corridor, §2.5, there is no private
   reserve: the announced `minOutput` is the reserve.) The announcement carries
   `minOutput`, the admissibility floor (§4.2); the reserve bid is private to
-  the auctioneer. These are two
-  different numbers and a solver MUST NOT treat `minOutput` as the value it has
-  to beat: a bid at `minOutput + ε` is *admissible* and still loses to the
-  reserve. Publishing the reserve makes `reserve + ε` dominant and yields zero
-  improvement at one third-party solver, which is why it was withdrawn in
-  `0.3.0-draft`. But withholding it removed the **field**, not its
-  derivability: the reserve is `fromAmount × (1 − total_bps/10000)`, measured
-  exactly on four live prod quotes (Riddler
-  `docs/economics/AUCTION-DISCLOSURE-MEMO.md` §7.1, internal),
-  and the schedule supplying `total_bps` is published and pinned (`SPEC.md`
-  §4). What is left after `0.3.0-draft` is the panel not knowing the **taker's
-  fee tier**, which is what `trustScore` used to hand it: the stable headline
-  totals are `22/19/15/12/10`, so the residual is the tier spread — the
-  internal memo
-  scores it at 12 bps of effective window, worth 1.33 bps of taker improvement
-  at a 33% panel win rate (memo §2.3) — and it is **zero** for a taker whose
-  tier the panel can guess. The uncertainty the mechanism actually wants
-  arrives only with a genuinely private component in the venue's pricing (memo
-  D1d) or an explicitly sized bin (D1b), neither of which is served yet.
+  the auctioneer. These are two different numbers and a solver MUST NOT treat
+  `minOutput` as the value it has to beat: a bid at `minOutput + ε` is
+  *admissible* and still loses to the reserve. Publishing the reserve would
+  make `reserve + ε` dominant and yield zero improvement at one third-party
+  solver. How far the reserve is derivable anyway: §4.2.
 - **Exclusive-window backstop.** If the awarded solver does not fill within its
   exclusive window (§6), the venue's solver fills at the reserve.
 - **Settlement variant.** First-price best-output (winner delivers the output it
@@ -437,13 +148,9 @@ that binding is the only recipient-derived value on the wire. Neither field
 is inline identity, but `orderId` is public on the origin chain once the lock
 opens: the panel can join an executed escrow RFQ to `Opened(orderId, ...)`
 and its depositor. A venue MUST
-announce only intents with `settlementPreference: "public"` (§4.2). Both
-rules are the `0.5.0-draft` producer withdrawal: `[PROPOSED]` until Riddler
-#1200 merges to `master`, and the privacy property holds only once it is
-deployed and the feed has drained. A
-stealth or shielded intent is not put to the panel: a commitment can hide
-who is paid, but not that a private intent of this size crossed this
-corridor at this time. The panel is every solver that has registered against
+announce only intents with `settlementPreference: "public"`; both rules, their
+rollout and the producer's status are §4.2 "Public settlement only". The
+panel is every solver that has registered against
 the venue's SolverBond (§3.1): the bond, not an allowlist, is the cost of
 seeing the flow, and how much a solver may win is capped by its bond and record
 (§8).
@@ -458,9 +165,8 @@ centralizes flow to the fastest infrastructure rather than the best price.
 
 ### 2.4 Decentralization endgame  `[PROPOSED]`
 
-`SPEC.md` §7 previously reserved *on-chain Dutch decay* as the permissionless
-endgame. **This RFC supersedes that**: public on-chain Dutch decay reintroduces
-the pre-trade leakage of §2.3. The trust-minimized target instead SHOULD be one of:
+Public on-chain Dutch decay reintroduces the pre-trade leakage of §2.3, so it
+is not the permissionless endgame. The trust-minimized target SHOULD be one of:
 
 - **Committed / encrypted sealed bids** — solvers submit `commit(bid)` on-chain
   or to a threshold committee, then `reveal` after the window closes. Removes
@@ -510,12 +216,10 @@ await new SolverClient({ baseUrl, solverKey }).run(solver);
 
 ### 3.1 Admission: bonded permissionless registration  `[PROPOSED]`
 
-**As built:** Riddler #1198 on `feat/solver-registration-reputation`, not yet
-merged; `@xochi/solver-sdk` implements the solver side (`signRegistration`,
-`SolverSession`, `HttpSolverTransport`). It replaces the `SolverDirectory`
-allowlist and its operator-issued `X-API-Key` secret, which are withdrawn: no
-operator issues a credential, and any key that has posted the bond can
-register.
+**As built:** `@xochi/solver-sdk` implements the solver side
+(`signRegistration`, `SolverSession`, `HttpSolverTransport`); venue status:
+Appendix A. No operator issues a credential: any key that has posted the bond
+can register.
 
 **The bond.** A venue that admits solvers advertises the SolverBond it gates
 on at `GET /solver/capabilities` (public, §12):
@@ -690,7 +394,7 @@ the signed `XochiIntent` and
 origin-pull authorization stay with the venue, so the venue rebuilds the digest
 server-side (`SPEC.md` §2).
 
-**Non-EVM destinations.** A Canton destination (`0.6.0-draft` clarification)
+**Non-EVM destinations.** A Canton destination
 announces its ADR-0014 synthetic `toChainId` -- an ordinary positive integer,
 `253340876` on MainNet and above `2^31` on TestNet, so a port MUST NOT hold it
 in an int32 -- and its `toToken` as the Canton Coin instrument admin party
@@ -698,15 +402,41 @@ in an int32 -- and its `toToken` as the Canton Coin instrument admin party
 byte-for-byte and never case-folds it, as it may an EVM address. Its fill is
 proved with `canton_update` (§6).
 
-**Public settlement only** `[PROPOSED]` until Riddler #1200 merges to
-`master`; the property holds only once it is deployed and the feed has
-drained (see the producer note below).
-`settlementPreference` stays on the wire and stays
-REQUIRED, but on the announcement it has exactly one value, `"public"`. The
-taker-side settlement types (`SPEC.md`) are unchanged; a stealth or shielded
-intent is simply not announced (§2.2), and the venue's own solver serves it
-where it is served at all. A consumer SHOULD refuse an announcement carrying
-any other value as malformed, not price it.
+**Public settlement only.** `settlementPreference` stays on the wire and stays
+REQUIRED, but on the announcement it has exactly one value, `"public"`: a venue
+MUST NOT announce a stealth or shielded intent, and the announcement carries no
+`recipientCommitment` or other standalone recipient identifier (§2.2). A keyed
+commitment hides who is paid but not the flow: route, size and timing of a
+private intent are exact to every panel member. The taker-side settlement
+types (`SPEC.md`) are unchanged; the venue's own solver serves a stealth or
+shielded intent where it is served at all. A consumer SHOULD refuse an
+announcement carrying any other value as malformed, not price it. Producer
+status: Appendix A; the property holds only once the producer is deployed and
+the feed has drained.
+
+The withdrawal moves no `rfcVersion`, so the pre-bid version check (§12) does
+not catch a venue that has not landed it; it is safe only because it narrows
+what a venue emits, and its guard is this order:
+
+0. **The venue serves the narrowed SDK's `rfcVersion`** (a solver compares it
+   exactly before consuming the feed, §12), deployed before or with step 1.
+1. **The producer withdraws first**: it stops announcing non-public intents
+   and stops emitting the commitment, then old publishers and the feed's
+   retention ring drain. A private announcement already published is
+   disclosed and cannot be retracted.
+2. **Consumers filter as defence in depth, not as the privacy boundary.**
+   `@xochi/solver-sdk`'s `HttpSolverTransport` refuses an announcement whose
+   `settlementPreference` is not `"public"` as a malformed feed entry
+   (reported to `onInvalidEvent`, or thrown without one; never passed to
+   `solver.quote()`) and deletes a `recipientCommitment` from the parsed
+   announcement. A solver on `HttpSolverTransport` before the feed has drained
+   MUST set `onInvalidEvent`: without it, a retained non-public entry ends
+   `SolverClient.run`. An injected `SolverTransport` bypasses that parse and
+   MUST validate each event itself with the exported `parseSolverEvent`. The
+   filter protects only a panel member who chooses not to look.
+3. **Private flow comes back only under a separately reviewed design**: an
+   encrypted or commit-reveal auction (§2.4) whose disclosure to the panel is
+   itself reviewed, never by re-admitting a value here.
 
 **As built:**
 
@@ -742,6 +472,15 @@ any other value as malformed, not price it.
   renamed reserve from making `minOutput + ε` dominant; it keeps nothing
   private. What the fixed margin buys is that the floor carries no
   taker-chosen value, and a venue MUST NOT reintroduce one.
+- **Retired keys.** A producer MUST NOT emit the venue's reserve as
+  `minOutput` (relabelling the field that carries the reserve does not satisfy
+  either provenance above) and MUST NOT emit the retired keys `reserveOutput`
+  or `trustScore`. `@xochi/solver-sdk` deletes both from the parsed
+  announcement (`IntentAnnouncementSchema`), which protects only a member who
+  chooses not to look (`curl` on the feed, a fork, or `onInvalidEvent`'s
+  `raw`), and no probe covers `/solver/*`: a solver assumes the panel can read
+  both while any producer sends them, and a venue sending either is one that
+  has not landed the withdrawal, not a signal.
 - **Announcement mode discriminant** `[PROPOSED]`. A venue SHOULD publish the
   provenance on the announcement as `announcedAt: "quote" | "execute"`, so
   `minOutput`'s meaning is on the wire rather than inferred. It is additive and
@@ -762,12 +501,15 @@ any other value as malformed, not price it.
   `total_bps` ships in this package (`SPEC.md` §4, `fee/vectors.json`). So a
   panel member holding `@xochi/spec` reconstructs the reserve from
   `fromAmount` to the wei once it knows the taker's fee tier (`σ_r = 0`,
-  measured on standard-tier quotes); the tier is the one input `0.3.0-draft`
-  took away with `trustScore`, worth the stable spread `22/19/15/12/10` (memo
-  §2.3). Under a quote-time announcement `minOutput` inverts to the reserve
-  through the public announce margin. This RFC therefore claims only that the
-  reserve is **not disclosed** (§2.1) — not that it is unpredictable. The
-  genuinely private component (an inventory / live-executable skew, memo D1d)
+  measured on standard-tier quotes). The tier is the one input the
+  announcement withholds (`trustScore` is not announced), worth the stable
+  spread `22/19/15/12/10`: the memo scores it at 12 bps of effective window,
+  worth 1.33 bps of taker improvement at a 33% panel win rate (memo §2.3), and
+  zero for a taker whose tier the panel can guess. Under a quote-time
+  announcement `minOutput` inverts to the reserve through the public announce
+  margin. This RFC therefore claims only that the reserve is **not disclosed**
+  (§2.1), not that it is unpredictable. The genuinely private component (an
+  inventory / live-executable skew, memo D1d) or an explicitly sized bin (D1b)
   is outstanding Riddler pricing-engine work and changes no schema, so nothing
   on the wire will announce its arrival; a solver MUST NOT read the withdrawal
   as evidence that the reserve cannot be computed.
@@ -776,27 +518,20 @@ any other value as malformed, not price it.
   the reserve, so no honest bid can strictly beat it, and this bid shape has no
   `input` field to compete on instead. A future revision that adds an input-side
   bid dimension can lift this.
-- `recipientCommitment` is **withdrawn** (`0.5.0-draft`): the announcement
-  carries no standalone recipient identifier (only the escrow `orderId`'s
-  blinded binding, §2.2). It was an HMAC under a venue-held key,
-  emitted for stealth and shielded intents, and those are no longer
-  announced. A key that still arrives is a producer that has not landed the
-  withdrawal, or an entry from before it still on the feed's retention ring;
-  `@xochi/solver-sdk` deletes it from the parsed announcement, which is
-  defence in depth only (see "Changes in `0.5.0-draft`").
-- The public-only producer is Riddler #1200 (PR #1302), **open and not
-  deployed** at this writing: until it is merged, deployed and the feed has
-  drained, a venue may still publish non-public announcements carrying
-  `recipientCommitment`.
+- `recipientCommitment` is withdrawn: the announcement carries no standalone
+  recipient identifier (only the escrow `orderId`'s blinded binding, §2.2). A
+  key that still arrives is a producer that has not landed the withdrawal, or
+  an entry still on the feed's retention ring; `@xochi/solver-sdk` deletes it
+  from the parsed announcement (defence in depth, "Public settlement only").
 - Announcements MAY be published at **quote** time or at **execute** time, and a
   deployment MAY run both, gated per corridor (`SOLVER_ANNOUNCE_ON_QUOTE`).
   Quote-time announcement shows the panel price probes that never trade, so a
   solver's pricing cost per filled trade scales as `1/c` in the quote→execute
   conversion rate. Execute-time announcement carries only signed flow and is the
-  intended end state. The earlier claim that "an auction run after the quote
-  could not improve it" is **withdrawn**: it is true of the *quote* and false of
-  the *delivered amount*, since `XochiIntent.toAmount` is a minimum and the fee
-  model already splits positive slippage (`SPEC.md` §4).
+  intended end state. An auction run after the quote cannot improve the
+  *quote* but can improve the *delivered amount*, since `XochiIntent.toAmount`
+  is a minimum and the fee model already splits positive slippage (`SPEC.md`
+  §4).
 
 ---
 
@@ -1135,19 +870,14 @@ SolverBond v2 EIP-712 domain. SolverBond v2 refuses a slash without it
 will fill it before its deadline" -- and nothing else can make it slashable.
 
 - **Domain:** `{ name: "RiddlerSolverBond", version: "2", chainId: escrow.bond.chainId, verifyingContract: escrow.bond.address }`.
-- **Type (byte-exact):**
-
-```
-FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth)
-```
-
+- **Type:** `FillAcceptance` as in the ESCROW-RFC §9.4 table (byte-exact type
+  strings for every escrow-family struct live there).
 - **Field sources:** `orderId` / `originChainId` / `escrow` from the order's
   terms (`escrow.intentRef`, `orderTerms.fromChainId`, `orderTerms.escrow`);
   `filler` and `deadline` from the FillAuth; `fillAuth` is the FillAuth's own
   EIP-712 digest under RiddlerFiller's domain
   `{ name: "RiddlerFiller", version: "1", chainId: fillAuth.chainId, verifyingContract: fillAuth.fillerContract }`
-  and type
-  `FillAuth(bytes32 fillId,address filler,address to,address token,uint256 amount,uint256 deadline)`
+  and the `FillAuth` type of the same table
   (`@xochi/signer` `fillAuthDigest`; `fillAcceptanceOf` builds the struct).
 - **Why a commitment, not the plaintext FillAuth.** A slash proposal publishes
   the acceptance in calldata on the bond chain, which can be an origin chain.
@@ -1252,8 +982,8 @@ order, the `[:riddler, :escrow, :award, :abandoned]` event and the
 operator's grounds for removing the solver from the panel directory, which is
 static operator config. Until §13.3 scoring applies after every Appendix C
 question is settled, the venue issues no escrowed `:winner` FillAuth to a
-solver other than its own (ESCROW-RFC §11 M6.3 waits on §5.3 and, for a
-shielded leg, §5.1 "Shielded admission"). Thus no third party abandons an
+solver other than its own (a third-party `:winner` waits on §5.3 and, for a
+shielded leg, ESCROW-RFC §5.1 "Shielded admission"). Thus no third party abandons an
 award, or is removed for abandoning one, under timing or request-limit bounds
 that the RFC has not yet settled. Acceptance is therefore not
 optional: a winner that never accepts does not hold the exclusive window as a
@@ -1289,7 +1019,7 @@ interface FillReceipt {
 // Tagged union from day one so the wire format survives the proof upgrade.
 type FillProof =
   | { kind: "tx_hash"; chainId: number; txHash: string }             // venue oracle watches
-  | { kind: "canton_update"; updateId: string }                      // Canton destination (0.6.0-draft)
+  | { kind: "canton_update"; updateId: string }                      // Canton destination
   | { kind: "oracle_attestation"; attestation: string; signer: string }
   | { kind: "light_client"; header: string; proof: string }
   | { kind: "zk"; proof: string; publicInputs: string[] };
@@ -1321,7 +1051,7 @@ endpoint an oracle for who is currently winning. Resubmission is idempotent.
 `501`, distinguishable from an unknown `kind` (400), and are never stored as
 though verified.
 
-**A Canton destination** (`0.6.0-draft`) has no transaction hash, so its fill
+**A Canton destination** has no transaction hash, so its fill
 is proved by `{ kind: "canton_update", updateId }`: the Canton ledger update id
 of the transfer that paid the recipient party. The id is opaque (neither hex
 nor fixed-length) and **case-sensitive**: a solver sends it exactly as the
@@ -1352,7 +1082,7 @@ they gate money.
 
 - Launch proof is `tx_hash` + the venue's own oracle watch, which **must be
   built** (`[PROPOSED]`): no fill-oracle orchestration exists today, only
-  orphaned per-protocol clients (`ESCROW-RFC.md` §11.0).
+  orphaned per-protocol clients (`ESCROW-RFC.md` Appendix A).
 - `oracle_attestation` → `light_client`/`zk` are the trust-minimization upgrade
   path. A verifier MUST treat an unknown `kind` as unproven (fail closed).
 
@@ -1698,8 +1428,8 @@ types are the contract.
 ## 12. Versioning & compatibility
 
 - This RFC versions independently of `SPEC.md` (SemVer; MAJOR = breaking
-  `/solver/*` wire change, and pre-1.0 a breaking change lands as MINOR — see
-  the `0.2.0-draft` note above) and declares a peer range on `@xochi/spec`.
+  `/solver/*` wire change, and pre-1.0 a breaking change lands as MINOR) and
+  declares a peer range on `@xochi/spec`.
 - The `/solver/*` surface is **additive**: adding it does not change any §2–§6
   taker byte-contract. A server MAY serve the taker path with no solver surface
   (phase P0).
@@ -1725,35 +1455,15 @@ types are the contract.
 - A solver MUST refuse to bid against an `rfcVersion` it does not implement,
   and MUST do it with an **explicit pre-bid check** against
   `GET /solver/capabilities`. There is no cryptographic backstop: the §5.1
-  domain `version` versions the **sealing scheme**, not this document (`"2"`
-  from `0.4.0-draft`, `"1"` before). `0.2.0-draft` and `0.3.0-draft` therefore
-  produce **identical digests** — `conformance/bid.json` regenerated
-  byte-identical across the `0.3.0-draft` announcement rename — so every
-  signature still verifies while the two sides disagree about what `minOutput`
-  means, and the skew surfaces as systematically mispriced bids rather than as
-  a rejection. A skew that *does* cross a sealing-scheme change
-  (`0.1.0-draft` → `0.2.0-draft`, EIP-191 over a JSON string → EIP-712) fails
-  the other way: every honest bid is rejected as a bad signature, with nothing
-  naming the version. Neither shape self-reports, nor does the third below,
-  which is why the check is a MUST.
-- **A skew can also move no signed byte and no wire field at all.**
-  `0.4.0-draft` → `0.5.0-draft` as first published changed only what a solver
-  must do with an escrowed award (§7.1 steps 4–7, one acceptance per order):
-  every digest, vector and schema is identical across it, so a `0.4.0-draft`
-  solver bids, wins and accepts normally. The only symptom is behavioural -- it
-  accepts awards it should decline, stops driving a fill it owes, gives up a
-  claim early -- and it surfaces later as slashed bonds and unrepaid fills,
-  never as a refusal. Nothing on the wire can catch an obligations-only MINOR,
-  so the pre-bid version check is its only guard.
-- **A withdrawal inside one `rfcVersion` is not caught by the version check
-  either.** The public-only announcement withdrawal (Changes in `0.5.0-draft`)
-  narrows `settlementPreference` and removes `recipientCommitment` without
-  moving `rfcVersion`, so old and new SDKs both advertise `0.5.0-draft`. It is
-  safe only because it narrows what a venue emits: a parser built before it
-  still accepts every announcement a withdrawn producer sends, and a parser
-  built after it refuses a non-public announcement per entry. The guard is the
-  rollout order -- producer first, then old publishers and the feed ring
-  drain -- not this check.
+  domain `version` versions the **sealing scheme**, not this document, so a
+  skew is usually silent. One that moves no signed byte leaves every signature
+  verifying while the two sides disagree about what a field means (mispriced
+  bids) or what a solver owes (awards accepted that should be declined,
+  surfacing later as slashed bonds and unrepaid fills, never as a refusal);
+  one that crosses a sealing-scheme change rejects every honest bid as a bad
+  signature, with nothing naming the version. None self-reports, which is why
+  the check is a MUST. A withdrawal inside one `rfcVersion` is not caught by
+  it either; its guard is the rollout order (§4.2 "Public settlement only").
 - **The version lives in exactly one place.** `@xochi/solver-sdk` exports
   `SOLVER_RFC_VERSION` (importable from the package root) and `SolverClient`
   compares it to the venue's advertised `rfcVersion` by exact string equality
@@ -2494,7 +2204,7 @@ first award-log record so the decision is made on data.
 - **Probing.** The venue keeps a coarse trailing execute-rate class per taker
   **venue-side only**; it is never announced, since a per-taker class in the
   announcement is a quasi-identifier on the same argument `trustScore` was
-  removed for (Changes in `0.3.0-draft`) and would let solvers
+  removed for (§4.2 "Retired keys") and would let solvers
   price-discriminate by taker behaviour. The venue rate-limits intents that
   reach the sealed round without executing, per taker, scaled by trust tier.
 
@@ -2528,8 +2238,8 @@ of, a signature the protocol acts on. It counts only while `now <
 expiresAtMs` and while its signer is the solver's current key: a key
 rotation or a new statement text requires a fresh statement, and a statement
 signed by a retired or compromised key admits nothing. It is held as a
-solver-scoped attestation on this RFC's §10 substrate; `SolverDirectory`
-admission requires a current one from P1.
+solver-scoped attestation on this RFC's §10 substrate; bonded registration
+(§3.1) requires a current one from P1.
 
 ### 13.8 Settlement statement (ESCROW-RFC)
 
@@ -2608,43 +2318,10 @@ row in the same report.
 
 ### 13.10 Evidence and limits of the FX analogy
 
-The target is the spot-FX **bank tier** as measured by venue operators and
-central banks, not as self-described: quotes that live minutes, size that stays
-through a shock, pricing that survives the loss of a reference feed. The
-non-bank tier is the failure mode each clause above is built against. Sources
-are the CME/LSEG presentation to the ECB FX Contact Group and the FXCG minutes
-(both 2026-06-25), the BIS 2025 triennial settlement follow-up and the SNB
-study of the 2025-11-28 CME outage, as reported by FX Markets (Feb–Oct 2026);
-each clause names the row it rests on.
-
-| Measurement | Number | Clause |
-| --- | --- | --- |
-| Median order life, banks vs non-banks | 290 s / 181 s (EBS / Matching) vs 2.95 s / 1.64 s | 13.2 `minFirmValidityMs`, 13.3 broken vs lapsed |
-| BOJ intervention 2026-04-30 (USD/JPY 159.35 → 155.50, 385 pips, $77 bn) | non-banks refreshed at the touch and cancelled within seconds; banks rested bids down to 155.50 before spot arrived | 13.3, 13.5 honored rate over headline output |
-| Maker/taker ratio through the 2026-03-03 shock | banks 55:45 → 70:30 and kept resting size; non-banks 33:67 → 30:70 and left the book | 13.1 regime, solver-layer-only multiplier; 13.7 stress ÷ calm committed size |
-| CME outage 2025-11-28 (~11 h) | futures ~2 % of spot+forwards volume, yet spreads 2–4×, non-bank LPs up to 124× (SNB: EUR/USD 8×, non-bank PTFs ~30×) | 13.1 `priceSources` and `feed_degraded`; 13.9 outage drill |
-| EBS LP mix 60/40 bank/non-bank | the data feed requires making markets on 40 % of weekly volume and $200 m/day; LSEG Matching non-bank share 20 % → 33 % (2022 → 2026) with no such rule | 13.5 scored selection, 13.7 behaviour-earned tiers |
-| Cboe FX, 2023 | every LP on the anonymous spot platform signs an FX Global Code statement of commitment | 13.7 conduct statement |
-| ECB FXCG verdict | non-bank liquidity is conditional, small-size, concentrated, with limited end-user transparency and untested resilience if a dominant firm withdraws | 13.5 concentration handicap + HHI, 13.9 telemetry |
-| FX HedgePool | >$4 tn matched since 2020, bought by LMAX for $20 m in 2024, then stalled: thin pools → few matches → deeper participants stay away; surviving P2P venues (Cürex, Siege FX, LoopFX) added bank axes as fallback | 13.2 re-auction-then-reserve; the reserve bid (§2.1) is the fallback liquidity |
-| PvP settlement share | 56 % today vs 54 % in 2006; non-banks < 50 % of gross obligations PvP, large dealers ~75 % | 13.8 settlement statement |
-| Banks internalising | dealers left primary venues for internal matching after resting quotes were picked off | 13.6 `lost` without the winning output, size bins, anti-probing |
-
-**Where the analogy stops.** The FX data is from continuous central limit
-order books in deliverable G10 spot; this is a sealed RFQ settling cross-chain
-stablecoins. "Order life" maps to validity window plus honored rate, not to
-resting liquidity (nothing here asks for resting orders). Last look is removed
-by the sealed round, so the only withdrawal path is the post-award decline,
-which is why 13.3 is about that gate. Crypto reference prices (oracles, CEX
-books, pools) fail differently and sometimes together, so the 13.1 detector is
-built for depegs, chain halts and liquidation cascades, not borrowed from FX;
-settlement and pricing risk arrive together, which is why the drill matters
-more here. Cross-chain fills force destination inventory, so a solver cannot be
-as capital-light as an FX HFT: it pushes toward bank-like behaviour and raises
-the onboarding bar. Agent takers (`raxol_payments`) have no human on the desk;
-retry storms and probing are their own problem that 13.6 only begins on.
-Sample size: CME and LSEG have decades and dozens of LPs; every threshold in
-§13 is set from the award log once it exists, with the FX numbers as priors,
+The clauses above target the spot-FX bank tier as venue operators and central
+banks measure it; the evidence and where the analogy stops are in
+[xochi-fi/xochi-sdk#31](https://github.com/xochi-fi/xochi-sdk/issues/31), and
+every §13 threshold is set from the award log, with the FX numbers as priors,
 not targets.
 
 ---
@@ -2655,7 +2332,7 @@ not targets.
 |---|---|---|
 | ZKSAR attestation / trust scoring | `[IMPLEMENTED]` | `xochi/attestation.ex` |
 | Fee model (tiers feed awards) | `[IMPLEMENTED]` | `xochi/fee_policy.ex` + `SPEC.md` §4 |
-| Fill oracles (attested fills) | `[PROPOSED]` | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (`ESCROW-RFC.md` §11.0) |
+| Fill oracles (attested fills) | `[PROPOSED]` | `ESCROW-RFC.md` Appendix A |
 | Dutch-decay / exclusive-limit orders | `[DEPRECATED]` | `li_fi/auction.ex` |
 | `/solver/*` routes (long-poll feed, bids, fills, capabilities) | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (#770–#774; flag `SOLVER_RFQ_ENABLED`, default off) |
 | SSE push feed | `[PROPOSED]` | — (long poll is served; SSE is additive) |
@@ -2663,7 +2340,7 @@ not targets.
 | Exact-output RFQ | `[PROPOSED]` | — (unwinnable under a bid with no input field; not announced) |
 | Public-only announcement, `recipientCommitment` withdrawn (`0.5.0-draft`) | `[PROPOSED]` producer; consumer narrowed in `@xochi/solver-sdk` 0.5.0 | Riddler #1200 (PR #1302 open, not deployed); §§2.2, 4.2 |
 | Sealed-bid auction, `Bid`/`Award` | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/{auction,bid,award}.ex` |
-| Bonded registration, session tokens (`POST /solver/register`) | `[PROPOSED]` | Riddler #1198 (`feat/solver-registration-reputation`, not merged); solver side `SolverSession` / `HttpSolverTransport`; §3.1. Replaces `SolverDirectory` (`SOLVER_DIRECTORY_JSON`), withdrawn |
+| Bonded registration, session tokens (`POST /solver/register`) | `[PROPOSED]` | Riddler #1198 (`feat/solver-registration-reputation`, not merged); solver side `SolverSession` / `HttpSolverTransport`; §3.1 |
 | `SolverReputation`, probation, exposure caps | `[PROPOSED]` | Riddler #1199 (same branch); §8 |
 | Solver-submitted `FillProof` artifact | `[IMPLEMENTED]` intake; verification `[PROPOSED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (recorded, not verified) |
 | Permissioning P0 | `[IMPLEMENTED]` | derived from escrow readiness, not operator-set |
@@ -2693,12 +2370,10 @@ response, award log, concentration handicap (§13).
 §13.3 scoring stays `[PROPOSED]` until every question below, timing and
 limits alike, is settled in §13.3 ("Reading while committed" (f)). The same
 gate controls the first escrowed award to a solver other than the venue's own
-(§5.3). Each question names the review findings that make it hard
-(review rounds of xochi-fi/xochi-sdk#33: `R10ASab`/`R11ASab` the saboteur,
-`R10ASecurity`/`R11ASecurity` the security auditor, `R10ANewHire` the new
-hire).
+(§5.3). The review findings behind each question are in
+xochi-fi/xochi-sdk#33.
 
-**Data: Base mainnet, 2026-10-25** (R10ASab-33-1). Read-only public RPCs
+**Data: Base mainnet, 2026-10-25.** Read-only public RPCs
 `mainnet.base.org`, `base-rpc.publicnode.com` and `base.drpc.org`;
 concurrent 500 ms polls of the `safe` tag for 5 minutes, plus 6 spot reads.
 
@@ -2713,56 +2388,41 @@ concurrent 500 ms polls of the `safe` tag for 5 minutes, plus 6 spot reads.
 
 One sample, on one OP-stack chain, on one day; that cross-provider `safe`
 lag tracks each op-node's L1 confirmation settings is inferred, not
-measured. No other origin chain is measured. At the publicnode figure,
-R10ASab-33-1 sizes an honest allowance at about 55–60 s even with a
-narrowed `prepare` scan (the lag, one `finalityPollMs` pause, one pass), an
-acceptance window at about 80 s (15 s accept budget + 60 s allowance + 4 s
-`deliverySlackMs` + 1 s) and `minExclusiveMs` at about 135 000 (60 s
-`fillInclusionSec` + 60 s allowance + 15 s accept headroom); the drpc
-figure adds about 45–95 s to each.
-
-The data contradicts these values, which round 9's draft of §13.3 and §5.1
-carried and this text withdraws: `safeLagMs`'s 2 000 ms default and floor
-(with the field itself); the allowance's 10 000 default and floor;
-`awardToAcceptAllowanceMs ≥ maxPendingAwardsPerToken × 10 000` for a cap
-above 1; the cap-2 window floors of 37 s and 40 s; `minExclusiveMs` of
-85 000 at the floor and 95 000 at a cap of 2; and a 30 s window holding a
-`deliverySlackMs` of 4 000 at the floors. §5.3's as-built 30 s window and
-the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
+measured. No other origin chain is measured. At the publicnode figure, an
+honest allowance is about 55–60 s even with a narrowed `prepare` scan (the
+lag, one `finalityPollMs` pause, one pass), an acceptance window about 80 s
+(15 s accept budget + 60 s allowance + 4 s `deliverySlackMs` + 1 s) and
+`minExclusiveMs` about 135 000 (60 s `fillInclusionSec` + 60 s allowance +
+15 s accept headroom); the drpc figure adds about 45–95 s to each. §5.3's
+as-built 30 s window and the reference example's 10 s `AWARD_TO_ACCEPT_SEC`
+sit below these figures.
 
 1. **Which head "final" means.** §5.2 publishes an escrowed award "only
    once the lock is final" without naming the tag the venue reads; the SDK
    waits on its own node's `safe` (`finalized` where the chain has none). On
    `finalized` the safe lag is near zero, but on Base the award waits about
    20 minutes behind `latest`; on `safe` the lags above apply.
-   (R10ASab-33-1, R11ASab-33-2)
-2. **How the safe lag is bounded, and by whom.** Round 9 served a
-   `safeLagMs` the venue sized from "at least two independent RPC providers"
-   of its choosing, with no published sampling method: two providers that
-   track the venue's own node make every decline of a solver on a slower
-   common provider the solver's. The field had no stated instant, and its
-   attribution sentence ("a safe lag beyond `safeLagMs` is the solver's")
-   was one the venue cannot apply, since it judges timing only by replay at
-   `checkAtMs` and never observes the solver's node. Candidates: publish a
-   fixed provider set and sampling method, or the measured distribution;
-   or carry the `Opened` block and the venue's safe height in the award, so
-   the lag is measured per award; under that answer test (c) runs at the
-   longest lag the allowance must cover, not at one figure. (R10ASab-33-1,
-   R10ASecurity-33-3, R10ANewHire-33-4, R11ASab-33-3)
-3. **The allowance.** Round 9 defined it as the value under which test (c)
-   passes at the served cap and `safeLagMs`, while (c) ran at the served
-   values: a venue serving about 15 000 met the gate with today's SDK, and at
-   a 2 000 safe lag (c) never reached the finality pause, since one scan pass
-   takes about 12 s. §13.3 now states only what the allowance covers (award
-   latency plus clock lead) and gates the SDK against a settled value. Open:
-   the value per origin chain, its default and floor, its other parts (a
-   served chain head's lead over the venue clock, the venue clock's offset
-   behind UTC), and whether one served field can cover origins whose safe
-   lags differ by orders of magnitude. (R10ANewHire-33-1, R10ASab-33-1)
+2. **How the safe lag is bounded, and by whom.** A `safeLagMs` the venue
+   sizes from RPC providers of its choosing, with no published sampling
+   method, lets two providers that track the venue's own node make every
+   decline of a solver on a slower common provider the solver's; and the
+   venue judges timing only by replay at `checkAtMs` and never observes the
+   solver's node, so it cannot attribute a lag beyond such a field to the
+   solver. Candidates: publish a fixed provider set and sampling method, or
+   the measured distribution; or carry the `Opened` block and the venue's
+   safe height in the award, so the lag is measured per award; under that
+   answer test (c) runs at the longest lag the allowance must cover, not at
+   one figure.
+3. **The allowance.** §13.3 states only what the allowance covers (award
+   latency plus clock lead) and gates the SDK against a settled value; a test
+   (c) run at whatever the venue serves passes any served value. Open: the
+   value per origin chain, its default and floor, its other parts (a served
+   chain head's lead over the venue clock, the venue clock's offset behind
+   UTC), and whether one served field can cover origins whose safe lags
+   differ by orders of magnitude.
 4. **The pending-award cap.** Each award that can wait on the accept slot
-   adds the slot holder's accept to the wait. Round 9's `cap × 10 000`
-   assumed a 10 s award latency; with a finality wait in the latency, what
-   a cap above 1 costs is open. (R10ASab-33-1)
+   adds the slot holder's accept to the wait; with a finality wait in the
+   award latency, what a cap above 1 costs is open.
 5. **The acceptance window.** §13.3's boot rule derives the window from the
    allowance; at the Base figures it needs about 80 s at a cap of 1 against
    §5.3's 30 s default. A longer window, a narrower `prepare` scan, or both,
@@ -2770,12 +2430,11 @@ the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
    order before the `:backstop` (§13.2's fit test). The as-built window
    applies to every escrowed award, scored or not, which is why this
    question also gates the first escrowed award to a third party (§5.3).
-   (R10ASab-33-1, R10ANewHire-33-1, R11ASab-33-2)
 6. **`minExclusiveMs` and the `auth_expired` threshold.** §5.1 makes a bid's
    `minExclusiveMs` grow with the allowance, and the threshold above which
    an `auth_expired` decline is venue-attributable reads one served
-   allowance. Round 9 equated the value "served when the solver bids" with
-   the one "served at `opensAt`", which are different instants; the SDK
+   allowance. The value served when the solver bids and the one served at
+   `opensAt` are different instants; the SDK
    reads capabilities only at start, after a feed reset and before acting
    on its own awards (`client.ts`), never per bid, and `IntentAnnouncement`
    stamps `regime` but no allowance. So a venue that raises the allowance
@@ -2786,17 +2445,13 @@ the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
    backstop budget, so the escrow node refuses the `:winner`
    (`exclusive_window_unavailable`) and the reserve, the venue's own solver,
    fills; whether the allowance is capped by the backstop budget, or §5.1's
-   term stops tracking it, is open. (R10ASab-33-3, R11ASecurity-33-2)
-7. **Limits.** Round 9 exempted from every limit a well-formed feed read
-   sent while no other read of the solver's was open, and every well-formed
-   acceptance or decline of a held award. A solver in a tight
-   read-close-read or re-POST loop was then bounded only by its round-trip
-   time, and a shed that load caused is the venue's, so its own award's read
-   failing in the delivery window turned a decline it wanted into Lapsed.
-   Round 10 removed both exemptions, which let a solver's own bids starve
-   its acceptances. §13.3 now exempts only well-formed held-award responses,
-   at most 4 per award, under one shared atomic counter, while malformed
-   requests count. It does not claim that the exemption protects the award
+   term stops tracking it, is open.
+7. **Limits.** §13.3 exempts only well-formed held-award responses, at most
+   4 per award, under one shared atomic counter, while malformed requests
+   count: exempting every lone feed read and every held-award response
+   bounds a looping solver only by its round-trip time, and exempting none
+   lets a solver's own bids starve its acceptances. §13.3 does not claim that
+   the exemption protects the award
    read or leaves the SDK's accept budget: scoring and third-party awards stay
    gated until this question settles that timing bound. Open:
    - how bids and feed reads share `maxRequests`: the venue sets the
@@ -2820,6 +2475,3 @@ the reference example's 10 s `AWARD_TO_ACCEPT_SEC` predate the data.
      second open read at `maxOpenReads` 1 (candidate: a new read supersedes
      any older one, which the venue ends and stops counting, once ending it
      is not itself a delivery failure).
-
-   (R10ASab-33-2, R10ASecurity-33-1, R10ASecurity-33-2, R11ASab-33-1,
-   R11ASecurity-33-1)
