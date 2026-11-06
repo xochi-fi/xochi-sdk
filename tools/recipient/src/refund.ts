@@ -21,7 +21,7 @@ import {
 import { z } from "zod4";
 
 import type { RecipientAccount } from "./account.js";
-import { OXDAI_MAINNET_REV2, type Corridor } from "./corridor.js";
+import { OXDAI_MAINNET_REV2, decimal, evm, hex32, type Corridor } from "./corridor.js";
 import { OperationJournal } from "./operation-journal.js";
 import { assertValidMigrationSignature } from "./oxide/vendor/oxide-lib-tee/migration_signature.js";
 import { SCHNORR_CHALLENGE_DST } from "./oxide/vendor/oxide-lib-tee/grumpkin_schnorr_signature.js";
@@ -36,13 +36,9 @@ import {
 } from "./oxide/vendor/oxide-lib/plain_withdrawal_executor.js";
 import { DOM_SEP__MIGRATION } from "./oxide/vendor/oxide-lib-tee/oxide_constants.gen.js";
 
-const hex20 = z.string().regex(/^0x[0-9a-f]{40}$/);
-const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 const hexBytes = z.string().regex(/^0x(?:[0-9a-f]{2})+$/);
-const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const nonzeroDecimal = z.string().regex(/^[1-9][0-9]*$/);
 const teeSignature = z.string().regex(/^0x[0-9a-f]{130}$/);
-const fieldJson = z.string().regex(/^0x[0-9a-f]{64}$/);
 const MAX_NOTES = 20;
 const MAX_DEPOSITS = 5;
 const TWO_POW_128 = 1n << 128n;
@@ -86,10 +82,8 @@ export type RefundEvidence = z.infer<typeof RefundEvidenceSchema>;
 const MigrationSignatureJsonSchema = z
   .object({
     kind: z.literal("fallbackKey"),
-    fbpkM: z.object({ x: fieldJson, y: fieldJson }).strict(),
-    fallbackSignature: z
-      .object({ sLo: fieldJson, sHi: fieldJson, eLo: fieldJson, eHi: fieldJson })
-      .strict(),
+    fbpkM: z.object({ x: hex32, y: hex32 }).strict(),
+    fallbackSignature: z.object({ sLo: hex32, sHi: hex32, eLo: hex32, eHi: hex32 }).strict(),
   })
   .strict();
 export type MigrationSignatureJson = z.infer<typeof MigrationSignatureJsonSchema>;
@@ -100,9 +94,9 @@ export const RefundAuthorizationSchema = z
     corridorId: hex32,
     corridorRevision: z.literal("2"),
     manifestDigest: z.literal("0x80b6abd7253f55f0014b37bc20e4c02b71dfc718e1181a730c0699b979d9865e"),
-    portal: hex20,
-    executor: hex20,
-    destination: hex20,
+    portal: evm,
+    executor: evm,
+    destination: evm,
     relayerTip: decimal,
     userPayload: hexBytes,
     userPayloadHash: hex32,

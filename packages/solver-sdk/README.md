@@ -42,8 +42,7 @@ const solver: Solver = {
     settlementTypes: ["public"],
     rfcVersion: SOLVER_RFC_VERSION,
   }),
-  // A bid, or null to pass. `minOutput` is the floor -- not the reserve, except on a
-  // quote-through announcement (RFC §2.5), where it IS the (public) reserve.
+  // A bid, or null to pass. What `minOutput` means: MAKER-ONBOARDING.md "Pricing".
   quote: async (intent) => {
     live.set(intent.intentId, intent);
     return {
@@ -79,7 +78,6 @@ There is no credential to request. Stake `solverKey`'s address on the venue's So
 registers by signing a `SolverRegistration` (SOLVER-RFC §3.1), sends the session token it is
 issued as `Authorization: Bearer`, and renews it. `client.register()` registers up front and
 answers your standing: probation, `bondUsd`, `exposureCapUsd`, `inFlightUsd` (RFC §8).
-```
 
 Reference solvers, from a repo checkout (the examples are not in the tarball):
 
@@ -148,10 +146,9 @@ There is no FillAcceptance step: a Canton award carries no FillAuth to co-sign.
 
 ## Rules you must follow
 
-- **Registration refusals are typed.** A permanent one (`SolverRegistrationRefusedError`:
-  `solver_bond_insufficient`, `solver_registration_stale`, `solver_bond_mismatch`,
-  `solver_registration_not_enabled`, `forbidden`, `bad_request`) is thrown, never retried: post
-  bond, fix the clock or the configuration. A `503`/`429` is retried after `Retry-After`, up to
+- **Registration refusals are typed.** A permanent one (`SolverRegistrationRefusedError`; codes:
+  [MAKER-ONBOARDING.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/solver-sdk/MAKER-ONBOARDING.md#registration-refusals))
+  is thrown, never retried: post bond, fix the clock or the configuration. A `503`/`429` is retried after `Retry-After`, up to
   `maxRegisterAttempts` (default 5), then thrown as `SolverRegistrationUnavailableError`. A `401` on
   any request re-registers once and re-sends; a second `401` is an error. Pin `bond`: unpinned, the
   transport signs for whatever bond the venue advertises.
@@ -165,11 +162,8 @@ There is no FillAcceptance step: a Canton award carries no FillAuth to co-sign.
   absolute unix ms, `output` is canonical decimal. On a quote-through announcement
   (`quoteThrough: true`, RFC §2.5) bid `validUntilMs >= minValidUntilMs`, or the bid is admitted
   and never selected.
-- **`minOutput` is admissibility, not the reserve -- except on a quote-through corridor.** On an
-  ordinary announcement the venue's reserve is private, so a bid at `minOutput + 1` is admissible
-  and still loses. On a quote-through announcement (`quoteThrough: true`, RFC §2.5) there is no
-  private reserve: `minOutput` IS the reserve, public, a bid AT it is eligible, and the winner
-  delivers `max(next-best standing bid, minOutput)` (second price).
+- **`minOutput` is admissibility, not the reserve, except on a quote-through corridor**
+  ([Pricing](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/solver-sdk/MAKER-ONBOARDING.md#pricing)).
 - **Handle `onFeedGap`.** `dropped` and `reset` mean intents you will never see.
 - **Unknown event types are skipped; malformed and lookalike ones are not.** `HttpSolverTransport`
   skips an entry whose `type` it does not know (to `onInvalidEvent` as `UnknownSolverEventError`,

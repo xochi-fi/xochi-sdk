@@ -29,12 +29,10 @@ import { z } from "zod4";
 import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
 
 import type { AccountSecrets, RecipientAccount } from "./account.js";
-import { CorridorSchema, type Corridor } from "./corridor.js";
+import { CorridorSchema, decimal, hex32, type Corridor } from "./corridor.js";
 import type { SignedAck } from "./enrollment.js";
 import { open, seal } from "./sealed.js";
 import { OperationRecordSchema } from "./operation-journal.js";
-
-const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
 const RECOVERY_INSTRUCTIONS = [
   "1. Install the verified Xochi recipient test artifact on a new Node 22 macOS/Linux/WSL host.",
@@ -56,14 +54,8 @@ export const SignedAckSchema = z
 const ExitJournalRecordSchema = z
   .object({
     txHash: hex32,
-    executorFee: z
-      .string()
-      .regex(/^(0|[1-9][0-9]*)$/)
-      .nullable(),
-    recipientAmount: z
-      .string()
-      .regex(/^(0|[1-9][0-9]*)$/)
-      .nullable(),
+    executorFee: decimal.nullable(),
+    recipientAmount: decimal.nullable(),
     withdrawals: z.array(
       z
         .object({

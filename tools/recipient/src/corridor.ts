@@ -5,9 +5,13 @@
 
 import { z } from "zod4";
 
-const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/, "lowercase 0x + 64 hex");
-const evm = z.string().regex(/^0x[0-9a-f]{40}$/, "lowercase 0x + 40 hex");
-const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/, "canonical decimal");
+/** Canonical lowercase forms, as the tool writes them to corridor, state and backup files. */
+export const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/, "lowercase 0x + 64 hex");
+export const evm = z.string().regex(/^0x[0-9a-f]{40}$/, "lowercase 0x + 40 hex");
+export const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/, "canonical decimal");
+/** Externally supplied forms (operator-typed, EIP-55 checksummed, API-returned): any hex case. */
+export const anyCaseHex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "0x + 64 hex");
+export const anyCaseEvm = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "0x + 40 hex");
 
 export const CorridorSchema = z
   .object({

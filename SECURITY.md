@@ -4,6 +4,6 @@ Report vulnerabilities privately: [GitHub security advisory](https://github.com/
 
 Highest severity: anything that signs, or lets a caller sign, bytes that move funds.
 
-Every package under `packages/` is in scope. Out of scope: `runners/{python,go,rust}` (conformance runners, not production signers) and services not deployed from this repo.
+In scope: every package under `packages/`, and `tools/recipient` (the OXDAI recipient operator CLI, which moves funds). Out of scope: `runners/{python,go,rust}` (CI byte-parity runners) and services not deployed from this repo.
 
-Supported: the latest published version of each package. `@xochi/sdk` 0.3.x is deprecated.
+Supported: the latest published version of each package, and the latest `tools/recipient` test prerelease. `@xochi/sdk` 0.3.x is deprecated.

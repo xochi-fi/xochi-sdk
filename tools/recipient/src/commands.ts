@@ -9,7 +9,7 @@ import { hashRecipientDescriptor } from "@xochi/signer";
 import { signRecipientDigest, type RecipientAccount } from "./account.js";
 import type { BindingProjection, EnrollmentApi } from "./api.js";
 import type { AztecPort, ExitRequest, ExitResult, FeeJuiceClaim } from "./chain.js";
-import type { Corridor } from "./corridor.js";
+import { anyCaseEvm, anyCaseHex32, type Corridor } from "./corridor.js";
 import {
   bindingTypedData,
   buildBinding,
@@ -150,7 +150,7 @@ export async function enrollStart(
   sourceWallet: string,
   tokenRegisteredAt: number | null,
 ): Promise<PendingEnrollment> {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(sourceWallet))
+  if (!anyCaseEvm.safeParse(sourceWallet).success)
     throw new Error("source wallet must be a 20-byte 0x address");
   const challenge = await api.challenge();
   const binding = buildBinding(ctx.corridor, account, sourceWallet, challenge);
@@ -233,7 +233,7 @@ export async function spend(
   to: string,
   amount: bigint,
 ): Promise<string> {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(to))
+  if (!anyCaseHex32.safeParse(to).success)
     throw new Error("--to must be a 0x-prefixed 32-byte Aztec address");
   if (amount === 0n) throw new Error("--amount must be positive");
   const recipient = AztecAddress.fromStringUnsafe(to);
@@ -256,7 +256,7 @@ export async function exit(
   artifact: ContractArtifact,
   request: ExitRequest,
 ): Promise<ExitResult> {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(request.l1Recipient)) {
+  if (!anyCaseEvm.safeParse(request.l1Recipient).success) {
     throw new Error("--l1-recipient must be a 20-byte 0x address");
   }
   if (request.amount === 0n) throw new Error("--amount must be positive");

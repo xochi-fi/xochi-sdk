@@ -4,8 +4,8 @@ This file separates the local mechanism qualification from the production round 
 mainnet proof. Never add a recipient address, source wallet, binding ID, descriptor digest, private
 allowlist entry, secret, or passphrase here or to an issue comment.
 
-`fc4a1bc` (xochi-sdk#134) is explicitly unsafe for funded use. The crash-safe follow-up merged as
-`a1f2fbd4bc73ec0c671993a4cd01d1d8edb5dc0d` in xochi-sdk#137. The G2 candidate adds a private
+`fc4a1bc` (xochi-sdk#134) is unsafe for funded use; crash-safe operation recovery starts at
+`a1f2fbd4bc73ec0c671993a4cd01d1d8edb5dc0d` (xochi-sdk#137). The G2 candidate covers a private
 versioned test artifact, three-ack enrollment, journal-preserving restore, and recipient refund
 guards. Nothing below is live R4 received-note discovery, R5 spend/exit, R6 funded restore, or a
 production refund.
@@ -35,8 +35,8 @@ node qualify/sandbox.mjs \
   --out /tmp/xochi-recipient-qualification
 ```
 
-`evidence.json` in the output directory is the machine-readable local record. It deliberately stays
-untracked because it contains throwaway sandbox identifiers. The Markdown summary printed by the
+`evidence.json` in the output directory is the machine-readable local record. It stays untracked
+because it contains throwaway sandbox identifiers. The Markdown summary printed by the
 harness is safe only after removing those identifiers.
 
 The 2026-11-03 mechanism-harness run completed every section it can exercise locally and wrote
@@ -51,7 +51,7 @@ check, build, the local test suite and the live-node plaintext-key smoke test pa
 
 | Step                                | Where it ran                                                            | Observed result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | What remains unproven                                                                                                                                                                                                                                               |
 | ----------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1 Register                         | Local Aztec 6.0.0 sandbox                                               | The tool created the stock Schnorr account, verified the `aztec-6.0.0` descriptor, and wrote only a passphrase-sealed keystore.                                                                                                                                                                                                                                                                                                                                                                                             | The production account is intentionally not named here.                                                                                                                                                                                                             |
+| R1 Register                         | Local Aztec 6.0.0 sandbox                                               | The tool created the stock Schnorr account, verified the `aztec-6.0.0` descriptor, and wrote only a passphrase-sealed keystore.                                                                                                                                                                                                                                                                                                                                                                                             | The production account is not named here.                                                                                                                                                                                                                           |
 | R2 Publish and initialize           | Local Aztec 6.0.0 sandbox                                               | A one-time local L1 EOA deposited Fee Juice, the recipient claimed it, paid its own L2 deployment fee, published its instance, initialized it, and satisfied the mined-receipt, `node.getContract`, and initialization-nullifier assertions.                                                                                                                                                                                                                                                                                | No mainnet deployment occurred. The L1 deposit publicly links its depositor and recipient; production non-linkage depends on an independently funded one-time depositor with no identifiable Xochi funding trail. Amount and timing remain heuristic linkage risks. |
 | R3 Sender registration              | Local Aztec 6.0.0 sandbox                                               | The tool asserted registration of exactly the sandbox corridor sender.                                                                                                                                                                                                                                                                                                                                                                                                                                                      | The production Oxide sender was not registered in this run.                                                                                                                                                                                                         |
 | R4 Token registration and discovery | Local Aztec 6.0.0 sandbox—registration plus zero-balance discovery only | The tool hash-checked and registered the pinned OxideToken artifact, ran `store_immutables`, signed the shipped `TokenRegistrationAck`, preserved it in the sealed backup, and asserted a synced zero balance. This is registration/discovery harness evidence, not discovery of a received note. | The sandbox has no registered zk.money enclave, so it cannot produce or discover an enclave-signed payout note. |
@@ -62,10 +62,8 @@ R4 registration with a discovered zero balance and the R5 dry-run qualify the ha
 are not OX-10 real qualification; OX-10 remains open until the restricted mainnet evidence exists.
 
 The harness scans both recipient data directories for account-secret and signing-key byte sequences,
-excluding the sealed keystore, and fails on a hit. The WalletDB account map is encrypted before its
-temporary LMDB sees a value, using a random process-only AES-256-GCM key; the persistent PXE LMDB
-still contains viewing, tagging and nullifier-hiding keys, notes and payout history. Put it on
-encrypted storage.
+excluding the sealed keystore, and fails on a hit. For what the WalletDB and PXE store hold, see
+README "Disclosures", **What the data directory holds**.
 
 ## Enrollment coverage
 
@@ -103,8 +101,7 @@ The release manifest records installation method `extracted-root-npm-ci-v1`, exa
 versions, package/SBOM/shrinkwrap digests, lockfile version, cache package count, installed package
 count, and the closure-verification result. A `recipient-v*-test.*` tag can create only a signed
 GitHub prerelease; `private: true` and the workflow contain no `npm publish` step. WSL consumes the
-Linux artifact. Record the exact CI run and both platform verdicts on the PR; this file does not
-pre-claim them.
+Linux artifact. Record the exact CI run and both platform verdicts on the PR.
 
 F1-F2 are automated by `qualify/freeze-fork.sh`: it starts Anvil from a read-only mainnet fork,
 overrides the reviewed canonical-rollup storage slot, captures a noncanonical observation, calls
@@ -117,7 +114,7 @@ and redirected-payload negative verification of the fallback-key migration signa
 F5-F8 are not claimed. The exact missing upstream execution primitive is the runnable combination
 of zkmoney-public `2764aedc`'s local-enclave registration harness, refund builders, generated Noir
 refund artifacts under `noir-projects/*/target/*.json`, portal bindings, and an Aztec snapshot with
-recipient-owned notes/deposits. pxe-bridge intentionally vendors none of the builders or generated
+recipient-owned notes/deposits. pxe-bridge vendors none of the builders or generated
 artifacts, and the upstream generated artifacts are absent from that commit's Git tree. The CLI
 therefore accepts only a real externally generated proof bundle and never fabricates a proof.
 
@@ -125,7 +122,7 @@ therefore accepts only a real externally generated proof bundle and never fabric
 
 The following is the exact staged-artifact sequence for an authorized operator. Run it from the
 verified GitHub prerelease directory on encrypted storage. Secrets come from the operator vault,
-not issue comments or shell history. The first block deliberately fails before recipient or
+not issue comments or shell history. The first block fails before recipient or
 production access if release qualification is incomplete.
 
 ```bash
@@ -236,12 +233,10 @@ node dist/cli.js balance --data-dir "$FRESH_DATA" --node-url "$NODE" \
   --oxide-token-artifact "$ARTIFACT"
 ```
 
-If `operations` reports `in_doubt` or `broadcast`, stop. When the record has a transaction hash,
-run `node dist/cli.js operations reconcile --data-dir "$DATA" --node-url "$NODE"`; it re-pins the
-network and unlocks only after a `CHECKPOINTED`, `PROVEN`, or `FINALIZED` receipt, never a merely
-`PROPOSED` one. A record without a hash cannot be cleared automatically. Reconcile its PXE effect
-and exit recovery data with the operator; never delete the record or start another spend/exit to
-“see what happens.”
+If `operations` reports `in_doubt` or `broadcast`, stop and follow README "Disclosures",
+**Spend/exit ambiguity fails closed**. With a transaction hash, run
+`node dist/cli.js operations reconcile --data-dir "$DATA" --node-url "$NODE"`; without one,
+reconcile its PXE effect and exit recovery data with the operator.
 
 ## Evidence handling
 
@@ -253,4 +248,4 @@ restricted evidence vault and reports only pass/fail plus the evidence-vault ref
 #748.
 
 Do not mark R4 note discovery, R5, R6 funds rediscovery, OX-10, OX-11 or OX-18 complete until the
-private mainnet evidence exists. This repository run does not claim it.
+private mainnet evidence exists.

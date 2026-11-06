@@ -45,7 +45,6 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   (`RiddlerSolver`, `RiddlerFiller`, `RiddlerEscrow`, `SolverBond`) are
   unchanged.
 - `walletFromKey`, so a malformed key never appears in an error.
-- The tarball ships a LICENSE.
 - `UnknownSolverEventError` (`eventType`), thrown by `parseSolverEvent` for an
   entry whose `type` is a string the SDK does not know (an event kind a newer
   venue adds). Its message echoes the type truncated to 64 characters, with
@@ -98,12 +97,10 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   validate with `parseSolverEvent` itself. `SettlementType` and
   both capabilities' `settlementTypes` are unchanged. A comparison against
   `"stealth"` or `"shielded"` no longer compiles; delete the branch.
-- **Version 0.5.0** (MINOR: a breaking type narrowing, pre-1.0).
-- `package.json` declares `repository` with its `directory` and gains
-  description, keywords and homepage; per-condition `exports` types.
-- Built with TypeScript 6; sources, tests and examples are Prettier-formatted,
-  and `format:check` gates CI and `prepublishOnly` (with typecheck, test and
-  build). `engines.node` is `>=22`.
+- `exports` gives each condition its own types.
+- Packaging: `package.json` declares `repository`; the tarball ships a
+  LICENSE; TS 6; Prettier `format:check` gates CI and `prepublishOnly`;
+  `engines.node` is `>=22`.
 - **BREAKING: `parseSolverEvent` throws `UnknownSolverEventError`** (was a
   `ZodError`) for an unknown string `type`; a catch that tests only for
   `ZodError` no longer sees those entries. A `type` that folds to a known one
@@ -115,7 +112,7 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   `onInvalidEvent` and delivers the rest of the batch. Without a handler it
   warns once per distinct type for the first 32 types, then once that further
   types go unreported. An `onInvalidEvent` that throws ends `run` as having no
-  handler does; the option's comment now states that one contract.
+  handler does.
 
 ### Removed
 
@@ -124,11 +121,12 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   parsed announcement, as it does `reserveOutput` and `trustScore`, so a
   PUBLIC event carrying it still parses, without the key. Riddler emitted it
   only on stealth and shielded announcements, and those fail the parse as
-  malformed entries with the key intact in `raw` (see "Changed"). Defence in
-  depth only:
+  malformed entries with the key intact in `raw` (see "Changed"). Deleting a
+  withdrawn key from the parsed announcement is defence in depth only:
   `curl`, a fork, or `onInvalidEvent`'s `raw` still show it while a producer
-  sends it. `examples/fill-state-file.ts` drops it from a state file an
-  earlier version wrote, so it is neither resumed nor written back.
+  sends it (SOLVER-RFC "Changes in `0.5.0-draft`").
+  `examples/fill-state-file.ts` drops it from a state file an earlier version
+  wrote, so it is neither resumed nor written back.
 - `examples/offline-solver.ts`: the shielded round and the settlement filter.
 - Source maps (`dist/*.map`) from the tarball.
 
@@ -152,108 +150,116 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
   cursor was taken, so every redelivery ended the run again and the awards in
   that batch were never filled.
 
-## `0.4.1` — the version gate re-runs under a running solver
+## [0.4.1] - 2026-10-09
 
-No digest, schema or API moves. `SolverClient.run` re-reads
-`/solver/capabilities` after a feed `reset` and before each of this solver's
-awards reaches `solver.fill`, throwing `VenueVersionSkewError` (or the plain
-"did not tell me" `Error`) with nothing accepted if the venue now serves another
-`rfcVersion` or does not answer. Previously it checked only at start, missing a
-venue redeployed under a long-running solver. Neither re-check goes to
-`onError`; a supervisor restarting on skew must handle it. Announcements still
-cost no capabilities read. Injected transports get the reset re-check via the
-new optional `SolverTransport.addFeedGapListener` (implemented by
-`HttpSolverTransport`, whose own `onFeedGap` still sees every gap); a custom
-transport without it is re-checked only before its awards. New
-`readTimeoutMs` (default 10s) bounds `getCapabilities` and `getAttestation`, so
-a hung read no longer freezes `run`.
+No digest or schema change.
 
-Also in this release:
+### Added
 
-- New public `HttpSolverTransportOptions.postTimeoutMs` (default 10s) bounds
-  `submitBid` and `submitFill`. A POST slower than that now rejects; with no
+- `HttpSolverTransportOptions.readTimeoutMs` (default 10 s) bounds
+  `getCapabilities` and `getAttestation`; `postTimeoutMs` (default 10 s)
+  bounds `submitBid` and `submitFill`. A timed-out POST rejects; with no
   `onError` the rejection ends `run`, as any handler error does.
-- `OnchainEscrowGateway.accept` resolves the fills it still owes BEFORE reading
+- Optional `SolverTransport.addFeedGapListener`, implemented by
+  `HttpSolverTransport` (whose own `onFeedGap` still sees every gap).
+
+### Changed
+
+- `SolverClient.run` re-reads `/solver/capabilities` after a feed `reset` and
+  before each of this solver's awards reaches `solver.fill`, throwing
+  `VenueVersionSkewError` (or the plain "did not tell me" `Error`) with nothing
+  accepted if the venue serves another `rfcVersion` or does not answer, so a
+  venue redeployed under a long-running solver is caught. Neither re-check goes
+  to `onError`; a supervisor restarting on skew must handle it. Announcements
+  cost no capabilities read. An injected transport without
+  `addFeedGapListener` is re-checked only before its awards.
+
+### Fixed
+
+- `OnchainEscrowGateway.accept` resolves the fills it still owes before reading
   `balanceOf`, so a fill landing between the two reads is counted twice (a
   conservative refusal) instead of in neither (accepting on spent inventory).
-- `run` subscribes its feed-gap listener (`addFeedGapListener`) only for its
-  own duration and unsubscribes when it ends, so clients rebuilt over one
-  transport no longer accumulate listeners.
+- `run` subscribes its feed-gap listener only for its own duration, so clients
+  rebuilt over one transport do not accumulate listeners.
 
-## `0.4.0` — RFC `0.4.0-draft` → `0.5.0-draft`: decline instead of skip, and claim until repaid
+## [0.4.0] - 2026-10-07
 
-No digest moves; solver obligations and `OnchainEscrowGateway`'s API do.
+SOLVER-RFC `0.4.0-draft` -> `0.5.0-draft`: decline instead of skip, and claim
+until repaid. No digest moves; solver obligations and `OnchainEscrowGateway`'s
+API do.
 
-- **`accept()` refuses `claims_paused` and `insufficient_claim_gas`** (origin
-  claim signer balance vs `claimGasBudget` × `maxFeePerGas`, default
-  `CLAIM_GAS_BUDGET`); after acceptance `fill()` only warns.
-- **`prepare()` also refuses** a FillAuth `amount` above `award.output`, an
-  `escrow.payee` other than `fillAuth.filler`, and a `destOpening.intentId`
-  other than the award's.
-- **New `claimUntilRefundable(prepared)`** retries until `refundableAt`,
+### Added
+
+- **`claimUntilRefundable(prepared)`** retries until `refundableAt`,
   returning `claimed`, `claimed_by_other` (event names another payee),
   `claimed_unverified`, `lock_not_open` or `window_closed`. Run it, not one
   `claim()`, after every fill.
-- **`resolveTx` takes the sender slot and an `effect(blockTag)` callback**,
-  reporting `not_sent` only when the nonce is consumed and the effect absent at
-  that block (else `in_doubt`). Its hash argument is one hash or a list (an
-  outcome's `hashes`). In-doubt sends are re-broadcast and replaced at the same
-  nonce on each repeated `fill()`/`claim()`: call `fill(prepared)` until
-  `confirmed` or `already_filled`, retrying on `not_sent`, thrown reads and
-  `reverted` before the FillAuth deadline in destination time (each resend
-  gated by `staticCall`; past the deadline re-read `filled`), then run
-  `claimUntilRefundable` whatever it returned.
-- **`verifyAward` requires `bidOutput`** (`AwardExpectations.bidOutput`, your
-  signed bid output, the FillAuth `amount` ceiling). `0.3.0` expectations now
-  throw at runtime and fail `tsc --strict`; `prepare()` fills it from
-  `bid.output`.
-- **Every `AwardFillAuth` member is optional** (type and
-  `AwardFillAuthSchema`), so an award missing one reaches `Solver.fill` and is
-  refused there instead of ending `run` as a parse error. Narrow with
-  `requireFillableEscrow(award)` (`malformed_award` naming each missing field);
-  `award.escrow!.fillAuth!.amount` no longer typechecks as `string`.
-- **`FillableEscrow` reshaped:** `acceptBy` required, `fillAuth` is
-  `Required<AwardFillAuth>`; `requireFillableEscrow` refuses a missing
-  `acceptBy` or FillAuth member.
-- **New `restoreAcceptance(prepared)`** re-registers a persisted acceptance
+- **`restoreAcceptance(prepared)`** re-registers a persisted acceptance
   without signing or posting, so the one-acceptance-per-order guard covers the
   order and `fill()` sends for its `fillId`. Call it per persisted order on
   restart, before any award: a filled order's lock reads `Open` until claimed,
   so a new auction for it verifies.
-- **New `AcceptOptions.onSigned(signed)`** (`{ acceptance, digest, signature }`),
+- **`AcceptOptions.onSigned(signed)`** (`{ acceptance, digest, signature }`),
   awaited after signing and recording, before every POST. Persist the order
   there; a throw stops the POST and is rethrown, the signature staying recorded.
-  It is the only point where "persisted once possibly signed" can be written.
-- **Removed exports `ensureAllowance` (free function) and
-  `simulateAndSendOnce`.** Use
-  `gateway.ensureAllowance(signer, token, spender, amount, { sufficient? })`,
-  which shares the per-key send queue; `sufficient` leaves a short allowance
-  standing (no reset, nothing sent) while it is at least that.
-- **New gateway options:** `receiptPollMs`, `replaceInDoubtAfterBlocks`,
-  `replaceInDoubtAfterPasses`, `replaceInDoubtWithinSec`, `claimGasBudget`;
-  `receiptTimeoutMs` is measured on `now`. In its receipt wait a slot is
-  re-signed only when a new block left it out and it is uninclusive at market
-  (EIP-1559: `maxFeePerGas` below base fee plus its tip, or tip below market;
-  legacy: `gasPrice` below market), or `replaceInDoubtAfterBlocks` (default 3)
-  BLOCKS left it out. `replaceInDoubtAfterPasses` (default 3) counts repeated
-  in-doubt `fill()`/`claim()` passes instead (15s apart in the example; a Base
-  block is 2s), alongside `replaceInDoubtWithinSec`.
-- **`SolverClient.run` throws `VenueVersionSkewError`** (`advertised`, `implemented`) on a version mismatch, so a supervisor can stop on skew and retry an outage without matching message text.
+- **Gateway options** `receiptPollMs`, `replaceInDoubtAfterBlocks` (default 3),
+  `replaceInDoubtAfterPasses` (default 3), `replaceInDoubtWithinSec`,
+  `claimGasBudget`. In its receipt wait a slot is re-signed only when a new
+  block left it out and it is uninclusive at market (EIP-1559: `maxFeePerGas`
+  below base fee plus its tip, or tip below market; legacy: `gasPrice` below
+  market), or `replaceInDoubtAfterBlocks` blocks left it out.
+  `replaceInDoubtAfterPasses` counts repeated in-doubt `fill()`/`claim()`
+  passes instead, alongside `replaceInDoubtWithinSec`.
+
+### Changed
+
+- **`accept()` refuses `claims_paused` and `insufficient_claim_gas`** (origin
+  claim signer balance vs `claimGasBudget` x `maxFeePerGas`, default
+  `CLAIM_GAS_BUDGET`); after acceptance `fill()` only warns.
+- **`prepare()` also refuses** a FillAuth `amount` above `award.output`, an
+  `escrow.payee` other than `fillAuth.filler`, and a `destOpening.intentId`
+  other than the award's.
+- **BREAKING: `resolveTx` takes the sender slot and an `effect(blockTag)`
+  callback**, reporting `not_sent` only when the nonce is consumed and the
+  effect absent at that block (else `in_doubt`). Its hash argument is one hash
+  or a list (an outcome's `hashes`). In-doubt sends are re-broadcast and
+  replaced at the same nonce on each repeated `fill()`/`claim()`: call
+  `fill(prepared)` until `confirmed` or `already_filled`, retrying on
+  `not_sent`, thrown reads and `reverted` before the FillAuth deadline in
+  destination time (each resend gated by `staticCall`; past the deadline re-read
+  `filled`), then run `claimUntilRefundable` whatever it returned.
+- **BREAKING: `verifyAward` requires `bidOutput`**
+  (`AwardExpectations.bidOutput`, your signed bid output, the FillAuth `amount`
+  ceiling). `0.3.0` expectations throw at runtime and fail `tsc --strict`;
+  `prepare()` fills it from `bid.output`.
+- **BREAKING: every `AwardFillAuth` member is optional** (type and
+  `AwardFillAuthSchema`), so an award missing one reaches `Solver.fill` and is
+  refused there instead of ending `run` as a parse error. Narrow with
+  `requireFillableEscrow(award)` (`malformed_award` naming each missing field);
+  `award.escrow!.fillAuth!.amount` does not typecheck as `string`.
+- **BREAKING: `FillableEscrow`:** `acceptBy` required, `fillAuth` is
+  `Required<AwardFillAuth>`; `requireFillableEscrow` refuses a missing
+  `acceptBy` or FillAuth member.
+- `receiptTimeoutMs` is measured on `now`.
+- **`SolverClient.run` throws `VenueVersionSkewError`** (`advertised`,
+  `implemented`) on a version mismatch, so a supervisor can stop on skew and
+  retry an outage without matching message text.
 - **Sends are serialized per `chainId:address`** (approvals and bond calls
-  included), the queue released at broadcast. The gateway assigns nonces; a
-  provider's `cacheTimeout` no longer matters.
-- **`TxOutcome` gained `cancelled`** (`txHash`, `hashes`, `cancelTxHash`,
-  `reason`, `from`, `nonce`): a slot unmined at its last landable moment, freed
-  by a same-nonce zero-value self-transfer a node holds. **Not final** (the
-  action may have taken the slot): follow it like `in_doubt` via `resolveTx`
-  over `hashes`, never `cancelTxHash`. `in_doubt` gained optional `hashes`.
-  Exhaustive `switch`es over `status` need the new case.
-- **One order, one acceptance; one `fillId`, one fill and one claim loop, however
-  often the award arrives** (Riddler#1250 re-publishes until delivery is
-  recorded). `accept()`/`fill()` refuse `fill_auth_mismatch` for an `orderId`
-  accepted under another `fillId`; `fill()` refuses `already_filled` for a
-  `fillId` it filled (no RPC read) and `in_doubt` while another `fill()` of it
-  runs; a concurrent `accept()` of a different FillAuth gets
+  included), the queue released at broadcast. The gateway assigns nonces, so a
+  provider's `cacheTimeout` does not affect them.
+- **BREAKING: `TxOutcome` gains `cancelled`** (`txHash`, `hashes`,
+  `cancelTxHash`, `reason`, `from`, `nonce`): a slot unmined at its last
+  landable moment, freed by a same-nonce zero-value self-transfer a node holds.
+  **Not final** (the action may have taken the slot): follow it like
+  `in_doubt` via `resolveTx` over `hashes`, never `cancelTxHash`. `in_doubt`
+  gains optional `hashes`. Exhaustive `switch`es over `status` need the new
+  case.
+- **One order, one acceptance; one `fillId`, one fill and one claim loop,
+  however often the award arrives** (Riddler#1250 re-publishes until delivery
+  is recorded). `accept()`/`fill()` refuse `fill_auth_mismatch` for an
+  `orderId` accepted under another `fillId`; `fill()` refuses `already_filled`
+  for a `fillId` it filled (no RPC read) and `in_doubt` while another `fill()`
+  of it runs; a concurrent `accept()` of a different FillAuth gets
   `fill_auth_mismatch`; a second `claimUntilRefundable()` joins the first.
 - **`examples/escrow-solver.ts`:** `SOLVER_STATE_FILE` is held by a **lease**
   (`SOLVER_STATE_FILE.lock`, `{ token, host, pid, renewedAt }`, renewed every
@@ -271,62 +277,73 @@ No digest moves; solver obligations and `OnchainEscrowGateway`'s API do.
   not the process or fills. A `reverted` fill is re-driven until the FillAuth
   deadline.
 
-## `0.3.0` — RFC `0.3.0-draft` → `0.4.0-draft`: SolverBid v2 and `FillAcceptance`
+### Removed
 
-Every digest moved and the award path gained a step.
+- **BREAKING: `ensureAllowance` (free function) and `simulateAndSendOnce`.**
+  Use `gateway.ensureAllowance(signer, token, spender, amount, { sufficient? })`,
+  which shares the per-key send queue; `sufficient` leaves a short allowance
+  standing (no reset, nothing sent) while it is at least that.
 
-- **Bid sealing is SolverBid v2** (domain `version: "2"`, struct in
+## [0.3.0] - 2026-10-03
+
+SOLVER-RFC `0.3.0-draft` -> `0.4.0-draft`: SolverBid v2 and `FillAcceptance`.
+Every digest moves and the award path gains a step.
+
+### Changed
+
+- **BREAKING: escrowed awards need `accept` between `prepare` and `fill`**; the
+  gateway needs `bond` and `acceptances` options; `prepare` requires your own
+  `bid` and refuses an award without `escrow.bond` or `escrow.acceptBy`.
+  `accept` never throws after signing; its `receipt` is telemetry. New codes:
+  `bond_mismatch`, `not_accepted`, `accept_window_closed`.
+- **BREAKING: bid sealing is SolverBid v2** (domain `version: "2"`, struct in
   SOLVER-RFC §5.1). `BidDraft` is `{ output, validUntilMs, minExclusiveMs }`;
-  `expiryMs`, `hasExpiry`, `bidExpiryMs`, `MAX_BID_EXPIRY_MS` removed.
   `validUntilMs` is absolute. The wire `Bid` is
   `{ auctionId, intentId, solverId, orderId, output, validUntilMs, minExclusiveMs, signature }`.
-- **`IntentAnnouncement.orderId` is required** and signed into every bid.
-- **`bidTypedData` / `bidDigest` take one object**, not positional arguments.
-- **Vectors:** `conformance/bid.json` deleted; use `solver-bid-v2.json`.
-- **Escrowed awards need `accept` between `prepare` and `fill`**; the gateway
-  needs `bond` and `acceptances` options; `prepare` requires your own `bid` and
-  refuses an award without `escrow.bond` or `escrow.acceptBy`. `accept` never
-  throws after signing; its `receipt` is telemetry. New codes: `bond_mismatch`,
-  `not_accepted`, `accept_window_closed`.
+- **BREAKING: `IntentAnnouncement.orderId` is required** and signed into every
+  bid.
+- **BREAKING: `bidTypedData` / `bidDigest` take one object**, not positional
+  arguments.
 - **Depends on `@xochi/signer ^0.2.0`** (`fillAcceptanceOf`,
   `signFillAcceptance`).
 
-## `0.2.0` — RFC `0.1.0-draft` → `0.3.0-draft`: every digest moved **and** the announcement fields changed
+### Removed
 
-**Two breaks, both affecting every existing maker.** The only prior release,
-`0.1.0`, sealed with EIP-191, so a port that renames the announcement field but
+- `expiryMs`, `hasExpiry`, `bidExpiryMs`, `MAX_BID_EXPIRY_MS`.
+- `conformance/bid.json`; use `solver-bid-v2.json`.
+
+## [0.2.0] - 2026-09-07
+
+SOLVER-RFC `0.1.0-draft` -> `0.3.0-draft`. Every digest moves and the
+announcement fields change: a port that renames the announcement field but
 keeps its `0.1.0` signer has every bid rejected as a bad signature.
 
-- **Sealing: EIP-191 `personal_sign` over `JSON.stringify({...})` → EIP-712**
-  (v1: domain `version: "1"`, since replaced by v2). Same `Bid` shape and
-  `POST /solver/bids`, different digest; a skew looks like a key problem. The v1
-  vectors (`bid.json`, since deleted) were regenerated off
-  `eip191_personal_sign` in lockstep with the server.
-- **`IntentAnnouncement.reserveOutput` → `minOutput`.** Not a producer-side
-  rename: `minOutput` is **newly computed** (quote time: quote less a fixed
-  venue-wide announce margin, never per-taker; execute time: the signed
-  `XochiIntent.toAmount`) and is the admissibility floor, not the reserve (see
-  README **Winning**). Pricing at `reserveOutput + ε` still compiles after the
-  rename and now loses. TypeScript gets a compile error on the old name;
-  Python/Go/Rust ports get a missing key.
-- **`IntentAnnouncement.trustScore` removed.** No solver use (the fee tier
-  discounts venue and routing layers, never the solver spread) and it leaked the
-  tier to the panel. Delete every read.
-- **The venue has not withdrawn either key yet**; Riddler still serves both.
-  This SDK deletes them from the parsed announcement so `.passthrough()` doesn't
-  hand them to `solver.quote()`, but that is defence in depth in _your_
-  process: `curl`, a one-line fork, or `onInvalidEvent`'s `raw` still show them,
-  and no probe covers `/solver/*`, so nothing reports when they stop (RFC,
-  "Migrating from `0.2.0-draft`" step 2). A venue serving either key is
-  mid-migration, not a signal.
-- **The announcement change moved no signed bytes**, hence the `MUST` version
-  gate: across `0.2.0-draft` → `0.3.0-draft` alone the v1 vectors regenerated
-  byte-identical, so signatures verify while the sides disagree on what
-  `minOutput` means (RFC §12).
+### Changed
 
-## `0.1.0` — RFC `0.1.0-draft`: EIP-191 bid sealing, the scheme `0.2.0` replaces
+- **BREAKING: sealing is EIP-712** (v1: domain `version: "1"`, replaced by v2
+  in 0.3.0), was EIP-191 `personal_sign` over `JSON.stringify({...})`. Same
+  `Bid` shape and `POST /solver/bids`, different digest; a skew looks like a
+  key problem.
+- **BREAKING: `IntentAnnouncement.reserveOutput` -> `minOutput`.** Not a
+  producer-side rename: `minOutput` is newly computed and is the admissibility
+  floor, not the reserve (SOLVER-RFC §4.2). Pricing at `reserveOutput + ε`
+  still compiles after the rename and loses. TypeScript gets a compile error on
+  the old name; Python/Go/Rust ports get a missing key.
+- The announcement change moves no signed bytes, so signatures verify while the
+  sides disagree on what `minOutput` means; only the `rfcVersion` gate catches
+  the skew (SOLVER-RFC §12).
 
-Baseline: `SOLVER-RFC.md` at `- **RFC version:** 0.1.0-draft`, bids sealed by
-`wallet.signMessage` over a JSON string (`"scheme": "eip191_personal_sign"` in
-the since-deleted `bid.json`), announcing `reserveOutput` and `trustScore`. If
-installed, every `0.2.0` and `0.3.0` bullet applies.
+### Removed
+
+- **BREAKING: `IntentAnnouncement.trustScore`** (no solver use: the fee tier
+  never discounts the solver spread). Delete every read.
+- The parsed announcement drops `reserveOutput` and `trustScore` (defence in
+  depth only: see the `recipientCommitment` entry under [Unreleased]; producer
+  side: SOLVER-RFC "Migrating from `0.2.0-draft`" step 2). A venue serving
+  either key is mid-migration, not a signal.
+
+## [0.1.0] - 2026-08-01
+
+Baseline: SOLVER-RFC `0.1.0-draft`. Bids sealed by `wallet.signMessage` over a
+JSON string (`eip191_personal_sign`), announcing `reserveOutput` and
+`trustScore`.

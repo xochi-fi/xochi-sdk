@@ -3,17 +3,12 @@
 Normative contract: [`SOLVER-RFC.md`](../spec/SOLVER-RFC.md). SDK usage and the operator rules:
 [`README.md`](README.md).
 
-You can bid; you cannot win yet. The phase is derived from escrow readiness, not operator-set, so
-there is no flag we can flip for you.
+Who can win today: the README's opening note. The phase is derived from escrow readiness, not
+operator-set, so there is no flag we can flip for you.
 
 ## Run it
 
-```bash
-npm run example:solver              # offline: full loop incl. award + fill
-npm run example:solver -- --live    # against a venue
-```
-
-Offline, `examples/offline-solver.ts` runs against a stub auctioneer enforcing the RFC §5.1
+Commands: the README's reference solvers. Offline, `examples/offline-solver.ts` runs against a stub auctioneer enforcing the RFC §5.1
 acceptance rules: the only way to exercise `fill` at P0. Live needs `RIDDLER_SOLVER_URL` (`https:`,
 loopback exempt) and `SOLVER_KEY`, staked as below; the offline demo key is refused live.
 
@@ -66,7 +61,11 @@ All but the `503`s are permanent: the SDK throws them and never retries (RFC §9
 ## Pricing
 
 - `minOutput` is the lowest output the venue settles at: below is `422`, equal is admissible. The
-  number to beat is the venue's reserve, which is not announced.
+  number to beat is the venue's reserve, which is not announced, so a bid at `minOutput + 1` is
+  admissible and can still lose.
+- On a quote-through announcement (`quoteThrough: true`, RFC §2.5) there is no private reserve:
+  `minOutput` IS the reserve, public, a bid AT it is eligible, and the winner delivers
+  `max(next-best standing bid, minOutput)` (second price).
 - The reserve is derivable from the published fee schedule (`SPEC.md` §4, `fee/schedule.json`):
   `fromAmount × (1 − total_bps/10000)`, uncertain only across the taker's tier. That will change
   without any wire signal; price your own cost.
@@ -100,8 +99,7 @@ All but the `503`s are permanent: the SDK throws them and never retries (RFC §9
 - Hold inventory at bid time; release on refusal, expiry or fill.
 - Escape venue-supplied strings (`auctionId`, `intentId`) before logging.
 - Size escrow bids as `validUntilMs = closesAt + quote TTL + origin finality budget`, and never
-  below `announcement.minValidUntilMs` when the venue sends one (a quote-through corridor, RFC
-  §2.5: your bid IS the taker's price, settled second-price against `minOutput`), and
+  below `announcement.minValidUntilMs` when the venue sends one (a quote-through corridor), and
   `minExclusiveMs = (fillInclusionSec + award-to-accept latency + accept headroom) × 1000`
   (`examples/escrow-solver.ts`: 300 s + 1200 s, and 85 s).
 

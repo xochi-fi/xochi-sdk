@@ -9,9 +9,7 @@ import { ERC8262Oracle, PROOF_TYPES } from "@xochi/sdk";
 
 const oracle = new ERC8262Oracle("0x...", publicClient, walletClient, mainnet);
 
-// The publicInputs timestamp must not exceed block.timestamp and must be within
-// 1 hour of it: date the proof from the chain (new ERC8262Prover(loader, { client })
-// or chainProofTimestamp(publicClient)).
+// Date the proof from the chain and submit within MAX_PROOF_AGE (README "Proof timestamps").
 await oracle.submitCompliance({
   jurisdictionId: 0,
   proofType: PROOF_TYPES.COMPLIANCE,
@@ -27,7 +25,7 @@ const history = await oracle.getAttestationHistory("0x...", 0);
 
 `checkCompliance` is `valid` only for `COMPLIANCE_PROOF_TYPES` (0x01, 0x07, 0x09); pass `{ acceptedProofTypes }` to accept others deliberately. The contract reports `meetsThreshold: true` for every proof type, so this policy is client-side until ERC-8262 enforces it on-chain. `ComplianceAttestation` carries `proofType` (uint8) between `jurisdictionId` and `meetsThreshold`, in both the viem and the `OracleLite` (`ComplianceAttestationLite`) shape.
 
-On-chain limits: `MAX_PROOF_AGE = 1 hour` (the public-input timestamp vs `block.timestamp`, which it must not exceed, with no tolerance; when `proofTimestamp` is passed, `submitCompliance` pre-checks it with `assertProofRecent` against the latest block's time, not the local clock: viem's `eth_estimateGas` runs at `latest` too, and a chain stamp is at or below the latest block, which never exceeds the inclusion block, so it passes, while a local-clock stamp ahead of the head is refused), and `MIN_TIME_WINDOW = 3600` / `MAX_TIME_WINDOW = 90 days` for PATTERN analysis (`TimeWindowTooSmall` / `TimeWindowTooLarge`; `buildPatternInputs` enforces the stricter `PATTERN_TIME_WINDOW_MIN` (24h) and the same `PATTERN_TIME_WINDOW_MAX` (90 days)). `chainProofTimestamp(client)` returns the earlier of the local clock and the latest block's timestamp as the builders' `timestamp` string, so a client clock ahead of the chain does not date proofs in the chain's future; it throws `ChainAheadOfClockError` when the latest block is more than `MAX_PROOF_AGE` ahead of the local clock (a warped dev or fork chain: pass an explicit `timestamp`). `ERC8262Prover`'s and `generateTierProof`'s `client` option stamp with it, and the prover's chain stamps never go backwards. `assertProofRecent` / `isProofRecent` take an optional third argument, the reference time in unix seconds (default the local clock).
+On-chain limits: `MAX_PROOF_AGE` ([Proof timestamps](../README.md#proof-timestamps); when `proofTimestamp` is passed, `submitCompliance` pre-checks it with `assertProofRecent` against the latest block's time, not the local clock), and `MIN_TIME_WINDOW = 3600` / `MAX_TIME_WINDOW = 90 days` for PATTERN analysis (`TimeWindowTooSmall` / `TimeWindowTooLarge`; `buildPatternInputs` enforces the stricter `PATTERN_TIME_WINDOW_MIN` (24h) and the same `PATTERN_TIME_WINDOW_MAX` (90 days)). `assertProofRecent` / `isProofRecent` take an optional third argument, the reference time in unix seconds (default the local clock).
 
 Beyond the calls above, the client wraps the Oracle's history queries (`getHistoricalProof`, `getAttestationHistoryPaginated`, `getProofType`, `isAttestationValid`, `isAttestationRevoked`, `invalidateAttestation`, `attestationTTL`), config / Merkle root / reporting threshold validation (`providerConfigHash`, `isValidConfig`, `isRevokedConfig`, `isValidMerkleRoot`, `isValidReportingThreshold`), the signer registry (`registerSignerPubkeyHash`, `revokeSignerPubkeyHash`, `isValidSignerPubkeyHash`, `signerProvider`) and credential roots (`setProviderPublisher`, `getProviderPublisher`, `setCredentialSigner`, `getCredentialSigner`, `publishCredentialRoot(providerId, root, cid, notBefore, notAfter, signature)`, `revokeCredentialRoot`, `isValidCredentialRoot`, `getCredentialRoot`).
 
@@ -66,7 +64,7 @@ if (result.valid && result.publicInputs) {
 
 `verifyProof`'s `valid` means the verifier accepted the proof, **not** a compliance verdict; read the claim from the verified public inputs. The wallet, jurisdiction and proof type are validated before any request, and the returned attestation is asserted to match the query. Each call times out after `timeoutMs` (default 15 s). For Cloudflare Workers and other environments without viem.
 
-`verifyProof` simulates `submitCompliance` at the `latest` block (`verifyBlockTag`, default `"latest"`). A chain-stamped proof (`chainProofTimestamp`, or a prover or tier proof built with `client`) is at or below the latest block's timestamp, which never exceeds the block that includes the submission, so `latest` never refuses it; a local-clock stamp ahead of the head reverts `ProofTimestampInFuture` there (xochi-sdk#50): date proofs from the chain. `verifyBlockTag: "pending"` is opt-in and unsafe on OP-stack chains. On Base mainnet (`mainnet.base.org`, `base-rpc.publicnode.com`, `base.drpc.org`, Tenderly) the `eth_call` context at `pending` runs 0–8 s (up to 4 blocks) behind `latest`, below it in 11/15 and 31/40 samples (a sawtooth), so a chain-stamped proof checked within a few seconds failed at `pending` 7/10–13/15 times against 0/15 at `latest`; `1rpc.io/base` served a `pending` about 22 minutes stale. L1 RPCs serve `pending` ahead of `latest`; `pending` can help only where the RPC's pending context is at or ahead of `latest`. `checkCompliance` and `checkComplianceByType` always read `latest`.
+`verifyProof` simulates `submitCompliance` at the `latest` block (`verifyBlockTag`, default `"latest"`), where a chain-stamped proof is never refused as future-dated ([Proof timestamps](../README.md#proof-timestamps)). `verifyBlockTag: "pending"` is opt-in and unsafe on OP-stack chains (measurements: `OracleLiteConfig.verifyBlockTag`). `checkCompliance` and `checkComplianceByType` always read `latest`.
 
 ## Typed contract errors
 
@@ -113,7 +111,7 @@ const pattern = await prover.provePattern({
 await registry.finalizeTrade(plan.tradeId, patternProofHash, pattern.publicInputsHex);
 ```
 
-Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`. The PATTERN proof's own `timestamp` must be at or after the trade's `createdAt` (`PatternProofPredatesTradeError` otherwise; legs submitted before registration revert `AttestationPredatesTrade` at `recordSubSettlement`). A chain stamp, `min(local clock, latest)`, trails `createdAt` when the local clock trails the chain head, so pass `notBefore: createdAt`: without an explicit `timestamp` the stamp becomes `max(default stamp, createdAt)` (`createdAt` is a mined block's time, so it never exceeds the inclusion block), and an explicit `timestamp` before it throws `PatternTimestampPredatesTradeError` before proving, rather than after the Oracle has consumed the proof. RISK_SCORE and PATTERN proofs never ratchet: submit them in any order within `MAX_PROOF_AGE`. `SettlementRegistryClient` also wraps `expireTrade`, `getSettlement` and `getSubSettlements`.
+Finalization accepts only an anti-structuring (`analysisType: 1`) PATTERN proof committing to `computeSettlementRoot`; any other root passes the Oracle but reverts `finalizeTrade`. The PATTERN proof's own `timestamp` must be at or after the trade's `createdAt` (`PatternProofPredatesTradeError` otherwise; legs submitted before registration revert `AttestationPredatesTrade` at `recordSubSettlement`). A chain stamp can trail `createdAt` when the local clock trails the chain head, so pass `notBefore: createdAt`: without an explicit `timestamp` the stamp becomes `max(default stamp, createdAt)`, and an explicit `timestamp` before it throws `PatternTimestampPredatesTradeError` before proving, rather than after the Oracle has consumed the proof. RISK_SCORE and PATTERN proofs never ratchet: submit them in any order within `MAX_PROOF_AGE`. `SettlementRegistryClient` also wraps `expireTrade`, `getSettlement` and `getSubSettlements`.
 
 ## Execution planning (XIP-2)
 
@@ -131,4 +129,4 @@ const plan = planExecution(
 const batch = await provePlan(prover, plan, complianceInput);
 ```
 
-Shielded needs score 50+ but is not available: shielded settlement is off everywhere and Sovereign is excluded from the shielded design (the `tiers.ts` exports still return and accept `sovereign`). Design A (recipient-private, public amount) is the testnet tracer; B-panel is conditionally accepted as the first production rail (xochi `docs/planning/shielded-execution.md` §4, D7–D9). Submissions are spaced at least 12 s apart.
+Shielded needs score 50+; availability: [Privacy levels](tiers-privacy-scoring.md#privacy-levels). Submissions are spaced at least 12 s apart.

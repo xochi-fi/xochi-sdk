@@ -21,7 +21,7 @@ PXE and makes it a qualifying OXDAI recipient.
   `XOCHI_JWT`;
 - the zk.money enclave and an L1 JSON-RPC you choose (`--l1-rpc`), for spend, exit and refund only.
 
-No telemetry. The tool itself publishes nothing that names the account a Xochi recipient, but:
+The tool itself publishes nothing that names the account a Xochi recipient, but:
 
 - **Sponsored deployment (what pays, and what it links).** `setup --fee-juice-claim` deploys
   the account with `FeeJuicePaymentMethodWithClaim`: the L2 fee payer is the recipient
@@ -38,7 +38,8 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
   source and the repeated amount/timing pattern are a heuristic link; the recipient's own
   Fee Juice (bridged from the recipient's own L1 address) avoids any Xochi link at the cost
   of linking that L1 address.
-- The published account instance is visible on chain as a stock Schnorr account [INFERENCE].
+- The account instance `setup` publishes is visible on chain as a stock Schnorr account (stock
+  `SchnorrAccount` 6.0.0 class, deployer zero).
 
 ## Disclosures
 
@@ -91,7 +92,7 @@ No telemetry. The tool itself publishes nothing that names the account a Xochi r
 
 ## Release operator preflight
 
-Before creating any future signed recipient tag, authenticate `gh` with repository admin-read
+Before creating a signed recipient tag, authenticate `gh` with repository admin-read
 access and run:
 
 ```bash
@@ -141,7 +142,7 @@ cd "$STAGE/package"
 node dist/cli.js --version
 node dist/cli.js diagnostics
 
-# A source checkout remains supported for qualification work instead.
+# Qualification work can use a source checkout instead.
 cd /path/to/xochi-sdk/tools/recipient
 npm ci
 npm run build
@@ -187,8 +188,8 @@ it.
   own handler, so it never shows in the balance.
 - **Enrollment**: the tool builds the binding, checks viem and `@xochi/signer` agree on its
   digest, checks the source signature recovers the source wallet, signs the recipient
-  authorization and all acknowledgements required by the Worker. OXDAI always includes the shipped
-  `TokenRegistrationAck`; the exact signed value must be present in the acknowledged backup.
+  authorization and all acknowledgements required by the Worker (for OXDAI, including
+  `TokenRegistrationAck`; below).
 - **Backup** (format `xochi.shielded.backup-format.v1`): account keys, instance and class,
   network, token registration/immutables, senders, scan checkpoint, `TokenRegistrationAck`, and
   validated spend/exit/refund journals. Restore accepts earlier v1 backups without journals,
@@ -198,14 +199,14 @@ it.
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
 The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `manifestDigest`
-`0x80b6abd7...865e` is the agreed rev 2 digest (#736 sync 2026-11-03; Riddler#1437 records the
-same value, xochi#778 pins it). `--corridor FILE` takes another record, validated by the same schema.
+`0x80b6abd7...865e` is the agreed rev 2 digest (xochi#778 pins it; Riddler#1437 records the same
+value). `--corridor FILE` takes another record, validated by the same schema.
 
 **Token-registration ack (xochi#753 / OX-12).** `enroll start` opens the current PXE, verifies the
 pinned network, re-registers the corridor sender and token, stores its immutables, and only then
-signs `TokenRegistrationAck`. A backup written after `enroll start` carries it. `enroll submit`
-always sends the Worker's required three acknowledgements for OXDAI. Backup and fresh-PXE restore
-preserve the exact signed acknowledgement; there is no opt-out flag.
+signs `TokenRegistrationAck`. `enroll submit` always sends the Worker's required three
+acknowledgements for OXDAI and refuses unless the last backup was written after `enroll start`, so
+it carries that exact signed acknowledgement. Backup and fresh-PXE restore preserve it.
 
 **Exit artifact.** `npm run build:broadcaster` (aztec-up 6.0.0 on PATH) builds the L2
 Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its
@@ -236,13 +237,12 @@ A finalized revert records terminal receipt evidence and releases the lock, but 
 requires a new explicit authorization.
 
 The command supports recipient-owned `refundFrozenNotes`, `refundFrozenDeposits` and
-`refundUnprocessedDeposit` evidence. It does not generate a proof: pxe-bridge intentionally does
+`refundUnprocessedDeposit` evidence. It does not generate a proof: pxe-bridge does
 not vendor upstream's refund builders, compiled refund circuit artifacts, portal bindings or local
 enclave harness. Generate the completed bundle from zkmoney-public commit `2764aedc` and retain it
 privately; the CLI never substitutes a fake proof.
 
 `qualify/freeze-fork.sh` automates F1-F2 on an Anvil fork and emits the pre-freeze noncanonical and
 post-freeze observations consumed by the alert drill. `test/refund.test.ts` performs F3 stock
-Schnorr address recomputation plus F4 positive and negative fallback-key verification. F5-F8 remain
-the exact upstream boundary above until the product owner accepts the residual or supplies a
-reviewed runnable enclave/proof environment.
+Schnorr address recomputation plus F4 positive and negative fallback-key verification. F5-F8 stay
+at the upstream boundary above; they need a reviewed runnable enclave/proof environment.
