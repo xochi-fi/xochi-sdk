@@ -12,6 +12,7 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 ### Changed
 
 - XSP uint64 fields (`deadline`, `depositedAt`, `expiry`) refuse non-canonical spellings (`""`, `"0x10"`, `" 7"`, `"007"`, `"1e3"`, negatives, unsafe numbers) with "`<field>` must be a non-negative base-10 integer"; they were coerced by `BigInt`. Committed XSP vectors are unchanged.
+- `@noble/curves` dependency range is `^1.9.0` (was `^1.2.0`).
 
 ## [0.7.0] - 2026-11-03
 
