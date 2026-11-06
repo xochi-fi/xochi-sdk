@@ -66,7 +66,8 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 
 ### Changed
 
-- `@xochi/signer` dependency range is `^0.6.0` (was `^0.5.1`).
+- `@xochi/signer` dependency range is `^0.7.0` (was `^0.5.1`).
+- Award, lock, attestation and bond checks (`verifyAward`, `verifyAttestation`, `checkAwardBond`) parse uint fields with `@xochi/signer`'s `parseUint`: `""`, `"0x.."`, padded strings, negatives and unsafe numbers throw an `Error` naming the field instead of being coerced by `BigInt`. Leading-zero digit strings, which the feed schema admits, still compare by value.
 - **BREAKING: the `apiKey` option is removed** from `SolverClient` and
   `HttpSolverTransport`, and `HttpSolverTransport`'s `solverId` option with it:
   pass `solverKey` (and preferably `bond`) instead. Neither sends `X-API-Key`
@@ -117,14 +118,14 @@ Package version and RFC version are separate axes: the protocol version is `SOLV
 ### Removed
 
 - **BREAKING: `IntentAnnouncement.recipientCommitment`**, withdrawn by the
-  producer (RFC "Changes in `0.5.0-draft`"). The schema deletes it from a
+  producer (SOLVER-RFC §4.2 "Public settlement only"). The schema deletes it from a
   parsed announcement, as it does `reserveOutput` and `trustScore`, so a
   PUBLIC event carrying it still parses, without the key. Riddler emitted it
   only on stealth and shielded announcements, and those fail the parse as
   malformed entries with the key intact in `raw` (see "Changed"). Deleting a
   withdrawn key from the parsed announcement is defence in depth only:
   `curl`, a fork, or `onInvalidEvent`'s `raw` still show it while a producer
-  sends it (SOLVER-RFC "Changes in `0.5.0-draft`").
+  sends it (SOLVER-RFC §4.2 "Public settlement only").
   `examples/fill-state-file.ts` drops it from a state file an earlier version
   wrote, so it is neither resumed nor written back.
 - `examples/offline-solver.ts`: the shielded round and the settlement filter.
@@ -339,7 +340,7 @@ keeps its `0.1.0` signer has every bid rejected as a bad signature.
   never discounts the solver spread). Delete every read.
 - The parsed announcement drops `reserveOutput` and `trustScore` (defence in
   depth only: see the `recipientCommitment` entry under [Unreleased]; producer
-  side: SOLVER-RFC "Migrating from `0.2.0-draft`" step 2). A venue serving
+  side: SOLVER-RFC §4.2 "Retired keys"). A venue serving
   either key is mid-migration, not a signal.
 
 ## [0.1.0] - 2026-08-01

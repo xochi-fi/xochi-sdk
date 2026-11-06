@@ -4,6 +4,10 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- `buildComplianceInputs` / `buildComplianceSignedInputs` read the clock once when no `timestamp` is passed, so the validated and emitted timestamps are the same value.
+
 ## [0.5.0] - 2026-10-25
 
 ### Breaking

@@ -42,8 +42,7 @@ const settlement = z.enum(["public", "stealth", "shielded"]);
 // only protects a member who chooses not to look: `curl` on the feed, a fork
 // of this file, or the `raw` value handed to `onInvalidEvent` all still yield
 // the keys while the producer sends them. The enforcement point is the
-// producer (SOLVER-RFC.md "Migrating from `0.2.0-draft`", steps 1-2, and the
-// public-only announcement in "Changes in `0.5.0-draft`"), and nothing
+// producer (SOLVER-RFC.md §4.2 "Retired keys" and "Public settlement only"), and nothing
 // observes whether it has stopped: there is no producer-drift probe on
 // `/solver/*`. Defence in depth only: no retired key reaches `solver.quote()`
 // through `.passthrough()` by accident.
