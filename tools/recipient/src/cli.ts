@@ -62,7 +62,15 @@ import {
   type Ctx,
   type PendingEnrollment,
 } from "./commands.js";
-import { CorridorSchema, OXDAI_MAINNET_REV2, parseCorridor, type Corridor } from "./corridor.js";
+import {
+  CorridorSchema,
+  OXDAI_MAINNET_REV2,
+  decimal,
+  evm,
+  hex32,
+  parseCorridor,
+  type Corridor,
+} from "./corridor.js";
 import { bindingTypedData, typedDataJson, type SignedAck } from "./enrollment.js";
 import { SignedAckSchema } from "./backup.js";
 import { assertPinnedNetwork } from "./network.js";
@@ -123,11 +131,9 @@ Options:
   --version                    print the test artifact version
 Passphrase: XOCHI_RECIPIENT_PASSPHRASE, else prompted.`;
 
-const hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
-const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/);
 const BindingSchema = z
   .object({
-    sourceWallet: z.string().regex(/^0x[0-9a-f]{40}$/),
+    sourceWallet: evm,
     sourceChainId: decimal,
     aztecRecipient: hex32,
     aztecToken: hex32,
@@ -277,7 +283,7 @@ const required = (
   return v;
 };
 const baseUnits = (name: string, v: string): bigint => {
-  if (!/^(0|[1-9][0-9]*)$/.test(v)) fail(`--${name} must be a decimal number of base units`);
+  if (!decimal.safeParse(v).success) fail(`--${name} must be a decimal number of base units`);
   return BigInt(v);
 };
 /** A signed TokenRegistrationAck in the shape the state and backup files hold. */

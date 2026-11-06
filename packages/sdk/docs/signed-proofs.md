@@ -6,8 +6,8 @@ Part of the [`@xochi/sdk`](../README.md) reference. This is the prover side; sig
 
 A bundle is signed for ONE proof type: each signs under its own Pedersen domain tag (`DOMAIN_SIGNED_SIGNALS` for 0x07, `DOMAIN_RISK_SIGNED_SIGNALS` for 0x08), so a `COMPLIANCE_SIGNED` signature fails as `RISK_SCORE_SIGNED` and vice versa. `proveComplianceSigned` usage is in the [README](../README.md#provider-signed-proofs); `proveRiskScoreSigned` takes the same `signedBundle` (signed for 0x08) plus `signedTimestamp`.
 
-- `chainId` + `oracleAddress` MUST equal what was signed and the target Oracle's `block.chainid` / `address(this)` (audit F-6).
-- The signed timestamp is a public input (0x08's is input 7) and the Oracle rejects it after `MAX_PROOF_AGE` (1 hour), using it as the proof time: submit within an hour of signing.
+- The signed timestamp is a public input (0x08's is input 7) and the proof time: submit within `MAX_PROOF_AGE` of signing ([Proof timestamps](../README.md#proof-timestamps)).
+- `chainId` and `oracleAddress` bind the signature to one Oracle ([Input builders](#input-builders)).
 - Bundle fields are `Uint8Array`s; the daemon returns `0x` hex, so decode first.
 
 ## M-of-N multi-provider proofs (0x09)
@@ -15,7 +15,6 @@ A bundle is signed for ONE proof type: each signs under its own Pedersen domain 
 `COMPLIANCE_MULTI_SIGNED`: up to 5 slots (`MAX_PROVIDERS_MULTI`); M sign a slot-specific digest and attest the subject is below the jurisdiction's high-risk floor. Floors on M (`MIN_MULTI_PROVIDER_THRESHOLDS`): EU 1, UK 1, US 2, SG 2, UAE 2.
 
 - A slot `i` signature fails in slot `j`: the slot digest (`DOMAIN_MULTI_SIGNED_SIGNALS`, 25 fields) embeds `slot_index`.
-- Pass inactive slots as `null`; the builder pads them.
 - Active count `>= thresholdM`, with a distinct signer key (`signerPubkeyHash`) per active slot.
 
 All signers sign over the same `chainId`, `oracleAddress`, `jurisdictionId`, `providerSetHash`, `configHash`, signals, weights, timestamp and submitter:

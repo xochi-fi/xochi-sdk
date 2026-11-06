@@ -17,6 +17,8 @@ import {
 import { dirname, join } from "node:path";
 import { z } from "zod4";
 
+import { decimal } from "./corridor.js";
+
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hex = /^0x[0-9a-f]+$/i;
 const txHash = /^0x[0-9a-f]{64}$/i;
@@ -48,10 +50,7 @@ export const OperationRecordSchema = z
     request: z.record(z.string(), z.string()),
     txHash: z.string().regex(txHash).optional(),
     receiptStatus: z.enum(["checkpointed", "proven", "finalized", "finalized-failed"]).optional(),
-    receiptBlockNumber: z
-      .string()
-      .regex(/^(0|[1-9][0-9]*)$/)
-      .optional(),
+    receiptBlockNumber: decimal.optional(),
     receiptBlockHash: z.string().regex(txHash).optional(),
     withdrawals: z
       .array(

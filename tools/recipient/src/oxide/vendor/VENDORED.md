@@ -63,9 +63,6 @@ the tool's stricter flags.
 
 ## Updating
 
-Re-copy pxe-bridge's `src/oxide/vendor/` at the commit that moves the Oxide pin, re-add the
-table above from the same upstream commit with the two rewrites, re-apply the
-`l2_operations.ts` signed-withdrawal journal hook and four phase hooks, re-apply
-`plain_withdrawal_executor.ts` fee-reader removal, and update the deployment pins in
-`../../corridor.ts` together. A new Oxide deployment is a new pin, reviewed, never absorbed. Then
-`npm run typecheck && npm test`.
+Repeat "How it was made" at the pxe-bridge commit that moves the Oxide pin, re-apply the
+**modified** rows, and update the deployment pins in `../../corridor.ts` together; then
+`npm run typecheck && npm test`. A new Oxide deployment is a new pin, reviewed, never absorbed.

@@ -32,7 +32,7 @@ widget.updateProvider(otherProvider); // or null
 widget.destroy();
 ```
 
-### Params
+### Frame parameters
 
 `params` sets what the frame opens on; `{}` opens it on its own defaults. `encodeEmbedParams` writes them as `embedUrl` and `createXochiWidget` do, and `parseEmbedParams` reads them back.
 
@@ -86,17 +86,11 @@ if (host) {
 
 - Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`.
 - Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200` without reaching it. Every connection, signature, chain switch and transaction still prompts.
-- Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is deliberately no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
+- Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
 - Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.
 - Lifecycle events carry `tradeRef`, an opaque reference the frame mints per trade (`TRADE_REF_PATTERN`: `tr_` + 32 lowercase hex, random), the same on every event of one trade. It is not the intent id and the API knows nothing of it, so the events let the host correlate a trade but not read it from the Worker. Events whose `tradeRef` does not match the pattern are dropped.
 - The events carry no intent id, but a host that supplies `provider` sees the full signed `XochiIntent`, `intentId` included, when the frame asks that wallet to sign it (`eth_signTypedData_v4`). Only a wallet the frame owns keeps the intent id from the host.
 - The frame side, `connectToHost`, posts only `xochi:ready` before the handshake (to `"*"`, or to `hostOrigin` when given). It pins the origin of the first well-formed `xochi:provider` from `window.parent` (only `hostOrigin`, when given; never the opaque `"null"`), then handles only messages from that window and origin and posts only to it. It applies the host's limits before asking: off-allowlist methods (`4200`), bad params (`-32602`), requests over `MAX_MESSAGE_LENGTH` (`-32600`) and more than `MAX_PENDING_RPC` in flight (`-32005`) are refused with the host's own code and message, without posting anything. Host messages over `MAX_MESSAGE_LENGTH` are dropped (an answer that size rejects its request with `-32603`), and host error messages are cut to `MAX_ERROR_MESSAGE_LENGTH`.
-
-## Migrating to 0.2.0
-
-- `trade:submitted`, `trade:completed` and `trade:failed` carry `tradeRef` in place of `intentId`; read `tradeRef` where you read `intentId`.
-- `trade:failed` always has a `tradeRef`; it is no longer nullable.
-- Upgrade the host and the frame together: a 0.2.0 host drops a 0.1.x frame's events and a 0.1.x host drops a 0.2.0 frame's events, both silently.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
 

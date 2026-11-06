@@ -1,7 +1,7 @@
 # ERC-8262 provider signing daemon (reference)
 
 An HTTP daemon around [`@xochi/provider`](../README.md)'s signers. This reference implementation
-ships as source only and deliberately uses `HexPrivateKeyLoader`; it is not the production
+ships as source only and uses `HexPrivateKeyLoader`; it is not the production
 KMS/HSM adapter. Production services implement `DigestSigner` so only 32-byte digests reach the
 custody device, replace `MemoryReplayDb` with a persistent store and `makeAuditSink` with a
 tamper-evident log, and run behind mTLS.
@@ -70,14 +70,9 @@ failures, filesystem paths and backend details remain only in the private audit 
   secure the path. It waits for the stream write callback, not `fsync`; operators must secure the
   parent directory, and production durability is the replacement `AuditSink`'s contract.
 - An identical `/sign` or `/sign-multi` retry returns the retained bundle's byte-identical
-  signature (audited `replayed`), including concurrent attempts. Production `ReplayDb`
-  implementations must atomically retain one canonical winner across all processes sharing the
-  store, persist across restarts and retain each record for the full proof-validity window. Retained
-  rows are copied and cryptographically validated before release; corruption fails closed. A store
-  failure after custody signing releases no response, but a retry may sign again. KMS/HSM
-  signatures need not be deterministic, so eviction or record loss may yield another valid
-  signature. `/sign-credential-root` has no replay ledger and may return different valid signature
-  bytes on retry.
+  signature (audited `replayed`), including concurrent attempts. The `ReplayDb` storage contract
+  and what a retry may return: [provider README "Rules"](../README.md#rules).
+  `/sign-credential-root` has no replay ledger.
 - `/pubkey-hash` validates and hashes one copied identity snapshot, then returns coordinates from
   that same snapshot.
 - All Barretenberg work is serialized once through one bounded FIFO queue because one instance is

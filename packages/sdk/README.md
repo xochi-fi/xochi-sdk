@@ -50,7 +50,7 @@ await prover.destroy();
 | 0x08 | Risk Score Signed       | `risk_score_signed`       | 12            | `proveRiskScoreSigned()`       | Risk score with provider-signed signals       |
 | 0x09 | Compliance Multi-Signed | `compliance_multi_signed` | 14            | `proveComplianceMultiSigned()` | M-of-N provider signatures (up to 5 slots)    |
 
-Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. Every circuit carries a proof timestamp the Oracle rejects after `MAX_PROOF_AGE` (1 hour); for RISK_SCORE (input 7, before `submitter`) and PATTERN (input 7, after `settlement_root`) it is the builder's optional `timestamp`, dated from the chain when the prover has a `client` and by the local clock otherwise (see [Proof timestamps](#proof-timestamps)). `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
+Ids, circuit names and public-input counts match ERC-8262's `ProofTypes` constants 1:1 (`PROOF_TYPES`, `proofTypeToCircuit`, `circuitToProofType`, `PUBLIC_INPUT_COUNTS`). Every circuit takes `submitter` as a public input; PATTERN's 7th is `settlement_root` (see [settlement splitting](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#settlement-splitting-xip-1)); the signed types bind `chain_id` and `oracle_address` into the digest the provider signs, each under its own domain tag, and expose the signed timestamp as a public input. Every circuit carries a proof timestamp ([Proof timestamps](#proof-timestamps)); for RISK_SCORE (input 7, before `submitter`) and PATTERN (input 7, after `settlement_root`) it is the builder's optional `timestamp`. `0x0a` is reserved for a future `compliance_multi_signed_large` (N > 5).
 
 ## Proof timestamps
 
@@ -66,10 +66,12 @@ import { chainProofTimestamp } from "@xochi/sdk";
 
 const timestamp = await chainProofTimestamp(publicClient); // min(local clock, latest block time), as a string
 const result = await prover.proveRiskScore({ ...input, timestamp });
-// submit within MAX_PROOF_AGE (1 hour) of `timestamp`
+// submit within MAX_PROOF_AGE of `timestamp`
 ```
 
-For the signed types, read it before requesting the signature: the provider signs the same timestamp, so the prover never re-dates them. A chain stamp is at or below the latest block's timestamp, which never exceeds that of the block that includes the submission, so the latest block is the safe place to check it: `submitCompliance`'s optional `proofTimestamp` pre-check and `OracleLite.verifyProof`'s simulation (`verifyBlockTag`, default `"latest"`) both run there, as viem's gas estimation does. A local-clock stamp ahead of the head is refused there; date proofs from the chain. `verifyBlockTag: "pending"` is opt-in and unsafe on OP-stack chains: on Base mainnet the `eth_call` context at `pending` runs 0–8 s (up to 4 blocks) behind `latest`, so chain-stamped proofs checked within a few seconds failed there 7/10–13/15 times against 0/15 at `latest` (see [OracleLite](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/onchain.md#oraclelite-no-viem)).
+For the signed types, read it before requesting the signature: the provider signs the same timestamp, so the prover never re-dates them.
+
+Check proofs at the latest block: a chain stamp is at or below the latest block's timestamp, which never exceeds that of the block that includes the submission. `submitCompliance`'s optional `proofTimestamp` pre-check and `OracleLite.verifyProof`'s simulation (`verifyBlockTag`, default `"latest"`) both run there, as viem's gas estimation does. `verifyBlockTag: "pending"` is opt-in and unsafe on OP-stack chains (measurements: `OracleLiteConfig.verifyBlockTag`).
 
 ## Provider-signed proofs
 
@@ -91,8 +93,7 @@ const result = await prover.proveComplianceSigned({
 ## Safety rules
 
 - `submitter` must be the address that submits the proof; the Oracle rejects any other `msg.sender`.
-- Signed proofs expire one hour after signing (`MAX_PROOF_AGE`).
-- A proof timestamp must not exceed the chain's block time and must be within `MAX_PROOF_AGE` of it; date proofs from the chain (the prover's or `generateTierProof`'s `client`, or `chainProofTimestamp(client)`), not the local clock.
+- Date proofs from the chain, not the local clock, and submit within `MAX_PROOF_AGE` of the timestamp; signed proofs expire `MAX_PROOF_AGE` after signing ([Proof timestamps](#proof-timestamps)).
 - Tier proofs are self-attested: never grant fees or privacy from one.
 - `OracleLite.verifyProof`'s `valid` is not a compliance verdict; read the verified public inputs.
 

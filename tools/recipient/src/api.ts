@@ -4,12 +4,13 @@
 
 import { z } from "zod4";
 
+import { anyCaseHex32 } from "./corridor.js";
 import type { EnrollmentChallenge, EnrollmentRequest } from "./enrollment.js";
 
 const ChallengeSchema = z
   .object({
     challenge_id: z.string().min(1).max(128),
-    nonce: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    nonce: anyCaseHex32,
     expires_at: z.number().int().positive(),
   })
   .strict();
@@ -17,7 +18,7 @@ const ChallengeSchema = z
 const ProjectionSchema = z
   .object({
     binding_id: z.string().min(1).max(128),
-    descriptor_digest: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    descriptor_digest: anyCaseHex32,
     state: z.enum(["pending", "ready", "revoked"]),
     policy_revision: z.number().int(),
   })

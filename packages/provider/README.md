@@ -96,7 +96,8 @@ const slotB = await signSlotPayload(api, keyB, { ...shared, slotIndex: 1 });
 ```
 
 Put each result in `proveComplianceMultiSigned`'s `slots` at the index it was signed for (`null` for
-inactive). M must meet `MIN_MULTI_PROVIDER_THRESHOLDS` (EU 1, UK 1, US 2, SG 2, UAE 2).
+inactive). M must meet `@xochi/sdk`'s `MIN_MULTI_PROVIDER_THRESHOLDS` for the jurisdiction
+([floors](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/docs/signed-proofs.md#m-of-n-multi-provider-proofs-0x09)).
 
 ## Credential roots
 
@@ -130,7 +131,8 @@ verification.
   fails.
 - A 0x09 signature is bound to its `slotIndex`; it does not verify in another slot.
 - `submitter` is signed and must be the account that submits the proof.
-- The signed `timestamp` must be under 1 hour old when the proof reaches the Oracle.
+- The signed `timestamp` must be within `MAX_PROOF_AGE` when the proof reaches the Oracle
+  ([proof timestamps](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/sdk/README.md#proof-timestamps)).
 - The local signer uses deterministic RFC 6979 signing, but generic KMS/HSM `DigestSigner`
   adapters may return different valid low-S signatures for the same digest.
 - `signSignalsWithReplayProtection` / `signSlotPayloadWithReplayProtection` return byte-identical
