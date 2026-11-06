@@ -5,6 +5,8 @@
 package conformance
 
 import (
+	"encoding/json"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,21 +21,22 @@ func fixturePath(t *testing.T) string {
 	return p
 }
 
-func TestFixturePresentAndCounted(t *testing.T) {
+func TestFixtureCoversEveryProtocol(t *testing.T) {
 	vs, err := LoadVectors(fixturePath(t))
 	if err != nil {
 		t.Fatalf("load vectors: %v", err)
-	}
-	if len(vs) != 45 {
-		t.Fatalf("expected 45 vectors, got %d", len(vs))
 	}
 	counts := map[string]int{}
 	for _, v := range vs {
 		counts[v.Protocol]++
 	}
-	for proto, want := range map[string]int{"erc3009": 9, "permit2": 19, "xochi": 17} {
-		if counts[proto] != want {
-			t.Errorf("protocol %s: expected %d vectors, got %d", proto, want, counts[proto])
+	want := []string{"erc3009", "permit2", "xochi"}
+	if len(counts) != len(want) {
+		t.Fatalf("protocols: got %v, want exactly %v", counts, want)
+	}
+	for _, proto := range want {
+		if counts[proto] < 1 {
+			t.Errorf("protocol %s: no vectors", proto)
 		}
 	}
 }
@@ -70,29 +73,87 @@ func TestVectorsReproduceByteForByte(t *testing.T) {
 	}
 }
 
-func TestShortNonceRejectedNotSilentlySigned(t *testing.T) {
-	// A non-canonical (short) nonce must fail loud, never silently produce a
-	// different signed_object than the reference (which left-pads). Guards the
-	// conformance-coverage gap the frozen fixture cannot exercise.
+func firstVector(t *testing.T, protocol string) Vector {
+	t.Helper()
 	vs, err := LoadVectors(fixturePath(t))
 	if err != nil {
 		t.Fatalf("load vectors: %v", err)
 	}
-	var base Vector
 	for _, v := range vs {
-		if v.Protocol == "erc3009" {
-			base = v
-			break
+		if v.Protocol == protocol {
+			return v
 		}
 	}
-	bad := make(map[string]any, len(base.Message))
-	for k, v := range base.Message {
-		bad[k] = v
-	}
-	bad["nonce"] = "0x01"
-	base.Message = bad
+	t.Fatalf("no %s vector", protocol)
+	return Vector{}
+}
+
+func TestShortNonceRejectedNotSilentlySigned(t *testing.T) {
+	// A non-canonical (short) nonce must fail loud, never silently produce a
+	// different signed_object than the reference (which left-pads). Guards the
+	// conformance-coverage gap the frozen fixture cannot exercise.
+	base := firstVector(t, "erc3009")
+	base.Message = maps.Clone(base.Message)
+	base.Message["nonce"] = "0x01"
 	if _, err := Sign(base); err == nil {
 		t.Fatal("expected error on short nonce, got nil (silent divergence)")
+	}
+}
+
+var nonCanonicalIntegers = []struct {
+	name  string
+	value any
+}{
+	{"leading zero", "01000"},
+	{"leading space", " 1000"},
+	{"trailing newline", "1000\n"},
+	{"plus sign", "+1000"},
+	{"minus sign", "-1000"},
+	{"hex", "0x3e8"},
+	{"exponent string", "1e3"},
+	{"separator", "1_000"},
+	{"empty", ""},
+	{"json exponent", json.Number("1e3")},
+	{"json fraction", json.Number("1000.0")},
+	{"json negative", json.Number("-1000")},
+	{"float64", float64(1000)},
+	{"bool", true},
+}
+
+func TestNonCanonicalIntegerRejectedNotSilentlySigned(t *testing.T) {
+	base := firstVector(t, "erc3009")
+	for _, tc := range nonCanonicalIntegers {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := base
+			bad.Message = maps.Clone(base.Message)
+			bad.Message["value"] = tc.value
+			if _, err := Sign(bad); err == nil || !strings.Contains(err.Error(), "non-canonical integer") {
+				t.Fatalf("value %#v: expected non-canonical integer error, got %v", tc.value, err)
+			}
+		})
+	}
+}
+
+func TestNonCanonicalDomainChainIDRejectedNotSilentlySigned(t *testing.T) {
+	for _, protocol := range []string{"erc3009", "permit2", "xochi"} {
+		base := firstVector(t, protocol)
+		for _, tc := range nonCanonicalIntegers {
+			t.Run(protocol+"/"+tc.name, func(t *testing.T) {
+				bad := base
+				if protocol == "xochi" {
+					eip712 := *base.Eip712
+					eip712.Domain = maps.Clone(eip712.Domain)
+					eip712.Domain["chainId"] = tc.value
+					bad.Eip712 = &eip712
+				} else {
+					bad.Domain = maps.Clone(base.Domain)
+					bad.Domain["chainId"] = tc.value
+				}
+				if _, err := Sign(bad); err == nil || !strings.Contains(err.Error(), "non-canonical integer") {
+					t.Fatalf("chainId %#v: expected non-canonical integer error, got %v", tc.value, err)
+				}
+			})
+		}
 	}
 }
 

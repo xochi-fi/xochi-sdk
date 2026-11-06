@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// NOTE: `conformance/conformance.json` is the frozen byte-equality contract
-// with `raxol_payments` (see CLAUDE.md). Do not run this script casually --
-// regenerating it without a corresponding signer change silently masks digest
-// drift. Kept here only so the toolchain stays runnable end to end.
+// `conformance/conformance.json` is the frozen byte-equality contract with
+// `raxol_payments`: regenerate it only in lockstep with a signer change on both
+// sides. A casual regeneration silently masks digest drift.
 //
 // The pure EIP-712/stealth signers (signXochiIntent, XOCHI_TYPES, Quote,
 // Eip712Signable) come from `@xochi/signer`, the network-free signing
@@ -13,16 +12,13 @@
 // workspace is not part of the published `@xochi/spec` npm contract for
 // external consumers. See packages/spec/README.md.
 
-import fs, { realpathSync } from "fs";
-import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
 import { ethers } from "ethers";
 import { CONFIG, getTokenAddress } from "@xochi/reference/config";
 import { signOnly } from "@xochi/reference/sign-only";
 import { signXochiIntent, XOCHI_TYPES, type Quote, type Eip712Signable } from "@xochi/signer";
 import type { SignerConfig } from "@xochi/signer";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { isMain, writeVectors } from "./_lib.js";
 
 // Deterministic; changing any value here requires regenerating the fixture.
 const CANONICAL = {
@@ -315,12 +311,7 @@ async function generate(): Promise<Vector[]> {
 
 async function main(): Promise<void> {
   const vectors = await generate();
-  const outPath = path.join(__dirname, "conformance.json");
-
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(vectors, null, 2) + "\n");
-
-  console.log(`Wrote ${vectors.length} vectors to ${path.relative(process.cwd(), outPath)}`);
+  writeVectors("conformance.json", vectors);
   console.log("Breakdown:");
   const counts = vectors.reduce<Record<string, number>>((acc, v) => {
     acc[v.protocol] = (acc[v.protocol] || 0) + 1;
@@ -331,11 +322,7 @@ async function main(): Promise<void> {
   }
 }
 
-// Compared as URLs of the real path: a hand-built `file://` + path never
-// matches one that needs percent-encoding (a space) or runs through a symlink.
-const isMainModule =
-  process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
-if (isMainModule) {
+if (isMain(import.meta.url)) {
   main().catch((err) => {
     console.error("generate-conformance failed:", err);
     process.exit(1);

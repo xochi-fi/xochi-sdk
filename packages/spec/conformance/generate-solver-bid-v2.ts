@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 // Generates `conformance/solver-bid-v2.json`: the cross-implementation vector set
-// for SolverBid v2 sealing (SOLVER-RFC.md §5.1), EIP-712 domain RiddlerSolver/2:
-//
-//   SolverBid(bytes32 orderId,string auctionId,string intentId,uint256 output,
-//             uint64 validUntilMs,uint64 minExclusiveMs)
+// for SolverBid v2 sealing (SOLVER-RFC.md §5.1), EIP-712 domain RiddlerSolver/2.
 //
 // `@xochi/solver-sdk`'s `bidTypedData` / `signBid` are the REFERENCE; the Riddler
 // server (bid intake and the escrow node's FillAuthorizer) is held to this file.
@@ -11,14 +8,7 @@
 // port that disagrees can tell whether its type string, domain or data encoding is
 // at fault. Signatures are 65-byte r||s||v, low-s, lowercase.
 //
-// The signer keys below are the PUBLIC Hardhat/Anvil TEST keys. They are known to
-// everyone and MUST NEVER hold funds or be registered as a solver.
-//
-// Run: npm run generate:solver-bid-v2
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:solver-bid-v2 -w @xochi/spec
 
 import { ethers } from "ethers";
 import {
@@ -33,15 +23,9 @@ import {
   type IntentAnnouncement,
 } from "@xochi/solver-sdk";
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #1 and #2). NOT SECRET. NEVER USE.
-const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const TEST_KEY_2 = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
+import { baselineOrderId, HARDHAT_TEST_KEYS, writeVectors } from "./_lib.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find(
-  (v: { name: string }) => v.name === "baseline-evm-usdc",
-).expected_order_id;
+const [, TEST_KEY_1, TEST_KEY_2] = HARDHAT_TEST_KEYS;
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 
 type Case = {
@@ -58,7 +42,7 @@ type Case = {
 
 const base = {
   key: TEST_KEY_1,
-  orderId: baselineOrderId,
+  orderId: baselineOrderId(),
   auctionId: "auction-0001",
   intentId: "intent-0001",
   output: "99700000",
@@ -189,6 +173,4 @@ const out = {
   vectors,
 };
 
-const target = path.join(here, "solver-bid-v2.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("solver-bid-v2.json", out);

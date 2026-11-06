@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Generates `conformance/shielded-readiness.json` (+ `shielded-readiness.schema.json`): the
-// pxe-bridge readiness attestations (xochi docs/planning/shielded-execution.md §7, "Decided
-// 2026-10-19: readiness attestation"; xochi-fi/pxe-bridge#50; xochi-fi/xochi-sdk#42):
+// pxe-bridge readiness attestations (xochi docs/planning/shielded-execution.md §7 "readiness
+// attestation"; xochi-fi/pxe-bridge#50):
 //
 //   Membership          {descriptorDigest, root, member, rootBlock, attestedAt}       design-A tracer
 //   RecipientDeployment {descriptorDigest, recipient, classId, deployed, finalBlock, attestedAt}
@@ -25,21 +25,33 @@
 // appends the revision's digest as a third word, so an attestation verifies only under its
 // own environment, network and corridor revision.
 //
-// INDEPENDENT OF @xochi/signer (the #41 rule): ethers' generic primitives only. The
-// descriptor digests come from `shielded-recipient.json` in the same directory, which
-// `generate:shielded-recipient` writes first.
+// INDEPENDENT OF @xochi/signer: ethers' generic primitives only. The descriptor digests come
+// from `shielded-recipient.json` in the output directory, which `generate:shielded-recipient`
+// writes first.
 //
 // The attestation key is the PUBLIC Hardhat/Anvil test key #2: known to everyone, never to
 // hold funds or to stand for a deployment's attestation key. Manifest digests, roots and
 // blocks are fixtures.
 //
-// Run: npm run generate:shielded-readiness   (SHIELDED_VECTORS_DIR overrides the dir)
+// Run: npm run generate:shielded-readiness -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 
 import { ethers } from "ethers";
+
+import {
+  ADDR,
+  arr,
+  HARDHAT_TEST_KEYS,
+  HEX32,
+  obj,
+  outDir,
+  SIG_ECDSA,
+  STR,
+  UINT,
+  writeVectors,
+} from "./_lib.js";
 
 const R = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 const UINT64_MAX = (1n << 64n) - 1n;
@@ -96,14 +108,12 @@ for (const t of Object.keys(TYPES) as PrimaryType[]) {
   }
 }
 
-// PUBLIC TEST KEY (Hardhat/Anvil account #2). NOT SECRET. NEVER USE.
-const ATTESTER = new ethers.Wallet(
-  "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
-);
+const ATTESTER = new ethers.Wallet(HARDHAT_TEST_KEYS[2]);
 const ATTESTER_ADDRESS = ATTESTER.address.toLowerCase();
 
-const dir = process.env.SHIELDED_VECTORS_DIR ?? path.dirname(fileURLToPath(import.meta.url));
-const recipient = JSON.parse(fs.readFileSync(path.join(dir, "shielded-recipient.json"), "utf8"));
+const recipient = JSON.parse(
+  fs.readFileSync(path.join(outDir(), "shielded-recipient.json"), "utf8"),
+);
 const testnetDescriptor = recipient.descriptor.vectors.find(
   (v: { name: string }) => v.name === "aztec-6.0.0-stock",
 );
@@ -652,19 +662,7 @@ const out = {
 
 // --- Schema ------------------------------------------------------------------------------
 
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
-const ADDR = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const UINT = { type: "string", pattern: "^(0|[1-9][0-9]*)$" };
-const SIG = { type: "string", pattern: "^0x[0-9a-f]{130}$" };
-const STR = { type: "string" };
 const INT = { type: "integer", minimum: 0 };
-const obj = (props: Record<string, unknown>) => ({
-  type: "object",
-  required: Object.keys(props),
-  additionalProperties: false,
-  properties: props,
-});
-const arr = (items: unknown) => ({ type: "array", minItems: 1, items });
 const NETWORK_SCHEMA = obj({
   aztecChainId: UINT,
   protocolVersion: UINT,
@@ -680,7 +678,7 @@ const RECORDS = {
     member: { type: "boolean" },
     rootBlock: UINT,
     attestedAt: INT,
-    signature: SIG,
+    signature: SIG_ECDSA,
   }),
   RecipientDeployment: obj({
     descriptorDigest: HEX32,
@@ -689,9 +687,9 @@ const RECORDS = {
     deployed: { type: "boolean" },
     finalBlock: UINT,
     attestedAt: INT,
-    signature: SIG,
+    signature: SIG_ECDSA,
   }),
-  RootUpdate: obj({ root: HEX32, rootBlock: UINT, attestedAt: INT, signature: SIG }),
+  RootUpdate: obj({ root: HEX32, rootBlock: UINT, attestedAt: INT, signature: SIG_ECDSA }),
 };
 const RECORD = { oneOf: Object.values(RECORDS) };
 const PRIMARY = { enum: Object.keys(TYPES) };
@@ -800,12 +798,9 @@ const schema = {
   }),
 };
 
-fs.writeFileSync(path.join(dir, "shielded-readiness.json"), JSON.stringify(out, null, 2) + "\n");
-fs.writeFileSync(
-  path.join(dir, "shielded-readiness.schema.json"),
-  JSON.stringify(schema, null, 2) + "\n",
-);
-console.log(
-  `wrote shielded-readiness.json: ${domainVectors.length} domains, ${vectors.length} attestations, ` +
+writeVectors("shielded-readiness.json", out, {
+  schema,
+  summary:
+    `wrote shielded-readiness.json: ${domainVectors.length} domains, ${vectors.length} attestations, ` +
     `${replays.length} replays, ${refusals.length} record refusals`,
-);
+});

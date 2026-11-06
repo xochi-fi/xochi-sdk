@@ -1,47 +1,24 @@
 # Does the running solver still serve what this repo vendored and verifies?
 #
-# Scheduled, not per-PR: the event these probes detect is a SERVER deploy, so
-# gating PRs on them would gate unrelated work on solver uptime, and a check
-# that reddens honest PRs gets `continue-on-error`. Daily catches a deploy on
-# the timescale that matters (riddler-sdk#92 was live for about a day).
-#
-# Every probe fails on "could not check" (exit 0 ok / 1 DRIFT / 2 INCONCLUSIVE
-# / 3 MISCONFIGURED; unreachable is 2). That is the lesson of riddler-sdk#92:
-# the local version assertion stayed green while @xochi/signer verified v2
-# against a v3 solver, because both sides of it lived in this repo and went
-# stale together. An equality assertion is informative only if at least one
-# side is a value this repo cannot edit, and a probe that skips on a network
-# error reports success without having executed. Each probe's verdict logic,
-# sampling discipline and exit semantics are in its header under scripts/;
-# the shared fetch shape is scripts/probe-lib.mjs. The compared axes of the
-# openapi probe are packages/spec/wire/README.md.
+# Probe rules (why scheduled, why "could not check" fails) and exit codes:
+# scripts/probe-lib.mjs. Each probe's own logic: its header under scripts/.
+# The openapi probe's compared axes: packages/spec/wire/README.md.
 #
 # SETUP: both jobs need the repository variable `RIDDLER_URL_PROD` (a variable,
-# not a secret: it is a base URL, and this repo bakes in no host). Unset, the
-# first scheduled run is red with MISCONFIGURED, deliberately: "never
-# configured" and "could not reach the solver" both mean nothing was checked,
-# and MISCONFIGURED is its own exit code so the log tells them apart without
-# the outcome having to.
+# not a secret: it is a base URL, and this repo bakes in no host). Unset, every
+# run exits MISCONFIGURED.
 #
-# Not covered: /solver/*. Bid-sealing parity (solver-bid-v2.json vs Riddler's
-# Solver.Bid) rests on lockstep review of `npm run generate:solver-bid-v2`.
-# Prod does not serve the solver surface (GET /solver/capabilities is 404,
-# SOLVER_RFQ_ENABLED off), so a probe would compare against an rfcVersion
-# nobody publishes or a value this repo controls. The day prod serves
-# rfcVersion and the panel opens, it gets its own job with the same two-sample
-# discipline as spec_version.
+# Not covered: /solver/*. Prod does not serve the solver surface, so bid-sealing
+# parity rests on lockstep review of `npm run generate:solver-bid-v2`.
 name: producer-drift
 
-# Read-only. These jobs check out the repo, run four Node scripts against one
-# external URL and write nothing back; an unattended scheduled job inheriting a
-# default-permissive repository token is scope nobody asked for.
+# Read-only: the jobs check out the repo and write nothing back.
 permissions:
   contents: read
 
 on:
   schedule:
-    # 06:00 UTC daily. Detects a solver deploy within a day, which is the
-    # timescale that matters: #92 was live for about that long.
+    # 06:00 UTC daily.
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
@@ -56,13 +33,8 @@ on:
           - spec-version
           - openapi
 
-# A targeted dispatch exists because the spec-version step idles ~5m30s on its
-# unconditional re-sample and the openapi step queues behind it in the same
-# job. A job with EVERY step deselected is SKIPPED, but a job with SOME steps
-# deselected would report green, so `probe: spec-version` would display a
-# passing `spec-version-drift` that never compared the wire contract. Both
-# two-probe jobs therefore end with a step that fails a partial sweep: nothing
-# green here stands for a probe that did not run. The scheduled run is always
+# A job with SOME steps deselected would report green, so each two-probe job
+# ends with a step that fails a partial dispatch. The scheduled run is always
 # `all` and is the status that means anything.
 
 jobs:
@@ -79,19 +51,12 @@ jobs:
         with:
           node-version: 22
 
-      # No `npm ci`, and no build. The probes use only Node builtins and read the
-      # pinned values from source (`packages/signer/src/deposit-verify.ts`,
-      # `packages/spec/package.json`, `SPEC.md`), never from `dist/`, where a
-      # stale build reports agreement against a value the source no longer
-      # holds. Every precondition a probe has is a way for it to fail for a
-      # reason that has nothing to do with the producer.
+      # No `npm ci`, no build: the probes use only Node builtins and read pinned
+      # values from source, never from `dist/`.
 
-      # Gated on the checkout, not on `success() || failure()`. That expression is
-      # true whenever ANY earlier step failed -- including `actions/checkout` --
-      # and a probe run without a working tree cannot resolve its entry module, so
-      # Node exits 1: the code this workflow reserves for DRIFT, pointed at the
-      # producer for a runner problem. `!cancelled()` keeps "run even though the
-      # sibling probe failed"; the outcome check keeps "not without a checkout".
+      # Gated on the checkout rather than `success() || failure()`: without a
+      # working tree Node exits 1, the code reserved for DRIFT. `!cancelled()`
+      # keeps the probes independent of each other's verdict.
       - name: Version the solver signs vs the version @xochi/signer verifies
         if: >-
           ${{ !cancelled()
@@ -102,10 +67,6 @@ jobs:
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
         run: node scripts/verify-deposit-attestation-version.mjs
 
-      # Runs even when the version probe fails -- they answer different questions
-      # and "which of the two broke" is the first thing anyone reading this log
-      # wants to know. A version bump with no encoding change and an encoding
-      # change under an unchanged version are different incidents.
       - name: Vendored vectors vs the published artifact
         if: >-
           ${{ !cancelled()
@@ -116,32 +77,17 @@ jobs:
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
         run: node scripts/verify-deposit-attestation-vectors.mjs
 
-      # This job's status covers BOTH attestation probes, and the checks list
-      # shows the job, not the steps, so a dispatch that ran one of them must not
-      # display as a pass. Gated on `success()` rather than `!cancelled()` so a
-      # real DRIFT above stays the only failure in the log.
+      # `success()`, so a real DRIFT above stays the only failure in the log.
       - name: A partial sweep is not a clean one
         if: ${{ success() && env.PROBE != 'all' }}
         run: |
-          echo "PARTIAL: dispatched with probe=${PROBE}, so only that probe ran in this job."
-          echo "It agreed -- its verdict is in the step above."
-          echo "This job's status covers both attestation probes, so a partial run is not"
-          echo "reported as a pass: a green status standing for a probe nobody executed is"
-          echo "riddler-sdk#92 again. Re-dispatch with probe=all for a sweep."
+          echo "PARTIAL: only probe=${PROBE} ran (it agreed); this job covers both attestation probes."
+          echo "Re-dispatch with probe=all for a sweep."
           exit 1
 
-  # Its own job, not a third step on the one above. A job carries one status,
-  # and the attestation job's status is how #92 is watched: a spec bump pending
-  # on the server would mask a genuine attestation-vector failure behind an
-  # already-red job nobody re-reads. Different questions on different release
-  # cadences get different statuses; which one broke is the first thing the log
-  # must say.
-  #
-  # The job KEY stays `spec-version-drift` although the job runs two probes: it
-  # is the string a branch-protection or ruleset entry names, and renaming it
-  # drops that requirement instead of moving it. The DISPLAY name is what a
-  # first responder reads, so it names both probes. Key -> name, for grep:
-  # `spec-version-drift` == verify-spec-version.mjs + verify-openapi.mjs.
+  # Its own job: the attestation and contract probes answer different questions
+  # on different release cadences, so each gets its own status.
+  # key must stay spec-version-drift (branch protection)
   spec-version-drift:
     name: "contract drift (spec_version + served openapi)"
     if: >-
@@ -158,13 +104,7 @@ jobs:
         with:
           node-version: 22
 
-      # Same reduction as above: Node builtins only, no install, no build. This
-      # one reads packages/spec/package.json and packages/spec/SPEC.md from the
-      # checkout and holds them to each other -- and if that local check fails it
-      # still samples the server, so a half-landed local bump cannot switch the
-      # producer check off. It samples twice ~5m30s apart (the ~300s cache TTL
-      # plus slack), so this step idles for about six minutes by design: a
-      # verdict from one read of a cached endpoint is not a verdict.
+      # Idles ~5m30s between its two samples (scripts/verify-spec-version.mjs).
       - name: Advertised spec_version vs packages/spec
         if: >-
           ${{ !cancelled()
@@ -175,11 +115,6 @@ jobs:
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
         run: node scripts/verify-spec-version.mjs
 
-      # Same job as the version probe, not a third job (contrast the split above):
-      # these two answer the same question -- does the served contract still match
-      # what this repo vendored -- and a spec change moves both, so one status
-      # covers them coherently. Runs even when the version step fails, for the
-      # same reason the attestation pair does: which one broke is the finding.
       - name: Served /xochi/openapi.json vs the vendored wire contract
         if: >-
           ${{ !cancelled()
@@ -190,15 +125,9 @@ jobs:
           RIDDLER_URL_PROD: ${{ vars.RIDDLER_URL_PROD }}
         run: node scripts/verify-openapi.mjs
 
-      # Same rule as the attestation job: this status covers the spec_version
-      # probe AND the wire-contract probe, so a dispatch that ran one of them is
-      # not a pass.
       - name: A partial sweep is not a clean one
         if: ${{ success() && env.PROBE != 'all' }}
         run: |
-          echo "PARTIAL: dispatched with probe=${PROBE}, so only that probe ran in this job."
-          echo "It agreed -- its verdict is in the step above."
-          echo "This job's status covers both the spec_version probe and the served-openapi"
-          echo "probe, so a partial run is not reported as a pass. Re-dispatch with probe=all"
-          echo "for a sweep; the 06:00 UTC schedule always runs both."
+          echo "PARTIAL: only probe=${PROBE} ran (it agreed); this job covers spec_version and openapi."
+          echo "Re-dispatch with probe=all for a sweep."
           exit 1

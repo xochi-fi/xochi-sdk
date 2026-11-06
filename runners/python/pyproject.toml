@@ -8,6 +8,7 @@ dependencies = [
     "eth-account>=0.11.0",
     "eth-abi>=5.0.0",
     "eth-utils>=4.0.0",
+    "eth-keys>=0.7.0",
 ]
 
 [dependency-groups]

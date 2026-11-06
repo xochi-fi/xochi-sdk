@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 // Generates `conformance/order-id.json`: the cross-implementation vector set for
-// the v2 order encoding (ESCROW-RFC §2): canonical keys, the blinded
-// `destCommitment`, and `orderId = keccak256(abi.encode(ORDER_TYPEHASH, OrderTerms))`.
+// the v2 order encoding (ESCROW-RFC.md §2): canonical keys, the blinded
+// `destCommitment` and `orderId`.
 //
 // `@xochi/signer` is the REFERENCE. TypeScript, Elixir (the Riddler server) and
 // Solidity (`RiddlerEscrow`) must all reproduce these bytes. Drift here does not
 // fail loudly -- it computes a lock key nobody else can open, which strands
-// principal (ESCROW-RFC §11.1 M6.1).
+// principal (ESCROW-RFC §2.4).
 //
-// Run: npm run generate:order-id
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:order-id -w @xochi/spec
 
 import { ethers } from "ethers";
 
@@ -26,6 +22,8 @@ import {
   type DestOpening,
   type OrderTerms,
 } from "@xochi/signer";
+
+import { writeVectors } from "./_lib.js";
 
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 
@@ -221,8 +219,5 @@ const out = {
   vectors,
 };
 
-const dir = path.dirname(fileURLToPath(import.meta.url));
-const target = path.join(dir, "order-id.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("order-id.json", out);
 for (const v of vectors) console.log(`  ${v.name.padEnd(34)} ${v.expected_order_id}`);

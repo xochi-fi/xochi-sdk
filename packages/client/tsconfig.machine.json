@@ -2,19 +2,14 @@
   // The purity check: ES2020 only, no DOM and no Node types, so a `fetch`,
   // `document`, `setTimeout` or `console` in the machine fails to compile.
   // `tsconfig.json` also covers these files (with DOM) and the tests.
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020"],
     "types": [],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "isolatedModules": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "strict": true,
+    "noUncheckedIndexedAccess": false,
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noUnusedParameters": true
   },
   "include": ["src/machine"],
   "exclude": ["src/machine/**/*.test.ts", "src/machine/test"]

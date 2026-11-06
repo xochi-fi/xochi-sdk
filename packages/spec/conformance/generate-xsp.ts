@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 // Generates `conformance/xsp.json` (+ `xsp.schema.json`): the cross-implementation
-// vector set for the Xochi Settlement Protocol (riddler #1223, ESCROW-RFC "XSP
-// obligation"): the user-signed XochiObligation EIP-712 digest (obligationId), the
-// refund commitment, the Allocator-signed Depository CallRequest/MarkConsumed digests,
-// and the deposit-address derivation (XochiDepositAddressFactory, xochi #548).
+// vector set for the Xochi Settlement Protocol (ESCROW-RFC.md §13): the user-signed
+// XochiObligation EIP-712 digest (obligationId), the refund commitment, the
+// Allocator-signed Depository CallRequest/MarkConsumed digests, and the deposit-address
+// derivation (XochiDepositAddressFactory).
 //
 // `@xochi/signer` is the REFERENCE. The Riddler server vendors this file
 // byte-identical (test/support/vectors/xochi_xsp.json) and must reproduce every value.
 // All addresses here are FIXTURES: no XSP contract is deployed.
 //
-// Run: npm run generate:xsp
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:xsp -w @xochi/spec
 
 import { ethers } from "ethers";
 
@@ -42,6 +38,8 @@ import {
   type MarkConsumed,
   type XochiObligation,
 } from "@xochi/signer";
+
+import { ADDR, HEX32, obj, UINT, writeVectors } from "./_lib.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const UINT64_MAX = (2n ** 64n - 1n).toString();
@@ -392,15 +390,6 @@ const out = {
 
 // --- Schema ------------------------------------------------------------------
 
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
-const ADDR = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const UINT = { type: "string", pattern: "^(0|[1-9][0-9]*)$" };
-const obj = (props: Record<string, unknown>) => ({
-  type: "object",
-  required: Object.keys(props),
-  additionalProperties: false,
-  properties: props,
-});
 const DOMAIN = obj({
   name: { type: "string" },
   version: { type: "string" },
@@ -535,10 +524,8 @@ const schema = {
   }),
 };
 
-const dir = path.dirname(fileURLToPath(import.meta.url));
-fs.writeFileSync(path.join(dir, "xsp.json"), JSON.stringify(out, null, 2) + "\n");
-fs.writeFileSync(path.join(dir, "xsp.schema.json"), JSON.stringify(schema, null, 2) + "\n");
-console.log(
-  `wrote xsp.json: ${obligationVectors.length} obligations, ${depositoryVectors.length} depository, ${depositAddressVectors.length} deposit addresses`,
-);
+writeVectors("xsp.json", out, {
+  schema,
+  summary: `wrote xsp.json: ${obligationVectors.length} obligations, ${depositoryVectors.length} depository, ${depositAddressVectors.length} deposit addresses`,
+});
 for (const v of obligationVectors) console.log(`  ${v.name.padEnd(40)} ${v.obligationId}`);

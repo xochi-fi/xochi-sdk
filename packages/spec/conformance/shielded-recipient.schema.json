@@ -544,7 +544,9 @@
                       "string_too_long",
                       "decimals_out_of_range",
                       "max_note_amount_out_of_range",
-                      "evm_address_zero"
+                      "evm_address_zero",
+                      "digest_zero",
+                      "backup_format_mismatch"
                     ]
                   },
                   "field": {
@@ -1325,7 +1327,9 @@
                       "string_too_long",
                       "decimals_out_of_range",
                       "max_note_amount_out_of_range",
-                      "evm_address_zero"
+                      "evm_address_zero",
+                      "digest_zero",
+                      "backup_format_mismatch"
                     ]
                   },
                   "field": {
@@ -1552,7 +1556,9 @@
                       "string_too_long",
                       "decimals_out_of_range",
                       "max_note_amount_out_of_range",
-                      "evm_address_zero"
+                      "evm_address_zero",
+                      "digest_zero",
+                      "backup_format_mismatch"
                     ]
                   },
                   "field": {

@@ -48,12 +48,12 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
+    "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@noble/curves": "^1.2.0",
+    "@noble/curves": "^1.9.0",
     "@zkpassport/poseidon2": "0.6.2",
     "ethers": "^6.17.0"
   },

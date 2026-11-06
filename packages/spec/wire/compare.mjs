@@ -27,13 +27,6 @@
  * string to integer is each a silent re-encoding of signed bytes. Nothing else
  * in this repo reads those five schemas, so this axis is their only cover.
  *
- * Verdicts: STALE is an addition a vendored-built client survives (new path,
- * method, OPTIONAL property or parameter, appended `enum` member, served-only
- * `default`, added `security` alternative); BREAKING is a removal, a REQUIRED
- * served addition, a changed value constraint, a dropped `security`
- * requirement, a node whose JSON type disagrees, or a served `$ref` that does
- * not resolve.
- *
  * Eight rules here are easy to undo and each would be a silent pass:
  *
  *   1. The generic descent walks the UNION of both sides' keys. Walking the
@@ -242,6 +235,28 @@ export const numberTokenDiff = (servedText, vendoredText) => {
   };
   return { servedOnly: surplus(s, v), vendoredOnly: surplus(v, s) };
 };
+
+/**
+ * The compared axes, one line each, in the order of `./README.md`'s "Compared
+ * axes" list (the canonical description). The probe prints these with
+ * `CONSTRAINTS` and `NARROWING` as its preamble and OK footer.
+ */
+export const AXES = [
+  "openapi dialect",
+  "info.version",
+  "paths and methods",
+  "servers, as an ordered list at every level, one-sided overrides included",
+  "path-item $ref",
+  "per operation: parameters (keyed in:name, with required), requestBody, response codes",
+  "effective security requirements",
+  "components.schemas/responses/securitySchemes names; each security scheme minus prose",
+  "property names, required and enum at every reachable node",
+  "value constraints (CONSTRAINTS)",
+  "narrowing applicators (NARROWING), in object and boolean form",
+  "oneOf/anyOf/allOf/prefixItems branches, element-wise",
+  "every served $ref, resolved as an RFC 6901 fragment",
+  "numeric literal spelling, as an ordered multiset in both directions",
+];
 
 /**
  * Value constraints, compared by VALUE: `type` is a string or an array of

@@ -1,9 +1,8 @@
 //! Rust conformance runner for the Riddler protocol.
 //!
 //! Reproduces the `digest`, `signature`, and `signed_object` of every vector in
-//! `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8),
-//! reproducing the signatures of `@xochi/signer` for the vectors, like the
-//! Python / Go runners. Network-free.
+//! `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8).
+//! Network-free.
 
 use alloy_dyn_abi::{DynSolValue, TypedData};
 use alloy_primitives::{Address, FixedBytes, U256, keccak256};
@@ -11,7 +10,7 @@ use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Vector {
     pub name: String,
     pub protocol: String,
@@ -113,14 +112,42 @@ fn root_type(types: &Map<String, Value>) -> Result<String, Error> {
     }
 }
 
+// Integers reach alloy's lenient TypedData parser only after the canonical check.
+fn check_integers(message: &Value, types: &Map<String, Value>, primary: &str) -> Result<(), Error> {
+    let fields = types
+        .get(primary)
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("type {primary} missing"))?;
+    for f in fields {
+        let name = f
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or("field name missing")?;
+        let ty = f
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or("field type missing")?;
+        if types.contains_key(ty) {
+            check_integers(&message[name], types, ty)?;
+        } else if ty.starts_with("uint") || ty.starts_with("int") {
+            to_u256(&message[name]).map_err(|e| format!("{primary}.{name}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 fn build_typed_data(
     domain: &Value,
     mut types: Map<String, Value>,
     primary: &str,
     message: &Value,
-) -> Value {
+) -> Result<Value, Error> {
+    if let Some(chain_id) = domain.get("chainId") {
+        to_u256(chain_id).map_err(|e| format!("domain chainId: {e}"))?;
+    }
+    check_integers(message, &types, primary)?;
     types.insert("EIP712Domain".into(), domain_type(domain));
-    json!({ "types": types, "primaryType": primary, "domain": domain, "message": message })
+    Ok(json!({ "types": types, "primaryType": primary, "domain": domain, "message": message }))
 }
 
 fn digest_of(typed: &Value) -> Result<[u8; 32], Error> {
@@ -138,18 +165,22 @@ fn sign_digest(private_key: &str, digest: &[u8; 32]) -> Result<String, Error> {
     Ok(format!("0x{}", hex::encode(out)))
 }
 
+fn is_canonical_decimal(s: &str) -> bool {
+    match s.as_bytes() {
+        [b'0'] => true,
+        [b'1'..=b'9', rest @ ..] => rest.iter().all(u8::is_ascii_digit),
+        _ => false,
+    }
+}
+
+// Canonical integers only: a non-negative JSON integer, or a decimal string with
+// no sign, whitespace, separator, exponent, hex prefix or leading zero.
 fn to_u256(v: &Value) -> Result<U256, Error> {
+    let non_canonical = || -> Error { format!("non-canonical integer {v}").into() };
     match v {
-        Value::String(s) => {
-            let (radix, digits) = if let Some(h) = s.strip_prefix("0x") {
-                (16, h)
-            } else {
-                (10, s.as_str())
-            };
-            Ok(U256::from_str_radix(digits, radix)?)
-        }
-        Value::Number(n) => Ok(U256::from(n.as_u64().ok_or("number not u64")?)),
-        _ => Err("value is not a uint".into()),
+        Value::String(s) if is_canonical_decimal(s) => Ok(U256::from_str_radix(s, 10)?),
+        Value::Number(n) => n.as_u64().map(U256::from).ok_or_else(non_canonical),
+        _ => Err(non_canonical()),
     }
 }
 
@@ -202,7 +233,7 @@ pub fn sign(v: &Vector) -> Result<SignResult, Error> {
             let domain = v.domain.as_ref().ok_or("erc3009 vector missing domain")?;
             let message = v.message.as_ref().ok_or("erc3009 vector missing message")?;
             let typed =
-                build_typed_data(domain, erc3009_types(), "ReceiveWithAuthorization", message);
+                build_typed_data(domain, erc3009_types(), "ReceiveWithAuthorization", message)?;
             let digest = digest_of(&typed)?;
             Ok(SignResult {
                 digest: format!("0x{}", hex::encode(digest)),
@@ -218,7 +249,7 @@ pub fn sign(v: &Vector) -> Result<SignResult, Error> {
                 permit2_types(),
                 "PermitWitnessTransferFrom",
                 message,
-            );
+            )?;
             let digest = digest_of(&typed)?;
             Ok(SignResult {
                 digest: format!("0x{}", hex::encode(digest)),
@@ -235,7 +266,7 @@ pub fn sign(v: &Vector) -> Result<SignResult, Error> {
                 .ok_or("eip712.types not an object")?
                 .clone();
             let primary = root_type(&types)?;
-            let typed = build_typed_data(domain, types, &primary, message);
+            let typed = build_typed_data(domain, types, &primary, message)?;
             let digest = digest_of(&typed)?;
             Ok(SignResult {
                 digest: format!("0x{}", hex::encode(digest)),

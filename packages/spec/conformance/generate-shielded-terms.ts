@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Generates `conformance/shielded-terms.json` (+ `shielded-terms.schema.json`): the typed
-// encodings of the shielded settlement contract v1 design-A terms, decided 2026-10-27 as the D7
-// amendment (xochi docs/planning/shielded-execution.md §7 "Decided 2026-10-27 (D7 amendment)";
-// axol-io/Riddler#1296):
+// encodings of the shielded settlement contract v1 design-A terms (xochi
+// docs/planning/shielded-execution.md §7 "D7 amendment"; axol-io/Riddler#1296):
 //
 //   - `ShieldedTermsV1`: EXACTLY §7's SignedTerms member set, in its order, PLUS the two
 //     destination members the amendment adds, `rail` and `feePayer`. The rail enum is
@@ -20,18 +19,26 @@
 // generic primitives (TypedDataEncoder, keccak256, AbiCoder, Wallet), every refusal is written
 // below as DATA. Implementations meet only at the committed JSON.
 //
-// Values decided for manifest revision 1 (§7 "Tracer source", "third set", "Provisioned
-// 2026-10-25") are used as such: Base Sepolia 84532, its USDC, Aztec SDK 6.0.0 and the XTU
-// token and class. Every other network, corridor, digest, Aztec value and identifier is a
+// Values decided for manifest revision 1 (§7 "Tracer source", "tracer network" and the tracer
+// provisioning record) are used as such: Base Sepolia 84532, its USDC, Aztec SDK 6.0.0 and the
+// XTU token and class. Every other network, corridor, digest, Aztec value and identifier is a
 // FIXTURE. The signer keys are the PUBLIC Hardhat/Anvil test keys #0 and #1.
 //
-// Run: npm run generate:shielded-terms   (SHIELDED_TERMS_VECTORS_DIR overrides the output dir)
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:shielded-terms -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
 import { ethers } from "ethers";
+
+import {
+  ADDR,
+  arr,
+  HARDHAT_TEST_KEYS,
+  HEX32,
+  obj,
+  SIG_ECDSA,
+  STR,
+  UINT,
+  writeVectors,
+} from "./_lib.js";
 
 // --- Literals ----------------------------------------------------------------------------
 
@@ -44,7 +51,7 @@ const DOMAIN_TYPE_STRING = "EIP712Domain(string name,string version,uint256 chai
 const SETTLEMENT_TYPE = "shielded";
 const PRIVACY_LEVEL = "private";
 const DISCLOSURE_PROFILE_A = "recipient-private-public-amount-v1";
-// D7 amendment (2026-10-27).
+// §7 D7 amendment.
 const RAIL_A = "a_tracer";
 // PROPOSED (listed in `proposed`).
 const TERMS_PROTOCOL_VERSION = "xochi.shielded.terms.v1";
@@ -195,13 +202,8 @@ const UINT32_MAX = 2n ** 32n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const BPS_MAX = 10000n;
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #0 and #1). NOT SECRET. NEVER USE.
-const WALLET_0 = new ethers.Wallet(
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-);
-const WALLET_1 = new ethers.Wallet(
-  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-);
+const WALLET_0 = new ethers.Wallet(HARDHAT_TEST_KEYS[0]);
+const WALLET_1 = new ethers.Wallet(HARDHAT_TEST_KEYS[1]);
 const ADDR_0 = WALLET_0.address.toLowerCase();
 const ADDR_1 = WALLET_1.address.toLowerCase();
 
@@ -274,7 +276,7 @@ const BASE_MANIFEST: Manifest = {
   sourceDecimals: "6",
   collector: rep20("c1"),
   network: NET_A,
-  aztecSdkVersion: "6.0.0", // decided 2026-10-27
+  aztecSdkVersion: "6.0.0", // decided
   aztecToken: "0x13b600d8f842babc98a7130dcb79a2d1f4f0ba22569b2fb99f3ecc3b5c39282b", // XTU
   destinationDecimals: "6", // XTU
   aztecTokenClassId: "0x067df4ddda0b0872ef604f47f3681d5e8c0de98280ac6b79963851c055ba91e0", // XTU
@@ -1055,19 +1057,7 @@ const out = {
 
 // --- Schema ------------------------------------------------------------------------------
 
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
-const ADDR = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const UINT = { type: "string", pattern: "^(0|[1-9][0-9]*)$" };
-const SIG = { type: "string", pattern: "^0x[0-9a-f]{130}$" };
-const STR = { type: "string" };
 const LOOSE = { type: "object" };
-const obj = (props: Record<string, unknown>) => ({
-  type: "object",
-  required: Object.keys(props),
-  additionalProperties: false,
-  properties: props,
-});
-const arr = (items: unknown) => ({ type: "array", minItems: 1, items });
 const typed = (memberList: { name: string; type: string }[], nested: Record<string, unknown>) =>
   obj(
     Object.fromEntries(
@@ -1192,7 +1182,7 @@ const schema = {
           structHash: HEX32,
           digest: HEX32,
           signer: ADDR,
-          signature: SIG,
+          signature: SIG_ECDSA,
         }),
       ),
       refusals: REFUSAL(CODES),
@@ -1201,14 +1191,10 @@ const schema = {
   }),
 };
 
-const dir = process.env.SHIELDED_TERMS_VECTORS_DIR ?? path.dirname(fileURLToPath(import.meta.url));
-fs.writeFileSync(path.join(dir, "shielded-terms.json"), JSON.stringify(out, null, 2) + "\n");
-fs.writeFileSync(
-  path.join(dir, "shielded-terms.schema.json"),
-  JSON.stringify(schema, null, 2) + "\n",
-);
-console.log(
-  `wrote shielded-terms.json: ${manifestVectors.length} manifests, ` +
+writeVectors("shielded-terms.json", out, {
+  schema,
+  summary:
+    `wrote shielded-terms.json: ${manifestVectors.length} manifests, ` +
     `${previewVectors.length} previews, ${termsVectors.length} terms, ` +
     `${manifestRefusals.length + termsRefusals.length} refusals`,
-);
+});

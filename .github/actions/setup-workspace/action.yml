@@ -1,0 +1,12 @@
+name: setup-workspace
+description: Node 22 with the npm cache, then `npm ci` for the root workspace. Check out the repo first.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 22
+        cache: npm
+
+    - run: npm ci
+      shell: bash

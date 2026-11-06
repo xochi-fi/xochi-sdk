@@ -6,44 +6,14 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  # ERC-8262 commit the bundled circuits and ABIs are synced to. Bump together
-  # with packages/sdk/scripts/sync-circuits.sh output.
-  # Fetched by SHA, so a PR head stays checkoutable after its branch is deleted;
-  # cut an sdk-v* tag only while this is an ERC-8262 main commit.
-  ERC_8262_REF: f588b0092564ace090d8e066af720e5dcba786f0
-  FOUNDRY_VERSION: v1.5.1
-
 jobs:
   # @xochi/sdk (packages/sdk). The job key stays `check`.
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Install foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: ${{ env.FOUNDRY_VERSION }}
-
-      - name: Checkout ERC-8262 at the pinned commit
-        run: |
-          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
-          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
-          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
-          git -C ../ERC-8262 submodule update --init --recursive --depth=1
-
-      - name: Build contracts
-        working-directory: ../ERC-8262
-        run: forge build
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/erc8262
 
       # Same gates as prepublishOnly, so a green CI means `npm publish` passes.
       # Drift tests run against the pinned ERC-8262 and fail (not skip) when it is missing.
@@ -65,115 +35,49 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run -w @xochi/sdk
 
-  # @xochi/client (packages/client): the same prepublishOnly gates, run from the
-  # workspace root so the root lockfile resolves it. Needs no foundry.
-  client:
+  # @xochi/client, @xochi/widget-lib and @xochi/provider: the prepublishOnly
+  # gates, one check per package (named after it). No foundry: provider's parity
+  # vectors are pinned in its tests and its daemon -> proof -> on-chain path runs
+  # in `integration`; its typecheck covers the daemon, which is not in the tarball.
+  package:
+    name: ${{ matrix.ws }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ws: [client, widget-lib, provider]
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
 
       - name: Build @xochi/signer (the client reads its .d.ts)
+        if: matrix.ws == 'client'
         run: npm run build -w @xochi/signer
 
       - name: Format
-        run: npm run format:check -w @xochi/client
+        run: npm run format:check -w @xochi/${{ matrix.ws }}
 
       - name: Typecheck
-        run: npm run typecheck -w @xochi/client
+        run: npm run typecheck -w @xochi/${{ matrix.ws }}
 
       - name: Unit tests
-        run: npm test -w @xochi/client
+        run: npm test -w @xochi/${{ matrix.ws }}
 
       - name: Build
-        run: npm run build -w @xochi/client
+        run: npm run build -w @xochi/${{ matrix.ws }}
 
       - name: Verify package contents
-        run: npm pack --dry-run -w @xochi/client
+        run: npm pack --dry-run -w @xochi/${{ matrix.ws }}
 
-  # @xochi/widget-lib (packages/widget-lib): the same prepublishOnly gates. Its
-  # own job, so a red client job does not hide the embed library's status.
-  widget-lib:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Format
-        run: npm run format:check -w @xochi/widget-lib
-
-      - name: Typecheck
-        run: npm run typecheck -w @xochi/widget-lib
-
-      - name: Unit tests
-        run: npm test -w @xochi/widget-lib
-
-      - name: Build
-        run: npm run build -w @xochi/widget-lib
-
-      - name: Verify package contents
-        run: npm pack --dry-run -w @xochi/widget-lib
-
-  # @xochi/provider (packages/provider): the same prepublishOnly gates. Its
-  # typecheck covers the reference daemon, which is not in the tarball; the
-  # pack step shows that. Needs no foundry: the parity vectors are pinned in
-  # the tests, and the daemon -> proof -> on-chain path runs in `integration`.
-  provider:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Format
-        run: npm run format:check -w @xochi/provider
-
-      - name: Typecheck (sources, tests and daemon)
-        run: npm run typecheck -w @xochi/provider
-
-      - name: Unit tests
-        run: npm test -w @xochi/provider
-
-      - name: Build
-        run: npm run build -w @xochi/provider
-
-      - name: Verify package contents
-        run: npm pack --dry-run -w @xochi/provider
-
-  # The protocol packages (packages/{signer,spec,solver-sdk,reference}). The
-  # build order is not optional: @xochi/signer first, since every other
-  # workspace consumes its .d.ts. The generate steps are the gate that matters:
-  # those bytes are a contract Riddler and raxol_payments are held to, so a
-  # regeneration is a wire change landing with the server, never a refresh to
-  # make CI pass.
+  # The protocol packages (packages/{signer,spec,solver-sdk,reference}).
+  # @xochi/signer builds first: every other workspace consumes its .d.ts. The
+  # vector check is the gate that matters; a regenerated vector is a wire change
+  # (packages/spec/README.md "Who is authoritative").
   protocol:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
 
       - name: Format (sources and tests; generated vectors, openapi.json and Markdown excluded)
         run: |
@@ -182,14 +86,11 @@ jobs:
           npm run format:check -w @xochi/reference
           npm run format:check -w @xochi/spec
 
-      - name: Build @xochi/signer first (dependents need its .d.ts)
-        run: npm run build -w @xochi/signer
-
-      - name: Build @xochi/solver-sdk (the bid-vector generator imports it)
-        run: npm run build -w @xochi/solver-sdk
-
-      - name: Build @xochi/client (the fee generator and fee vector suite import it)
-        run: npm run build -w @xochi/client
+      - name: Build @xochi/signer, @xochi/solver-sdk and @xochi/client (the generators import them)
+        run: |
+          npm run build -w @xochi/signer
+          npm run build -w @xochi/solver-sdk
+          npm run build -w @xochi/client
 
       - name: Typecheck
         run: |
@@ -205,35 +106,12 @@ jobs:
           npm test -w @xochi/solver-sdk
           npm test -w @xochi/spec
 
-      - name: Fixture staleness check (conformance + fee + erc8262)
-        run: |
-          npm run generate:conformance
-          npm run generate:fee
-          npm run generate:erc8262
-          git diff --exit-code packages/spec/conformance/conformance.json packages/spec/fee/ packages/spec/erc8262/
-
-      # generate:shielded writes shielded.json, then shielded-recipient.json, then
-      # shielded-readiness.json (which reads the recipient file), each with its schema.
-      - name: Solver vector staleness check (bid v2 + registration + escrow + shielded)
-        run: |
-          npm run generate:solver-bid-v2
-          npm run generate:solver-registration
-          npm run generate:escrow
-          npm run generate:shielded -w @xochi/spec
-          npm run generate:shielded-terms -w @xochi/spec
-          git diff --exit-code packages/spec/conformance/
-
-      # The wire artifact's gate is NOT `generate:wire` + `git diff --exit-code`
-      # like the two above: the producer owns those bytes, so a refetch reddens
-      # any PR that runs while the server is ahead, and that is the nightly
-      # probe's finding (`verify:openapi`, producer-drift.yml), not this PR's.
-      # What is checkable per-PR is that the pair is internally consistent -- a
-      # hand-edit or an interrupted refresh leaves a document whose digest is
-      # somebody's assertion rather than its content.
-      - name: Wire contract digest check
-        run: |
-          cd packages/spec/wire
-          printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
+      # Regenerates every vector set and diffs it against the committed bytes, then
+      # checks openapi.json against openapi.sha256. The served wire contract is not
+      # refetched here: the producer owns those bytes, and drift from it is the
+      # nightly probe's finding (producer-drift.yml).
+      - name: Vector staleness and wire digest check
+        run: npm run check:vectors -w @xochi/spec
 
       - name: Verify package contents
         run: |
@@ -248,9 +126,9 @@ jobs:
   aztec-crosscheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -268,9 +146,9 @@ jobs:
         os: [ubuntu-latest, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.4
           cache: npm
@@ -344,7 +222,7 @@ jobs:
   python-conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -362,7 +240,7 @@ jobs:
   go-conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
@@ -375,7 +253,11 @@ jobs:
   rust-conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+
+      - name: Install the pinned toolchain (runners/rust/rust-toolchain.toml)
+        working-directory: runners/rust
+        run: rustup toolchain install
 
       - name: Rust conformance runner (byte-equality over the shared fixture)
         working-directory: runners/rust
@@ -385,31 +267,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: check
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Install foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: ${{ env.FOUNDRY_VERSION }}
-
-      - name: Checkout ERC-8262 at the pinned commit
-        run: |
-          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
-          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
-          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
-          git -C ../ERC-8262 submodule update --init --recursive --depth=1
-
-      - name: Build contracts
-        working-directory: ../ERC-8262
-        run: forge build
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/erc8262
 
       - name: Integration tests
         run: npm run test:integration -w @xochi/sdk

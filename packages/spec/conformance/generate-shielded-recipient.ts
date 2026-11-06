@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Generates `conformance/shielded-recipient.json` (+ `shielded-recipient.schema.json`): the
 // recipient-side encodings of the shielded settlement contract v1 (xochi
-// docs/planning/shielded-execution.md §7; epic xochi#633, xochi#635), as decided by the
-// product owner on 2026-10-24/25:
+// docs/planning/shielded-execution.md §7 "recipient encodings"):
 //
 //   1. descriptorDigest = EIP-712 hashStruct(RecipientDescriptor), and the derivation that
 //      recomputes the descriptor's Aztec address for the stock SchnorrAccount pinned on each
@@ -10,11 +9,11 @@
 //   2. the recipient message wrapper and its WIDE reduction into the BN254 scalar field;
 //   3. three approved acknowledgement structs.
 //
-// INDEPENDENT OF @xochi/signer, deliberately (the #41 rule). Every value is derived here
-// with generic primitives only: ethers (TypedDataEncoder, keccak256, AbiCoder), node's
-// sha512, @zkpassport/poseidon2 (BN254 Poseidon2, the hash Noir and bb.js use) and the
-// Grumpkin arithmetic written out below. `@xochi/signer`'s `shielded-recipient.ts` is
-// checked AGAINST the committed file (packages/signer/test/shielded-recipient-vectors.test.ts).
+// INDEPENDENT OF @xochi/signer. Every value is derived here with generic primitives only:
+// ethers (TypedDataEncoder, keccak256, AbiCoder), node's sha512, @zkpassport/poseidon2
+// (BN254 Poseidon2, the hash Noir and bb.js use) and the Grumpkin arithmetic written out
+// below. `@xochi/signer`'s `shielded-recipient.ts` is checked AGAINST the committed file
+// (packages/signer/test/shielded-recipient-vectors.test.ts).
 //
 // The Aztec SDKs are NOT imported here. `packages/spec/aztec-crosscheck` (its own package,
 // exact-pinned `@aztec/*` 5.2.0 and `@aztec-labs/*` 6.0.0, CI job `aztec-crosscheck`) holds
@@ -26,15 +25,14 @@
 // and must never be used for anything else. Networks, corridors, nonces and digests are
 // fixtures.
 //
-// Run: npm run generate:shielded-recipient   (SHIELDED_VECTORS_DIR overrides the output dir)
+// Run: npm run generate:shielded-recipient -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
 import { createHash } from "crypto";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 
 import { poseidon2Hash } from "@zkpassport/poseidon2";
 import { ethers } from "ethers";
+
+import { ADDR, arr, HEX32, obj, SIG_SCHNORR, STR, UINT, writeVectors } from "./_lib.js";
 
 // --- Fields and curve --------------------------------------------------------------------
 
@@ -243,7 +241,7 @@ const BINDING_TYPE_STRING =
   "bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision," +
   "bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)";
 
-// Approved acknowledgement structs (decision 3, 2026-10-29). Each has its own primary
+// Acknowledgement structs (§7 "recipient encodings"). Each has its own primary
 // type and purpose string; all are signed under `Domain (binding)` through the recipient
 // message wrapper and name the binding by its EIP-712 digest. The enrollment acknowledgements
 // reuse that binding's nonce and challengeExpiry exactly; PaymentReceiptAck uses its own receipt
@@ -1000,7 +998,7 @@ if (!reductionVectors.some((v) => v.notTheRule.truncated256ModR !== v.messageFie
   throw new Error("need a vector where the 256-bit reduction differs");
 }
 
-// --- Acknowledgements (decision 3, approved 2026-10-29) -------------------------------------
+// --- Acknowledgements ----------------------------------------------------------------------
 
 const ackAccount = acct("aztec-6.0.0-stock");
 const ackDomain = bindingDomain(ENVIRONMENT, SOURCE_CHAIN_ID, ackAccount.descriptor.network);
@@ -1560,19 +1558,7 @@ const out = {
 
 // --- Schema ------------------------------------------------------------------------------
 
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
 const HEX = { type: "string", pattern: "^0x[0-9a-f]*$" };
-const ADDR = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const UINT = { type: "string", pattern: "^(0|[1-9][0-9]*)$" };
-const SIG = { type: "string", pattern: "^0x[0-9a-f]{128}$" };
-const STR = { type: "string" };
-const obj = (props: Record<string, unknown>, optional: string[] = []) => ({
-  type: "object",
-  required: Object.keys(props).filter((k) => !optional.includes(k)),
-  additionalProperties: false,
-  properties: props,
-});
-const arr = (items: unknown) => ({ type: "array", minItems: 1, items });
 const LOOSE = { type: "object" };
 const POINT = obj({ x: HEX32, y: HEX32 });
 const NETWORK = obj({
@@ -1600,7 +1586,7 @@ const SIGNED = {
   digest: HEX32,
   wrapper: WRAPPER,
   publicKey: POINT,
-  signature: SIG,
+  signature: SIG_SCHNORR,
 };
 const REFUSAL_CODE = {
   enum: [
@@ -1623,6 +1609,8 @@ const REFUSAL_CODE = {
     "decimals_out_of_range",
     "max_note_amount_out_of_range",
     "evm_address_zero",
+    "digest_zero",
+    "backup_format_mismatch",
   ],
 };
 const ERROR = obj({ code: REFUSAL_CODE, field: STR });
@@ -1633,7 +1621,7 @@ const REPLAY_BASE = {
   digest: HEX32,
   messageField: HEX32,
   publicKey: POINT,
-  signature: SIG,
+  signature: SIG_SCHNORR,
   valid: { const: false },
 };
 
@@ -1742,7 +1730,7 @@ const schema = {
           messageField: HEX32,
           signedField: HEX32,
           publicKey: POINT,
-          signature: SIG,
+          signature: SIG_SCHNORR,
           valid: { const: false },
         }),
       ),
@@ -1793,16 +1781,12 @@ const schema = {
   }),
 };
 
-const dir = process.env.SHIELDED_VECTORS_DIR ?? path.dirname(fileURLToPath(import.meta.url));
-fs.writeFileSync(path.join(dir, "shielded-recipient.json"), JSON.stringify(out, null, 2) + "\n");
-fs.writeFileSync(
-  path.join(dir, "shielded-recipient.schema.json"),
-  JSON.stringify(schema, null, 2) + "\n",
-);
-console.log(
-  `wrote shielded-recipient.json: ${descriptorVectors.length} descriptors, ` +
+writeVectors("shielded-recipient.json", out, {
+  schema,
+  summary:
+    `wrote shielded-recipient.json: ${descriptorVectors.length} descriptors, ` +
     `${descriptorRefusals.length} descriptor refusals, ${reductionVectors.length} reductions, ` +
     `${bindingMessages.length} binding messages, ${ackVectors.length} approved acks, ` +
     `${crossTypeReplays.length} cross-type and ${crossBindingReplays.length} cross-binding replays`,
-);
+});
 for (const v of descriptorVectors) console.log(`  ${v.name.padEnd(30)} ${v.derivation.address}`);

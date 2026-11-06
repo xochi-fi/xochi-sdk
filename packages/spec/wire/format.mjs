@@ -38,7 +38,7 @@
  * Node builtins only, and nothing imported that needs building: this runs
  * inside the writer and beside the probes, whose trust path `probe-lib.mjs`
  * keeps dependency-free. `JSON.parse`'s reviver `context.source` would do the
- * same job in one line and is deliberately not used: it landed in Node 24 and
+ * same job in one line and is not used: it landed in Node 24 and
  * `.github/workflows/ci.yml` pins `node-version: '22'`, so on CI it arrives as
  * `undefined` -- the folding path, silently, which is the bug.
  */

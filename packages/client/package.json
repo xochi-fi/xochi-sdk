@@ -45,16 +45,16 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.esm.json && tsc -p tsconfig.build.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
+    "build": "node ../../scripts/build-dual.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.machine.json",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"*.{json,md,ts}\"",
+    "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,ts}\"",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@xochi/signer": "^0.6.0",
-    "viem": "^2.21.0",
+    "@xochi/signer": "^0.7.0",
+    "viem": "^2.57.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -916,6 +916,7 @@ source = { editable = "." }
 dependencies = [
     { name = "eth-abi" },
     { name = "eth-account" },
+    { name = "eth-keys" },
     { name = "eth-utils" },
 ]
 
@@ -928,6 +929,7 @@ dev = [
 requires-dist = [
     { name = "eth-abi", specifier = ">=5.0.0" },
     { name = "eth-account", specifier = ">=0.11.0" },
+    { name = "eth-keys", specifier = ">=0.7.0" },
     { name = "eth-utils", specifier = ">=4.0.0" },
 ]
 

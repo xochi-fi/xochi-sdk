@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 // Generates `conformance/solver-registration.json`: the cross-implementation
 // vector set for solver registration (SOLVER-RFC.md §3.1), EIP-712 domain
-// RiddlerSolver/2 (the bid's domain):
-//
-//   SolverRegistration(address solverId,uint256 bondChainId,address bond,uint64 issuedAtMs)
+// RiddlerSolver/2 (the bid's domain).
 //
 // `@xochi/solver-sdk`'s `registrationTypedData` / `signRegistration` are the
 // REFERENCE; the Riddler server's `POST /solver/register` verifier is held to this
@@ -20,14 +18,7 @@
 //     (`SOLVER_REGISTRATION_MAX_AGE_MS`, 120 s), inclusive, either side of its
 //     clock.
 //
-// The signer keys below are the PUBLIC Hardhat/Anvil TEST keys. They are known to
-// everyone and MUST NEVER hold funds or be registered as a solver.
-//
-// Run: npm run generate:solver-registration
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:solver-registration -w @xochi/spec
 
 import { ethers } from "ethers";
 import {
@@ -39,9 +30,9 @@ import {
   SOLVER_REGISTRATION_TYPES,
 } from "@xochi/solver-sdk";
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #1 and #2). NOT SECRET. NEVER USE.
-const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const TEST_KEY_2 = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
+import { HARDHAT_TEST_KEYS, writeVectors } from "./_lib.js";
+
+const [, TEST_KEY_1, TEST_KEY_2] = HARDHAT_TEST_KEYS;
 
 const MAX_AGE_MS = 120_000;
 const BOND_CHAIN_ID = 8453;
@@ -192,7 +183,4 @@ const out = {
   vectors,
 };
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const target = path.join(here, "solver-registration.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("solver-registration.json", out);
