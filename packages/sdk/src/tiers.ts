@@ -189,9 +189,8 @@ export const CATEGORY_MAX: Record<ProviderCategory, number> = {
  * additive privacy premium anywhere in the schedule above. Higher trust earns
  * both deeper privacy and a lower fee.
  *
- * L1 stealth (ERC-5564) is OPEN TO ALL. It was gated at 25 here; that gate was
- * removed deliberately, on the grounds that base-level privacy should not be a
- * paid or earned upgrade. Only the Aztec tiers stay trust-gated.
+ * L1 stealth (ERC-5564) is open to all: base-level privacy is not a paid or
+ * earned upgrade. Only the Aztec tiers are trust-gated.
  */
 export const PRIVACY_LEVELS: readonly PrivacyLevel[] = [
   { name: "open", minTrustScore: 0, settlement: "public" },

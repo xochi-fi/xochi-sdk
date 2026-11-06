@@ -70,15 +70,22 @@ function permit2Message(quote: Quote, tokenAddress: string) {
   };
 }
 
+// The signer's ERC-3009 nonce rules, rebuilt here: `0x` hex (validated) or bytes, one
+// input either way, left-padded to 32 bytes; over-length refused, never truncated.
 function normalizeBytes32(value: string | Uint8Array): string {
+  let hex: string;
   if (typeof value === "string" && value.startsWith("0x")) {
-    const hex = value.slice(2);
-    if (hex.length > 64) {
-      throw new Error(`normalizeBytes32: input is ${hex.length / 2} bytes, expected <= 32`);
+    hex = value.slice(2);
+    if (!/^[0-9a-fA-F]*$/.test(hex)) {
+      throw new Error(`normalizeBytes32: input is not valid hex: ${value}`);
     }
-    return "0x" + hex.padStart(64, "0").toLowerCase();
+  } else {
+    hex = ethers.hexlify(value).slice(2);
   }
-  return ethers.hexlify(value);
+  if (hex.length > 64) {
+    throw new Error(`normalizeBytes32: input is ${hex.length / 2} bytes, expected <= 32`);
+  }
+  return "0x" + hex.padStart(64, "0").toLowerCase();
 }
 
 export interface SignOnlyResult {

@@ -30,13 +30,9 @@ import {
   type SignSignalsRequest,
   type SignSignalsResult,
 } from "../src/index.js";
+import { TEST_PRIVATE_KEY } from "./helpers.js";
 
 let api: Barretenberg;
-
-// Deterministic 32-byte test key. NOT a secret -- this is in source.
-// secp256k1 group order constraint: must be < n.
-const TEST_PRIVATE_KEY = new Uint8Array(32);
-for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 
 const SAMPLE_REQUEST: SignSignalsRequest = {
   proofType: 0x07,

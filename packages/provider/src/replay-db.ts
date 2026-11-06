@@ -16,6 +16,7 @@
 
 import type { Barretenberg } from "@aztec/bb.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { copyBytes, isByteArray } from "./bytes.js";
 import {
   snapshotDigestSignerIdentity,
   type DigestSigner,
@@ -160,30 +161,20 @@ function keyFor(submitter: bigint, payloadHash: Uint8Array): string {
   return `${submitter.toString(16)}:${bytesToHex(payloadHash).slice(2)}`;
 }
 
-function isByteArray(value: unknown): value is Uint8Array {
-  if (!ArrayBuffer.isView(value) || value instanceof DataView) return false;
-  const view = value as ArrayBufferView & { readonly BYTES_PER_ELEMENT?: unknown };
-  return view.BYTES_PER_ELEMENT === 1;
-}
-
-function copyBytes(value: unknown, label: string): Uint8Array {
+function copyStoredBytes(value: unknown, label: string): Uint8Array {
   if (!isByteArray(value)) {
     throw new Error(`replay DB returned ${label} that is not a byte array`);
   }
-  const copy = new Uint8Array(value.byteLength);
-  for (let index = 0; index < value.byteLength; index += 1) {
-    copy[index] = value[index];
-  }
-  return copy;
+  return copyBytes(value);
 }
 
 function copySignSignalsResult(result: SignSignalsResult): SignSignalsResult {
   return {
-    signature: copyBytes(result.signature, "signature"),
-    pubkeyX: copyBytes(result.pubkeyX, "pubkeyX"),
-    pubkeyY: copyBytes(result.pubkeyY, "pubkeyY"),
-    signerPubkeyHash: copyBytes(result.signerPubkeyHash, "signerPubkeyHash"),
-    payloadHash: copyBytes(result.payloadHash, "payloadHash"),
+    signature: copyStoredBytes(result.signature, "signature"),
+    pubkeyX: copyStoredBytes(result.pubkeyX, "pubkeyX"),
+    pubkeyY: copyStoredBytes(result.pubkeyY, "pubkeyY"),
+    signerPubkeyHash: copyStoredBytes(result.signerPubkeyHash, "signerPubkeyHash"),
+    payloadHash: copyStoredBytes(result.payloadHash, "payloadHash"),
   };
 }
 
@@ -283,7 +274,7 @@ async function signThroughLedger(
   payloadHash: Uint8Array,
   sign: (capturedSigner: DigestSigner) => Promise<SignSignalsResult>,
 ): Promise<LedgeredSignResult> {
-  const authoritativePayloadHash = copyBytes(payloadHash, "locally computed payloadHash");
+  const authoritativePayloadHash = copyStoredBytes(payloadHash, "locally computed payloadHash");
   const identity = snapshotDigestSignerIdentity(signer);
   const capturedSigner: DigestSigner = {
     label: identity.label,
@@ -294,7 +285,7 @@ async function signThroughLedger(
 
   const recorded = await db.lookup(
     submitter,
-    copyBytes(authoritativePayloadHash, "lookup payloadHash"),
+    copyStoredBytes(authoritativePayloadHash, "lookup payloadHash"),
   );
   if (recorded && resultMatchesIdentity(recorded, identity.publicKeyX, identity.publicKeyY)) {
     const validated = await validateReplayResult(api, recorded, identity, authoritativePayloadHash);
@@ -304,7 +295,7 @@ async function signThroughLedger(
   const candidate = await sign(capturedSigner);
   const canonical = await db.recordCanonical(
     submitter,
-    copyBytes(authoritativePayloadHash, "record payloadHash"),
+    copyStoredBytes(authoritativePayloadHash, "record payloadHash"),
     timestamp,
     copySignSignalsResult(candidate),
   );

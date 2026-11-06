@@ -1,5 +1,5 @@
 // Recipient encodings: `@xochi/spec`'s conformance/shielded-recipient.json (xochi
-// shielded-execution.md §7; product-owner decisions of 2026-10-24/25 and 2026-10-29).
+// shielded-execution.md §7).
 //
 // The generator derives every value with generic primitives and never imports @xochi/signer,
 // and packages/spec/aztec-crosscheck holds the same file to the real Aztec SDKs (5.2.0 and

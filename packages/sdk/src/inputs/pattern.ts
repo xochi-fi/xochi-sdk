@@ -62,12 +62,8 @@ export interface PatternInput {
   settlementRoot: string;
   /**
    * Proof timestamp (unix seconds, default the local clock), not a transaction
-   * time. Public input 7, after `settlement_root`; the Oracle rejects it when
-   * after `block.timestamp` (`ProofTimestampInFuture`) or more than
-   * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
-   * clock ahead of the chain head makes the default revert. Prefer
-   * `await chainProofTimestamp(client)`, or `new ERC8262Prover(loader, { client })`,
-   * which stamps with it. The circuit requires every active transaction
+   * time. Public input 7, after `settlement_root`. Date it from the chain:
+   * README "Proof timestamps". The circuit requires every active transaction
    * timestamp to lie in `[timestamp - timeWindow, timestamp]`; the builder
    * throws for a transaction dated after a chain stamp that trails the clock.
    */
@@ -77,9 +73,8 @@ export interface PatternInput {
    * `SettlementRegistry.finalizeTrade` pass the trade's `createdAt`, e.g.
    * `(await registry.getSettlement(tradeId)).createdAt`. Without `timestamp`
    * the stamp is `max(default stamp, notBefore)` (the local clock here, the
-   * chain stamp in a prover built with `client`); `createdAt` is a mined
-   * block's time, so it never exceeds the block that includes the submission.
-   * An explicit `timestamp` before it throws
+   * chain stamp in a prover built with `client`; why that is safe: README
+   * "Proof timestamps"). An explicit `timestamp` before it throws
    * {@link PatternTimestampPredatesTradeError} before proving.
    */
   notBefore?: string | bigint;

@@ -35,6 +35,11 @@ export function bytesToHexField(bytes: Uint8Array): `0x${string}` {
   if (bytes.length !== 32) {
     throw new Error(`field must be 32 bytes; got ${String(bytes.length)}`);
   }
+  return bytesToHex(bytes);
+}
+
+/** Lowercase `0x`-prefixed hex of `bytes`, any length. */
+export function bytesToHex(bytes: Uint8Array): `0x${string}` {
   let hex = "0x";
   for (const b of bytes) {
     hex += b.toString(16).padStart(2, "0");

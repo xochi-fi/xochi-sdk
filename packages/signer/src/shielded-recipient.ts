@@ -1,7 +1,7 @@
 // Recipient-side encodings of the shielded settlement contract v1 (xochi
-// docs/planning/shielded-execution.md §7; epic xochi#633, xochi#635), decided by the product
-// owner on 2026-10-24/25. INERT: nothing in the signing path calls this, and shielded
-// settlement is off everywhere (SHIELDED_SETTLEMENT_LIVE).
+// docs/planning/shielded-execution.md §7; epic xochi#633, xochi#635). INERT: nothing in the
+// signing path calls this, and shielded settlement is off everywhere
+// (SHIELDED_SETTLEMENT_LIVE).
 //
 // What is here:
 //   - `RecipientDescriptor` and `descriptorDigest = hashStruct(RecipientDescriptor)`;
@@ -29,11 +29,13 @@ import {
 } from "./shielded";
 import {
   AZTEC_FIELD_MODULUS,
+  RefusalError,
   assertAztecBytes32,
   aztecField,
   bytes32,
   coder,
   keccak,
+  refuser,
   withRefusalsAs,
   type ShieldedRefusal,
 } from "./shielded-values";
@@ -44,8 +46,7 @@ const hex32 = (v: bigint): Hex => ("0x" + v.toString(16).padStart(64, "0")) as H
 
 /**
  * Why a descriptor or digest is refused: the shared value rules (`ShieldedRefusal`) plus
- * the descriptor checks. Its own union and error, so `ShieldedEncodingError` keeps the
- * `shielded.ts` contract.
+ * the descriptor checks.
  */
 export type RecipientRefusal =
   | ShieldedRefusal
@@ -54,23 +55,12 @@ export type RecipientRefusal =
   | "ivpk_invalid"
   | "address_mismatch";
 
-export class RecipientEncodingError extends Error {
-  readonly code: RecipientRefusal;
-  readonly field: string;
-  constructor(code: RecipientRefusal, field: string, detail: string) {
-    super(`${field}: ${code} (${detail})`);
-    this.name = "RecipientEncodingError";
-    this.code = code;
-    this.field = field;
-  }
+export class RecipientEncodingError extends RefusalError<RecipientRefusal> {
+  override name = "RecipientEncodingError";
 }
 
-const refuseRecipient = (code: RecipientRefusal, field: string, detail: string): never => {
-  throw new RecipientEncodingError(code, field, detail);
-};
-// The shared value rules, refusing as RecipientEncodingError.
-const recipientRules = <T>(fn: () => T): T =>
-  withRefusalsAs(fn, (code, field, detail) => new RecipientEncodingError(code, field, detail));
+const refuseRecipient = refuser(RecipientEncodingError);
+const recipientRules = <T>(fn: () => T): T => withRefusalsAs(fn, RecipientEncodingError);
 
 // ---------------------------------------------------------------------------
 // Grumpkin (y^2 = x^3 - 17 over F_r), Jacobian coordinates. Public data only
@@ -240,7 +230,7 @@ export interface AztecRecipientProfile {
   contractAddressSeparator: bigint;
 }
 
-/** Pinned per network (§7 Recipient authorization; decided 2026-10-19/20/24). */
+/** Pinned per network (§7 Recipient authorization). */
 export const AZTEC_RECIPIENT_PROFILES = {
   "aztec-5.2.0": {
     id: "aztec-5.2.0",
@@ -360,7 +350,7 @@ export function deriveRecipientAddress(
  * pin (`class_not_pinned`), the points (`signing_key_invalid`, `ivpk_invalid`), then the
  * recomputed address (`address_mismatch`). Off-chain only: whether the instance's CURRENT
  * class (and any scheduled `ContractInstanceRegistry.update`) is still the pin is a node
- * read the caller re-runs at every use (§7, decided 2026-10-24).
+ * read the caller re-runs at every use (§7).
  */
 export function verifyRecipientDescriptor(
   d: RecipientDescriptor,
@@ -390,7 +380,7 @@ export function verifyRecipientDescriptor(
 }
 
 // ---------------------------------------------------------------------------
-// Recipient message wrapper (decided 2026-10-24/25)
+// Recipient message wrapper (§7)
 // ---------------------------------------------------------------------------
 
 /** `P`: ASCII, exactly these 36 bytes. */

@@ -16,31 +16,16 @@
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH } from "../constants.js";
 import { bytesToHexField } from "./field-bytes.js";
+import {
+  bytesToNumStrings,
+  computeScoreBps,
+  MAX_RISK_SCORE_BPS,
+  resolveProviders,
+  type ProviderInput,
+  type SignedDigestBinding,
+} from "./providers.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
 import type { SignedSignalsBundle } from "./compliance-signed.js";
-
-interface ProviderSignals {
-  signals: number[];
-  weights: number[];
-  providerIds: string[];
-}
-
-interface SingleProviderShorthand {
-  score: number;
-}
-
-type ProviderInput = ProviderSignals | SingleProviderShorthand;
-
-/**
- * Audit F-6: chain_id and oracle_address are committed in the in-circuit signed
- * digest. They MUST equal the values the provider used when signing -- the
- * on-chain Oracle additionally asserts they match `block.chainid` and
- * `address(this)`.
- */
-interface SignedDigestBinding {
-  chainId: bigint | string | number;
-  oracleAddress: Address;
-}
 
 interface ThresholdBaseSigned extends SignedDigestBinding {
   type: "threshold";
@@ -52,10 +37,7 @@ interface ThresholdBaseSigned extends SignedDigestBinding {
   signedBundle: SignedSignalsBundle;
   /**
    * Timestamp the provider signed over (must match the signSignals input).
-   * The Oracle rejects it when after `block.timestamp`
-   * (`ProofTimestampInFuture`) or more than `MAX_PROOF_AGE` (1 hour) before it
-   * (`ProofTimestampStale`): take it from `await chainProofTimestamp(client)`
-   * (the chain's clock) rather than a local clock.
+   * Date it from the chain: README "Proof timestamps".
    */
   signedTimestamp: string | bigint;
 }
@@ -75,64 +57,6 @@ interface RangeBaseSigned extends SignedDigestBinding {
 export type RiskScoreSignedThresholdInput = ThresholdBaseSigned & ProviderInput;
 export type RiskScoreSignedRangeInput = RangeBaseSigned & ProviderInput;
 export type RiskScoreSignedInput = RiskScoreSignedThresholdInput | RiskScoreSignedRangeInput;
-
-const MAX_PROVIDERS = 8;
-const MAX_RISK_SCORE_BPS = 10000;
-
-function resolveProviders(opts: ProviderInput): {
-  signals: string[];
-  weights: string[];
-  weightSum: number;
-  providerIds: string[];
-  numProviders: number;
-} {
-  if ("signals" in opts) {
-    const n = opts.signals.length;
-    if (n === 0 || n > MAX_PROVIDERS) {
-      throw new Error(`Provider count must be 1-${String(MAX_PROVIDERS)}, got ${String(n)}`);
-    }
-    if (opts.weights.length !== n || opts.providerIds.length !== n) {
-      throw new Error("signals, weights, and providerIds must have equal length");
-    }
-    const signals = [...opts.signals];
-    const weights = [...opts.weights];
-    const providerIds = [...opts.providerIds];
-    while (signals.length < MAX_PROVIDERS) {
-      signals.push(0);
-      weights.push(0);
-      providerIds.push("0");
-    }
-    const weightSum = opts.weights.reduce((a, b) => a + b, 0);
-    return {
-      signals: signals.map(String),
-      weights: weights.map(String),
-      weightSum,
-      providerIds,
-      numProviders: n,
-    };
-  }
-  return {
-    signals: [String(opts.score), "0", "0", "0", "0", "0", "0", "0"],
-    weights: ["100", "0", "0", "0", "0", "0", "0", "0"],
-    weightSum: 100,
-    providerIds: ["1", "0", "0", "0", "0", "0", "0", "0"],
-    numProviders: 1,
-  };
-}
-
-function bytesToNumStrings(bytes: Uint8Array, expected: number, label: string): string[] {
-  if (bytes.length !== expected) {
-    throw new Error(`${label} must be ${String(expected)} bytes; got ${String(bytes.length)}`);
-  }
-  return Array.from(bytes, (b) => String(b));
-}
-
-function computeScoreBps(p: ReturnType<typeof resolveProviders>): number {
-  const sum = p.signals
-    .slice(0, p.numProviders)
-    .reduce((acc, s, i) => acc + Number(s) * Number(p.weights[i]), 0);
-  return Math.floor((sum * 100) / p.weightSum);
-}
 
 export function buildRiskScoreSignedInputs(
   opts: RiskScoreSignedInput,

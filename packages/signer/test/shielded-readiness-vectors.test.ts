@@ -1,5 +1,5 @@
 // Readiness attestations: `@xochi/spec`'s conformance/shielded-readiness.json (xochi
-// shielded-execution.md §7 "Decided 2026-10-19: readiness attestation"; xochi-sdk#42).
+// shielded-execution.md §7 "readiness attestation"; xochi-sdk#42).
 //
 // The generator signs with ethers and never imports @xochi/signer. This suite checks the
 // REFERENCE against that file: (1) every domain, struct hash, digest, recovered signer,
@@ -86,7 +86,7 @@ const file = JSON.parse(
 
 // --- Anchors -----------------------------------------------------------------------------
 
-// The approved record shapes (§7 Readiness evidence; "Decided 2026-10-19"), minus signature.
+// The §7 record shapes ("Readiness evidence"), minus signature.
 const APPROVED_MEMBERS: Record<ReadinessType, string[]> = {
   Membership: ["descriptorDigest", "root", "member", "rootBlock", "attestedAt"],
   RecipientDeployment: [

@@ -6,11 +6,8 @@
 
 import { describe, it, expect } from "vitest";
 import type { Address } from "viem";
-import {
-  buildComplianceSignedInputs,
-  buildRiskScoreSignedInputs,
-  type SignedSignalsBundle,
-} from "../src/index.js";
+import { buildComplianceSignedInputs, buildRiskScoreSignedInputs } from "../src/index.js";
+import { dummyBundle } from "./helpers.js";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266" as Address;
@@ -18,17 +15,6 @@ const SUBMITTER = "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb
 // block.chainid / address(this); the input builder only checks they're present.
 const CHAIN_ID = 1n;
 const ORACLE_ADDRESS = "0x00000000000000000000000000000000abcd1234" as Address;
-
-function dummyBundle(): SignedSignalsBundle {
-  // Deterministic pattern bytes (NOT a real signature). Builder only checks
-  // length/shape, not validity -- the circuit verifies cryptographic correctness.
-  return {
-    signature: new Uint8Array(64).fill(0xab),
-    pubkeyX: new Uint8Array(32).fill(0xcd),
-    pubkeyY: new Uint8Array(32).fill(0xef),
-    signerPubkeyHash: new Uint8Array(32).fill(0x12),
-  };
-}
 
 describe("buildComplianceSignedInputs", () => {
   it("packs signature/pubkey as numeric byte arrays", () => {

@@ -64,7 +64,8 @@ const DEFAULT_MAX_TIMESTAMP_AGE_SECONDS = 300;
 const DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS = 30;
 const DEFAULT_CREDENTIAL_ROOT_MAX_VALIDITY_SECONDS = 3600;
 
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+/** A 20-byte EVM address, `0x` + 40 hex, any case. */
+export const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 function envInt(env: NodeJS.ProcessEnv, name: string, fallback: number, max: number): number {
   const raw = env[name];

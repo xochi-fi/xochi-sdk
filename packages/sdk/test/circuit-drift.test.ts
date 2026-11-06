@@ -28,10 +28,8 @@ import { buildMembershipInputs } from "../src/inputs/membership.js";
 import { buildNonMembershipInputs } from "../src/inputs/non-membership.js";
 import { buildComplianceSignedInputs } from "../src/inputs/compliance-signed.js";
 import { buildRiskScoreSignedInputs } from "../src/inputs/risk-score-signed.js";
-import {
-  buildComplianceMultiSignedInputs,
-  type MultiSignedSlot,
-} from "../src/inputs/compliance-multi-signed.js";
+import { buildComplianceMultiSignedInputs } from "../src/inputs/compliance-multi-signed.js";
+import { dummyBundle, makeSlot } from "./helpers.js";
 
 const TEST_DIR = new URL(".", import.meta.url).pathname;
 const CIRCUITS_DIR = resolve(TEST_DIR, "../circuits");
@@ -56,30 +54,6 @@ interface AbiParam {
 interface Artifact {
   noir_version?: string;
   abi: { parameters: AbiParam[] };
-}
-
-function bytes(length: number, fill: number): Uint8Array {
-  return new Uint8Array(length).fill(fill);
-}
-
-function dummyBundle() {
-  return {
-    signature: bytes(64, 0xab),
-    pubkeyX: bytes(32, 0xcd),
-    pubkeyY: bytes(32, 0xef),
-    signerPubkeyHash: bytes(32, 0x12),
-  };
-}
-
-function makeSlot(fill: number): MultiSignedSlot {
-  return {
-    signals: [10, 20, 30, 0, 0, 0, 0, 0],
-    weights: [50, 30, 20, 0, 0, 0, 0, 0],
-    pubkeyX: bytes(32, fill),
-    pubkeyY: bytes(32, fill + 1),
-    signature: bytes(64, fill + 2),
-    signerPubkeyHash: bytes(32, fill + 3),
-  };
 }
 
 /**

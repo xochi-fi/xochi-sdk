@@ -10,25 +10,18 @@
 // server builds the UserOperation and computes the counterfactual address;
 // ERC-4337 is not reimplemented here.
 
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { ethers } from "ethers";
 import { assertValidPrivateKey } from "./private-key.js";
-
-// secp256k1 group order.
-const N = secp256k1.CURVE.n;
-
-function strip0x(hex: string): string {
-  return hex.startsWith("0x") ? hex.slice(2) : hex;
-}
+import { N, sharedSecretHash } from "./stealth-ecdh.js";
 
 // Receiver-side stealth private key:
 //   shared        = compress(ECDH(viewing_priv, ephemeral_pub))   (33-byte SEC1)
 //   stealth_priv  = (spending_priv + keccak256(shared)) mod n
 //
-// getSharedSecret(privA, pubB, true) returns the compressed point pubB*privA --
-// the same bytes Riddler hashes (ExSecp256k1.public_key_compress over the ECDH
-// point). All inputs are 0x-prefixed hex; spending/viewing are 32-byte private
-// keys, ephemeral_pub is a 33-byte compressed public key.
+// `sharedSecretHash` hashes the compressed point ephemeral_pub * viewing_priv -- the same
+// bytes Riddler hashes (ExSecp256k1.public_key_compress over the ECDH point). All inputs
+// are 0x-prefixed hex; spending/viewing are 32-byte private keys, ephemeral_pub is a
+// 33-byte compressed public key.
 export function deriveStealthPrivateKey(
   spendingPrivHex: string,
   viewingPrivHex: string,
@@ -37,12 +30,7 @@ export function deriveStealthPrivateKey(
   const spendingPrivateKey = assertValidPrivateKey(spendingPrivHex, "spendingPrivHex");
   const viewingPrivateKey = assertValidPrivateKey(viewingPrivHex, "viewingPrivHex");
 
-  const shared = secp256k1.getSharedSecret(
-    strip0x(viewingPrivateKey),
-    strip0x(ephemeralPubHex),
-    true,
-  );
-  const hashSs = BigInt(ethers.keccak256(shared));
+  const hashSs = BigInt(sharedSecretHash(ephemeralPubHex, ethers.getBytes(viewingPrivateKey)));
   const spendingInt = BigInt(spendingPrivateKey);
   const stealthInt = (spendingInt + hashSs) % N;
   return "0x" + stealthInt.toString(16).padStart(64, "0");

@@ -26,6 +26,7 @@ import {
   signSignals,
   type DestroyableDigestSigner,
 } from "@xochi/provider";
+import { TEST_PRIVATE_KEY } from "./helpers.js";
 
 const PROVIDER_SET_HASH = "0x14b6becf762f80a24078e62fc9a7eca246b8e406d19962dda817b173f30a94b2";
 const SUBMITTER = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -35,10 +36,6 @@ const TIMESTAMP = 1700000000n;
 // Oracle asserts these equal block.chainid and address(this).
 const TEST_CHAIN_ID = 1n;
 const TEST_ORACLE_ADDRESS = 0xabcd1234n;
-
-// Fixed test private key (NOT a secret).
-const TEST_PRIVATE_KEY = new Uint8Array(32);
-for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 
 let api: Barretenberg;
 let signer: DestroyableDigestSigner;

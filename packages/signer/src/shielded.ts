@@ -1,7 +1,7 @@
-// Recipient-private Aztec settlement, contract v1: the typed encodings approved on
-// 2026-10-18 (xochi docs/planning/shielded-execution.md §7 "Approved 2026-10-18: typed
-// encodings"; epic xochi#633, xochi#635). INERT: nothing in the signing path calls this,
-// and shielded settlement is off everywhere (SHIELDED_SETTLEMENT_LIVE).
+// Recipient-private Aztec settlement, contract v1: the typed encodings of xochi
+// docs/planning/shielded-execution.md §7 "typed encodings" (epic xochi#633, xochi#635).
+// INERT: nothing in the signing path calls this, and shielded settlement is off everywhere
+// (SHIELDED_SETTLEMENT_LIVE).
 //
 // HASH-ONLY, like xsp.ts: the source wallet signs a RecipientBinding through its own
 // wallet as EIP-712, and the recipient signs it under its Aztec account scheme. Neither
@@ -24,6 +24,7 @@
 // against ethers' TypedDataEncoder as an independent implementation.
 
 import { ethers } from "ethers";
+import { typedDigest } from "./primitives";
 import type { Hex } from "./types";
 import {
   UINT32_MAX,
@@ -67,12 +68,11 @@ export const SHIELDED_DOMAIN_TYPE_STRING =
 export const SHIELDED_DOMAIN_TYPEHASH = ethers.id(SHIELDED_DOMAIN_TYPE_STRING) as Hex;
 
 // §7 `NetworkIdentity = { aztec_chain_id, protocol_version, rollup_address, l1_chain_id,
-// genesis_or_network_digest }`. §7 delegates its typed encoding to these vectors; this one
-// was approved by the product owner on 2026-10-19 (its §7 record lands in a separate xochi
-// PR). Member names follow the approval's snake_case -> camelCase mapping. `rollupAddress`
-// is the L1 rollup contract, so `address`; `protocolVersion` is the numeric Aztec rollup
-// version. Both Aztec values are protocol field elements (tx context `chainId` /
-// `version`), carried as uint256 and held in-field.
+// genesis_or_network_digest }`. §7 delegates its typed encoding to these vectors. Member
+// names follow §7's snake_case -> camelCase mapping. `rollupAddress` is the L1 rollup
+// contract, so `address`; `protocolVersion` is the numeric Aztec rollup version. Both Aztec
+// values are protocol field elements (tx context `chainId` / `version`), carried as uint256
+// and held in-field.
 export const NETWORK_IDENTITY_TYPE_STRING =
   "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress,uint256 l1ChainId,bytes32 genesisOrNetworkDigest)";
 export const NETWORK_IDENTITY_TYPEHASH = ethers.id(NETWORK_IDENTITY_TYPE_STRING) as Hex;
@@ -259,5 +259,5 @@ export function recipientBindingDigest(
 ): Hex {
   const structHash = hashRecipientBinding(b);
   const separator = shieldedDomainSeparator(bindingDomain(b.sourceChainId, environment, network));
-  return keccak(ethers.concat(["0x1901", separator, structHash]));
+  return typedDigest(separator, structHash);
 }

@@ -55,6 +55,7 @@ import {
 import { createDaemonServer, type DaemonServer } from "../../provider/daemon/src/server.js";
 import { MemoryAuditSink } from "../../provider/daemon/src/audit.js";
 import type { DaemonConfig } from "../../provider/daemon/src/config.js";
+import { TEST_PRIVATE_KEY } from "./helpers.js";
 
 // ============================================================
 // Locations
@@ -87,24 +88,16 @@ function loadBytecode(contractPath: string, contractName: string): Hex {
 }
 
 /**
- * Replace `__$<34 hex>$__` library link placeholders in a bytecode object
- * with deployed library addresses. The link references metadata gives the
- * (start, length) offsets per library; we splice the lowercase no-prefix
- * address bytes in at those positions.
+ * Replaces every `__$<34 hex>$__` library link placeholder with the single
+ * library address (one linked library).
  */
 function linkBytecode(bytecode: Hex, libs: Record<string, Address>): Hex {
   let raw = bytecode.startsWith("0x") ? bytecode.slice(2) : bytecode;
-  // Replace every `__$<34>$__` placeholder for libraries we know about.
   for (const [libName, addr] of Object.entries(libs)) {
     const addrLower = addr.toLowerCase().replace(/^0x/, "");
     if (addrLower.length !== 40) {
       throw new Error(`library ${libName} address has wrong length: ${addr}`);
     }
-    // Solidity uses keccak256(libName)[0:17] (34 hex chars) as the placeholder
-    // tag inside `__$...$__`. Foundry's artifact `linkReferences` gives byte
-    // offsets directly, but we'd need the artifact to map back -- simplest is
-    // a regex pass that swaps any `__$.{34}$__` whose tag is unique to one lib.
-    // For our case there's exactly one library; do the global replace.
     raw = raw.replace(/__\$[a-fA-F0-9]{34}\$__/g, addrLower);
   }
   if (raw.includes("__$")) {
@@ -141,9 +134,6 @@ const ANVIL_URL = `http://127.0.0.1:${String(ANVIL_PORT)}`;
 const OWNER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
 const ALICE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 
-// Deterministic test signing key (NOT a secret).
-const TEST_PRIVATE_KEY = new Uint8Array(32);
-for (let i = 0; i < 32; i++) TEST_PRIVATE_KEY[i] = i + 1; // 0x01..0x20
 const TEST_API_KEY = "onchain-test-key";
 
 const PROVIDER_SET_HASH =

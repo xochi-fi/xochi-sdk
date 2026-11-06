@@ -29,7 +29,7 @@ import {
   type SignSlotRequest,
 } from "@xochi/provider";
 import type { AuditEvent, AuditRoute, AuditSink } from "./audit.ts";
-import type { DaemonConfig } from "./config.ts";
+import { ADDRESS_RE, type DaemonConfig } from "./config.ts";
 import { formatUnknownError } from "./error-format.ts";
 
 export interface HandlerContext {
@@ -128,7 +128,6 @@ class RequestRejected extends Error {
   }
 }
 
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const MAX_WEIGHT = 10_000;
 const U64_MAX = 0xffffffffffffffffn;
 

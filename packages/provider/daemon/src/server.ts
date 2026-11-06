@@ -11,7 +11,7 @@
  * Credentials are scoped per route group. The signal routes (/sign,
  * /sign-multi) and /sign-credential-root are separate trust roles: a
  * credential-root signature lets its holder publish credential roots, which
- * `EIP712CredentialRoot` deliberately keeps apart from whoever drives signal
+ * `EIP712CredentialRoot` keeps apart from whoever drives signal
  * signing. Each group has its own credential, and neither opens the other.
  */
 

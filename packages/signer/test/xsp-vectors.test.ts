@@ -198,6 +198,23 @@ describe("xsp.json: obligation", () => {
     }
   });
 
+  it("refuses a uint64 that is not a canonical non-negative integer", () => {
+    const [first] = xsp.obligation.vectors;
+    if (!first) throw new Error("no obligation vectors");
+    const depository = first.domain.verifyingContract;
+    for (const deadline of ["", "0x10", " 7", "007", "-1", "1e3", -1, 1.5, 2 ** 53]) {
+      expect(() => computeObligationId({ ...first.terms, deadline }, depository)).toThrow(
+        /deadline must be a non-negative base-10 integer/,
+      );
+    }
+    expect(() => computeObligationId({ ...first.terms, deadline: 2n ** 64n }, depository)).toThrow(
+      /deadline out of uint64 range/,
+    );
+    expect(computeObligationId({ ...first.terms, deadline: 1900000000n }, depository)).toBe(
+      computeObligationId({ ...first.terms, deadline: "1900000000" }, depository),
+    );
+  });
+
   for (const r of xsp.obligation.refundCommitments) {
     it(`refundCommitment ${r.name}`, () => {
       expect(computeRefundCommitment(r.refundAddress, r.refundSalt)).toBe(r.refundCommitment);

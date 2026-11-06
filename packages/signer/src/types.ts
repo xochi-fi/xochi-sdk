@@ -1,7 +1,4 @@
 // Signing-relevant types for @xochi/signer. Pure types, zero runtime code.
-// Wire/response bodies are deliberately permissive (`unknown` at the edge): the
-// server-served EIP-712 signable MUST reach the signer untouched, so over-typing
-// it would invite coercing casts that change the digest.
 
 export type Hex = `0x${string}`;
 
@@ -31,9 +28,10 @@ export interface ChainConfig {
   flagGated?: "enable_tron" | "enable_arc";
 }
 
-// The server-served EIP-712 blob. Values are intentionally loose -- they must
-// reach the signer UNTOUCHED (never through a coercing/transforming validator).
-// ethers derives the domain hash (incl. `salt`) from `domain`.
+// The server-served EIP-712 blob. Values are loose (`unknown` at the edge) and must
+// reach the signer UNTOUCHED (never through a coercing/transforming validator):
+// over-typing would invite casts that change the digest. ethers derives the domain
+// hash (incl. `salt`) from `domain`.
 //
 // "Untouched" is about not REWRITING, not about not LOOKING. The signers refuse
 // a blob whose schema is not one they recognise (`assertKnownSchema`) and the
@@ -70,10 +68,7 @@ export interface SignResult {
 // satisfies this (it has these fields plus SERVERS/DEFAULT_SERVER), so a
 // consumer can pass its own config object as-is.
 //
-// NOTE: signERC3009/signPermit2 also read `config.PRIVATE_KEY` (to construct
-// the signing wallet) -- that field is included below even though it is not
-// itself chain/solver config, because it is genuinely required for the
-// signers to run.
+// `PRIVATE_KEY`: read by signERC3009/signPermit2 to construct the signing wallet.
 export interface SignerConfig {
   CHAINS: Record<string, ChainConfig>;
   PERMIT2_ADDRESS: string;

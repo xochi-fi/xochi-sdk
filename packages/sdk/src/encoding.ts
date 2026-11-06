@@ -1,4 +1,5 @@
 import type { Hex } from "viem";
+import { bytesToHex } from "./inputs/field-bytes.js";
 
 /**
  * Encode publicInputs from bb.js string[] to on-chain bytes.
@@ -43,10 +44,7 @@ export function decodePublicInputs(hex: Hex): string[] {
  * Encode proof bytes to hex string.
  */
 export function encodeProof(proof: Uint8Array): Hex {
-  const hex = Array.from(proof)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `0x${hex}` as Hex;
+  return bytesToHex(proof);
 }
 
 type NoirScalar = string | number | bigint | boolean;

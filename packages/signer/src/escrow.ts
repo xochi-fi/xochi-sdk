@@ -11,8 +11,8 @@
 import { ethers } from "ethers";
 import type { Hex } from "./types";
 import { resolvePinnedEscrow } from "./escrow-pin";
-
-type UintLike = bigint | number | string;
+import { EVM_ADDRESS, coder, typedDigest } from "./primitives";
+import { UINT256_MAX, uintSpelling, type UintLike } from "./uint";
 
 // The destination side of an order. Never on-chain in the clear: only its
 // commitment is (ESCROW-RFC §2.2). `recipient`/`toToken` are strings so a
@@ -57,26 +57,19 @@ export const OPEN_AUTH_DOMAIN_NAME = "RiddlerEscrow";
 export const OPEN_AUTH_DOMAIN_VERSION = "1";
 export const DEST_BLINDING_TAG = "riddler/dest-blinding/v1";
 
-const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-const MAX_UINT256 = (1n << 256n) - 1n;
-
-// Every uint256 this module hashes or signs: a bigint, a safe-integer number or
-// a plain base-10 digit string, within uint256. `BigInt` alone would coerce ""
-// to 0, "0x10" to 16 and " 7" to 7, so a value Riddler refuses would hash or
-// sign here as a valid-looking one. This is STRICTER than Riddler's admission
-// (`EIP712.uint/1`, `OrderTerms.new/1`, `DestOpening.new/1` use
-// `Integer.parse/1`, which also admits "+7" and "-0"). Fail-closed: it refuses
-// some spellings Riddler admits and admits none Riddler refuses.
+// Every uint256 this module hashes or signs: `uintSpelling` with leading zeros allowed,
+// within uint256. This is STRICTER than Riddler's admission (`EIP712.uint/1`,
+// `OrderTerms.new/1`, `DestOpening.new/1` use `Integer.parse/1`, which also admits "+7"
+// and "-0"). Fail-closed: it refuses some spellings Riddler admits and admits none Riddler
+// refuses.
 function toUint(label: string, v: UintLike): bigint {
-  let n: bigint;
-  if (typeof v === "bigint") n = v;
-  else if (typeof v === "number" && Number.isSafeInteger(v)) n = BigInt(v);
-  else if (typeof v === "string" && /^[0-9]+$/.test(v)) n = BigInt(v);
-  else throw new Error(`${label} must be a base-10 uint256, got ${JSON.stringify(String(v))}`);
-  if (n < 0n || n > MAX_UINT256) throw new Error(`${label} is out of uint256 range: ${n}`);
+  const n = uintSpelling(v, true);
+  if (n === undefined) {
+    throw new Error(`${label} must be a base-10 uint256, got ${JSON.stringify(String(v))}`);
+  }
+  if (n < 0n || n > UINT256_MAX) throw new Error(`${label} is out of uint256 range: ${n}`);
   return n;
 }
-const coder = ethers.AbiCoder.defaultAbiCoder();
 
 // ESCROW-RFC §2.1: an EVM address maps to its left-padded 32-byte word, case
 // insensitively; anything else is keccak256 of its UTF-8 bytes, verbatim.
@@ -200,9 +193,7 @@ export function openAuthStructHash(orderId: string, expiry: UintLike): Hex {
 }
 
 export function openAuthDigest(domain: OpenAuthDomain, orderId: string, expiry: UintLike): Hex {
-  return ethers.keccak256(
-    ethers.concat(["0x1901", openAuthDomainSeparator(domain), openAuthStructHash(orderId, expiry)]),
-  ) as Hex;
+  return typedDigest(openAuthDomainSeparator(domain), openAuthStructHash(orderId, expiry));
 }
 
 // 65-byte r||s||v, low-s (ethers always normalizes s).
@@ -231,15 +222,20 @@ export type EscrowPullAuth =
   | { kind: "erc3009"; to: string; token: string; amount: UintLike; nonce: string }
   | { kind: "permit2"; spender: string; token: string; amount: UintLike; witnessOrderId: string };
 
-// The caller's pinned RiddlerEscrow per ORIGIN chain id. MUST come from outside
-// the venue channel -- a deployment manifest the integrator reviewed, not
-// `escrow.address`, `order_terms.escrow` or the `escrow_address`
-// /xochi/capabilities advertises, all of which the venue writes (ESCROW-RFC §7).
-// A key is a positive chain id in decimal or `0x` hex, whitespace-trimmed, so
-// `8453`, `"08453"`, `"0x2105"` and `" 8453 "` all pin chain 8453; any other key
-// refuses the whole pin, as do two keys naming one chain with different
-// escrows. Values are trimmed and must be non-zero EVM addresses. One reading
-// for `assertEscrowBinding` and the pull guard (`assertPullMatchesIntent`).
+/**
+ * The caller's pinned RiddlerEscrow per ORIGIN chain id. MUST come from outside the venue
+ * channel -- a deployment manifest the integrator reviewed, not `escrow.address`,
+ * `order_terms.escrow` or the `escrow_address` /xochi/capabilities advertises, all of which
+ * the venue writes (ESCROW-RFC §7).
+ *
+ * A key is a positive chain id in decimal (leading zeros allowed) or `0x` hex, surrounded by
+ * optional whitespace: `8453`, `"08453"`, `"0x2105"` and `" 8453 "` all pin chain 8453, the
+ * same spellings the chain checks accept for the intent's own `fromChainId`. Any other key
+ * (`""`, `"1e3"`, `"-8453"`, `"0"`, `"__proto__"`) refuses the whole pin, as do two keys
+ * naming one chain with different escrows. Values are trimmed and must be non-zero EVM
+ * addresses. One reading (`resolvePinnedEscrow`) for `assertEscrowBinding` and the pull
+ * guard (`assertPullMatchesIntent`).
+ */
 export type PinnedEscrows = Readonly<Record<number, string>>;
 
 export interface EscrowBinding {
@@ -407,10 +403,6 @@ function namedDomain(
     chainId: toUint("domain.chainId", domain.chainId),
     verifyingContract: domain.verifyingContract,
   };
-}
-
-function typedDigest(separator: string, structHash: string): Hex {
-  return ethers.keccak256(ethers.concat(["0x1901", separator, structHash])) as Hex;
 }
 
 // Every exported signer below is `async`, so a value toUint refuses rejects the

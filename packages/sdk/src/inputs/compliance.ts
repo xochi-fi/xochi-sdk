@@ -1,8 +1,7 @@
 import type { Address } from "viem";
 import { DEFAULT_CONFIG_HASH, HIGH_RISK_THRESHOLDS_BPS } from "../constants.js";
+import { computeScoreBps, resolveProviders } from "./providers.js";
 import { validateActiveProviders, validateSubmitter, validateTimestamp } from "./validate.js";
-
-const MAX_PROVIDERS = 8;
 
 interface MultiProviderCompliance {
   signals: number[]; // 1-8 provider risk scores (0-100)
@@ -12,12 +11,8 @@ interface MultiProviderCompliance {
   providerSetHash: string;
   configHash?: string;
   /**
-   * Proof timestamp (unix seconds, default the local clock). The Oracle rejects
-   * it when after `block.timestamp` (`ProofTimestampInFuture`) or more than
-   * `MAX_PROOF_AGE` (1 hour) before it (`ProofTimestampStale`), so a local
-   * clock ahead of the chain head makes the default revert. Prefer
-   * `await chainProofTimestamp(client)`, or `new ERC8262Prover(loader, { client })`,
-   * which stamps with it.
+   * Proof timestamp (unix seconds, default the local clock). Date it from the
+   * chain: README "Proof timestamps".
    */
   timestamp?: string;
   /** Address of the proof submitter. Oracle enforces submitter == msg.sender. */
@@ -44,70 +39,34 @@ export function buildComplianceInputs(opts: ComplianceInput): Record<string, str
     throw new Error(`Unknown jurisdiction ID: ${String(opts.jurisdictionId)}`);
   }
 
-  let signals: string[];
-  let weights: string[];
-  let weightSum: number;
-  let providerIds: string[];
-  let numProviders: number;
-
-  if ("signals" in opts) {
-    const n = opts.signals.length;
-    if (n === 0 || n > MAX_PROVIDERS) {
-      throw new Error(`Provider count must be 1-${String(MAX_PROVIDERS)}, got ${String(n)}`);
-    }
-    if (opts.weights.length !== n || opts.providerIds.length !== n) {
-      throw new Error("signals, weights, and providerIds must have equal length");
-    }
-
-    const s = [...opts.signals];
-    const w = [...opts.weights];
-    const ids = [...opts.providerIds];
-    while (s.length < MAX_PROVIDERS) {
-      s.push(0);
-      w.push(0);
-      ids.push("0");
-    }
-
-    weightSum = opts.weights.reduce((a, b) => a + b, 0);
-    signals = s.map(String);
-    weights = w.map(String);
-    providerIds = ids;
-    numProviders = n;
-  } else {
-    signals = [String(opts.score), "0", "0", "0", "0", "0", "0", "0"];
-    weights = ["100", "0", "0", "0", "0", "0", "0", "0"];
-    weightSum = 100;
-    providerIds = ["1", "0", "0", "0", "0", "0", "0", "0"];
-    numProviders = 1;
-  }
-
-  // Compute weighted score in basis points
-  const sum = signals
-    .slice(0, numProviders)
-    .reduce((acc, s, i) => acc + Number(s) * Number(weights[i]), 0);
-  const scoreBps = Math.floor((sum * 100) / weightSum);
-
+  const p = resolveProviders(opts);
+  const scoreBps = computeScoreBps(p);
   if (scoreBps >= threshold) {
     throw new Error(
       `Score ${String(scoreBps)} bps exceeds jurisdiction threshold ${String(threshold)} bps -- not compliant`,
     );
   }
 
-  const ts = Number(opts.timestamp ?? String(Math.floor(Date.now() / 1000)));
-  validateTimestamp(ts);
+  const timestamp = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  validateTimestamp(Number(timestamp));
   validateSubmitter(opts.submitter);
-  validateActiveProviders(signals.map(Number), weights.map(Number), providerIds, numProviders);
+  validateActiveProviders(
+    p.signals.map(Number),
+    p.weights.map(Number),
+    p.providerIds,
+    p.numProviders,
+  );
 
   return {
-    signals,
-    weights,
-    weight_sum: String(weightSum),
-    provider_ids: providerIds,
-    num_providers: String(numProviders),
+    signals: p.signals,
+    weights: p.weights,
+    weight_sum: String(p.weightSum),
+    provider_ids: p.providerIds,
+    num_providers: String(p.numProviders),
     jurisdiction_id: String(opts.jurisdictionId),
     provider_set_hash: opts.providerSetHash,
     config_hash: configHash,
-    timestamp: opts.timestamp ?? String(Math.floor(Date.now() / 1000)),
+    timestamp,
     meets_threshold: "1",
     submitter: opts.submitter,
   };

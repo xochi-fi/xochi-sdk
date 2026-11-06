@@ -3,22 +3,18 @@
 // the index does not re-export this module; `shielded.ts` re-exports its public names.
 
 import { ethers } from "ethers";
+import { EVM_ADDRESS } from "./primitives";
 import type { Hex } from "./types";
+import { UINT256_MAX, uintSpelling, type UintLike } from "./uint";
 
-export type UintLike = bigint | number | string;
-
-export const coder = ethers.AbiCoder.defaultAbiCoder();
-export const keccak = (data: ethers.BytesLike): Hex => ethers.keccak256(data) as Hex;
+export { coder, keccak } from "./primitives";
+export { UINT32_MAX, UINT64_MAX, UINT256_MAX, type UintLike } from "./uint";
 
 /** BN254 scalar field order: every Aztec field element and address is below it. */
 export const AZTEC_FIELD_MODULUS =
   0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 /** Largest amount a shielded encoding admits: `0 < amount <= 2^128 - 1`. */
 export const SHIELDED_AMOUNT_MAX = 2n ** 128n - 1n;
-
-export const UINT32_MAX = 2n ** 32n - 1n;
-export const UINT64_MAX = 2n ** 64n - 1n;
-export const UINT256_MAX = 2n ** 256n - 1n;
 
 /**
  * Why an input is refused before anything is encoded or verified. These are ENCODING
@@ -41,36 +37,47 @@ export type ShieldedRefusal =
   | "digest_zero"
   | "purpose_mismatch";
 
-export class ShieldedEncodingError extends Error {
-  readonly code: ShieldedRefusal;
+/**
+ * A refused input: `code` names the rule, `field` the input, `detail` the specifics. The
+ * message is `${field}: ${code} (${detail})`. Each shielded module subclasses it with its
+ * own closed refusal union and class name.
+ */
+export class RefusalError<C extends string> extends Error {
+  readonly code: C;
   readonly field: string;
-  constructor(code: ShieldedRefusal, field: string, detail: string) {
+  readonly detail: string;
+  constructor(code: C, field: string, detail: string) {
     super(`${field}: ${code} (${detail})`);
-    this.name = "ShieldedEncodingError";
     this.code = code;
     this.field = field;
+    this.detail = detail;
   }
 }
 
-export const refuse = (code: ShieldedRefusal, field: string, detail: string): never => {
-  throw new ShieldedEncodingError(code, field, detail);
-};
+type RefusalClass<C extends string> = new (code: C, field: string, detail: string) => Error;
 
-/**
- * Runs `fn` and re-raises a value-rule refusal as the calling module's own error, so the
- * recipient and readiness modules each keep a closed refusal union of their own and
- * `ShieldedEncodingError` keeps the `shielded.ts` contract unchanged.
- */
-export function withRefusalsAs<T>(
-  fn: () => T,
-  make: (code: ShieldedRefusal, field: string, detail: string) => Error,
-): T {
+/** A thrower for `E`'s refusals. */
+export function refuser<C extends string>(
+  E: RefusalClass<C>,
+): (code: C, field: string, detail: string) => never {
+  return (code, field, detail) => {
+    throw new E(code, field, detail);
+  };
+}
+
+export class ShieldedEncodingError extends RefusalError<ShieldedRefusal> {
+  override name = "ShieldedEncodingError";
+}
+
+export const refuse = refuser(ShieldedEncodingError);
+
+/** Runs `fn`, re-raising a value-rule refusal (`ShieldedEncodingError`) as `E`. */
+export function withRefusalsAs<T>(fn: () => T, E: RefusalClass<ShieldedRefusal>): T {
   try {
     return fn();
   } catch (e) {
     if (!(e instanceof ShieldedEncodingError)) throw e;
-    // The message is `${field}: ${code} (${detail})`, written above.
-    throw make(e.code, e.field, e.message.slice(`${e.field}: ${e.code} (`.length, -1));
+    throw new E(e.code, e.field, e.detail);
   }
 }
 
@@ -132,7 +139,7 @@ export function parseShieldedAmount(field: string, value: string): bigint {
 }
 
 export function evmAddress(field: string, value: string): Hex {
-  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+  if (typeof value !== "string" || !EVM_ADDRESS.test(value)) {
     refuse("not_evm_address", field, `expected 0x + 40 hex, got ${JSON.stringify(value)}`);
   }
   if (BigInt(value) === 0n) refuse("evm_address_zero", field, "zero address");
@@ -141,11 +148,10 @@ export function evmAddress(field: string, value: string): Hex {
 
 // Unsigned integers: a bigint, a safe integer, or a canonical decimal string.
 export function uint(field: string, value: UintLike, max: bigint): bigint {
-  let v: bigint;
-  if (typeof value === "bigint") v = value;
-  else if (typeof value === "number" && Number.isSafeInteger(value)) v = BigInt(value);
-  else if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) v = BigInt(value);
-  else return refuse("uint_not_canonical", field, `got ${JSON.stringify(String(value))}`);
+  const v = uintSpelling(value);
+  if (v === undefined) {
+    return refuse("uint_not_canonical", field, `got ${JSON.stringify(String(value))}`);
+  }
   if (v < 0n || v > max) refuse("uint_out_of_range", field, `${v} outside [0, ${max}]`);
   return v;
 }
