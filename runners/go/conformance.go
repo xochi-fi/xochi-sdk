@@ -1,12 +1,12 @@
 // Package conformance is the Go conformance runner for the Riddler protocol. It
 // reproduces the digest, signature, and signed_object of every vector in
-// @xochi/spec conformance/conformance.json byte-for-byte (SPEC.md §2/§8),
-// reproducing the signatures of @xochi/signer for the vectors, like the
-// Python runner (runners/python). Network-free.
+// @xochi/spec conformance/conformance.json byte-for-byte (SPEC.md §2/§8).
+// Network-free.
 package conformance
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -73,7 +73,7 @@ func domainType(domain map[string]any) []apitypes.Type {
 	return out
 }
 
-func buildDomain(domain map[string]any) apitypes.TypedDataDomain {
+func buildDomain(domain map[string]any) (apitypes.TypedDataDomain, error) {
 	d := apitypes.TypedDataDomain{}
 	if v, ok := domain["name"]; ok {
 		d.Name = toStr(v)
@@ -82,7 +82,11 @@ func buildDomain(domain map[string]any) apitypes.TypedDataDomain {
 		d.Version = toStr(v)
 	}
 	if v, ok := domain["chainId"]; ok {
-		d.ChainId = math.NewHexOrDecimal256(toBig(v).Int64())
+		chainID, err := toBig(v)
+		if err != nil {
+			return d, fmt.Errorf("domain chainId: %w", err)
+		}
+		d.ChainId = (*math.HexOrDecimal256)(chainID)
 	}
 	if v, ok := domain["verifyingContract"]; ok {
 		d.VerifyingContract = toStr(v)
@@ -90,7 +94,7 @@ func buildDomain(domain map[string]any) apitypes.TypedDataDomain {
 	if v, ok := domain["salt"]; ok {
 		d.Salt = toStr(v)
 	}
-	return d
+	return d, nil
 }
 
 // rootType is the primary type: the one no other type references as a field.
@@ -119,22 +123,30 @@ func rootType(types apitypes.Types) (string, error) {
 // coerceMessage converts JSON values into the Go types apitypes expects, walking
 // the type list: uintN/intN -> *big.Int, bytesN -> []byte, nested struct ->
 // recursed map, address/string -> string.
-func coerceMessage(message map[string]any, types apitypes.Types, primary string) apitypes.TypedDataMessage {
+func coerceMessage(message map[string]any, types apitypes.Types, primary string) (apitypes.TypedDataMessage, error) {
 	out := apitypes.TypedDataMessage{}
 	for _, field := range types[primary] {
 		v := message[field.Name]
 		switch {
 		case isStructType(types, field.Type):
-			out[field.Name] = coerceMessage(v.(map[string]any), types, field.Type)
+			nested, err := coerceMessage(v.(map[string]any), types, field.Type)
+			if err != nil {
+				return nil, err
+			}
+			out[field.Name] = nested
 		case strings.HasPrefix(field.Type, "uint") || strings.HasPrefix(field.Type, "int"):
-			out[field.Name] = toBig(v)
+			n, err := toBig(v)
+			if err != nil {
+				return nil, fmt.Errorf("%s.%s: %w", primary, field.Name, err)
+			}
+			out[field.Name] = n
 		case strings.HasPrefix(field.Type, "bytes"):
 			out[field.Name] = mustHexBytes(toStr(v))
 		default: // address, string
 			out[field.Name] = toStr(v)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func isStructType(types apitypes.Types, typ string) bool {
@@ -147,11 +159,19 @@ func eip712Digest(domain map[string]any, primaryTypes apitypes.Types, primary st
 	for k, v := range primaryTypes {
 		allTypes[k] = v
 	}
+	d, err := buildDomain(domain)
+	if err != nil {
+		return nil, err
+	}
+	m, err := coerceMessage(message, allTypes, primary)
+	if err != nil {
+		return nil, err
+	}
 	td := apitypes.TypedData{
 		Types:       allTypes,
 		PrimaryType: primary,
-		Domain:      buildDomain(domain),
-		Message:     coerceMessage(message, allTypes, primary),
+		Domain:      d,
+		Message:     m,
 	}
 	digest, _, err := apitypes.TypedDataAndHash(td)
 	return digest, err
@@ -255,13 +275,17 @@ func signedObjectERC3009(m map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	ints, err := toBigs(m["value"], m["validAfter"], m["validBefore"])
+	if err != nil {
+		return "", err
+	}
 	args := abi.Arguments{{Type: addrTy}, {Type: addrTy}, {Type: uint256}, {Type: uint256}, {Type: uint256}, {Type: bytes32}}
 	packed, err := args.Pack(
 		common.HexToAddress(toStr(m["from"])),
 		common.HexToAddress(toStr(m["to"])),
-		toBig(m["value"]),
-		toBig(m["validAfter"]),
-		toBig(m["validBefore"]),
+		ints[0],
+		ints[1],
+		ints[2],
 		nonce,
 	)
 	if err != nil {
@@ -272,18 +296,34 @@ func signedObjectERC3009(m map[string]any) (string, error) {
 
 func signedObjectPermit2(m map[string]any) (string, error) {
 	permitted := m["permitted"].(map[string]any)
+	ints, err := toBigs(permitted["amount"], m["nonce"], m["deadline"])
+	if err != nil {
+		return "", err
+	}
 	args := abi.Arguments{{Type: addrTy}, {Type: uint256}, {Type: addrTy}, {Type: uint256}, {Type: uint256}}
 	packed, err := args.Pack(
 		common.HexToAddress(toStr(permitted["token"])),
-		toBig(permitted["amount"]),
+		ints[0],
 		common.HexToAddress(toStr(m["spender"])),
-		toBig(m["nonce"]),
-		toBig(m["deadline"]),
+		ints[1],
+		ints[2],
 	)
 	if err != nil {
 		return "", err
 	}
 	return hexutil.Encode(packed), nil
+}
+
+func toBigs(vs ...any) ([]*big.Int, error) {
+	out := make([]*big.Int, len(vs))
+	for i, v := range vs {
+		n, err := toBig(v)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = n
+	}
+	return out, nil
 }
 
 func toApiTypes(t map[string][]TypeField) apitypes.Types {

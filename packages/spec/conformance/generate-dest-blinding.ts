@@ -1,21 +1,16 @@
 #!/usr/bin/env node
-// Generates `conformance/dest-blinding.json`: vectors for the venue-side blinding
-// derivation (ESCROW-RFC §2.2):
-//   HMAC-SHA256(key, "riddler/dest-blinding/v1" || uint256_be32(fromChainId)
-//                    || address_bytes20(escrow) || utf8(intentId))
+// Generates `conformance/dest-blinding.json`: the venue-side destination blinding vectors
+// (ESCROW-RFC.md §2.2).
 //
 // The key below is a fixed, PUBLIC TEST key. Production derives with a KMS key
 // that never leaves the venue; this one MUST NEVER be used outside tests.
 //
-// Run: npm run generate:dest-blinding
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:dest-blinding -w @xochi/spec
 
 import { DEST_BLINDING_TAG, deriveDestBlinding } from "@xochi/signer";
 
-// PUBLIC TEST KEY. NOT SECRET. NEVER USE IN PRODUCTION.
+import { writeVectors } from "./_lib.js";
+
 const TEST_KEY = "0x" + "0b".repeat(32);
 
 const CASES = [
@@ -66,6 +61,4 @@ const out = {
   vectors,
 };
 
-const target = path.join(path.dirname(fileURLToPath(import.meta.url)), "dest-blinding.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("dest-blinding.json", out);

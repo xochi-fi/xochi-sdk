@@ -12,12 +12,11 @@
 // It resolves to the client's built `dist`, so build the workspaces first
 // (`npm run build:workspaces`) or this reads a stale schedule.
 
-import fs, { realpathSync } from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 import { FEE_SCHEDULE, computeFeeBreakdown, type FeeComputeParams } from "@xochi/client";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { isMain, outDir, writeJson, writeVectors } from "../conformance/_lib.js";
 
 // Deterministic input matrix. Every case names a concrete taker scenario; the
 // expected breakdown is computed, never hand-written. `1000000` is 1 USDC / 1
@@ -167,24 +166,11 @@ function generate(): Vector[] {
 }
 
 function main(): void {
-  const vectors = generate();
-  const vectorsPath = path.join(__dirname, "vectors.json");
-  const schedulePath = path.join(__dirname, "schedule.json");
-
-  fs.mkdirSync(__dirname, { recursive: true });
-  fs.writeFileSync(vectorsPath, JSON.stringify(vectors, null, 2) + "\n");
-  fs.writeFileSync(schedulePath, JSON.stringify(FEE_SCHEDULE, null, 2) + "\n");
-
-  console.log(
-    `Wrote ${vectors.length} fee vectors to ${path.relative(process.cwd(), vectorsPath)}`,
-  );
-  console.log(`Wrote fee schedule to ${path.relative(process.cwd(), schedulePath)}`);
+  const dir = outDir(path.dirname(fileURLToPath(import.meta.url)));
+  writeVectors("vectors.json", generate(), { dir });
+  console.log(`wrote fee schedule -> ${writeJson(dir, "schedule.json", FEE_SCHEDULE)}`);
 }
 
-// Compared as URLs of the real path: a hand-built `file://` + path never
-// matches one that needs percent-encoding (a space) or runs through a symlink.
-const isMainModule =
-  process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
-if (isMainModule) {
+if (isMain(import.meta.url)) {
   main();
 }

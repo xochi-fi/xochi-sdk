@@ -1,83 +1,121 @@
 /**
- * Shared hazard handling for the producer-drift probes.
+ * Shared hazard handling for the producer-drift probes (`scripts/verify-*.mjs`,
+ * scheduled by `.github/workflows/producer-drift.yml`). This header is the one
+ * home for the rules and exit codes they share; each probe's header lists only
+ * its own exit causes.
  *
- * Three rules hold for all four probes, stated here and referenced there.
+ * Rules:
  *
  * 1. An equality assertion is informative only if at least one side is a value
- *    this repo cannot edit (riddler-sdk#92). The served side is that value.
+ *    this repo cannot edit. The served side is that value.
  * 2. Every non-verifying outcome fails, "could not reach the server" included.
  *    Not being able to check is not evidence of agreement: no skip path, no
  *    `continue-on-error`.
- * 3. They run on a schedule, not per-PR. The event to detect is a server
+ * 3. Probes run on a schedule, not per-PR. The event to detect is a server
  *    deploy, and a check that reddens honest PRs eventually gets disabled.
  *
- * Here: the exit-code helpers, the `PROBE_*` env readers, the server/base-URL
- * resolution, repo-relative paths for each probe's local side, and the one
+ * Exit codes (`EXIT`):
+ *
+ *   0  OK: the producer and this repo agree.
+ *   1  DRIFT: the producer and this repo disagree. Nothing else exits 1; a
+ *      crash is 2 (`installCrashHandlers`).
+ *   2  INCONCLUSIVE: nothing was compared -- unreachable, redirected, non-2xx,
+ *      non-JSON, oversized or broken-off body, a required field absent, or the
+ *      probe itself crashed.
+ *   3  MISCONFIGURED: this machine's own state -- no server URL, a non-https or
+ *      unparseable one, an unusable `PROBE_*` duration, or a local side that
+ *      could not be established. Where a probe defers a local problem
+ *      (`deferLocalProblem`), the producer is still sampled and its answer is
+ *      reported with the exit, so a half-landed local change cannot switch the
+ *      producer check off.
+ *
+ * Every operator- or producer-controlled string reaching a log line goes
+ * through `sanitize`: these logs are public, Actions does not mask `vars.*`, and
+ * a newline plus `::error title=...::` forges a workflow annotation at column 0.
+ *
+ * Here: the exit helpers, the `PROBE_*` env readers, the server/base-URL
+ * resolution, repo-relative reads for each probe's local side, and the one
  * `fetch` shape (no-cache, unfollowed redirects, body-free error reporting).
  * No verdict lives here; each probe owns its own.
  *
  * `probeGet`/`parseJsonBody`/`fetchJson` return `{ ok: false, reason }` rather
  * than exiting, since the spec probe re-samples after a failure; `orInconclusive`
- * is for callers that want the exit. Node builtins only, so nothing in the trust
- * path can fail and be misread as a producer problem.
+ * is for callers that want the exit. Node builtins only (`compare.mjs` is
+ * builtins-only too), so nothing in the trust path can fail and be misread as a
+ * producer problem.
  */
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { sanitize } from "../packages/spec/wire/compare.mjs";
+
+export const EXIT = Object.freeze({ OK: 0, DRIFT: 1, INCONCLUSIVE: 2, MISCONFIGURED: 3 });
 
 /**
  * Print and exit. Every exit in every probe goes through here.
  *
  * `writeSync`, not `console.error`, because `process.exit()` runs in the same
  * tick and Node's stderr is ASYNCHRONOUS on a pipe, which is what the Actions
- * runner and any `| tee` give it. Everything still queued is discarded at the
- * exit: a 4.09 MB openapi DRIFT report came out of a pipe as 66,637 bytes,
- * losing the tail of the finding list and the whole remediation paragraph.
- * STALE and BREAKING share exit 1, so the body is the ONLY discriminator and
- * truncating it silently is worse than the exit code alone.
+ * runner and any `| tee` give it: everything still queued is discarded at the
+ * exit. A probe whose verdict classes share an exit code (openapi's STALE,
+ * BREAKING, RE-SPELLED) is told apart only by the body, so it must arrive whole.
  */
 export const fail = (code, kind, msg) => {
   writeSync(2, `\n${kind}: ${msg}\n`);
   process.exit(code);
 };
 
-/** Exit 1. Reserved for "the producer and this repo disagree", nothing else. */
-export const drift = (msg) => fail(1, "DRIFT", msg);
+export const drift = (msg) => fail(EXIT.DRIFT, "DRIFT", msg);
 
-/** Exit 3. This machine's own state or configuration, before anyone was asked. */
-export const misconfigured = (msg) => fail(3, "MISCONFIGURED", msg);
+export const misconfigured = (msg) => fail(EXIT.MISCONFIGURED, "MISCONFIGURED", msg);
 
-/** Exit 2. Nothing was compared, so nothing is known. Rule 2 above. */
 export const inconclusive = (msg) =>
   fail(
-    2,
+    EXIT.INCONCLUSIVE,
     "INCONCLUSIVE",
-    `${msg}\n` +
-      "  This is NOT a pass. Nothing was compared, so nothing is known.\n" +
-      "  Not being able to check must not look like agreement from outside.",
+    `${msg}\n  This is NOT a pass: nothing was compared, so nothing is known.`,
   );
 
 /**
- * Exit 1 means DRIFT and nothing else. Node exits 1 on an unhandled throw, so
- * without this a missing file or a bug in a probe reads as "the producer changed
- * the protocol", a false accusation pointed at another team's diff.
+ * Node exits 1 on an unhandled throw, so without this a missing file or a bug
+ * in a probe reads as DRIFT, a false accusation pointed at another team's diff.
  */
-export const installCrashHandlers = () => {
+const installCrashHandlers = () => {
   const crashed = (e) =>
-    fail(2, "INCONCLUSIVE", `the probe itself failed: ${e?.stack ?? e}\n  Nothing was compared.`);
+    fail(
+      EXIT.INCONCLUSIVE,
+      "INCONCLUSIVE",
+      `the probe itself failed: ${e?.stack ?? e}\n  Nothing was compared.`,
+    );
   process.on("uncaughtException", crashed);
   process.on("unhandledRejection", crashed);
 };
 
 /**
- * A local-side problem that must not stop the producer from being sampled.
- * Printed now, exited on (3) by the caller at the END of the run, so a
- * half-landed local change cannot switch the producer check off.
+ * Report a local-side problem now and keep going, so the producer is still
+ * sampled; the probe exits 3 through `exitIfLocalProblem` once the producer's
+ * answer is on the record. No-op without a problem.
  */
-export const noteLocalProblem = (problem, note) => {
+export const deferLocalProblem = (problem) => {
+  if (!problem) return;
   console.error(`MISCONFIGURED (local side): ${problem}`);
-  console.error(note);
+  console.error(
+    "\n  Not exited on yet; the producer is sampled anyway and both facts are reported below.\n",
+  );
+};
+
+/**
+ * Exit 3 with a deferred local problem, if there is one. `serverFinding` is one
+ * line naming the server and what it answered.
+ */
+export const exitIfLocalProblem = (problem, serverFinding) => {
+  if (!problem) return;
+  misconfigured(
+    `${problem}\n\n` +
+      `  The producer was asked anyway: ${serverFinding}.\n` +
+      "  No verdict: the local side of the comparison is not established.",
+  );
 };
 
 /** A path under the repo root, for the local side of a comparison. */
@@ -86,11 +124,41 @@ export const repoPath = (relative) => fileURLToPath(new URL(`../${relative}`, im
 /** Read a repo file as UTF-8; the caller decides what an unreadable one means. */
 export const readRepoFile = (relative) => readFileSync(repoPath(relative), "utf-8");
 
+/**
+ * The first capture group of the one match of `regex` (which must be global) in
+ * a repo file: `{ value }`, or `{ problem }` when the file is unreadable or the
+ * pattern matches zero or several times. Taking the first of several would
+ * leave the others unchecked.
+ */
+export const readSingleMatch = (relPath, regex, what) => {
+  let text;
+  try {
+    text = readRepoFile(relPath);
+  } catch (e) {
+    return { problem: `could not read ${relPath}: ${e.message}` };
+  }
+  const matches = [...text.matchAll(regex)];
+  if (matches.length === 1) return { value: matches[0][1] };
+  if (matches.length === 0) {
+    return {
+      problem:
+        `${relPath}: expected one ${what}, found none.\n` +
+        "  Restore it, or update this probe's pattern in the same change.",
+    };
+  }
+  return {
+    problem:
+      `${relPath}: expected one ${what}, found ${matches.length} ` +
+      `(${matches.map((m) => sanitize(m[1].trim())).join(", ")}).\n` +
+      "  Leave exactly one.",
+  };
+};
+
 export const sha256Hex = (data) => createHash("sha256").update(data).digest("hex");
 
 /**
  * A `PROBE_*` duration is validated, not coerced. An unusable one is
- * MISCONFIGURED: nothing was asked of anyone, so do not name the solver.
+ * MISCONFIGURED: nothing was asked of anyone.
  */
 export const readPositiveMs = (name, fallback) => {
   const raw = process.env[name];
@@ -98,9 +166,8 @@ export const readPositiveMs = (name, fallback) => {
   const ms = Number(raw);
   if (!Number.isFinite(ms) || ms <= 0) {
     misconfigured(
-      `${name} is not a usable duration: "${raw}".\n` +
-        "  Wanted a positive number of milliseconds with no unit suffix (e.g. 20000).\n" +
-        "  Reported here rather than as an unreachable server: nothing was asked of anyone.",
+      `${name} is not a usable duration: "${sanitize(raw)}".\n` +
+        "  Set a positive number of milliseconds with no unit suffix (e.g. 20000).",
     );
   }
   return ms;
@@ -111,33 +178,48 @@ export const readPositiveMs = (name, fallback) => {
  * `openapi.json`, which a healthy solver serves in well under a second. 20s is
  * the point past which "the solver did not answer" IS the finding -- long
  * enough to ride out a cold start or one retried TLS handshake, short enough
- * that four probes plus the spec probe's ~5m30s re-sample stay far inside the
- * job's own limit, and short enough that a hung endpoint is reported as
- * INCONCLUSIVE rather than as a cancelled workflow with no verdict at all.
- * `PROBE_TIMEOUT_MS` overrides it and is validated, not coerced.
+ * that four probes plus the spec probe's re-sample stay far inside the job's
+ * own limit, and short enough that a hung endpoint is reported as INCONCLUSIVE
+ * rather than as a cancelled workflow with no verdict at all.
+ * `PROBE_TIMEOUT_MS` overrides it.
  */
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-export const readTimeoutMs = () => readPositiveMs("PROBE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
+/** Every probe's first call: crash handlers installed, `PROBE_TIMEOUT_MS` read. */
+export const startProbe = () => {
+  installCrashHandlers();
+  return { timeoutMs: readPositiveMs("PROBE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS) };
+};
+
+/**
+ * A URL cut short stops naming the host that was asked, which is the whole
+ * content of the line it appears in; a media type never needs much room.
+ */
+export const MAX_URL_CHARS = 200;
+const MAX_CONTENT_TYPE_CHARS = 80;
 
 /**
  * Server key resolution on the SDK's env convention, `RIDDLER_URL_<NAME>`
  * uppercased. Read here rather than through `config.ts` so a missing URL is
- * MISCONFIGURED instead of a CLI error. Returns the base URL with trailing
- * slashes stripped, plus the parsed URL for callers that bound a server-supplied
- * path to the same origin.
+ * MISCONFIGURED instead of a CLI error. This repo bakes in no host.
+ *
+ * Returns the base URL with trailing slashes stripped, the parsed URL for
+ * callers that bound a server-supplied path to the same origin, and the
+ * log-safe forms every print site uses: `display` (the server key) and `target`
+ * (the base URL). `new URL()` strips tabs and newlines while `baseUrl` keeps
+ * them, so the raw values never reach a log line.
  */
 export const resolveServer = () => {
   const serverKey = (process.env.RIDDLER_SERVER ?? "prod").toLowerCase();
   const urlVar = `RIDDLER_URL_${serverKey.toUpperCase()}`;
   const raw = (process.env[urlVar] ?? "").trim();
+  const display = sanitize(serverKey);
+  const shownVar = sanitize(urlVar);
 
   if (!raw) {
     misconfigured(
-      `no URL for server "${serverKey}".\n` +
-        `  Set ${urlVar}, or RIDDLER_SERVER to a key that has one.\n` +
-        "  Deliberately not defaulting to a built-in host: this repo bakes in no infrastructure,\n" +
-        "  and a probe that invents one reports on a server nobody runs.",
+      `no URL for server "${display}".\n` +
+        `  Set ${shownVar}, or RIDDLER_SERVER to a key that has one.`,
     );
   }
 
@@ -145,39 +227,39 @@ export const resolveServer = () => {
   try {
     parsedBase = new URL(raw);
   } catch {
-    // `vars.*` is not masked, so an operator-set variable prints under the same
-    // rule as a served string: this is the one message that echoes the value
-    // back, and a newline plus `::error title=...::` in it forges a workflow
-    // command at column 0.
     misconfigured(
-      `${urlVar} is not a URL: "${oneLine(raw, MAX_URL_CHARS)}".\n` +
-        "  MISCONFIGURED, not unreachable: the request was never well-formed enough to send.",
+      `${shownVar} is not a URL: "${sanitize(raw, MAX_URL_CHARS)}".\n` +
+        "  Set it to the solver's https base URL.",
     );
   }
 
   if (parsedBase.protocol !== "https:") {
     misconfigured(
-      `${urlVar} is "${parsedBase.protocol}//..." and these probes read over https only.\n` +
-        "  The entire value of the served side is that this repo cannot edit it. Over cleartext\n" +
-        "  anything on the path can, so an http answer is a value of unknown authorship wearing\n" +
-        "  the producer's name -- worth less than no answer, because it looks like one.",
+      `${shownVar} is "${parsedBase.protocol}//..." and these probes read over https only.\n` +
+        "  Set the https URL: over cleartext anything on the path can edit the served side.",
     );
   }
 
-  return { serverKey, urlVar, baseUrl: raw.replace(/\/+$/, ""), parsedBase };
+  const baseUrl = raw.replace(/\/+$/, "");
+  return {
+    serverKey,
+    urlVar,
+    baseUrl,
+    parsedBase,
+    display,
+    target: sanitize(baseUrl, MAX_URL_CHARS),
+  };
 };
+
+/** The capabilities document under a resolved base URL. */
+export const capabilitiesUrl = (baseUrl) => `${baseUrl}/xochi/capabilities`;
 
 /**
  * Status, content-type and length; never the body (see `probeGet`). The
- * content-type is a PRODUCER string landing on a line in a public log, so it
- * goes through `oneLine` exactly like the `Location` header: `application/json`
- * is the honest case, and nothing stops the other one from carrying a newline
- * plus `::error title=...::`. Capped shorter than a URL because a media type
- * longer than that is not a media type, and this line exists to route the
- * problem, not to quote the answer.
+ * content-type is a producer string, so it is sanitized like every other.
  */
 const describe = (response, text) =>
-  `${response.status} (${oneLine(response.headers.get("content-type") ?? "no content-type", MAX_CONTENT_TYPE_CHARS)}, ` +
+  `${response.status} (${sanitize(response.headers.get("content-type") ?? "no content-type", MAX_CONTENT_TYPE_CHARS)}, ` +
   `${Buffer.byteLength(text)} bytes)`;
 
 /**
@@ -191,38 +273,11 @@ const describe = (response, text) =>
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /**
- * A served string reaching a log line, with C0/C1 controls escaped and a cap.
- * `compare.mjs` has the full version, but this file deliberately imports
- * nothing outside node builtins (and importing it would make the dependency
- * between `scripts/` and `packages/spec/wire/` circular), so the one-line rule
- * is restated: a `Location` header carrying a newline plus `::error title=...::`
- * forges a workflow annotation at column 0 in a public log.
- */
-const oneLine = (value, max = 120) => {
-  const clean = String(value).replace(
-    /[\u0000-\u001f\u007f-\u009f]/g,
-    (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, "0")}`,
-  );
-  return clean.length > max ? `${clean.slice(0, max - 3)}...` : clean;
-};
-
-/**
- * Two caps that are not the 120-char default: a URL cut short stops naming the
- * host that was asked, which is the whole content of the line it appears in,
- * and a media type never needs that much room.
- */
-export const MAX_URL_CHARS = 200;
-const MAX_CONTENT_TYPE_CHARS = 80;
-
-/**
  * Read a body, refusing rather than buffering past `MAX_BODY_BYTES`, and
  * reporting a broken TRANSFER as its own outcome: `{ ok: true, text }`,
- * `{ ok: false, oversize, size }` or `{ ok: false, size, error }`.
- *
- * A connection reset, a TLS teardown or a truncated chunked body is a failure of
- * the wire. Reported as an empty successful read it would reach `parseJsonBody`
- * as `did not return JSON: 200 (application/json, 0 bytes)`, a finding about the
- * producer's CONTENT pointed at the wrong team.
+ * `{ ok: false, oversize, size }` or `{ ok: false, size, error }`. A reset, a
+ * TLS teardown or a truncated chunked body is a failure of the wire, not a
+ * finding about the producer's content.
  */
 const readCapped = async (response) => {
   if (!response.body) return { ok: true, text: "" };
@@ -251,10 +306,8 @@ const readCapped = async (response) => {
  * - `redirect: "manual"`: fetch otherwise follows up to 20 redirects,
  *   cross-origin included, so a 302 relocates rule 1's uneditable value to a
  *   host nobody configured and the probe prints OK against it.
- * - No body in any error message. These logs are public and Actions does not
- *   mask `vars.*`; status, content-type and byte count route the problem, and
- *   every one of those that a producer or an operator controls -- the URL, the
- *   content-type, the `Location`, the transport error -- goes through `oneLine`.
+ * - No body in any error message; status, content-type and byte count route
+ *   the problem.
  * - A body stream that breaks mid-download is its own outcome, not an empty
  *   successful read: the two name different parties.
  *
@@ -262,7 +315,7 @@ const readCapped = async (response) => {
  */
 export const probeGet = async ({ url, accept = "application/json", timeoutMs, label }) => {
   const at = label ? `${label}: ` : "";
-  const target = oneLine(url, MAX_URL_CHARS);
+  const target = sanitize(url, MAX_URL_CHARS);
 
   let response;
   try {
@@ -274,7 +327,7 @@ export const probeGet = async ({ url, accept = "application/json", timeoutMs, la
   } catch (e) {
     return {
       ok: false,
-      reason: `${at}GET ${target} failed: ${oneLine(e?.cause?.message ?? e.message)}`,
+      reason: `${at}GET ${target} failed: ${sanitize(e?.cause?.message ?? e.message)}`,
     };
   }
 
@@ -285,9 +338,8 @@ export const probeGet = async ({ url, accept = "application/json", timeoutMs, la
       ok: false,
       reason:
         `${at}GET ${target} answered ${response.status} redirect to ` +
-        `${oneLine(response.headers.get("location") ?? "(no Location header exposed)")}.\n` +
-        "  Not followed. Point the server URL at the host that answers, or find out who is\n" +
-        "  relocating it: a probe that chases a redirect is asking a different server.",
+        `${sanitize(response.headers.get("location") ?? "(no Location header exposed)", MAX_URL_CHARS)}.\n` +
+        "  Not followed. Point the server URL at the host that answers.",
     };
   }
 
@@ -297,19 +349,15 @@ export const probeGet = async ({ url, accept = "application/json", timeoutMs, la
       ok: false,
       reason:
         `${at}GET ${target} is still sending past ${MAX_BODY_BYTES} bytes (${body.size} so far).\n` +
-        "  Abandoned unread. No document this repo vendors is that size, so this is a\n" +
-        "  truncated stream, a wrong host or a body meant to exhaust the runner.",
+        "  Abandoned unread: no document this repo vendors is that size. Check the server URL.",
     };
   }
   if (!body.ok) {
     return {
       ok: false,
       reason:
-        `${at}GET ${target} broke off after ${body.size} bytes: ${oneLine(body.error)}.\n` +
-        "  The TRANSFER failed, not the document: a reset, a TLS teardown or a truncated\n" +
-        "  chunked body. Kept apart from a content finding on purpose -- reported as an empty\n" +
-        "  successful read this printed as the producer serving 0 bytes of non-JSON, which\n" +
-        "  accuses the wrong party of the wrong thing.",
+        `${at}GET ${target} broke off after ${body.size} bytes: ${sanitize(body.error)}.\n` +
+        "  The transfer failed, not the document. Re-run.",
     };
   }
   const text = body.text;
@@ -319,7 +367,7 @@ export const probeGet = async ({ url, accept = "application/json", timeoutMs, la
       ok: false,
       reason:
         `${at}GET ${target} returned ${describe(response, text)}.\n` +
-        "  Body not logged on purpose; read it out of band if the status is not enough.",
+        "  Body not logged; fetch it out of band if the status is not enough.",
     };
   }
 
@@ -338,7 +386,7 @@ export const parseJsonBody = ({ response, text }, { url, label } = {}) => {
   } catch {
     return {
       ok: false,
-      reason: `${at}GET ${oneLine(url ?? response.url, MAX_URL_CHARS)} did not return JSON: ${describe(response, text)}`,
+      reason: `${at}GET ${sanitize(url ?? response.url, MAX_URL_CHARS)} did not return JSON: ${describe(response, text)}`,
     };
   }
 };

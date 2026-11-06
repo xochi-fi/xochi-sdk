@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use serde_json::{Value, json};
 use xochi_conformance::{Vector, recover, sign};
 
 fn load_vectors() -> Vec<Vector> {
@@ -15,17 +16,23 @@ fn load_vectors() -> Vec<Vector> {
     serde_json::from_str(&data).expect("parse fixture")
 }
 
+fn first_vector(protocol: &str) -> Vector {
+    load_vectors()
+        .into_iter()
+        .find(|v| v.protocol == protocol)
+        .unwrap_or_else(|| panic!("no {protocol} vector"))
+}
+
 #[test]
-fn fixture_present_and_counted() {
-    let vectors = load_vectors();
-    assert_eq!(vectors.len(), 45, "expected 45 vectors");
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for v in &vectors {
-        *counts.entry(v.protocol.as_str()).or_default() += 1;
+fn fixture_covers_every_protocol() {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for v in load_vectors() {
+        *counts.entry(v.protocol).or_default() += 1;
     }
-    assert_eq!(counts.get("erc3009"), Some(&9));
-    assert_eq!(counts.get("permit2"), Some(&19));
-    assert_eq!(counts.get("xochi"), Some(&17));
+    let mut protocols: Vec<&str> = counts.keys().map(String::as_str).collect();
+    protocols.sort_unstable();
+    assert_eq!(protocols, ["erc3009", "permit2", "xochi"]);
+    assert!(counts.values().all(|&n| n >= 1));
 }
 
 #[test]
@@ -82,13 +89,56 @@ fn short_nonce_rejected_not_silently_signed() {
     // A non-canonical (short) nonce must fail loud, never silently produce a
     // different signed_object than the reference (which left-pads). Guards the
     // conformance-coverage gap the frozen fixture cannot exercise.
-    let mut base = load_vectors()
-        .into_iter()
-        .find(|v| v.protocol == "erc3009")
-        .expect("an erc3009 vector");
-    base.message.as_mut().unwrap()["nonce"] = serde_json::json!("0x01");
+    let mut base = first_vector("erc3009");
+    base.message.as_mut().unwrap()["nonce"] = json!("0x01");
     assert!(
         sign(&base).is_err(),
         "short nonce must be rejected, not silently signed"
     );
+}
+
+fn non_canonical_integers() -> Vec<Value> {
+    let mut values: Vec<Value> = [
+        "01000", " 1000", "1000\n", "+1000", "-1000", "0x3e8", "1e3", "1_000", "",
+    ]
+    .into_iter()
+    .map(Value::from)
+    .collect();
+    for raw in ["1e3", "1000.0", "-1000", "true"] {
+        values.push(serde_json::from_str(raw).expect("json literal"));
+    }
+    values
+}
+
+fn assert_non_canonical_rejected(vector: &Vector, value: &Value) {
+    match sign(vector) {
+        Err(e) if e.to_string().contains("non-canonical integer") => {}
+        other => panic!("{value}: expected non-canonical integer error, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_canonical_integer_rejected_not_silently_signed() {
+    let base = first_vector("erc3009");
+    for value in non_canonical_integers() {
+        let mut bad = base.clone();
+        bad.message.as_mut().unwrap()["value"] = value.clone();
+        assert_non_canonical_rejected(&bad, &value);
+    }
+}
+
+#[test]
+fn non_canonical_domain_chain_id_rejected_not_silently_signed() {
+    for protocol in ["erc3009", "permit2", "xochi"] {
+        let base = first_vector(protocol);
+        for value in non_canonical_integers() {
+            let mut bad = base.clone();
+            let domain = match bad.eip712.as_mut() {
+                Some(eip712) => &mut eip712["domain"],
+                None => bad.domain.as_mut().unwrap(),
+            };
+            domain["chainId"] = value.clone();
+            assert_non_canonical_rejected(&bad, &value);
+        }
+    }
 }

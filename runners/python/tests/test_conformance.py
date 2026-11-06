@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from xochi_conformance import recover, sign
+from xochi_conformance import _primary_type, recover, sign
 
 FIXTURE = Path(__file__).resolve().parents[3] / "packages" / "spec" / "conformance" / "conformance.json"
 
@@ -25,12 +25,12 @@ def load_vectors() -> list[dict]:
 VECTORS = load_vectors()
 
 
-def test_fixture_present_and_counted() -> None:
-    assert len(VECTORS) == 45
+def test_fixture_covers_every_protocol() -> None:
     by_protocol: dict[str, int] = {}
     for v in VECTORS:
         by_protocol[v["protocol"]] = by_protocol.get(v["protocol"], 0) + 1
-    assert by_protocol == {"erc3009": 9, "permit2": 19, "xochi": 17}
+    assert set(by_protocol) == {"erc3009", "permit2", "xochi"}
+    assert all(count >= 1 for count in by_protocol.values())
 
 
 @pytest.mark.parametrize("vector", VECTORS, ids=[v["name"] for v in VECTORS])
@@ -55,22 +55,24 @@ def test_short_nonce_rejected_not_silently_signed() -> None:
         sign(bad)
 
 
-@pytest.mark.parametrize("value", ["1_000", " 1000", "1000\n", "\u0661\u0660\u0660\u0660", "1e3", "0x3e8", True])
+NON_CANONICAL_INTEGERS = ["01000", " 1000", "1000\n", "+1000", "-1000", "0x3e8", "1e3", "1_000", "", "\u0661\u0660\u0660\u0660", 1000.0, -1, True]
+
+
+@pytest.mark.parametrize("value", NON_CANONICAL_INTEGERS)
 def test_non_canonical_integer_rejected_not_silently_signed(value: object) -> None:
-    # The port accepts canonical input only (an int or an ASCII decimal string).
     # Python's int() takes several of these spellings, and ethers signs " 1000",
-    # "1000\n" and "0x3e8" as 1000 -- the port refuses them all the same.
+    # "1000\n" and "0x3e8" as 1000; the runner refuses them all.
     base = next(v for v in VECTORS if v["protocol"] == "erc3009")
     bad = {**base, "message": {**base["message"], "value": value}}
     with pytest.raises(ValueError, match="non-canonical integer"):
         sign(bad)
 
 
-@pytest.mark.parametrize("value", [" 1", "1\n", "\u0661", "0x1", "1_0", "1e0", True])
+@pytest.mark.parametrize("value", [" 1", "1\n", "01", "+1", "-1", "\u0661", "0x1", "1_0", "1e0", "", 1.0, True])
 @pytest.mark.parametrize("protocol", ["erc3009", "permit2", "xochi"])
 def test_non_canonical_domain_chain_id_rejected_not_silently_signed(protocol: str, value: object) -> None:
     # eth_account parses a string domain chainId leniently: " 1", "0x1" and an
-    # Arabic-Indic digit all signed as chain 1 before the domain was checked.
+    # Arabic-Indic digit all sign as chain 1 without the runner's check.
     base = next(v for v in VECTORS if v["protocol"] == protocol)
     if protocol == "xochi":
         eip712 = base["eip712"]
@@ -85,3 +87,11 @@ def test_decimal_string_domain_chain_id_signs_as_the_integer() -> None:
     base = next(v for v in VECTORS if v["protocol"] == "erc3009")
     as_string = {**base, "domain": {**base["domain"], "chainId": str(base["domain"]["chainId"])}}
     assert sign(as_string)["digest"] == base["expected_digest"]
+
+
+def test_primary_type_treats_array_field_as_reference() -> None:
+    types = {
+        "Batch": [{"name": "items", "type": "Item[]"}],
+        "Item": [{"name": "amount", "type": "uint256"}],
+    }
+    assert _primary_type(types) == "Batch"

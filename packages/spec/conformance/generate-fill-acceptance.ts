@@ -1,26 +1,14 @@
 #!/usr/bin/env node
 // Generates `conformance/fill-acceptance.json`: vectors for SolverBond v2's EIP-712
-// FillAcceptance (SOLVER-RFC §5.3, ESCROW-RFC §6.1), domain RiddlerSolverBond/2:
-//
-//   FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,
-//                  uint256 deadline,bytes32 fillAuth)
+// FillAcceptance (ESCROW-RFC.md §6.1, SOLVER-RFC.md §5.3), domain RiddlerSolverBond/2.
 //
 // `fillAuth` is the RiddlerFiller EIP-712 digest of the issued FillAuth (domain
 // RiddlerFiller/1 on the destination chain), so every vector carries BOTH steps: the
 // FillAuth preimage with its domain and `expected_fill_auth_digest`, then the
 // acceptance over it. A port that disagrees can tell which step is at fault.
-// Signatures are 65-byte r||s||v, low-s. The solver (= FillAuth.filler) signs;
-// SolverBond v2 ecrecovers it in `proposeSlash`, and the Riddler server verifies it
-// at `POST /solver/awards/:auctionId/accept`.
+// Signatures are 65-byte r||s||v, low-s.
 //
-// The signer keys below are the PUBLIC Hardhat/Anvil TEST keys. They are known to
-// everyone and MUST NEVER hold funds or be registered as a solver.
-//
-// Run: npm run generate:fill-acceptance
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:fill-acceptance -w @xochi/spec
 
 import { ethers } from "ethers";
 
@@ -41,15 +29,10 @@ import {
   type FillAuth,
 } from "@xochi/signer";
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #1 and #2). NOT SECRET. NEVER USE.
-const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-const TEST_KEY_2 = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
+import { baselineOrderId, HARDHAT_TEST_KEYS, writeVectors } from "./_lib.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const orderIds = JSON.parse(fs.readFileSync(path.join(here, "order-id.json"), "utf8")).vectors;
-const baselineOrderId: string = orderIds.find(
-  (v: { name: string }) => v.name === "baseline-evm-usdc",
-).expected_order_id;
+const [, TEST_KEY_1, TEST_KEY_2] = HARDHAT_TEST_KEYS;
+const BASELINE_ORDER_ID = baselineOrderId();
 
 // The fixed bond deployment the baseline vectors are signed on.
 const BOND_CHAIN_ID = "8453";
@@ -73,7 +56,7 @@ type Case = {
   key: string;
 };
 
-const order: Order = { orderId: baselineOrderId, originChainId: "8453", escrow: ESCROW };
+const order: Order = { orderId: BASELINE_ORDER_ID, originChainId: "8453", escrow: ESCROW };
 const fillerDomain: FillerDomain = { chainId: "10", verifyingContract: FILLER_CONTRACT };
 const fillAuth = {
   fillId: "0x" + "ab".repeat(32),
@@ -183,6 +166,4 @@ const out = {
   vectors,
 };
 
-const target = path.join(here, "fill-acceptance.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("fill-acceptance.json", out);

@@ -2,7 +2,6 @@
 
 Reproduces the `digest`, `signature`, and `signed_object` of every vector in
 `@xochi/spec` `conformance/conformance.json` byte-for-byte (SPEC.md §2/§8).
-Reproduces the signatures of `@xochi/signer` for the vectors. Network-free.
 """
 
 from __future__ import annotations
@@ -49,20 +48,19 @@ class SignResult(dict):
     """{'digest': str, 'signature': str, 'signed_object': str | None}."""
 
 
-# ASCII decimal only: this port accepts canonical input and nothing else.
-# Python's int() also takes "1_000", surrounding whitespace and non-ASCII
-# Unicode digits. The TS reference (ethers' getBigInt, i.e. BigInt()) is not a
-# guide here: it rejects "1_000", "1e3" and Unicode digits but signs " 1000",
-# "1000\n" and "0x3e8" as 1000. All of them are refused, not normalized.
-_DECIMAL = re.compile(r"-?[0-9]+", re.ASCII)
+# Canonical integers only: a non-negative int, or an ASCII decimal string with
+# no sign, whitespace, separator or leading zero. Python's int() and the TS
+# reference (BigInt) each accept some other spellings ("1_000", " 1000",
+# "0x3e8"); this runner refuses them instead of normalizing.
+_DECIMAL = re.compile(r"0|[1-9][0-9]*", re.ASCII)
 
 
 def _coerce_int(value: Any) -> int:
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
     if isinstance(value, str) and _DECIMAL.fullmatch(value):
         return int(value)
-    raise ValueError(f"non-canonical integer {value!r}: expected an int or an ASCII decimal string")
+    raise ValueError(f"non-canonical integer {value!r}: expected a non-negative int or a canonical decimal string")
 
 
 def _coerce_scalar(value: Any, abi_type: str) -> Any:
@@ -83,8 +81,8 @@ def _coerce_message(message: dict[str, Any], types: dict[str, list[dict[str, str
 
 
 def _primary_type(types: dict[str, list[dict[str, str]]]) -> str:
-    """The root type: the one no other type references as a field."""
-    referenced = {f["type"] for fields in types.values() for f in fields}
+    """The root type: the one no other type references as a field (`T[]` references `T`)."""
+    referenced = {f["type"].removesuffix("[]") for fields in types.values() for f in fields}
     roots = [name for name in types if name not in referenced]
     if len(roots) != 1:
         raise ValueError(f"expected exactly one root type, found {roots}")
@@ -93,8 +91,8 @@ def _primary_type(types: dict[str, list[dict[str, str]]]) -> str:
 
 def _coerce_domain(domain: dict[str, Any]) -> dict[str, Any]:
     # `chainId` is the domain's one integer member (uint256). eth_account parses
-    # a string chainId leniently, so " 1", "0x1" and Arabic-Indic "1" all signed
-    # as 1; it gets the same canonical-only check as the message's integers.
+    # a string chainId leniently (" 1", "0x1", Arabic-Indic "1" all become 1), so
+    # it gets the same canonical-only check as the message's integers.
     if "chainId" not in domain:
         return domain
     return {**domain, "chainId": _coerce_int(domain["chainId"])}

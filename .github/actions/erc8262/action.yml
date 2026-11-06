@@ -1,0 +1,23 @@
+name: erc8262
+description: Foundry, then ERC-8262 at the pinned commit cloned to ../ERC-8262 and built (the @xochi/sdk drift and integration tests read it).
+runs:
+  using: composite
+  steps:
+    - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      with:
+        version: v1.5.1
+
+    - name: Checkout and build ERC-8262 at the pinned commit
+      shell: bash
+      env:
+        # The commit the bundled circuits and ABIs are synced to; bump together with
+        # packages/sdk/scripts/sync-circuits.sh output. Fetched by SHA, so a
+        # squash-merged PR head stays checkoutable after its branch is deleted; cut an
+        # sdk-v* tag only while this is an ERC-8262 main commit.
+        ERC_8262_REF: f588b0092564ace090d8e066af720e5dcba786f0
+      run: |
+        git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
+        git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
+        git -C ../ERC-8262 checkout --quiet FETCH_HEAD
+        git -C ../ERC-8262 submodule update --init --recursive --depth=1
+        cd ../ERC-8262 && forge build

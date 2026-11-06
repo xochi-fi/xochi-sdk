@@ -104,7 +104,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"docs/**/*.md\" \"*.{json,md,ts}\"",
+    "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"docs/**/*.md\" \"*.{json,md,ts}\"",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
@@ -119,6 +119,6 @@
   "devDependencies": {
     "@xochi/provider": "0.1.0",
     "@xochi/spec": "0.12.0",
-    "viem": "^2.21.0"
+    "viem": "^2.57.7"
   }
 }

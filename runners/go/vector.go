@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strings"
+	"regexp"
 )
 
 // TypeField is one EIP-712 struct field ({name, type}).
@@ -63,18 +63,25 @@ func toStr(v any) string {
 	}
 }
 
-func toBig(v any) *big.Int {
+// canonicalDecimal is the only integer spelling accepted: no sign, whitespace,
+// separator, exponent, fraction or leading zero.
+var canonicalDecimal = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
+
+// toBig parses a JSON integer or a decimal string, refusing non-canonical input
+// instead of normalizing it.
+func toBig(v any) (*big.Int, error) {
+	var s string
 	switch x := v.(type) {
 	case json.Number:
-		if b, ok := new(big.Int).SetString(x.String(), 10); ok {
-			return b
-		}
+		s = x.String()
 	case string:
-		if b, ok := new(big.Int).SetString(strings.TrimSpace(x), 10); ok {
-			return b
-		}
-	case float64:
-		return big.NewInt(int64(x))
+		s = x
+	default:
+		return nil, fmt.Errorf("non-canonical integer %v (%T): expected a JSON integer or a decimal string", v, v)
 	}
-	panic(fmt.Sprintf("cannot convert %v (%T) to *big.Int", v, v))
+	if !canonicalDecimal.MatchString(s) {
+		return nil, fmt.Errorf("non-canonical integer %q", s)
+	}
+	b, _ := new(big.Int).SetString(s, 10)
+	return b, nil
 }

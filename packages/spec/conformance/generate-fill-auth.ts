@@ -1,16 +1,9 @@
 #!/usr/bin/env node
 // Generates `conformance/fill-auth.json`: vectors for RiddlerFiller's EIP-712
-// FillAuth (ESCROW-RFC §9.4), domain RiddlerFiller/1. The venue signs it; the
-// filler presents it with `fill`. Signatures are 65-byte r||s||v, low-s.
+// FillAuth (ESCROW-RFC.md §9.4), domain RiddlerFiller/1. Signatures are 65-byte
+// r||s||v, low-s.
 //
-// The signer keys below are the PUBLIC Hardhat/Anvil TEST keys. They are known to
-// everyone and MUST NEVER hold funds or be registered as a fill authorizer.
-//
-// Run: npm run generate:fill-auth
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:fill-auth -w @xochi/spec
 
 import { ethers } from "ethers";
 
@@ -24,15 +17,10 @@ import {
   signFillAuth,
 } from "@xochi/signer";
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #0 and #1). NOT SECRET. NEVER USE.
-const TEST_KEY_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const TEST_KEY_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+import { baselineFillId, HARDHAT_TEST_KEYS, writeVectors } from "./_lib.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const fillIds = JSON.parse(fs.readFileSync(path.join(here, "fill-salt.json"), "utf8")).vectors;
-const baselineFillId: string = fillIds.find(
-  (v: { name: string }) => v.name === "baseline",
-).expected_fill_id;
+const [TEST_KEY_0, TEST_KEY_1] = HARDHAT_TEST_KEYS;
+const BASELINE_FILL_ID = baselineFillId();
 
 const FILLER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const TO = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
@@ -45,7 +33,7 @@ const CASES = [
     name: "baseline-base",
     chainId: "8453",
     verifyingContract: FILLER_CONTRACT,
-    fillId: baselineFillId,
+    fillId: BASELINE_FILL_ID,
     filler: FILLER,
     to: TO,
     token: USDC_BASE,
@@ -57,7 +45,7 @@ const CASES = [
     name: "second-signer",
     chainId: "8453",
     verifyingContract: FILLER_CONTRACT,
-    fillId: baselineFillId,
+    fillId: BASELINE_FILL_ID,
     filler: FILLER,
     to: TO,
     token: USDC_BASE,
@@ -69,7 +57,7 @@ const CASES = [
     name: "other-chain-and-filler",
     chainId: "1",
     verifyingContract: "0x9A676e781A523b5d0C0e43731313A708CB607508",
-    fillId: baselineFillId,
+    fillId: BASELINE_FILL_ID,
     filler: FILLER,
     to: TO,
     token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -132,6 +120,4 @@ const out = {
   vectors,
 };
 
-const target = path.join(here, "fill-auth.json");
-fs.writeFileSync(target, JSON.stringify(out, null, 2) + "\n");
-console.log(`wrote ${vectors.length} vectors -> ${target}`);
+writeVectors("fill-auth.json", out);

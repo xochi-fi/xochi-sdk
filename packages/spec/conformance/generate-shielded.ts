@@ -1,41 +1,44 @@
 #!/usr/bin/env node
 // Generates `conformance/shielded.json` (+ `shielded.schema.json`): the vector set for
-// the recipient-private Aztec settlement contract v1 typed encodings approved on
-// 2026-10-18 (xochi docs/planning/shielded-execution.md §7 "Approved 2026-10-18: typed
-// encodings"; xochi#633, xochi#635): the NetworkIdentity hashStruct, the salted
-// `Domain (binding)` / `Domain (terms)`, the RecipientBinding struct hash, EIP-712
+// the recipient-private Aztec settlement contract v1 typed encodings (xochi
+// docs/planning/shielded-execution.md §7 "typed encodings"): the NetworkIdentity hashStruct,
+// the salted `Domain (binding)` / `Domain (terms)`, the RecipientBinding struct hash, EIP-712
 // digest and source-wallet signature, and the value refusals (Aztec bytes32, amounts).
 //
-// INDEPENDENT OF @xochi/signer, deliberately. Every value is derived here from §7's
-// literals with ethers' generic primitives only (TypedDataEncoder, keccak256, AbiCoder,
-// Wallet), and every refusal expectation is written below as data, never obtained by
-// running the reference. `@xochi/signer`'s `shielded.ts` is then checked AGAINST this
-// file (packages/signer/test/shielded-vectors.test.ts), so the two implementations meet
-// only at the committed JSON. Importing the reference here would let it grade itself.
-//
-// NetworkIdentity: §7 names its five members and delegates the typed encoding to these
-// vectors. The encoding below was approved by the product owner on 2026-10-19
-// (protocolVersion = the numeric Aztec rollup version); the §7 record lands in a separate
-// xochi PR.
+// INDEPENDENT OF @xochi/signer. Every value is derived here from §7's literals with ethers'
+// generic primitives only (TypedDataEncoder, keccak256, AbiCoder, Wallet), and every refusal
+// expectation is written below as data, never obtained by running the reference.
+// `@xochi/signer`'s `shielded.ts` is then checked AGAINST this file
+// (packages/signer/test/shielded-vectors.test.ts), so the two implementations meet only at
+// the committed JSON. Importing the reference here would let it grade itself.
 //
 // Aztec values are checked by magnitude only: nonzero and below BN254 r. There is no
 // "looks like a padded EVM address" refusal: whether a bytes32 is really an Aztec address
 // (and not an EVM address) is established by descriptor/address derivation, not by its size.
 //
-// ShieldedTermsV1 and the manifestDigest struct are NOT here: §7 leaves them open. The
-// descriptorDigest encoding, recipient message wrapper, field reduction and approved
-// acknowledgement structs are in shielded-recipient.json (generate-shielded-recipient.ts).
+// ShieldedTermsV1 and the manifestDigest struct are in shielded-terms.json
+// (generate-shielded-terms.ts); the descriptorDigest encoding, recipient message wrapper,
+// field reduction and acknowledgement structs are in shielded-recipient.json
+// (generate-shielded-recipient.ts).
 //
 // Every network, corridor, digest and Aztec value below is a FIXTURE. The signer keys are
-// the PUBLIC Hardhat/Anvil test keys #0 and #1: known to everyone, never to hold funds.
+// the PUBLIC Hardhat/Anvil test keys #0 and #1.
 //
-// Run: npm run generate:shielded   (SHIELDED_VECTORS_DIR overrides the output dir)
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// Run: npm run generate:shielded -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
 import { ethers } from "ethers";
+
+import {
+  ADDR,
+  arr,
+  HARDHAT_TEST_KEYS,
+  HEX32,
+  obj,
+  SIG_ECDSA,
+  STR,
+  UINT,
+  writeVectors,
+} from "./_lib.js";
 
 // --- §7 literals -----------------------------------------------------------------------
 
@@ -50,7 +53,7 @@ const RECIPIENT_BINDING_TYPE_STRING =
   "RecipientBinding(address sourceWallet,uint256 sourceChainId,bytes32 aztecRecipient," +
   "bytes32 aztecToken,bytes32 descriptorDigest,bytes32 corridorId,uint32 corridorRevision," +
   "bytes32 manifestDigest,bytes32 nonce,uint64 challengeExpiry,string purpose)";
-// Approved 2026-10-19 by the product owner (see header).
+// §7 NetworkIdentity: the typed encoding these vectors fix.
 const NETWORK_IDENTITY_TYPE_STRING =
   "NetworkIdentity(uint256 aztecChainId,uint256 protocolVersion,address rollupAddress," +
   "uint256 l1ChainId,bytes32 genesisOrNetworkDigest)";
@@ -95,13 +98,8 @@ const UINT32_MAX = 2n ** 32n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const UINT256_MAX = 2n ** 256n - 1n;
 
-// PUBLIC TEST KEYS (Hardhat/Anvil accounts #0 and #1). NOT SECRET. NEVER USE.
-const WALLET_0 = new ethers.Wallet(
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-);
-const WALLET_1 = new ethers.Wallet(
-  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-);
+const WALLET_0 = new ethers.Wallet(HARDHAT_TEST_KEYS[0]);
+const WALLET_1 = new ethers.Wallet(HARDHAT_TEST_KEYS[1]);
 const ADDR_0 = WALLET_0.address.toLowerCase();
 const ADDR_1 = WALLET_1.address.toLowerCase();
 
@@ -517,18 +515,6 @@ const out = {
 
 // --- Schema ------------------------------------------------------------------------------
 
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
-const ADDR = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const UINT = { type: "string", pattern: "^(0|[1-9][0-9]*)$" };
-const SIG = { type: "string", pattern: "^0x[0-9a-f]{130}$" };
-const STR = { type: "string" };
-const obj = (props: Record<string, unknown>) => ({
-  type: "object",
-  required: Object.keys(props),
-  additionalProperties: false,
-  properties: props,
-});
-const arr = (items: unknown) => ({ type: "array", minItems: 1, items });
 const NETWORK = obj({
   aztecChainId: UINT,
   protocolVersion: UINT,
@@ -634,7 +620,7 @@ const schema = {
           structHash: HEX32,
           digest: HEX32,
           signer: ADDR,
-          signature: SIG,
+          signature: SIG_ECDSA,
         }),
       ),
       refusals: arr(
@@ -661,12 +647,11 @@ const schema = {
   }),
 };
 
-const dir = process.env.SHIELDED_VECTORS_DIR ?? path.dirname(fileURLToPath(import.meta.url));
-fs.writeFileSync(path.join(dir, "shielded.json"), JSON.stringify(out, null, 2) + "\n");
-fs.writeFileSync(path.join(dir, "shielded.schema.json"), JSON.stringify(schema, null, 2) + "\n");
-console.log(
-  `wrote shielded.json: ${networkVectors.length} networks, ` +
+writeVectors("shielded.json", out, {
+  schema,
+  summary:
+    `wrote shielded.json: ${networkVectors.length} networks, ` +
     `${domainVectors.length} domains, ${bindingVectors.length} bindings, ` +
     `${bindingRefusals.length} binding refusals`,
-);
+});
 for (const v of bindingVectors) console.log(`  ${v.name.padEnd(28)} ${v.digest}`);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Refetch the vendored wire contract and its digest (`npm run generate:wire`).
+ * Refetch the vendored wire contract and its digest (`npm run generate:wire -w @xochi/spec`).
  * Refusals, flags and the compared axes: `./README.md`.
  *
  * SPEC.md §3 names `GET /xochi/openapi.json` the source of truth, so this
@@ -75,18 +75,17 @@
  */
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   fail,
   inconclusive,
-  installCrashHandlers,
   misconfigured,
   orInconclusive,
   parseJsonBody,
   probeGet,
-  readTimeoutMs,
   resolveServer,
+  sha256Hex,
+  startProbe,
 } from "../../../scripts/probe-lib.mjs";
 import {
   IncomparableDocument,
@@ -97,9 +96,7 @@ import {
 } from "./compare.mjs";
 import { MalformedDocument, formatDocument } from "./format.mjs";
 
-installCrashHandlers();
-
-const TIMEOUT_MS = readTimeoutMs();
+const { timeoutMs } = startProbe();
 const OUT_JSON = fileURLToPath(new URL("./openapi.json", import.meta.url));
 const OUT_SHA = fileURLToPath(new URL("./openapi.sha256", import.meta.url));
 
@@ -114,8 +111,8 @@ if (unknown.length > 0) {
       `  Accepted: ${[...FLAGS].join(", ")}. Nothing was fetched or written.\n` +
       "  Each is consent, so none is inferred from a near-miss: a refusal you meant to\n" +
       "  override is better than a write you did not.\n" +
-      "  If you are invoking this from the repo root, note that `npm run generate:wire`\n" +
-      "  forwards arguments through a `--` in the delegation; without one npm eats them.",
+      "  From the repo root, pass flags after `--`:\n" +
+      "  `npm run generate:wire -w @xochi/spec -- --allow-breaking`.",
   );
 }
 const ALLOW_BREAKING = argv.includes("--allow-breaking");
@@ -152,7 +149,7 @@ const delta = (before, after) => {
   };
 };
 
-const { serverKey, urlVar, baseUrl, parsedBase } = resolveServer();
+const { urlVar, baseUrl, parsedBase, display, target } = resolveServer();
 
 /**
  * The one host whose contract this artifact is, pinned as a value here because
@@ -170,8 +167,8 @@ const isProd = parsedBase.origin === PROD_ORIGIN;
 // anything was asked of anyone.
 if (!isProd && !ALLOW_NON_PROD) {
   refused(
-    `${urlVar} resolves to ${sanitize(parsedBase.origin)} (server key ` +
-      `${sanitize(serverKey)}); the production wire contract is served from ${PROD_ORIGIN}.\n` +
+    `${sanitize(urlVar)} resolves to ${sanitize(parsedBase.origin)} (server key ` +
+      `${display}); the production wire contract is served from ${PROD_ORIGIN}.\n` +
       "  The label is not the check: RIDDLER_SERVER defaults to prod and the URL behind it is\n" +
       "  whatever the environment holds -- a .env, a tunnel, a poisoned CI variable -- so a key\n" +
       "  spelled prod is not evidence a prod host answered, and this block is the only\n" +
@@ -229,7 +226,7 @@ const readBaseline = () => {
   const doc = git("show", `${commit}:./openapi.json`);
   if (!doc.ok) return { absent: `openapi.json is not committed at HEAD (${commit})` };
   const bytes = doc.out;
-  const actual = createHash("sha256").update(bytes).digest("hex");
+  const actual = sha256Hex(bytes);
   // Arbitrary committed content reaching a block a human approves a refresh
   // from, so it is held to the shape the probe requires and never echoed raw.
   const sha = git("show", `${commit}:./openapi.sha256`);
@@ -305,7 +302,7 @@ if (digestMismatch !== null) {
 
 const url = `${baseUrl}/xochi/openapi.json`;
 
-const got = orInconclusive(await probeGet({ url, timeoutMs: TIMEOUT_MS }));
+const got = orInconclusive(await probeGet({ url, timeoutMs }));
 const doc = orInconclusive(parseJsonBody(got, { url })).value;
 
 // JSON, but not an OpenAPI document. A stale copy is a known quantity; an error
@@ -313,7 +310,8 @@ const doc = orInconclusive(parseJsonBody(got, { url })).value;
 const unrecognisedServed = unrecognisedContract(doc);
 if (unrecognisedServed !== null) {
   inconclusive(
-    `${url} returned JSON that is not recognisably an OpenAPI contract (${unrecognisedServed}).\n` +
+    `${display} (${target}) served JSON at /xochi/openapi.json that is not recognisably an\n` +
+      `  OpenAPI contract (${unrecognisedServed}).\n` +
       "  The vendored copy was left alone.",
   );
 }
@@ -347,7 +345,7 @@ const reformat = () => {
 };
 
 const formatted = reformat();
-const digest = createHash("sha256").update(formatted).digest("hex");
+const digest = sha256Hex(formatted);
 
 /**
  * The post-condition on the reformat above. Not a gate on the producer: every
@@ -395,7 +393,7 @@ const { breaking, stale, stats } = noBaseline
   ? { breaking: [], stale: [], stats: null }
   : compared();
 
-const servedSha = createHash("sha256").update(got.text).digest("hex");
+const servedSha = sha256Hex(got.text);
 // One table, one column width. Three separate literals for the same column is
 // how a continuation line stops lining up under the value it continues.
 const LABEL_COL = 15;
@@ -410,12 +408,12 @@ const bullets = (list) => list.map((p) => cont(`- ${p}`)).join("\n");
 // Paste-ready: review has to be able to tell a prod refresh from an stg one and
 // a formatting churn from a protocol change without reading the diff.
 console.log("--- wire refresh provenance (paste into the PR body) ---");
-console.log(row("server", `${sanitize(serverKey)} (${url})`));
+console.log(row("server", `${display} (${target})`));
 if (!isProd) {
   console.log(
     cont(
       `NOTE: --allow-non-prod. These bytes are ${sanitize(parsedBase.origin)}'s contract ` +
-        `(key ${sanitize(serverKey)}), not ${PROD_ORIGIN}'s.`,
+        `(key ${display}), not ${PROD_ORIGIN}'s.`,
     ),
   );
 }
@@ -455,7 +453,7 @@ if (unrecognisedPrior !== null) {
 // baseline, so a hand edit or a half-finished earlier refresh is visible.
 const workingTree = (() => {
   try {
-    return createHash("sha256").update(readFileSync(OUT_JSON)).digest("hex");
+    return sha256Hex(readFileSync(OUT_JSON));
   } catch {
     return null;
   }

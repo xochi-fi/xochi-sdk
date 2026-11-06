@@ -23,7 +23,7 @@
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
       "import": {
@@ -48,7 +48,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
+    "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"examples/**/*.ts\" \"*.{json,ts}\"",
     "example:solver": "tsx examples/offline-solver.ts",
     "example:escrow": "tsx examples/escrow-solver.ts",
@@ -56,9 +56,9 @@
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@xochi/signer": "^0.6.0",
+    "@xochi/signer": "^0.7.0",
     "ethers": "^6.17.0",
-    "zod": "^4.5.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "fast-check": "^4.9.0",

@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   // `test/**` is included so `npm run typecheck` covers the suite: vitest does
-  // not typecheck, so a test referencing a field the wire types no longer carry
-  // used to pass CI and only fail against a live venue.
+  // not typecheck, so only this catches a test referencing a field the wire
+  // types do not carry.
   "include": ["src/**/*.ts", "examples/**/*.ts", "test/**/*.ts"]
 }

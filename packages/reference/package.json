@@ -15,7 +15,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
+    "format": "npm run format:check -- --write",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,ts}\"",
     "test:conformance": "vitest run test/conformance.test.ts",
     "test:fee": "vitest run test/fee.test.ts"
@@ -25,7 +25,7 @@
     "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "@xochi/client": "0.1.9",
+    "@xochi/client": "0.1.10",
     "@xochi/spec": "0.12.0",
     "fast-check": "^4.9.0"
   }

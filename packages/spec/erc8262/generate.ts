@@ -1,82 +1,53 @@
 #!/usr/bin/env node
-// Generates the ERC-8262 provider protocol artifacts (SPEC.md section 10):
+// Generates the ERC-8262 provider protocol artifacts (SPEC.md §10), the single source for
+// all four:
 //
 //   provider-discovery.schema.json  GET https://{trustDomainId}/.well-known/erc8262-provider.json
 //   provider-evidence.schema.json   GET https://{trustDomainId}/v1/erc8262/evidence/{evidenceId}
-//   vectors.json (+ vectors.schema.json)  native and gateway fixtures, the section 10.5
-//                                         evaluation cases and the section 10.6 quorum cases
+//   vectors.json (+ vectors.schema.json)  native and gateway fixtures, the §10.5
+//                                         evaluation cases and the §10.6 quorum cases
 //
-// This file is the single source for all four. Nothing here signs: the protocol carries
-// identifiers and bindings, the consumer's allowlist pins each trust domain to its Oracle
-// attestor, and the ERC-8262 Oracle stays the authority on keys and roots. Every address,
-// root and signer hash is a FIXTURE (no Oracle is deployed on either chain), and the
-// `registry` blocks stand in for the Oracle reads a consumer makes.
-// `packages/spec/test/erc8262-provider.test.ts` validates every document against the
-// schemas and re-derives every expected outcome.
+// Nothing here signs. The fixtures and the `registry` blocks standing in for Oracle reads:
+// SPEC.md §10.8. `packages/spec/test/erc8262-provider.test.ts` validates every document
+// against the schemas and re-derives every expected outcome.
 //
-// Run: npm run generate:erc8262
+// Run: npm run generate:erc8262 -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
-import fs, { realpathSync } from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 import { concat, keccak256 } from "ethers";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { ADDR, HEX32, isMain, obj, outDir, writeJson, writeVectors } from "../conformance/_lib.js";
+
 const SCHEMA_BASE = "https://riddler.axol.io/spec/erc8262";
 
 export const PROTOCOL = "erc8262-provider";
 export const PROTOCOL_VERSION = 1;
 
-// Protocol limits (SPEC.md section 10), shipped in vectors.json `limits` so a runner reads
-// them rather than retyping them.
-const MAX_EVIDENCE_LIFETIME_SECONDS = 365 * 86400; // expiresAt - issuedAt
-// Tolerated disagreement between the consumer's, provider's and prover's clocks: only where a
-// check would refuse because another party's instant is ahead (steps 11, 22, 28, 31).
-const CLOCK_SKEW_SECONDS = 60;
-const MAX_LIST_ITEMS = 32; // deployments, keys, sources, claims per source
-const MAX_DISCOVERY_BYTES = 65536;
-const MAX_EVIDENCE_BYTES = 8192;
-const FETCH_TIMEOUT_SECONDS = 10;
-const MIN_REVOCATION_CHECK_SECONDS = 60;
-const MAX_REVOCATION_CHECK_SECONDS = 86400;
-const MIN_EVIDENCE_ID_LENGTH = 22; // 128 bits of base64url
-const MAX_EVIDENCE_ID_LENGTH = 128;
-// Least bound a consumer may set on one kind of record: an evidence revocation (a 410 or a
-// revoked body) of an id no grant rests on, per (trust domain, announcing party as the
-// consumer authenticated it, never the subject wallet an announcement names), and on the
-// unattributed announcements of one trust domain (SPEC.md section 10.7, Revocation bound).
-// The trust domain's own callback or push, authenticated as the provider's by a credential
-// the consumer set up with it (never a source address or a host header), is not charged to it.
-// A wallet or session announces one id per evidence it was issued, so 10 000 within the
-// 365-day retention is about 27 a day, every day; at about 200 bytes a record it caps one
-// party at some 2 MB per trust domain.
-// Reaching it only leaves further such records unwritten: every announcement is still evaluated.
-const MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER = 10000;
-// Oldest a block pair's latest block may be, by the consumer's clock, for an evaluation that can
-// grant to read the Oracle at it (SPEC.md section 10.5, Block pair). An older head is a stuck or
-// lagging node whose latest-block revocation and denial reads are blind: the evaluation is
-// unavailable, grants nothing, and suspends a held grant. 120 s is the 60 s clock skew plus 60 s
-// of head lag (5 Ethereum slots; far more blocks on Base). It is measured in time, not blocks, so
-// it holds on every chain, and it never reads the finalized tag, whose cadence on an OP-stack
-// chain (op-node polls L1 every 6 min 24 s by default) does not move it.
-const MAX_BLOCK_AGE_SECONDS = 120;
+// Protocol limits, shipped in vectors.json `limits` so a runner reads them rather than
+// retyping them.
+const MAX_EVIDENCE_LIFETIME_SECONDS = 365 * 86400; // SPEC.md §10.4 Evidence
+const CLOCK_SKEW_SECONDS = 60; // SPEC.md §10.5 Clocks
+const MAX_LIST_ITEMS = 32; // SPEC.md §10.3 Discovery
+const MAX_DISCOVERY_BYTES = 65536; // SPEC.md §10.4 Fetch contract
+const MAX_EVIDENCE_BYTES = 8192; // SPEC.md §10.4 Fetch contract
+const FETCH_TIMEOUT_SECONDS = 10; // SPEC.md §10.4 Fetch contract
+const MIN_REVOCATION_CHECK_SECONDS = 60; // SPEC.md §10.7 Held grants
+const MAX_REVOCATION_CHECK_SECONDS = 86400; // SPEC.md §10.7 Held grants
+const MIN_EVIDENCE_ID_LENGTH = 22; // SPEC.md §10.4 Building the URL
+const MAX_EVIDENCE_ID_LENGTH = 128; // SPEC.md §10.4 Building the URL
+const MIN_UNGRANTED_REVOCATIONS_PER_ANNOUNCER = 10000; // SPEC.md §10.7 Revocation bound
+const MAX_BLOCK_AGE_SECONDS = 120; // SPEC.md §10.5 Block pair
 // The vectors' consumer's deployment maximum on a held grant's re-evaluation interval (SPEC.md
-// section 10.7, Held grants): below the native fixture's revocationCheckSeconds (3600), above the
-// gateway's (900), so the vectors take each side of the minimum.
+// §10.8): below the native fixture's revocationCheckSeconds (3600), above the gateway's (900),
+// so the vectors take each side of the minimum.
 const MAX_RECHECK_SECONDS = 1800;
-// Every timestamp is Unix seconds in [0, 2^32 - 1]: a millisecond value or a huge number
-// fails the schema instead of becoming a permanent "newest updatedAt", and every runner
-// language compares the values exactly.
+// SPEC.md §10.3 Discovery: Unix seconds in [0, 2^32 - 1], so a millisecond value fails the
+// schema instead of becoming a permanent "newest updatedAt".
 const MAX_TIMESTAMP = 2 ** 32 - 1;
 
 // --- Schema building blocks --------------------------------------------------
 
-const obj = (props: Record<string, unknown>, optional: string[] = []) => ({
-  type: "object",
-  required: Object.keys(props).filter((k) => !optional.includes(k)),
-  additionalProperties: false,
-  properties: props,
-});
 // The outer description wins over one the wrapped schema already carries, and stays first.
 const d = <T extends object>(description: string, schema: T) => {
   const { description: _inner, ...rest } = schema as T & { description?: string };
@@ -84,8 +55,6 @@ const d = <T extends object>(description: string, schema: T) => {
 };
 
 const UNIX = { type: "integer", minimum: 0, maximum: MAX_TIMESTAMP };
-const ADDRESS = { type: "string", pattern: "^0x[0-9a-f]{40}$" };
-const HEX32 = { type: "string", pattern: "^0x[0-9a-f]{64}$" };
 const ZERO_HASH = "0x" + "00".repeat(32);
 
 // A canonical decimal string of an integer in [1, max]: shorter than max, or as long as max
@@ -149,7 +118,7 @@ const DEPLOYMENT = d(
   "An ERC-8262 Oracle deployment and this trust domain's attestor on it. chainId and oracleAddress bind every artifact to one deployment (ERC-8262 signed payloads and credential roots are deployment-scoped), so evidence for one chain or Oracle is never accepted on another.",
   obj({
     chainId: { type: "integer", minimum: 1 },
-    oracleAddress: ADDRESS,
+    oracleAddress: ADDR,
     attestorProviderId: ATTESTOR_PROVIDER_ID,
   }),
 );
@@ -186,7 +155,7 @@ const KEY = d(
           }),
           credentialSigner: d(
             `The address the Oracle MUST hold as getCredentialSigner(attestorProviderId) while this key is current: no notAfter, or the consumer's clock more than ${CLOCK_SKEW_SECONDS} s before notAfter (the skew favours a consumer whose clock lags the provider's). A consumer refuses evidence naming a current key whose credentialSigner differs. Not checked from notAfter - ${CLOCK_SKEW_SECONDS} s on: the Oracle switches to the successor at notAfter.`,
-            ADDRESS,
+            ADDR,
           ),
           ...KEY_WINDOW,
         },
@@ -316,7 +285,7 @@ const evidenceSchema = {
       revokedAt: d("Unix seconds; present iff status is `revoked`.", UNIX),
       subject: d(
         "Replay: the wallet (lowercase hex) the claim is about and the only submitter it may serve; ERC-8262 credentials and signed payloads bind the submitter.",
-        ADDRESS,
+        ADDR,
       ),
       sourceId: SOURCE_ID,
       claimType: CLAIM_TYPE,
@@ -5688,7 +5657,7 @@ const REGISTRY = {
   items: obj({
     attestorProviderId: ATTESTOR_PROVIDER_ID,
     denied: d("isProviderDenied(attestorProviderId).", { type: "boolean" }),
-    credentialSigner: d("getCredentialSigner(attestorProviderId).", ADDRESS),
+    credentialSigner: d("getCredentialSigner(attestorProviderId).", ADDR),
     credentialRoots: d(
       "Roots the Oracle holds valid (isValidCredentialRoot) and registered to the attestor (getCredentialRoot(root).providerId).",
       { type: "array", items: HEX32 },
@@ -5725,7 +5694,7 @@ const PROOF = d(
     ),
     publicInputs: { type: "array", minItems: 1, maxItems: 14, items: HEX32 },
     attestation: obj({
-      subject: ADDRESS,
+      subject: ADDR,
       proofType: { type: "integer", minimum: 1, maximum: 9 },
       publicInputsHash: HEX32,
       expiresAt: d("Live while the consumer's clock is at or before it.", UNIX),
@@ -5773,8 +5742,8 @@ const STATEMENT = d(
 );
 const CONSUMER_FIELDS = {
   chainId: CHAIN_ID,
-  oracleAddress: ADDRESS,
-  subject: ADDRESS,
+  oracleAddress: ADDR,
+  subject: ADDR,
   now: UNIX,
   allowlist: ALLOWLIST,
   registry: REGISTRY,
@@ -5851,7 +5820,7 @@ const HELD_GRANTS = d(
   {
     type: "array",
     items: obj({
-      subject: ADDRESS,
+      subject: ADDR,
       trustDomainId: TRUST_DOMAIN_ID,
       evidenceId: evidenceSchema.properties.evidenceId,
       proofHash: HEX32,
@@ -6047,21 +6016,16 @@ const vectorsSchema = {
 };
 
 function main() {
-  const write = (file: string, value: unknown) =>
-    fs.writeFileSync(path.join(__dirname, file), JSON.stringify(value, null, 2) + "\n");
-  write("provider-discovery.schema.json", discoverySchema);
-  write("provider-evidence.schema.json", evidenceSchema);
-  write("vectors.json", vectors);
-  write("vectors.schema.json", vectorsSchema);
-  console.log(
-    `wrote erc8262/: ${Object.keys(discovery).length} discovery, ${Object.keys(evidence).length} evidence, ${schemaCases.length} schema, ${evaluationCases.length} evaluation, ${quorumCases.length} quorum cases`,
-  );
+  const dir = outDir(path.dirname(fileURLToPath(import.meta.url)));
+  writeJson(dir, "provider-discovery.schema.json", discoverySchema);
+  writeJson(dir, "provider-evidence.schema.json", evidenceSchema);
+  writeVectors("vectors.json", vectors, {
+    dir,
+    schema: vectorsSchema,
+    summary: `wrote erc8262/: ${Object.keys(discovery).length} discovery, ${Object.keys(evidence).length} evidence, ${schemaCases.length} schema, ${evaluationCases.length} evaluation, ${quorumCases.length} quorum cases`,
+  });
 }
 
-// Compared as URLs of the real path: a hand-built `file://` + path never
-// matches one that needs percent-encoding (a space) or runs through a symlink.
-const isMainModule =
-  process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
-if (isMainModule) {
+if (isMain(import.meta.url)) {
   main();
 }

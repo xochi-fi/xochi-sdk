@@ -85,11 +85,6 @@ concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
-env:
-  # Same pins as ci.yml; the @xochi/sdk gate needs the ERC-8262 artifacts.
-  ERC_8262_REF: f588b0092564ace090d8e066af720e5dcba786f0
-  FOUNDRY_VERSION: v1.5.1
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -103,7 +98,7 @@ jobs:
     steps:
       # Actions are pinned to full commit SHAs: this job holds id-token: write,
       # so a moved tag would run someone else's code with publish rights.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history, so the tagged commit can be checked against main.
           fetch-depth: 0
@@ -118,9 +113,9 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 22
           registry-url: "https://registry.npmjs.org"
           # No dependency cache: this job holds id-token: write, and a cache
           # entry written by another workflow run would be installed here
@@ -239,21 +234,9 @@ jobs:
 
       # --- @xochi/sdk: the ci.yml `check` gate (drift tests need ERC-8262) ----
 
-      - name: Install foundry
+      - name: Foundry and ERC-8262 at the pinned commit
         if: steps.pkg.outputs.name == '@xochi/sdk'
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-        with:
-          version: ${{ env.FOUNDRY_VERSION }}
-
-      - name: Checkout and build ERC-8262 at the pinned commit
-        if: steps.pkg.outputs.name == '@xochi/sdk'
-        run: |
-          git clone --filter=blob:none https://github.com/xochi-fi/ERC-8262.git ../ERC-8262
-          # By SHA: a squash-merged PR head is on no branch once the branch is deleted.
-          git -C ../ERC-8262 fetch --quiet origin "$ERC_8262_REF"
-          git -C ../ERC-8262 checkout --quiet FETCH_HEAD
-          git -C ../ERC-8262 submodule update --init --recursive --depth=1
-          (cd ../ERC-8262 && forge build)
+        uses: ./.github/actions/erc8262
 
       # --- @xochi/spec / @xochi/signer: the ci.yml `protocol` gate -----------
 
@@ -265,15 +248,7 @@ jobs:
             npm run typecheck -w "$w"
             npm test -w "$w"
           done
-          npm run generate:conformance
-          npm run generate:fee
-          npm run generate:erc8262
-          npm run generate:solver-bid-v2
-          npm run generate:escrow
-          npm run generate:shielded -w @xochi/spec
-          git diff --exit-code packages/spec/
-          cd packages/spec/wire
-          printf '%s  openapi.json\n' "$(cat openapi.sha256)" | shasum -a 256 -c -
+          npm run check:vectors -w @xochi/spec
 
       # Every package's prepublishOnly runs its full gate again inside npm
       # publish: format:check, typecheck, test and build (@xochi/spec has no
