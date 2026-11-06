@@ -53,6 +53,6 @@
     "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
-    "jsdom": "^29.1.1"
+    "jsdom": "^31.0.0"
   }
 }

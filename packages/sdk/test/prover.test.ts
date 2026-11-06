@@ -41,8 +41,8 @@ describe("ERC8262Prover", () => {
     expect(valid).toBe(true);
   });
 
-  it("rejects invalid risk_score inputs pre-prove", () => {
-    expect(() =>
+  it("rejects invalid risk_score inputs pre-prove", async () => {
+    await expect(() =>
       prover.proveRiskScore({
         type: "threshold",
         score: 10,
@@ -67,9 +67,9 @@ describe("ERC8262Prover", () => {
     expect(result.publicInputs).toHaveLength(6);
   });
 
-  it("rejects non-compliant scores for compliance", () => {
+  it("rejects non-compliant scores for compliance", async () => {
     // Score 80 = 8000 bps, EU threshold = 7100 bps. 8000 > 7100 = not compliant.
-    expect(() =>
+    await expect(() =>
       prover.proveCompliance({
         score: 80,
         jurisdictionId: 0,
