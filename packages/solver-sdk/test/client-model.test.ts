@@ -6,7 +6,7 @@
  * elsewhere, a solver that passes or throws -- and checks the run against a
  * model of what it should have done.
  *
- * The model is deliberately a restatement of the RULES, not of the code:
+ * The model is a restatement of the RULES, not of the code:
  *
  *   bid  <=> the window was open AND the solver returned a draft
  *   fill <=> the award named this solver

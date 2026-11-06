@@ -46,21 +46,21 @@ export interface IntentState {
   error: string | StructuredError | null;
   txHash: string | null;
   receivingTxHash: string | null;
-  /** Public fill receipt (Riddler #632) + its chain; drives the receipt CTA and the settled state. */
+  /** Public fill receipt + its chain; drives the receipt CTA and the settled state. */
   settlementTxHash: string | null;
   settlementChainId: ChainId | null;
   /**
    * Riddler's granular fill substatus, verbatim (`filling` | `filled` | ...).
    * Read only to tell a delivered destination leg apart from one still in
    * flight: Riddler can hold an intent at top-level `settling` with
-   * `substatus: filled` indefinitely (xochi#376). Never advances the lifecycle.
+   * `substatus: filled` indefinitely. Never advances the lifecycle.
    * Also `filled` when a status poll reads `settlementConfirmed` (a private
    * intent's fill confirmed, its receipt withheld from an anonymous read).
    */
   substatus: string | null;
   /**
    * True while the latest status poll was the server's anonymous view of a
-   * stealth or shielded intent (xochi#563): its on-chain legs were withheld, so
+   * stealth or shielded intent: its on-chain legs were withheld, so
    * null hashes mean "not shown", not "not there". False after an owner read.
    * Null until the first status reply, so the host does not render an owner
    * verdict before it has read one. Never a token.

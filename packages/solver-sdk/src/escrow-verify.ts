@@ -17,11 +17,13 @@ import {
   fillAttestationDigest,
   fillAcceptanceOf,
   fillAuthDigest,
+  parseUint,
   type DestOpening,
   type FillAcceptance,
   type FillAuth,
   type Hex,
   type OrderTerms,
+  type UintLike,
 } from "@xochi/signer";
 
 import type {
@@ -31,8 +33,7 @@ import type {
   FillAttestationWire,
   IntentAnnouncement,
 } from "./types";
-
-type UintLike = bigint | number | string;
+import { EVM_ADDRESS } from "./internal";
 
 // Every reason the solver refuses to act on an award, a lock or an attestation,
 // or to send a transaction. Stable codes, so an operator can alert on them; the
@@ -74,7 +75,6 @@ export class EscrowRefusalError extends Error {
   }
 }
 
-const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const eqAddr = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 // An award whose envelope carries everything a fill needs. `requireFillableEscrow`
@@ -159,8 +159,12 @@ export interface VerifiedAward {
   acceptBy: bigint; // unix seconds: the venue's acceptance window closes here
 }
 
-function sameUint(a: UintLike, b: UintLike): boolean {
-  return BigInt(a) === BigInt(b);
+// Both sides read by the one uint rule (`parseUint`): an unparseable spelling
+// throws rather than comparing equal to some other value. Leading zeros are
+// accepted, as the feed schema accepts them.
+function sameUint(a: UintLike, b: UintLike, field: string): boolean {
+  const opts = { allowLeadingZeros: true };
+  return parseUint(a, field, opts) === parseUint(b, field, opts);
 }
 
 // Recompute destCommitment and orderId from the award's plaintext and the
@@ -186,14 +190,14 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
       orderRef,
     );
   }
-  if (!sameUint(t.fromChainId, x.originChainId)) {
+  if (!sameUint(t.fromChainId, x.originChainId, "originChainId")) {
     throw new EscrowRefusalError(
       "wrong_chain",
       `order origin is chain ${t.fromChainId}, expected ${x.originChainId}`,
       orderRef,
     );
   }
-  if (!sameUint(t.toChainId, x.destinationChainId)) {
+  if (!sameUint(t.toChainId, x.destinationChainId, "destinationChainId")) {
     throw new EscrowRefusalError(
       "wrong_chain",
       `order destination is chain ${t.toChainId}, expected ${x.destinationChainId}`,
@@ -269,7 +273,7 @@ export function verifyAward(award: Award, x: AwardExpectations): VerifiedAward {
   if (!eqAddr(a.fillerContract, x.fillerContract)) {
     fail(`fillAuth targets RiddlerFiller ${a.fillerContract}, expected ${x.fillerContract}`);
   }
-  if (!sameUint(a.chainId, x.destinationChainId))
+  if (!sameUint(a.chainId, x.destinationChainId, "fillAuth.chainId"))
     fail(`fillAuth is for chain ${a.chainId}, expected ${x.destinationChainId}`);
   if (!eqAddr(a.to, opening.recipient))
     fail(`fillAuth pays ${a.to}, the lock commits to ${opening.recipient}`);
@@ -350,13 +354,13 @@ function checkAnnouncement(
     fail(`lock order ${orderId}, announced ${ann.orderId}`);
   if (ann.intentId !== opening.intentId)
     fail(`the lock commits to intent ${opening.intentId}, announced ${ann.intentId}`);
-  if (!sameUint(terms.fromChainId, ann.fromChainId))
+  if (!sameUint(terms.fromChainId, ann.fromChainId, "fromChainId"))
     fail(`lock origin ${terms.fromChainId}, announced ${ann.fromChainId}`);
-  if (!sameUint(terms.toChainId, ann.toChainId))
+  if (!sameUint(terms.toChainId, ann.toChainId, "toChainId"))
     fail(`lock destination ${terms.toChainId}, announced ${ann.toChainId}`);
   if (!eqAddr(terms.fromToken, ann.fromToken))
     fail(`lock token ${terms.fromToken}, announced ${ann.fromToken}`);
-  if (ann.fromAmount !== undefined && !sameUint(terms.fromAmount, ann.fromAmount)) {
+  if (ann.fromAmount !== undefined && !sameUint(terms.fromAmount, ann.fromAmount, "fromAmount")) {
     fail(`lock amount ${terms.fromAmount}, announced ${ann.fromAmount}`);
   }
   if (canonicalKey(opening.toToken) !== canonicalKey(ann.toToken))
@@ -482,7 +486,7 @@ export function verifyAttestation(
   if (wire.orderId.toLowerCase() !== x.orderId.toLowerCase())
     fail(`attestation is for ${wire.orderId}`);
   if (!eqAddr(wire.payee, x.payee)) fail(`attestation pays ${wire.payee}, expected ${x.payee}`);
-  if (!sameUint(wire.chainId, x.originChainId))
+  if (!sameUint(wire.chainId, x.originChainId, "attestation chainId"))
     fail(`attestation domain chain ${wire.chainId}, expected ${x.originChainId}`);
   if (!eqAddr(wire.verifier, x.verifier))
     fail(`attestation verifier ${wire.verifier}, the lock's is ${x.verifier}`);
@@ -532,7 +536,10 @@ export function checkAwardBond(
       env.intentRef,
     );
   }
-  if (!eqAddr(bond.address, trusted.address) || !sameUint(bond.chainId, trusted.chainId)) {
+  if (
+    !eqAddr(bond.address, trusted.address) ||
+    !sameUint(bond.chainId, trusted.chainId, "bond.chainId")
+  ) {
     throw new EscrowRefusalError(
       "bond_mismatch",
       `award names SolverBond ${bond.address} on chain ${bond.chainId}, expected ${trusted.address} on chain ${trusted.chainId}`,

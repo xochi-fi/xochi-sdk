@@ -32,6 +32,7 @@ import {
   VenueCapabilitiesSchema,
 } from "./schema";
 import { SolverSession } from "./session";
+import { bounded } from "./internal";
 
 // The RFC revision this SDK implements, and the ONE place it is a value rather
 // than prose. `SolverClient.run` compares the venue's advertised `rfcVersion`
@@ -239,14 +240,11 @@ export class SolverClient {
     }
   }
 
-  // Three outcomes, three sentences, deliberately not sharing one: an operator
-  // reading this at 3am has to know whether the venue disagrees with this SDK,
-  // answered something this SDK cannot read, or never answered at all. The
-  // first is a lockstep-deploy problem, the second is the venue's contract, the
-  // third is reachability/routing, and they are fixed by different people.
-  // `VenueCapabilitiesSchema` requires only `rfcVersion` (`phase` is a RFC §12
-  // SHOULD): a conformant `200 {"rfcVersion":...}` must not fail validation
-  // and be reported as "the venue never answered".
+  // Three distinct refusals: the venue disagrees with this SDK, answered
+  // something it cannot read, or never answered. `VenueCapabilitiesSchema`
+  // requires only `rfcVersion` (`phase` is a RFC §12 SHOULD): a conformant
+  // `200 {"rfcVersion":...}` must not fail validation and be reported as "the
+  // venue never answered".
   private async assertVenueRfcVersion(signal?: AbortSignal): Promise<void> {
     const silent = (why: string): Error =>
       new Error(
@@ -336,7 +334,7 @@ export interface HttpSolverTransportOptions {
   // reads the same batch and ends again. It is not caught, because a throw is
   // how a handler chooses to stop; report and return to skip.
   //
-  // This is deliberately per-ENTRY. A malformed batch envelope is NOT routed
+  // This is per-ENTRY. A malformed batch envelope is NOT routed
   // here and always throws: without a trustworthy `cursor` there is no safe way
   // to continue -- resuming from the old one replays, and inventing one skips.
   onInvalidEvent?: (err: unknown, raw: unknown) => void;
@@ -478,10 +476,10 @@ export class HttpSolverTransport implements SolverTransport {
   }
 
   // `GET /solver/capabilities` is public and unauthenticated (RFC §12), so this
-  // deliberately sends no credentials -- it must work before registration.
+  // sends no credentials -- it must work before registration.
   async getCapabilities(signal?: AbortSignal): Promise<VenueCapabilities> {
     const res = await fetch(`${this.baseUrl}/solver/capabilities`, {
-      signal: this.bounded(this.readTimeoutMs, signal),
+      signal: bounded(this.readTimeoutMs, signal),
     });
     if (!res.ok) throw new Error(`solver capabilities ${res.status}: ${await res.text()}`);
     return VenueCapabilitiesSchema.parse(await res.json());
@@ -493,7 +491,7 @@ export class HttpSolverTransport implements SolverTransport {
 
   // `GET /solver/attestations/:orderId` (authenticated like the rest of the
   // panel surface). 404 means "no attestation for you yet" -- not yet attested
-  // and not this solver's are deliberately indistinguishable -- so it is null,
+  // and not this solver's are indistinguishable -- so it is null,
   // never an error; any other non-2xx throws.
   async getAttestation(orderId: string, signal?: AbortSignal): Promise<FillAttestationWire | null> {
     const res = await this.authed(
@@ -543,10 +541,6 @@ export class HttpSolverTransport implements SolverTransport {
     return () => this.unknownEventListeners.delete(listener);
   }
 
-  private bounded(timeoutMs: number, signal?: AbortSignal): AbortSignal {
-    return AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
-  }
-
   // An authenticated request (RFC §3.1): the session token as
   // `Authorization: Bearer`, registering first when there is none or it is due
   // for renewal. A 401 means the session no longer holds -- it expired, the
@@ -565,7 +559,7 @@ export class HttpSolverTransport implements SolverTransport {
       fetch(`${this.baseUrl}${path}`, {
         ...init,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        signal: timeoutMs === undefined ? signal : this.bounded(timeoutMs, signal),
+        signal: timeoutMs === undefined ? signal : bounded(timeoutMs, signal),
       });
     const token = await this.session.token(signal);
     const res = await send(token);

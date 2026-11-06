@@ -86,13 +86,13 @@ export interface QuoteRequest {
     chainId: ChainId;
   };
   /**
-   * Referral code (xochi#583), trimmed and uppercase, at most 64 characters.
+   * Referral code, trimmed and uppercase, at most 64 characters.
    * The Worker decides whether it applies; a code it does not apply, malformed
    * or unknown, still quotes, with `referralNote`.
    */
   ref?: string;
   /**
-   * Promo code (xochi#584), trimmed and uppercase, at most 64 characters. The
+   * Promo code, trimmed and uppercase, at most 64 characters. The
    * Worker resolves it to a discount; a code it cannot use, malformed or
    * unknown, still quotes, at the undiscounted price, with `promoNote`.
    */
@@ -193,7 +193,7 @@ export interface QuoteResponse {
   /**
    * Echo of the requested destination recipient (non-EVM/Tron routes). The
    * client asserts a solvable quote echoes exactly the address it asked for
-   * (fail-closed on mismatch); absent for EVM routes. See #113.
+   * (fail-closed on mismatch); absent for EVM routes.
    */
   recipientAddress?: string;
   settlementOptions: SettlementOption[];
@@ -206,7 +206,7 @@ export interface QuoteResponse {
    */
   errorCategory?: string;
   /**
-   * The referral this trade will credit (xochi#583), not a verdict on the
+   * The referral this trade will credit, not a verdict on the
    * `ref` sent: the wallet's open referral binding wins over a submitted
    * code. Named (`code`, `name`) only to a session of the quoting wallet: the
    * binding's code, else the applied `ref`, so it can name a code other than
@@ -222,7 +222,7 @@ export interface QuoteResponse {
    * (a binding that credits one shows as `referral` instead).
    */
   referralNote?: typeof REFERRAL_NOT_APPLIED_NOTE;
-  /** The `promo` sent priced this quote (xochi#584), with its discount. */
+  /** The `promo` sent priced this quote, with its discount. */
   promo?: { code: string; discount_bps: number };
   /** The `promo` sent did not price this quote: the Worker's inline note. */
   promoNote?: typeof PROMO_NOT_APPLIED_NOTE | typeof PROMO_TIER_BETTER_NOTE;
@@ -260,7 +260,7 @@ export interface ExecuteResponse {
   txHash?: string;
   /** Destination fill hash (cross-chain); usually arrives later via status/WS. */
   receivingTxHash?: string;
-  /** Public fill receipt (Riddler #632) + its chain, when a fill resolves inline. */
+  /** Public fill receipt + its chain, when a fill resolves inline. */
   settlementTxHash?: string;
   settlementChainId?: ChainId;
   bridgeTxHash?: string;
@@ -279,12 +279,9 @@ export interface ExecuteResponse {
   ephemeralPubKey?: string;
   viewTag?: number;
   /**
-   * Per-intent read capability (xochi#563), served once and only by a server
-   * that issues it (xochi#565, merged as `0317e84`, once deployed). Keep it
-   * with the intent and pass it as `readToken` to `getIntent` /
-   * `getIntentStatus`: a stealth intent read without it omits its on-chain
-   * legs. A token read of a shielded intent gets only the status-only view, as
-   * an anonymous read does (SPEC.md §5.1, `IntentReadOptions`).
+   * Per-intent read capability, served once by the execute that admits the
+   * intent. Keep it with the intent and pass it as `readToken` to `getIntent` /
+   * `getIntentStatus`; rules: `IntentReadOptions`.
    * A bearer secret: never log it or put it in a URL.
    */
   readToken?: string;
@@ -294,7 +291,7 @@ export interface ExecuteResponse {
  * An execute response as the machine receives it in `ExecuteReplied`: the
  * bearer `readToken` removed (`const { readToken, ...response } = ...`) and
  * kept outside the machine, so no message, model, effect or replay log holds
- * it. The machine derives the fund-safety verdict (#226) from this response
+ * it. The machine derives the fund-safety verdict from this response
  * itself; a host relays it and never decides it.
  */
 export type ExecuteReply = Omit<ExecuteResponse, "readToken"> & { readToken?: never };
@@ -317,7 +314,7 @@ export interface IntentWebSocketMessage {
   txHash?: string;
   /** Destination fill hash (broadcast on cross-chain completion). */
   receivingTxHash?: string;
-  /** Public fill receipt (Riddler #632) + its chain, broadcast on completion. */
+  /** Public fill receipt + its chain, broadcast on completion. */
   settlementTxHash?: string;
   settlementChainId?: ChainId;
   /** In-doubt signal (broadcast when an execute lands in reconcile). */
@@ -564,7 +561,7 @@ export const GRANULAR_WIRE_STATUS: Readonly<Record<string, IntentStatus>> = {
  *
  * `mapped` is a status this build models: a union member, or one of Riddler's
  * granular strings bucketed above. `unmapped` is any other string, and it is
- * deliberately NOT a guess at an outcome: it buckets to `executing` so the poll
+ * NOT a guess at an outcome: it buckets to `executing` so the poll
  * runs on to a real terminal (an unrecognized string must never freeze the row),
  * and the machine shows it as "Still confirming" (reconciling) rather than as a
  * normal in-flight step. It can never decode to `completed`. This is the
@@ -606,7 +603,7 @@ export interface IntentStatusData {
   unmapped?: boolean;
   txHash: string | null;
   receivingTxHash: string | null;
-  /** Public fill receipt (Riddler #632) + its chain; the receipt CTA keys off these. */
+  /** Public fill receipt + its chain; the receipt CTA keys off these. */
   settlementTxHash: string | null;
   settlementChainId: number | null;
   error: string | null;
@@ -622,21 +619,17 @@ export interface IntentStatusData {
    * with `not_executed` (README "Fund safety"). And it tells a user whose
    * destination leg has already landed (`filled`) apart from one still
    * waiting: Riddler can hold an intent at top-level `settling` with
-   * `substatus: filled` indefinitely, which is exactly the state a stuck
-   * stealth swap sits in (xochi#376): the money is delivered and the app was
-   * showing an undifferentiated "settling".
+   * `substatus: filled` indefinitely, which is the state a stuck stealth swap
+   * sits in (xochi#376): the money is delivered.
    */
   substatus: string | null;
   terminal: boolean;
   /**
    * Present (true) when the server withheld the on-chain legs of a stealth or
-   * shielded intent from this read (xochi#563; served by xochi#565, merged as
-   * `0317e84`, once deployed): the read carried no owner proof. The tx hashes
-   * and `settlementChainId` are then null because they were withheld, not
-   * because they do not exist, and the server omits `substatus` unless it is
-   * `not_executed`. A wallet SIWE session for the intent's wallet reads them,
-   * and so does the read token of a stealth intent only: a token read of a
-   * shielded intent gets this view too (SPEC.md §5.1).
+   * shielded intent from this read (who reads them: `IntentReadOptions`). The
+   * tx hashes and `settlementChainId` are then null because they were
+   * withheld, not because they do not exist, and the server omits `substatus`
+   * unless it is `not_executed`.
    */
   legsWithheld?: true;
   /**
@@ -677,7 +670,7 @@ export function isTerminalIntentStatus(status: IntentStatus): boolean {
 }
 
 /**
- * Whether an anonymous read's `settlement_confirmed` (xochi#563) counts as a
+ * Whether an anonymous read's `settlement_confirmed` counts as a
  * delivered fill. Only on a read that withheld the legs (the marker stands in
  * for the withheld receipt), and only when `status` decodes (`decodeWireStatus`)
  * to a status this build models that is not a terminal failure and not part of
@@ -723,7 +716,7 @@ export interface IntentRecord {
   settlementType: SettlementType;
   aztecNoteHash?: string;
   txHash?: string;
-  /** Public fill receipt (Riddler #632) + its chain, persisted at completion. */
+  /** Public fill receipt + its chain, persisted at completion. */
   settlementTxHash?: string;
   settlementChainId?: ChainId;
   createdAt?: string;
@@ -737,15 +730,11 @@ export interface IntentRecord {
 }
 
 /**
- * `GET /api/intent/:id` read without owner proof (xochi#563; served by
- * xochi#565 once deployed): the server's status-only view, for a stealth
- * intent read without the read token or an owner session, and for a shielded
- * intent read without an owner session, token or not (SPEC.md §5.1,
- * `IntentReadOptions`). Tokens, amounts, wallet, quote, tier, fee, timestamps
- * and every tx hash are withheld, so they are absent here rather than
- * defaulted, and `substatus` is present only when it is `not_executed`; read
- * with the token (stealth), or a wallet SIWE session for the intent's wallet,
- * for the full `IntentRecord`.
+ * `GET /api/intent/:id` read without owner proof: the server's status-only
+ * view (who gets it: `IntentReadOptions`). Tokens, amounts, wallet, quote,
+ * tier, fee, timestamps and every tx hash are withheld, so they are absent
+ * here rather than defaulted, and `substatus` is present only when it is
+ * `not_executed`; an owner read returns the full `IntentRecord`.
  */
 export interface WithheldIntentRecord {
   legsWithheld: true;

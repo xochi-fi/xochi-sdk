@@ -41,7 +41,7 @@ export type SwapPhase =
  *   keeps a non-failure status (executing/bridging/settling); when the caller
  *   knows it is reconciling, it surfaces as "pending" ("still confirming"),
  *   never as a failure. This covers both the slow-fill reconcile flip and the
- *   #226 fail-closed success:false downgrade (funds moved, settlement
+ *   fail-closed success:false downgrade (funds moved, settlement
  *   unconfirmed).
  */
 export function phaseFromStatus(

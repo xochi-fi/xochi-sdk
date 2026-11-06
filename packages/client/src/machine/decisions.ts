@@ -160,11 +160,9 @@ export const POLL_CEILING_MAX_MS = 2 * 60 * 60_000;
  * How many polls to run before giving up, for the phase being entered.
  *
  * `awaiting_deposit` is the one phase whose duration the SOLVER sets: Riddler's
- * deposit window defaults to 1800s. The flat ~10 minute ceiling was written for
- * a wedged solver on the EVM path, and applying it here stopped the poll at a
- * third of the window. A deposit that landed after minute ten never advanced the
- * modal, so a swap that had actually settled sat on a spinner, and the user was
- * then told their funds were coming back and to start again.
+ * deposit window defaults to 1800s. It polls through the whole window, not the
+ * flat ~10 minute ceiling (which covers a wedged solver on the EVM path), so a
+ * deposit that lands late in the window still advances the modal.
  *
  * `executing` lasts at least until the Worker's latest finish of an intent no
  * execute holds (`unexecutedFinishAt`, passed as `unexecutedFinishSecs`) plus
@@ -234,12 +232,9 @@ export function canAdoptResumedIntent(state: Pick<IntentState, "status" | "inten
  * `depositDeadline` is the one served fact that must come ACROSS, and it is not
  * an exception to the rule above. No quote is synthesized, because a stale price
  * shown as current would be a lie; a deadline does not go stale, it expires, and
- * carrying it is what lets the poll say so. Omitting it left
- * `pollCeilingAttempts` on its flat 10-minute ceiling while the restored deposit
- * screen counted down the solver's real 30-minute window, so the poll stopped and
- * announced it beside a countdown that disagreed. Null on every pull route.
- *
- * See xochi#339.
+ * carrying it is what lets the poll say so: `pollCeilingAttempts` sizes the poll
+ * to the solver's deposit window, matching the restored deposit screen's
+ * countdown. Null on every pull route.
  */
 export function buildResumedState(
   prev: IntentState,
@@ -567,7 +562,7 @@ export function decideSignPreflight(input: {
 }
 
 // ============================================================
-// Execute result (fund safety, #226)
+// Execute result (fund safety)
 // ============================================================
 
 export type ExecuteDecision =
@@ -637,7 +632,7 @@ const RETRY_AFTER_MAX_AGE_SECS = 60;
 
 /**
  * After the server refused an execute before accepting anything, whether to
- * send the SAME request again and when (rules: README "Fund safety").
+ * send the SAME request again and when.
  * `retryAfter` and `deadline` are unix seconds, `now` the host's clock; a null
  * `deadline` never resends, a `retryAfter` older than
  * `RETRY_AFTER_MAX_AGE_SECS` gives up, and the wait is at least a second, so
@@ -816,11 +811,10 @@ export function notFoundDriftWarning(intentId: string, reportedId: string | null
  * The status-transition table has no self-edges, so a `settling -> settling`
  * poll is an invalid move and `applyStatusTransition` discards the entire
  * update, receipt hashes included. A stealth swap sits at `settling` for its
- * whole life, so that edge is never valid and the fill hash the server returns
- * on every 4s poll never reached the UI: the user was shown "Still confirming"
- * with no transaction link while the settlement was on chain (xochi#353).
+ * whole life, so this merge is what carries the fill hash the server returns
+ * on every poll to the UI (xochi#353).
  *
- * Two deliberate omissions:
+ * Two omissions:
  *
  * - A field that did not ARRIVE is not applied. Blanking a hash we already hold
  *   because a later poll omitted it would flicker the receipt link back off.

@@ -458,7 +458,7 @@ describe("HttpSolverTransport malformed entries", () => {
 
   it("always throws on a malformed batch envelope, even with a handler", async () => {
     // No usable cursor means no safe way to continue: resuming from the old one
-    // replays, inventing one skips. This is deliberately not recoverable.
+    // replays, inventing one skips. Not recoverable.
     const baseUrl = await serve((_req, res) => json(res, { events: [ANNOUNCEMENT] }));
     const transport = new HttpSolverTransport({
       baseUrl,

@@ -27,8 +27,7 @@ describe("SUPPORTED_CHAIN_IDS", () => {
     expect(SUPPORTED_CHAIN_IDS).toContain(ROBINHOOD_CHAIN_ID);
   });
 
-  // Eight EVM chains. Tron is a ninth chain we settle to, but it is non-EVM
-  // and deliberately NOT in this set (see TRON_CHAIN_ID / SelectableChainId).
+  // Eight EVM chains; Tron is outside this set (see TRON_CHAIN_ID).
   it("has exactly 8 EVM chains", () => {
     expect(SUPPORTED_CHAIN_IDS).toHaveLength(8);
   });

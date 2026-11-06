@@ -1,14 +1,6 @@
 /**
- * Stealth SimpleAccountFactory trust anchor.
- *
- * The client FOLLOWS the solver-advertised factory rather than its own pin
- * (#302), because if the two derive against different factories they compute
- * different counterfactual addresses and the recipient cannot find the payout.
- *
- * That is correct for parity and says nothing about trust. The factory decides
- * who owns the account the money lands in, so an advertised factory that
- * deploys an account owned by someone else is theft both sides agree on. These
- * pin the allowlist that bounds what may be followed.
+ * Stealth SimpleAccountFactory trust anchor: pins the allowlist that bounds
+ * which advertised factory may be followed (see `TRUSTED_STEALTH_FACTORIES`).
  */
 
 import { describe, it, expect } from "vitest";

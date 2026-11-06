@@ -10,7 +10,7 @@
 // acceptance rules, so the award -> fill half of the loop is exercised with no
 // network, no credentials and no funds.
 //
-// The offline script deliberately covers the shapes a strictly serialized demo
+// The offline script covers the shapes a strictly serialized demo
 // hides, because each one is a way to lose money rather than a corner case:
 //   * an admissible bid that still loses to the venue's private reserve;
 //   * the best output on the book EXCLUDED because its signed `validUntilMs`
@@ -76,7 +76,7 @@ const SUPPORTED_CHAINS = [11155111, 84532, 421614, 11155420];
 // same scale by accident on a usdc -> usdc corridor. `minFill`/`maxFill` bound
 // the ORIGIN size.
 //
-// No USD notional here on purpose: a USD bound needs a price oracle, and
+// No USD notional here: a USD bound needs a price oracle, and
 // inventing one in a reference solver would hide the fact that a real one is
 // yours to bring.
 const TOKENS: Record<string, { decimals: number; minFill: bigint; maxFill: bigint }> = {
@@ -94,13 +94,13 @@ const TOKENS: Record<string, { decimals: number; minFill: bigint; maxFill: bigin
 //
 // Three things release a hold: a fill consumes it, a refused submission hands
 // it straight back (`releaseBid`), and an elapsed window drops it (`prune`).
-// There is deliberately no fourth: LOSING is not announced -- the feed carries
+// There is no fourth: LOSING is not announced -- the feed carries
 // no "you lost" event -- so a losing bid's hold stays committed until
 // `closesAt + exclusiveWindowMs` has passed and the prune can prove nobody can
 // still award it. That latency is a real cost of bidding, and it is what the
 // float has to be sized against.
 //
-// 50,000 is small on purpose: the overlapping round runs it out, so the third
+// 50,000 is small: the overlapping round runs it out, so the third
 // concurrent auction is refused in the run's own output instead of in prose.
 const INITIAL_FLOAT = 50_000_000_000n; // 50,000 USDC per chain
 const inventory = new Map<string, bigint>();
@@ -573,8 +573,7 @@ interface Round {
   clockAt: number; // simulated wall clock when this announcement is delivered
   announcement: IntentAnnouncement;
   // The venue's own reserve bid for this round. PRIVATE to the auctioneer: it
-  // is deliberately NOT a field of `announcement`, which is the whole point of
-  // RFC 0.3.0-draft. A solver never sees this number.
+  // is NOT a field of `announcement`. A solver never sees this number.
   venueReserve: bigint;
   rivals?: RivalBid[];
 }

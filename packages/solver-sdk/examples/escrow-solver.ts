@@ -696,7 +696,7 @@ export class EscrowSolver implements Solver {
     );
   }
 
-  // Runs beside the feed loop, deliberately not awaited by `fill`. The fill
+  // Runs beside the feed loop, not awaited by `fill`. The fill
   // has already spent inventory (or is owed and being re-driven) and only the
   // claim repays it (the venue never claims for a panel winner), so no single
   // error may end this task: every pass catches its own and retries until a

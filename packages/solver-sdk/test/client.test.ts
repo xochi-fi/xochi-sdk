@@ -59,7 +59,7 @@ class StubTransport implements SolverTransport {
   async getCapabilities(): Promise<VenueCapabilities> {
     this.capabilityReads += 1;
     if (this.capabilities === null) throw new Error("capabilities endpoint is down");
-    // Cast, deliberately: a venue can serve a body with no `rfcVersion` at all
+    // Cast: a venue can serve a body with no `rfcVersion` at all
     // (or a wrong-typed one), and the gate has to be exercisable against that.
     return { phase: "P0", ...this.capabilities } as unknown as VenueCapabilities;
   }

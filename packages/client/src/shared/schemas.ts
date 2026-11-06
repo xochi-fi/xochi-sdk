@@ -171,7 +171,7 @@ export const QuotePromoSchema = z
 /**
  * EIP-712 typed data the user signs. Internal keys follow the EIP-712
  * standard (camelCase: domain.chainId, domain.verifyingContract, primaryType)
- * and are part of the signed payload -- they are intentionally NOT snake_cased.
+ * and are part of the signed payload -- they are NOT snake_cased.
  * Passed through verbatim from the solver. Mirrors the `Eip712TypedData`
  * schema in public/openapi.yaml.
  */
@@ -221,7 +221,7 @@ export const ClaimInfoSchema = z.object({
  * for all five, so this narrowing describes what is actually served rather
  * than restricting it.
  *
- * Deliberately NOT applied to `gas_floor.usd` or `total_usd`: those are dollar
+ * NOT applied to `gas_floor.usd` or `total_usd`: those are dollar
  * figures and are legitimately decimal ("0.022663").
  */
 const feeLayerBaseUnits = z
@@ -271,7 +271,7 @@ export const FeeBreakdownSchema = z.object({
   total_fee: feeLayerBaseUnits,
   total_usd: z.string(),
   surplus_share_pct: z.number(),
-  // Present when a promo code was in play on the quote (xochi#584): which
+  // Present when a promo code was in play on the quote: which
   // discount priced it and how much it took off the Standard venue + routing
   // layers. Emitted by the solver, which priced it; the worker reads `source`
   // to decide whether the code was applied rather than assuming it was.
@@ -309,7 +309,7 @@ export type FeeDenomination = z.infer<typeof FeeDenominationSchema>;
 
 /**
  * The WIRE shape of a fee breakdown (snake_case), distinct from the camelCase
- * `FeeBreakdown` domain type in `types.ts`. Named apart on purpose: the two
+ * `FeeBreakdown` domain type in `types.ts`. Named apart because the two
  * describe the same fifteen values in two different casings, and a worker that
  * forwards the wire form must not be handed the domain type by mistake.
  * `mapQuoteResponse` is the one place that converts between them.
@@ -377,7 +377,7 @@ export const QuoteResponseSchema = z
         "computer's own declaration. ABSENT MEANS UNKNOWN, never a default: when " +
         "there is no `fee_breakdown` the field is omitted entirely.",
     ),
-    // Referral attribution for the routing layer (xochi#583). Xochi-owned and
+    // Referral attribution for the routing layer. Xochi-owned and
     // a sibling of `fee_breakdown` rather than inside it: the breakdown is the
     // solver's itemization and may be absent, while the routing line exists on
     // every quote (the client derives one without a breakdown).
@@ -388,7 +388,7 @@ export const QuoteResponseSchema = z
       .describe(
         "Present when a `ref` was sent and not applied. Deliberately one fixed text for every reason (unknown, expired, revoked, not valid for this key, a key that does not accept referrals, self-referral), so the response does not reveal whether a code exists. The quote is otherwise identical to one sent without `ref`.",
       ),
-    // Promo code outcome (xochi#584). Xochi-owned siblings of `fee_breakdown`:
+    // Promo code outcome. Xochi-owned siblings of `fee_breakdown`:
     // the breakdown itemizes the discount (`fee_breakdown.discount`), these say
     // whether the code the caller sent is the thing that priced it.
     promo: QuotePromoSchema.optional(),
@@ -448,7 +448,7 @@ export const QuoteResponseSchema = z
     // Echo of the requested destination recipient (non-EVM/Tron routes). These
     // routes carry no wallet signature, so recipient integrity rides on this
     // authenticated channel: the client asserts the solvable quote echoes exactly
-    // the address it asked for and fail-closes otherwise (#113). Base58 is
+    // the address it asked for and fail-closes otherwise. Base58 is
     // case-sensitive -- passed through verbatim, never lowercased.
     recipient_address: recipientAddress.optional(),
     settlement_options: z.array(SettlementOptionSchema).optional(),
@@ -468,10 +468,10 @@ export const QuoteResponseSchema = z
     // Four are worker-side fail-closed guards; the rest come from
     // `classifyDecline` (decline.ts), whose returns are a closed set of literals
     // with `unknown` as the catch-all.
-    // Documented, deliberately NOT enumerated. The worker owns four of these,
+    // Documented, NOT enumerated. The worker owns four of these,
     // but the rest come from `classifyDecline` (decline.ts) over solver reasons,
     // and the contract test below asserts an unlisted value still parses -- this
-    // side of the vocabulary is intentionally open, so a new upstream reason must
+    // side of the vocabulary is open, so a new upstream reason must
     // not start failing every client that validates.
     error_category: z
       .string()
@@ -513,8 +513,8 @@ export const QuoteResponseSchema = z
   .strict();
 
 /**
- * Length of an intent read capability (`read_token` on the execute response,
- * xochi#563): 32 random bytes as unpadded base64url.
+ * Length of an intent read capability (`read_token` on the execute response):
+ * 32 random bytes as unpadded base64url.
  */
 export const READ_TOKEN_LENGTH = 43;
 
@@ -558,15 +558,11 @@ export const ExecuteResponseSchema = z
       .describe(
         "`not_executed` on a `failed` where nothing moved, served by the execute 502 of the worker's own finishes (the resend budget's, a not-accepted refusal whose un-claim's write failed, no solver configured, a solver refusal carrying `details.funds_moved: false`) and echoed from the row by the lost-race 502 and the in-doubt 200: safe to re-quote. Absent on any other failure. Every source: docs/contracts/xochi-intent-api.md, \"The worker's not_executed marker\".",
       ),
-    // Per-intent read capability (xochi#563): 32 random bytes, base64url, no
-    // padding. Served once, by the execute that admits the intent; present it as
-    // `X-Xochi-Read-Token` on `GET /api/intent/:id[/status]` to read the owner's
-    // view of a stealth intent; a shielded intent's token read gets the
-    // status-only view (SPEC.md §5.1). Older servers omit it. The one declared
-    // field that never fails the body: a malformed token is dropped, because this
-    // body reports an execute that may already have moved funds, and failing it
-    // would turn a settled swap into an in-doubt one over a privacy-only field.
-    // The describe is xochi's (xochi#565, `0317e84`) verbatim.
+    // Per-intent read capability; rules: `IntentReadOptions` (transport/client.ts).
+    // The one declared field that never fails the body: a malformed token is
+    // dropped, because this body reports an execute that may already have moved
+    // funds, and failing it would turn a settled swap into an in-doubt one over a
+    // privacy-only field. The describe is xochi's verbatim.
     read_token: z
       .string()
       .regex(READ_TOKEN_PATTERN)
@@ -603,7 +599,7 @@ export const EXECUTE_RESEND_MARGIN_SECS = 5;
  * skew between the Worker, the database (whose clock the claim's deadline
  * check uses), the solver and the client. Measured from the signed deadline;
  * the quote sweep's own 60 s is measured from the Worker's 30 s quote expiry
- * and usually ends a touched row first (README "Fund safety"). Mirrors
+ * and usually ends a touched row first. Mirrors
  * `QUOTED_EXPIRY_GRACE_SECS` in xochi's `@xochi/shared` `schemas.ts`. The
  * machine polls an execute at least this long past the quote's deadline
  * (`unexecutedFinishAt`).
