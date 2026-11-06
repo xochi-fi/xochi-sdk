@@ -17,12 +17,12 @@
 
 ### Implementation-status legend
 
-- **`[IMPLEMENTED]`** — exists in the Riddler server/contracts today.
-- **`[PROPOSED]`** — net-new; MUST be built before it is real.
-- **`[BUILT, UNDEPLOYED]`** — code exists in Riddler, is not deployed and is
+Tags as defined in the `SOLVER-RFC.md` legend, plus:
+
+- **`[BUILT, UNDEPLOYED]`**: code exists in Riddler, is not deployed and is
   gated off; a section header keeps the status of its least-built part.
-- **`[RESERVED]`** — pinned here, inert until M6 ships behind the escrow
-  capability flag (`SPEC.md` §6).
+
+History: [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -210,19 +210,15 @@ Successor to `XochiPull*` as the pull `to`/`spender`. One per EVM origin chain.
 
 ## 4. `RiddlerFiller` (destination) `[PROPOSED]`
 
-> **Amended by §9.4 before implementation.** The signature below is the
-> pre-confidentiality shape and MUST NOT be built as written: emitting `orderId`
-> on the destination is the cross-chain join described in §9.2. §9.4 replaces the
-> key with a derived `fillId` and preserves single-shot. Read §9.4 before writing
-> this contract (§9.8).
+`fill(fillId, to, token, amount, deadline, auth)` pays the recipient and emits
+`Filled`, the canonical proof source. `auth` is the venue's `FillAuth`
+signature (§9.4 table); `fillId = keccak256(abi.encode(orderId, fillSalt))`
+with the derived `fillSalt` of §9.4. **Single-shot per `fillId`** (no
+double-fill). The destination never takes or emits `orderId`: that would be
+the cross-chain join of §9.2 (C1, §9.3). The solver spends its own inventory
+here; it is made whole only by a later `claim` on the origin escrow (§3).
 
-`fill(orderId, to, token, amount)` pays the recipient and emits `Filled`, the
-canonical proof source. **Single-shot per `orderId`** (no double-fill), which is
-the property §9.4 must preserve when it changes the key. The solver spends its own
-inventory here; it is made whole only by a later `claim` on the origin escrow
-(§3).
-
-## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[BUILT, UNDEPLOYED]`, §11.0; tiers 1, 1s and 2 unbuilt, Appendix A)
+## 5. Proof-of-fill `[PROPOSED]` (tier-0 attesters `[BUILT, UNDEPLOYED]`; tiers 1, 1s and 2 unbuilt; Appendix A)
 
 A pluggable `IProofOfFill` verifier, tiered per corridor and swapped via
 `setProofVerifier(destChainId, …)` **with zero change to the user signature**.
@@ -231,7 +227,7 @@ Tiers map onto the `ProofReceipt.proof_tier` (`SPEC.md` §5.2.3) and the
 
 | Tier | `proof_tier`           | `FillProof.kind`                               | Trust                                                                                                                       |
 | ---- | ---------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (attesters `[BUILT, UNDEPLOYED]`; see §11.0)                                                             |
+| 0    | `attested`             | `tx_hash` / `oracle_attestation`               | venue oracle watch (attesters `[BUILT, UNDEPLOYED]`; Appendix A)                                                            |
 | 1    | `optimistic`           | `oracle_attestation` + bonded challenge window | bonded claim, challengeable                                                                                                 |
 | 1s   | `optimistic_disclosed` | `aztec_note_preimage`                          | venue verifies note inclusion on its own node from a solver-disclosed preimage; bonded; recipient hold (§5.1, `[PROPOSED]`) |
 | 2    | `verified`             | `light_client` / `zk`                          | trust-minimized                                                                                                             |
@@ -287,7 +283,7 @@ FillProof { kind:            "aztec_note_preimage",
 pins it as `XSP_AZTEC_CHAIN_ID = 0x41A7EC` (4302828; xochi
 `docs/architecture/settlement-protocol.md`, `Evidence.destChainId`), and the
 `RiddlerEscrow` `OrderTerms.toChainId` for an Aztec leg is `[RESERVED]` to the
-same value until M6.1's vectors pin it; no `orderId` vector covers it yet.
+same value until an `orderId` vector pins it; none covers it yet.
 Two Aztec networks (a testnet and mainnet, or one rollup redeployed) can
 share the label, so it never selects a node, a registry partition or a
 release.
@@ -451,7 +447,7 @@ which the awardee controls, judged against the pins recorded with the
 award, is never unproven: it is refused on content as soon as the venue's
 own node has answered the read it needs (at once, for a check on the
 payload alone). A disclosure's
-**receipt** is its attributable `POST /solver/fills` record (§11.0),
+**receipt** is its attributable `POST /solver/fills` record (`SOLVER-RFC.md` §6),
 timestamped by the venue on arrival. For §6 every received disclosure
 resolves, by `holdDeadline` (Claim window, below) at the latest, into
 exactly one class:
@@ -1156,19 +1152,12 @@ signatures, both by the solver's one key (bid signer = FillAuth `filler` =
    node and slash attester recompute both from the committed order; neither
    accepts an API-writable amount or deadline. A refused shielded `:winner`
    leaves the leg with no FillAuth (§5.1 MUST NOT).
-2. **FillAcceptance** (`SOLVER-RFC.md` §5.3), signed only once the solver holds
-   a FillAuth it has checked it can fill in time, and verified on-chain:
-
-   `FillAcceptance(bytes32 orderId,uint256 originChainId,address escrow,address filler,uint256 deadline,bytes32 fillAuth)`
-
-   `fillAuth` is the `:winner` FillAuth's own EIP-712 digest under
-   `RiddlerFiller`'s domain (§9.4 table). It is a commitment, not the plaintext,
-   because `proposeSlash` publishes the acceptance in calldata on the bond chain,
-   which can be an origin chain, and C2/C3 (§9.3) forbid `fillId` or the opening
-   beside `orderId` there; the digest is hiding because `fillId` commits the
-   venue's `fillSalt`. `deadline` stays in the clear for `FillWindowOpen`. The
-   arbiter receives the FillAuth preimage off-chain and checks it hashes to
-   `fillAuth`.
+2. **FillAcceptance** (`SOLVER-RFC.md` §5.3; type in the §9.4 table), signed
+   only once the solver holds a FillAuth it has checked it can fill in time,
+   and verified on-chain. Its `fillAuth` member is the `:winner` FillAuth's own
+   EIP-712 digest, a commitment rather than the plaintext (why: `SOLVER-RFC.md`
+   §5.3). The arbiter receives the FillAuth preimage off-chain and checks it
+   hashes to `fillAuth`.
 
 ```solidity
 proposeSlash(SlashClaim c, bytes attesterSig, FillAcceptance a, bytes solverSig)
@@ -1292,8 +1281,9 @@ capability flip. When active:
      `escrow.address` is never an operand;
    - assert `terms.depositor == signer`, `terms.fromToken == pull-auth token`
      and `terms.fromAmount == pull-auth amount`;
-   - for ERC-3009, assert `nonce == orderId`; for Permit2, assert the witness
-     `orderId == orderId`.
+   - for ERC-3009, assert `nonce == orderId`; for Permit2, assert the signed
+     witness `orderId` (`witnessOrderId`, required: a binding without it
+     refuses) equals `orderId`.
 
    Any failure means the venue could redirect principal or the destination; the
    client MUST abort before signing. The client keeps the opening: it is its
@@ -1398,7 +1388,7 @@ orthogonal axes.
 
 ### 9.4 Fill binding without a shared key `[PROPOSED]`
 
-Satisfying C1 is an amendment to §4:
+§4's `fill` satisfies C1 by keying on a derived `fillId`:
 
 ```
 fill(fillId, to, token, amount, deadline, auth)   -- auth: venue FillAuth signature (table below)
@@ -1440,9 +1430,8 @@ r||s||v, low-s. Reference: `@xochi/signer` `fillAuthDigest`/`signFillAuth`,
 `npm run generate:escrow`.
 
 **This binding is normative, and the reason is fund safety, not privacy.** §4's
-single-shot rule stops a destination being paid twice, and the current ABI
-enforces it on `orderId`. Once the destination
-key becomes `fillId`, single-shot only holds if `fillId` is 1:1 with `orderId` --
+single-shot rule stops a destination being paid twice, and it binds per
+`fillId`, so it holds only if `fillId` is 1:1 with `orderId` --
 so the salt MUST be a pure function of `orderId` (under the key version fixed
 for that order, below), identical for every party who ever fills that order.
 
@@ -1520,7 +1509,7 @@ proof tiers 0–1 and shielded-Aztec legs to tier 1s because their finality is
 not verifiable from an origin EVM chain. Shielded-Aztec is also the _only_
 corridor that can reach confidentiality tier 2. So the corridor carrying the
 strongest privacy promise is the one whose available proofs most restrict
-privacy. §5.1 now specifies (not builds) the shielded release path: a disclosed
+privacy. §5.1 specifies (not builds) the shielded release path: a disclosed
 proof the venue verifies on its own node. Both custody paths keep C2: on
 `RiddlerEscrow` the origin artifact is `FillAttestation(orderId, payee)`; on
 the XSP path it is the blinded `fillCommitment` (xochi
@@ -1567,18 +1556,6 @@ when the Aztec tx landed (§9.5).
 - **The venue itself.** The auctioneer sees plaintext terms by construction. §1
   governs what it can move, not what it knows.
 
-### 9.8 Sequencing
-
-C1 changes §4's ABI, and §4 is `[PROPOSED]` and unwritten. The change is free
-today and a `@xochi/spec` MAJOR plus a redeploy after M6.2 (§10, §11.1).
-
-- C1 and C2 MUST be resolved **before M6.2's contracts are written**, not before
-  its exit gate.
-- M6.1's cross-implementation vector set SHOULD cover `fillId` derivation
-  alongside `orderId`, for the same reason: silent drift here does not fail loudly.
-- A corridor MUST NOT advertise `escrow.enabled` with a confidentiality tier it
-  has not demonstrated (C5).
-
 ## 10. Conformance & versioning `[RESERVED]`
 
 - A conformant **escrow implementation** MUST reproduce the §2 `orderId` vectors
@@ -1588,180 +1565,37 @@ today and a `@xochi/spec` MAJOR plus a redeploy after M6.2 (§10, §11.1).
   wire/preimage change) and declares a peer range on `@xochi/spec`. The escrow
   surface is **additive** and capability-flagged — a server MAY run the taker
   path with no escrow (P0).
-- Reserved in `@xochi/spec` `0.4.0`; activated at M6.
-- `0.5.0-draft`: the §7 client guard compares the escrow to a **required
-  caller-pinned** escrow per origin chain (`@xochi/signer` `0.4.0`,
-  `EscrowBinding.expectedEscrows`) instead of the quoted `escrow.address`, which
-  is no longer an input; every escrow-family digest, signer and domain `chainId`
-  parses uints strictly (§7). Two more `EscrowBinding` inputs are now
-  required: `toChainId`, the destination chain the user asked for, which
-  `OrderTerms.toChainId` must equal; and on a Permit2 `pullAuth`,
-  `witnessOrderId`, the `OriginPullWitness` orderId the user signs, which must
-  equal the recomputed `orderId`. A binding missing either throws. No
-  preimage, digest or vector changes.
-- `0.5.0-draft` (docs only, no version bump; this draft's policy is that
-  `[PROPOSED]` text versions with its wire landing): proof tier 1s
-  (`optimistic_disclosed` / `aztec_note_preimage`) for shielded-Aztec legs,
-  normative in §5.1, with its slash, withdrawal and outcome-record rules in
-  §6; the legend gains `[BUILT, UNDEPLOYED]`. No preimage, digest or vector
-  changes.
+- `[PROPOSED]` text does not move the RFC version; it versions with its wire
+  landing.
+- **Invariants.** These hold at every activation phase:
+  - **I1: no release without a verdict.** Funds release only against a
+    `verified` verdict for that exact `orderId`. A receipt is a claim, never a
+    trigger.
+  - **I2: terms beat receipts.** Recipient, token, and amount come from the
+    user-signed `OrderTerms` and its opened commitment. Nothing a solver
+    submits can change what is paid or to whom.
+  - **I3: fail closed.** An unknown, unsupported, or unparseable proof never
+    advances state (§5), at intake and in the gateway.
+  - **I4: preimage parity or refuse to sign.** If `orderId` cannot be
+    reproduced identically by the client, the client aborts before signing
+    (§7).
+  - **I5: bounded payout.** A solver cannot be released more than the
+    principal locked for that intent, and cannot be released twice.
+  - **I6: no strandable funds.** `refund` (§3) is always reachable without
+    solver cooperation once `refundableAt` passes. Without it the arrangement
+    is escrowed but not non-custodial.
+- **Kill switch.** The capability is a flip, not a deploy:
+  `escrow_binding_available?` false stops all third-party awards immediately,
+  and in-flight locks remain refundable via I6. Removing one solver from the
+  panel (`SOLVER-RFC.md` §3.1, §8) stops that solver alone. Neither path
+  requires a contract upgrade, and neither can strand a taker's principal.
 
 ---
 
-## 11. Execution plan (M6-core) `[PROPOSED]`
+## 11. Delivery plan
 
-§§1–9 describe the _design_; this section is the order it ships in, with a gate
-on each step. The risk M6 runs is shipping the release predicate and its
-verifier on the same day: the first bug in verification is then a fund bug.
-
-### 11.0 What M6 already stands on
-
-M6 should not rebuild what M4 landed. Merged to axol-io/riddler `master` on
-2026-08-09 (#770–#774), behind `SOLVER_RFQ_ENABLED` and
-`SOLVER_ANNOUNCE_ON_QUOTE`, **both default off**, so the surface 404s and the
-taker quote path is untouched until an operator opts in twice:
-
-| Already built                                                                     | Why M6 needs it                                                       |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Sealed-bid auction + addressed awards                                             | the thing being escrowed against                                      |
-| `SolverDirectory` allowlist + secret↔`solverId` binding                           | P1 admission control (§6)                                             |
-| Award selection gated on an **escrow envelope**, not a config flag                | the gate M6 flips, and it cannot be flipped by configuration alone    |
-| `POST /solver/fills` intake: attributable receipts, unknown kinds fail closed     | the input side of the release predicate, already running              |
-| `computeOrderId` / `assertEscrowBinding` (`@xochi/signer`), `StubEscrowGateway` | the client guard (§7) and the interface the real gateway must satisfy |
-
-**Nothing deployed verifies a fill, and the third-party oracle substrate does
-not exist.** The tier-0 attesters (Riddler `lib/riddler/solver/escrow/*`) are
-`[BUILT, UNDEPLOYED]` and gated off, so nothing in the deployed server submits
-or verifies a proof of fill today; the third-party oracle orchestration (the
-`oracle_attestation` watch) was removed (riddler #766).
-
-What remains is the per-protocol API clients (`Riddler.Integrations.{Polymer,
-Wormhole,Hyperlane}`) with **zero callers**. The expensive parts survived
-(Hyperlane ISM metadata + checkpoint fetching, Wormhole VAA parsing, the Polymer
-proof API), so they stay. M6.0 must build the thin layer above them: a verifier
-behaviour, a per-corridor registry and a proof validator. Its exit gate
-therefore covers net-new work, not a wiring exercise.
-
-**Once that stack lands, the only thing standing between it and a third-party
-payout is that `Award.for_panel` cannot bind an envelope.** Every other rule
-that gates money (award selection, receipt attribution, fail-closed proofs) is
-written and tested, and will run on the live quote path with nothing at stake.
-M6 is not building those rules; it is making the one they all defer to
-satisfiable.
-
-### 11.1 Phases
-
-Each phase is gated: the exit criteria must hold before the next begins.
-
-#### M6.0 — Verification in shadow _(no contracts, no funds, no wire change)_
-
-Resolve `FillProof`s through the tier-0 oracle watch and record a verdict
-(`verified` / `unverified` / `mismatched`) as telemetry. **Nothing gates on the
-verdict.**
-
-At P0 no third-party receipt can arrive (the venue answers
-`501 solver_awards_not_enabled`), so there is no external stream to verify. The
-input is therefore **the venue's own fills**, which Riddler performs on every
-intent today and which can be cross-checked against its settlement records. It
-is the one population where the correct answer is already known, so a verifier
-that disagrees is provably wrong.
-
-- **Owner:** Riddler server.
-- **Exit gate:** the verifier reproduces the known-correct verdict for the
-  venue's own fills at 100% over a sustained window; the `mismatched` rate for
-  legitimate fills is zero; no verifier crash or timeout affects settlement.
-
-#### M6.1 — `orderId` parity across three implementations
-
-`destCommitment` and `orderId` (§2) must be byte-identical in TypeScript
-(`@xochi/signer`), Solidity (`RiddlerEscrow`), and Elixir (the server). Drift
-here does not fail loudly: it redirects principal to a lock nobody can open.
-
-Modeled on M3: a cross-implementation CI job over the §2.3 reference vectors, in
-the same shape as the 45-vector conformance suite.
-
-- **Owner:** `@xochi/spec` (vectors) + contracts + server.
-- **Exit gate:** a green cross-impl job over every §2.3 vector, including the
-  awkward cases: non-EVM `recipient` (base58, `bytes32`), zero amounts,
-  max-uint deadlines. Extend the vector set before the contract is written, not
-  after.
-
-#### M6.2 — Contracts on testnet, capability off in prod
-
-Deploy `RiddlerEscrow` (+ `RiddlerFiller` where the corridor needs it), replace
-`StubEscrowGateway` with a real gateway (solver side: `@xochi/solver-sdk`
-`OnchainEscrowGateway`, `SOLVER-RFC.md` §7.1), populate the §5.2 envelope, point
-pull-auth at the escrow address, and activate the §7 client guard. Prod keeps
-`escrow_binding_available?` false, so no third party is awarded anywhere real.
-
-- **Owner:** contracts + server + SDK.
-- **Exit gate:** on testnet, end to end with the venue's own solver as
-  counterparty: lock → award → fill → verified proof → release. **And the abort
-  paths, which are the ones that strand funds:** no fill → `void` after deadline
-  without solver cooperation; wrong-amount, wrong-token, or wrong-recipient fill
-  → no release; duplicate proof → no double release; reorg on the destination
-  after a verdict → no release.
-
-#### M6.3 — P1 canary: one solver, capped
-
-Flip the capability in production for a **single** allowlisted solver, with a
-per-intent notional cap and a corridor whitelist. Real funds, bounded loss.
-
-- **Owner:** ops + server.
-- **Entry gate:** `SOLVER-RFC.md` §5.3 controls every third-party escrowed
-  `:winner`; a shielded leg additionally satisfies §5.1 "Shielded admission",
-  the single home of its admission preconditions.
-- **Exit gate:** a sustained run with zero releases lacking a `verified` verdict;
-  the backstop exercised **at least once** (an arranged no-show) so the path
-  that protects the taker is known to work before it is needed; the kill switch
-  (§11.3) exercised.
-
-#### M6.4 — P1 general
-
-Open to the full allowlist, raise caps, retire the corridor whitelist per
-corridor as its proof tier justifies it. Bonds and slashing (§6) are **P2/M7**,
-not M6: an allowlist plus escrow already bounds the loss to a solver's own gas.
-
-### 11.2 Invariants
-
-These hold at every phase and are the acceptance criteria for M6-core:
-
-- **I1: no release without a verdict.** Funds release only against a
-  `verified` verdict for that exact `orderId`. A receipt is a claim, never a
-  trigger.
-- **I2: terms beat receipts.** Recipient, token, and amount come from the
-  user-signed `OrderTerms` and its opened commitment. Nothing a solver submits can change what is paid or
-  to whom.
-- **I3: fail closed.** An unknown, unsupported, or unparseable proof never
-  advances state (§5). Already enforced at intake and by `StubEscrowGateway`.
-- **I4: preimage parity or refuse to sign.** If `orderId` cannot be reproduced
-  identically by the client, the client aborts before signing (§7).
-- **I5: bounded payout.** A solver cannot be released more than the principal
-  locked for that intent, and cannot be released twice.
-- **I6: no strandable funds.** `void` after `fill_deadline` is always reachable
-  without solver cooperation. Without it the arrangement is escrowed but not
-  non-custodial.
-
-### 11.3 Kill switch
-
-The capability is a flip, not a deploy: `escrow_binding_available?` false stops
-all third-party awards immediately, and in-flight locks remain refundable via
-I6. A revocation of a `SolverDirectory` entry stops that solver alone. Neither
-path requires a contract upgrade, and neither can strand a taker's principal,
-which is what makes the M6.3 canary safe to run.
-
-### 11.4 Ownership
-
-| Piece                                                                              | Repo                                                                      |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `OrderTerms`/`destCommitment`/`orderId` preimage, `OpenAuth`, vectors, client guard, `EscrowGateway` interface | `xochi-sdk` (`@xochi/spec`, `@xochi/signer`, `@xochi/solver-sdk`) |
-| Escrow gateway, verifier wiring, envelope population, capability flag              | Riddler server (#750/#751)                                                |
-| `RiddlerEscrow`, `RiddlerFiller`, `IProofOfFill`                                   | contracts (out-of-repo)                                                   |
-
-This repo owns everything a _counterparty_ must reproduce independently, so a
-solver or auditor can verify the venue without running it.
-
----
+Delivery planning (M6 phases, gates and ownership) lives in the Riddler and
+xochi planning docs; the invariants and kill switch it rests on are §10.
 
 ## 12. `OpenAuth`: venue signature on open (#1209, audit M-3) `[RESERVED]`
 
@@ -1884,23 +1718,21 @@ nothing is deployed), vendored byte-identical by the Riddler server as
 
 | Area                                            | Status          | Where                                                                                                     |
 | ----------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| Third-party fill oracles (`oracle_attestation`) | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain (§11.0) |
+| Third-party fill oracles (`oracle_attestation`) | `[PROPOSED]`    | deleted by riddler #766; only orphaned `Integrations.{Polymer,Wormhole,Hyperlane}` clients remain, with zero callers |
 | `OrderTerms` / `orderId` / `OpenAuth` reference | `[RESERVED]`    | `@xochi/signer` `computeDestCommitment`, `computeOrderId`, `openAuthDigest` + §2, §12                   |
 | Escrow-binding client guard                     | `[RESERVED]`    | `@xochi/signer` `assertEscrowBinding` + §7                                                              |
 | `EscrowGateway` stub (fund-safety)              | `[RESERVED]`    | `@xochi/solver-sdk` `StubEscrowGateway` + §1/§5                                                         |
 | Solver-side gateway (verify, final, fill, claim) | `[RESERVED]`   | `@xochi/solver-sdk` `OnchainEscrowGateway` + `SOLVER-RFC.md` §7.1                                       |
-| `RiddlerEscrow` / `RiddlerFiller`               | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/*.sol`; M6.2)                                      |
-| `IProofOfFill` tier 0 (venue attesters)         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `lib/riddler/solver/escrow/*`; §11.0)                                            |
+| `RiddlerEscrow` / `RiddlerFiller`               | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/*.sol`; §3, §4)                                    |
+| `IProofOfFill` tier 0 (venue attesters)         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `lib/riddler/solver/escrow/*`; §5); nothing deployed verifies a fill             |
 | `IProofOfFill` tiers 1–2                        | `[PROPOSED]`    | — (unbuilt; §5)                                                                                           |
 | `IProofOfFill` tier 1s (shielded-Aztec preimage) | `[PROPOSED]`   | — (unbuilt; §5.1, xochi `shielded-execution.md` D9; no verifier, registry, fill tag or recipient hold exists) |
-| `SolverBond` / slashing                         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §11.1)                            |
+| `SolverBond` / slashing                         | `[BUILT, UNDEPLOYED]` | gated off (Riddler `contracts/riddler-escrow/src/SolverBond.sol`; §6)                               |
 | `SolverBond` `MAX_SLASH_DELAY` / `SlashTooLate` | `[PROPOSED]`    | — (unbuilt; not in the built `SolverBond.sol`; a lockstep `SolverBond` change, §6.1)                      |
-| Sealed-bid auction, award, allowlist            | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/*` (`SOLVER-RFC.md` §§4–5)                                                    |
-| Fill-receipt intake (recorded, not settled)     | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/fill_receipt.ex` (§11.0)                                                      |
-| Award gated on escrow envelope, not config      | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/award.ex` `for_panel/6` (§11.0)                                               |
-| M6 execution plan + invariants                  | `[PROPOSED]`    | §11                                                                                                       |
+| Award gated on escrow envelope, not config      | `[IMPLEMENTED]` | `riddler/lib/riddler/solver/award.ex` `for_panel/6` (§7)                                                  |
+| M6 invariants, kill switch                      | `[PROPOSED]`    | §10                                                                                                       |
 | Confidentiality invariants C1–C5                | `[PROPOSED]`    | §9.3                                                                                                      |
-| `fillId` blinded fill binding                   | `[PROPOSED]`    | §9.4 (amends §4; MUST land before M6.2)                                                                   |
+| `fillId` blinded fill binding                   | `[PROPOSED]`    | §4, §9.4                                                                                                  |
 | Confidentiality tiers + per-corridor disclosure | `[PROPOSED]`    | §9.5 (capability surface: `SPEC.md` §6)                                                                   |
 
 ## Appendix B — Glossary
@@ -1927,104 +1759,80 @@ issued-notional cap, `MAX_SLASH_DELAY` (latest slash proposal),
 
 ## Appendix C — Open questions (tier 1s)
 
-Not normative, and not `[PROPOSED]`: nothing here is a rule. Rounds 7 to 9
-of the adversarial review of xochi-sdk#34 put the mechanisms below into
-§5.1, and each round's fix to them raised new findings, so they are
-withdrawn from §5.1 and kept as questions, each with the review findings
-(cited by ID) that make it hard. They are numbered Q1–Q5; C1–C5 elsewhere
-in this RFC are §9.3's confidentiality invariants. Until one is settled,
-§5.1's conservative rules stand: a burned tag is never slash grounds and
-sanctions nobody (Burned tag), every burn halts shielded issuance, quotes
-and opens until a cause is recorded for it (Shielded halt), and no solver
-other than the venue's own holds a shielded award until every condition of
-Shielded admission holds, Q1 and Q3 among them.
+Not normative, and not `[PROPOSED]`: nothing here is a rule. Each question is
+a mechanism kept out of §5.1 because every version of it raised new findings
+in review; the findings are in xochi-fi/xochi-sdk#34. They are numbered
+Q1–Q5; C1–C5 elsewhere in this RFC are §9.3's confidentiality invariants.
+Until one is settled, §5.1's conservative rules stand: a burned tag is never
+slash grounds and sanctions nobody (Burned tag), every burn halts shielded
+issuance, quotes and opens until a cause is recorded for it (Shielded halt),
+and no solver other than the venue's own holds a shielded award until every
+condition of Shielded admission holds, Q1 and Q3 among them.
 
 **Q1. A sanction for a burned tag.** What an awardee bears when the tag of
 its award is burned, so that burning costs more than the slash it avoids,
 without giving a venue-side `fillSalt` holder a way to sanction an innocent
-awardee. Withdrawn design: each `tag_burned` order opens a pending strike
-that suspends its awardee from shielded awards; the operator reviews it,
-default-innocent, by a review deadline (`shieldedStrikeReviewPeriod`, at
-most the shortest shielded `claimWindow`); a standing strike counts for
-`shieldedStrikeWindow`; `shieldedStrikeLimit` counting strikes remove the
 awardee. Why it is hard:
 
 - A private tx hides which `fillSalt` holder emitted the tag, so any
-  sanction on a burn is one a venue-side holder can cause (round 6 A34-1:
-  `tag_burned` as the awardee's fault let a venue-side holder frame it for a
+  sanction on a burn is one a venue-side holder can cause (treating
+  `tag_burned` as the awardee's fault lets that holder frame it for a
   no-show slash).
 - With no sanction, an awardee holding N shielded awards burns N tags and
-  escapes N slashes (R7ASab-6), the residual §5.1 states.
-- Default-guilty strikes let a covert venue-side burner remove an honest
-  solver (R8ASecurity-34-1, R8ASab-9). Default-innocent strikes let it keep
-  one awardee suspended at one burn per review period, and price a
-  self-burn at one suspension, never a slash (R10ASecurity-34-6).
+  escapes N slashes, the residual §5.1 states.
+- Strikes that suspend the awardee fail either way: default-guilty strikes
+  let a covert venue-side burner remove an honest solver; default-innocent
+  strikes let it keep one awardee suspended at one burn per review period,
+  and price a self-burn at one suspension, never a slash.
 - Direction: bind the tag to an awardee-held secret committed in
   `FillAcceptance` (§6.1), so that a burn is provably the awardee's own.
   That changes the signed type and `conformance/fill-acceptance.json`.
 
 **Q2. Venue-side exposure and the halt lift.** When shielded issuance may
 resume after a burn or a venue-side `fillSalt` leak, and what record ends
-the halt. Withdrawn design: a **`fillSalt` exposure** record naming key
-versions or orders, with a cause the operator may record later, closed only
-by a `venueKey` rotation retiring the versions it names or by the
-operator's record that a non-key path is shut; and a **cross-awardee
-trigger**, which recorded an exposure once strikes cleared without
-attribution on two or more awardees within one `shieldedStrikeWindow`. Why
-it is hard:
+the halt. Why it is hard:
 
-- A lift on a recorded cause without a rotation left a leaked key in use,
-  and with more than one awardee nothing halted at all (R9ASecurity-34-2,
-  R9ASab-34-1).
+- A lift on a recorded cause without a `venueKey` rotation leaves a leaked
+  key in use, and a rotation re-keys a leaking venue service.
 - Closing a burn-derived exposure by recording a non-key cause is a cover
-  path for an insider holding the key (R10ASecurity-34-3).
-- A trigger on cleared strikes fires only after a review period, so a
-  venue-side framer suspends every third-party awardee in the meantime while
-  the venue's own solver keeps shielded flow, and a rotation re-keys a
-  leaking venue service (R10ASab-34-1).
-- The trigger is a liveness lever: two Sybil identities halt every
-  corridor, it re-fires on later clears, and the exposure clears every
-  pending strike on the panel (R10ASecurity-34-2); ordinary crashes before a
-  preimage is journaled trip it (R10ASab-34-2).
+  path for an insider holding the key.
+- A trigger on strikes cleared without attribution across awardees fires
+  only after a review period, during which a venue-side framer suspends
+  every third-party awardee while the venue's own solver keeps shielded
+  flow. It is also a liveness lever: two Sybil identities halt every
+  corridor, it re-fires on later clears, clearing it clears every pending
+  strike on the panel, and ordinary crashes before a preimage is journaled
+  trip it.
 
-§5.1 now halts on every burn until a cause is recorded for it, by a
-verified late disclosure or the operator's record, and states that the
-operator's lift rests on that record (Shielded halt, Residuals). Without
-the trigger, one undisclosed fill of the venue's own solver halts every
-corridor (R11ASab-34-2): §5.1 names the evidence that lifts it with no
-rotation (the burning tx nullifying a note of that solver's account) and
-states the residual when that evidence is lost too. Whether a lift can
-rest on a record a counterparty can check is open.
+§5.1 halts on every burn until a cause is recorded for it, by a verified
+late disclosure or the operator's record, and states that the operator's
+lift rests on that record (Shielded halt, Residuals); for a halt caused by
+an undisclosed fill of the venue's own solver it names the evidence that
+lifts it with no rotation (the burning tx nullifying a note of that
+solver's account) and the residual when that evidence is lost too. Whether
+a lift can rest on a record a counterparty can check is open.
 
-**Q3. A per-awardee cap on open shielded awards.** Withdrawn design:
-`maxOpenShieldedAwards` per awardee across every corridor, an award open
-until it is released, its burn record or its burn-check deadline, and the
-removal bound `shieldedStrikeLimit − 1 + maxOpenShieldedAwards` attributed
-burns per window. Why it is hard: it exists to bound strike batches (Q1),
-and its open/close rule and bound were stated inconsistently in three
-successive rounds (R8ANewHire-34-1, R8ASab-8, R8ASecurity-34-4, R8ASab-10;
-R9ANewHire-34-1, R9ASecurity-34-3, R9ASab-34-2, R9ASab-34-4); its atomic
-write was not conditioned on what it read (R10ASab-34-3). §5.1 instead keeps
-the per-corridor issued-notional cap at FillAuth issue (Exposure stops).
+**Q3. A per-awardee cap on open shielded awards.** A cap per awardee
+across every corridor would bound strike batches (Q1), but its open/close
+rule and removal bound are hard to state consistently, and its atomic
+write must be conditioned on what it read. §5.1 keeps the per-corridor
+issued-notional cap at FillAuth issue instead (Exposure stops).
 
-**Q4. Whether the awardee's own tagged tx is a burn.** Withdrawn design:
-the burn check and the burn proof skip every `txHash` disclosed for the
-order, in any class, and any tx the awardee sent, judged from the
-disclosure receipts the venue produces; a burn proof later shown to be the
-awardee's is void. Why it is hard: without the exclusion, a tagged
-`transfer` the venue refuses (a 1-wei amount) trades a slash for a burn
-(R9ASecurity-34-1); with it, a receipt is the venue's own record, so a
-compromised venue node writes one for another holder's burning tx, turns
-the burn into slash grounds and bars the awardee's burn proof, and the void
-ground lets an operator record cancel the awardee's defence
-(R10ASecurity-34-1). Direction: exclude only disclosures the awardee signed
-over (`orderId`, `txHash`), which adds a solver signature to the
-`aztec_note_preimage` payload. §5.1 now excludes only a verified
-disclosure's tx and states the residual (Burned tag).
+**Q4. Whether the awardee's own tagged tx is a burn.** Without an
+exclusion, a tagged `transfer` the venue refuses (a 1-wei amount) trades a
+slash for a burn. Excluding every tx disclosed for the order or sent by the
+awardee, judged from receipts the venue produces, lets a compromised venue
+node write a receipt for another holder's burning tx, turn the burn into
+slash grounds and bar the awardee's burn proof; voiding a burn proof later
+shown to be the awardee's lets an operator record cancel the awardee's
+defence. Direction: exclude only disclosures the awardee signed over
+(`orderId`, `txHash`), which adds a solver signature to the
+`aztec_note_preimage` payload. §5.1 excludes only a verified disclosure's
+tx and states the residual (Burned tag).
 
 **Q5. `RecipientAction` pre-emption.** A signature dated ahead and naming
 the current recipient state is usable at its `issuedAt` while the order
 stays in that state, so an acknowledge signed early can end the owner's
-hold as delivery lands (R10ASecurity-34-5, R10ASab-34-5). Binding
+hold as delivery lands. Binding
 acknowledge to the mailbox write's digest, which a host cannot know in
 advance, would close it; it changes the unbuilt `RecipientAction` type.

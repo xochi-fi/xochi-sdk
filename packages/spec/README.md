@@ -19,8 +19,7 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   (+ `.schema.json`): escrow vectors (ESCROW-RFC, SOLVER-RFC §5.3). Public test keys only.
 - **`conformance/xsp.json`** + `.schema.json`: Xochi Settlement Protocol digests (ESCROW-RFC §13).
 - **`conformance/shielded.json`** + `.schema.json`: shielded settlement contract v1 typed encodings
-  (xochi `docs/planning/shielded-execution.md` §7, approved 2026-10-18; the NetworkIdentity
-  encoding approved 2026-10-19): NetworkIdentity, the salted `Domain (binding)` /
+  (xochi `docs/planning/shielded-execution.md` §7): NetworkIdentity, the salted `Domain (binding)` /
   `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
   and the Aztec `bytes32` / amount refusals. Inert: shielded settlement is not live.
 - **`conformance/shielded-terms.json`** + `.schema.json`: **PROPOSED** typed encodings of the
@@ -28,8 +27,8 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   non-signable `ShieldedPreviewV1`, and `CorridorManifestV1` (whose `hashStruct` is
   `manifestDigest`), with signatures from public test keys and single-member refusals. Every
   choice §7 does not spell is listed in its `proposed` array. Inert.
-- **`conformance/shielded-recipient.json`** + `.schema.json`: the recipient-side encodings decided
-  2026-10-24/25 and 2026-10-29: `descriptorDigest`, stock `SchnorrAccount` address derivation
+- **`conformance/shielded-recipient.json`** + `.schema.json`: the recipient-side encodings:
+  `descriptorDigest`, stock `SchnorrAccount` address derivation
   for pinned Aztec 5.2.0 and `@aztec-labs` 6.0.0, the recipient message wide reduction,
   recipient Schnorr signatures, and approved `BackupPersistenceAck`, `SenderRegistrationAck`,
   `PaymentReceiptAck`, and `TokenRegistrationAck` contracts. Its `oxideToken` section records
@@ -46,9 +45,8 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   `/.well-known/erc8262-provider.json` and `/v1/erc8262/evidence/{evidenceId}`.
   **`erc8262/vectors.json`** + `vectors.schema.json`: native and gateway fixtures, schema
   rejections, evaluation and quorum cases. Fixture addresses only.
-- **`wire/openapi.json`** + **`wire/openapi.sha256`**: the served `/xochi/openapi.json`, reformatted
-  to sorted-key JSON (structurally identical, numeric literals kept verbatim; the digest covers the
-  vendored file, not the served bytes), plus the differ `wire/compare.mjs`. See
+- **`wire/openapi.json`** + **`wire/openapi.sha256`**: the served `/xochi/openapi.json`
+  (reformatted) and its digest, plus the differ `wire/compare.mjs`; see
   [`wire/README.md`](./wire/README.md).
 
 Every file is exported by path, e.g. `@xochi/spec/conformance/conformance.json`.
@@ -60,53 +58,56 @@ Every file is exported by path, e.g. `@xochi/spec/conformance/conformance.json`.
 - `solver-bid-v2.json` and the escrow sets: parity with Riddler; digests must match on both sides.
 - `wire/openapi.json`: the server. Nothing here edits it.
 
-A changed vector is a wire change. Never regenerate one to make a check pass. Per set:
+A changed vector is a wire change. Never regenerate one to make a check pass.
+`npm run generate -w @xochi/spec` regenerates every set; CI runs
+`npm run check:vectors -w @xochi/spec`, which regenerates and fails on any diff. Per set:
 
 - **`conformance.json`** is the byte-equality contract with `raxol_payments` (ExUnit reads it
   verbatim). Any change to `@xochi/signer`'s `signing.ts` / `xochi-signing.ts` or to
-  `packages/reference/src/config.ts` regenerates it (`npm run generate:conformance`) in the same
-  PR; a stale fixture silently breaks `raxol_payments`. Tron is never in the generator's chain
+  `packages/reference/src/config.ts` regenerates it
+  (`npm run generate:conformance -w @xochi/spec`) in the same PR; a stale fixture silently
+  breaks `raxol_payments`. Tron is never in the generator's chain
   lists: the client signs on the EVM source only.
 - **`solver-bid-v2.json`** pins SolverBid v2 (SOLVER-RFC §5.1: struct, `RiddlerSolver`/`2`
   domain with no `chainId` and no `verifyingContract`, typehash, domain separator, canonical
-  decimal `output`, absolute `validUntilMs`). Drift silently rejects every honest bid, and the
-  domain `version` versions the sealing scheme, not the RFC: an `rfcVersion` skew leaves every
-  digest identical, so the only guard is `@xochi/solver-sdk`'s pre-bid check of
-  `capabilities.rfcVersion` against `SOLVER_RFC_VERSION`, the one place that literal lives.
-  `npm run generate:solver-bid-v2` lands in lockstep with the server.
+  decimal `output`, absolute `validUntilMs`). Drift silently rejects every honest bid; an
+  `rfcVersion` skew moves no digest, so its guard is the pre-bid check (SOLVER-RFC §12).
+  `npm run generate:solver-bid-v2 -w @xochi/spec` lands in lockstep with the server.
 - **`shielded.json`** is generated here and vendored inbound by Riddler and the Xochi Worker, which
   never compute their own expectations (§7 "Vector authority"). Its generator derives every value
   from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
-  `shielded.ts` is tested against the committed file; `npm run generate:shielded` regenerates it,
+  `shielded.ts` is tested against the committed file;
+  `npm run generate:shielded -w @xochi/spec` regenerates it,
   and only an edit to §7 may change it: its approved encodings fix the vectors, refusals and
   values, and what it leaves open fixes `open`. Network, corridor and Aztec values are fixtures.
-  It deliberately holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest);
-  its `open` array names each one.
-- **`shielded-terms.json`** is generated here (`npm run generate:shielded-terms`) by the same
+  It holds no vector for what §7 leaves open (ShieldedTermsV1, manifestDigest); its `open`
+  array names each one.
+- **`shielded-terms.json`** is generated here
+  (`npm run generate:shielded-terms -w @xochi/spec`) by the same
   rules as `shielded.json`, and stays `status: "PROPOSED"` until the product owner approves its
   `proposed` items into §7. It is the only vector set for the terms, preview and manifest
   digests; Riddler vendors it behind a default-off preview flag and never computes its own
   expectation.
 - **`shielded-recipient.json`** and **`shielded-readiness.json`** follow the same rules and are
   vendored by Riddler, the Worker and pxe-bridge (pxe-bridge#50 recomputes the descriptor digest
-  it attests over). `npm run generate:shielded` regenerates all three shielded files in order
+  it attests over). `npm run generate:shielded -w @xochi/spec` regenerates all three shielded
+  files in order
   (readiness reads the recipient file). The recipient file's Aztec-specific values (class ids,
   selector, separators, derivation intermediates, addresses) are held to the real SDKs,
   exact-pinned, and its Schnorr verdicts to each SDK line's bb.js `Schnorr.verifySignature`
   (the `SchnorrAccount` circuit itself is not executed), by `aztec-crosscheck/` (its own package
-  and lockfile, CI job `aztec-crosscheck`; `npm run crosscheck:aztec`), so an equality there is
+  and lockfile, CI job `aztec-crosscheck`; `npm run crosscheck:aztec -w @xochi/spec`), so an
+  equality there is
   never between two copies of this repo's own code. Its `acknowledgements` section is approved
   protocol bytes: changing a member, type, purpose or ordering requires a new primary
   type/version. `backupFormatId` is exactly
   `keccak256(UTF8("xochi.shielded.backup-format.v1"))`. The verifiers (`verifyRecipientAck`,
   `verifyReadinessRecord`) and what their callers must supply are `@xochi/signer`'s: its
   README, "Shielded recipient and readiness".
-- **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` (SPEC §4: solver 8/18 bps never
-  discounted, venue + routing by tier, impact k=50 / cap 150, 15% surplus; `total_fee` is the sum
-  of independently floored layers). A schedule change lands on both sides and regenerates the
-  vectors (`npm run generate:fee`, from `@xochi/client`'s built `FEE_SCHEDULE`). Layered fees are
-  default-on server-side (`XOCHI_LAYERED_FEES=false` rolls back); a quote without
-  `fee_breakdown` is legacy (SPEC §4.6).
+- **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` in lockstep: the schedule is
+  `fee/schedule.json`, the rules SPEC §4. A schedule change lands on both sides and regenerates
+  the vectors (`npm run generate:fee -w @xochi/spec`, from `@xochi/client`'s built
+  `FEE_SCHEDULE`).
 
 ## Consuming the spec
 
@@ -136,7 +137,7 @@ escrow sets also ship `encode_type`/`typehash`/`domain_separator`; compare those
 points at the wrong layer.
 
 Fees: reproduce every `expected` in `fee/vectors.json` from its `input` (SPEC §4.4/§4.5). The
-reference is `computeFeeBreakdown` / `FEE_SCHEDULE` in `@xochi/client`. Note `total_fee` is the
+reference is `computeFeeBreakdown` / `FEE_SCHEDULE` in `@xochi/client`; `total_fee` is the
 sum of independently floored layers.
 
 Wire: check `openapi.json` against `openapi.sha256`; compare a served document with `compare.mjs`.

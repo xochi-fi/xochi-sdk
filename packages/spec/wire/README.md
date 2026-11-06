@@ -21,8 +21,8 @@ From the repo root, with `export` (a one-command prefix leaves `verify:openapi` 
 ```bash
 export RIDDLER_SERVER=prod
 export RIDDLER_URL_PROD="<base-url>"
-npm run generate:wire    # refetch, reformat, re-digest
-npm run verify:openapi   # the gate: served document vs the copy just written
+npm run generate:wire -w @xochi/spec   # refetch, reformat, re-digest
+npm run verify:openapi                # the gate: served document vs the copy just written
 ```
 
 The baseline is the pair committed at `HEAD`. `generate:wire` prints a provenance block to paste into
@@ -84,8 +84,8 @@ Maintaining `compare.mjs`:
 - Never delete the constraint axis: it is the only one covering the property-less schemas above.
 - `STALE_IF_SERVED_ONLY` is read only inside the `CONSTRAINTS` loop; adding a keyword there alone
   does nothing.
-- The preamble and OK-footer keyword lists are derived from `CONSTRAINTS` and `NARROWING`; never
-  retype them.
+- The probe's preamble and OK footer print `AXES`, `CONSTRAINTS` and `NARROWING`; never retype
+  them. `AXES` mirrors the list above in order: change both together.
 - Vendored bytes are checked against `openapi.sha256` first, without stopping the server sample.
   The probe is single-sample.
 
@@ -103,6 +103,6 @@ All exit 1, told apart only in the log body.
   example/default/const/enum/`x-*` data) that is external, malformed, dangling or cyclic, unless
   the copy fails the same ref at the same place. Fragments decode in RFC 6901 §6 order.
 - **RE-SPELLED**: numeric spelling differs (ordered multiset, both directions) with no other
-  finding; always a local fault, cleared by `npm run generate:wire`.
+  finding; always a local fault, cleared by `npm run generate:wire -w @xochi/spec`.
 - **INCONCLUSIVE** (exit 2): served document malformed, not this API, nested past depth 100, or over
   the 4 MB body cap.
