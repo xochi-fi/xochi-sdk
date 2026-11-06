@@ -298,9 +298,9 @@ describe("execute: single attempt, structured backpressure errors", () => {
   });
 });
 
-// The Worker's not-accepted answer (xochi#686): nothing was accepted, so the
-// SAME request may be sent again after the wait its body names. Everything else
-// stays in doubt, classified exactly as before the marker.
+// The Worker's not-accepted answer: nothing was accepted, so the SAME request
+// may be sent again after the wait its body names. Everything else stays in
+// doubt.
 describe("execute: the not-accepted refusal", () => {
   const notAccepted = (over: Record<string, unknown> = {}) => ({
     success: false,
@@ -444,7 +444,7 @@ describe("execute: an answer that cannot vouch that nothing moved", () => {
   it("is in doubt unless the answer is one of the Worker's nothing-moved shapes", async () => {
     const marked = { success: false, intent_id: "intent-1", status: "failed", error: "busy" };
     const cases: [string, () => Response, boolean][] = [
-      // The Worker's two 502s where funds may have moved (xochi#563).
+      // The Worker's two 502s where funds may have moved.
       [
         "post-claim 502",
         () =>
@@ -1298,11 +1298,8 @@ describe("intent records", () => {
   });
 });
 
-// xochi#563: the execute that admits an intent serves a one-time `read_token`
-// (xochi#565, merged as `0317e84`); sent back as a header, it lets the
-// per-intent reads show a stealth intent's on-chain legs. A token read of a
-// shielded intent gets only the status-only view (SPEC.md §5.1). Never a
-// query parameter.
+// The per-intent read capability (rules: `IntentReadOptions`), sent as a
+// header, never a query parameter.
 describe("intent read capability", () => {
   const READ_TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde";
 

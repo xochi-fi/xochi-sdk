@@ -1,43 +1,8 @@
 /**
- * Frame URL parameters: what a host sets on `/embed`.
- *
- * The ONE definition of their names, syntax and encoding, shared by this
- * library (which writes them) and the widget frame (which reads them at load
- * by importing this package, never a copy of its own).
- *
- *   fromChain   origin chain, decimal chain id           fromChain=1
- *   toChain     destination chain, decimal chain id      toChain=8453
- *   sell        token sent, symbol (any case)            sell=USDT
- *   buy         token received, symbol (any case)        buy=USDC
- *   amount      amount sent, a plain decimal in `sell`   amount=250
- *   settlement  `public` or `stealth`                    settlement=stealth
- *   theme       `auto`, `light`, `dim` or `contrast`     theme=light
- *   layout      `full` or `swap` (no tab row)            layout=swap
- *   howItWorks  `0` hides the How it works disclosure    howItWorks=0
- *   height      fixed frame height in px, 480 to 1600    height=640
- *   lock        fields the user cannot change            lock=sell,buy,amount
- *   fromChains  chains the user may send from            fromChains=8453,10
- *   toChains    chains the user may receive on           toChains=1
- *   sellTokens  tokens the user may send                 sellTokens=USDC,USDT
- *   buyTokens   tokens the user may receive              buyTokens=USDC
- *   ref         referral code                            ref=PARTNER
- *   promo       promo code                               promo=LAUNCH10
- *
- * This module is SYNTAX only. The route, amount and settlement are defaults,
- * not locks: the user can change every one of them in the frame, unless `lock`
- * names it, and only within the allow-lists. The frame checks each value
- * against what it can honour at load (chain offered in that direction, token
- * on that chain, pair fillable by the solver, stealth only where the solver
- * offers it, at most the sell token's decimals), silently falling back to its
- * own default for anything it cannot.
- *
- * The look is honoured whenever it is well-formed: `theme` defaults to `auto`
- * (the OS preference), `layout` to `full`, `howItWorks` to shown, and without
- * `height` the frame grows to its content. Locks and allow-lists are
- * client-side conveniences, not policy: a user who edits the URL is not bound
- * by them. `ref` and `promo` are sent on every quote and the server decides;
- * a code it cannot use never blocks a quote. No parameter at all opens the
- * frame on its defaults.
+ * Frame URL parameters: what a host sets on `/embed`. The one definition of
+ * their names, syntax and encoding, shared by this library (which writes them)
+ * and the widget frame (which imports it to read them at load). Syntax only;
+ * the parameters and what the frame does with them: README "Frame parameters".
  */
 
 /** The query-string keys, by field: the route keys, then the frame's look, locks, lists and codes. */

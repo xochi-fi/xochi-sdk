@@ -32,10 +32,9 @@ export interface ChainDefinition {
  * re-sorted ascending by the runtime, which would silently reorder the
  * `/api/capabilities` fallback payload built from that array.
  *
- * Non-EVM and virtual chains are deliberately NOT here: Tron (base58 addresses,
- * TronWeb signing, hash-route explorer) and the Aztec virtual source chain (0)
- * are display-only, and join the extended maps below through their own
- * constants. EVM-only code (viem/wagmi/RPC) must never receive those ids.
+ * Non-EVM and virtual chains are not here (see `TRON_CHAIN_ID`): Tron and the
+ * Aztec virtual source chain (0) are display-only, and join the extended maps
+ * below through their own constants.
  *
  * Short names are the compact UI labels; explorers are the origins the link
  * helpers below build on (one map, so per-component explorer maps cannot
@@ -115,10 +114,10 @@ export type AztecChainId = 0;
 export type ExtendedChainId = ChainId | AztecChainId | TronChainId;
 
 /**
- * Tron mainnet chain id. Tron is non-EVM (base58 addresses, TronWeb signing),
- * so it is deliberately kept OUT of the EVM `ChainId` union -- EVM-only code
- * (viem, wagmi, contract reads) must never receive it. UI-level chain selection
- * uses `SelectableChainId` below.
+ * Tron mainnet chain id. Tron is non-EVM (base58 addresses, TronWeb signing,
+ * hash-route explorer), so it is kept OUT of the EVM `ChainId` union and
+ * `CHAIN_REGISTRY`: EVM-only code (viem, wagmi, contract reads) must never
+ * receive it. UI-level chain selection uses `SelectableChainId` below.
  */
 export const TRON_CHAIN_ID = 728_126_428;
 export type TronChainId = typeof TRON_CHAIN_ID;

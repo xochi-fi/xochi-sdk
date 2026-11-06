@@ -23,6 +23,7 @@ import { walletFromKey } from "./bid";
 import { signRegistration, type SolverBondRef } from "./registration";
 import { SolverRegistrationResponseSchema, VenueCapabilitiesSchema } from "./schema";
 import type { SolverRegistrationResult } from "./types";
+import { bounded } from "./internal";
 
 // The permanent refusal codes the venue answers at `POST /solver/register`
 // (RFC §9.1). `string & {}` keeps the union open: a newer venue may add one,
@@ -168,7 +169,7 @@ export class SolverSession {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: this.bounded(signal),
+        signal: bounded(this.timeoutMs, signal),
       });
 
       if (res.ok) return this.accept(await res.json(), sentAtMs);
@@ -224,7 +225,7 @@ export class SolverSession {
   // `GET /solver/capabilities` is public: read before any credential exists.
   private async advertisedBond(signal?: AbortSignal): Promise<SolverBondRef> {
     const res = await fetch(`${this.baseUrl}/solver/capabilities`, {
-      signal: this.bounded(signal),
+      signal: bounded(this.timeoutMs, signal),
     });
     if (!res.ok) throw new Error(`solver capabilities ${res.status}: ${await res.text()}`);
     const bond = VenueCapabilitiesSchema.parse(await res.json()).admission?.bond;
@@ -237,10 +238,6 @@ export class SolverSession {
       );
     }
     return { chainId: bond.chainId, address: bond.address };
-  }
-
-  private bounded(signal?: AbortSignal): AbortSignal {
-    return AbortSignal.any([AbortSignal.timeout(this.timeoutMs), ...(signal ? [signal] : [])]);
   }
 }
 

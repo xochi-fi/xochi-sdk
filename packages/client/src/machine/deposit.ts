@@ -9,7 +9,7 @@
  * signer, keeps the per-session address-reuse tripwire as plain data on the
  * model, and maps the signer's error classes to `DepositAttestationResult`.
  *
- * There is no clock parameter anywhere here, on purpose: the signer bounds the
+ * There is no clock parameter anywhere here: the signer bounds the
  * deposit window against the wall clock, and an injectable `now` on a security
  * assertion is a bypass wearing a test affordance's name.
  */

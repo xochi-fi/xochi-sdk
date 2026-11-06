@@ -48,7 +48,7 @@ export interface SolverPinConfig {
   erc3009Allowlist: string[];
   /**
    * Lowercased addresses valid as a Permit2 `spender` (the verified
-   * XochiPullPermit2 contract, #591 sibling / PULL2). Distinct from the ERC-3009
+   * XochiPullPermit2 contract, PULL2). Distinct from the ERC-3009
    * class above so a solver EOA can never stand in as the Permit2 spender.
    */
   permit2Allowlist: string[];
@@ -82,11 +82,9 @@ export interface PayoutPinExpectation {
    * Who the panel said would be paid: the connected wallet on a same-VM route,
    * or the user-entered destination address on a non-EVM one.
    *
-   * Typed as possibly-undefined on purpose. The caller's wallet address is
-   * `string | undefined`, and the honest handling of "we do not know who this
-   * was for" is to refuse, not to assert it away with a cast. Casting also loses
-   * to the pre-commit `eslint --fix`, which strips assertions it deems
-   * unnecessary.
+   * Typed as possibly-undefined: the caller's wallet address is
+   * `string | undefined`, and "we do not know who this was for" is refused,
+   * not asserted away with a cast.
    */
   recipient: string | undefined;
 }

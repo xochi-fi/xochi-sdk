@@ -13,9 +13,9 @@ import {
  *
  * A stealth payout lands in a counterfactual SimpleAccount, and the FACTORY in
  * `claim_info` is what decides who owns that account. The client follows the
- * advertised factory on purpose (#302, so it and the solver derive the same
- * address), which means an attacker who can influence the served value picks
- * where the money goes and both sides agree on it.
+ * advertised factory (see `TRUSTED_STEALTH_FACTORIES`), so an attacker who can
+ * influence the served value picks where the money goes and both sides agree
+ * on it.
  *
  * This is the last check before that value is trusted: the factory must be one
  * this build ships, and the salt must be the documented 0. Note the client

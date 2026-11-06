@@ -133,8 +133,8 @@ export interface WalletContext {
   /** Connected account, or null with no wallet. */
   address: string | null;
   /**
-   * The wallet's ACTUAL chain (it may be one the app has no config for,
-   * xochi#539), or null when none is reported.
+   * The wallet's ACTUAL chain (it may be one the app has no config for), or
+   * null when none is reported.
    */
   chainId: number | null;
   /**
@@ -298,7 +298,7 @@ export type MsgBody =
   /**
    * The execute response with its `readToken` removed (`ExecuteReply`): the
    * host keeps the bearer secret outside the machine and relays the rest. The
-   * machine itself decides failed vs in doubt (#226); a reply it cannot read
+   * machine itself decides failed vs in doubt; a reply it cannot read
    * as an execute response for this intent is in doubt, like a thrown execute.
    */
   | { type: "ExecuteReplied"; flow: string; result: Outcome<{ response: ExecuteReply }> }
@@ -476,11 +476,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       const kept = msg.amount === m.amount ? m : supersedeFlights(m, fx);
       const next = { ...kept, allocationKey: null, amount: msg.amount, refresh: null };
       if (!msg.amount || msg.amount === "0") {
-        // "May have moved" holds until Reset, and "not sent yet" until the
-        // Worker ends the intent: clearing the amount is no way out of either.
-        if ((m.intent.status === "failed" && m.intent.mayHaveMoved) || m.intent.notSent) {
-          return next;
-        }
+        if (survivesClearedAmount(m.intent)) return next;
         // Including any half-finished two-step signing: the next quote must not
         // inherit "Sign 2 of 2" or a held intent signature.
         return abandonSign({ ...next, intent: INITIAL_INTENT_STATE }, fx);
@@ -490,16 +486,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     }
 
     case "AllocateRequested": {
-      // Only before execution: past quoting (a prompt open, a deposit awaited,
-      // a swap in flight) or once the trade has ended (completed, refunded,
-      // failed) a new quote has nothing to land on, and its failure would
-      // patch the finished trade back to `quoted` over its consumed route.
-      if (
-        !m.amount ||
-        isChainId(m.ctx.fromChainId) ||
-        !m.ctx.wallet.address ||
-        !ALLOCATABLE_STATES.includes(m.intent.status)
-      ) {
+      if (allocationRefused(m)) {
         emit(fx, { kind: "allocation", ref: msg.ref, ok: false });
         return m;
       }
@@ -640,6 +627,31 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
     case "StatusReplied":
       return onStatus(m, fx, msg.gen, msg.attempt, msg.result, msg.now);
   }
+}
+
+/**
+ * "May have moved" holds until Reset, and "not sent yet" until the Worker ends
+ * the intent: clearing the amount is no way out of either.
+ */
+function survivesClearedAmount(intent: IntentState): boolean {
+  return (intent.status === "failed" && intent.mayHaveMoved) || intent.notSent;
+}
+
+/**
+ * An explicit allocation is refused without an amount, a non-EVM (deposit)
+ * origin or a wallet, and outside the states before execution: past quoting
+ * (a prompt open, a deposit awaited, a swap in flight) or once the trade has
+ * ended (completed, refunded, failed) a new quote has nothing to land on, and
+ * its failure would patch the finished trade back to `quoted` over its
+ * consumed route.
+ */
+function allocationRefused(m: Model): boolean {
+  return (
+    !m.amount ||
+    isChainId(m.ctx.fromChainId) ||
+    !m.ctx.wallet.address ||
+    !ALLOCATABLE_STATES.includes(m.intent.status)
+  );
 }
 
 // ============================================================
@@ -940,152 +952,19 @@ function onQuote(
   if (!result.ok) return quoteThrew(m, fx, flight, result.error);
 
   const quote = result.quote;
-  const ctx = flight.ctx;
-  const address = ctx.wallet.address;
-
-  if (!quote.success) {
-    log(fx, "warn", `${LOG} Quote request rejected:`, quote.error);
-    return refuseQuote(m, fx, flight, { error: quote.error || "Failed to get quote", quote: null });
+  const refusal = quoteRefusal(quote, flight, m.config.pullRecipients);
+  if (refusal) {
+    log(fx, refusal.level, refusal.message, ...refusal.data);
+    return refuseQuote(m, fx, flight, { error: refusal.error, quote: refusal.quote });
   }
-
-  if (!quote.canSolve) {
-    // Surface the solver's real reason; ErrorDisplay maps these codes to copy.
-    log(fx, "warn", `${LOG} Quote not solvable:`, quote.error);
-    return refuseQuote(m, fx, flight, {
-      error: quote.error || "No liquidity available for this route",
-      quote,
-    });
-  }
-
-  // Whether this is a preview is OUR question, not the server's answer: a
-  // wallet-bound request answered `preview: true` would otherwise skip the
-  // signer checks and still reach Confirm, and an executable answer to a
-  // preview request was never bound to a wallet.
-  if ((quote.preview === true) !== flight.preview) {
-    log(fx, "error", `${LOG} Refusing a quote that answers the wrong kind of request`, {
-      requestedPreview: flight.preview,
-      servedPreview: quote.preview === true,
-    });
-    return refuseQuote(m, fx, flight, {
-      error: "This quote did not match the requested trade, so it cannot be signed.",
-      quote: null,
-    });
-  }
-
-  // Non-EVM destination: the solvable quote must echo exactly the recipient we
-  // asked for, or the funds would route to an unconfirmed destination (#113).
-  const echoError = recipientEchoError(flight.request?.recipientAddress, quote.recipientAddress);
-  if (echoError) {
-    log(fx, "warn", `${LOG} Recipient echo rejected:`, echoError);
-    return refuseQuote(m, fx, flight, {
-      error: "Couldn't confirm the destination address for this route. Please try again.",
-      quote: null,
-    });
-  }
-
-  // Stealth: the served factory decides who owns the payout account (#302). A
-  // stealth REQUEST answered without one is refused, never read as public.
-  const claimError = claimInfoError(
-    quote.claimInfo,
-    ctx.toChainId,
-    flight.request?.settlementPreference ?? ctx.settlementPreference,
-  );
-  if (claimError) {
-    log(fx, "error", `${LOG} Stealth claim info rejected:`, claimError.code, quote.claimInfo);
-    return refuseQuote(m, fx, flight, {
-      error: `${claimError.message}. Send this one public, or try again later.`,
-      quote: null,
-    });
-  }
-
-  // The RESOLVED payout address: the request's recipient, or the wallet.
-  const resolvedRecipient = ctx.recipientAddress?.trim() || address || "";
-
-  // Never pay the destination token contract (raxol#869). Runs on EVERY route.
-  if (recipientIsDestinationToken(resolvedRecipient, ctx.toToken)) {
-    log(fx, "error", `${LOG} Refusing a quote whose payout recipient is the destination token`, {
-      recipient: resolvedRecipient,
-      toToken: ctx.toToken,
-    });
-    return refuseQuote(m, fx, flight, {
-      error:
-        "That destination address is the token's own contract. Funds sent there cannot be recovered.",
-      quote: null,
-    });
-  }
-
-  // What we know from the origin chain and what the server sent must agree on
-  // "is this a deposit route", or a substituted quote picks its own code path.
-  if (
-    (quote.preview && !!quote.depositAddress) ||
-    (!quote.preview && flight.depositOrigin !== !!quote.depositAddress)
-  ) {
-    log(fx, "error", `${LOG} Deposit-route disagreement between origin chain and quote`, {
-      isDepositOrigin: flight.depositOrigin,
-      preview: quote.preview === true,
-      hasDepositAddress: !!quote.depositAddress,
-      fromChainId: ctx.fromChainId,
-    });
-    return refuseQuote(m, fx, flight, {
-      error: "This route is not available right now.",
-      quote: null,
-    });
-  }
-
-  const request = flight.request;
-  if (!quote.depositAddress) {
-    // A signable quote: hold the served intent to the request and the origin
-    // pull to the intent (`@xochi/signer`) before it can reach the wallet.
-    // Whatever else the quote claims: any intent it carries is checked, and a
-    // quote with no intent to sign is refused at Confirm ("No quote to sign").
-    if (quote.eip712Data) {
-      const check = request
-        ? checkSignableQuote(request, quote, m.config.pullRecipients)
-        : ({ ok: false, kind: "intent_mismatch", reason: "no request on record" } as const);
-      if (!check.ok) {
-        log(
-          fx,
-          "error",
-          `${LOG} Refusing a quote that does not match the request:`,
-          check.kind,
-          check.reason,
-        );
-        return refuseQuote(m, fx, flight, {
-          error: "This quote did not match the requested trade, so it cannot be signed.",
-          quote: null,
-        });
-      }
-    }
-    return acceptQuote(m, fx, flight, quote, null, now);
-  }
+  if (!quote.depositAddress) return acceptQuote(m, fx, flight, quote, null, now);
 
   // Deposit route: the v3 attestation binds the whole deal, and is verified
-  // against the pinned signer before the address can ever be shown. The
-  // RESOLVED settlement type and a real wallet are required; a default would
-  // produce a binding that proves nothing.
-  const resolvedSettlement = quote.settlementType;
-  if (!resolvedSettlement || !request?.wallet) {
-    return attestationRejected(m, fx, flight, {
-      ok: false,
-      kind: "unavailable",
-      reason: !resolvedSettlement
-        ? "quote did not state a resolved settlement type (route.settlement_type)"
-        : "no connected wallet to bind the deposit attestation to",
-    });
-  }
-  // The signer rebuilds the signed message from the REQUEST, settlement
-  // preference included, so a quote served under another settlement type cannot
-  // verify. Refused here first, under its own reason: on a stealth request it is
-  // a privacy downgrade, and as a bare recovery failure it reads as tampering.
-  if (resolvedSettlement !== request.settlementPreference) {
-    return attestationRejected(m, fx, flight, {
-      ok: false,
-      kind: "unavailable",
-      reason: `quote resolved settlement type ${resolvedSettlement} but ${request.settlementPreference} was requested`,
-    });
-  }
+  // against the pinned signer before the address can ever be shown.
+  const precheck = depositPrecheck(quote, flight.request);
+  if (!precheck.ok) return attestationRejected(m, fx, flight, precheck);
   const verdict = checkDepositQuote(
-    request,
+    precheck.request,
     quote,
     m.config.depositAttestationSigner,
     m.seenDepositAddresses,
@@ -1099,6 +978,189 @@ function onQuote(
     verdict.stored,
     now,
   );
+}
+
+/** A served quote a gate refused: what to log, and the refusal's patch. */
+interface QuoteRefusal {
+  level: "warn" | "error";
+  message: string;
+  data: unknown[];
+  error: string;
+  quote: QuoteResponse | null;
+}
+
+const QUOTE_MISMATCH_ERROR =
+  "This quote did not match the requested trade, so it cannot be signed.";
+
+/**
+ * The gates every served quote passes before it is accepted or its deposit
+ * attestation is checked, in order; null when it passes them all.
+ */
+function quoteRefusal(
+  quote: QuoteResponse,
+  flight: QuoteFlight,
+  pullRecipients: PinnedPullRecipients | undefined,
+): QuoteRefusal | null {
+  const ctx = flight.ctx;
+  const address = ctx.wallet.address;
+
+  if (!quote.success) {
+    return {
+      level: "warn",
+      message: `${LOG} Quote request rejected:`,
+      data: [quote.error],
+      error: quote.error || "Failed to get quote",
+      quote: null,
+    };
+  }
+
+  if (!quote.canSolve) {
+    // Surface the solver's real reason; ErrorDisplay maps these codes to copy.
+    return {
+      level: "warn",
+      message: `${LOG} Quote not solvable:`,
+      data: [quote.error],
+      error: quote.error || "No liquidity available for this route",
+      quote,
+    };
+  }
+
+  // Whether this is a preview is OUR question, not the server's answer: a
+  // wallet-bound request answered `preview: true` would otherwise skip the
+  // signer checks and still reach Confirm, and an executable answer to a
+  // preview request was never bound to a wallet.
+  if ((quote.preview === true) !== flight.preview) {
+    return {
+      level: "error",
+      message: `${LOG} Refusing a quote that answers the wrong kind of request`,
+      data: [{ requestedPreview: flight.preview, servedPreview: quote.preview === true }],
+      error: QUOTE_MISMATCH_ERROR,
+      quote: null,
+    };
+  }
+
+  // Non-EVM destination: the solvable quote must echo exactly the recipient we
+  // asked for, or the funds would route to an unconfirmed destination.
+  const echoError = recipientEchoError(flight.request?.recipientAddress, quote.recipientAddress);
+  if (echoError) {
+    return {
+      level: "warn",
+      message: `${LOG} Recipient echo rejected:`,
+      data: [echoError],
+      error: "Couldn't confirm the destination address for this route. Please try again.",
+      quote: null,
+    };
+  }
+
+  // Stealth: the served factory decides who owns the payout account. A
+  // stealth REQUEST answered without one is refused, never read as public.
+  const claimError = claimInfoError(
+    quote.claimInfo,
+    ctx.toChainId,
+    flight.request?.settlementPreference ?? ctx.settlementPreference,
+  );
+  if (claimError) {
+    return {
+      level: "error",
+      message: `${LOG} Stealth claim info rejected:`,
+      data: [claimError.code, quote.claimInfo],
+      error: `${claimError.message}. Send this one public, or try again later.`,
+      quote: null,
+    };
+  }
+
+  // The RESOLVED payout address: the request's recipient, or the wallet.
+  const resolvedRecipient = ctx.recipientAddress?.trim() || address || "";
+
+  // Never pay the destination token contract (raxol#869). Runs on EVERY route.
+  if (recipientIsDestinationToken(resolvedRecipient, ctx.toToken)) {
+    return {
+      level: "error",
+      message: `${LOG} Refusing a quote whose payout recipient is the destination token`,
+      data: [{ recipient: resolvedRecipient, toToken: ctx.toToken }],
+      error:
+        "That destination address is the token's own contract. Funds sent there cannot be recovered.",
+      quote: null,
+    };
+  }
+
+  // What we know from the origin chain and what the server sent must agree on
+  // "is this a deposit route", or a substituted quote picks its own code path.
+  if (
+    (quote.preview && !!quote.depositAddress) ||
+    (!quote.preview && flight.depositOrigin !== !!quote.depositAddress)
+  ) {
+    return {
+      level: "error",
+      message: `${LOG} Deposit-route disagreement between origin chain and quote`,
+      data: [
+        {
+          isDepositOrigin: flight.depositOrigin,
+          preview: quote.preview === true,
+          hasDepositAddress: !!quote.depositAddress,
+          fromChainId: ctx.fromChainId,
+        },
+      ],
+      error: "This route is not available right now.",
+      quote: null,
+    };
+  }
+
+  // A signable quote: hold the served intent to the request and the origin
+  // pull to the intent (`@xochi/signer`) before it can reach the wallet.
+  // Whatever else the quote claims: any intent it carries is checked, and a
+  // quote with no intent to sign is refused at Confirm ("No quote to sign").
+  if (!quote.depositAddress && quote.eip712Data) {
+    const request = flight.request;
+    const check = request
+      ? checkSignableQuote(request, quote, pullRecipients)
+      : ({ ok: false, kind: "intent_mismatch", reason: "no request on record" } as const);
+    if (!check.ok) {
+      return {
+        level: "error",
+        message: `${LOG} Refusing a quote that does not match the request:`,
+        data: [check.kind, check.reason],
+        error: QUOTE_MISMATCH_ERROR,
+        quote: null,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The deposit-route gates the attestation check presupposes: the RESOLVED
+ * settlement type and a real wallet are required (a default would produce a
+ * binding that proves nothing), and the resolved type must be the requested
+ * one. Returns the request to verify the attestation against.
+ */
+function depositPrecheck(
+  quote: QuoteResponse,
+  request: QuoteRequest | null,
+): { ok: true; request: QuoteRequest } | Extract<DepositAttestationResult, { ok: false }> {
+  const resolvedSettlement = quote.settlementType;
+  if (!resolvedSettlement || !request?.wallet) {
+    return {
+      ok: false,
+      kind: "unavailable",
+      reason: !resolvedSettlement
+        ? "quote did not state a resolved settlement type (route.settlement_type)"
+        : "no connected wallet to bind the deposit attestation to",
+    };
+  }
+  // The signer rebuilds the signed message from the REQUEST, settlement
+  // preference included, so a quote served under another settlement type cannot
+  // verify. Refused here first, under its own reason: on a stealth request it is
+  // a privacy downgrade, and as a bare recovery failure it reads as tampering.
+  if (resolvedSettlement !== request.settlementPreference) {
+    return {
+      ok: false,
+      kind: "unavailable",
+      reason: `quote resolved settlement type ${resolvedSettlement} but ${request.settlementPreference} was requested`,
+    };
+  }
+  return { ok: true, request };
 }
 
 function attestationRejected(
@@ -1368,7 +1430,7 @@ function readAmount(raw: string): bigint | ErrorReport {
 }
 
 /**
- * Origin-pull leg, step 1: the fail-closed solver pin (#333, #170), then the
+ * Origin-pull leg, step 1: the fail-closed solver pin, then the
  * one-time approval (Permit2; ERC-3009 no-ops).
  *
  * The pin runs BEFORE the approval: the approval is an unlimited on-chain
@@ -1482,7 +1544,7 @@ function onSigned(
 
 /**
  * Dispatch /execute with the collected signatures. Everything after this is
- * POST-dispatch, so a failure is in doubt rather than terminal (#226), except
+ * POST-dispatch, so a failure is in doubt rather than terminal, except
  * the one the server proves accepted nothing (`onNotAccepted`).
  */
 function runExecute(
@@ -1539,7 +1601,7 @@ function onExecuted(
   if (handled) return handled;
   const next = endSignFlow({ ...m, pendingIntentSig: null }, flow);
   // Every error here is POST-dispatch and therefore IN-DOUBT (the origin pull
-  // may have moved funds): flag reconciling and let the poll resolve it (#226).
+  // may have moved funds): flag reconciling and let the poll resolve it.
   // So is a reply that cannot be read as this intent's execute response.
   const reply = executeResponseUnlessInDoubt(fx, result, next.intent.intentId);
   if (!reply) return patch(next, { reconciling: true });
@@ -1841,7 +1903,7 @@ function signFlowFailed(m: Model, fx: Effect[], report: ErrorReport): Model {
 /**
  * Apply one status update (poll or stream). A same-status update is not a
  * transition -- the table has no self-edges, and routing it through one would
- * discard the receipt hashes it carries (xochi#353) -- so its receipt fields
+ * discard the receipt hashes it carries -- so its receipt fields
  * merge directly. An UNMAPPED wire status (`decodeWireStatus`) never reads as
  * progress: the intent shows "Still confirming" (reconciling), never success.
  * A `failed` after an execute or a revealed deposit address (any
@@ -1906,18 +1968,14 @@ function onStatus(
   // reply has answered, an older one cannot regress lifecycle or receipt
   // fields, including clearing a newer not-sent verdict.
   if (result.ok && attempt < poll.answered) return m;
-  if (
-    result.ok &&
-    result.status &&
-    !("notFound" in result.status) &&
-    result.status.intentId !== id
-  ) {
+  const foreignId = foreignStatusIntentId(result, id);
+  if (foreignId !== null) {
     log(
       fx,
       "warn",
       `${LOG} Ignoring a status response for another intent; keeping the poll active`,
       {
-        response: result.status.intentId,
+        response: foreignId,
         current: id,
       },
     );
@@ -1925,24 +1983,7 @@ function onStatus(
   }
   let next = m;
 
-  // An `executing` intent that reads `quoted` after /execute has answered is
-  // unclaimed. Its signed request remains executable until the deadline, so
-  // this is "not sent yet", never "Still confirming" (whose Close invites a
-  // second signature). Do not use a status read while /execute is outstanding:
-  // `armPoll` delays the first read until that reply, preventing a stale
-  // pre-acceptance `quoted` answer from winning. An intent already in doubt
-  // stays so, as does one whose newer status reply already answered.
-  const unsentRead =
-    attempt >= poll.answered &&
-    result.ok &&
-    !!result.status &&
-    !("notFound" in result.status) &&
-    result.status.status === "quoted" &&
-    result.status.unmapped !== true &&
-    next.intent.intentId === id &&
-    next.intent.status === "executing" &&
-    next.sign === null &&
-    !next.intent.reconciling;
+  const unsentRead = readsNotSent(next, poll, id, attempt, result);
   // A throw answers nothing, so only a reply (a 404 included) moves it.
   const answered: PollState = result.ok
     ? { ...poll, answered: Math.max(poll.answered, attempt) }
@@ -1952,14 +1993,7 @@ function onStatus(
     next = patch(next, { notSent: true });
   }
 
-  // A slow execute escalates to "Still confirming"; one not sent (`notSent`)
-  // has nothing in flight to confirm.
-  if (
-    attempt >= RECONCILE_AFTER_ATTEMPTS &&
-    next.intent.intentId === id &&
-    !next.intent.reconciling &&
-    !next.intent.notSent
-  ) {
+  if (escalatesToReconcile(next.intent, id, attempt)) {
     next = patch(next, { reconciling: true });
   }
 
@@ -1968,13 +2002,7 @@ function onStatus(
     // A throw is not a change: count the attempt and keep the ceiling armed.
     log(fx, "error", `${LOG} status poll threw; counting the attempt`, result.error.detail);
   } else if (result.status && "notFound" in result.status) {
-    const finish = unexecutedFinishAt(next.intent.quote);
-    if (
-      next.intent.notSent &&
-      next.intent.intentId === id &&
-      finish !== null &&
-      now > finish * 1000
-    ) {
+    if (sweptPastFinish(next.intent, id, now)) {
       // Not sent yet, gone, and past the Worker's finish: only the quote sweep
       // deletes a row, only one nothing touched, 30 min after the quote, and
       // past the finish the claim's compare-and-swap refuses on the database
@@ -2013,8 +2041,8 @@ function onStatus(
         receivingTxHash: s.receivingTxHash ?? undefined,
         settlementTxHash: s.settlementTxHash ?? undefined,
         settlementChainId: (s.settlementChainId ?? undefined) as ChainId | undefined,
-        // A confirmed fill whose receipt the server withheld (anonymous read,
-        // xochi#563) is delivered, exactly as a `filled` substatus, under the
+        // A confirmed fill whose receipt the server withheld (anonymous read)
+        // is delivered, exactly as a `filled` substatus, under the
         // rule `withheldSettlementConfirmed` states. An unmapped status is only
         // its in-flight bucket, so it never qualifies.
         substatus: withheldSettlementConfirmed({
@@ -2071,6 +2099,68 @@ function onStatus(
   return next.intent.intentId === id && !next.intent.pollExhausted
     ? patch(next, { pollExhausted: true })
     : next;
+}
+
+/** The intent a status reply names when it is not the polled `id`, else null. */
+function foreignStatusIntentId(
+  result: Outcome<{ status: IntentStatusResult }>,
+  id: string,
+): string | null {
+  return result.ok &&
+    result.status &&
+    !("notFound" in result.status) &&
+    result.status.intentId !== id
+    ? result.status.intentId
+    : null;
+}
+
+/**
+ * An `executing` intent that reads `quoted` after /execute has answered is
+ * unclaimed. Its signed request remains executable until the deadline, so
+ * this is "not sent yet", never "Still confirming" (whose Close invites a
+ * second signature). Do not use a status read while /execute is outstanding:
+ * `armPoll` delays the first read until that reply, preventing a stale
+ * pre-acceptance `quoted` answer from winning. An intent already in doubt
+ * stays so, as does one whose newer status reply already answered.
+ */
+function readsNotSent(
+  m: Model,
+  poll: PollState,
+  id: string,
+  attempt: number,
+  result: Outcome<{ status: IntentStatusResult }>,
+): boolean {
+  return (
+    attempt >= poll.answered &&
+    result.ok &&
+    !!result.status &&
+    !("notFound" in result.status) &&
+    result.status.status === "quoted" &&
+    result.status.unmapped !== true &&
+    m.intent.intentId === id &&
+    m.intent.status === "executing" &&
+    m.sign === null &&
+    !m.intent.reconciling
+  );
+}
+
+/**
+ * A slow execute escalates to "Still confirming"; one not sent (`notSent`)
+ * has nothing in flight to confirm.
+ */
+function escalatesToReconcile(intent: IntentState, id: string, attempt: number): boolean {
+  return (
+    attempt >= RECONCILE_AFTER_ATTEMPTS &&
+    intent.intentId === id &&
+    !intent.reconciling &&
+    !intent.notSent
+  );
+}
+
+/** A not-sent intent read as gone (404) past the Worker's finish of an unexecuted intent. */
+function sweptPastFinish(intent: IntentState, id: string, now: number): boolean {
+  const finish = unexecutedFinishAt(intent.quote);
+  return intent.notSent && intent.intentId === id && finish !== null && now > finish * 1000;
 }
 
 // ============================================================
@@ -2211,7 +2301,7 @@ function armExpiry(m: Model, fx: Effect[], now: number): Model {
 
 /**
  * The status poll: armed per (intent, phase) while in flight. Re-armed PER
- * PHASE deliberately: the ceiling is sized from the phase being entered, and
+ * PHASE: the ceiling is sized from the phase being entered, and
  * the reconcile escalation counts polls within one phase. While a not-accepted
  * execute waits for its resend it is armed under its own key and reads no
  * status (the server holds nothing to report): its ticks only back up the

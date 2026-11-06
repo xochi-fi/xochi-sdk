@@ -13,6 +13,7 @@
 import { z } from "zod";
 
 import { CANONICAL_BID_SIGNATURE, MAX_BID_MS } from "./bid";
+import { EVM_ADDRESS } from "./internal";
 
 // Digits only, and bounded: every amount on this surface is a uint256 in base
 // units, whose decimal ceiling is 78 digits. The server enforces both (a bid
@@ -84,7 +85,7 @@ export const IntentAnnouncementSchema = z
   });
 
 const hex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "must be 32 bytes (0x + 64 hex)");
-const evmAddress = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 20-byte EVM address");
+const evmAddress = z.string().regex(EVM_ADDRESS, "must be a 20-byte EVM address");
 const signature65 = z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte r||s||v signature");
 // A uint the venue may still emit as a JSON number (the escrow-fill server
 // serializes `fillAuth.deadline` as an integer); normalized to the decimal
@@ -253,7 +254,7 @@ export const BidSchema = z
     auctionId: z.string(),
     intentId: z.string(),
     solverId: z.string(),
-    // Wider than `solver-bid-v2.schema.json`'s `output` on purpose, and the only place
+    // Wider than `solver-bid-v2.schema.json`'s `output`, and the only place
     // the two artifacts differ. This is a READ path: it admits the server's own
     // rule (`\A\d+\z`), so a `007` bid the server already admitted parses and
     // `verifyBidDetailed` can report it as `non_canonical` -- signature

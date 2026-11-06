@@ -10,11 +10,11 @@ import { describe, it, expect } from "vitest";
 import { validateSwapParams } from "./validateRequest.js";
 import { TRON_CHAIN_ID } from "../shared/index.js";
 import type { QuoteRequest } from "./wire.js";
+import { USDC_BASE } from "./test/session.js";
 
 const soon = (): number => Math.floor(Date.now() / 1000) + 600;
 
 const EVM_WALLET = "0x1111111111111111111111111111111111111111";
-const EVM_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const TRON_USDC = "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8";
 
 describe("validateSwapParams", () => {
@@ -23,8 +23,8 @@ describe("validateSwapParams", () => {
       wallet: EVM_WALLET,
       fromChainId: 8453,
       toChainId: 42161,
-      fromToken: EVM_USDC,
-      toToken: EVM_USDC,
+      fromToken: USDC_BASE,
+      toToken: USDC_BASE,
       fromAmount: "1000000",
       deadline: soon(),
       slippageBps: 50,
@@ -38,8 +38,8 @@ describe("validateSwapParams", () => {
       wallet: EVM_WALLET,
       fromChainId: 8453,
       toChainId: 42161,
-      fromToken: EVM_USDC,
-      toToken: EVM_USDC,
+      fromToken: USDC_BASE,
+      toToken: USDC_BASE,
       fromAmount: "1000000",
       deadline: soon(),
       slippageBps: 50,
@@ -62,7 +62,7 @@ describe("validateSwapParams", () => {
       wallet: EVM_WALLET,
       fromChainId: 8453,
       toChainId: TRON_CHAIN_ID,
-      fromToken: EVM_USDC,
+      fromToken: USDC_BASE,
       toToken: TRON_USDC,
       fromAmount: "1000000",
       deadline: soon(),
@@ -77,8 +77,8 @@ describe("validateSwapParams", () => {
       wallet: EVM_WALLET,
       fromChainId: 8453,
       toChainId: 56 as unknown as QuoteRequest["toChainId"],
-      fromToken: EVM_USDC,
-      toToken: EVM_USDC,
+      fromToken: USDC_BASE,
+      toToken: USDC_BASE,
       fromAmount: "1000000",
       deadline: soon(),
       slippageBps: 50,

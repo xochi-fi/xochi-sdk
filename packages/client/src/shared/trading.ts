@@ -94,7 +94,7 @@ export const MAX_DEADLINE_OFFSET_SEC = 3600;
 /**
  * Server-side ceiling on a quote request's `deadline`, in seconds from now.
  *
- * Deliberately looser than MAX_DEADLINE_OFFSET_SEC, which is the CLIENT's rule
+ * Looser than MAX_DEADLINE_OFFSET_SEC, which is the CLIENT's rule
  * (src/utils/validators.ts) and the value the frontend actually sends. This is
  * the outer bound the API will accept from anyone, sized so an agent or a device
  * with a skewed clock is not rejected for asking a reasonable question.

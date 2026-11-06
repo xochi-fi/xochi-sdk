@@ -239,7 +239,7 @@ const amountField = z
 // pre-adapter core still parses; `.passthrough()` tolerates additive fields a
 // newer server may send.
 //
-// Deliberately NOT the Worker's `FeeBreakdownSchema` (`shared/schemas.ts`),
+// Not the Worker's `FeeBreakdownSchema` (`shared/schemas.ts`),
 // though both carry the same fifteen layer fields and the same optional
 // `discount`. They are two contracts on two surfaces and neither accepts a
 // superset of the other: the Worker's `/api/*` re-emission REQUIRES
@@ -266,7 +266,7 @@ export const LayeredFeeBreakdownSchema = z
     total_fee: amountField,
     total_usd: z.string().optional(),
     surplus_share_pct: bpsField,
-    // Served only when the request carried `promo_discount_bps > 0` (xochi#584):
+    // Served only when the request carried `promo_discount_bps > 0`:
     // which discount priced the quote and how much it took off the Standard
     // venue + routing layers. Informational -- `venue_fee`/`routing_fee` are
     // already net of it, so the reconciliation in `assertFeeBreakdownInvariants`

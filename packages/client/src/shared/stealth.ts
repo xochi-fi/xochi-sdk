@@ -24,10 +24,10 @@ export const STEALTH_ACCOUNT_SALT = 0;
 /**
  * Factories a stealth payout may be derived against, PER DESTINATION CHAIN.
  *
- * The client deliberately FOLLOWS the solver-advertised factory rather than its
- * own pin (#302): if the two disagree they derive different counterfactual
- * addresses and the recipient cannot find their money. That is the right call
- * for parity, and it is why this list exists rather than a hard pin.
+ * The client FOLLOWS the solver-advertised factory rather than its own pin
+ * (#302): if the two disagree they derive different counterfactual addresses
+ * and the recipient cannot find their money. This list bounds what may be
+ * followed, in place of a hard pin.
  *
  * Nothing else constrains WHAT may be advertised. The factory decides who owns
  * the account the payout lands in, so an advertised factory that deploys an

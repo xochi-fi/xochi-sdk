@@ -19,6 +19,7 @@
 import { ethers } from "ethers";
 
 import { MAX_BID_MS, SOLVER_BID_DOMAIN } from "./bid";
+import { EVM_ADDRESS } from "./internal";
 
 // The bid's domain, by reference: one domain for every struct a solver key
 // signs for the venue, told apart by type hash.
@@ -66,12 +67,10 @@ export interface SolverRegistrationTypedData {
   message: SolverRegistrationMessage;
 }
 
-const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-
 function checkAddress(label: string, v: unknown): string {
   // `isAddress` also refuses a mixed-case spelling whose checksum is wrong:
   // that is a typo, not an address.
-  if (typeof v !== "string" || !HEX_ADDRESS.test(v) || !ethers.isAddress(v)) {
+  if (typeof v !== "string" || !EVM_ADDRESS.test(v) || !ethers.isAddress(v)) {
     throw new Error(
       `registration ${label} must be a 0x-prefixed 20-byte address, got ${String(v)}`,
     );

@@ -15,6 +15,7 @@ import {
   recipientAddress,
   REFERRAL_NEUTRAL_NOTE,
 } from "./schemas.js";
+import { USDC_BASE } from "../machine/test/session.js";
 
 const INTENT_ID = "xi_3a94fb5a37cf16d62a3799b359c20428";
 const QUOTE_ID = "xq_4ae6611fd08313507696cb2b834cc229";
@@ -422,15 +423,14 @@ describe("ExecuteResponseSchema (success + 502 failed branches)", () => {
   });
 });
 
-// Non-EVM (Tron) surface of the response contract (from schemas.tron.test.ts).
+// Non-EVM (Tron) surface of the response contract.
 
 const TRON_USDC = "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8";
 const TRON_RECIPIENT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
-const EVM_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
 
 describe("recipientAddress", () => {
   it("accepts EVM and Tron addresses", () => {
-    expect(recipientAddress.safeParse(EVM_USDC).success).toBe(true);
+    expect(recipientAddress.safeParse(USDC_BASE).success).toBe(true);
     expect(recipientAddress.safeParse(TRON_RECIPIENT).success).toBe(true);
   });
 });
