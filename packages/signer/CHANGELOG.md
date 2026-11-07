@@ -6,12 +6,12 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ### Added
 
-- `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser the signer's own modules use (canonical base-10 string, non-negative safe integer or bigint).
+- `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser XSP uses (canonical base-10 string, non-negative safe integer or bigint). Escrow and shielded inputs follow the same spelling rule; escrow also admits leading zeros.
 - The five shielded `*EncodingError` classes expose the refusal `detail` as a property. Names, codes, fields and messages are unchanged.
 
 ### Changed
 
-- XSP uint64 fields (`deadline`, `depositedAt`, `expiry`) refuse non-canonical spellings (`""`, `"0x10"`, `" 7"`, `"007"`, `"1e3"`, negatives, unsafe numbers) with "`<field>` must be a non-negative base-10 integer"; they were coerced by `BigInt`. Committed XSP vectors are unchanged.
+- **BREAKING: every XSP uint goes through `parseUint`**: the uint256 `originChainId`, `originAmount`, `destChainId`, `destAmount`, `nonce`, transfer and record `amount` and domain `chainId`, and the uint64 `deadline`, `depositedAt` and `expiry`. Spellings `BigInt` used to coerce now throw "`<field>` must be a non-negative base-10 integer": `""` and `" "` (read as 0), `"0x10"` (16), `" 7"`, `"+7"` and `"007"` (7), `"-0"` (0), and numbers above `Number.MAX_SAFE_INTEGER`. Negatives throw the same message. A uint256 above 2^256 - 1 throws "`<field>` out of uint256 range". Canonical inputs hash as before; committed XSP vectors are unchanged. Migration: pass decimal strings or bigints (convert an `eth_chainId` hex result with `BigInt(hex)` first).
 - `@noble/curves` dependency range is `^1.9.0` (was `^1.2.0`).
 
 ## [0.7.0] - 2026-11-03

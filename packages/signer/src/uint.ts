@@ -1,4 +1,7 @@
-// Unsigned-integer inputs: one spelling rule for every module that hashes or signs a uint.
+// Unsigned-integer inputs: the spelling rule for every `UintLike` the signer hashes or signs
+// (XSP, escrow, shielded). XSP and shielded refuse leading zeros; escrow admits them, as
+// Riddler's feed does. ERC-4337 quantities (`erc4337.ts`) and escrow pin keys
+// (`escrow-pin.ts`) also take 0x hex and keep their own parsers.
 // The index re-exports `UintLike` and `parseUint`.
 
 export type UintLike = bigint | number | string;

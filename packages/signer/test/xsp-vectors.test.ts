@@ -215,6 +215,29 @@ describe("xsp.json: obligation", () => {
     );
   });
 
+  it("refuses a uint256 that is not a canonical non-negative integer", () => {
+    const [first] = xsp.obligation.vectors;
+    if (!first) throw new Error("no obligation vectors");
+    const depository = first.domain.verifyingContract;
+    const fields = ["originChainId", "originAmount", "destChainId", "destAmount", "nonce"] as const;
+    for (const field of fields) {
+      for (const value of ["", "0x64", " 100", "007", "-1", "+7", -1, 2 ** 53]) {
+        expect(() => hashObligation({ ...first.terms, [field]: value })).toThrow(
+          new RegExp(`${field} must be a non-negative base-10 integer`),
+        );
+      }
+      expect(() => hashObligation({ ...first.terms, [field]: 2n ** 256n })).toThrow(
+        new RegExp(`${field} out of uint256 range`),
+      );
+    }
+    expect(() => xspDomainSeparator({ ...first.domain, chainId: "0x2105" })).toThrow(
+      /chainId must be a non-negative base-10 integer/,
+    );
+    expect(
+      computeObligationId({ ...first.terms, nonce: BigInt(first.terms.nonce) }, depository),
+    ).toBe(first.obligationId);
+  });
+
   for (const r of xsp.obligation.refundCommitments) {
     it(`refundCommitment ${r.name}`, () => {
       expect(computeRefundCommitment(r.refundAddress, r.refundSalt)).toBe(r.refundCommitment);
@@ -280,6 +303,23 @@ describe("xsp.json: depository", () => {
     );
     expect(empty).toBeDefined();
   });
+
+  it("refuses a non-canonical transfer or record amount", () => {
+    const v = xsp.depository.vectors.find(
+      (x): x is Extract<typeof x, { kind: "callRequest" }> =>
+        x.kind === "callRequest" && x.message.transfers.length > 0 && x.message.consume.length > 0,
+    );
+    const [transfer] = v?.message.transfers ?? [];
+    const [record] = v?.message.consume ?? [];
+    if (!v || !transfer || !record)
+      throw new Error("no callRequest vector with transfers and records");
+    expect(() =>
+      hashCallRequest({ ...v.message, transfers: [{ ...transfer, amount: "" }] }),
+    ).toThrow(/amount must be a non-negative base-10 integer/);
+    expect(() =>
+      hashCallRequest({ ...v.message, consume: [{ ...record, amount: "0x10" }] }),
+    ).toThrow(/amount must be a non-negative base-10 integer/);
+  });
 });
 
 describe("xsp.json: deposit address", () => {
@@ -297,6 +337,14 @@ describe("xsp.json: deposit address", () => {
       ).toBe(v.address);
     });
   }
+
+  it("refuses a non-canonical originAmount rather than reading it as zero", () => {
+    const [v] = xsp.depositAddress.vectors;
+    if (!v) throw new Error("no deposit address vectors");
+    expect(() => computeDepositAddressSalt({ ...v, originAmount: "" })).toThrow(
+      /originAmount must be a non-negative base-10 integer/,
+    );
+  });
 
   for (const r of xsp.depositAddress.rejections) {
     it(`${r.name}: rejects with ${r.error}`, () => {
