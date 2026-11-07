@@ -89,6 +89,13 @@ The tool itself publishes nothing that names the account a Xochi recipient, but:
   the observed fee and calculated proceeds. Signed recovery data is in the private operation
   journal before broadcast; after mining, each withdrawal's finalization data and L1 operation ID
   are written under `<data-dir>/exits/`.
+- **Exit on mainnet needs a fresh Fee Juice claim.** There is no sponsored FPC on mainnet and
+  `setup` spends the account's Fee Juice, so `exit --fee-juice-claim FILE` pays the exit's L2 fee
+  by claiming bridged Fee Juice in the same transaction. The operator bridges Fee Juice to the
+  recipient's L2 address with `FeeJuicePortal.depositToAztecPublic` (same one-fresh-L1-EOA rule
+  as for setup) and hands over the claim as a JSON file
+  `{"claimAmount": "...", "claimSecret": "0x...", "messageLeafIndex": "..."}`. One claim pays
+  one transaction; do not reuse the setup claim.
 
 ## Release operator preflight
 
@@ -168,6 +175,12 @@ node dist/cli.js enroll status --data-dir "$DATA" --api-url https://api.xochi.fi
 node dist/cli.js balance --data-dir "$DATA" --node-url "$NODE" \
   --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT"
 node dist/cli.js operations --data-dir "$DATA"
+# Exit on mainnet: EXIT_CLAIM_JSON is a second operator claim file, not the setup one.
+node dist/cli.js exit --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
+  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT" --broadcaster-artifact "$BROADCASTER" \
+  --l1-recipient "$L1_RECIPIENT" --amount "$EXIT_BASE_UNITS" \
+  --prover-tip "$PROVER_TIP" --relayer-tip "$RELAYER_TIP" \
+  --max-executor-fee "$MAX_EXECUTOR_FEE" --fee-juice-claim "$EXIT_CLAIM_JSON"
 ```
 
 `qualify/EVIDENCE.md` contains the complete, fail-fast R1-R6 operator sequence, including spend,

@@ -116,7 +116,8 @@ Options:
   --node-url URL               Aztec v6 mainnet node of your choice (required live)
   --corridor FILE              corridor record (default: built-in OXDAI mainnet rev 2)
   --oxide-token-artifact FILE  OxideToken artifact (class and artifact hash are checked)
-  --fee-juice-claim FILE       Xochi's sponsored Fee Juice claim for the deployment (setup)
+  --fee-juice-claim FILE       Xochi's sponsored Fee Juice claim for the deployment (setup) or
+                               bridged Fee Juice claimed to pay the exit's fee (exit)
   --api-url URL                Xochi API (enroll); bearer from XOCHI_JWT
   --source-wallet ADDR         enroll start
   --source-signature SIG       enroll submit
@@ -823,6 +824,9 @@ export async function run(argv: string[]): Promise<void> {
           broadcasterArtifact: await loadBroadcasterArtifact(
             required(values, "broadcaster-artifact"),
           ),
+          feeJuiceClaim: values["fee-juice-claim"]
+            ? FeeJuiceClaimSchema.parse(JSON.parse(readFileSync(values["fee-juice-claim"], "utf8")))
+            : undefined,
         });
         if (ctx.port.mode === "live") {
           // The record anyone needs to finalize the withdrawal on L1; written per exit tx.

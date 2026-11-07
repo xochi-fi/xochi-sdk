@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { NO_FROM } from "@aztec-labs/aztec.js/account";
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import { Contract } from "@aztec-labs/aztec.js/contracts";
-import { FeeJuicePaymentMethodWithClaim } from "@aztec-labs/aztec.js/fee";
+import { FeeJuicePaymentMethodWithClaim, type FeePaymentMethod } from "@aztec-labs/aztec.js/fee";
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import { createAztecNodeClient, type AztecNode } from "@aztec-labs/aztec.js/node";
 import { ContractInitializationStatus } from "@aztec-labs/aztec.js/wallet";
@@ -79,6 +79,8 @@ export interface ExitRequest {
   relayerTip: bigint;
   maxExecutorFee: bigint;
   broadcasterArtifact: ContractArtifact;
+  /** Pays the exit's fee by claiming bridged Fee Juice in the same tx (mainnet has no sponsored FPC). */
+  feeJuiceClaim?: FeeJuiceClaim;
 }
 
 export interface WithdrawalRecord {
@@ -382,6 +384,7 @@ export class LiveAztec implements AztecPort {
     build: (contract: Contract) => Operation[],
     operation: OperationRecord,
     diagnosticState: SubmissionDiagnosticState,
+    paymentMethod?: FeePaymentMethod,
   ): Promise<SubmitResult> {
     if (operation.kind !== diagnosticState.operationKind) {
       throw new Error("operation kind does not match its submission diagnostic");
@@ -402,7 +405,7 @@ export class LiveAztec implements AztecPort {
         creationTxHash: TxHash.zero(),
       });
       const submitOperation = () =>
-        submit({ wallet: this.wallet, chain: this.node }, account.address, {
+        submit({ wallet: this.wallet, chain: this.node, paymentMethod }, account.address, {
           contract,
           signer,
           operations: build(contract),
@@ -516,6 +519,9 @@ export class LiveAztec implements AztecPort {
           `broadcaster artifact class ${klass.id.toString()} is not the class of ${broadcasterAddress.toString()}`,
         );
       }
+      // PXE simulates the finalization-request broadcast call, so the verified instance must
+      // be registered with this artifact first (oxide-client broadcaster.ts does the same).
+      await this.wallet.registerContract(instance, request.broadcasterArtifact);
       const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
       const executorFee = await createPublicClient({
         transport: http(this.l1RpcUrl),
@@ -552,6 +558,13 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
         diagnosticState,
+        request.feeJuiceClaim
+          ? new FeeJuicePaymentMethodWithClaim(account.address, {
+              claimAmount: BigInt(request.feeJuiceClaim.claimAmount),
+              claimSecret: Fr.fromString(request.feeJuiceClaim.claimSecret),
+              messageLeafIndex: BigInt(request.feeJuiceClaim.messageLeafIndex),
+            })
+          : undefined,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -719,6 +732,9 @@ export class DryRunAztec implements AztecPort {
   ): Promise<ExitResult> {
     this.record(
       `node.getContract(${this.corridor.oxide.l2Broadcaster}): its class must be the broadcaster artifact's (${request.broadcasterArtifact.name})`,
+    );
+    this.record(
+      `wallet.registerContract(instance ${this.corridor.oxide.l2Broadcaster}, ${request.broadcasterArtifact.name})`,
     );
     this.record(
       `L1: PlainWithdrawalExecutor(${this.corridor.oxide.plainWithdrawalExecutor}).FEE() must be at most the operator ceiling`,
