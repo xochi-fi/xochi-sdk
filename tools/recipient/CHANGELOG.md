@@ -4,6 +4,13 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ## [Unreleased]
 
+### Fixed
+
+- `exit` registers the verified Broadcaster instance with the wallet before simulating, so PXE no
+  longer fails with "No artifact registered for contract class" (xochi#748 G1).
+- `exit --fee-juice-claim FILE` pays the exit's L2 fee from a bridged Fee Juice claim in the same
+  transaction; mainnet has no sponsored FPC and `setup` spends the account's Fee Juice.
+
 ## [0.1.0-test.4] - 2026-11-04
 
 ### Added
