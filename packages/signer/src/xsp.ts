@@ -14,7 +14,7 @@
 import { ethers } from "ethers";
 import { EIP712_DOMAIN_TYPEHASH, coder, keccak, typedDigest } from "./primitives";
 import type { Hex } from "./types";
-import { UINT64_MAX, parseUint, type UintLike } from "./uint";
+import { UINT64_MAX, UINT256_MAX, parseUint, type UintLike } from "./uint";
 
 export { EIP712_DOMAIN_TYPEHASH } from "./primitives";
 
@@ -59,11 +59,17 @@ export interface XspDomain {
   verifyingContract: string;
 }
 
-function uint64(value: UintLike, field: string): bigint {
+// Every XSP uint: `parseUint` (canonical base-10, no leading zeros) within its ABI width.
+function uintN(value: UintLike, field: string, bits: 64 | 256): bigint {
   const v = parseUint(value, field);
-  if (v > UINT64_MAX) throw new Error(`${field} out of uint64 range: ${value}`);
+  if (v > (bits === 64 ? UINT64_MAX : UINT256_MAX)) {
+    throw new Error(`${field} out of uint${bits} range: ${value}`);
+  }
   return v;
 }
+
+const uint64 = (value: UintLike, field: string): bigint => uintN(value, field, 64);
+const uint256 = (value: UintLike, field: string): bigint => uintN(value, field, 256);
 
 export function xspDomainSeparator(domain: XspDomain): Hex {
   return keccak(
@@ -73,7 +79,7 @@ export function xspDomainSeparator(domain: XspDomain): Hex {
         EIP712_DOMAIN_TYPEHASH,
         ethers.id(domain.name),
         ethers.id(domain.version),
-        BigInt(domain.chainId),
+        uint256(domain.chainId, "chainId"),
         domain.verifyingContract,
       ],
     ),
@@ -120,12 +126,12 @@ export function hashObligation(terms: XochiObligation): Hex {
       ],
       [
         OBLIGATION_TYPEHASH,
-        BigInt(terms.originChainId),
+        uint256(terms.originChainId, "originChainId"),
         terms.originToken,
-        BigInt(terms.originAmount),
-        BigInt(terms.destChainId),
+        uint256(terms.originAmount, "originAmount"),
+        uint256(terms.destChainId, "destChainId"),
         terms.destToken,
-        BigInt(terms.destAmount),
+        uint256(terms.destAmount, "destAmount"),
         terms.recipientCommitment,
         terms.refundCommitment,
         terms.recoverable,
@@ -133,7 +139,7 @@ export function hashObligation(terms: XochiObligation): Hex {
         st,
         uint64(terms.deadline, "deadline"),
         terms.quoteId,
-        BigInt(terms.nonce),
+        uint256(terms.nonce, "nonce"),
       ],
     ),
   );
@@ -216,7 +222,7 @@ function hashTransfers(transfers: DepositoryTransfer[]): Hex {
         keccak(
           coder.encode(
             ["bytes32", "address", "address", "uint256"],
-            [TRANSFER_TYPEHASH, t.token, t.to, BigInt(t.amount)],
+            [TRANSFER_TYPEHASH, t.token, t.to, uint256(t.amount, "amount")],
           ),
         ),
       ),
@@ -237,7 +243,7 @@ function hashRecords(records: DepositoryRecord[]): Hex {
               r.refundCommitment,
               r.depositor,
               r.token,
-              BigInt(r.amount),
+              uint256(r.amount, "amount"),
               uint64(r.depositedAt, "depositedAt"),
             ],
           ),
@@ -299,7 +305,7 @@ export interface DepositAddressInputs {
 
 /** Throws "ZeroOriginAmount" for originAmount == 0, mirroring the factory's revert. */
 export function computeDepositAddressSalt(inputs: DepositAddressInputs): Hex {
-  const amount = BigInt(inputs.originAmount);
+  const amount = uint256(inputs.originAmount, "originAmount");
   if (amount === 0n) throw new Error("ZeroOriginAmount");
   return keccak(
     coder.encode(
