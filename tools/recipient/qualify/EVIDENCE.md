@@ -196,9 +196,12 @@ EXIT_BASE_UNITS="$(op read 'op://<vault>/<recipient>/exit-base-units')"
 PROVER_TIP="$(op read 'op://<vault>/<recipient>/prover-tip')"
 RELAYER_TIP="$(op read 'op://<vault>/<recipient>/relayer-tip')"
 MAX_EXECUTOR_FEE="$(op read 'op://<vault>/<recipient>/max-executor-fee-base-units')"
+EXIT_CLAIM_JSON="$(op read 'op://<vault>/<recipient>/exit-fee-juice-claim-path')"
 : "${SECOND_RECIPIENT:?required}" "${L1_RECIPIENT:?required}"
 : "${SPEND_BASE_UNITS:?required}" "${EXIT_BASE_UNITS:?required}"
 : "${PROVER_TIP:?required}" "${RELAYER_TIP:?required}" "${MAX_EXECUTOR_FEE:?required}"
+: "${EXIT_CLAIM_JSON:?required}"
+test -r "$EXIT_CLAIM_JSON"
 node dist/cli.js balance --data-dir "$DATA" --node-url "$NODE" \
   --oxide-token-artifact "$ARTIFACT"
 node dist/cli.js spend --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
@@ -207,7 +210,7 @@ node dist/cli.js exit --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
   --oxide-token-artifact "$ARTIFACT" --broadcaster-artifact "$BROADCASTER" \
   --l1-recipient "$L1_RECIPIENT" --amount "$EXIT_BASE_UNITS" \
   --prover-tip "$PROVER_TIP" --relayer-tip "$RELAYER_TIP" \
-  --max-executor-fee "$MAX_EXECUTOR_FEE"
+  --max-executor-fee "$MAX_EXECUTOR_FEE" --fee-juice-claim "$EXIT_CLAIM_JSON"
 node dist/cli.js operations --data-dir "$DATA"
 ```
 

@@ -36,6 +36,7 @@ cast chain-id --rpc-url "$FORK_RPC" >/dev/null
 registry="$(cast call "$PORTAL" 'REGISTRY()(address)' --rpc-url "$FORK_RPC")"
 pinned_rollup="$(cast call "$PORTAL" 'ROLLUP()(address)' --rpc-url "$FORK_RPC")"
 rollup_version="$(cast call "$PORTAL" 'ROLLUP_VERSION()(uint256)' --rpc-url "$FORK_RPC")"
+rollup_version="${rollup_version%% *}"
 before_canonical="$(cast call "$registry" 'getCanonicalRollup()(address)' --rpc-url "$FORK_RPC")"
 before_frozen="$(cast call "$PORTAL" '$frozen()(bool)' --rpc-url "$FORK_RPC")"
 if [[ "$rollup_version" != "$EXPECTED_ROLLUP_VERSION" || "${before_canonical,,}" != "${pinned_rollup,,}" || "$before_frozen" != "false" ]]; then
@@ -43,7 +44,7 @@ if [[ "$rollup_version" != "$EXPECTED_ROLLUP_VERSION" || "${before_canonical,,}"
   exit 1
 fi
 
-slot_value="$(cast to-bytes32 "$ALTERNATE_ROLLUP")"
+slot_value="$(cast pad --len 32 "$ALTERNATE_ROLLUP")"
 cast rpc anvil_setStorageAt "$registry" "$REGISTRY_CANONICAL_SLOT" "$slot_value" \
   --rpc-url "$FORK_RPC" >/dev/null
 after_override="$(cast call "$registry" 'getCanonicalRollup()(address)' --rpc-url "$FORK_RPC")"
