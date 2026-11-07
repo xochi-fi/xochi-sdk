@@ -4,6 +4,8 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-07
+
 ### Added
 
 - `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser XSP uses (canonical base-10 string, non-negative safe integer or bigint). Escrow and shielded inputs follow the same spelling rule; escrow also admits leading zeros.
