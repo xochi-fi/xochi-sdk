@@ -71,5 +71,14 @@ describe("dry run", () => {
     const paid = await exit(ctx, account, artifact, { ...request, relayerTip: 1n });
     expect(paid.withdrawals).toEqual([]);
     expect(port.calls.at(-1)).toMatch(/relayerTip 1/);
+    // The broadcaster must be registered with the verified artifact before the submit that
+    // simulates the finalization-request broadcast; the live run failed here without it.
+    const register = port.calls.findIndex((call) =>
+      call.startsWith(`wallet.registerContract(instance ${OXDAI_MAINNET_REV2.oxide.l2Broadcaster}`),
+    );
+    expect(register).toBeGreaterThan(
+      port.calls.findIndex((call) => call.startsWith("node.getContract(")),
+    );
+    expect(register).toBeLessThan(port.calls.length - 1);
   });
 });
