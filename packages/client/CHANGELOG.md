@@ -6,7 +6,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Changed
 
-- `@xochi/signer` dependency range is `^0.7.0` (was `^0.6.0`); `viem` is `^2.57.7` (was `^2.21.0`).
+- `@xochi/signer` dependency range is `^0.8.0` (was `^0.6.0`). The client calls no XSP API, so 0.8.0's stricter XSP uint parsing does not reach it. `viem` is `^2.57.7` (was `^2.21.0`).
 
 ## [0.1.10] - 2026-11-03
 
