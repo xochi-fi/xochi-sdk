@@ -5,7 +5,6 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 ## [Unreleased]
 
 ## [0.8.0] - 2026-11-08
-
 ### Added
 
 - **Passkey recipient keys** (`passkey-recipient.ts`, xochi-sdk#155, epic xochi#833; spec `@xochi/spec` `PASSKEY-RECIPIENT.md`). PROPOSED until product-owner sign-off. `derivePasskeyRecipientKeys({ first, second }, version?)` derives three things from the two 32-byte WebAuthn PRF outputs of one passkey: the recipient CLI's `AccountSecrets` (`secret`, `salt`); a 32-byte AES-256-GCM `wrapKey`; and a 32-byte `pxeStoreKey`, the key of the browser's persisted encrypted PXE store, which is derived on every unlock and never persisted.
