@@ -82,6 +82,7 @@ import type {
   ExecuteReply,
   ExecuteResponse,
   ExecuteRequest,
+  IntentStatusData,
   IntentStatusResult,
   IntentWebSocketMessage,
   QuoteRequest,
@@ -1968,14 +1969,14 @@ function onStatus(
   // reply has answered, an older one cannot regress lifecycle or receipt
   // fields, including clearing a newer not-sent verdict.
   if (result.ok && attempt < poll.answered) return m;
-  const foreignId = foreignStatusIntentId(result, id);
-  if (foreignId !== null) {
+  const foreign = foreignStatus(result, id);
+  if (foreign) {
     log(
       fx,
       "warn",
       `${LOG} Ignoring a status response for another intent; keeping the poll active`,
       {
-        response: foreignId,
+        response: foreign.intentId,
         current: id,
       },
     );
@@ -2101,17 +2102,16 @@ function onStatus(
     : next;
 }
 
-/** The intent a status reply names when it is not the polled `id`, else null. */
-function foreignStatusIntentId(
+/**
+ * The status reply when it names any intent but the polled `id`, else undefined.
+ * A reply without `intent_id` counts as foreign: only an exact match is applied.
+ */
+function foreignStatus(
   result: Outcome<{ status: IntentStatusResult }>,
   id: string,
-): string | null {
-  return result.ok &&
-    result.status &&
-    !("notFound" in result.status) &&
-    result.status.intentId !== id
-    ? result.status.intentId
-    : null;
+): IntentStatusData | undefined {
+  if (!result.ok || !result.status || "notFound" in result.status) return undefined;
+  return result.status.intentId === id ? undefined : result.status;
 }
 
 /**
