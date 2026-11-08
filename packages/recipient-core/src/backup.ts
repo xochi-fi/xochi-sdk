@@ -162,11 +162,19 @@ export interface SealedBackup {
   commitment: Hex;
 }
 
+/** Fewer characters are refused: the backup is the only copy of the account keys (CLI: `sealed.ts`). */
+export const MIN_BACKUP_PASSPHRASE_LENGTH = 12;
+
 export async function sealBackup(
   contents: BackupContents,
   passphrase: string,
   crypto: KeystoreCrypto,
 ): Promise<SealedBackup> {
+  if (passphrase.length < MIN_BACKUP_PASSPHRASE_LENGTH) {
+    throw new Error(
+      `backup passphrase must be at least ${MIN_BACKUP_PASSPHRASE_LENGTH} characters`,
+    );
+  }
   const bytes = await crypto.seal("backup", utf8Bytes(JSON.stringify(contents)), passphrase);
   return { bytes, commitment: keccak256(bytes) };
 }
