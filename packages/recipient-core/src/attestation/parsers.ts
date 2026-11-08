@@ -1,8 +1,8 @@
 // A Uint8Array port of the vendored Oxide parser
 // src/oxide/vendor/oxide-lib/attestation/nitro_attestation/parsers.ts
 // (zkmoney-public 8fd1984, MIT, Copyright (c) 2026 Aztec Labs; see that directory's VENDORED.md).
-// The vendored file reads Node's global Buffer and lives outside this package, so it cannot be
-// imported here; this copy keeps its control flow, its order of checks and its error messages,
+// The vendored file reads Node's global Buffer, which this platform-neutral module must not, so it
+// is not imported here; this copy keeps its control flow, its order of checks and its error messages,
 // and replaces only the Buffer calls. A 64-bit argument cut short reports "unexpected end of CBOR
 // integer" like every other short read (the vendored reader surfaces Node's Buffer RangeError).
 // test/attestation holds it to the vendored file differentially (same values, same refusals).
