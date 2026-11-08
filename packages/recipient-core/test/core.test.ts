@@ -192,6 +192,29 @@ describe("openRecipientCore", () => {
 });
 
 describe("enrollment", () => {
+  it("resends the recorded request byte for byte after a lost response, then forgets it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.loseEnrollResponses = 1;
+
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(
+      "TEST ONLY: connection reset after the Worker enrolled",
+    );
+    expect(h.kv.durableJson("enrollment-request.json")).toMatchObject({
+      challengeId: "TEST-ONLY-challenge",
+    });
+    const projection = await core.enrollSubmit(pending, signature, SEALED);
+
+    expect(projection).toMatchObject({ binding_id: BINDING_ID });
+    expect(h.xochi.enrollBodies).toHaveLength(2);
+    expect(h.xochi.enrollBodies[1]).toBe(h.xochi.enrollBodies[0]);
+    expect(await stateOf(h.kv)).toMatchObject({ bindingId: BINDING_ID });
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
+    await core.close();
+  });
+
   it("submits a sealed-file binding and records its id, digest and commitment", async () => {
     const h = harness();
     const core = await h.open();

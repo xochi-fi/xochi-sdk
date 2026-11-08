@@ -34,6 +34,7 @@ import {
   signTokenRegistrationAck,
   type BindingTypedData,
   type EnrollmentChallenge,
+  type EnrollmentRequest,
   type SignedAck,
   type WireBinding,
 } from "./enrollment.js";
@@ -221,8 +222,24 @@ export async function enrollSubmit(
   sourceSignature: string,
   backup: BackupMode,
 ): Promise<BindingProjection> {
+  const request = await prepareEnrollment(ctx, account, pending, sourceSignature, backup);
+  return postEnrollment(ctx, api, pending, request);
+}
+
+/**
+ * `enrollSubmit` up to the POST: the signed request. Recipient signatures are randomized, so a
+ * caller that may retry keeps these exact bytes and resends them (`postEnrollment`): the Worker
+ * answers an identical resubmission with the same binding and refuses any other.
+ */
+export async function prepareEnrollment(
+  ctx: EnrollmentCtx,
+  account: RecipientAccount,
+  pending: PendingEnrollment,
+  sourceSignature: string,
+  backup: BackupMode,
+): Promise<EnrollmentRequest> {
   const acknowledged = backupAcknowledgement(backup);
-  const request = await buildEnrollmentRequest({
+  return buildEnrollmentRequest({
     corridor: ctx.corridor,
     account,
     challenge: pending.challenge,
@@ -234,6 +251,15 @@ export async function enrollSubmit(
     tokenRegistrationAck: pending.tokenRegistrationAck,
     sign: signRecipientDigest,
   });
+}
+
+/** `enrollSubmit`'s POST of a prepared request, refused unless it projects this descriptor. */
+export async function postEnrollment(
+  ctx: EnrollmentCtx,
+  api: EnrollmentApi,
+  pending: PendingEnrollment,
+  request: EnrollmentRequest,
+): Promise<BindingProjection> {
   const projection = await api.enroll(request);
   if (
     projection.descriptor_digest.toLowerCase() !== pending.binding.descriptorDigest.toLowerCase()

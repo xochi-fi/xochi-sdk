@@ -30,7 +30,8 @@ import {
   checkNetwork,
   enrollStart,
   enrollStatus,
-  enrollSubmit,
+  postEnrollment,
+  prepareEnrollment,
   exit,
   registerSenders,
   registerToken,
@@ -43,8 +44,8 @@ import {
   type ReceiptRequest,
 } from "./commands.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
-import { bindingTypedData, type SignedAck } from "./enrollment.js";
-import { utf8Bytes } from "./json.js";
+import { bindingTypedData, type EnrollmentRequest, type SignedAck } from "./enrollment.js";
+import { parseJsonBytes, prettyJsonBytes, utf8Bytes } from "./json.js";
 import {
   OperationJournal,
   RESTORE_MARKER_KEY,
@@ -70,6 +71,13 @@ import { StateSchema, StateStore, type State } from "./state.js";
 import type { WalletStorage } from "./wallet-storage.js";
 
 export type { BackupMode } from "./backup-mode.js";
+
+/** The signed enrollment request `enrollSubmit` keeps until its binding is recorded. */
+const ENROLLMENT_REQUEST_KEY = "enrollment-request.json";
+interface RecordedEnrollment {
+  challengeId: string;
+  request: EnrollmentRequest;
+}
 
 export interface RecipientCoreDeps {
   corridor: Corridor;
@@ -401,14 +409,26 @@ class Core implements RecipientCore {
         );
       }
     }
-    const projection = await enrollSubmit(
-      this.#ctx,
-      this.#api(),
-      this.#secretAccount,
-      pending,
-      sourceSignature,
-      backup,
-    );
+    // Recipient signatures are randomized: a request signed again after a lost response never
+    // matches the Worker's exact-resubmission check. Keep the signed bytes durably before the POST
+    // and resend them unchanged for this challenge; forget them once the binding is recorded.
+    const recorded = await this.#deps.kv.get(ENROLLMENT_REQUEST_KEY);
+    const kept = recorded === null ? null : (parseJsonBytes(recorded) as RecordedEnrollment);
+    let request: EnrollmentRequest;
+    if (kept?.challengeId === pending.challenge.challenge_id) {
+      request = kept.request;
+    } else {
+      request = await prepareEnrollment(
+        this.#ctx,
+        this.#secretAccount,
+        pending,
+        sourceSignature,
+        backup,
+      );
+      const record: RecordedEnrollment = { challengeId: pending.challenge.challenge_id, request };
+      await this.#deps.kv.put(ENROLLMENT_REQUEST_KEY, prettyJsonBytes(record));
+    }
+    const projection = await postEnrollment(this.#ctx, this.#api(), pending, request);
     await this.#journals.state.update((current) => {
       const { pending: _done, ...state } = current ?? fail("the recipient state record is missing");
       return {
@@ -419,6 +439,7 @@ class Core implements RecipientCore {
         bindingDigest: bindingTypedData(this.#deps.corridor, pending.binding).digest,
       };
     });
+    await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);
     return projection;
   }
 

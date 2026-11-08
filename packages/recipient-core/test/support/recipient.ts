@@ -254,6 +254,10 @@ export interface XochiCall {
  */
 export class XochiApi {
   readonly calls: XochiCall[] = [];
+  /** Every enrollment body the Worker received, as sent. */
+  readonly enrollBodies: string[] = [];
+  /** Enrollments whose response is lost after the Worker processed them. */
+  loseEnrollResponses = 0;
   receiptChallenge: ReceiptChallenge | null = null;
   binding: RecipientBinding | null = null;
   account: RecipientAccount | null = null;
@@ -270,6 +274,17 @@ export class XochiApi {
       return json(201, ENROLLMENT_CHALLENGE);
     }
     if (url.pathname === "/api/shielded/recipients") {
+      // The Worker's exact-resubmission rule: the same body gets the same binding; any other body
+      // for an enrolled challenge is a conflict.
+      const text = String(init?.body);
+      if (this.enrollBodies.length > 0 && !this.enrollBodies.includes(text)) {
+        return json(409, { error: "TEST ONLY resubmission differs" });
+      }
+      this.enrollBodies.push(text);
+      if (this.loseEnrollResponses > 0) {
+        this.loseEnrollResponses -= 1;
+        throw new TypeError("TEST ONLY: connection reset after the Worker enrolled");
+      }
       const request = body as { binding: { descriptorDigest: string } };
       return json(201, {
         binding_id: BINDING_ID,
