@@ -44,10 +44,12 @@ All releases are private test artifacts; see the README CAUTION for what they do
 - `receipt` takes intent ids matching `^[a-z0-9_][a-z0-9_-]{0,63}$` (Xochi's ids are
   `xi_<32 hex>`); anything else is refused with "intent id must be 1-64 characters of a-z, 0-9,
   '_' and '-', not starting with '-'". It was `[A-Za-z0-9_-]{1,128}`.
-- A journal key outside the storage grammar is refused with "invalid storage key: KEY", and a
-  journal directory holding a file outside it (other than this tool's dot-prefixed temporary
-  files) is refused with "storage directory DIR/ holds an entry outside the key grammar: NAME"
-  instead of being read or skipped: fund movement stays blocked until it is removed.
+- A journal key outside the storage grammar is refused with "invalid storage key: KEY". A
+  journal directory holding an entry outside it (other than this tool's dot-prefixed temporary
+  files, so also an editor backup such as `x.json~`) is refused with "storage directory DIR/
+  holds an entry outside the key grammar: NAME", and one holding a symlink or subdirectory with
+  "... holds an entry that is not a regular file: NAME", instead of being read or skipped: fund
+  movement stays blocked until it is removed.
 - The Node-only Nitro attestation verifier moved, unchanged, to `src/node/vendor/`.
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,22 @@ describe("Node key-value store grammar", () => {
     expect(await kv.list("operations/")).toEqual([]);
     writeFileSync(join(root, "operations", "Foreign.json"), "");
     await expect(kv.list("operations/")).rejects.toThrow(/Foreign\.json/);
+  });
+
+  it("refuses to list a directory holding a symlink or a subdirectory, even with a valid name", async () => {
+    for (const plant of [
+      (dir: string) => symlinkSync(join(dir, "elsewhere.json"), join(dir, "xi_a.json")),
+      (dir: string) => mkdirSync(join(dir, "xi_b.json")),
+    ]) {
+      const root = mkdtempSync(join(tmpdir(), "xochi-kv-"));
+      const kv = new NodeKeyValueStore(root);
+      mkdirSync(join(root, "receipts"));
+      writeFileSync(join(root, "receipts", "elsewhere.json"), "{}");
+      plant(join(root, "receipts"));
+      await expect(kv.list("receipts/")).rejects.toThrow(
+        /storage directory receipts\/ holds an entry that is not a regular file: xi_[ab]\.json/,
+      );
+    }
   });
 });
 

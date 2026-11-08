@@ -14,7 +14,7 @@ import { assertScope } from "./scope.js";
 const OBJECT_STORE = "kv";
 const MAX_KEY_LENGTH = 512;
 const KEY = /^[a-z0-9_][a-z0-9._-]{0,127}(?:\/[a-z0-9_][a-z0-9._-]{0,127})*$/;
-const PREFIX = /^(?:[a-z0-9][a-z0-9._-]{0,127}\/)+$/;
+const PREFIX = /^(?:[a-z0-9_][a-z0-9._-]{0,127}\/)+$/;
 
 function assertKey(key: string): void {
   if (key.length > MAX_KEY_LENGTH || !KEY.test(key)) {
@@ -46,9 +46,13 @@ export class IndexedDbKeyValueStore implements KeyValueStore {
 
   private static async openDatabase(name: string): Promise<IndexedDbKeyValueStore> {
     // Not awaited: a browser may answer through a permission prompt, and opening must not wait.
+    // A rejection (an opaque origin, a sandboxed frame) is an answer too: not persisted.
     const persisted =
       typeof navigator.storage?.persist === "function"
-        ? navigator.storage.persist()
+        ? navigator.storage.persist().catch((error: unknown) => {
+            console.warn("navigator.storage.persist() failed; storage stays best-effort", error);
+            return false;
+          })
         : Promise.resolve(false);
     const opened = Promise.withResolvers<IDBDatabase>();
     let blocked = false;
@@ -107,8 +111,16 @@ export class IndexedDbKeyValueStore implements KeyValueStore {
     }
     // Every key starting with "a/" sorts in ["a/", "a0"): "0" is the code unit after "/".
     const range = IDBKeyRange.bound(prefix, `${prefix.slice(0, -1)}0`, false, true);
-    const keys = await this.transact("readonly", (store) => store.getAllKeys(range));
-    return keys as string[];
+    const keys = (await this.transact("readonly", (store) => store.getAllKeys(range))) as string[];
+    // Fail closed (ports.ts): a key no method of this adapter could write must not drop out of a
+    // journal listing.
+    const foreign = keys.find((key) => key.length > MAX_KEY_LENGTH || !KEY.test(key));
+    if (foreign !== undefined) {
+      throw new Error(
+        `storage prefix ${prefix} holds a key outside the key grammar: ${JSON.stringify(foreign)}`,
+      );
+    }
+    return keys;
   }
 
   close(): void {

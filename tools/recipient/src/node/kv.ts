@@ -72,15 +72,21 @@ export class NodeKeyValueStore implements KeyValueStore {
     }
     const keys: string[] = [];
     for (const entry of entries) {
-      // A leading dot is this adapter's temporary file; anything else outside the grammar is not
-      // ours, and a journal listing it could miss a record: fail closed.
+      // A leading dot is this adapter's temporary file; anything else outside the grammar, or that
+      // is not a regular file (a symlink, a directory), is not ours, and a journal listing it could
+      // miss a record: fail closed.
       if (entry.name.startsWith(".")) continue;
       if (!SEGMENT.test(entry.name)) {
         throw new Error(
           `storage directory ${prefix} holds an entry outside the key grammar: ${entry.name}`,
         );
       }
-      if (entry.isFile()) keys.push(`${prefix}${entry.name}`);
+      if (!entry.isFile()) {
+        throw new Error(
+          `storage directory ${prefix} holds an entry that is not a regular file: ${entry.name}`,
+        );
+      }
+      keys.push(`${prefix}${entry.name}`);
     }
     return keys.sort();
   }

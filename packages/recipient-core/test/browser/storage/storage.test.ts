@@ -194,6 +194,31 @@ describe("IndexedDbKeyValueStore", () => {
     await page.close();
   }, 15_000);
 
+  it("reports a rejected persist() as not persisted, never an unhandled rejection", async () => {
+    const page = await openTab();
+    const unhandled: string[] = [];
+    page.on("pageerror", (error) => unhandled.push(error.message));
+    const result = await page.evaluate(async () => {
+      const persist = Object.getOwnPropertyDescriptor(StorageManager.prototype, "persist")!;
+      try {
+        Object.defineProperty(StorageManager.prototype, "persist", {
+          ...persist,
+          value: () => Promise.reject(new DOMException("TEST ONLY opaque origin", "SecurityError")),
+        });
+        const kv = await window.storage.IndexedDbKeyValueStore.open("kv-persist-rejects");
+        const persisted = await kv.persisted;
+        kv.close();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return persisted;
+      } finally {
+        Object.defineProperty(StorageManager.prototype, "persist", persist);
+      }
+    });
+    expect(result).toBe(false);
+    expect(unhandled).toEqual([]);
+    await page.close();
+  });
+
   it("keeps a put value across a graceful browser restart", async () => {
     const writer = await openTab();
     await writer.evaluate(async () => {
@@ -352,6 +377,41 @@ describe("IndexedDbKeyValueStore", () => {
       keys: Array<string>(9 * 4).fill("TypeError"),
       prefixes: Array<string>(5).fill("TypeError"),
       accepted: "accepted",
+    });
+    await page.close();
+  });
+
+  it("refuses to list a prefix holding a key outside the grammar, and lists '_' prefixes", async () => {
+    const page = await openTab();
+    const result = await page.evaluate(async () => {
+      const kv = await window.storage.IndexedDbKeyValueStore.open("kv-foreign");
+      await kv.put("receipts/xi_a.json", new Uint8Array([1]));
+      await kv.put("_x/a.json", new Uint8Array([1]));
+      // A key no adapter method would write (another build, a manual edit): straight into the store.
+      const raw = Promise.withResolvers<IDBDatabase>();
+      const request = indexedDB.open("xochi-recipient-kv-foreign-kv", 1);
+      request.onsuccess = () => raw.resolve(request.result);
+      request.onerror = () => raw.reject(request.error);
+      const db = await raw.promise;
+      const written = Promise.withResolvers<void>();
+      const tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put(new Uint8Array([1]), "receipts/Intent_A1.json");
+      tx.oncomplete = () => written.resolve();
+      tx.onerror = () => written.reject(tx.error);
+      await written.promise;
+      db.close();
+      const refused = await kv.list("receipts/").then(
+        (keys) => `listed ${keys.join(",")}`,
+        (error: unknown) => (error as Error).message,
+      );
+      const underscore = await kv.list("_x/");
+      kv.close();
+      return { refused, underscore };
+    });
+    expect(result).toEqual({
+      refused:
+        'storage prefix receipts/ holds a key outside the key grammar: "receipts/Intent_A1.json"',
+      underscore: ["_x/a.json"],
     });
     await page.close();
   });
