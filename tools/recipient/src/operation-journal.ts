@@ -355,19 +355,30 @@ export class OperationJournal {
     return this.begin("receipt", { intentId, pid: String(holder.pid), host: holder.host });
   }
 
-  /** Releases a receipt run's lock; its record ends `aborted`, as it moved no funds. */
+  /**
+   * Releases a receipt run's lock; its record ends `aborted`, as it moved no funds. A record the
+   * operator already released (`releaseReceiptLock`) is left as it is: the run's own result,
+   * accepted or not, is never masked by its lock's release.
+   */
   endReceipt(id: string): void {
+    if (this.get(id).status !== "building") return;
     this.update(id, { status: "aborted" });
   }
 
   /**
    * The operator's release of an unfinished `receipt` run's lock (`operations reconcile`): it
-   * moved no funds, so aborting it is always safe. Run it only when no receipt run is active.
+   * moved no funds. Refused while the recorded process is alive, unless `force` (a reused pid
+   * after a crash): releasing a live run's lock would let a spend run beside it.
    */
-  releaseReceiptLock(id: string): void {
+  releaseReceiptLock(id: string, { force = false }: { force?: boolean } = {}): void {
     const record = this.get(id);
     if (record.kind !== "receipt" || record.status !== "building") {
       throw new Error(`operation ${id} is not an unfinished receipt run`);
+    }
+    if (!force && processAlive(Number(record.request["pid"]))) {
+      throw new Error(
+        `receipt run pid ${record.request["pid"]} on ${record.request["host"]} is still running; wait for it. Only if that process is not a receipt run (its pid was reused after a crash), pass --force`,
+      );
     }
     this.update(id, { status: "aborted" });
   }
@@ -412,6 +423,11 @@ export class OperationJournal {
         if (fileError.code !== "EEXIST") throw error;
         if (this.releaseRecoveredTerminalLock() || this.abortDeadReceiptRun()) continue;
         const unresolved = this.unresolved();
+        if (unresolved?.kind === "receipt") {
+          throw new Error(
+            `a receipt run (pid ${unresolved.request["pid"]} on ${unresolved.request["host"]}) holds the fund-movement lock; wait for it`,
+          );
+        }
         throw new Error(
           unresolved
             ? `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`

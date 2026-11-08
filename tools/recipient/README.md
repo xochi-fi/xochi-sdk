@@ -284,29 +284,36 @@ and can spend this intent's payout. Before signing, the tool requires all of the
   `simulation failed: <cause>`.
 
 If you already spent or exited the payout, the simulation fails. `--already-spent` then signs only
-if this PXE's balance no longer covers the amount and this account's own completed spend or exit
-of at least the amount, in `operations/`, was mined after the payout's block. That spend's
-transaction hash is recorded with the receipt. The tool suggests the flag only in that case; when
-the balance still covers the amount, the simulation failed for another reason and the flag is
-refused.
+if this PXE's balance no longer covers the amount, and the balance plus this account's completed
+spends and exits in `operations/` mined after the payout's block do. Spending the payout in parts
+counts. Those transaction hashes are recorded with the receipt. The tool suggests the flag only
+in that case; when the balance still covers the amount, the simulation failed for another reason
+and the flag is refused. If reading the balance fails too, both errors are printed, the
+simulation's first.
 
 A data directory that enrolled before the binding digest was recorded (its `state.json` has
 `bindingId` but no `bindingDigest`) is refused until it passes `--legacy-binding`. With that flag
 the tool adopts the challenge's `binding_digest`, but only when all of these hold: no binding
-digest is recorded; the challenge's `binding_id` and the signed terms' `recipientBindingId` equal
-`state.json` `bindingId`; and the signed terms name that digest, this account as recipient, this
-data directory's descriptor digest, the corridor token, network and corridor. A directory with
-no `bindingId` (restored from a backup that had none) passes the original enrollment's id with
-`--binding-id ID`. All the other checks above also apply. It prints the digest it signs under and
-marks the receipt record `legacyBinding`. Once Xochi accepts that receipt it saves the digest (and
-the id) in `state.json`, so later runs need no flag. Such a directory saved no node URL or
-artifact path either, so pass `--node-url` and `--oxide-token-artifact` on that run.
+digest is recorded; the challenge's `binding_id` and the terms' `recipientBindingId` equal
+`state.json` `bindingId`; and the terms name that digest, this account as recipient, this data
+directory's descriptor digest, the corridor token, network and corridor. A directory with no
+`bindingId` (restored from a backup that had none) passes the original enrollment's id with
+`--binding-id ID`. That id is `bindingId` in the enrolling machine's `state.json`, and its
+`enroll submit` printed it (`enrollment: binding <id> is pending`). All the other checks above
+also apply. It prints the digest it signs under and records the challenge's binding id and
+`legacyBinding` in the receipt record. Once Xochi accepts that receipt it saves that digest and
+that binding id in `state.json`, so later runs need no flag. A resend with a `--binding-id` that
+differs from the record is refused. Such a directory saved no node URL or artifact path either, so
+pass `--node-url` and `--oxide-token-artifact` on that run.
 
 `receipt` holds the fund-movement lock under `operations/` for the whole run, so no spend, exit
-or refund runs alongside it. It refuses while one of them is unresolved. A receipt run whose
-process is gone is released by the next command. If its process id was reused after a crash, the
-lock stays: `operations reconcile` releases a receipt run's lock (it moved no funds). Run that only
-when no `receipt` is running.
+or refund runs alongside it: they refuse with `a receipt run (pid N on HOST) holds the
+fund-movement lock; wait for it`. A receipt refuses while one of them is unresolved. A receipt run
+whose process is gone is released by the next command, or by `operations reconcile`. While the
+recorded process is alive, `operations reconcile` refuses and prints its pid and host. Only if
+that pid was reused after a crash (it is not a receipt run), `operations reconcile --force`
+releases the lock with a warning. A receipt run whose lock was released ends without masking its
+own result.
 
 **What it sends.** `POST /api/shielded/operations/<intentId>/receipt/challenge` with `{}`, after
 the PXE sync, then `POST /api/shielded/operations/<intentId>/receipt` with the challenge id and

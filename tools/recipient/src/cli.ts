@@ -118,7 +118,9 @@ Commands (in round-trip order):
   restore --backup FILE    restore into a fresh data directory/PXE and find the balance
   spend --to ADDR --amount BASEUNITS
   exit --l1-recipient ADDR --amount BASEUNITS --prover-tip N --relayer-tip N --max-executor-fee N --broadcaster-artifact FILE
-  operations [reconcile]   show journal, or reconcile its recorded Aztec transaction
+  operations [reconcile]   show journal, or reconcile its recorded Aztec transaction; releases a
+                           receipt run's lock once that run's process is gone (--force: its pid
+                           was reused after a crash)
   refund authorize         sign recipient-owned refund evidence to a fixed L1 destination
   refund submit            validate and submit one externally proved, signed L1 refund transaction
   refund reconcile         unlock only after an accepted finalized L1 transaction
@@ -143,6 +145,8 @@ Options:
   --legacy-binding             receipt: a data directory enrolled before its binding digest was
                                recorded adopts the challenge's, for its own binding id only
                                (--binding-id ID when state.json has none)
+  --force                      operations reconcile: release a receipt run's lock although its
+                               recorded pid is alive (only when that pid was reused after a crash)
   --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
@@ -260,6 +264,7 @@ interface Values {
   tx?: string;
   "already-spent"?: boolean;
   "legacy-binding"?: boolean;
+  force?: boolean;
   "dry-run"?: boolean;
   version?: boolean;
   help?: boolean;
@@ -297,6 +302,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       tx: string,
       "already-spent": { type: "boolean" },
       "legacy-binding": { type: "boolean" },
+      force: { type: "boolean" },
       "dry-run": { type: "boolean" },
       version: { type: "boolean" },
       help: { type: "boolean" },
@@ -311,7 +317,7 @@ const required = (
   values: Values,
   name: Exclude<
     keyof Values,
-    "out" | "dry-run" | "version" | "help" | "already-spent" | "legacy-binding"
+    "out" | "dry-run" | "version" | "help" | "already-spent" | "legacy-binding" | "force"
   >,
 ): string => {
   const v = values[name];
@@ -840,9 +846,14 @@ export async function run(argv: string[]): Promise<void> {
           fail("use refund reconcile for an L1 refund operation");
         }
         if (operation.kind === "receipt") {
-          // A receipt run moved no funds: releasing its lock is always safe. Only the operator
-          // runs this, and only when no receipt run is still active (its pid may be reused).
-          journal.releaseReceiptLock(operation.id);
+          // A receipt run moved no funds. Its lock is released only once its process is gone,
+          // or with --force when the recorded pid was reused after a crash.
+          if (values.force) {
+            log(
+              `WARNING: --force releases the lock of receipt run pid ${operation.request["pid"]} on ${operation.request["host"]}; if that run is still active, a spend or exit may now run beside it`,
+            );
+          }
+          journal.releaseReceiptLock(operation.id, { force: values.force ?? false });
           log(
             `operation ${operation.id}: released the lock of receipt run pid ${operation.request["pid"]} on ${operation.request["host"]} (it moved no funds)`,
           );
@@ -962,12 +973,12 @@ export async function run(argv: string[]): Promise<void> {
               bindingDigest: state.bindingDigest ?? null,
               bindingId: state.bindingId ?? legacyBindingId,
               legacyBinding: values["legacy-binding"] ?? false,
-              rememberBindingDigest: (bindingDigest) => {
+              rememberBindingDigest: (bindingDigest, bindingId) => {
                 const current = store.readState();
                 store.writeState({
                   ...current,
                   bindingDigest,
-                  bindingId: current.bindingId ?? legacyBindingId ?? undefined,
+                  bindingId: current.bindingId ?? bindingId,
                 });
               },
               dryRun: ctx.port.mode === "dry-run",

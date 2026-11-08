@@ -154,6 +154,7 @@ class PayoutNode extends DryRunAztec {
   simulationError: Error | null = null;
   /** The PXE's balance after sync; 0 unless a test sets it. */
   balanceValue = 0n;
+  balanceError: Error | null = null;
 
   constructor(
     private readonly events: string[],
@@ -174,6 +175,7 @@ class PayoutNode extends DryRunAztec {
   }
 
   override async balance(): Promise<bigint> {
+    if (this.balanceError) throw this.balanceError;
     return this.balanceValue;
   }
 
@@ -241,7 +243,7 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
         bindingId: "TEST-ONLY-binding",
         legacyBinding: false,
         rememberBindingDigest: () => {
-          throw new Error("TEST ONLY: no binding digest to remember");
+          throw new Error("TEST ONLY: no binding to remember");
         },
         dryRun: false,
         ...request,
@@ -275,7 +277,8 @@ describe("receipt command", () => {
       operationId: CHALLENGE.receipt.operation_id,
       txHash: hex("a7"),
       blockNumber: "4242",
-      alreadySpentBy: null,
+      alreadySpentBy: [],
+      bindingId: "TEST-ONLY-binding",
     });
     expect(receipts.read(INTENT)).toEqual(record);
     expect(worker.lockHeldAtSubmit).toEqual([true]);
@@ -319,6 +322,15 @@ describe("receipt command", () => {
     expect(receipts.read(INTENT)).toBeNull();
   });
 
+  it("reports the simulation cause first when reading the balance then fails too", async () => {
+    const { port, run } = await setup();
+    port.simulationError = new Error("TEST ONLY note missing");
+    port.balanceError = new Error("TEST ONLY node down");
+    await expect(run({ alreadySpent: true })).rejects.toThrow(
+      "simulation failed: TEST ONLY note missing; reading the balance then failed too: TEST ONLY node down; receipt not signed",
+    );
+  });
+
   it("with --already-spent, signs a payout this account spent after it landed, and records the spend", async () => {
     const { port, operations, receipts, run } = await setup();
     port.simulationError = new Error("TEST ONLY balance too low");
@@ -327,10 +339,27 @@ describe("receipt command", () => {
     await expect(run()).rejects.toThrow(/--already-spent/);
     expect(receipts.read(INTENT)).toBeNull();
     const record = await run({ alreadySpent: true });
-    expect(record).toMatchObject({ status: "submitted", alreadySpentBy: hex("5e") });
+    expect(record).toMatchObject({ status: "submitted", alreadySpentBy: [hex("5e")] });
   });
 
-  it("refuses --already-spent without a spend or exit of the amount mined after the payout", async () => {
+  it("with --already-spent, counts every spend and exit after the payout together with the balance", async () => {
+    const { port, operations, run } = await setup();
+    port.simulationError = new Error("TEST ONLY balance too low");
+    port.balanceValue = AMOUNT / 5n;
+    completedSpend(operations, hex("51"), (AMOUNT * 2n) / 5n);
+    completedSpend(operations, hex("52"), (AMOUNT * 2n) / 5n);
+    completedSpend(operations, hex("50"), AMOUNT);
+    port.nodeReceipts[hex("51")] = { ...FINALIZED, blockNumber: 5000 };
+    port.nodeReceipts[hex("52")] = { ...FINALIZED, blockNumber: 5001 };
+    port.nodeReceipts[hex("50")] = { ...FINALIZED, blockNumber: 4000 };
+    await expect(run()).rejects.toThrow(/--already-spent/);
+    expect(await run({ alreadySpent: true })).toMatchObject({
+      status: "submitted",
+      alreadySpentBy: [hex("51"), hex("52")],
+    });
+  });
+
+  it("refuses --already-spent unless the balance and the spends after the payout cover it", async () => {
     for (const [block, amount] of [
       [4000, AMOUNT],
       [5000, AMOUNT - 1n],
@@ -342,7 +371,7 @@ describe("receipt command", () => {
       await expect(run()).rejects.toThrow(/simulation failed/);
       await expect(run()).rejects.not.toThrow(/--already-spent/);
       await expect(run({ alreadySpent: true })).rejects.toThrow(
-        /no completed spend or exit of at least 25000000000000000000/,
+        /do not cover the 25000000000000000000 base units/,
       );
     }
   });
@@ -364,35 +393,43 @@ describe("receipt command", () => {
     const { port, operations, receipts, worker, run } = await setup();
     worker.refusals.push(refusal(503));
     await expect(run()).rejects.toThrow(/503/);
-    expect(receipts.read(INTENT)).toMatchObject({ alreadySpentBy: null });
+    expect(receipts.read(INTENT)).toMatchObject({ alreadySpentBy: [] });
     port.simulationError = new Error("TEST ONLY balance too low");
     completedSpend(operations, hex("5e"));
     port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
     worker.refusals.push(refusal(409, "receipt_ack_rejected"));
     expect(await run({ alreadySpent: true })).toMatchObject({
       status: "submitted",
-      alreadySpentBy: hex("5e"),
+      alreadySpentBy: [hex("5e")],
     });
   });
 
-  it("--legacy-binding: signs under the challenge's digest, saves it only once Xochi accepts", async () => {
-    const remembered: string[] = [];
+  it("--legacy-binding: saves the recorded binding id and digest only once Xochi accepts", async () => {
+    const remembered: [string, string][] = [];
     const { lines, receipts, worker, run } = await setup();
     const legacy = {
       bindingDigest: null,
-      rememberBindingDigest: (digest: string) => remembered.push(digest),
+      rememberBindingDigest: (digest: string, bindingId: string) =>
+        remembered.push([digest, bindingId]),
     };
     await expect(run(legacy)).rejects.toThrow(/--legacy-binding/);
     expect(receipts.read(INTENT)).toBeNull();
     worker.refusals.push(refusal(503));
     await expect(run({ ...legacy, legacyBinding: true })).rejects.toThrow(/503/);
     expect(remembered).toEqual([]);
+    expect(receipts.read(INTENT)).toMatchObject({ bindingId: "TEST-ONLY-binding" });
     expect(lines).toContain(
       `receipt: --legacy-binding: signing under binding TEST-ONLY-binding, digest ${E.bindingDigest} (saved to state.json once Xochi accepts the receipt)`,
     );
-    const record = await run(legacy);
+    // A mistyped --binding-id on the resend is refused, not saved.
+    await expect(
+      run({ ...legacy, legacyBinding: true, bindingId: "TEST-ONLY-typo" }),
+    ).rejects.toThrow(
+      "binding id TEST-ONLY-typo is not the recorded receipt's binding id TEST-ONLY-binding",
+    );
+    const record = await run({ ...legacy, bindingId: null });
     expect(record).toMatchObject({ status: "submitted", legacyBinding: true });
-    expect(remembered).toEqual([E.bindingDigest]);
+    expect(remembered).toEqual([[E.bindingDigest, "TEST-ONLY-binding"]]);
   });
 
   it("never acknowledges an untagged payout", async () => {

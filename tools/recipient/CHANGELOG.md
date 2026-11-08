@@ -15,14 +15,17 @@ All releases are private test artifacts; see the README CAUTION for what they do
   chosen node and spendable in a local simulation. Receipts are pinned per intent in
   `<data-dir>/receipts/` and carried by backups. A recorded receipt is resent until Xochi accepts
   it, and signed again under a new challenge only after an outright rejection (including a purged
-  challenge, `receipt_challenge_unknown`). The run holds the fund-movement lock, which
-  `operations reconcile` releases for a receipt run (README "Confirming receipt").
+  challenge, `receipt_challenge_unknown`). The run holds the fund-movement lock; spend and exit
+  name the receipt run holding it. `operations reconcile` releases a receipt run's lock once its
+  process is gone, or with `--force` when the recorded pid was reused (README "Confirming
+  receipt"). `--already-spent` counts the balance plus every completed spend and exit after the
+  payout, and records them.
 - `enroll submit` records the enrolled binding digest; backups carry the binding id and digest
   and restore puts them back.
 - `receipt --legacy-binding [--binding-id ID]`: a data directory enrolled before the binding
   digest was recorded adopts the challenge's digest for its own binding id only (the challenge's
-  `binding_id` and the terms' `recipientBindingId`), saves it in `state.json` once Xochi accepts
-  the receipt, and marks the receipt record.
+  `binding_id` and the terms' `recipientBindingId`), and once Xochi accepts the receipt saves that
+  digest and the binding id recorded with it in `state.json`.
 - `setup`, `enroll start` and `restore` save the node URL and OxideToken artifact path for
   `receipt`; `--api-url` defaults to `https://api.xochi.fi`.
 

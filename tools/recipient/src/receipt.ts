@@ -1,9 +1,10 @@
 // Shielded payment receipt (`POST /api/shielded/operations/:intentId/receipt`): the recipient's
 // own PaymentReceiptAck that it found the payout on its node, finalized, and could spend it.
 // Like the enrollment acks, every digest is computed here from the full typed preimage. The
-// Worker's challenge must carry the intent's own signed ShieldedTermsV1, for this account, this
-// corridor and this data directory's enrolled binding; the payout acknowledged is only the one
-// the corridor's sender tagged with the order fingerprint those terms produce.
+// Worker's challenge must carry the intent's ShieldedTermsV1 as Xochi stored it (its hash is
+// checked, not the source wallet's signature), for this account, this corridor and this data
+// directory's enrolled binding; the payout acknowledged is only the one the corridor's sender
+// tagged with the order fingerprint those terms produce.
 
 import { existsSync, mkdirSync, chmodSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -157,7 +158,7 @@ export interface ExpectedBinding {
 }
 
 const LEGACY_BINDING_CONDITIONS =
-  "it signs under the challenge's binding_digest only when this data directory recorded no binding digest, the challenge's binding_id and the signed terms' recipientBindingId are this data directory's enrolled binding id (state.json bindingId, or --binding-id when state.json has none), and the signed terms name that digest, this account as recipient, this data directory's descriptor digest, the corridor token, network and corridor";
+  "it signs under the challenge's binding_digest only when this data directory recorded no binding digest, the challenge's binding_id and the terms' recipientBindingId are this data directory's enrolled binding id (state.json bindingId, or --binding-id when state.json has none), and the terms name that digest, this account as recipient, this data directory's descriptor digest, the corridor token, network and corridor";
 
 const NetworkSchema = z
   .object({
@@ -262,7 +263,7 @@ const PAYOUT_SEND_MODES: Readonly<Record<string, { accountMode: "standard"; send
   { "2": { accountMode: "standard", sendMode: "oxide" } };
 
 /**
- * Refuses a challenge unless its terms are the signed ShieldedTermsV1 of `intentId` (pinned
+ * Refuses a challenge unless its terms are the ShieldedTermsV1 of `intentId` as Xochi stored them (pinned
  * types, this corridor's terms domain, hashing to `terms_digest`) paying exactly the challenge's
  * amount to this account, descriptor, token, network and corridor, under this data directory's
  * enrolled binding; and unless `operation_id` is keccak256 of the terms' operation id. A data
@@ -305,7 +306,7 @@ export function checkReceiptChallenge(
     String(parsedDomain.data.chainId) !== domain.chainId ||
     lower(parsedDomain.data.salt) !== lower(domain.salt)
   ) {
-    refuse("the terms are signed under another domain than this corridor's terms domain");
+    refuse("the terms are under another domain than this corridor's terms domain");
   }
   const termsDigest = lower(hashTypedData(terms as unknown as TypedDataDefinition));
   if (termsDigest !== lower(subject.terms_digest)) {
@@ -376,7 +377,7 @@ export function checkReceiptChallenge(
   }
   if (bindingDigest === null) {
     refuse(
-      `this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup that lacks it). Pass --legacy-binding (with --binding-id ID when state.json has no bindingId): ${LEGACY_BINDING_CONDITIONS}. Enrolling again creates a new binding, which cannot acknowledge intents signed under this one`,
+      `this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup that lacks it). Pass --legacy-binding (with --binding-id ID when state.json has no bindingId): ${LEGACY_BINDING_CONDITIONS}. Enrolling again creates a new binding, which cannot acknowledge intents whose terms name this one`,
     );
   }
   if (
@@ -598,10 +599,12 @@ export const ReceiptRecordSchema = z
     amount: decimal,
     txHash: hex32,
     blockNumber: decimal,
+    /** The challenge's `binding_id`: what `--legacy-binding` saves once Xochi accepts. */
+    bindingId: z.string().min(1).max(128),
     /** Signed under a binding digest adopted with `--legacy-binding`. */
     legacyBinding: z.boolean(),
-    /** Taken with `--already-spent`: this account's spend or exit that spent it. */
-    alreadySpentBy: hex32.nullable(),
+    /** Taken with `--already-spent`: this account's spends and exits mined after the payout. */
+    alreadySpentBy: z.array(hex32),
     /** Every request signed for this intent, oldest first; the last is resent. Append-only. */
     attempts: z
       .array(z.object({ signedAt: z.iso.datetime(), request: ReceiptRequestSchema }).strict())
@@ -733,12 +736,12 @@ export class ReceiptJournal {
 
   /**
    * Appends a re-signed request (after Xochi rejected the last); its subject must be the pinned
-   * one. `alreadySpentBy` is this attempt's `--already-spent` spend, if any.
+   * one. `alreadySpentBy` lists this attempt's `--already-spent` spends, if any.
    */
   retry(
     intentId: string,
     request: ReceiptSubmission,
-    alreadySpentBy: string | null,
+    alreadySpentBy: readonly string[],
   ): ReceiptRecord {
     const record = this.read(intentId);
     if (!record) throw new Error(`no receipt record for ${intentId}`);
@@ -747,7 +750,7 @@ export class ReceiptJournal {
     }
     const next = ReceiptRecordSchema.safeParse({
       ...record,
-      alreadySpentBy: alreadySpentBy ?? record.alreadySpentBy,
+      alreadySpentBy: alreadySpentBy.length > 0 ? [...alreadySpentBy] : record.alreadySpentBy,
       attempts: [...record.attempts, { signedAt: new Date().toISOString(), request }],
     });
     if (!next.success) {

@@ -91,11 +91,15 @@ describe("receipt invocation", () => {
 });
 
 describe("operations reconcile", () => {
-  it("releases a receipt run's lock: the run moved no funds", async () => {
+  it("refuses to release a live receipt run's lock unless forced: it moved no funds", async () => {
     const dataDir = await initialized();
     const operations = new OperationJournal(join(dataDir, "operations"));
     const held = operations.beginReceipt(INTENT);
-    await run(["operations", "reconcile", "--data-dir", dataDir]);
+    await expect(run(["operations", "reconcile", "--data-dir", dataDir])).rejects.toThrow(
+      new RegExp(`receipt run pid ${process.pid} on .* is still running.*--force`),
+    );
+    expect(operations.get(held.id).status).toBe("building");
+    await run(["operations", "reconcile", "--data-dir", dataDir, "--force"]);
     expect(operations.get(held.id).status).toBe("aborted");
     expect(operations.unresolved()).toBeNull();
   });

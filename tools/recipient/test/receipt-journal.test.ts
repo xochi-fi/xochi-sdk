@@ -47,8 +47,9 @@ async function signed(intentId: string, txHash = hex("a7")) {
       amount: AMOUNT.toString(),
       txHash,
       blockNumber: "4242",
+      bindingId: "TEST-ONLY-binding",
       legacyBinding: false,
-      alreadySpentBy: null,
+      alreadySpentBy: [],
       request: submission,
     },
     challenge,
@@ -90,15 +91,15 @@ describe("receipt journal", () => {
     const first = await signed(INTENT);
     journal.begin(first.entry);
     expect(() => journal.begin(first.entry)).toThrow(/already/);
-    journal.retry(INTENT, first.entry.request, hex("5e"));
-    expect(journal.read(INTENT)).toMatchObject({ alreadySpentBy: hex("5e") });
+    journal.retry(INTENT, first.entry.request, [hex("5e"), hex("5f")]);
+    expect(journal.read(INTENT)).toMatchObject({ alreadySpentBy: [hex("5e"), hex("5f")] });
     expect(journal.read(INTENT)!.attempts).toHaveLength(2);
     const otherTx = await signed(INTENT, hex("b2"));
-    expect(() => journal.retry(INTENT, otherTx.entry.request, null)).toThrow(/recorded/);
+    expect(() => journal.retry(INTENT, otherTx.entry.request, [])).toThrow(/recorded/);
     const otherTerms = await signed("another-intent");
-    expect(() => journal.retry(INTENT, otherTerms.entry.request, null)).toThrow(/recorded/);
+    expect(() => journal.retry(INTENT, otherTerms.entry.request, [])).toThrow(/recorded/);
     journal.complete(INTENT, hex("dd"), "2026-11-08T00:00:00.000Z");
-    expect(() => journal.retry(INTENT, first.entry.request, null)).toThrow(/already accepted/);
+    expect(() => journal.retry(INTENT, first.entry.request, [])).toThrow(/already accepted/);
   });
 
   it("names every payout and every terms digest another intent's receipt holds", async () => {
@@ -160,10 +161,12 @@ describe("backup", () => {
 });
 
 describe("receipt run and the fund-movement lock", () => {
-  it("blocks a spend while a receipt runs, and releases on end", () => {
+  it("blocks a spend while a receipt runs, naming the run, and releases on end", () => {
     const operations = new OperationJournal(temp("operations"));
     const run = operations.beginReceipt(INTENT);
-    expect(() => operations.begin("spend", { amount: "1" })).toThrow(/receipt/);
+    expect(() => operations.begin("spend", { amount: "1" })).toThrow(
+      `a receipt run (pid ${process.pid} on ${hostname()}) holds the fund-movement lock; wait for it`,
+    );
     operations.endReceipt(run.id);
     expect(operations.records().find((r) => r.id === run.id)?.status).toBe("aborted");
     const spend = operations.begin("spend", { amount: "1" });
@@ -204,15 +207,27 @@ describe("receipt run and the fund-movement lock", () => {
     restored.update(spend.id, { status: "aborted" });
   });
 
-  it("lets an operator release a receipt run's lock (operations reconcile)", () => {
+  it("releases a receipt run's lock for the operator only once its process is gone, or forced", () => {
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+    const gone = new OperationJournal(temp("operations"));
+    const crashed = gone.beginReceipt(INTENT, { pid: dead, host: hostname() });
+    gone.releaseReceiptLock(crashed.id);
+    expect(gone.get(crashed.id).status).toBe("aborted");
+
     const operations = new OperationJournal(temp("operations"));
-    operations.beginReceipt(INTENT);
-    const held = operations.activeUnresolved()!;
-    operations.releaseReceiptLock(held.id);
-    expect(operations.get(held.id).status).toBe("aborted");
-    expect(() => operations.releaseReceiptLock(held.id)).toThrow(/not an unfinished receipt run/);
+    const live = operations.beginReceipt(INTENT);
+    expect(() => operations.releaseReceiptLock(live.id)).toThrow(
+      `receipt run pid ${process.pid} on ${hostname()} is still running`,
+    );
+    expect(operations.get(live.id).status).toBe("building");
+    operations.releaseReceiptLock(live.id, { force: true });
+    expect(operations.get(live.id).status).toBe("aborted");
+    expect(() => operations.releaseReceiptLock(live.id)).toThrow(/not an unfinished receipt run/);
+    // The released run's own end does not throw over its result.
+    expect(() => operations.endReceipt(live.id)).not.toThrow();
     const spend = operations.begin("spend", { amount: "1" });
     expect(() => operations.releaseReceiptLock(spend.id)).toThrow(/not an unfinished receipt run/);
+    expect(() => operations.endReceipt(live.id)).not.toThrow();
     operations.update(spend.id, { status: "aborted" });
   });
 });
