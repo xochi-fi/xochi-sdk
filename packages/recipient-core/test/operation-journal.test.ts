@@ -1,11 +1,13 @@
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
+import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
-import { recordBroadcastBeforeSend } from "../src/chain.js";
+import { beginExitAfterExecutorFeeCheck, recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import {
+  DuplicateOperationIdError,
   OperationJournal,
   operationsLockName,
   type JournalHolder,
@@ -100,6 +102,18 @@ describe("operation journal over the storage and lock ports", () => {
     expect(await holder.get(operation.id)).toEqual(reconciled);
   });
 
+  it("reports a caller-provided terminal id collision with a typed error", async () => {
+    const journal = journalFor(new MemoryKeyValueStore(), new MemoryLockManager(), TAB_A);
+    const id = "11111111-1111-4111-8111-111111111111";
+    const operation = await journal.begin("spend", { amount: "1" }, id);
+    await journal.update(operation.id, { status: "broadcast", txHash: TX_HASH });
+    await journal.update(operation.id, { status: "complete", txHash: TX_HASH });
+
+    await expect(journal.begin("spend", { amount: "2" }, id)).rejects.toEqual(
+      new DuplicateOperationIdError(id),
+    );
+  });
+
   it("makes the transaction hash durable before the node can receive the transaction", async () => {
     const kv = new MemoryKeyValueStore();
     const journal = journalFor(kv, new MemoryLockManager(), TAB_A);
@@ -128,6 +142,36 @@ describe("operation journal over the storage and lock ports", () => {
     expect(seen).toEqual([
       expect.objectContaining({ id: operation.id, status: "broadcast", txHash: TX_HASH }),
     ]);
+  });
+
+  it("uses the caller journal id for an exit and generates one when omitted", async () => {
+    const journal = journalFor(new MemoryKeyValueStore(), new MemoryLockManager(), TAB_A);
+    const journalId = "10000000-0000-4000-8000-000000000003";
+    const request = {
+      l1Recipient: `0x${"22".repeat(20)}`,
+      amount: 100n,
+      proverTip: 3n,
+      relayerTip: 2n,
+      maxExecutorFee: 10n,
+      broadcasterArtifact: { name: "Broadcaster" } as ContractArtifact,
+      journalId,
+    };
+
+    const exact = await beginExitAfterExecutorFeeCheck(journal, ADDRESS, request, 10n);
+    expect(exact.operation.id).toBe(journalId);
+    await journal.failOrAbort(exact.operation.id);
+
+    const generated = await beginExitAfterExecutorFeeCheck(
+      journal,
+      ADDRESS,
+      { ...request, journalId: undefined },
+      10n,
+    );
+    expect(generated.operation.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(generated.operation.id).not.toBe(journalId);
+    await journal.failOrAbort(generated.operation.id);
   });
 
   it("an abort that wins the submission boundary keeps the holder from sending", async () => {

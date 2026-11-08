@@ -6,6 +6,7 @@ import { inspect } from "node:util";
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { EthAddress } from "@aztec-labs/foundation/eth-address";
+import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { TxHash, TxStatus, type Tx } from "@aztec-labs/stdlib/tx";
 import { keccak256, toHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -16,6 +17,7 @@ import { ExitJournal, backupContents, sealBackup, type BackupContents } from "..
 import { LiveAztec, recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
+  importCliBackup,
   openRecipientCore,
   restoreJournals,
   restoreLockName,
@@ -26,6 +28,7 @@ import {
 import { bindingTypedData } from "../src/enrollment.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import {
+  DuplicateOperationIdError,
   OperationJournal,
   operationsLockName,
   type OperationRecord,
@@ -687,6 +690,35 @@ describe("deploy", () => {
     expect(txHash).toBe(hash.toString());
     expect(seen).toEqual([`beforeSubmit ${hash.toString()}`, "sendTx"]);
   });
+
+  it("LiveAztec.spend preserves a typed terminal journal-id collision before submission", async () => {
+    const kv = new MemoryKeyValueStore();
+    const journal = new OperationJournal({
+      kv,
+      locks: new MemoryLockManager(),
+      clock: new FixedClock(),
+      lockName: operationsLockName(account.address.toString()),
+      holder: { pid: 101, host: "typed-collision" },
+    });
+    const journalId = "11111111-1111-4111-8111-111111111111";
+    const historical = await journal.begin("spend", { amount: "1" }, journalId);
+    await journal.update(historical.id, { status: "broadcast", txHash: hex("d1") });
+    await journal.update(historical.id, { status: "complete", txHash: hex("d1") });
+    const sendTx = vi.fn();
+    const submission = new NodeSubmission({} as AztecNode, { sendTx } as unknown as AztecNode);
+    const live = Reflect.construct(LiveAztec, [
+      {},
+      submission.node,
+      submission,
+      { corridor, l1RpcUrl: null, journal, attestation: null },
+    ]) as LiveAztec;
+
+    await expect(
+      live.spend(account, {} as ContractArtifact, account.address, 1n, null, journalId),
+    ).rejects.toEqual(new DuplicateOperationIdError(journalId));
+    expect(sendTx).not.toHaveBeenCalled();
+    expect(await journal.records()).toHaveLength(1);
+  });
 });
 
 describe("receipts", () => {
@@ -907,6 +939,47 @@ describe("operations and reconcile", () => {
     await core.close();
   });
 
+  it("uses an exact caller journal id and still generates one when omitted", async () => {
+    const h = harness();
+    const core = await h.open();
+    const journalId = "10000000-0000-4000-8000-000000000001";
+
+    await core.send(account.address.toString(), 5n, null, journalId);
+    await core.send(account.address.toString(), 5n, null);
+
+    const operations = await core.operations();
+    expect(operations[0]!.id).toBe(journalId);
+    expect(operations[1]!.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(operations[1]!.id).not.toBe(journalId);
+    await core.close();
+  });
+
+  it("rejects an invalid or duplicate caller journal id before submission", async () => {
+    const h = harness();
+    const core = await h.open();
+    const journalId = "10000000-0000-4000-8000-000000000002";
+    let submissions = 0;
+    h.node.onSpendBegun = async () => {
+      submissions += 1;
+    };
+
+    await expect(core.send(account.address.toString(), 5n, null, "not-a-uuid")).rejects.toThrow(
+      "journal id must be a UUIDv4",
+    );
+    expect(submissions).toBe(0);
+
+    await core.send(account.address.toString(), 5n, null, journalId);
+    expect(submissions).toBe(1);
+    await expect(core.send(account.address.toString(), 5n, null, journalId)).rejects.toThrow(
+      `operation journal id already exists: ${journalId}`,
+    );
+    expect(submissions).toBe(1);
+    expect(await core.operations()).toMatchObject([{ id: journalId, status: "complete" }]);
+    await core.close();
+  });
+
   it("close waits for a send in flight, keeping its holder alive until the send settles", async () => {
     const h = harness();
     const core = await h.open();
@@ -1114,6 +1187,31 @@ describe("operations and reconcile", () => {
   });
 });
 
+describe("importCliBackup", () => {
+  it("zeros the opened plaintext after success and validation failure", async () => {
+    const contents = backupContents(corridor, TEST_SECRETS, account, null, null, NOW);
+    const valid = new TextEncoder().encode(JSON.stringify(contents));
+    const invalid = new TextEncoder().encode("{}");
+    const opened: Uint8Array[] = [];
+    const exposingCrypto: KeystoreCrypto = {
+      async seal() {
+        throw new Error("TEST ONLY: seal is not used");
+      },
+      async open(_kind, sealed) {
+        const plaintext = sealed === valid ? valid : invalid;
+        opened.push(plaintext);
+        return plaintext;
+      },
+    };
+
+    await expect(importCliBackup(valid, "TEST ONLY", exposingCrypto)).resolves.toEqual(contents);
+    expect(valid.every((byte) => byte === 0)).toBe(true);
+    await expect(importCliBackup(invalid, "TEST ONLY", exposingCrypto)).rejects.toThrow();
+    expect(invalid.every((byte) => byte === 0)).toBe(true);
+    expect(opened).toEqual([valid, invalid]);
+  });
+});
+
 describe("restoreJournals", () => {
   async function journalRecords(build: (journal: OperationJournal) => Promise<void>) {
     const journal = new OperationJournal({
@@ -1176,7 +1274,7 @@ describe("restoreJournals", () => {
     const contents = backupOf(operations);
     const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
 
-    await restoreJournals(core, contents, sealed.bytes);
+    await expect(restoreJournals(core, contents, sealed.bytes)).resolves.toBe("restored");
 
     expect(await stateOf(h.kv)).toMatchObject({
       bindingId: "TEST-ONLY-restored-binding",
@@ -1188,6 +1286,40 @@ describe("restoreJournals", () => {
     expect(h.kv.json(`operations/${operations[0]!.id}.json`)).toMatchObject({
       status: "complete",
     });
+    await core.close();
+  });
+
+  it("returns already_present without writes for the same complete restore", async () => {
+    const h = harness();
+    const core = await h.open();
+    const operations = await journalRecords(async (journal) => {
+      const spend = await journal.begin("spend", { amount: "1" });
+      await journal.update(spend.id, { status: "aborted" });
+    });
+    const contents = backupOf(operations);
+    const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
+    await restoreJournals(core, contents, sealed.bytes);
+    const writes = h.kv.events.length;
+
+    await expect(restoreJournals(core, contents, sealed.bytes)).resolves.toBe("already_present");
+
+    expect(h.kv.events).toHaveLength(writes);
+    expect(h.kv.text("restore.lock")).toBeNull();
+    await core.close();
+  });
+
+  it("returns already_present without writes after restoring an empty backup", async () => {
+    const h = harness();
+    const core = await h.open();
+    const contents = backupOf([]);
+    const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
+    await expect(restoreJournals(core, contents, sealed.bytes)).resolves.toBe("restored");
+    const writes = h.kv.events.length;
+
+    await expect(restoreJournals(core, contents, sealed.bytes)).resolves.toBe("already_present");
+
+    expect(h.kv.events).toHaveLength(writes);
+    expect(h.kv.text("restore.lock")).toBeNull();
     await core.close();
   });
 
@@ -1213,7 +1345,7 @@ describe("restoreJournals", () => {
     expect(await kv.list("receipts/")).toEqual([]);
     expect(kv.text("restore.lock")).toBeNull();
 
-    await restoreJournals(core, contents, sealed);
+    await expect(restoreJournals(core, contents, sealed)).resolves.toBe("restored");
     expect(await kv.list("operations/")).toEqual(
       operations.map((record) => `operations/${record.id}.json`).sort(),
     );
@@ -1238,7 +1370,7 @@ describe("restoreJournals", () => {
       new TextEncoder().encode("TEST ONLY partial record"),
     );
 
-    await restoreJournals(core, contents, sealed.bytes);
+    await expect(restoreJournals(core, contents, sealed.bytes)).resolves.toBe("restored");
 
     expect(await h.kv.list("operations/")).toEqual(
       operations.map((record) => `operations/${record.id}.json`).sort(),
@@ -1390,6 +1522,24 @@ describe("restoreJournals", () => {
       restoreJournals(core, backupOf(operations), undefined as unknown as Uint8Array),
     ).rejects.toThrow("restoreJournals needs the sealed backup bytes importCliBackup opened");
     expect(await h.kv.list("operations/")).toEqual([]);
+    await core.close();
+  });
+
+  it("refuses an interrupted restore marker for another backup without changing it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const contents = backupOf([]);
+    const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
+    const marker = restoreMarker(hex("ee"));
+    await h.kv.create("restore.lock", marker);
+    const writes = h.kv.events.length;
+
+    await expect(restoreJournals(core, contents, sealed.bytes)).rejects.toThrow(
+      "an unfinished journal restore used another backup",
+    );
+
+    expect(await h.kv.get("restore.lock")).toEqual(marker);
+    expect(h.kv.events).toHaveLength(writes);
     await core.close();
   });
 

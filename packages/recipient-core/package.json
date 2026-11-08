@@ -1,7 +1,6 @@
 {
   "name": "@xochi/recipient-core",
   "version": "0.1.0",
-  "private": true,
   "description": "Platform-neutral Stealth on Aztec recipient core (account, sync, receipt, enrollment, spend, exit) behind storage, lock, crypto, artifact and attestation ports.",
   "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/recipient-core#readme",
   "repository": {

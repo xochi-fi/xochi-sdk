@@ -179,19 +179,22 @@ export async function sealBackup(
   return { bytes, commitment: keccak256(bytes) };
 }
 
-/** Opens and validates a sealed backup; refuses a token whose immutables do not hash as recorded. */
+/** Opens and validates a sealed backup, then erases the opened plaintext on every outcome. */
 export async function openBackup(
   bytes: Uint8Array,
   passphrase: string,
   crypto: KeystoreCrypto,
 ): Promise<BackupContents> {
-  const contents = BackupSchema.parse(
-    parseJsonBytes(await crypto.open("backup", bytes, passphrase)),
-  );
-  if (oxideTokenImmutablesHash(contents.token.immutables) !== contents.token.immutablesHash) {
-    throw new Error("backup token immutables do not hash to the recorded immutablesHash");
+  const plaintext = await crypto.open("backup", bytes, passphrase);
+  try {
+    const contents = BackupSchema.parse(parseJsonBytes(plaintext));
+    if (oxideTokenImmutablesHash(contents.token.immutables) !== contents.token.immutablesHash) {
+      throw new Error("backup token immutables do not hash to the recorded immutablesHash");
+    }
+    return contents;
+  } finally {
+    plaintext.fill(0);
   }
-  return contents;
 }
 
 const EXITS = "exits/";

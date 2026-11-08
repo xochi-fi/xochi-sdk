@@ -276,13 +276,19 @@ export class PayoutNode extends DryRunAztec {
     _artifact: ContractArtifact,
     to: AztecAddress,
     amount: bigint,
+    _claim: FeeJuiceClaim | null = null,
+    journalId?: string,
   ): Promise<string> {
     const { journal, corridor } = this.options ?? fail("the node double was not connected");
-    const operation = await journal.begin("spend", {
-      from: account.address.toString(),
-      to: to.toString(),
-      amount: amount.toString(),
-    });
+    const operation = await journal.begin(
+      "spend",
+      {
+        from: account.address.toString(),
+        to: to.toString(),
+        amount: amount.toString(),
+      },
+      journalId,
+    );
     await this.onSpendBegun();
     await recordBroadcastBeforeSend(journal, operation.id, corridor)(TxHash.fromString(SPEND_TX));
     await this.onSpendSent();

@@ -229,7 +229,12 @@ export interface RecipientCore {
   /** Resends the kept enrollment request byte for byte (after a reload); null when none is kept. */
   enrollResume(): Promise<BindingProjection | null>;
   enrollStatus(bindingId: string): Promise<BindingProjection>;
-  send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }>;
+  send(
+    to: string,
+    amount: bigint,
+    fee: FeeJuiceClaim | null,
+    journalId?: string,
+  ): Promise<{ txHash: string }>;
   exit(request: CoreExitRequest): Promise<ExitResult>;
   /** The operation journal, oldest first (the CLI's `operations`). */
   operations(): Promise<OperationRecord[]>;
@@ -735,9 +740,22 @@ class Core implements RecipientCore {
     return enrollStatus(this.#ctx, this.#api(), bindingId, this.#secretAccount);
   }
 
-  send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }> {
+  send(
+    to: string,
+    amount: bigint,
+    fee: FeeJuiceClaim | null,
+    journalId?: string,
+  ): Promise<{ txHash: string }> {
     return this.#holding(async () => ({
-      txHash: await spend(this.#ctx, this.#secretAccount, this.#tokenArtifact, to, amount, fee),
+      txHash: await spend(
+        this.#ctx,
+        this.#secretAccount,
+        this.#tokenArtifact,
+        to,
+        amount,
+        fee,
+        journalId,
+      ),
     }));
   }
 
@@ -986,25 +1004,71 @@ async function clearRestoreRecords(kv: KeyValueStore): Promise<unknown[]> {
   return failures;
 }
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function restoreAlreadyPresent(
+  journals: CoreJournals,
+  backup: BackupContents,
+  state: State,
+  expectedState: State,
+  keys: readonly (readonly string[])[],
+): Promise<boolean> {
+  const expectedOperations = backup.journals.operations
+    .map((record) =>
+      record.kind === "receipt" && !isTerminalStatus(record.status)
+        ? { ...record, status: "aborted" as const }
+        : record,
+    )
+    .sort(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+    );
+  const expectedKeys = [
+    expectedOperations.map((record) => `operations/${record.id}.json`).sort(),
+    backup.journals.exits.map((record) => `exits/${record.txHash}.json`).sort(),
+    backup.journals.receipts.map((record) => `receipts/${record.intentId}.json`).sort(),
+  ];
+  if (!sameJson(keys, expectedKeys) || !sameJson(state, expectedState)) return false;
+  const [operations, exits, receipts] = await Promise.all([
+    journals.operations.records(),
+    journals.exits.records(),
+    journals.receipts.records(),
+  ]);
+  return (
+    sameJson(operations, expectedOperations) &&
+    sameJson(
+      exits,
+      [...backup.journals.exits].sort((a, b) => a.txHash.localeCompare(b.txHash)),
+    ) &&
+    sameJson(
+      receipts,
+      [...backup.journals.receipts].sort((a, b) => a.intentId.localeCompare(b.intentId)),
+    )
+  );
+}
+
 /**
  * Restores a CLI backup's operation, exit and receipt journals and its enrolled binding into an
- * open core of the same account and corridor whose journals are empty, and records the backup
- * as the CLI's `restore` does: `backupCommitment` is keccak256 of `sealed` (the file
- * `importCliBackup` opened) and `backupTokenAckSignature` its TokenRegistrationAck's signature.
- * Refused before anything is written: a backup with an unresolved fund movement (the facade cannot
- * reconcile it, so the CLI must first), a profile that records another binding, and a next
- * `state.json` that does not validate. The restore holds `RESTORE_MARKER_KEY` and a live
- * `restoreLockName` lease throughout, so no session moves funds or runs a receipt meanwhile.
- * A failed restore removes every copied journal record and the marker so the backup can be retried.
- * If the process terminates first, the next call with that backup owns the now-free lease, rolls
- * back the durable partial records under the marker and retries. Failed cleanup leaves the marker
- * blocking movement until the same backup can finish recovery or the profile is recreated.
+ * open core of the same account and corridor. The exact journal and state set from this backup
+ * returns `already_present` without writes, including an empty journal set; an empty journal set
+ * whose state does not yet commit to this backup is restored. The backup commitment is
+ * `keccak256(sealed)` (the file `importCliBackup` opened), and `backupTokenAckSignature` is its
+ * TokenRegistrationAck's signature.
+ *
+ * Refused before anything is copied: another account or corridor, an unresolved fund movement, a
+ * different binding, an unreadable or different surviving marker, or journals that are neither
+ * empty nor this backup's complete restored set. A restore holds `RESTORE_MARKER_KEY` and a live
+ * `restoreLockName` lease throughout. A surviving `copying` marker is recovered only by the same
+ * backup; failed cleanup leaves it blocking movement until that backup recovers or the profile is
+ * recreated.
  */
 export async function restoreJournals(
   core: RecipientCore,
   backup: BackupContents,
   sealed: Uint8Array,
-): Promise<void> {
+): Promise<"restored" | "already_present"> {
   const journals =
     journalsOf.get(core) ?? fail("restoreJournals needs a core from openRecipientCore");
   if (backup.account.address !== journals.address) {
@@ -1047,7 +1111,6 @@ export async function restoreJournals(
       ...(backup.bindingDigest ? { bindingDigest: backup.bindingDigest } : {}),
     });
   };
-  restoredState(await journals.state.read());
 
   const restoreLease = await journals.locks.tryAcquire(
     restoreLockName(journals.address),
@@ -1057,14 +1120,19 @@ export async function restoreJournals(
     throw new Error("another journal restore is running for this profile");
   }
   try {
+    const currentState = await journals.state.read();
+    const expectedState = restoredState(currentState);
     const markerIdentity = {
       version: 1 as const,
       address: journals.address,
       backupCommitment,
     };
     const existingMarkerBytes = await journals.kv.get(RESTORE_MARKER_KEY);
+    const destinationKeys = await Promise.all(
+      RESTORE_JOURNAL_PREFIXES.map((prefix) => journals.kv.list(prefix)),
+    );
     let destinationsProvenEmpty = false;
-    if (existingMarkerBytes) {
+    if (existingMarkerBytes !== null) {
       let existingMarker;
       try {
         existingMarker = RestoreMarkerSchema.parse(parseJsonBytes(existingMarkerBytes));
@@ -1094,6 +1162,12 @@ export async function restoreJournals(
         // No restore record is copied until the marker advances to "copying".
         await journals.kv.delete(RESTORE_MARKER_KEY);
       }
+    }
+    if (
+      existingMarkerBytes === null &&
+      (await restoreAlreadyPresent(journals, backup, currentState, expectedState, destinationKeys))
+    ) {
+      return "already_present";
     }
 
     if (!destinationsProvenEmpty) {
@@ -1134,6 +1208,7 @@ export async function restoreJournals(
       await journals.receipts.restore(backup.journals.receipts);
       await journals.state.update(restoredState);
       await journals.kv.delete(RESTORE_MARKER_KEY);
+      return "restored";
     } catch (restoreError) {
       const cleanupFailures = await clearRestoreRecords(journals.kv);
       if (cleanupFailures.length === 0) {

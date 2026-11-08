@@ -304,6 +304,7 @@ export async function spend(
   to: string,
   amount: bigint,
   claim: FeeJuiceClaim | null = null,
+  journalId?: string,
 ): Promise<string> {
   if (!anyCaseHex32.safeParse(to).success)
     throw new Error("--to must be a 0x-prefixed 32-byte Aztec address");
@@ -312,7 +313,7 @@ export async function spend(
   if (recipient.isZero() || !(await recipient.isValid())) {
     throw new Error("--to must be a valid, nonzero Aztec address");
   }
-  const txHash = await ctx.port.spend(account, artifact, recipient, amount, claim);
+  const txHash = await ctx.port.spend(account, artifact, recipient, amount, claim, journalId);
   ctx.log(`spend: ${amount} base units to ${to} in ${txHash}`);
   return txHash;
 }

@@ -32,6 +32,17 @@ const OperationStatusSchema = z.enum([
 ]);
 export type OperationStatus = z.infer<typeof OperationStatusSchema>;
 
+/** A caller-provided operation id already names a durable journal record. */
+export class DuplicateOperationIdError extends Error {
+  readonly journalId: string;
+
+  constructor(journalId: string, options?: ErrorOptions) {
+    super(`operation journal id already exists: ${journalId}`, options);
+    this.name = "DuplicateOperationIdError";
+    this.journalId = journalId;
+  }
+}
+
 export const OperationRecordSchema = z
   .object({
     id: z.string().regex(uuidV4),
@@ -363,13 +374,19 @@ export class OperationJournal {
    * Starts a `building` operation. Its request records this holder's `pid` unless the caller
    * names one (`beginReceipt`), so a successor can tell an abandoned run from a live one
    * (`abortAbandonedRun`). Liveness needs the pid alone: no hostname is recorded (an older
-   * record's `host` is read and ignored).
+   * record's `host` is read and ignored). When supplied, `journalId` is the exact UUIDv4 record
+   * id; omission keeps the generated-id behaviour.
    */
-  begin(kind: OperationRecord["kind"], request: Record<string, string>): Promise<OperationRecord> {
+  begin(
+    kind: OperationRecord["kind"],
+    request: Record<string, string>,
+    journalId?: string,
+  ): Promise<OperationRecord> {
     return this.beginWithState(
       kind,
       { ...request, pid: request["pid"] ?? String(this.holder.pid) },
       { status: "building" },
+      journalId,
     );
   }
 
@@ -518,8 +535,11 @@ export class OperationJournal {
     kind: OperationRecord["kind"],
     request: Record<string, string>,
     initial: { status: "building" } | { status: "broadcast"; txHash: string },
+    journalId?: string,
   ): Promise<OperationRecord> {
-    const owner: ActiveLock = { id: crypto.randomUUID(), lockNonce: crypto.randomUUID(), kind };
+    const id = journalId ?? crypto.randomUUID();
+    if (!uuidV4.test(id)) throw new Error("journal id must be a UUIDv4");
+    const owner: ActiveLock = { id, lockNonce: crypto.randomUUID(), kind };
     const now = this.now();
     const record = OperationRecordSchema.parse({
       ...owner,
@@ -528,6 +548,9 @@ export class OperationJournal {
       updatedAt: now,
       request,
     });
+    if ((await this.kv.get(recordKey(owner.id))) !== null) {
+      throw new DuplicateOperationIdError(owner.id);
+    }
     const recoverableLock: ActiveLock = { ...owner, record };
     await this.holdSession();
     for (;;) {
@@ -568,7 +591,14 @@ export class OperationJournal {
           `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`,
         );
       }
-      await this.kv.put(recordKey(owner.id), prettyJsonBytes(record));
+      try {
+        await this.kv.create(recordKey(owner.id), prettyJsonBytes(record));
+      } catch (error) {
+        if (error instanceof KeyExistsError) {
+          throw new DuplicateOperationIdError(owner.id, { cause: error });
+        }
+        throw error;
+      }
       recordPublished = true;
       await this.kv.put(LOCK_KEY, prettyJsonBytes(owner));
       return record;

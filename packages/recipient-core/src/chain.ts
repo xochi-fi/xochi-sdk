@@ -25,7 +25,11 @@ import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import type { RecipientAccount } from "./account.js";
 import type { Corridor } from "./corridor.js";
 import type { ObservedNetwork } from "./network.js";
-import type { OperationJournal, OperationRecord } from "./operation-journal.js";
+import {
+  DuplicateOperationIdError,
+  type OperationJournal,
+  type OperationRecord,
+} from "./operation-journal.js";
 import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
 import type { AttestationVerifier, HttpFetch } from "./ports.js";
 import type { WalletStorage } from "./wallet-storage.js";
@@ -102,6 +106,8 @@ export interface ExitRequest {
   broadcasterArtifact: ContractArtifact;
   /** Pays the exit's fee by claiming bridged Fee Juice in the same tx (mainnet has no sponsored FPC). */
   feeJuiceClaim?: FeeJuiceClaim;
+  /** Exact UUIDv4 operation-journal id; generated when omitted. */
+  journalId?: string;
 }
 
 export interface WithdrawalRecord {
@@ -163,6 +169,7 @@ export interface AztecPort {
     to: AztecAddress,
     amount: bigint,
     claim?: FeeJuiceClaim | null,
+    journalId?: string,
   ): Promise<string>;
   /** The node's latest block number (`node.getBlockNumber`). */
   blockNumber(): Promise<number>;
@@ -247,16 +254,20 @@ export async function beginExitAfterExecutorFeeCheck(
     );
   }
   const recipientAmount = netAmount - request.relayerTip;
-  const operation = await journal.begin("exit", {
-    from: accountAddress,
-    l1Recipient: request.l1Recipient,
-    amount: request.amount.toString(),
-    proverTip: request.proverTip.toString(),
-    relayerTip: request.relayerTip.toString(),
-    maxExecutorFee: request.maxExecutorFee.toString(),
-    executorFee: executorFee.toString(),
-    recipientAmount: recipientAmount.toString(),
-  });
+  const operation = await journal.begin(
+    "exit",
+    {
+      from: accountAddress,
+      l1Recipient: request.l1Recipient,
+      amount: request.amount.toString(),
+      proverTip: request.proverTip.toString(),
+      relayerTip: request.relayerTip.toString(),
+      maxExecutorFee: request.maxExecutorFee.toString(),
+      executorFee: executorFee.toString(),
+      recipientAmount: recipientAmount.toString(),
+    },
+    request.journalId,
+  );
   return { operation, recipientAmount };
 }
 
@@ -658,15 +669,20 @@ export class LiveAztec implements AztecPort {
     to: AztecAddress,
     amount: bigint,
     claim: FeeJuiceClaim | null = null,
+    journalId?: string,
   ): Promise<string> {
     const diagnosticState = createSubmissionDiagnosticState("spend");
     let operation: OperationRecord | null = null;
     try {
-      operation = await this.operationJournal.begin("spend", {
-        from: account.address.toString(),
-        to: to.toString(),
-        amount: amount.toString(),
-      });
+      operation = await this.operationJournal.begin(
+        "spend",
+        {
+          from: account.address.toString(),
+          to: to.toString(),
+          amount: amount.toString(),
+        },
+        journalId,
+      );
       const result = await this.submitOperations(
         account,
         artifact,
@@ -690,6 +706,7 @@ export class LiveAztec implements AztecPort {
       await this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
     } catch (error) {
+      if (operation === null && error instanceof DuplicateOperationIdError) throw error;
       throw await sanitizeFundMovementFailure(
         this.operationJournal,
         operation,
@@ -791,6 +808,7 @@ export class LiveAztec implements AztecPort {
       });
       return response;
     } catch (error) {
+      if (operation === null && error instanceof DuplicateOperationIdError) throw error;
       throw await sanitizeFundMovementFailure(
         this.operationJournal,
         operation,

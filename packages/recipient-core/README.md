@@ -5,8 +5,13 @@ network pinning, Oxide token registration, sync and balance, enrollment, payment
 spend and exit, and the fund-movement journals. The Node CLI (`tools/recipient`,
 `xochi-recipient`) and the browser claim page (xochi.fi/claim) are adapters around it.
 
-**Unpublished until integration** (xochi-sdk#156): `private` in its manifest. The CLI compiles
-these sources into its own `dist/` (see "Consumers") instead of depending on a published version.
+The first `@xochi/recipient-core` publication is manual from the reviewed
+`recipient-core-v0.1.0` tag, after installing its package-local lockfile and running every gate in
+this directory. npm cannot attach a trusted publisher before the package exists. Immediately after
+that first publish, attach the protected `npm-publish` trusted publisher described in
+`.github/workflows/release.yml`; the automated `recipient-core-v*` lane publishes subsequent
+releases publicly with provenance. This package intentionally is not a root npm workspace. The CLI
+still compiles these sources into its own `dist/` (see "Consumers").
 
 ## Ports
 
@@ -52,11 +57,13 @@ random session id. The `LockManager` is that liveness probe, not the fund-moveme
 runs every `state.json` read-modify-write under the exclusive `stateLockName(address)` lease
 (`...:operations:state`), waiting up to about five seconds for another tab's.
 `restoreJournals` also holds `restoreLockName(address)` while `restore.lock` blocks operations. The
-marker records the backup commitment. If a browser or process terminates between durable journal
+marker records the exact backup commitment. With no marker, a journal and state set that exactly
+matches the backup returns `"already_present"` without a write, including an empty journal set
+whose state records that backup's commitment. An empty journal set without the matching state
+restores and returns `"restored"`. If a browser or process terminates between durable journal
 writes, a retry with the same backup acquires the released lease, removes only that interrupted
 restore's records under the still-held marker, and restores again. A different backup or unreadable
 marker fails closed.
-
 
 Storage keys follow `[a-z0-9_][a-z0-9._-]{0,127}` per segment; intent ids are
 `^[a-z0-9_][a-z0-9_-]{0,63}$` (`INTENT_ID_GRAMMAR`, which covers the Worker's `xi_<32 hex>`), so
@@ -76,6 +83,10 @@ journaled `submitting`), `submitReceipt` (the POST, resent byte for byte; re-sig
 outright rejection), `receipt(intentId)` (the receipt journal's record), `deploy`, `enrollStart` /
 `enrollSubmit` / `enrollResume` / `enrollStatus`, `send`, `exit`, `operations` (the operation
 journal), `reconcile` and `close` (it waits for any send, exit, deploy or receipt run in flight).
+`send(to, amount, fee, journalId?)` and `CoreExitRequest.journalId?` accept a caller's UUIDv4 as the
+exact operation record id before any build or broadcast. Invalid or existing ids are refused before
+submission; omission keeps generated ids. This lets an app correlate its own durable state with the
+fund-movement journal without weakening the journal-before-broadcast boundary.
 `enrollSubmit` takes the sealed-file or passkey backup mode (`backup-mode.ts`); it refuses the
 passkey mode unless `deps.keys.kind` is `"passkey"`, and while the resolved `@xochi/signer` is
 older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request.
@@ -101,12 +112,16 @@ gone (a reloaded tab) and answered unchanged while that holder lives: the tx has
 before `sendTx`, so a hashless spend or exit never reached the node. The CLI still refuses a
 hashless spend or exit. An L1 refund is refused.
 
-`importCliBackup(sealed, passphrase, crypto)` opens a CLI backup; `restoreJournals(core, backup,
-sealed)` restores its journals and binding into an open core of the same account and corridor
-whose journals are empty, and records `backupCommitment` (keccak256 of `sealed`) and
-`backupTokenAckSignature` as the CLI's `restore` does. A backup with an unresolved spend, exit or
-refund is refused: reconcile it with the CLI (`xochi-recipient operations reconcile`) and back up
-again.
+`importCliBackup(sealed, passphrase, crypto)` opens a CLI backup and erases the returned plaintext
+byte array in `finally`, including parse and validation failures.
+`restoreJournals(core, backup, sealed)` owns the complete-versus-interrupted decision and returns
+`"restored" | "already_present"`. It validates account, corridor, open operations and binding before
+writing. A surviving marker recovers only the same backup; without one, the exact journal and state
+set from that backup is an idempotent no-op, including when the journal set is empty. An empty
+journal set whose state does not yet commit to the backup restores. It records `backupCommitment`
+(keccak256 of `sealed`) and `backupTokenAckSignature` as the CLI's `restore` does. A backup with an
+unresolved spend, exit or refund is refused: reconcile it with the CLI
+(`xochi-recipient operations reconcile`) and back up again.
 
 ## Consumers
 
