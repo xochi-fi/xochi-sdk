@@ -311,10 +311,11 @@ export function withdrawalsWithOperationIds(
 }
 
 /**
- * The `NodeSubmission` hook spend and exit run before `sendTx`: the operation's record names the
- * transaction hash and is durable (the `update` resolved) before the node can receive it. An
- * exit's record also names each prepared withdrawal's L1 operation id (it needs the hash), so a
- * crash after the broadcast keeps it.
+ * The `NodeSubmission` hook spend and exit run before `sendTx`: it first claims the operation's
+ * submission (refused once another session aborted it), then makes the record name the
+ * transaction hash, durable (the `update` resolved) before the node can receive it. An exit's
+ * record also names each prepared withdrawal's L1 operation id (it needs the hash), so a crash
+ * after the broadcast keeps it.
  */
 export function recordBroadcastBeforeSend(
   journal: OperationJournal,
@@ -322,6 +323,7 @@ export function recordBroadcastBeforeSend(
   corridor: Corridor,
 ): (txHash: TxHash) => Promise<void> {
   return async (txHash) => {
+    await journal.claimSubmission(operationId);
     const hash = txHash.toString();
     const { kind, withdrawals } = await journal.get(operationId);
     await journal.update(operationId, {

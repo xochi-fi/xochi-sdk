@@ -188,6 +188,20 @@ const DIRECTORY = "operations/";
 const LOCK_KEY = `${DIRECTORY}active.lock`;
 const recordKey = (id: string) => `${DIRECTORY}${id}.json`;
 /**
+ * A spend's or exit's one submission decision, created atomically by whichever comes first: its
+ * holder sending it (`claimSubmission`) or a successor aborting it (`abortAbandonedRun`).
+ */
+const submissionKey = (owner: Pick<OperationRecord, "id" | "lockNonce">) =>
+  `${DIRECTORY}submission-${owner.id}-${owner.lockNonce}.lock`;
+const SubmissionDecisionSchema = z
+  .object({
+    id: z.string().regex(uuidV4),
+    lockNonce: z.string().regex(uuidV4),
+    outcome: z.enum(["send", "abort"]),
+  })
+  .strict();
+
+/**
  * Created atomically by `restoreJournals` and held for the whole restore; `begin` refuses while it
  * exists. Outside `operations/`, so an empty journal stays empty.
  */
@@ -405,9 +419,11 @@ export class OperationJournal {
    * no funds) or a spend or exit that never reached the Aztec node. A spend's or exit's tx hash is
    * durable in its record before the node can receive the transaction (`recordBroadcastBeforeSend`
    * runs before `sendTx`), so a `building` record, which names no hash, was never sent; a gone
-   * holder can no longer send it. An exit's prepared withdrawals stay in its record. Answers null,
-   * changing nothing, while the holder is alive or when the record names none (a spend or exit
-   * begun before `begin` recorded its holder).
+   * holder can no longer send it. A spend or exit is aborted only if this abort wins its
+   * submission decision: a holder that already claimed it (`claimSubmission`) is sending, so it is
+   * left as it is. An exit's prepared withdrawals stay in its record. Answers null, changing
+   * nothing, while the holder is alive, when the record names none (a spend or exit begun before
+   * `begin` recorded its holder) or when its holder claimed the submission.
    */
   async abortAbandonedRun(id: string): Promise<OperationRecord | null> {
     const record = await this.get(id);
@@ -417,7 +433,49 @@ export class OperationJournal {
       throw new Error(`operation ${id} is not an unfinished receipt run, spend or exit`);
     }
     if ((await this.recordedHolderAlive(record)) !== false) return null;
+    if (record.kind !== "receipt" && (await this.decideSubmission(record, "abort")) !== "abort") {
+      return null;
+    }
     return this.update(id, { status: "aborted" });
+  }
+
+  /**
+   * Claims a `building` spend's or exit's submission for its holder, before its broadcast record
+   * (`recordBroadcastBeforeSend`). Refused once a successor's abort decided it: that operation
+   * is aborted and must not be sent.
+   */
+  async claimSubmission(id: string): Promise<void> {
+    if ((await this.decideSubmission(await this.get(id), "send")) !== "send") {
+      throw new Error(
+        `operation ${id} was aborted by another session before its submission; it was not sent`,
+      );
+    }
+  }
+
+  /**
+   * Creates the operation's submission decision as `outcome` unless one exists; answers the
+   * decision that holds. An abort that crashed after deciding finds its own decision again.
+   */
+  private async decideSubmission(
+    record: OperationRecord,
+    outcome: "send" | "abort",
+  ): Promise<"send" | "abort"> {
+    const key = submissionKey(record);
+    try {
+      await this.kv.create(
+        key,
+        prettyJsonBytes({ id: record.id, lockNonce: record.lockNonce, outcome }),
+      );
+      return outcome;
+    } catch (error) {
+      if (!(error instanceof KeyExistsError)) throw error;
+    }
+    const bytes = await this.kv.get(key);
+    const decision = SubmissionDecisionSchema.parse(bytes === null ? null : parseJsonBytes(bytes));
+    if (decision.id !== record.id || decision.lockNonce !== record.lockNonce) {
+      throw new Error(`operation ${record.id} submission decision does not own its key`);
+    }
+    return decision.outcome;
   }
 
   /**

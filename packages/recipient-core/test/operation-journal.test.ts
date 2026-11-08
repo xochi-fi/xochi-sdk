@@ -33,6 +33,29 @@ function journalFor(
   });
 }
 
+/** Holds one write of a key: a step between two of an operation's writes, made observable. */
+class GatedKeyValueStore extends MemoryKeyValueStore {
+  private gate: { key: string; reach: () => void; opened: Promise<void> } | null = null;
+
+  /** The next `put` of `key` waits for `open`; `reached` resolves when it starts waiting. */
+  hold(key: string): { reached: Promise<void>; open: () => void } {
+    const reached = Promise.withResolvers<void>();
+    const opened = Promise.withResolvers<void>();
+    this.gate = { key, reach: reached.resolve, opened: opened.promise };
+    return { reached: reached.promise, open: opened.resolve };
+  }
+
+  override async put(key: string, value: Uint8Array): Promise<void> {
+    const gate = this.gate;
+    if (gate?.key === key) {
+      this.gate = null;
+      gate.reach();
+      await gate.opened;
+    }
+    await super.put(key, value);
+  }
+}
+
 /** Sends one transaction through `NodeSubmission` and records the journal as durable at send. */
 async function submitSeeingDurable(
   kv: MemoryKeyValueStore,
@@ -105,6 +128,61 @@ describe("operation journal over the storage and lock ports", () => {
     expect(seen).toEqual([
       expect.objectContaining({ id: operation.id, status: "broadcast", txHash: TX_HASH }),
     ]);
+  });
+
+  it("an abort that wins the submission boundary keeps the holder from sending", async () => {
+    const kv = new MemoryKeyValueStore();
+    const locks = new MemoryLockManager();
+    const holder = journalFor(kv, locks, TAB_A);
+    const successor = journalFor(kv, locks, TAB_B);
+    const operation = await holder.begin("spend", { amount: "1" });
+    // Its tab released the holder lease while its send ran on.
+    await holder.close();
+    expect(await successor.abortAbandonedRun(operation.id)).toMatchObject({ status: "aborted" });
+
+    let sent = 0;
+    const submission = new NodeSubmission({
+      async sendTx() {
+        sent += 1;
+      },
+    } as unknown as AztecNode);
+    await expect(
+      submission.run(
+        recordBroadcastBeforeSend(holder, operation.id, OXDAI_MAINNET_REV2),
+        async () => submission.node.sendTx({ getTxHash: () => TxHash.fromString(TX_HASH) } as Tx),
+        createSubmissionDiagnosticState("spend"),
+      ),
+    ).rejects.toThrow();
+    expect(sent).toBe(0);
+    const aborted = await successor.get(operation.id);
+    expect(aborted.status).toBe("aborted");
+    expect(aborted.txHash).toBeUndefined();
+  });
+
+  it("a send that wins the submission boundary keeps a successor from aborting it", async () => {
+    const kv = new GatedKeyValueStore();
+    const locks = new MemoryLockManager();
+    const holder = journalFor(kv, locks, TAB_A);
+    const successor = journalFor(kv, locks, TAB_B);
+    const operation = await holder.begin("spend", { amount: "1" });
+    await holder.close();
+    const write = kv.hold(`operations/${operation.id}.json`);
+
+    const broadcast = recordBroadcastBeforeSend(
+      holder,
+      operation.id,
+      OXDAI_MAINNET_REV2,
+    )(TxHash.fromString(TX_HASH));
+    // The holder is past the boundary, writing its broadcast record.
+    await write.reached;
+    expect(await successor.abortAbandonedRun(operation.id)).toBeNull();
+    write.open();
+    await broadcast;
+
+    expect(await successor.get(operation.id)).toMatchObject({
+      status: "broadcast",
+      txHash: TX_HASH,
+    });
   });
 
   it("the storage double exposes a dropped await: the send sees the record still building", async () => {

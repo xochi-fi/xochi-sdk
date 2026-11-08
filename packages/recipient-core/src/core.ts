@@ -158,6 +158,7 @@ export interface RecipientCore {
    * refused.
    */
   reconcile(): Promise<OperationRecord | null>;
+  /** Waits for any send, exit, deploy or receipt run in flight, then closes the node and journal. */
   close(): Promise<void>;
 }
 
@@ -267,6 +268,7 @@ class Core implements RecipientCore {
   readonly #port: AztecPort;
   readonly #tokenArtifact: ContractArtifact;
   readonly #journals: CoreJournals;
+  readonly #inFlight = new Set<Promise<unknown>>();
 
   constructor(
     deps: RecipientCoreDeps,
@@ -334,28 +336,32 @@ class Core implements RecipientCore {
     return state.initialized && state.published ? "deployed" : "undeployed";
   }
 
-  async signReceipt(
+  signReceipt(
     intentId: string,
     opts: { tx?: string; alreadySpent?: boolean } = {},
   ): Promise<ReceiptRecord> {
-    return signReceipt(
-      this.#ctx,
-      this.#api(),
-      this.#secretAccount,
-      this.#tokenArtifact,
-      this.#journals,
-      await this.#receiptRequest(intentId, opts),
+    return this.#holding(async () =>
+      signReceipt(
+        this.#ctx,
+        this.#api(),
+        this.#secretAccount,
+        this.#tokenArtifact,
+        this.#journals,
+        await this.#receiptRequest(intentId, opts),
+      ),
     );
   }
 
-  async submitReceipt(intentId: string): Promise<ReceiptRecord> {
-    return submitReceipt(
-      this.#ctx,
-      this.#api(),
-      this.#secretAccount,
-      this.#tokenArtifact,
-      this.#journals,
-      await this.#receiptRequest(intentId, {}),
+  submitReceipt(intentId: string): Promise<ReceiptRecord> {
+    return this.#holding(async () =>
+      submitReceipt(
+        this.#ctx,
+        this.#api(),
+        this.#secretAccount,
+        this.#tokenArtifact,
+        this.#journals,
+        await this.#receiptRequest(intentId, {}),
+      ),
     );
   }
 
@@ -391,7 +397,11 @@ class Core implements RecipientCore {
    * or finalized) and successful answers its hash, dropped or reverted sends again, anything else
    * is refused until the node decides.
    */
-  async deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
+  deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
+    return this.#holding(() => this.#deploy(claim));
+  }
+
+  async #deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
     const kv = this.#deps.kv;
     // CLI `setup` keeps no such record; only the facade's deploy can be retried after a reload.
     const DEPLOY_KEY = "deploy.json";
@@ -500,23 +510,25 @@ class Core implements RecipientCore {
     return enrollStatus(this.#ctx, this.#api(), bindingId, this.#secretAccount);
   }
 
-  async send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }> {
-    return {
+  send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }> {
+    return this.#holding(async () => ({
       txHash: await spend(this.#ctx, this.#secretAccount, this.#tokenArtifact, to, amount, fee),
-    };
+    }));
   }
 
-  async exit(request: CoreExitRequest): Promise<ExitResult> {
-    const broadcasterArtifact = await validateBroadcasterArtifact(
-      await this.#deps.artifacts.broadcasterArtifact(),
-      "from the artifact loader",
-    );
-    const result = await exit(this.#ctx, this.#secretAccount, this.#tokenArtifact, {
-      ...request,
-      broadcasterArtifact,
+  exit(request: CoreExitRequest): Promise<ExitResult> {
+    return this.#holding(async () => {
+      const broadcasterArtifact = await validateBroadcasterArtifact(
+        await this.#deps.artifacts.broadcasterArtifact(),
+        "from the artifact loader",
+      );
+      const result = await exit(this.#ctx, this.#secretAccount, this.#tokenArtifact, {
+        ...request,
+        broadcasterArtifact,
+      });
+      await this.#journals.exits.record(result);
+      return result;
     });
-    await this.#journals.exits.record(result);
-    return result;
   }
 
   operations(): Promise<OperationRecord[]> {
@@ -583,11 +595,28 @@ class Core implements RecipientCore {
     });
   }
 
+  /**
+   * Waits for every send, exit, deploy and receipt run in flight, then closes the node and
+   * releases this session's holder lease: while a run is in flight its holder must stay alive,
+   * or another session could abort it as abandoned.
+   */
   async close(): Promise<void> {
+    while (this.#inFlight.size > 0) await Promise.allSettled(this.#inFlight);
     try {
       await this.#port.close();
     } finally {
       await this.#journals.operations.close();
+    }
+  }
+
+  /** Runs one lock-holding or broadcasting call; `close` waits for it. */
+  async #holding<T>(run: () => Promise<T>): Promise<T> {
+    const running = run();
+    this.#inFlight.add(running);
+    try {
+      return await running;
+    } finally {
+      this.#inFlight.delete(running);
     }
   }
 }

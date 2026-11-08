@@ -558,6 +558,33 @@ describe("operations and reconcile", () => {
     await core.close();
   });
 
+  it("close waits for a send in flight, keeping its holder alive until the send settles", async () => {
+    const h = harness();
+    const core = await h.open();
+    const sent = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    h.node.onSpendSent = async () => {
+      sent.resolve();
+      await finish.promise;
+    };
+    const sending = core.send(account.address.toString(), 5n, null);
+    await sent.promise;
+
+    let closed = false;
+    const closing = core.close().then(() => {
+      closed = true;
+    });
+    const [operation] = await core.operations();
+    expect(await otherSession(h).recordedHolderAlive(operation!)).toBe(true);
+    expect(closed).toBe(false);
+    expect(h.node.closed).toBe(0);
+
+    finish.resolve();
+    expect(await sending).toEqual({ txHash: SPEND_TX });
+    await closing;
+    expect(h.node.closed).toBe(1);
+  });
+
   it("fails a reverted spend only once finalized, with its block evidence", async () => {
     const h = harness();
     const core = await h.open();
