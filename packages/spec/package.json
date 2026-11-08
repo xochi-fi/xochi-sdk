@@ -33,6 +33,7 @@
     "SPEC.md",
     "SOLVER-RFC.md",
     "ESCROW-RFC.md",
+    "PASSKEY-RECIPIENT.md",
     "conformance",
     "fee",
     "erc8262",
