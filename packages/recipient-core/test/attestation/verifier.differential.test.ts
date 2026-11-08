@@ -19,6 +19,13 @@ import {
   selfSigned,
   syntheticChain,
   syntheticDocument,
+  assembleCertificate,
+  certificateParts,
+  ecdsaIntegers,
+  ecdsaSigValue,
+  signTbs,
+  ECDSA_WITH_SHA384,
+  type SyntheticChain,
   type CborValue,
   type Outcome,
   type VendoredParsersModule,
@@ -453,9 +460,147 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
     await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
   });
 
+  describe("certificate signature encodings (OpenSSL accepts only exact DER)", () => {
+    async function documentWithLeaf(chain: SyntheticChain, leaf: Uint8Array) {
+      const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: leaf,
+        caBundle: [der(chain.root)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      return { attestationDocument, trustedRootCertificates: [der(chain.root)] };
+    }
+
+    /** The leaf with its signatureValue BIT STRING contents replaced. */
+    async function leafWithSignatureBits(
+      chain: SyntheticChain,
+      rewrite: (bits: Uint8Array) => Uint8Array,
+    ) {
+      const parts = certificateParts(der(chain.leaf));
+      return documentWithLeaf(
+        chain,
+        assembleCertificate({ ...parts, signatureBits: rewrite(parts.signatureBits) }),
+      );
+    }
+
+    const withSignature = (sig: Uint8Array): Uint8Array => Uint8Array.of(0, ...sig);
+
+    it("accepts the leaf reassembled unchanged (control)", async () => {
+      const chain = await syntheticChain();
+      await expectBothAccept(await leafWithSignatureBits(chain, (bits) => bits));
+    });
+
+    it("refuses an ECDSA r with a superfluous leading zero", async () => {
+      const chain = await syntheticChain();
+      const input = await leafWithSignatureBits(chain, (bits) => {
+        const { r, s } = ecdsaIntegers(bits.subarray(1));
+        return withSignature(ecdsaSigValue(Uint8Array.of(0, ...r), s));
+      });
+      await expectBothReject(input, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses an ECDSA r encoded as a negative INTEGER", async () => {
+      let chain = await syntheticChain();
+      while (ecdsaIntegers(certificateParts(der(chain.leaf)).signatureBits.subarray(1)).r[0]) {
+        chain = await syntheticChain();
+      }
+      const input = await leafWithSignatureBits(chain, (bits) => {
+        const { r, s } = ecdsaIntegers(bits.subarray(1));
+        return withSignature(ecdsaSigValue(r.subarray(1), s));
+      });
+      await expectBothReject(input, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses a long-form length where the short form fits", async () => {
+      const chain = await syntheticChain();
+      const input = await leafWithSignatureBits(chain, (bits) => {
+        const sig = bits.subarray(1);
+        return withSignature(Uint8Array.of(0x30, 0x81, ...sig.subarray(1)));
+      });
+      await expectBothReject(input, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses bytes after the ECDSA-Sig-Value", async () => {
+      const chain = await syntheticChain();
+      const input = await leafWithSignatureBits(chain, (bits) => Uint8Array.of(...bits, 0));
+      await expectBothReject(input, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses a signature BIT STRING with unused bits", async () => {
+      const chain = await syntheticChain();
+      const input = await leafWithSignatureBits(chain, (bits) =>
+        Uint8Array.of(1, ...bits.subarray(1)),
+      );
+      await expectBothReject(input, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses an outer signatureAlgorithm that differs from the TBS signature field", async () => {
+      // TBS says ecdsa-with-SHA256; the certificate is signed, and labelled outside, SHA-384.
+      const chain = await syntheticChain(undefined, "SHA-256");
+      const { tbs } = certificateParts(der(chain.leaf));
+      const signature = await signTbs(chain.rootKeys.privateKey, "SHA-384", tbs);
+      const leaf = assembleCertificate({
+        tbs,
+        signatureAlgorithm: ECDSA_WITH_SHA384,
+        signatureBits: withSignature(signature),
+      });
+      await expectBothReject(await documentWithLeaf(chain, leaf), ISSUER_NOT_FOUND);
+    });
+  });
+
+  describe("PEM framing", () => {
+    const pemOf = (chain: SyntheticChain, label = "CERTIFICATE", eol = "\n"): string =>
+      chain.root
+        .toString("pem")
+        .replace(/CERTIFICATE/g, label)
+        .replace(/\r?\n/g, eol);
+
+    async function withRoot(chain: SyntheticChain, root: string) {
+      const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: [der(chain.root)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      return { attestationDocument, trustedRootCertificates: [new TextEncoder().encode(root)] };
+    }
+
+    it("accepts a PEM block after other lines, and with CRLF line ends", async () => {
+      const chain = await syntheticChain();
+      await expectBothAccept(await withRoot(chain, `Subject: root\nIssuer: root\n${pemOf(chain)}`));
+      await expectBothAccept(await withRoot(chain, pemOf(chain, "CERTIFICATE", "\r\n")));
+    });
+
+    it("refuses a BEGIN marker that does not start a line", async () => {
+      const chain = await syntheticChain();
+      await expectBothRefuseCertificateBytes(await withRoot(chain, `x${pemOf(chain)}`));
+    });
+
+    it("refuses the X509 CERTIFICATE and TRUSTED CERTIFICATE labels OpenSSL also reads", async () => {
+      const chain = await syntheticChain();
+      for (const label of ["X509 CERTIFICATE", "TRUSTED CERTIFICATE"]) {
+        await expectPortStricter(
+          await withRoot(chain, pemOf(chain, label)),
+          `unsupported PEM label: ${label}`,
+        );
+      }
+    });
+
+    it(
+      "refuses, in linear time, many BEGIN lines without an END line",
+      { timeout: 5_000 },
+      async () => {
+        const chain = await syntheticChain();
+        const { node, port } = await differential(
+          await withRoot(chain, "-----BEGIN CERTIFICATE-----\n".repeat(50_000)),
+        );
+        expect(node.ok).toBe(false);
+        expect(port).toEqual({ ok: false, message: "PEM CERTIFICATE block has no END line" });
+      },
+    );
+  });
+
   describe("forged chains against the real AWS Nitro root", () => {
     const awsRoot = awsNitroRootDer();
-    const awsSubject = new X509Certificate(awsRoot).subject;
+    const awsSubject = new X509Certificate(awsRoot.slice()).subject;
 
     it("refuses an attacker chain whose root copies the AWS subject DN", async () => {
       const chain = await syntheticChain(awsSubject);

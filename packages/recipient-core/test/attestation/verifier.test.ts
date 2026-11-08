@@ -63,6 +63,15 @@ describe("WebCryptoAttestationVerifier validation time without a document timest
   });
 });
 
+describe("WebCryptoAttestationVerifier construction", () => {
+  it("refuses a crypto without SubtleCrypto (a browser page that is not a secure context)", () => {
+    const insecureContextCrypto = { getRandomValues: crypto.getRandomValues.bind(crypto) };
+    expect(
+      () => new WebCryptoAttestationVerifier({ nowMs: Date.now }, insecureContextCrypto as Crypto),
+    ).toThrow("WebCrypto SubtleCrypto is unavailable; a secure context (https) is required");
+  });
+});
+
 describe("provenance pins", () => {
   const vendoredDir = new URL(
     "../../../../tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",

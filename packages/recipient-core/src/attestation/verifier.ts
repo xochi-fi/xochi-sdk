@@ -1,14 +1,25 @@
-// AWS Nitro attestation verification without node:crypto: X.509 through @peculiar/x509 (pure JS
-// ASN.1) and every signature through WebCrypto. Mirrors the vendored
+// AWS Nitro attestation verification without node:crypto: X.509 parsing through @peculiar/x509
+// (pure JS ASN.1) and every signature through WebCrypto. Mirrors the vendored
 // tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.ts
 // step for step (order of checks, validation time, root pinning, error messages); only the
-// certificate chain and COSE signature checks are re-expressed for WebCrypto. test/attestation
-// runs both on the same inputs and requires the same accept/reject, except for the differences
-// below.
+// certificate chain and COSE signature checks are re-expressed for WebCrypto, with OpenSSL's
+// rules made explicit where @peculiar/x509 is laxer (exact-DER ECDSA signatures, outer and TBS
+// signature algorithms equal, PEM BEGIN/END lines at line starts). test/attestation runs both
+// on the same inputs and requires the same accept/reject, except for the differences below.
 //
 // Known differences (all fail-closed: the port refuses what the vendored verifier accepts):
 // - An empty `trustedRootCertificates` is refused ("at least one trusted root is required");
 //   the vendored verifier then accepts any self-consistent chain, pinning nothing.
+// - Certificate signatures: only ecdsa-with-SHA256/384/512 (parameters absent, RFC 5758) by a
+//   P-256, P-384 or P-521 named-curve key. RSA, Ed25519, secp256k1, SHA-224 and explicit-curve
+//   keys, which OpenSSL may verify, are refused (Nitro chains are ECDSA P-384 throughout).
+// - The COSE leaf key must be a WebCrypto ECDSA key; an RSA leaf with a 96-byte RSA signature,
+//   which Node verifies for 'sha384', is refused.
+// - PEM: only the "CERTIFICATE" label is read; "X509 CERTIFICATE" and "TRUSTED CERTIFICATE"
+//   blocks, which OpenSSL reads, are refused ("unsupported PEM label: ...").
+// Rejection messages that differ in text only: the subject in "could not find issuer ..."
+// (RFC 4514 here, OpenSSL's one-per-line form there) and certificate-encoding errors (OpenSSL's
+// "PEM routines::..." there).
 
 import { X509Certificate, type PublicKey } from "@peculiar/x509";
 import type {
@@ -17,6 +28,7 @@ import type {
   NitroAttestationInput,
   ParsedNitroAttestation,
 } from "../ports.js";
+import { certificateSignatureFields, strictEcdsaSignature } from "./der.js";
 import {
   assertLen,
   cborArray,
@@ -27,8 +39,23 @@ import {
 } from "./parsers.js";
 
 export class WebCryptoAttestationVerifier implements AttestationVerifier {
-  /** `clock` is read only when the caller gives no `now` and the document has no timestamp. */
-  constructor(private readonly clock: Clock) {}
+  private readonly subtle: SubtleCrypto;
+
+  /**
+   * `clock` is read only when the caller gives no `now` and the document has no timestamp.
+   * `webCrypto` must provide SubtleCrypto, which browsers expose only in secure contexts.
+   */
+  constructor(
+    private readonly clock: Clock,
+    private readonly webCrypto: Crypto = globalThis.crypto,
+  ) {
+    if (webCrypto?.subtle === undefined) {
+      throw new Error(
+        "WebCrypto SubtleCrypto is unavailable; a secure context (https) is required",
+      );
+    }
+    this.subtle = webCrypto.subtle;
+  }
 
   async verifyNitroAttestation(input: NitroAttestationInput): Promise<ParsedNitroAttestation> {
     if (input.trustedRootCertificates.length === 0) {
@@ -49,10 +76,153 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
       (parsed.timestamp != null
         ? new Date(Number(parsed.timestamp))
         : new Date(this.clock.nowMs()));
-    await verifyCertificateChain(parsed, input.trustedRootCertificates, validationTime);
-    await verifyCoseSignature(protectedHeaders, payloadBytes, signature, parsed.certificate);
+    await this.verifyCertificateChain(parsed, input.trustedRootCertificates, validationTime);
+    await this.verifyCoseSignature(protectedHeaders, payloadBytes, signature, parsed.certificate);
     return parsed;
   }
+
+  private async verifyCertificateChain(
+    parsed: ParsedNitroAttestation,
+    trustedRoots: Uint8Array[],
+    now: Date,
+  ): Promise<void> {
+    const leaf = parseCertificate(parsed.certificate);
+    const chain = parsed.caBundle.map(parseCertificate);
+    if (chain.length === 0) {
+      throw new Error("Nitro cabundle must contain at least one issuing certificate");
+    }
+
+    assertCertificateTime(leaf, now, "Nitro leaf certificate");
+    for (const [i, cert] of chain.entries()) {
+      assertCertificateTime(cert, now, `Nitro cabundle[${i}]`);
+    }
+
+    const unused = new Set(chain.keys());
+    let current = leaf;
+    while (current.subject !== current.issuer) {
+      let issuer: X509Certificate | undefined;
+      for (const i of unused) {
+        const candidate = chain[i];
+        if (
+          candidate !== undefined &&
+          candidate.subject === current.issuer &&
+          (await this.signedBy(current, candidate.publicKey))
+        ) {
+          unused.delete(i);
+          issuer = candidate;
+          break;
+        }
+      }
+      if (issuer === undefined) {
+        throw new Error(`could not find issuer for Nitro certificate subject ${current.subject}`);
+      }
+      current = issuer;
+    }
+
+    const roots = trustedRoots.map(parseCertificate);
+    let trusted = false;
+    for (const root of roots) {
+      if (
+        bytesEqual(new Uint8Array(current.rawData), new Uint8Array(root.rawData)) ||
+        (await this.signedBy(current, root.publicKey))
+      ) {
+        trusted = true;
+        break;
+      }
+    }
+    if (!trusted) {
+      throw new Error("Nitro certificate chain does not terminate in a trusted root");
+    }
+  }
+
+  /**
+   * True when `issuerKey` verifies `cert`'s signature, by OpenSSL's `X509_verify` rules: the outer
+   * signatureAlgorithm equals TBSCertificate.signature, the BIT STRING has no unused bits, and the
+   * ECDSA-Sig-Value is exact DER with r and s that fit the issuer's curve. Anything else is
+   * "not signed by this key" (false), as Node's `X509Certificate.verify` answers it, so the walk
+   * skips a same-subject candidate that is not the issuer. The signature is verified over the
+   * certificate's own TBS bytes, never a re-encoding.
+   */
+  private async signedBy(cert: X509Certificate, issuerKey: PublicKey): Promise<boolean> {
+    const fields = certificateSignatureFields(new Uint8Array(cert.rawData));
+    if (!bytesEqual(fields.signatureAlgorithm, fields.tbsSignatureAlgorithm)) {
+      return false;
+    }
+    const hash = ECDSA_SIGNATURE_HASHES[toHex(fields.signatureAlgorithm)];
+    if (hash === undefined || fields.signatureValue[0] !== 0) {
+      return false;
+    }
+    const signature = strictEcdsaSignature(fields.signatureValue.subarray(1));
+    const curve = ecCurve(issuerKey);
+    if (signature === null || curve === undefined) {
+      return false;
+    }
+    const size = CURVE_SCALAR_BYTES[curve];
+    if (signature.r.length > size || signature.s.length > size) {
+      return false;
+    }
+    const key = await this.subtle.importKey(
+      "spki",
+      new Uint8Array(issuerKey.rawData),
+      { name: "ECDSA", namedCurve: curve },
+      false,
+      ["verify"],
+    );
+    const p1363 = new Uint8Array(2 * size);
+    p1363.set(signature.r, size - signature.r.length);
+    p1363.set(signature.s, 2 * size - signature.s.length);
+    return this.subtle.verify({ name: "ECDSA", hash }, key, p1363, fields.tbs.slice());
+  }
+
+  private async verifyCoseSignature(
+    protectedHeaders: Uint8Array,
+    payloadBytes: Uint8Array,
+    signature: Uint8Array,
+    certificate: Uint8Array,
+  ): Promise<void> {
+    assertLen("COSE ES384 signature", signature, 96);
+    const leaf = parseCertificate(certificate);
+    const sigStructure = cborArray([
+      cborText("Signature1"),
+      cborBytes(protectedHeaders),
+      cborBytes(new Uint8Array(0)),
+      cborBytes(payloadBytes),
+    ]);
+    const key = await leaf.publicKey.export(leaf.publicKey.algorithm, ["verify"], this.webCrypto);
+    const ok = await this.subtle.verify(
+      { name: "ECDSA", hash: "SHA-384" },
+      key,
+      signature.slice(),
+      sigStructure,
+    );
+    if (!ok) {
+      throw new Error("Nitro COSE signature verification failed");
+    }
+  }
+}
+
+/** DER AlgorithmIdentifier (hex) -> WebCrypto hash, for ecdsa-with-SHA* with absent parameters. */
+const ECDSA_SIGNATURE_HASHES: Record<string, string> = {
+  "300a06082a8648ce3d040302": "SHA-256",
+  "300a06082a8648ce3d040303": "SHA-384",
+  "300a06082a8648ce3d040304": "SHA-512",
+};
+
+const CURVE_SCALAR_BYTES = { "P-256": 32, "P-384": 48, "P-521": 66 } as const;
+type Curve = keyof typeof CURVE_SCALAR_BYTES;
+
+function ecCurve(key: PublicKey): Curve | undefined {
+  const algorithm = key.algorithm as Partial<EcKeyAlgorithm>;
+  const curve = algorithm.namedCurve;
+  return algorithm.name === "ECDSA" &&
+    curve !== undefined &&
+    Object.hasOwn(CURVE_SCALAR_BYTES, curve)
+    ? (curve as Curve)
+    : undefined;
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -69,94 +239,64 @@ function assertBytesEqual(
   }
 }
 
-const PEM_CERTIFICATE = /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/;
+const PEM_OTHER_CERTIFICATE_LABELS = ["X509 CERTIFICATE", "TRUSTED CERTIFICATE"];
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** Index of the first `marker` at or after `from` that starts a line, or -1. Linear time. */
+function lineStartIndexOf(text: string, marker: string, from: number): number {
+  for (let at = text.indexOf(marker, from); at !== -1; at = text.indexOf(marker, at + 1)) {
+    if (at === 0 || text[at - 1] === "\n") return at;
+  }
+  return -1;
+}
 
 /**
- * Node's `new X509Certificate(bytes)` (OpenSSL): the first PEM CERTIFICATE block anywhere in the
- * bytes, else DER. @peculiar/x509 would also take hex and base64 text, which Node refuses, so the
- * format is decided here and the library only ever sees DER.
+ * The base64 body of the first PEM block with a certificate label, the way OpenSSL's
+ * PEM_read_bio_X509_AUX finds it: BEGIN and END lines start a line, trailing whitespace on the
+ * BEGIN line is allowed, blocks with other labels are skipped. null when there is none.
+ */
+function pemCertificateBody(text: string): string | null {
+  for (let at = lineStartIndexOf(text, "-----BEGIN ", 0); at !== -1; ) {
+    const newline = text.indexOf("\n", at);
+    const lineEnd = newline === -1 ? text.length : newline;
+    let labelEnd = lineEnd;
+    while (labelEnd > at && " \t\r".includes(text.charAt(labelEnd - 1))) labelEnd--;
+    const line = text.slice(at, labelEnd);
+    const label = line.endsWith("-----") ? line.slice("-----BEGIN ".length, -"-----".length) : "";
+    if (PEM_OTHER_CERTIFICATE_LABELS.includes(label)) {
+      throw new Error(`unsupported PEM label: ${label}`);
+    }
+    if (label === "CERTIFICATE") {
+      const end = lineStartIndexOf(text, "-----END CERTIFICATE-----", lineEnd);
+      if (end === -1) {
+        throw new Error("PEM CERTIFICATE block has no END line");
+      }
+      return text.slice(lineEnd + 1, end);
+    }
+    at = lineStartIndexOf(text, "-----BEGIN ", lineEnd);
+  }
+  return null;
+}
+
+/**
+ * Node's `new X509Certificate(bytes)` (OpenSSL): the first PEM certificate block, else DER.
+ * @peculiar/x509 would also take hex and base64 text, which Node refuses, so the format is
+ * decided here and the library only ever sees DER.
  */
 function parseCertificate(bytes: Uint8Array): X509Certificate {
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  const pem = PEM_CERTIFICATE.exec(text);
-  if (pem?.[1] !== undefined) {
-    const der = Uint8Array.from(atob(pem[1].replace(/\s/g, "")), (char) => char.charCodeAt(0));
-    return new X509Certificate(der);
+  const body = pemCertificateBody(text);
+  if (body !== null) {
+    const base64 = body.replace(/\s/g, "");
+    if (!BASE64.test(base64)) {
+      throw new Error("PEM CERTIFICATE block is not base64");
+    }
+    return new X509Certificate(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)));
   }
   if (bytes[0] !== 0x30) {
     throw new Error("X.509 certificate is neither PEM nor DER");
   }
   return new X509Certificate(bytes.slice());
-}
-
-/**
- * True when `issuerKey` verifies `cert`'s signature over its TBSCertificate. Node's
- * `X509Certificate.verify` answers false, never throws, for a key that cannot check the signature
- * (another curve or key type, a malformed signature value); @peculiar/x509 throws for some of
- * those (a P-256 key against a P-384 signature is a RangeError). The chain walk relies on false:
- * a same-subject candidate that is not the issuer is skipped and the next one is tried, so a
- * throw here is the answer "not signed by this key", never an error of the walk itself.
- */
-async function signedBy(cert: X509Certificate, issuerKey: PublicKey): Promise<boolean> {
-  try {
-    return await cert.verify({ publicKey: issuerKey, signatureOnly: true }, globalThis.crypto);
-  } catch {
-    return false;
-  }
-}
-
-async function verifyCertificateChain(
-  parsed: ParsedNitroAttestation,
-  trustedRoots: Uint8Array[],
-  now: Date,
-): Promise<void> {
-  const leaf = parseCertificate(parsed.certificate);
-  const chain = parsed.caBundle.map(parseCertificate);
-  if (chain.length === 0) {
-    throw new Error("Nitro cabundle must contain at least one issuing certificate");
-  }
-
-  assertCertificateTime(leaf, now, "Nitro leaf certificate");
-  for (const [i, cert] of chain.entries()) {
-    assertCertificateTime(cert, now, `Nitro cabundle[${i}]`);
-  }
-
-  const unused = new Set(chain.keys());
-  let current = leaf;
-  while (current.subject !== current.issuer) {
-    let issuer: X509Certificate | undefined;
-    for (const i of unused) {
-      const candidate = chain[i];
-      if (
-        candidate !== undefined &&
-        candidate.subject === current.issuer &&
-        (await signedBy(current, candidate.publicKey))
-      ) {
-        unused.delete(i);
-        issuer = candidate;
-        break;
-      }
-    }
-    if (issuer === undefined) {
-      throw new Error(`could not find issuer for Nitro certificate subject ${current.subject}`);
-    }
-    current = issuer;
-  }
-
-  const roots = trustedRoots.map(parseCertificate);
-  let trusted = false;
-  for (const root of roots) {
-    if (
-      bytesEqual(new Uint8Array(current.rawData), new Uint8Array(root.rawData)) ||
-      (await signedBy(current, root.publicKey))
-    ) {
-      trusted = true;
-      break;
-    }
-  }
-  if (!trusted) {
-    throw new Error("Nitro certificate chain does not terminate in a trusted root");
-  }
 }
 
 function assertCertificateTime(cert: X509Certificate, now: Date, name: string): void {
@@ -165,31 +305,5 @@ function assertCertificateTime(cert: X509Certificate, now: Date, name: string): 
   const time = now.getTime();
   if (time < from || time > to) {
     throw new Error(`${name} is not valid at ${now.toISOString()}`);
-  }
-}
-
-async function verifyCoseSignature(
-  protectedHeaders: Uint8Array,
-  payloadBytes: Uint8Array,
-  signature: Uint8Array,
-  certificate: Uint8Array,
-): Promise<void> {
-  assertLen("COSE ES384 signature", signature, 96);
-  const leaf = parseCertificate(certificate);
-  const sigStructure = cborArray([
-    cborText("Signature1"),
-    cborBytes(protectedHeaders),
-    cborBytes(new Uint8Array(0)),
-    cborBytes(payloadBytes),
-  ]);
-  const key = await leaf.publicKey.export(leaf.publicKey.algorithm, ["verify"], globalThis.crypto);
-  const ok = await globalThis.crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-384" },
-    key,
-    signature.slice(),
-    sigStructure,
-  );
-  if (!ok) {
-    throw new Error("Nitro COSE signature verification failed");
   }
 }

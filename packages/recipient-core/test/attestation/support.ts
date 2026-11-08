@@ -316,12 +316,14 @@ export async function selfSigned(
 
 export interface SyntheticChain {
   root: X509Certificate;
+  rootKeys: CryptoKeyPair;
   leaf: X509Certificate;
   leafKeys: CryptoKeyPair;
 }
 
 export async function syntheticChain(
   rootName = "CN=Synthetic Nitro Root, O=Test, C=US",
+  leafSigningHash: "SHA-256" | "SHA-384" = "SHA-384",
 ): Promise<SyntheticChain> {
   const root = await selfSigned(rootName);
   const leafKeys = await ecKeys(P384);
@@ -331,13 +333,13 @@ export async function syntheticChain(
       issuer: root.cert.subject,
       publicKey: leafKeys.publicKey,
       signingKey: root.keys.privateKey,
-      signingAlgorithm: P384,
+      signingAlgorithm: { ...P384, hash: leafSigningHash },
       notBefore: SYNTHETIC_NOT_BEFORE,
       notAfter: SYNTHETIC_NOT_AFTER,
     },
     crypto,
   );
-  return { root: root.cert, leaf, leafKeys };
+  return { root: root.cert, rootKeys: root.keys, leaf, leafKeys };
 }
 
 const pcr = (fill: number): Buffer => Buffer.alloc(48, fill);
@@ -382,3 +384,115 @@ export async function syntheticDocument(
 }
 
 export const der = (cert: X509Certificate): Uint8Array => new Uint8Array(cert.rawData);
+
+// ---------------------------------------------------------------------------------------------
+// DER surgery on certificates: Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm,
+// signatureValue BIT STRING }. Enough to re-encode or re-sign a synthetic certificate.
+
+interface Tlv {
+  tag: number;
+  /** The whole element, header included. */
+  bytes: Uint8Array;
+  content: Uint8Array;
+}
+
+function readTlv(bytes: Uint8Array, offset: number): Tlv {
+  const tag = bytes[offset] ?? -1;
+  const first = bytes[offset + 1] ?? -1;
+  let length = first;
+  let header = 2;
+  if (first > 0x80) {
+    length = 0;
+    for (let i = 0; i < first - 0x80; i++) length = length * 256 + (bytes[offset + 2 + i] ?? 0);
+    header += first - 0x80;
+  }
+  const end = offset + header + length;
+  return {
+    tag,
+    bytes: bytes.subarray(offset, end),
+    content: bytes.subarray(offset + header, end),
+  };
+}
+
+function children(content: Uint8Array): Tlv[] {
+  const out: Tlv[] = [];
+  for (let offset = 0; offset < content.length; offset += out.at(-1)?.bytes.length ?? 1) {
+    out.push(readTlv(content, offset));
+  }
+  return out;
+}
+
+function derLength(length: number): Uint8Array {
+  if (length < 0x80) return Uint8Array.of(length);
+  const bytes: number[] = [];
+  for (let n = length; n > 0; n = Math.floor(n / 256)) bytes.unshift(n % 256);
+  return Uint8Array.of(0x80 | bytes.length, ...bytes);
+}
+
+export function tlv(tag: number, content: Uint8Array): Uint8Array {
+  return Buffer.concat([Uint8Array.of(tag), derLength(content.length), content]);
+}
+
+export interface CertificateParts {
+  tbs: Uint8Array;
+  signatureAlgorithm: Uint8Array;
+  /** BIT STRING contents: the unused-bits octet, then the DER ECDSA-Sig-Value. */
+  signatureBits: Uint8Array;
+}
+
+export function certificateParts(certificate: Uint8Array): CertificateParts {
+  const [tbs, signatureAlgorithm, signatureValue] = children(readTlv(certificate, 0).content);
+  if (!tbs || !signatureAlgorithm || signatureValue?.tag !== 0x03) {
+    throw new Error("not a certificate");
+  }
+  return {
+    tbs: tbs.bytes,
+    signatureAlgorithm: signatureAlgorithm.bytes,
+    signatureBits: signatureValue.content,
+  };
+}
+
+export function assembleCertificate(parts: CertificateParts): Uint8Array {
+  return new Uint8Array(
+    tlv(0x30, Buffer.concat([parts.tbs, parts.signatureAlgorithm, tlv(0x03, parts.signatureBits)])),
+  );
+}
+
+/** r and s of a DER ECDSA-Sig-Value, as their INTEGER contents. */
+export function ecdsaIntegers(signatureDer: Uint8Array): { r: Uint8Array; s: Uint8Array } {
+  const [r, s] = children(readTlv(signatureDer, 0).content);
+  if (r?.tag !== 0x02 || s?.tag !== 0x02) throw new Error("not an ECDSA-Sig-Value");
+  return { r: r.content, s: s.content };
+}
+
+/** DER INTEGER contents of an unsigned big-endian magnitude (minimal, positive). */
+function derUnsigned(magnitude: Uint8Array): Uint8Array {
+  let start = 0;
+  while (start < magnitude.length - 1 && magnitude[start] === 0) start++;
+  const trimmed = magnitude.subarray(start);
+  return (trimmed[0] ?? 0) >= 0x80 ? Buffer.concat([Uint8Array.of(0), trimmed]) : trimmed;
+}
+
+export function ecdsaSigValue(r: Uint8Array, s: Uint8Array): Uint8Array {
+  return new Uint8Array(tlv(0x30, Buffer.concat([tlv(0x02, r), tlv(0x02, s)])));
+}
+
+/** `tbs` signed by `key` (ECDSA P-384 key, `hash`), as a DER ECDSA-Sig-Value. */
+export async function signTbs(
+  key: CryptoKey,
+  hash: "SHA-256" | "SHA-384",
+  tbs: Uint8Array,
+): Promise<Uint8Array> {
+  const p1363 = new Uint8Array(
+    await crypto.subtle.sign({ name: "ECDSA", hash }, key, Uint8Array.from(tbs)),
+  );
+  const half = p1363.length / 2;
+  return ecdsaSigValue(derUnsigned(p1363.subarray(0, half)), derUnsigned(p1363.subarray(half)));
+}
+
+/** AlgorithmIdentifier { ecdsa-with-SHA384 } (RFC 5758: parameters absent). */
+export const ECDSA_WITH_SHA384 = hexBytes("300a06082a8648ce3d040303");
+
+function hexBytes(hex: string): Uint8Array {
+  return new Uint8Array(Buffer.from(hex, "hex"));
+}
