@@ -41,6 +41,7 @@
     "@aztec-labs/wallets": "6.0.0",
     "@hpke/core": "1.9.0",
     "@noble/hashes": "1.8.0",
+    "@peculiar/x509": "1.14.3",
     "@xochi/signer": "0.7.0",
     "buffer": "6.0.3",
     "viem": "2.57.1",
@@ -50,6 +51,7 @@
     "@types/node": "^22.15.17",
     "esbuild": "0.28.2",
     "playwright": "1.59.1",
+    "rolldown": "1.2.16",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }

@@ -1,0 +1,458 @@
+/// <reference types="node" />
+import { Buffer } from "node:buffer";
+import { beforeAll, describe, expect, it } from "vitest";
+import { WebCryptoAttestationVerifier } from "../../src/attestation/index.js";
+import type { NitroAttestationInput } from "../../src/ports.js";
+import {
+  AWS_NITRO_ROOT_G1_PEM,
+  SYNTHETIC_TIMESTAMP,
+  awsNitroRootDer,
+  der,
+  encodeIndefiniteMap,
+  encodeCoseSign1,
+  loadVendoredParsers,
+  loadVendoredVerifier,
+  realFixture,
+  runPort,
+  runVendored,
+  selfSigned,
+  syntheticChain,
+  syntheticDocument,
+  type CborValue,
+  type Outcome,
+  type VendoredParsersModule,
+  type VendoredVerifierModule,
+} from "./support.js";
+
+let vendored: VendoredVerifierModule;
+let parsers: VendoredParsersModule;
+beforeAll(async () => {
+  vendored = await loadVendoredVerifier();
+  parsers = await loadVendoredParsers();
+});
+
+/** A clock nothing in these cases should read: every case has a timestamp or an explicit `now`. */
+const unusedClock = {
+  nowMs(): number {
+    throw new Error("clock read");
+  },
+};
+
+async function differential(
+  input: NitroAttestationInput,
+): Promise<{ node: Outcome; port: Outcome }> {
+  const verifier = new WebCryptoAttestationVerifier(unusedClock);
+  const node = runVendored(vendored, input);
+  const port = await runPort((i) => verifier.verifyNitroAttestation(i), input);
+  return { node, port };
+}
+
+const ISSUER_NOT_FOUND = "could not find issuer for Nitro certificate subject ";
+
+/**
+ * Same accept/reject, the same parsed output on accept and the same error message on reject. The
+ * one message that differs is the subject in ISSUER_NOT_FOUND: Node prints it the OpenSSL way
+ * ("C=US\nO=Amazon..."), @peculiar/x509 the RFC 4514 way ("C=US, O=Amazon...").
+ */
+function expectSameOutcome({ node, port }: { node: Outcome; port: Outcome }): void {
+  if (!node.ok && !port.ok && node.message.startsWith(ISSUER_NOT_FOUND)) {
+    expect(port.message.startsWith(ISSUER_NOT_FOUND)).toBe(true);
+    return;
+  }
+  expect(port).toEqual(node);
+}
+
+async function expectBothAccept(input: NitroAttestationInput): Promise<void> {
+  const outcomes = await differential(input);
+  expect(outcomes.node.ok).toBe(true);
+  expectSameOutcome(outcomes);
+}
+
+async function expectBothReject(
+  input: NitroAttestationInput,
+  message: string | RegExp,
+): Promise<void> {
+  const outcomes = await differential(input);
+  expect(outcomes.node.ok).toBe(false);
+  expect(outcomes.node.ok ? "" : outcomes.node.message).toMatch(message);
+  expectSameOutcome(outcomes);
+}
+
+/**
+ * Bytes that are neither a PEM CERTIFICATE block nor DER: OpenSSL (Node) reports its PEM parser's
+ * error, the port its own. Same refusal, different text.
+ */
+async function expectBothRefuseCertificateBytes(input: NitroAttestationInput): Promise<void> {
+  const { node, port } = await differential(input);
+  expect(node).toEqual({ ok: false, message: "error:0480006C:PEM routines::no start line" });
+  expect(port).toEqual({ ok: false, message: "X.509 certificate is neither PEM nor DER" });
+}
+
+describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: real fleet document", () => {
+  const fixture = realFixture();
+  const root = awsNitroRootDer();
+  // Leaf validity of the fixture (2026-10-26 12:07:03Z .. 15:07:06Z); timestamp 12:07:06.538Z.
+  const leafNotBefore = Date.parse("2026-10-26T12:07:03Z");
+  const leafNotAfter = Date.parse("2026-10-26T15:07:06Z");
+
+  function decodeDocument(): {
+    protectedHeaders: Buffer;
+    payload: Map<CborValue, CborValue>;
+    payloadBytes: Buffer;
+    signature: Buffer;
+  } {
+    const cose = parsers.parseCoseSign1(Buffer.from(fixture.document));
+    const payload = parsers.decodeCbor(cose.payloadBytes);
+    if (!(payload instanceof Map)) throw new Error("fixture payload is not a CBOR map");
+    return { ...cose, payload };
+  }
+
+  /** Re-encodes the fixture with a changed payload (and therefore an invalid COSE signature). */
+  function withPayload(mutate: (payload: Map<CborValue, CborValue>) => void): Uint8Array {
+    const { protectedHeaders, payload, signature } = decodeDocument();
+    mutate(payload);
+    return encodeCoseSign1({
+      protectedHeaders,
+      payloadBytes: encodeIndefiniteMap(payload),
+      signature,
+    });
+  }
+
+  function caBundle(payload: Map<CborValue, CborValue>): Buffer[] {
+    const bundle = payload.get("cabundle");
+    if (!Array.isArray(bundle)) throw new Error("fixture cabundle is not an array");
+    return bundle as Buffer[];
+  }
+
+  const base = (): NitroAttestationInput => ({
+    attestationDocument: fixture.document,
+    trustedRootCertificates: [root],
+    expectedUserData: fixture.userData,
+  });
+
+  it("the test encoder rebuilds the fixture byte for byte", () => {
+    const { protectedHeaders, payload, payloadBytes, signature } = decodeDocument();
+    expect(Buffer.from(encodeIndefiniteMap(payload)).equals(payloadBytes)).toBe(true);
+    const rebuilt = encodeCoseSign1({ protectedHeaders, payloadBytes, signature });
+    expect(Buffer.from(rebuilt).equals(Buffer.from(fixture.document))).toBe(true);
+  });
+
+  it("accepts the real document under the pinned AWS root with its user_data binding", async () => {
+    await expectBothAccept(base());
+  });
+
+  it("accepts it without bindings", async () => {
+    await expectBothAccept({
+      attestationDocument: fixture.document,
+      trustedRootCertificates: [root],
+    });
+  });
+
+  it("accepts the pinned root given as PEM bytes", async () => {
+    await expectBothAccept({
+      ...base(),
+      trustedRootCertificates: [new TextEncoder().encode(AWS_NITRO_ROOT_G1_PEM)],
+    });
+  });
+
+  it("accepts with no trusted roots at all (the vendored verifier then pins nothing)", async () => {
+    await expectBothAccept({ ...base(), trustedRootCertificates: [] });
+  });
+
+  describe("validation time", () => {
+    it("defaults to the document timestamp although the leaf has long expired", async () => {
+      await expectBothAccept(base());
+    });
+
+    it("accepts an explicit now at the leaf's notBefore and at its notAfter (inclusive)", async () => {
+      await expectBothAccept({ ...base(), now: new Date(leafNotBefore) });
+      await expectBothAccept({ ...base(), now: new Date(leafNotAfter) });
+    });
+
+    it("refuses a leaf not yet valid at an explicit now", async () => {
+      await expectBothReject(
+        { ...base(), now: new Date(leafNotBefore - 1) },
+        "Nitro leaf certificate is not valid at 2026-10-26T12:07:02.999Z",
+      );
+    });
+
+    it("refuses a leaf expired at an explicit now", async () => {
+      await expectBothReject(
+        { ...base(), now: new Date(leafNotAfter + 1) },
+        "Nitro leaf certificate is not valid at 2026-10-26T15:07:06.001Z",
+      );
+    });
+  });
+
+  describe("bindings", () => {
+    it("refuses a wrong expectedUserData", async () => {
+      const wrong = Uint8Array.from(fixture.userData);
+      wrong[0] = (wrong[0] ?? 0) ^ 1;
+      await expectBothReject(
+        { ...base(), expectedUserData: wrong },
+        "Nitro user_data does not match expected binding",
+      );
+    });
+
+    it("refuses a wrong expectedNonce (the document carries none)", async () => {
+      await expectBothReject(
+        { ...base(), expectedNonce: new Uint8Array(32).fill(7) },
+        "Nitro nonce does not match expected binding",
+      );
+    });
+  });
+
+  describe("COSE envelope", () => {
+    it("refuses a flipped COSE signature byte", async () => {
+      const { protectedHeaders, payloadBytes, signature } = decodeDocument();
+      const flipped = Buffer.from(signature);
+      flipped[10] = (flipped[10] ?? 0) ^ 0x01;
+      await expectBothReject(
+        {
+          ...base(),
+          attestationDocument: encodeCoseSign1({
+            protectedHeaders,
+            payloadBytes,
+            signature: flipped,
+          }),
+        },
+        "Nitro COSE signature verification failed",
+      );
+    });
+
+    it("refuses a COSE signature that is not 96 bytes", async () => {
+      const { protectedHeaders, payloadBytes, signature } = decodeDocument();
+      await expectBothReject(
+        {
+          ...base(),
+          attestationDocument: encodeCoseSign1({
+            protectedHeaders,
+            payloadBytes,
+            signature: signature.subarray(0, 95),
+          }),
+        },
+        "COSE ES384 signature must be 96 bytes, got 95",
+      );
+    });
+
+    it("refuses a flipped payload byte", async () => {
+      const { protectedHeaders, payloadBytes, signature } = decodeDocument();
+      const at = payloadBytes.indexOf(Buffer.from(fixture.userData));
+      expect(at).toBeGreaterThan(0);
+      const flipped = Buffer.from(payloadBytes);
+      flipped[at] = (flipped[at] ?? 0) ^ 0x01;
+      const attestationDocument = encodeCoseSign1({
+        protectedHeaders,
+        payloadBytes: flipped,
+        signature,
+      });
+      await expectBothReject(
+        { attestationDocument, trustedRootCertificates: [root] },
+        "Nitro COSE signature verification failed",
+      );
+      await expectBothReject(
+        { ...base(), attestationDocument },
+        "Nitro user_data does not match expected binding",
+      );
+    });
+
+    it("refuses a wrong COSE algorithm header", async () => {
+      const { payloadBytes, signature } = decodeDocument();
+      const es256 = Uint8Array.of(0xa1, 0x01, 0x26);
+      await expectBothReject(
+        {
+          ...base(),
+          attestationDocument: encodeCoseSign1({
+            protectedHeaders: es256,
+            payloadBytes,
+            signature,
+          }),
+        },
+        "expected COSE alg ES384 (-35), got -7n",
+      );
+      await expectBothReject(
+        {
+          ...base(),
+          attestationDocument: encodeCoseSign1({
+            protectedHeaders: Uint8Array.of(0xa0),
+            payloadBytes,
+            signature,
+          }),
+        },
+        "expected COSE alg ES384 (-35), got undefined",
+      );
+    });
+
+    it("refuses a truncated document at every length", async () => {
+      for (const length of [0, 1, 2, 10, 100, 2000, fixture.document.length - 1]) {
+        await expectBothReject(
+          { ...base(), attestationDocument: fixture.document.subarray(0, length) },
+          /unexpected end of CBOR/,
+        );
+      }
+    });
+
+    it("refuses trailing bytes after the document", async () => {
+      const extended = Uint8Array.from([...fixture.document, 0x00]);
+      await expectBothReject(
+        { ...base(), attestationDocument: extended },
+        "trailing CBOR bytes: 1",
+      );
+    });
+  });
+
+  describe("certificate chain", () => {
+    it("still walks a reordered CA bundle, then refuses the re-encoded payload's signature", async () => {
+      const attestationDocument = withPayload((payload) => {
+        const bundle = caBundle(payload);
+        payload.set("cabundle", [bundle[2], bundle[0], bundle[3], bundle[1]] as Buffer[]);
+      });
+      await expectBothReject(
+        { ...base(), attestationDocument },
+        "Nitro COSE signature verification failed",
+      );
+    });
+
+    it("refuses a CA bundle with an issuing certificate removed", async () => {
+      for (const removed of [1, 2, 3]) {
+        const attestationDocument = withPayload((payload) => {
+          payload.set(
+            "cabundle",
+            caBundle(payload).filter((_, i) => i !== removed),
+          );
+        });
+        await expectBothReject({ ...base(), attestationDocument }, ISSUER_NOT_FOUND);
+      }
+    });
+
+    it("refuses a CA bundle with an issuing certificate swapped for another", async () => {
+      const attestationDocument = withPayload((payload) => {
+        const bundle = caBundle(payload);
+        payload.set("cabundle", [bundle[0], bundle[1], bundle[1], bundle[3]] as Buffer[]);
+      });
+      await expectBothReject({ ...base(), attestationDocument }, ISSUER_NOT_FOUND);
+    });
+
+    it("refuses an empty CA bundle", async () => {
+      const attestationDocument = withPayload((payload) => payload.set("cabundle", []));
+      await expectBothReject(
+        { ...base(), attestationDocument },
+        "Nitro cabundle must contain at least one issuing certificate",
+      );
+    });
+
+    it("refuses a chain that does not end in the trusted root", async () => {
+      const { payload } = decodeDocument();
+      const intermediate = caBundle(payload)[1] as Buffer;
+      const unrelated = await selfSigned("C=US, O=Amazon, OU=AWS, CN=aws.nitro-enclaves");
+      for (const wrongRoot of [new Uint8Array(intermediate), der(unrelated.cert)]) {
+        await expectBothReject(
+          { ...base(), trustedRootCertificates: [wrongRoot] },
+          "Nitro certificate chain does not terminate in a trusted root",
+        );
+      }
+      await expectBothAccept({ ...base(), trustedRootCertificates: [der(unrelated.cert), root] });
+    });
+  });
+});
+
+describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synthetic chains", () => {
+  it("accepts a synthetic document with nonce and user_data bindings, refuses a wrong nonce", async () => {
+    const chain = await syntheticChain();
+    const nonce = new Uint8Array(32).fill(0xab);
+    const userData = new Uint8Array(32).fill(0xcd);
+    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [der(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+      nonce,
+      userData,
+    });
+    const input = {
+      attestationDocument,
+      trustedRootCertificates: [der(chain.root)],
+      expectedNonce: nonce,
+      expectedUserData: userData,
+    };
+    await expectBothAccept(input);
+    await expectBothReject(
+      { ...input, expectedNonce: new Uint8Array(32).fill(0xac) },
+      "Nitro nonce does not match expected binding",
+    );
+  });
+
+  it("accepts a synthetic chain whose bundle puts a same-subject P-256 impostor before the issuer", async () => {
+    const chain = await syntheticChain();
+    const impostor = await selfSigned(chain.root.subject, "P-256");
+    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [der(impostor.cert), der(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+    });
+    await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
+  });
+
+  it("accepts certificates given as PEM, in the document and as the trusted root", async () => {
+    const chain = await syntheticChain();
+    const pem = (cert: typeof chain.root): Uint8Array =>
+      new TextEncoder().encode(cert.toString("pem"));
+    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: pem(chain.leaf),
+      caBundle: [pem(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+    });
+    await expectBothAccept({ attestationDocument, trustedRootCertificates: [pem(chain.root)] });
+  });
+
+  it("refuses certificates given as base64 or hex text, which Node cannot parse", async () => {
+    const chain = await syntheticChain();
+    for (const format of ["base64", "hex"] as const) {
+      const text = new TextEncoder().encode(chain.root.toString(format));
+      const inBundle = await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: [text],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      await expectBothRefuseCertificateBytes({
+        attestationDocument: inBundle,
+        trustedRootCertificates: [der(chain.root)],
+      });
+      const valid = await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: [der(chain.root)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      await expectBothRefuseCertificateBytes({
+        attestationDocument: valid,
+        trustedRootCertificates: [text],
+      });
+    }
+  });
+
+  // Inherited, not introduced: new Date(Number(timestamp)) is an Invalid Date past 8.64e15 ms,
+  // and NaN comparisons make every certificate "valid". The timestamp is inside the signed
+  // payload, so only a document signed by a chain-valid leaf can carry one.
+  it("accepts expired certificates when the timestamp is beyond the Date range, in both", async () => {
+    const chain = await syntheticChain();
+    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [der(chain.root)],
+      timestamp: 2n ** 60n,
+    });
+    await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
+  });
+
+  it("refuses a document signed by a key other than the leaf's", async () => {
+    const chain = await syntheticChain();
+    const other = await syntheticChain();
+    const attestationDocument = await syntheticDocument(other.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [der(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+    });
+    await expectBothReject(
+      { attestationDocument, trustedRootCertificates: [der(chain.root)] },
+      "Nitro COSE signature verification failed",
+    );
+  });
+});
