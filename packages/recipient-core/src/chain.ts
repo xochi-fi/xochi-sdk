@@ -118,8 +118,15 @@ export interface AztecPort {
   /** Adds the account to the PXE (`createSchnorrAccount`). */
   addAccount(account: RecipientAccount): Promise<void>;
   accountState(address: AztecAddress): Promise<{ initialized: boolean; published: boolean }>;
-  /** Publishes the instance and runs the constructor; returns the tx hash. */
-  deployAccount(account: RecipientAccount, claim: FeeJuiceClaim | null): Promise<string>;
+  /**
+   * Publishes the instance and runs the constructor; returns the tx hash. `beforeSubmit` runs
+   * with the tx hash before the node can receive it (its record must be durable when it resolves).
+   */
+  deployAccount(
+    account: RecipientAccount,
+    claim: FeeJuiceClaim | null,
+    beforeSubmit?: (txHash: string) => Promise<void>,
+  ): Promise<string>;
   registerSender(sender: AztecAddress): Promise<void>;
   registeredSenders(): Promise<string[]>;
   tokenLockedToArtifact(artifact: ContractArtifact, token: AztecAddress): Promise<boolean>;
@@ -380,7 +387,11 @@ export class LiveAztec implements AztecPort {
     };
   }
 
-  async deployAccount(account: RecipientAccount, claim: FeeJuiceClaim | null): Promise<string> {
+  async deployAccount(
+    account: RecipientAccount,
+    claim: FeeJuiceClaim | null,
+    beforeSubmit?: (txHash: string) => Promise<void>,
+  ): Promise<string> {
     const manager = await this.wallet.createSchnorrAccount(
       account.secret,
       account.salt,
@@ -388,14 +399,22 @@ export class LiveAztec implements AztecPort {
     );
     const deploy = await manager.getDeployMethod();
     const paymentMethod = claim ? feeJuiceClaimPayment(account, claim) : undefined;
-    const result = await deploy.send({
-      from: NO_FROM,
-      fee: paymentMethod ? { paymentMethod } : {},
-      // The stock class is already published on Aztec mainnet; the instance is not, and
-      // RecipientDeployment needs it published and initialized (pxe-bridge aztec-client.ts).
-      skipClassPublication: true,
-      skipInstancePublication: false,
-    });
+    const send = () =>
+      deploy.send({
+        from: NO_FROM,
+        fee: paymentMethod ? { paymentMethod } : {},
+        // The stock class is already published on Aztec mainnet; the instance is not, and
+        // RecipientDeployment needs it published and initialized (pxe-bridge aztec-client.ts).
+        skipClassPublication: true,
+        skipInstancePublication: false,
+      });
+    const result = beforeSubmit
+      ? await this.nodeSubmission.run(
+          async (txHash) => beforeSubmit(txHash.toString()),
+          send,
+          createSubmissionDiagnosticState("deploy"),
+        )
+      : await send();
     return result.receipt.txHash.toString();
   }
 
@@ -762,7 +781,12 @@ export class DryRunAztec implements AztecPort {
     return { initialized: false, published: false };
   }
 
-  async deployAccount(account: RecipientAccount, claim: FeeJuiceClaim | null): Promise<string> {
+  async deployAccount(
+    account: RecipientAccount,
+    claim: FeeJuiceClaim | null,
+    beforeSubmit?: (txHash: string) => Promise<void>,
+  ): Promise<string> {
+    await beforeSubmit?.(`0x${"00".repeat(32)}`);
     this.record(
       `accountManager.getDeployMethod().send({ from: NO_FROM, fee: ${
         claim

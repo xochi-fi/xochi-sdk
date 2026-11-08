@@ -30,7 +30,7 @@ export const ALLOWLISTED_ERROR_CODES = [
 ] as const;
 export type SafeErrorCode = (typeof ALLOWLISTED_ERROR_CODES)[number];
 
-export type FundMovementOperationKind = "spend" | "exit";
+export type FundMovementOperationKind = "spend" | "exit" | "deploy";
 
 export interface SafeOperationDiagnostic {
   operationKind: FundMovementOperationKind;
@@ -55,7 +55,7 @@ interface SafeErrorIdentity {
   errorCode?: SafeErrorCode;
 }
 
-const OPERATION_KINDS = ["spend", "exit"] as const;
+const OPERATION_KINDS = ["spend", "exit", "deploy"] as const;
 const DIAGNOSTIC_KEYS = [
   "operationKind",
   "phase",

@@ -3,6 +3,7 @@
 
 import { inspect } from "node:util";
 
+import { TxStatus } from "@aztec-labs/stdlib/tx";
 import { keccak256, toHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -280,6 +281,48 @@ describe("enrollment", () => {
       challenge: { challenge_id: "TEST-ONLY-challenge" },
     });
     expect(h.locks.held.has(name)).toBe(false);
+    await core.close();
+  });
+});
+
+describe("deploy", () => {
+  it("records the deployment's tx hash durably before the node receives it, then clears it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const seenAtSend: unknown[] = [];
+    h.node.onDeploySend = () => seenAtSend.push(h.kv.durableJson("deploy.json"));
+
+    expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
+    expect(seenAtSend).toEqual([{ txHash: hex("de") }]);
+    expect(h.kv.text("deploy.json")).toBeNull();
+    await core.close();
+  });
+
+  it("reconciles a recorded deployment instead of sending blind", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = { blockNumber: null, executionSucceeded: false };
+    h.kv.setJson("deploy.json", { txHash: hex("aa") });
+
+    h.node.receipts[hex("aa")] = { status: TxStatus.PENDING, ...pending };
+    await expect(core.deploy(null)).rejects.toThrow(
+      `the recorded deployment ${hex("aa")} is pending; run deploy again once it is included or dropped`,
+    );
+    expect(h.node.deploySends).toBe(0);
+
+    h.node.receipts[hex("aa")] = {
+      status: TxStatus.PROVEN,
+      blockNumber: 7,
+      executionSucceeded: true,
+    };
+    expect(await core.deploy(null)).toEqual({ txHash: hex("aa") });
+    expect(h.node.deploySends).toBe(0);
+    expect(h.kv.text("deploy.json")).toBeNull();
+
+    h.kv.setJson("deploy.json", { txHash: hex("aa") });
+    h.node.receipts[hex("aa")] = { status: TxStatus.DROPPED, ...pending };
+    expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
+    expect(h.node.deploySends).toBe(1);
     await core.close();
   });
 });

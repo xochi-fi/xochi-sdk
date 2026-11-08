@@ -24,7 +24,12 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import type { AccountSecrets, RecipientAccount } from "../../src/account.js";
 import type { ReceiptChallenge, ReceiptSubmission } from "../../src/api.js";
-import { DryRunAztec, type ObservedTxReceipt, type ReceivedTransfer } from "../../src/chain.js";
+import {
+  DryRunAztec,
+  type FeeJuiceClaim,
+  type ObservedTxReceipt,
+  type ReceivedTransfer,
+} from "../../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../../src/corridor.js";
 import { buildBinding, type EnrollmentChallenge } from "../../src/enrollment.js";
 import type { ObservedNetwork } from "../../src/network.js";
@@ -232,8 +237,33 @@ export class PayoutNode extends DryRunAztec {
     return this.payouts;
   }
 
-  override async txReceipt(): Promise<ObservedTxReceipt> {
-    return { status: TxStatus.FINALIZED, blockNumber: 4242, executionSucceeded: true };
+  override async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
+    return (
+      this.receipts[txHash] ?? {
+        status: TxStatus.FINALIZED,
+        blockNumber: 4242,
+        executionSucceeded: true,
+      }
+    );
+  }
+
+  /** The node's receipt per tx hash; finalized unless set. */
+  receipts: Record<string, ObservedTxReceipt> = {};
+  /** Called as the deploy reaches the node, after its `beforeSubmit` hook. */
+  onDeploySend: () => void = () => undefined;
+  deploySends = 0;
+
+  override async deployAccount(
+    account: RecipientAccount,
+    claim: FeeJuiceClaim | null,
+    beforeSubmit?: (txHash: string) => Promise<void>,
+  ): Promise<string> {
+    const txHash = hex("de");
+    await beforeSubmit?.(txHash);
+    this.deploySends += 1;
+    this.onDeploySend();
+    await super.deployAccount(account, claim);
+    return txHash;
   }
 
   override async close(): Promise<void> {

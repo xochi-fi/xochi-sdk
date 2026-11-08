@@ -361,11 +361,40 @@ class Core implements RecipientCore {
     };
   }
 
+  /**
+   * Deploys the account. The deployment's tx hash is durable in `deploy.json` before the node can
+   * receive it; a later `deploy` first reconciles a recorded one: included (checkpointed, proven
+   * or finalized) and successful answers its hash, dropped or reverted sends again, anything else
+   * is refused until the node decides.
+   */
   async deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
-    const txHash = await setupAccount(this.#ctx, this.#secretAccount, claim);
+    const kv = this.#deps.kv;
+    // CLI `setup` keeps no such record; only the facade's deploy can be retried after a reload.
+    const DEPLOY_KEY = "deploy.json";
+    const recorded = await kv.get(DEPLOY_KEY);
+    if (recorded !== null) {
+      const { txHash } = parseJsonBytes(recorded) as { txHash: string };
+      const receipt = await this.#port.txReceipt(txHash);
+      const status = String(receipt.status);
+      const included = ["checkpointed", "proven", "finalized"].includes(status);
+      if (included && receipt.executionSucceeded) {
+        await kv.delete(DEPLOY_KEY);
+        return { txHash };
+      }
+      if (!included && status !== "dropped") {
+        throw new Error(
+          `the recorded deployment ${txHash} is ${status}; run deploy again once it is included or dropped`,
+        );
+      }
+      await kv.delete(DEPLOY_KEY);
+    }
+    const txHash = await setupAccount(this.#ctx, this.#secretAccount, claim, async (hash) => {
+      await kv.put(DEPLOY_KEY, prettyJsonBytes({ txHash: hash }));
+    });
     if (txHash === null) {
       throw new Error(`account ${this.account.address.toString()} is already deployed`);
     }
+    await kv.delete(DEPLOY_KEY);
     return { txHash };
   }
 

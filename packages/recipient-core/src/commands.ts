@@ -82,6 +82,8 @@ export async function setupAccount(
   ctx: Ctx,
   account: RecipientAccount,
   claim: FeeJuiceClaim | null,
+  /** Records the deployment's tx hash before the node can receive it (the facade's `deploy`). */
+  beforeSubmit?: (txHash: string) => Promise<void>,
 ): Promise<string | null> {
   await ctx.port.addAccount(account);
   const state = await ctx.port.accountState(account.address);
@@ -94,7 +96,7 @@ export async function setupAccount(
       `account ${account.address.toString()} is initialized but its instance is not published; RecipientDeployment stays pending. Publish the instance (it is not redeployed: the constructor already ran).`,
     );
   }
-  const txHash = await ctx.port.deployAccount(account, claim);
+  const txHash = await ctx.port.deployAccount(account, claim, beforeSubmit);
   ctx.log(`account: deployed ${account.address.toString()} in ${txHash}`);
   return txHash;
 }
