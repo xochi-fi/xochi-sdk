@@ -4,7 +4,7 @@
 // step for step (order of checks, validation time, root pinning, error messages); only the
 // certificate chain and COSE signature checks are re-expressed for WebCrypto, with OpenSSL's
 // rules made explicit where @peculiar/x509 is laxer (exact-DER ECDSA signatures, outer and TBS
-// signature algorithms equal, PEM BEGIN/END lines at line starts). test/attestation runs both
+// signature algorithms equal, PEM framing and base64 as OpenSSL reads them). test/attestation runs both
 // on the same inputs and requires the same accept/reject, except for the differences below.
 //
 // Known differences (all fail-closed: the port refuses what the vendored verifier accepts):
@@ -16,7 +16,8 @@
 // - The COSE leaf key must be a WebCrypto ECDSA key; an RSA leaf with a 96-byte RSA signature,
 //   which Node verifies for 'sha384', is refused.
 // - PEM: only the "CERTIFICATE" label is read; "X509 CERTIFICATE" and "TRUSTED CERTIFICATE"
-//   blocks, which OpenSSL reads, are refused ("unsupported PEM label: ...").
+//   blocks, which OpenSSL reads, are refused ("unsupported PEM label: ..."), and so is a blank
+//   line right after BEGIN, which OpenSSL reads as an empty header section.
 // - A cabundle of more than MAX_CA_BUNDLE certificates is refused before any parsing (real Nitro
 //   bundles hold 4-5; the issuer search is quadratic in the bundle size).
 // - A validation time that is not a valid date (a timestamp beyond 8.64e15 ms, a NaN `now` or
@@ -269,30 +270,64 @@ function lineStartIndexOf(text: string, marker: string, from: number): number {
   return -1;
 }
 
+/** The line starting at `start`, without its "\n" and trailing spaces, tabs and CRs. */
+function readLine(text: string, start: number): { line: string; next: number } {
+  const newline = text.indexOf("\n", start);
+  const lineEnd = newline === -1 ? text.length : newline;
+  let end = lineEnd;
+  while (end > start && " \t\r".includes(text.charAt(end - 1))) end--;
+  return { line: text.slice(start, end), next: lineEnd + 1 };
+}
+
 /**
- * The base64 body of the first PEM block with a certificate label, the way OpenSSL's
- * PEM_read_bio_X509_AUX finds it: BEGIN and END lines start a line, trailing whitespace on the
- * BEGIN line is allowed, blocks with other labels are skipped. null when there is none.
+ * The base64 of the first PEM CERTIFICATE block, read the way OpenSSL's PEM_read_bio_X509_AUX
+ * reads it (Node 24 probed): BEGIN and END lines start a line and may carry trailing
+ * whitespace; a block's first "-----END " line must name the block's own label; a block with
+ * another label is skipped only after its END line; inside the body only spaces, tabs and CRs
+ * are whitespace, and the base64 must be padded. Stricter than OpenSSL (fail-closed): a blank
+ * or "key: value" header line anywhere in the body is refused, as are the other certificate
+ * labels. null when the text has no PEM block at all.
  */
-function pemCertificateBody(text: string): string | null {
+function pemCertificateBase64(text: string): string | null {
   for (let at = lineStartIndexOf(text, "-----BEGIN ", 0); at !== -1; ) {
-    const newline = text.indexOf("\n", at);
-    const lineEnd = newline === -1 ? text.length : newline;
-    let labelEnd = lineEnd;
-    while (labelEnd > at && " \t\r".includes(text.charAt(labelEnd - 1))) labelEnd--;
-    const line = text.slice(at, labelEnd);
-    const label = line.endsWith("-----") ? line.slice("-----BEGIN ".length, -"-----".length) : "";
+    const begin = readLine(text, at);
+    if (!begin.line.endsWith("-----")) {
+      at = lineStartIndexOf(text, "-----BEGIN ", begin.next);
+      continue;
+    }
+    const label = begin.line.slice("-----BEGIN ".length, -"-----".length);
     if (PEM_OTHER_CERTIFICATE_LABELS.includes(label)) {
       throw new Error(`unsupported PEM label: ${label}`);
     }
-    if (label === "CERTIFICATE") {
-      const end = lineStartIndexOf(text, "-----END CERTIFICATE-----", lineEnd);
-      if (end === -1) {
-        throw new Error("PEM CERTIFICATE block has no END line");
+    const body: string[] = [];
+    let endLine: string | undefined;
+    let cursor = begin.next;
+    while (cursor <= text.length && endLine === undefined) {
+      const { line, next } = readLine(text, cursor);
+      cursor = next;
+      if (line.startsWith("-----END ")) {
+        endLine = line;
+      } else {
+        body.push(line);
       }
-      return text.slice(lineEnd + 1, end);
     }
-    at = lineStartIndexOf(text, "-----BEGIN ", lineEnd);
+    if (endLine === undefined) {
+      throw new Error(`PEM ${label} block has no END line`);
+    }
+    if (endLine !== `-----END ${label}-----`) {
+      throw new Error(`PEM ${label} block has a bad END line`);
+    }
+    if (label === "CERTIFICATE") {
+      if (body.some((line) => line.replace(/[ \t\r]/g, "") === "" || line.includes(":"))) {
+        throw new Error("PEM CERTIFICATE block has a blank or header line");
+      }
+      const base64 = body.join("").replace(/[ \t\r]/g, "");
+      if (base64.length % 4 !== 0 || !BASE64.test(base64)) {
+        throw new Error("PEM CERTIFICATE block is not base64");
+      }
+      return base64;
+    }
+    at = lineStartIndexOf(text, "-----BEGIN ", cursor);
   }
   return null;
 }
@@ -304,12 +339,8 @@ function pemCertificateBody(text: string): string | null {
  */
 function parseCertificate(bytes: Uint8Array): X509Certificate {
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  const body = pemCertificateBody(text);
-  if (body !== null) {
-    const base64 = body.replace(/\s/g, "");
-    if (!BASE64.test(base64)) {
-      throw new Error("PEM CERTIFICATE block is not base64");
-    }
+  const base64 = pemCertificateBase64(text);
+  if (base64 !== null) {
     return new X509Certificate(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)));
   }
   if (bytes[0] !== 0x30) {

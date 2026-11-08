@@ -170,6 +170,94 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: real 
     });
   });
 
+  describe("the pinned root as PEM text, read as OpenSSL reads it", () => {
+    const pem = `${AWS_NITRO_ROOT_G1_PEM}\n`;
+    const [, firstBodyLine = "", secondBodyLine = ""] = pem.split("\n");
+    const latin1 = (text: string): Uint8Array =>
+      Uint8Array.from(text, (char) => char.charCodeAt(0));
+    const withRoot = (text: string): NitroAttestationInput => ({
+      ...base(),
+      trustedRootCertificates: [latin1(text)],
+    });
+
+    it("accepts the layouts OpenSSL accepts", async () => {
+      const body = pem.split("\n").slice(1, -2).join("");
+      for (const text of [
+        pem.replace(secondBodyLine, `${secondBodyLine.slice(0, 5)} \t\r${secondBodyLine.slice(5)}`),
+        `-----BEGIN CERTIFICATE-----\n${body}\n-----END CERTIFICATE-----\n`,
+        `-----BEGIN CERTIFICATE-----\n${body.slice(0, 7)}\n${body.slice(7)}\n-----END CERTIFICATE-----\n`,
+        pem.replace("-----END CERTIFICATE-----", "-----END CERTIFICATE----- \t"),
+        `-----BEGIN FOO-----\nAAAA\n-----END FOO-----\n${pem}`,
+        `${pem}trailing text`,
+      ]) {
+        await expectBothAccept(withRoot(text));
+      }
+    });
+
+    async function expectBothRefuse(text: string, portMessage: string): Promise<void> {
+      const { node, port } = await differential(withRoot(text));
+      expect(node.ok).toBe(false);
+      expect(port).toEqual({ ok: false, message: portMessage });
+    }
+
+    it("refuses unpadded base64", async () => {
+      expect(pem).toContain("Y=\n-----END");
+      await expectBothRefuse(
+        pem.replace("Y=\n-----END", "Y\n-----END"),
+        "PEM CERTIFICATE block is not base64",
+      );
+    });
+
+    it("refuses padding before the end of the body", async () => {
+      await expectBothRefuse(
+        pem.replace("Y=\n-----END", "Y=\nAAAA\n-----END"),
+        "PEM CERTIFICATE block is not base64",
+      );
+    });
+
+    it("refuses a no-break space (0xA0) in the body", async () => {
+      await expectBothRefuse(
+        pem.replace(secondBodyLine, `\u00a0${secondBodyLine}`),
+        "PEM CERTIFICATE block is not base64",
+      );
+    });
+
+    it("refuses text after the END marker on its line", async () => {
+      await expectBothRefuse(
+        pem.replace("-----END CERTIFICATE-----", "-----END CERTIFICATE-----junk"),
+        "PEM CERTIFICATE block has a bad END line",
+      );
+    });
+
+    it("refuses a certificate block nested inside another block", async () => {
+      await expectBothRefuse(
+        `-----BEGIN FOO-----\n${pem}-----END FOO-----\n`,
+        "PEM FOO block has a bad END line",
+      );
+      await expectBothRefuse(
+        `-----BEGIN FOO-----\nAAAA\n${pem}`,
+        "PEM FOO block has a bad END line",
+      );
+    });
+
+    it("refuses a blank line inside the body and RFC 1421 headers", async () => {
+      for (const text of [
+        pem.replace(secondBodyLine, `\n${secondBodyLine}`),
+        pem.replace(firstBodyLine, `Proc-Type: 4,ENCRYPTED\n\n${firstBodyLine}`),
+        pem.replace(secondBodyLine, `AB:CD\n${secondBodyLine}`),
+      ]) {
+        await expectBothRefuse(text, "PEM CERTIFICATE block has a blank or header line");
+      }
+    });
+
+    it("refuses a blank line right after BEGIN, which OpenSSL reads as an empty header", async () => {
+      await expectPortStricter(
+        withRoot(pem.replace(firstBodyLine, `\n${firstBodyLine}`)),
+        "PEM CERTIFICATE block has a blank or header line",
+      );
+    });
+  });
+
   it("refuses an empty trusted root list, which the vendored verifier accepts unpinned", async () => {
     await expectPortStricter(
       { ...base(), trustedRootCertificates: [] },
@@ -301,7 +389,7 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: real 
       );
     });
 
-    it("refuses a truncated document at every length", async () => {
+    it("refuses a truncated document at sampled lengths", async () => {
       for (const length of [0, 1, 2, 10, 100, 2000, fixture.document.length - 1]) {
         await expectBothReject(
           { ...base(), attestationDocument: fixture.document.subarray(0, length) },
