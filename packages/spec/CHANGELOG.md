@@ -8,12 +8,19 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ### Added
 
-- **Passkey recipients, PROPOSED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. It awaits product-owner sign-off, since it departs from xochi#759's sealed backup. Additive only: every earlier vector, digest, signature and verdict is byte-identical.
-  - New `PASSKEY-RECIPIENT.md` (shipped and exported): the derivation, the WebAuthn parameters, the refusals and the no-PRF path, the `PKW1` wrapped import, the passkey backup mode, the threat model (a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; Xochi stores only the commitment) and a sourced PRF support matrix.
+- **Passkey recipients, PROPOSED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. It awaits product-owner sign-off, since it departs from xochi#759's sealed backup. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.
+  - New `PASSKEY-RECIPIENT.md` (shipped and exported). It covers:
+    - the derivation (pass the 32 raw eval-input bytes);
+    - the WebAuthn parameters (`userVerification: "required"` with the UV flag checked, and a confirming get that must reproduce `first` and `second` byte for byte before anything is derived, else `prf_unstable`);
+    - the refusals and the no-PRF path;
+    - the `PKW1` wrapped import, a device-local cache that is not a backup;
+    - the passkey backup mode, only for passkey-derived recipients (imported ones keep the sealed-file format);
+    - the threat model: a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; a non-reproducible PRF; the `xochi.fi` trust boundary (no Related Origin Requests, `webcredentials` or `get_login_creds` association; the provider account; XSS on any host; a strict CSP as a rollout prerequisite); Xochi stores only the commitment;
+    - a sourced PRF support matrix.
   - `conformance/shielded-recipient.json`, new `passkey` section:
     - the RP ID, version and PRF eval inputs, and the HKDF parameters;
     - the two decided derivation vectors (`zeros-ones`, `sha256-labels`), each with its raw HKDF outputs, secret, salt, wrap key, PXE store key and full stock `SchnorrAccount` 6.0.0 account (descriptor, digest, address derivation);
-    - derivation refusals;
+    - derivation refusals, including a `second` output equal to the `first`;
     - the backup format and commitment tag, two credential commitments (`keccak256("TEST ONLY credential id")` -> `0x1eb1bdb8...4887`) and commitment refusals;
     - the passkey recipient's own signed binding and a signed passkey-mode `BackupPersistenceAck`, with an unknown-format refusal;
     - `verification`, the verifier verdict for each combination of sealed/passkey ack and expectation.
