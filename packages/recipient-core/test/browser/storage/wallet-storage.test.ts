@@ -54,7 +54,7 @@ afterAll(async () => {
 });
 
 describe("BrowserWalletStorage", () => {
-  it("opens one encrypted sqlite-opfs pool per store, scoped by the recipient address", async () => {
+  it("persists only the encrypted PXE store; the wallet DB lives in memory per session", async () => {
     const result = await page.evaluate(async (scope) => {
       const key = crypto.getRandomValues(new Uint8Array(32));
       const storage = new window.walletStorage.BrowserWalletStorage(async () => key.slice());
@@ -85,11 +85,8 @@ describe("BrowserWalletStorage", () => {
       return { pools: pools.sort(), values, wrongKey };
     }, SCOPE);
     expect(result).toEqual({
-      pools: [
-        `.aztec-kv-xochi-recipient-${SCOPE}-pxe`,
-        `.aztec-kv-xochi-recipient-${SCOPE}-wallet`,
-      ],
-      values: ["pxe-value", "wallet-value"],
+      pools: [`.aztec-kv-xochi-recipient-${SCOPE}-pxe`],
+      values: ["pxe-value", undefined],
       wrongKey: "EmbeddedWalletEncryptionError",
     });
   });
