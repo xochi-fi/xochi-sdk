@@ -16,6 +16,7 @@ declare global {
     storage: typeof KvStoreModule & typeof WebLocksModule & Pick<typeof Ports, "KeyExistsError">;
     lease?: Ports.LockLease;
     lockFreed?: Promise<void>;
+    idbTransactions: IDBTransaction[];
   }
 }
 
@@ -26,7 +27,20 @@ let userDataDir: string;
 let context: BrowserContext;
 
 async function launch(): Promise<BrowserContext> {
-  return chromium.launchPersistentContext(userDataDir, { headless: true });
+  const launched = await chromium.launchPersistentContext(userDataDir, { headless: true });
+  // Records (never alters) every IndexedDB transaction a page opens, so a test can assert the
+  // durability the browser actually applied.
+  await launched.addInitScript(() => {
+    const transactions: IDBTransaction[] = [];
+    window.idbTransactions = transactions;
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args) {
+      const opened = transaction.apply(this, args);
+      transactions.push(opened);
+      return opened;
+    } as typeof transaction;
+  });
+  return launched;
 }
 
 async function openTab(): Promise<Page> {
@@ -120,7 +134,35 @@ describe("IndexedDbKeyValueStore", () => {
     await page.close();
   });
 
-  it("keeps a put value across a browser restart", async () => {
+  it("records every put, create and delete in a strict-durability transaction", async () => {
+    const page = await openTab();
+    const transactions = await page.evaluate(async () => {
+      const kv = await window.storage.IndexedDbKeyValueStore.open("kv-strict");
+      window.idbTransactions.length = 0;
+      await kv.put("operations/op-1.json", new Uint8Array([1]));
+      await kv.create("receipts/intent-1.json", new Uint8Array([2]));
+      await kv.delete("operations/op-1.json");
+      kv.close();
+      return window.idbTransactions.map(({ mode, durability }) => ({ mode, durability }));
+    });
+    expect(transactions).toEqual(Array(3).fill({ mode: "readwrite", durability: "strict" }));
+    await page.close();
+  });
+
+  it("requests persistent storage on open and reports the browser's answer", async () => {
+    const page = await openTab();
+    const result = await page.evaluate(async () => {
+      const kv = await window.storage.IndexedDbKeyValueStore.open("kv-persist");
+      const reported = kv.persisted;
+      kv.close();
+      return { reported, actual: await navigator.storage.persisted() };
+    });
+    expect(typeof result.reported).toBe("boolean");
+    expect(result.reported).toBe(result.actual);
+    await page.close();
+  });
+
+  it("keeps a put value across a graceful browser restart", async () => {
     const writer = await openTab();
     await writer.evaluate(async () => {
       const kv = await window.storage.IndexedDbKeyValueStore.open("kv-durable");

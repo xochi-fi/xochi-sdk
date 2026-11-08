@@ -5,7 +5,9 @@
 // every method resolves on `complete`. OPFS has no create-if-absent (`getFileHandle({ create: true
 // })` opens an existing file); main-thread `createWritable()` swaps atomically on `close()` but
 // promises no flush; worker-only `createSyncAccessHandle().flush()` is durable but writes in place,
-// so a crash mid-write tears the value.
+// so a crash mid-write tears the value. Flushed is not kept: unless the browser grants
+// `navigator.storage.persist()` (asked on every open, answer in `persisted`), it may evict the
+// origin's storage under pressure.
 import { KeyExistsError, type KeyValueStore } from "../../ports.js";
 import { assertScope } from "./scope.js";
 
@@ -21,7 +23,14 @@ function assertKey(key: string): void {
 }
 
 export class IndexedDbKeyValueStore implements KeyValueStore {
-  private constructor(private readonly db: IDBDatabase) {}
+  private constructor(
+    private readonly db: IDBDatabase,
+    /**
+     * The browser's answer to `navigator.storage.persist()`, requested on open. False means the
+     * origin's storage is best-effort and may be evicted under storage pressure.
+     */
+    readonly persisted: boolean,
+  ) {}
 
   /** The journals (`operations/`, `receipts/`, `exits/`, `state.json`) of one recipient. */
   static async open(scope: string): Promise<IndexedDbKeyValueStore> {
@@ -35,12 +44,13 @@ export class IndexedDbKeyValueStore implements KeyValueStore {
   }
 
   private static async openDatabase(name: string): Promise<IndexedDbKeyValueStore> {
+    const persisted = await navigator.storage.persist();
     const opened = Promise.withResolvers<IDBDatabase>();
     const request = indexedDB.open(name, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(OBJECT_STORE);
     request.onsuccess = () => opened.resolve(request.result);
     request.onerror = () => opened.reject(request.error);
-    return new IndexedDbKeyValueStore(await opened.promise);
+    return new IndexedDbKeyValueStore(await opened.promise, persisted);
   }
 
   async get(key: string): Promise<Uint8Array | null> {
