@@ -320,8 +320,10 @@ export interface SyntheticChain {
   leafKeys: CryptoKeyPair;
 }
 
-export async function syntheticChain(): Promise<SyntheticChain> {
-  const root = await selfSigned("CN=Synthetic Nitro Root, O=Test, C=US");
+export async function syntheticChain(
+  rootName = "CN=Synthetic Nitro Root, O=Test, C=US",
+): Promise<SyntheticChain> {
+  const root = await selfSigned(rootName);
   const leafKeys = await ecKeys(P384);
   const leaf = await X509CertificateGenerator.create(
     {

@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { Buffer } from "node:buffer";
+import { X509Certificate } from "@peculiar/x509";
 import { beforeAll, describe, expect, it } from "vitest";
 import { WebCryptoAttestationVerifier } from "../../src/attestation/index.js";
 import type { NitroAttestationInput } from "../../src/ports.js";
@@ -450,6 +451,41 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
       timestamp: 2n ** 60n,
     });
     await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
+  });
+
+  describe("forged chains against the real AWS Nitro root", () => {
+    const awsRoot = awsNitroRootDer();
+    const awsSubject = new X509Certificate(awsRoot).subject;
+
+    it("refuses an attacker chain whose root copies the AWS subject DN", async () => {
+      const chain = await syntheticChain(awsSubject);
+      expect(chain.root.subject).toBe(awsSubject);
+      const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: [der(chain.root)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      const selfPinned = { attestationDocument, trustedRootCertificates: [der(chain.root)] };
+      await expectBothAccept(selfPinned);
+      await expectBothReject(
+        { attestationDocument, trustedRootCertificates: [awsRoot] },
+        "Nitro certificate chain does not terminate in a trusted root",
+      );
+    });
+
+    it("refuses a self-signed leaf (no walk at all)", async () => {
+      const leaf = await selfSigned("CN=Attacker Enclave, O=Test, C=US");
+      const filler = await selfSigned("CN=Attacker Filler, O=Test, C=US");
+      const attestationDocument = await syntheticDocument(leaf.keys.privateKey, {
+        certificate: der(leaf.cert),
+        caBundle: [der(filler.cert)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+      });
+      await expectBothReject(
+        { attestationDocument, trustedRootCertificates: [awsRoot] },
+        "Nitro certificate chain does not terminate in a trusted root",
+      );
+    });
   });
 
   it("refuses a document signed by a key other than the leaf's", async () => {
