@@ -425,7 +425,7 @@ const recipientFile = JSON.parse(
   };
 };
 
-type BackupExpected = { backupCommitment: string; backupFormatId?: string };
+type BackupExpected = { backupCommitment: string; backupFormatId?: string | null };
 
 // The trusted inputs a verifier holds for a signed BackupPersistenceAck: the binding it names,
 // that binding's descriptor and profile, the vector's environment and network.
@@ -523,6 +523,17 @@ describe("verifyRecipientAck backup format expectation", () => {
         sealedPolicy({ backupCommitment: commitment, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID }),
       ),
     ).toEqual({ code: "signature_invalid", field: "signature" });
+  });
+
+  it("reads a null format expectation (a legacy NULL column) as the sealed file only", async () => {
+    const commitment = sealed.message.backupCommitment!;
+    const nullFormat = sealedPolicy({ backupCommitment: commitment, backupFormatId: null });
+    expect(await verdict(sealed, sealed.message, nullFormat)).toBe("accepted");
+    const asPasskey = { ...sealed.message, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID };
+    expect(await verdict(sealed, asPasskey, nullFormat)).toEqual({
+      code: "backup_format_mismatch",
+      field: "backupFormatId",
+    });
   });
 });
 
