@@ -154,7 +154,14 @@ describe("OxideToken artifact preflight", () => {
     const root = mkdtempSync(join(tmpdir(), "xochi-artifact-preflight-"));
     try {
       const invalid = await invalidArtifacts(root);
-      const commands = [["setup"], ["balance"], ["spend"], ["exit"], ["enroll", "start"]] as const;
+      const commands = [
+        ["setup"],
+        ["balance"],
+        ["spend"],
+        ["exit"],
+        ["enroll", "start"],
+        ["receipt", "3f0c2a5e-8d7b-4e1a-9c6f-0b1d2e3f4a5b"],
+      ] as const;
 
       for (const artifact of invalid) {
         const caseRoot = join(root, artifact.name.replaceAll(" ", "-"));

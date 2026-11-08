@@ -14,6 +14,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod4";
 
@@ -28,6 +29,8 @@ const OperationKindSchema = z.enum([
   "refund-frozen-notes",
   "refund-frozen-deposits",
   "refund-unprocessed-deposit",
+  // Moves no funds: holds the lock while `receipt` checks and signs a payout (`beginReceipt`).
+  "receipt",
 ]);
 const OperationStatusSchema = z.enum([
   "building",
@@ -207,7 +210,7 @@ function syncDirectory(path: string): void {
   }
 }
 
-function writePrivateJson(path: string, value: unknown): void {
+export function writePrivateJson(path: string, value: unknown): void {
   const temporary = `${path}.${randomUUID()}.tmp`;
   const fd = openSync(temporary, "wx", 0o600);
   try {
@@ -301,13 +304,20 @@ export class OperationJournal {
   /**
    * Restores an encrypted backup's journal into a new, empty data directory. An unresolved
    * operation recreates its exact ownership lock, so the second host can reconcile but cannot
-   * accidentally replace it with another fund-moving operation.
+   * accidentally replace it with another fund-moving operation. An unfinished `receipt` run moved
+   * no funds and its process is on another host: it is restored aborted, without a lock.
    */
   restore(recordsInput: readonly unknown[]): void {
     if (readdirSync(this.directory).length !== 0) {
       throw new Error("operation journal restore needs an empty destination");
     }
-    const records = recordsInput.map((record) => OperationRecordSchema.parse(record));
+    const records = recordsInput
+      .map((record) => OperationRecordSchema.parse(record))
+      .map((record) =>
+        record.kind === "receipt" && !terminal(record.status)
+          ? OperationRecordSchema.parse({ ...record, status: "aborted" })
+          : record,
+      );
     const ids = new Set(records.map((record) => record.id));
     if (ids.size !== records.length)
       throw new Error("operation journal backup contains duplicate ids");
@@ -328,6 +338,49 @@ export class OperationJournal {
 
   begin(kind: OperationRecord["kind"], request: Record<string, string>): OperationRecord {
     return this.beginWithState(kind, request, { status: "building" });
+  }
+
+  /**
+   * Holds the fund-movement lock for one `receipt` run. A receipt moves no funds; holding the
+   * lock keeps any spend, exit or refund from running while it checks and signs a payout, and
+   * refuses the receipt while one is unresolved. The record names the holding process: the next
+   * `begin` aborts the lock once that process is gone. Liveness is the pid alone (a hostname can
+   * change under a live run); a pid reused after a crash keeps the lock until `operations
+   * reconcile` releases it (`releaseReceiptLock`). `host` is recorded for the operator.
+   */
+  beginReceipt(
+    intentId: string,
+    holder: { pid: number; host: string } = { pid: process.pid, host: hostname() },
+  ): OperationRecord {
+    return this.begin("receipt", { intentId, pid: String(holder.pid), host: holder.host });
+  }
+
+  /**
+   * Releases a receipt run's lock; its record ends `aborted`, as it moved no funds. A record the
+   * operator already released (`releaseReceiptLock`) is left as it is: the run's own result,
+   * accepted or not, is never masked by its lock's release.
+   */
+  endReceipt(id: string): void {
+    if (this.get(id).status !== "building") return;
+    this.update(id, { status: "aborted" });
+  }
+
+  /**
+   * The operator's release of an unfinished `receipt` run's lock (`operations reconcile`): it
+   * moved no funds. Refused while the recorded process is alive, unless `force` (a reused pid
+   * after a crash): releasing a live run's lock would let a spend run beside it.
+   */
+  releaseReceiptLock(id: string, { force = false }: { force?: boolean } = {}): void {
+    const record = this.get(id);
+    if (record.kind !== "receipt" || record.status !== "building") {
+      throw new Error(`operation ${id} is not an unfinished receipt run`);
+    }
+    if (!force && processAlive(Number(record.request["pid"]))) {
+      throw new Error(
+        `receipt run pid ${record.request["pid"]} on ${record.request["host"]} is still running; wait for it. Only if that process is not a receipt run (its pid was reused after a crash), pass --force`,
+      );
+    }
+    this.update(id, { status: "aborted" });
   }
 
   /**
@@ -368,8 +421,13 @@ export class OperationJournal {
       } catch (error) {
         const fileError = error as NodeJS.ErrnoException;
         if (fileError.code !== "EEXIST") throw error;
-        if (this.releaseRecoveredTerminalLock()) continue;
+        if (this.releaseRecoveredTerminalLock() || this.abortDeadReceiptRun()) continue;
         const unresolved = this.unresolved();
+        if (unresolved?.kind === "receipt") {
+          throw new Error(
+            `a receipt run (pid ${unresolved.request["pid"]} on ${unresolved.request["host"]}) holds the fund-movement lock; wait for it`,
+          );
+        }
         throw new Error(
           unresolved
             ? `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`
@@ -499,6 +557,20 @@ export class OperationJournal {
       });
     }
     return record;
+  }
+
+  /** Aborts the lock of a `receipt` run whose process is gone. */
+  private abortDeadReceiptRun(): boolean {
+    let record: OperationRecord;
+    try {
+      record = this.recordForLock(readActiveLock(this.lockPath));
+    } catch {
+      return false;
+    }
+    if (record.kind !== "receipt" || record.status !== "building") return false;
+    if (processAlive(Number(record.request["pid"]))) return false;
+    this.update(record.id, { status: "aborted" });
+    return true;
   }
 
   private releaseRecoveredTerminalLock(): boolean {

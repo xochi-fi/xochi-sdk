@@ -4,6 +4,37 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ## [Unreleased]
 
+### Added
+
+- `receipt INTENT_ID [--tx HASH] [--already-spent]`: after a shielded payout, signs and submits
+  the recipient's `PaymentReceiptAck`
+  (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). The challenge's
+  `ShieldedTermsV1` must hash to `terms_digest` and name this account, corridor (revision 2 only)
+  and enrolled binding digest. Only the corridor sender's payout tagged with those terms' order
+  fingerprint (pxe-bridge settlement fingerprint, ported) is signed, once found `finalized` on the
+  chosen node and spendable in a local simulation. Receipts are pinned per intent in
+  `<data-dir>/receipts/` and carried by backups. A recorded receipt is resent until Xochi accepts
+  it, and signed again under a new challenge only after an outright rejection (including a purged
+  challenge, `receipt_challenge_unknown`). The run holds the fund-movement lock; spend and exit
+  name the receipt run holding it. `operations reconcile` releases a receipt run's lock once its
+  process is gone, or with `--force` when the recorded pid was reused (README "Confirming
+  receipt"). `--already-spent` counts the balance plus every completed spend and exit after the
+  payout, and records them.
+- `enroll submit` records the enrolled binding digest; backups carry the binding id and digest
+  and restore puts them back.
+- `receipt --legacy-binding [--binding-id ID]`: a data directory enrolled before the binding
+  digest was recorded adopts the challenge's digest for its own binding id only (the challenge's
+  `binding_id` and the terms' `recipientBindingId`), and once Xochi accepts the receipt saves that
+  digest and the binding id recorded with it in `state.json`.
+- `setup`, `enroll start` and `restore` save the node URL and OxideToken artifact path for
+  `receipt`; `--api-url` defaults to `https://api.xochi.fi`.
+
+### Changed
+
+- Backups now carry `journals.receipts`, `bindingId` and `bindingDigest` under the same format
+  name. Builds before this release refuse to open them (strict schema); keep the release that
+  wrote a backup, or a newer one, for restore. This release still opens older backups.
+
 ### Fixed
 
 - `exit` registers the verified Broadcaster instance with the wallet before simulating, so PXE no
