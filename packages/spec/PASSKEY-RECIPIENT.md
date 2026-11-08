@@ -335,6 +335,24 @@ The vectors (`passkey.backup`) contain:
   derived address with the profile record's `address` (and, on a new device, with the address the
   Worker holds for the binding), refuses on mismatch, and never treats the mismatch as a new
   recipient. An imported recipient fails closed on its own (the AES-GCM tag).
+
+  The Worker enforces the server-side half (xochi#841). It refuses a passkey-mode enrollment with
+  HTTP 409 and `error_category: "passkey_recipient_mismatch"` when two things hold:
+  - the enrollment's backup commitment already backs a live binding (not revoked; admitted, or
+    pending within its unused expiry);
+  - that binding is for a **different** Aztec recipient under the **same** source wallet.
+
+  An enrollment for the same recipient is accepted: a retry, a re-enrollment, or the same recipient
+  under another source wallet.
+
+  The rule is scoped per source wallet because the commitment is a statement, not proof that the
+  enroller holds the passkey (see "The acknowledgement is a statement" below). A global rule would
+  let anyone who learns a `credentialIdHash` squat it and block its owner's enrollments. The
+  residual risk is a mismatch under a different source wallet: the Worker does not catch it, and the
+  page's profile-address check above is the only guard there.
+
+  Pages MUST treat this 409 as fail-closed: refuse, show nothing derived as the recipient, and never
+  offer to revoke the existing binding to make room for the new address.
 - **Xochi stores only the commitment.** The Worker learns `credentialIdHash`, the RP ID and the
   version through the commitment, never the credential id, the PRF output or any key. The commitment
   is public data: it identifies a credential but unlocks nothing.
