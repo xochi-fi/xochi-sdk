@@ -93,21 +93,43 @@ export interface PasskeyRecipientKeys {
   pxeStoreKey: Uint8Array;
 }
 
-// A private copy of one output. `ArrayBuffer.isView` and the brand check hold across realms
-// (an iframe's or a worker's buffers), where `instanceof` would not.
+// The `ArrayBuffer.prototype.byteLength` getter throws on anything without an ArrayBuffer's
+// internal slot, whatever its prototype or `Symbol.toStringTag` claims; it holds across realms
+// (an iframe's or a worker's buffers), where `instanceof` would not. A SharedArrayBuffer fails it.
+const arrayBufferByteLength = Object.getOwnPropertyDescriptor(
+  ArrayBuffer.prototype,
+  "byteLength",
+)!.get!;
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  try {
+    Reflect.apply(arrayBufferByteLength, value, []);
+    return true;
+  } catch {
+    // The brand check's answer is the throw itself: not an ArrayBuffer.
+    return false;
+  }
+}
+
+// A private copy of one output. A detached buffer (transferred away) refuses like a missing
+// output; a TypedArray, DataView or ArrayBuffer of another realm is read like one of this realm.
 function prfOutputCopy(field: "first" | "second", value: unknown): Uint8Array {
-  let bytes: Uint8Array;
-  if (ArrayBuffer.isView(value)) {
-    bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  } else if (Object.prototype.toString.call(value) === "[object ArrayBuffer]") {
-    bytes = new Uint8Array(value as ArrayBuffer);
-  } else {
+  if (!ArrayBuffer.isView(value) && !isArrayBuffer(value)) {
     const kind = value === null ? "null" : Array.isArray(value) ? "an array" : `a ${typeof value}`;
     return refusePasskey(
       "prf_output_invalid",
       `prf.${field}`,
       `expected an ArrayBuffer or a view of one, got ${kind}`,
     );
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = ArrayBuffer.isView(value)
+      ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+      : new Uint8Array(value);
+  } catch (e) {
+    // Reading a detached buffer or view throws a TypeError (possibly another realm's).
+    if (!(e instanceof Error) || e.name !== "TypeError") throw e;
+    return refusePasskey("prf_output_invalid", `prf.${field}`, "the buffer is detached");
   }
   if (bytes.length !== PRF_OUTPUT_BYTES) {
     refusePasskey(

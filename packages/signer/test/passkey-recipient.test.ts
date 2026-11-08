@@ -192,9 +192,17 @@ describe("derivePasskeyRecipientKeys", () => {
       [undefined, other, "prf.first"],
       [hex(ok), other, "prf.first"],
       [Array.from(ok), other, "prf.first"],
+      // An array-like that fakes the ArrayBuffer tag is not a buffer.
+      [{ [Symbol.toStringTag]: "ArrayBuffer", length: 32, byteLength: 32 }, other, "prf.first"],
       [ok, new Uint8Array(31), "prf.second"],
       [ok, null, "prf.second"],
     ];
+    // A detached buffer (transferred away) and a view over one.
+    const detached = new Uint8Array(32).buffer;
+    structuredClone(detached, { transfer: [detached] });
+    const detachedView = new Uint8Array(32);
+    structuredClone(detachedView.buffer, { transfer: [detachedView.buffer] });
+    cases.push([detached, other, "prf.first"], [ok, detachedView, "prf.second"]);
     for (const [first, second, field] of cases) {
       expect(
         refusalOf(() => derivePasskeyRecipientKeys({ first, second } as never)),
