@@ -34,6 +34,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are as in RFC 2119.
 | HKDF info, account secret | `UTF8("xochi.recipient.passkey.v1/account-secret")`, L = 64 |
 | HKDF info, account salt | `UTF8("xochi.recipient.passkey.v1/account-salt")`, L = 64 |
 | HKDF info, wrap key | `UTF8("xochi.recipient.passkey.v1/wrap-key")`, L = 32 |
+| HKDF info, PXE store key | `UTF8("xochi.recipient.passkey.v1/pxe-store-key")`, L = 32 |
 | r | the BN254 scalar field order, `21888242871839275222246405745257275088548364400416034343698204186575808495617` (`AZTEC_FIELD_MODULUS`) |
 
 The two eval inputs are what the page passes as `extensions.prf.eval.{first, second}`, and both are
@@ -48,6 +49,7 @@ prf.first, prf.second = getClientExtensionResults().prf.results.{first, second} 
 accountSecret = OS2IP(HKDF(prf.first,  salt, info = account-secret, 64)) mod r       // refuse if 0
 accountSalt   = OS2IP(HKDF(prf.first,  salt, info = account-salt,   64)) mod r       // refuse if 0
 wrapKey       = HKDF(prf.second, salt, info = wrap-key, 32)                          // AES-256-GCM key
+pxeStoreKey   = HKDF(prf.second, salt, info = pxe-store-key, 32)                     // PXE store key
 AccountSecrets = { secret: hex32(accountSecret), salt: hex32(accountSalt) }          // 0x + 64 lowercase hex
 ```
 
@@ -63,6 +65,17 @@ The caller imports `wrapKey` into WebCrypto as a non-extractable `AES-GCM` key
 (`["encrypt", "decrypt"]`) and then zeroes the byte array. `@xochi/signer` zeroes its own
 intermediate HKDF outputs and never puts a PRF or derived byte into an error message.
 
+`pxeStoreKey` encrypts the browser's persisted PXE store (one sqlite-opfs pool per recipient,
+network and PXE schema version). It is derived from the passkey on every unlock and handed to the
+store, and it is **never persisted**: it is not in the profile record, the key-value store or the
+PXE store itself. The wallet database is **ephemeral**, exactly like the recipient CLI's ephemeral
+wallet store: it lives in memory under a random per-session key, and the account is re-added every
+session. The account secret and signing key therefore never touch disk. Whatever the PXE store
+keeps for the account (synced notes, tagging state, the keys a PXE holds for a registered account)
+is on disk only encrypted under `pxeStoreKey`, which only the passkey can re-derive. `wrapKey` and
+`pxeStoreKey` come from the same PRF output under different HKDF info strings, so neither reveals
+the other.
+
 ### 1.3 Derivation refusals
 
 `derivePasskeyRecipientKeys(prf, version?)` throws `PasskeyDerivationError`:
@@ -75,10 +88,14 @@ intermediate HKDF outputs and never puts a PRF or derived byte into an error mes
 
 ### 1.4 Reference vectors
 
-| name | prf.first | prf.second | secret | salt | wrapKey |
-|---|---|---|---|---|---|
-| `zeros-ones` | 32 x `0x00` | 32 x `0x01` | `0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82` | `0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679` | `0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b` |
-| `sha256-labels` | `SHA-256("TEST ONLY prf first")` | `SHA-256("TEST ONLY prf second")` | `0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6` | `0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7` | `0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94` |
+| name | prf.first | prf.second | secret | salt | wrapKey | pxeStoreKey |
+|---|---|---|---|---|---|---|
+| `zeros-ones` | 32 x `0x00` | 32 x `0x01` | `0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82` | `0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679` | `0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b` | `0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799` |
+| `sha256-labels` | `SHA-256("TEST ONLY prf first")` | `SHA-256("TEST ONLY prf second")` | `0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6` | `0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7` | `0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94` | `0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4` |
+
+The decision text gives `pxeStoreKey` as a formula only (contract A.2, revision 1.1). Its values
+above come from the generator's node `hkdfSync`, and `@xochi/signer` reproduces them with
+`@noble/hashes`.
 
 The `passkey.derivations` entries also give the raw HKDF outputs and the full account: the descriptor,
 its digest and every address-derivation intermediate under profile `aztec-6.0.0`. Addresses:

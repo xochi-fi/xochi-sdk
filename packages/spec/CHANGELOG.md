@@ -12,7 +12,7 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
   - New `PASSKEY-RECIPIENT.md` (shipped and exported): the derivation, the WebAuthn parameters, the refusals and the no-PRF path, the `PKW1` wrapped import, the passkey backup mode, the threat model (a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; Xochi stores only the commitment) and a sourced PRF support matrix.
   - `conformance/shielded-recipient.json`, new `passkey` section:
     - the RP ID, version and PRF eval inputs, and the HKDF parameters;
-    - the two decided derivation vectors (`zeros-ones`, `sha256-labels`), each with its raw HKDF outputs, secret, salt, wrap key and full stock `SchnorrAccount` 6.0.0 account (descriptor, digest, address derivation);
+    - the two decided derivation vectors (`zeros-ones`, `sha256-labels`), each with its raw HKDF outputs, secret, salt, wrap key, PXE store key and full stock `SchnorrAccount` 6.0.0 account (descriptor, digest, address derivation);
     - derivation refusals;
     - the backup format and commitment tag, two credential commitments (`keccak256("TEST ONLY credential id")` -> `0x1eb1bdb8...4887`) and commitment refusals;
     - the passkey recipient's own signed binding and a signed passkey-mode `BackupPersistenceAck`, with an unknown-format refusal;
