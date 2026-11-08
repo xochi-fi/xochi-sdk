@@ -29,7 +29,8 @@ const nodeShims = { tty: nodeShim, net: nodeShim };
 // Recipient addresses: 0x + 64 lowercase hex.
 const SCOPE = `0x${"0a1b".repeat(16)}`;
 const OTHER_SCOPE = `0x${"2c3d".repeat(16)}`;
-const MAINNET = { l1ChainId: 1, rollupAddress: `0x${"11".repeat(20)}` };
+// Hex letters in the rollup, so an upper-cased address really differs from the stored name.
+const MAINNET = { l1ChainId: 1, rollupAddress: `0x${"ab".repeat(20)}` };
 
 let server: TestServer;
 let browser: Browser;
