@@ -952,9 +952,10 @@ export function importCliBackup(
  * Refused before anything is written: a backup with an unresolved fund movement (the facade cannot
  * reconcile it, so the CLI must first), a profile that records another binding, and a next
  * `state.json` that does not validate. The restore holds `RESTORE_MARKER_KEY` throughout, so no
- * session moves funds or runs a receipt meanwhile; if a journal write fails the marker stays and
- * keeps fund movement blocked (the profile must be recreated). An unfinished receipt run moved no
- * funds and is restored aborted.
+ * session moves funds or runs a receipt meanwhile. A failed restore after the empty-journal check
+ * removes every copied journal record and the marker so it can be retried; failed cleanup retains
+ * the marker and requires recreating the profile. State restoration may remain because a retry
+ * validates matching state. An unfinished receipt run moved no funds and is restored aborted.
  */
 export async function restoreJournals(
   core: RecipientCore,
@@ -1005,29 +1006,67 @@ export async function restoreJournals(
   };
   restoredState(await journals.state.read());
 
+  const marker = utf8Bytes(journals.address);
   try {
-    await journals.kv.create(RESTORE_MARKER_KEY, utf8Bytes(journals.address));
+    await journals.kv.create(RESTORE_MARKER_KEY, marker);
   } catch (error) {
     if (!(error instanceof KeyExistsError)) throw error;
     throw new Error(
       `a journal restore already holds this profile (${RESTORE_MARKER_KEY}); if none is running, the profile must be recreated`,
     );
   }
-  let written = false;
+  const journalPrefixes = ["operations/", "exits/", "receipts/"] as const;
+  let destinationsProvenEmpty = false;
   try {
-    for (const prefix of ["operations/", "exits/", "receipts/"]) {
+    for (const prefix of journalPrefixes) {
       if ((await journals.kv.list(prefix)).length !== 0) {
         throw new Error("restoreJournals needs a profile with empty journals");
       }
     }
-    written = true;
-    await journals.operations.restore(backup.journals.operations);
-    await journals.exits.restore(backup.journals.exits);
-    await journals.receipts.restore(backup.journals.receipts);
-    await journals.state.update(restoredState);
-    await journals.kv.delete(RESTORE_MARKER_KEY);
+    destinationsProvenEmpty = true;
+    try {
+      await journals.operations.restore(backup.journals.operations);
+      await journals.exits.restore(backup.journals.exits);
+      await journals.receipts.restore(backup.journals.receipts);
+      await journals.state.update(restoredState);
+      await journals.kv.delete(RESTORE_MARKER_KEY);
+    } catch (restoreError) {
+      const cleanupFailures: unknown[] = [];
+      for (const prefix of journalPrefixes) {
+        try {
+          for (const key of await journals.kv.list(prefix)) {
+            try {
+              await journals.kv.delete(key);
+            } catch (error) {
+              cleanupFailures.push(error);
+            }
+          }
+        } catch (error) {
+          cleanupFailures.push(error);
+        }
+      }
+      if (cleanupFailures.length === 0) {
+        try {
+          await journals.kv.delete(RESTORE_MARKER_KEY);
+        } catch (error) {
+          cleanupFailures.push(error);
+        }
+      }
+      if (cleanupFailures.length !== 0) {
+        try {
+          await journals.kv.create(RESTORE_MARKER_KEY, marker);
+        } catch (error) {
+          if (!(error instanceof KeyExistsError)) cleanupFailures.push(error);
+        }
+        throw new AggregateError(
+          [restoreError, ...cleanupFailures],
+          `journal restore cleanup failed; this profile remains blocked by ${RESTORE_MARKER_KEY} and must be recreated`,
+        );
+      }
+      throw restoreError;
+    }
   } finally {
-    if (!written) await journals.kv.delete(RESTORE_MARKER_KEY);
+    if (!destinationsProvenEmpty) await journals.kv.delete(RESTORE_MARKER_KEY);
   }
 }
 

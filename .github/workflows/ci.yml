@@ -242,6 +242,7 @@ jobs:
           npm run format:check
           npm test
           npm run build
+          npm pack --dry-run --ignore-scripts
 
   python-conformance:
     runs-on: ubuntu-latest

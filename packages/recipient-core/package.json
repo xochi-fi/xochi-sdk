@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "Platform-neutral Stealth on Aztec recipient core (account, sync, receipt, enrollment, spend, exit) behind storage, lock, crypto, artifact and attestation ports.",
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/recipient-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/recipient-core"
+  },
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -22,17 +28,23 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.tsbuildinfo",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b src/oxide/vendor && tsc -p tsconfig.build.json",
     "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\"",
+    "prepublishOnly": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@aztec-labs/accounts": "6.0.0",

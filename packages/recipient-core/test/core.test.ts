@@ -99,8 +99,36 @@ interface Harness {
   open(): Promise<RecipientCore>;
 }
 
-function harness(keys: RecipientKeySource = { kind: "keystore", accountSecrets }): Harness {
-  const kv = new MemoryKeyValueStore();
+class InterruptedRestoreStore extends MemoryKeyValueStore {
+  interruptedKey: string | null = null;
+  private cleanupFailurePending: boolean;
+
+  constructor(failCleanup = false) {
+    super();
+    this.cleanupFailurePending = failCleanup;
+  }
+
+  override async put(key: string, value: Uint8Array): Promise<void> {
+    await super.put(key, value);
+    if (this.interruptedKey === null && key.startsWith("operations/")) {
+      this.interruptedKey = key;
+      throw new Error("TEST ONLY: interrupted journal restore");
+    }
+  }
+
+  override async delete(key: string): Promise<void> {
+    if (this.cleanupFailurePending && key === this.interruptedKey) {
+      this.cleanupFailurePending = false;
+      throw new Error("TEST ONLY: journal restore cleanup failed");
+    }
+    await super.delete(key);
+  }
+}
+
+function harness(
+  keys: RecipientKeySource = { kind: "keystore", accountSecrets },
+  kv: MemoryKeyValueStore = new MemoryKeyValueStore(),
+): Harness {
   const locks = new MemoryLockManager();
   const node = new PayoutNode(corridor);
   const xochi = new XochiApi();
@@ -1141,6 +1169,67 @@ describe("restoreJournals", () => {
     expect(h.kv.json(`operations/${operations[0]!.id}.json`)).toMatchObject({
       status: "complete",
     });
+    await core.close();
+  });
+
+  it("clears an interrupted partial restore so the same backup can be retried", async () => {
+    const kv = new InterruptedRestoreStore();
+    const h = harness({ kind: "keystore", accountSecrets }, kv);
+    const core = await h.open();
+    const operations = await journalRecords(async (journal) => {
+      const first = await journal.begin("spend", { amount: "1" });
+      await journal.update(first.id, { status: "aborted" });
+      const second = await journal.begin("spend", { amount: "2" });
+      await journal.update(second.id, { status: "aborted" });
+    });
+    const contents = backupOf(operations);
+    const sealed = (await sealBackup(contents, "TEST ONLY long passphrase", crypto)).bytes;
+
+    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
+      "TEST ONLY: interrupted journal restore",
+    );
+    expect(kv.interruptedKey).not.toBeNull();
+    expect(await kv.list("operations/")).toEqual([]);
+    expect(await kv.list("exits/")).toEqual([]);
+    expect(await kv.list("receipts/")).toEqual([]);
+    expect(kv.text("restore.lock")).toBeNull();
+
+    await restoreJournals(core, contents, sealed);
+    expect(await kv.list("operations/")).toEqual(
+      operations.map((record) => `operations/${record.id}.json`).sort(),
+    );
+    expect(kv.text("restore.lock")).toBeNull();
+    await core.close();
+  });
+
+  it("keeps an interrupted restore blocked when copied journal cleanup fails", async () => {
+    const kv = new InterruptedRestoreStore(true);
+    const h = harness({ kind: "keystore", accountSecrets }, kv);
+    const core = await h.open();
+    const operations = await journalRecords(async (journal) => {
+      const spend = await journal.begin("spend", { amount: "1" });
+      await journal.update(spend.id, { status: "aborted" });
+    });
+    const contents = backupOf(operations);
+    const sealed = (await sealBackup(contents, "TEST ONLY long passphrase", crypto)).bytes;
+    let failure: unknown;
+
+    try {
+      await restoreJournals(core, contents, sealed);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure).toMatchObject({
+      message:
+        "journal restore cleanup failed; this profile remains blocked by restore.lock and must be recreated",
+    });
+    expect(await kv.list("operations/")).toEqual([kv.interruptedKey]);
+    expect(kv.text("restore.lock")).not.toBeNull();
+    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
+      "a journal restore already holds this profile (restore.lock)",
+    );
     await core.close();
   });
 
