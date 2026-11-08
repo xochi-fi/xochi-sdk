@@ -65,12 +65,13 @@ export function realFixture(): RealFixture {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The vendored (Node) verifier and parser, loaded at runtime from src/oxide/vendor. A computed
-// specifier keeps them out of this package's TypeScript program (they sit outside its rootDir
-// and need Node's Buffer types); vitest transforms them like any other module.
+// The vendored (Node) verifier and parser, loaded at runtime from the CLI's src/node/vendor
+// (its parsers.ts re-exports the core's vendored parser). A computed specifier keeps them out of
+// this package's TypeScript program (they sit outside its rootDir and need Node's Buffer types);
+// vitest transforms them like any other module.
 
 const VENDORED_DIR = new URL(
-  "../../src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
+  "../../../../tools/recipient/src/node/vendor/nitro_attestation/",
   import.meta.url,
 );
 

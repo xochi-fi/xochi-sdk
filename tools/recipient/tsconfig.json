@@ -24,6 +24,7 @@
     "node_modules",
     "dist",
     "src/core/oxide/vendor",
+    "src/node/vendor",
     "src/core/browser",
     "src/core/attestation"
   ],

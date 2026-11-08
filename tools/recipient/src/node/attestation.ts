@@ -1,8 +1,8 @@
 // `AttestationVerifier` for the CLI: the vendored, unmodified `verify_nitro_attestation.ts`
-// (node:crypto X509Certificate and ES384 verify), exactly what `verifyTeeAttestation` ran before
-// the core took the verifier as a port.
+// (node:crypto X509Certificate and ES384 verify; `./vendor/README.md`), exactly what
+// `verifyTeeAttestation` ran before the core took the verifier as a port.
 
-import { verifyNitroAttestation } from "../core/oxide/vendor/oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.js";
+import { verifyNitroAttestation } from "./vendor/nitro_attestation/verify_nitro_attestation.js";
 import type {
   AttestationVerifier,
   NitroAttestationInput,

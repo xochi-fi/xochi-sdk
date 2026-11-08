@@ -77,6 +77,10 @@ describe("provenance pins", () => {
     "../../src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
     import.meta.url,
   );
+  const nodeVendoredDir = new URL(
+    "../../../../tools/recipient/src/node/vendor/nitro_attestation/",
+    import.meta.url,
+  );
 
   it("the test copy of the AWS Nitro root is the one src/oxide/enclave.ts pins", () => {
     expect(readFileSync(ENCLAVE_TS_URL, "utf8")).toContain(AWS_NITRO_ROOT_G1_PEM);
@@ -93,7 +97,7 @@ describe("provenance pins", () => {
     expect(fileSha256(new URL("parsers.ts", vendoredDir))).toBe(
       "a4c3193a002654dbb53e33758bc48e6e99af93aafe71cfe30b47aee60f5b698f",
     );
-    expect(fileSha256(new URL("verify_nitro_attestation.ts", vendoredDir))).toBe(
+    expect(fileSha256(new URL("verify_nitro_attestation.ts", nodeVendoredDir))).toBe(
       "abda6b77e69a095593ca155c12bb9f191d8c0935e906d39afcb3bbe72fd868fe",
     );
   });

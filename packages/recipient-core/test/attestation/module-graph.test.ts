@@ -55,7 +55,7 @@ describe("src/attestation module graph", () => {
 
   it("the same check flags the vendored Node verifier's node:crypto import", async () => {
     const vendored = new URL(
-      "../../src/oxide/vendor/oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.ts",
+      "../../../../tools/recipient/src/node/vendor/nitro_attestation/verify_nitro_attestation.ts",
       import.meta.url,
     );
     const graph = await browserModuleGraph(vendored);

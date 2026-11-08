@@ -44,6 +44,16 @@ changed only to take its pins from the corridor record (`../pins.ts`).
 reference (`npm run typecheck` / `npm run build` run `tsc -b`), so the files need no edits for
 the tool's stricter flags.
 
+## Node-only files kept out of the core
+
+The core is platform-neutral (contract C), so nothing here imports a Node builtin:
+
+- `oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.ts` (`node:crypto`) moved,
+  byte for byte, to the CLI: `tools/recipient/src/node/vendor/` (its `README.md`). The CLI injects
+  it as its `AttestationVerifier`; browsers use `src/attestation/`.
+- `oxide-lib/attestation/verify_tee_attestation.ts` was removed: nothing imports it since
+  `../enclave.ts` computes the user-data binding itself and checks the verifier's result.
+
 ## Not vendored
 
 - The OxideToken artifact and its Noir sources. The tool takes the artifact as a file
