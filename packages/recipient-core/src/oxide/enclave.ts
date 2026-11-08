@@ -3,7 +3,7 @@ import { AztecAddress } from "@aztec-labs/stdlib/aztec-address";
 import { EthAddress } from "@aztec-labs/stdlib/block";
 import { bytesToHex } from "@noble/hashes/utils";
 import { createPublicClient, hexToBytes, http, keccak256, parseAbi, type Hex } from "viem";
-import type { AttestationVerifier, HttpFetch } from "../ports.js";
+import type { AttestationVerifier, HttpFetch, ParsedNitroAttestation } from "../ports.js";
 import type { AttestationData } from "./vendor/oxide-lib/attestation/attestation_data.js";
 import { getPcr0 } from "./vendor/oxide-lib/attestation/pcr0.js";
 import { computeAttestationUserData } from "./vendor/oxide-lib/attestation/user_data.js";
@@ -237,17 +237,32 @@ export async function verifyEnclaveAttestation(
       `keccak(PCR0) ${hash} is not TeeRegistry.PCR0_HASH() ${onChainPcr0Hash}`,
     );
   }
+  const expectedUserData = computeAttestationUserData(attestation.userData);
+  let parsed: ParsedNitroAttestation;
   try {
-    await verifier.verifyNitroAttestation({
+    parsed = await verifier.verifyNitroAttestation({
       attestationDocument: attestation.attestation,
       trustedRootCertificates: [awsNitroRootDer()],
-      expectedUserData: computeAttestationUserData(attestation.userData),
+      expectedUserData,
     });
   } catch (cause) {
     throw new EnclaveTrustRefused(
       "attestation_invalid",
       (cause as Error).message ?? String(cause),
       { cause },
+    );
+  }
+  // Trust only what the verifier returned, never that it checked the bindings it was asked to.
+  if (!parsed.userData || bytesToHex(parsed.userData) !== bytesToHex(expectedUserData)) {
+    throw new EnclaveTrustRefused(
+      "attestation_invalid",
+      "verified document does not commit to the enclave's keys",
+    );
+  }
+  if (bytesToHex(parsed.pcr0) !== pins.pcr0) {
+    throw new EnclaveTrustRefused(
+      "attestation_invalid",
+      "verified document's PCR0 is not the pinned image",
     );
   }
 }
