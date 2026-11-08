@@ -4,15 +4,16 @@
 import { inspect } from "node:util";
 
 import { Fr } from "@aztec-labs/aztec.js/fields";
+import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { EthAddress } from "@aztec-labs/foundation/eth-address";
-import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
+import { TxHash, TxStatus, type Tx } from "@aztec-labs/stdlib/tx";
 import { keccak256, toHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { deriveRecipientAccount, type RecipientAccount } from "../src/account.js";
 import { BACKUP_FORMAT_PASSKEY_V1_ID } from "../src/backup-mode.js";
 import { ExitJournal, backupContents, sealBackup, type BackupContents } from "../src/backup.js";
-import { recordBroadcastBeforeSend } from "../src/chain.js";
+import { LiveAztec, recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
   openRecipientCore,
@@ -22,6 +23,7 @@ import {
   type RecipientCoreDeps,
 } from "../src/core.js";
 import { bindingTypedData } from "../src/enrollment.js";
+import { NodeSubmission } from "../src/node-submission.js";
 import {
   OperationJournal,
   operationsLockName,
@@ -410,7 +412,7 @@ describe("deploy", () => {
     h.node.onDeploySend = () => seenAtSend.push(h.kv.durableJson("deploy.json"));
 
     expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
-    expect(seenAtSend).toEqual([{ txHash: hex("de") }]);
+    expect(seenAtSend).toEqual([{ txHash: hex("de"), sponsored: false }]);
     expect(h.kv.text("deploy.json")).toBeNull();
     await core.close();
   });
@@ -419,7 +421,7 @@ describe("deploy", () => {
     const h = harness();
     const core = await h.open();
     const pending = { blockNumber: null, blockHash: null, executionSucceeded: false };
-    h.kv.setJson("deploy.json", { txHash: hex("aa") });
+    h.kv.setJson("deploy.json", { txHash: hex("aa"), sponsored: false });
 
     h.node.receipts[hex("aa")] = { status: TxStatus.PENDING, ...pending };
     await expect(core.deploy(null)).rejects.toThrow(
@@ -436,12 +438,120 @@ describe("deploy", () => {
     expect(await core.deploy(null)).toEqual({ txHash: hex("aa") });
     expect(h.node.deploySends).toBe(0);
     expect(h.kv.text("deploy.json")).toBeNull();
+    await core.close();
+  });
 
-    h.kv.setJson("deploy.json", { txHash: hex("aa") });
-    h.node.receipts[hex("aa")] = { status: TxStatus.DROPPED, ...pending };
+  it("sends again only once the node has answered dropped for 30 s", async () => {
+    const h = harness();
+    const core = await h.open();
+    const clock = h.deps.clock as FixedClock;
+    h.kv.setJson("deploy.json", { txHash: hex("aa"), sponsored: false });
+    h.node.receipts[hex("aa")] = {
+      status: TxStatus.DROPPED,
+      blockNumber: null,
+      blockHash: null,
+      executionSucceeded: false,
+    };
+    const confirming = `the node does not know the recorded deployment ${hex("aa")}; run deploy again in`;
+
+    await expect(core.deploy(null)).rejects.toThrow(`${confirming} 30 s`);
+    expect(h.kv.json("deploy.json")).toEqual({
+      txHash: hex("aa"),
+      sponsored: false,
+      droppedAt: clock.ms,
+    });
+    clock.ms += 29_000;
+    await expect(core.deploy(null)).rejects.toThrow(`${confirming} 1 s`);
+    expect(h.node.deploySends).toBe(0);
+
+    clock.ms += 1_000;
     expect(await core.deploy(null)).toEqual({ txHash: hex("de") });
     expect(h.node.deploySends).toBe(1);
     await core.close();
+  });
+
+  it("answers a dropped deployment's hash without sending once the account is deployed", async () => {
+    const h = harness();
+    const core = await h.open();
+    h.kv.setJson("deploy.json", { txHash: hex("aa"), sponsored: true });
+    h.node.receipts[hex("aa")] = {
+      status: TxStatus.DROPPED,
+      blockNumber: null,
+      blockHash: null,
+      executionSucceeded: false,
+    };
+    h.node.deployed = true;
+
+    expect(await core.deploy(null)).toEqual({ txHash: hex("aa") });
+    expect(h.node.deploySends).toBe(0);
+    expect(h.kv.text("deploy.json")).toBeNull();
+    await core.close();
+  });
+
+  it("reports a reverted sponsored deployment's consumed claim instead of sending again", async () => {
+    const h = harness();
+    const core = await h.open();
+    h.kv.setJson("deploy.json", { txHash: hex("aa"), sponsored: true });
+    h.node.receipts[hex("aa")] = {
+      status: TxStatus.CHECKPOINTED,
+      blockNumber: 7,
+      blockHash: hex("b7"),
+      executionSucceeded: false,
+    };
+
+    await expect(core.deploy(null)).rejects.toThrow(
+      `the recorded deployment ${hex("aa")} reverted: sponsored claim consumed; request a new sponsorship`,
+    );
+    expect(h.node.deploySends).toBe(0);
+    expect(h.kv.text("deploy.json")).toBeNull();
+    await core.close();
+  });
+
+  it("refuses an unreadable deployment record", async () => {
+    const h = harness();
+    const core = await h.open();
+    h.kv.setJson("deploy.json", { txHash: "TEST ONLY not a hash" });
+
+    await expect(core.deploy(null)).rejects.toThrow(
+      "the recorded deployment (deploy.json) is unreadable",
+    );
+    expect(h.node.deploySends).toBe(0);
+    await core.close();
+  });
+
+  it("LiveAztec.deployAccount records the hash through the node submission before sendTx", async () => {
+    const seen: string[] = [];
+    const hash = TxHash.fromString(hex("0d"));
+    const submission = new NodeSubmission(
+      {} as AztecNode,
+      {
+        async sendTx() {
+          seen.push("sendTx");
+        },
+      } as unknown as AztecNode,
+    );
+    const wallet = {
+      createSchnorrAccount: async () => ({
+        getDeployMethod: async () => ({
+          send: async () => {
+            await submission.node.sendTx({ getTxHash: () => hash } as Tx);
+            return { receipt: { txHash: hash } };
+          },
+        }),
+      }),
+    };
+    const live = Reflect.construct(LiveAztec, [
+      wallet,
+      submission.node,
+      submission,
+      { corridor, l1RpcUrl: null, journal: null, attestation: null },
+    ]) as LiveAztec;
+
+    const txHash = await live.deployAccount(account, null, async (recorded) => {
+      seen.push(`beforeSubmit ${recorded}`);
+    });
+    expect(txHash).toBe(hash.toString());
+    expect(seen).toEqual([`beforeSubmit ${hash.toString()}`, "sendTx"]);
   });
 });
 

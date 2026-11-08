@@ -290,6 +290,12 @@ export class PayoutNode extends DryRunAztec {
   /** Called as the deploy reaches the node, after its `beforeSubmit` hook. */
   onDeploySend: () => void = () => undefined;
   deploySends = 0;
+  /** Whether the account is initialized and published on the node. */
+  deployed = false;
+
+  override async accountState(): Promise<{ initialized: boolean; published: boolean }> {
+    return { initialized: this.deployed, published: this.deployed };
+  }
 
   override async deployAccount(
     account: RecipientAccount,

@@ -79,6 +79,23 @@ import type { WalletStorage } from "./wallet-storage.js";
 export type { BackupMode } from "./backup-mode.js";
 
 /**
+ * The deployment `deploy` sent and has not seen decided (the facade's; the CLI's `setup` keeps
+ * none): its tx hash, durable before the node can receive it, and whether a sponsored claim paid it.
+ */
+const DEPLOY_KEY = "deploy.json";
+const DeployRecordSchema = z
+  .object({
+    txHash: z.string().regex(/^0x[0-9a-f]{64}$/i),
+    sponsored: z.boolean(),
+    /** When the node first answered `dropped` for it, ms. */
+    droppedAt: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+type DeployRecord = z.infer<typeof DeployRecordSchema>;
+/** How long the node must keep answering `dropped` before a deployment is sent again. */
+const DROPPED_GRACE_MS = 30_000;
+
+/**
  * The signed enrollment request `enrollSubmit` keeps from before its POST until the Worker
  * answers: the challenge, the exact request, and the source signature and backup acknowledgement
  * it was built from. Created once per challenge; removed once the binding is recorded or the
@@ -454,9 +471,11 @@ class Core implements RecipientCore {
 
   /**
    * Deploys the account. The deployment's tx hash is durable in `deploy.json` before the node can
-   * receive it; a later `deploy` first reconciles a recorded one: included (checkpointed, proven
-   * or finalized) and successful answers its hash, dropped or reverted sends again, anything else
-   * is refused until the node decides.
+   * receive it; a later `deploy` first reconciles a recorded one: included and successful answers
+   * its hash; included and reverted is refused (a sponsored claim was consumed: request a new
+   * sponsorship) and forgotten; dropped answers its hash if the account is deployed, and is sent
+   * again only once the node has answered dropped for 30 s (a load-balanced node may not have
+   * seen it yet); anything else is refused until the node decides.
    */
   deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
     return this.#holding(() => this.#deploy(claim));
@@ -464,33 +483,65 @@ class Core implements RecipientCore {
 
   async #deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
     const kv = this.#deps.kv;
-    // CLI `setup` keeps no such record; only the facade's deploy can be retried after a reload.
-    const DEPLOY_KEY = "deploy.json";
-    const recorded = await kv.get(DEPLOY_KEY);
+    const recorded = await this.#recordedDeployment();
     if (recorded !== null) {
-      const { txHash } = parseJsonBytes(recorded) as { txHash: string };
+      const { txHash } = recorded;
       const receipt = await this.#port.txReceipt(txHash);
-      const status = String(receipt.status);
-      const included = ["checkpointed", "proven", "finalized"].includes(status);
-      if (included && receipt.executionSucceeded) {
+      if (durablyIncluded(receipt.status)) {
+        await kv.delete(DEPLOY_KEY);
+        if (receipt.executionSucceeded) return { txHash };
+        throw new Error(
+          recorded.sponsored
+            ? `the recorded deployment ${txHash} reverted: sponsored claim consumed; request a new sponsorship`
+            : `the recorded deployment ${txHash} reverted; run deploy again`,
+        );
+      }
+      if (receipt.status !== TxStatus.DROPPED) {
+        if (recorded.droppedAt !== undefined) {
+          // The node knows it again: a later drop starts a new grace window.
+          const { droppedAt: _known, ...known } = recorded;
+          await kv.put(DEPLOY_KEY, prettyJsonBytes(known));
+        }
+        throw new Error(
+          `the recorded deployment ${txHash} is ${receipt.status}; run deploy again once it is included or dropped`,
+        );
+      }
+      if ((await this.accountState()) === "deployed") {
+        // This deployment or an identical one landed: both spend the same initialization nullifier.
         await kv.delete(DEPLOY_KEY);
         return { txHash };
       }
-      if (!included && status !== "dropped") {
+      const now = this.#deps.clock.nowMs();
+      const droppedAt = recorded.droppedAt ?? now;
+      if (now - droppedAt < DROPPED_GRACE_MS) {
+        if (recorded.droppedAt === undefined) {
+          await kv.put(DEPLOY_KEY, prettyJsonBytes({ ...recorded, droppedAt }));
+        }
+        const seconds = Math.ceil((DROPPED_GRACE_MS - (now - droppedAt)) / 1000);
         throw new Error(
-          `the recorded deployment ${txHash} is ${status}; run deploy again once it is included or dropped`,
+          `the node does not know the recorded deployment ${txHash}; run deploy again in ${seconds} s to confirm it was dropped before sending again`,
         );
       }
       await kv.delete(DEPLOY_KEY);
     }
     const txHash = await setupAccount(this.#ctx, this.#secretAccount, claim, async (hash) => {
-      await kv.put(DEPLOY_KEY, prettyJsonBytes({ txHash: hash }));
+      await kv.put(DEPLOY_KEY, prettyJsonBytes({ txHash: hash, sponsored: claim !== null }));
     });
     if (txHash === null) {
       throw new Error(`account ${this.account.address.toString()} is already deployed`);
     }
     await kv.delete(DEPLOY_KEY);
     return { txHash };
+  }
+
+  async #recordedDeployment(): Promise<DeployRecord | null> {
+    const bytes = await this.#deps.kv.get(DEPLOY_KEY);
+    if (bytes === null) return null;
+    try {
+      return DeployRecordSchema.parse(parseJsonBytes(bytes));
+    } catch (error) {
+      throw new Error(`the recorded deployment (${DEPLOY_KEY}) is unreadable`, { cause: error });
+    }
   }
 
   async enrollStart(sourceWallet: string): Promise<PendingEnrollment> {
