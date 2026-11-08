@@ -12,6 +12,7 @@ const TAG_BYTES = 16;
 /** Imports the passkey wrap key (A.2 `wrapKeyBytes`) as a non-extractable AES-256-GCM key and
  *  zeroes `raw`, also when it is refused. */
 export async function importWrapKey(raw: Uint8Array): Promise<CryptoKey> {
+  // Owned copy: WebCrypto refuses SharedArrayBuffer views (cross-origin-isolated page).
   const copy = raw.slice();
   raw.fill(0);
   try {
@@ -44,6 +45,7 @@ export async function wrapImported(
 ): Promise<Uint8Array> {
   const aad = checkedAad(wrapKey, credentialIdHash);
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  // Copy: WebCrypto refuses shared-buffer views (cross-origin isolation); caller owns plaintext.
   const copy = plaintext.slice();
   const body = await crypto.subtle
     .encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrapKey, copy)

@@ -49,6 +49,7 @@ export class BrowserKeystoreCrypto implements KeystoreCrypto {
     const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
     const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
     const aesKey = await key(passphrase, salt);
+    // Copy: WebCrypto refuses shared-buffer views (cross-origin isolation); caller owns plaintext.
     const copy = plaintext.slice();
     const body = await crypto.subtle
       .encrypt({ name: "AES-GCM", iv, additionalData: magic }, aesKey, copy)
