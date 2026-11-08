@@ -2,7 +2,7 @@
   "version": 1,
   "generator": "packages/spec/conformance/generate-shielded-recipient.ts",
   "source": "xochi docs/planning/shielded-execution.md §7 (\"Approved 2026-10-18: typed encodings\", Recipient message) and the product-owner decisions of 2026-10-24/25 (xochi#633, xochi#635, xochi-sdk#42)",
-  "testOnlyKeys": "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced. Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
+  "testOnlyKeys": "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced, or, in the passkey section, derived by the passkey derivation from TEST ONLY PRF fixtures (32 x 0x00 / 32 x 0x01, or SHA-256 of a 'TEST ONLY' label). Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
   "constants": {
     "fieldModulus": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
     "grumpkinOrder": "0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
@@ -1818,7 +1818,7 @@
     ],
     "rules": [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
-      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8(\"xochi.shielded.backup-format.v1\")) = 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348; neither value contains plaintext",
+      "BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8(\"xochi.shielded.backup-format.v1\")) = 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348; neither value contains plaintext. This is the sealed-file format; passkey.backup.rule adds the passkey format and supersedes this rule for it",
       "BackupPersistenceAck, SenderRegistrationAck and TokenRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
@@ -4092,13 +4092,14 @@
       ]
     },
     "rule": [
-      "prfInputs.first / prfInputs.second = SHA-256(UTF8(label)); the page passes them as extensions.prf.eval.{first, second} in one ceremony (the browser hashes each again with the 'WebAuthn PRF' context before the authenticator sees it)",
-      "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid",
-      "secret = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSecret, 64)) mod r; salt = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSalt, 64)) mod r; either zero: derived_zero",
-      "wrapKey = HKDF-SHA256(prf.second, salt, info = wrapKey, 32): the AES-256-GCM key of the PKW1 wrapped import",
-      "pxeStoreKey = HKDF-SHA256(prf.second, salt, info = pxeStoreKey, 32): the key of the browser's persisted encrypted PXE store; derived on every unlock, never persisted",
+      "prfInputs.first.value / prfInputs.second.value = SHA-256(UTF8(label)); the page passes those 32 raw bytes (never their hex text) as extensions.prf.eval.{first, second} in one ceremony (the browser hashes each again with the 'WebAuthn PRF' context before the authenticator sees it)",
+      "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid; prf.second equal to prf.first: prf_output_invalid on prf.second",
+      "every HKDF below is HKDF-SHA256 (RFC 5869) with salt = hkdf.salt = UTF8(\"xochi.recipient.passkey.v1\") and info = UTF8 of the hkdf.outputs entry's info string",
+      "secret = OS2IP(HKDF(prf.first, info = UTF8(\"xochi.recipient.passkey.v1/account-secret\"), L = 64)) mod r; salt = OS2IP(HKDF(prf.first, info = UTF8(\"xochi.recipient.passkey.v1/account-salt\"), L = 64)) mod r; either zero: derived_zero",
+      "wrapKey = HKDF(prf.second, info = UTF8(\"xochi.recipient.passkey.v1/wrap-key\"), L = 32): the AES-256-GCM key of the PKW1 wrapped import",
+      "pxeStoreKey = HKDF(prf.second, info = UTF8(\"xochi.recipient.passkey.v1/pxe-store-key\"), L = 32): the key of the browser's persisted encrypted PXE store; derived on every unlock, never persisted",
       "version: only derivationVersion is accepted, else unsupported_version",
-      "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = salt, deployer = 0; one passkey is one recipient"
+      "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = the derived salt, deployer = 0; one passkey is one recipient"
     ],
     "derivations": [
       {
@@ -4304,6 +4305,18 @@
         }
       },
       {
+        "name": "second output equal to the first (results.first passed twice)",
+        "prf": {
+          "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "second": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "version": 1,
+        "error": {
+          "code": "prf_output_invalid",
+          "field": "prf.second"
+        }
+      },
+      {
         "name": "derivation version 0",
         "prf": {
           "first": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -4336,9 +4349,10 @@
         "value": "0x8f222f44e0f186187a38e34bdcf4086619e6536187560450d9a0ce200249f025"
       },
       "rule": [
-        "BackupPersistenceAck (type, purpose and struct unchanged) accepts two backupFormatId values: 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348 (sealed file) and 0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2 (passkey); the format id is the mode",
+        "BackupPersistenceAck (type, purpose and struct unchanged) accepts two backupFormatId values: 0xe37c67f007c5a5bbebbc6c5b9aefd99f252b2cc121e3fc9a269801940f605348 (sealed file) and 0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2 (passkey); the format id is the mode. This supersedes acknowledgements.rules' sealed-file-only backupFormatId rule for the passkey format",
         "passkey backupCommitment = keccak256(abi.encode(bytes32 commitmentTag, bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion)); credentialIdHash = keccak256(raw credential id), nonzero; rpId exactly 'xochi.fi' (rp_id_mismatch); derivationVersion exactly 1 (derivation_version_unsupported)",
-        "a verifier without a format expectation accepts only the sealed-file format (backup_format_mismatch); with one, the acknowledgement's format must equal it (subject_mismatch)",
+        "only a recipient whose keys derive from the passkey (profile mode 'passkey') may use the passkey format; an imported (PKW1) recipient keeps the sealed-file format and its keccak256(sealed backup bytes) commitment, since PKW1 is a device-local cache, not a backup",
+        "a verifier without a format expectation (absent or null) accepts only the sealed-file format (backup_format_mismatch); with one, the acknowledgement's format must equal it (subject_mismatch)",
         "the commitment names the credential, never key material; nothing proves the passkey exists or is synced: the acknowledgement is the recipient's statement, as for the sealed file"
       ],
       "commitments": [
