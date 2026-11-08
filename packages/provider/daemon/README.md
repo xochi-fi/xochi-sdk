@@ -1,9 +1,8 @@
 # ERC-8262 provider signing daemon (reference)
 
-An HTTP daemon around [`@xochi/provider`](../README.md)'s signers. This reference implementation
-ships as source only and uses `HexPrivateKeyLoader`; it is not the production
-KMS/HSM adapter. Production services implement `DigestSigner` so only 32-byte digests reach the
-custody device, replace `MemoryReplayDb` with a persistent store and `makeAuditSink` with a
+An HTTP daemon around [`@xochi/provider`](../README.md)'s signers, shipped as source and using
+`HexPrivateKeyLoader`. Production services implement `DigestSigner` (only 32-byte digests reach
+custody), replace `MemoryReplayDb` with a persistent store and `makeAuditSink` with a
 tamper-evident log, and run behind mTLS.
 
 ## Endpoints
@@ -42,8 +41,8 @@ tamper-evident log, and run behind mTLS.
 Status: `200` signed; `400` malformed or `BODY_READ_FAILED`; `401` no credential; `403` policy
 refusal or `ROUTE_NOT_PERMITTED`; `404` unknown route; `413` body over 32 KB; `500`
 `SIGN_FAILED` / `AUDIT_FAILED` / `INTERNAL`; `503` `OVERLOADED` when the bounded Barretenberg queue
-is full (no signature). Public 500 responses are intentionally generic. Signer labels, adapter
-failures, filesystem paths and backend details remain only in the private audit or operational log.
+is full. 500 bodies are generic; signer labels, adapter failures, paths and backend details go only
+to the private audit or operational log.
 
 | 403 code                  | Refused when                                                               |
 | ------------------------- | -------------------------------------------------------------------------- |
@@ -61,29 +60,24 @@ failures, filesystem paths and backend details remain only in the private audit 
 - Refuses a non-loopback plain-HTTP bind unless `SIGNER_ALLOW_INSECURE_BIND=1`.
 - Signal and credential-root roles use separate credentials (distinct bearer keys, or disjoint mTLS
   CN lists); neither opens the other's routes. No credential-root credential disables that route.
-- Every authenticated request to a known signing route attempts one JSONL audit line (`signed` /
-  `replayed` / `rejected`) before the response, including scope, JSON, body-size, overload and
-  unexpected-handler refusals. A failed write returns generic `500 AUDIT_FAILED`. If replay
-  storage commits before that failure, a later retry can be the first durable event and is marked
-  `replayed`. The reference file sink accepts only a regular file without following the final
-  symbolic link, sets new and existing files to owner-only (`0600`), and fails startup if it cannot
-  secure the path. It waits for the stream write callback, not `fsync`; operators must secure the
-  parent directory, and production durability is the replacement `AuditSink`'s contract.
-- An identical `/sign` or `/sign-multi` retry returns the retained bundle's byte-identical
-  signature (audited `replayed`), including concurrent attempts. The `ReplayDb` storage contract
-  and what a retry may return: [provider README "Rules"](../README.md#rules).
+- Every authenticated request to a signing route writes one JSONL audit line (`signed` /
+  `replayed` / `rejected`) before the response; a failed write returns `500 AUDIT_FAILED`. If
+  replay storage commits before that failure, the retry is the first durable event and is marked
+  `replayed`. The file sink accepts only a regular file (final symlink not followed), sets mode
+  `0600`, fails startup if it cannot, and waits for the stream write callback, not `fsync`; secure
+  the parent directory.
+- An identical `/sign` or `/sign-multi` retry returns the retained bundle's signature (audited
+  `replayed`), including concurrent attempts; storage contract: [provider README "Rules"](../README.md#rules).
   `/sign-credential-root` has no replay ledger.
-- `/pubkey-hash` validates and hashes one copied identity snapshot, then returns coordinates from
-  that same snapshot.
-- All Barretenberg work is serialized once through one bounded FIFO queue because one instance is
-  not concurrency-safe. Its 64-request bound counts the active operation. Credential-root signing
-  performs no Barretenberg work and bypasses it; custody adapters own their concurrency limits and
-  timeouts.
-- Shutdown is safe before listen, stops intake, drains admitted handlers (including disconnected
-  clients), then closes audit and custody resources. Repeated `listen()` calls share one bind and
-  repeated `close()` calls share one drain; listening after close is refused.
-- Process log lines on stderr carry the `[xochi-provider]` prefix and escape control characters to
-  remain one line; the audit log is separate (`SIGNER_AUDIT_LOG`, stdout by default).
+- `/pubkey-hash` validates and hashes one copied identity snapshot and returns its coordinates.
+- All Barretenberg work goes through one bounded FIFO queue (64 requests including the active one;
+  one instance is not concurrency-safe). Credential-root signing bypasses it; custody adapters own
+  their own limits and timeouts.
+- Shutdown stops intake, drains admitted handlers (including disconnected clients), then closes
+  audit and custody resources; repeated `listen()` / `close()` calls share one bind / drain, and
+  listening after close is refused.
+- Process log lines on stderr carry the `[xochi-provider]` prefix, one escaped line each; the audit
+  log is separate (`SIGNER_AUDIT_LOG`, stdout by default).
 
 ## Configuration
 
@@ -111,8 +105,7 @@ failures, filesystem paths and backend details remain only in the private audit 
 
 ## Running
 
-Runs under Node type stripping (Node 22.12+, the package's `engines` floor). From the repo root
-(builds `@xochi/provider` first):
+Node 22.12+ type stripping. From the repo root (builds `@xochi/provider` first):
 
 ```bash
 SIGNER_PRIVATE_KEY_HEX=0x... SIGNER_API_KEY=dev-key \
