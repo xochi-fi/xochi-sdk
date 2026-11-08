@@ -330,8 +330,14 @@ export function recipientAckDigest<T extends RecipientAckType>(
 
 /** What the verifier expects the acknowledgement to say, beyond the binding it names. */
 export interface RecipientAckExpected {
-  /** keccak256 of the encrypted backup bytes the verifier holds. */
-  BackupPersistenceAck: { backupCommitment: string };
+  /**
+   * The backup commitment the verifier holds: keccak256 of the encrypted backup bytes (sealed
+   * file) or `passkeyBackupCommitment` of the credential it was told about (passkey).
+   * `backupFormatId` absent: the acknowledgement must name `BACKUP_FORMAT_V1_ID`
+   * (`backup_format_mismatch`), so a verifier that predates passkey mode never accepts it.
+   * Present: the acknowledgement must name exactly it (`subject_mismatch`).
+   */
+  BackupPersistenceAck: { backupCommitment: string; backupFormatId?: string };
   /** The exact panel sender set the verifier registered, strictly ascending. */
   SenderRegistrationAck: { registeredSenders: string[] };
   /** The receipt challenge the verifier issued and the settlement it recorded. */
@@ -452,6 +458,17 @@ function assertAckSubject<T extends RecipientAckType>(
   if (primaryType === "BackupPersistenceAck") {
     const m = message as BackupPersistenceAck;
     const e = policy.expected as RecipientAckExpected["BackupPersistenceAck"];
+    const formatId = nonzeroDigest("backupFormatId", m.backupFormatId);
+    if (e.backupFormatId === undefined) {
+      expectSame("backup_format_mismatch", "backupFormatId", formatId, BACKUP_FORMAT_V1_ID);
+    } else {
+      expectSame(
+        "subject_mismatch",
+        "backupFormatId",
+        formatId,
+        nonzeroDigest("expected.backupFormatId", e.backupFormatId),
+      );
+    }
     expectSame(
       "subject_mismatch",
       "backupCommitment",

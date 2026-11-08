@@ -7,6 +7,9 @@
 // values.
 
 import { createHash, hkdfSync } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 import { describe, it, expect } from "vitest";
 
@@ -25,8 +28,16 @@ import {
   derivePasskeyRecipientKeys,
   hashRecipientAck,
   passkeyBackupCommitment,
+  verifyRecipientAck,
+  AZTEC_RECIPIENT_PROFILES,
+  type AztecRecipientProfile,
   type BackupPersistenceAck,
+  type NetworkIdentity,
   type PasskeyBackupDescriptor,
+  type RecipientAckVerificationPolicy,
+  type RecipientBinding,
+  type RecipientDescriptor,
+  type ShieldedDomain,
 } from "@xochi/signer";
 
 const sha256 = (s: string) => new Uint8Array(createHash("sha256").update(s).digest());
@@ -276,5 +287,127 @@ describe("passkey backup acknowledgement mode", () => {
         }),
       ),
     ).toEqual({ code: "backup_format_mismatch", field: "backupFormatId" });
+  });
+});
+
+// `@xochi/spec`'s committed recipient vectors: real Grumpkin Schnorr signatures by TEST ONLY keys.
+type SignedVector = {
+  name: string;
+  environment: string;
+  network: NetworkIdentity;
+  domain: ShieldedDomain;
+  message: Record<string, string>;
+  digest: string;
+  signature: string;
+};
+const here = path.dirname(fileURLToPath(import.meta.url));
+const recipientFile = JSON.parse(
+  fs.readFileSync(path.join(here, "../../spec/conformance/shielded-recipient.json"), "utf8"),
+) as {
+  descriptor: {
+    vectors: { profile: string; descriptor: RecipientDescriptor; descriptorDigest: string }[];
+  };
+  recipientMessage: { bindingMessages: SignedVector[] };
+  acknowledgements: { vectors: (SignedVector & { primaryType: string })[] };
+};
+
+type BackupExpected = { backupCommitment: string; backupFormatId?: string };
+
+// The trusted inputs a verifier holds for a signed BackupPersistenceAck: the binding it names,
+// that binding's descriptor and profile, the vector's environment and network.
+function backupPolicy(
+  ack: SignedVector,
+  bindings: SignedVector[],
+  descriptors: { profile: string; descriptor: RecipientDescriptor; descriptorDigest: string }[],
+  expected: BackupExpected,
+): RecipientAckVerificationPolicy<"BackupPersistenceAck"> {
+  const binding = bindings.find((b) => b.digest === ack.message.bindingDigest)!
+    .message as unknown as RecipientBinding;
+  const d = descriptors.find((c) => c.descriptorDigest === binding.descriptorDigest)!;
+  return {
+    binding,
+    descriptor: d.descriptor,
+    profile: AZTEC_RECIPIENT_PROFILES[
+      d.profile as keyof typeof AZTEC_RECIPIENT_PROFILES
+    ] as AztecRecipientProfile,
+    environment: ack.environment,
+    network: ack.network,
+    expected,
+    now: Number(binding.challengeExpiry) - 1,
+    consumeReplayKey: async () => true,
+  };
+}
+
+async function verdict(
+  ack: SignedVector,
+  message: Record<string, string>,
+  policy: RecipientAckVerificationPolicy<"BackupPersistenceAck">,
+): Promise<{ code: string; field: string } | "accepted"> {
+  try {
+    await verifyRecipientAck(
+      "BackupPersistenceAck",
+      message as unknown as BackupPersistenceAck,
+      ack.signature,
+      policy,
+    );
+    return "accepted";
+  } catch (e) {
+    if (!(e instanceof AckEncodingError)) throw e;
+    return { code: e.code, field: e.field };
+  }
+}
+
+describe("verifyRecipientAck backup format expectation", () => {
+  const sealed = recipientFile.acknowledgements.vectors.find(
+    (v) => v.primaryType === "BackupPersistenceAck",
+  )!;
+  const sealedPolicy = (expected: BackupExpected) =>
+    backupPolicy(
+      sealed,
+      recipientFile.recipientMessage.bindingMessages,
+      recipientFile.descriptor.vectors,
+      expected,
+    );
+
+  it("keeps the sealed-file verdicts and holds a stated format exactly", async () => {
+    expect(sealed.message.backupFormatId).toBe(BACKUP_FORMAT_V1_ID);
+    const commitment = sealed.message.backupCommitment!;
+    expect(
+      await verdict(sealed, sealed.message, sealedPolicy({ backupCommitment: commitment })),
+    ).toBe("accepted");
+    expect(
+      await verdict(
+        sealed,
+        sealed.message,
+        sealedPolicy({ backupCommitment: commitment, backupFormatId: BACKUP_FORMAT_V1_ID }),
+      ),
+    ).toBe("accepted");
+    expect(
+      await verdict(
+        sealed,
+        sealed.message,
+        sealedPolicy({ backupCommitment: commitment, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID }),
+      ),
+    ).toEqual({ code: "subject_mismatch", field: "backupFormatId" });
+  });
+
+  it("never lets a verifier without a format expectation accept the passkey format", async () => {
+    const commitment = sealed.message.backupCommitment!;
+    const asPasskey = { ...sealed.message, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID };
+    // Refused on the format, before the signature is looked at.
+    expect(
+      await verdict(sealed, asPasskey, sealedPolicy({ backupCommitment: commitment })),
+    ).toEqual({
+      code: "backup_format_mismatch",
+      field: "backupFormatId",
+    });
+    // With the expectation the format passes, and the signature (over V1) does not.
+    expect(
+      await verdict(
+        sealed,
+        asPasskey,
+        sealedPolicy({ backupCommitment: commitment, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID }),
+      ),
+    ).toEqual({ code: "signature_invalid", field: "signature" });
   });
 });
