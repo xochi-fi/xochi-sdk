@@ -326,6 +326,8 @@ export class XochiApi {
   readonly enrollBodies: string[] = [];
   /** Enrollments whose response is lost after the Worker processed them. */
   loseEnrollResponses = 0;
+  /** Enrollments the Worker refuses outright (400) without enrolling them. */
+  rejectEnrollments = 0;
   receiptChallenge: ReceiptChallenge | null = null;
   binding: RecipientBinding | null = null;
   account: RecipientAccount | null = null;
@@ -345,6 +347,10 @@ export class XochiApi {
       // The Worker's exact-resubmission rule: the same body gets the same binding; any other body
       // for an enrolled challenge is a conflict.
       const text = String(init?.body);
+      if (this.rejectEnrollments > 0) {
+        this.rejectEnrollments -= 1;
+        return json(400, { error: "TEST ONLY rejected", error_category: "invalid_request" });
+      }
       if (this.enrollBodies.length > 0 && !this.enrollBodies.includes(text)) {
         return json(409, { error: "TEST ONLY resubmission differs" });
       }

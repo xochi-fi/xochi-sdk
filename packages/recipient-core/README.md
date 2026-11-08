@@ -68,11 +68,18 @@ serialised core shows only `account` (address, instance, descriptor). `Recipient
 `sync`, `balance`, `payouts`, `accountState`, `signReceipt` (the CLI's `receipt` up to the POST,
 journaled `submitting`), `submitReceipt` (the POST, resent byte for byte; re-signed only after an
 outright rejection), `receipt(intentId)` (the receipt journal's record), `deploy`, `enrollStart` /
-`enrollSubmit` / `enrollStatus`, `send`, `exit`, `operations` (the operation journal),
-`reconcile` and `close`. `enrollSubmit` takes the sealed-file or passkey backup mode
-(`backup-mode.ts`); it refuses the passkey mode unless `deps.keys.kind` is `"passkey"`, and while
-the resolved `@xochi/signer` is older than 0.8.0 (0.7.0 cannot sign the passkey format), both
-before any request.
+`enrollSubmit` / `enrollResume` / `enrollStatus`, `send`, `exit`, `operations` (the operation
+journal), `reconcile` and `close` (it waits for any send, exit, deploy or receipt run in flight).
+`enrollSubmit` takes the sealed-file or passkey backup mode (`backup-mode.ts`); it refuses the
+passkey mode unless `deps.keys.kind` is `"passkey"`, and while the resolved `@xochi/signer` is
+older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request.
+
+`enrollSubmit` keeps the exact signed request in `enrollment-request.json` before the POST, with
+the source signature and backup acknowledgement it was built from, and resends it byte for byte on
+a retry with the same ones; a retry with others is refused while it awaits its answer, and a 4xx
+answer forgets it. `state.json` records the commitment and binding of the request actually sent.
+After a reload an app calls `enrollResume()` (null when nothing is kept): `enrollStart` refuses
+while a kept request's challenge is unexpired.
 
 `reconcile()` is the CLI's `operations reconcile` for the operation holding the fund-movement lock
 (null when none does). A `broadcast` spend or exit is left to its holder while that holder runs.

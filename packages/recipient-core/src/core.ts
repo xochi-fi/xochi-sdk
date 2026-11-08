@@ -8,12 +8,14 @@ import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { TxStatus } from "@aztec-labs/stdlib/tx";
 import { keccak256 } from "viem";
+import { z } from "zod4";
 
 import { deriveRecipientAccount, type RecipientAccount } from "./account.js";
-import { HttpEnrollmentApi, type BindingProjection } from "./api.js";
-import { ExitJournal, openBackup, type BackupContents } from "./backup.js";
+import { EnrollmentApiError, HttpEnrollmentApi, type BindingProjection } from "./api.js";
+import { ExitJournal, SignedAckSchema, openBackup, type BackupContents } from "./backup.js";
 import {
   BACKUP_FORMAT_PASSKEY_V1_ID,
+  backupAcknowledgement,
   signerSignsPasskeyBackup,
   type BackupMode,
 } from "./backup-mode.js";
@@ -46,7 +48,7 @@ import {
   type ReceiptRequest,
 } from "./commands.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
-import { bindingTypedData, type EnrollmentRequest, type SignedAck } from "./enrollment.js";
+import type { EnrollmentRequest, SignedAck } from "./enrollment.js";
 import { parseJsonBytes, prettyJsonBytes, utf8Bytes } from "./json.js";
 import {
   OperationJournal,
@@ -76,12 +78,62 @@ import type { WalletStorage } from "./wallet-storage.js";
 
 export type { BackupMode } from "./backup-mode.js";
 
-/** The signed enrollment request `enrollSubmit` keeps until its binding is recorded. */
+/**
+ * The signed enrollment request `enrollSubmit` keeps from before its POST until the Worker
+ * answers: the challenge, the exact request, and the source signature and backup acknowledgement
+ * it was built from. Created once per challenge; removed once the binding is recorded or the
+ * Worker refuses the request outright (4xx).
+ */
 const ENROLLMENT_REQUEST_KEY = "enrollment-request.json";
-interface RecordedEnrollment {
-  challengeId: string;
-  request: EnrollmentRequest;
+const BackupAcknowledgementSchema = z
+  .object({
+    backupCommitment: z.string().min(1),
+    backupFormatId: z.string().min(1),
+    backupPasskey: z
+      .object({
+        credential_id_hash: z.string(),
+        rp_id: z.string(),
+        derivation_version: z.number().int(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+const EnrollmentRequestSchema = z
+  .object({
+    challenge_id: z.string().min(1),
+    binding: z.record(z.string(), z.string()),
+    source_signature: z.string().min(1),
+    descriptor: z.custom<EnrollmentRequest["descriptor"]>(isJsonObject),
+    recipient_authorization: z
+      .object({ digest: z.string().min(1), signature: z.string().min(1) })
+      .strict(),
+    acknowledgements: z.array(
+      z
+        .object({
+          primary_type: z.custom<SignedAck["primary_type"]>((value) => typeof value === "string"),
+          message: z.custom<Record<string, unknown>>(isJsonObject),
+          signature: z.string().min(1),
+        })
+        .strict(),
+    ),
+    backup_passkey: BackupAcknowledgementSchema.shape.backupPasskey,
+  })
+  .strict();
+const KeptEnrollmentSchema = z
+  .object({
+    challengeId: z.string().min(1),
+    /** The challenge's expiry, Unix seconds. */
+    expiresAt: z.number().int().positive(),
+    sourceSignature: z.string().min(1),
+    backup: BackupAcknowledgementSchema,
+    request: EnrollmentRequestSchema,
+  })
+  .strict();
+type KeptEnrollment = z.infer<typeof KeptEnrollmentSchema>;
 
 export interface RecipientCoreDeps {
   corridor: Corridor;
@@ -129,18 +181,27 @@ export interface RecipientCore {
   /** The receipt journal's record of `intentId`; null before its first `signReceipt`. */
   receipt(intentId: string): Promise<ReceiptRecord | null>;
   deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }>;
-  /** `typedData` is what the source wallet signs (`signTypedData`). */
+  /**
+   * `typedData` is what the source wallet signs (`signTypedData`). Refused while a kept request
+   * for an unexpired challenge awaits its answer (after a reload): call `enrollResume` instead.
+   */
   enrollStart(sourceWallet: string): Promise<PendingEnrollment>;
   /**
    * Refuses `{ mode: "passkey" }` unless `deps.keys.kind` is `"passkey"` (keystore and imported
    * recipients acknowledge their sealed backup file), and while the resolved @xochi/signer cannot
-   * sign the passkey format (< 0.8.0); both before any request.
+   * sign the passkey format (< 0.8.0); both before any request. The signed request is kept
+   * (`enrollment-request.json`) before the POST and resent byte for byte on a retry with the same
+   * signature and backup; a retry with others is refused while it awaits its answer. A request
+   * the Worker refuses outright (4xx) is forgotten, so the next call prepares a new one.
+   * `state.json` records the commitment and binding of the request actually sent.
    */
   enrollSubmit(
     pending: PendingEnrollment,
     sourceSignature: string,
     backup: BackupMode,
   ): Promise<BindingProjection>;
+  /** Resends the kept enrollment request byte for byte (after a reload); null when none is kept. */
+  enrollResume(): Promise<BindingProjection | null>;
   enrollStatus(bindingId: string): Promise<BindingProjection>;
   send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }>;
   exit(request: CoreExitRequest): Promise<ExitResult>;
@@ -433,6 +494,12 @@ class Core implements RecipientCore {
   }
 
   async enrollStart(sourceWallet: string): Promise<PendingEnrollment> {
+    const kept = await this.#keptEnrollment();
+    if (kept !== null && kept.expiresAt * 1000 > this.#deps.clock.nowMs()) {
+      throw new Error(
+        `the enrollment request for challenge ${kept.challengeId} awaits its answer until ${new Date(kept.expiresAt * 1000).toISOString()}: call enrollResume()`,
+      );
+    }
     const { tokenRegisteredAt } = await this.#journals.state.read();
     const pending = await enrollStart(
       this.#ctx,
@@ -472,34 +539,109 @@ class Core implements RecipientCore {
         );
       }
     }
-    // Recipient signatures are randomized: a request signed again after a lost response never
-    // matches the Worker's exact-resubmission check. Keep the signed bytes durably before the POST
-    // and resend them unchanged for this challenge; forget them once the binding is recorded.
-    const recorded = await this.#deps.kv.get(ENROLLMENT_REQUEST_KEY);
-    const kept = recorded === null ? null : (parseJsonBytes(recorded) as RecordedEnrollment);
-    let request: EnrollmentRequest;
-    if (kept?.challengeId === pending.challenge.challenge_id) {
-      request = kept.request;
-    } else {
-      request = await prepareEnrollment(
+    const acknowledged = BackupAcknowledgementSchema.parse(backupAcknowledgement(backup));
+    const challengeId = pending.challenge.challenge_id;
+    let kept = await this.#keptEnrollment();
+    if (kept !== null && kept.challengeId !== challengeId) {
+      if (kept.expiresAt * 1000 > this.#deps.clock.nowMs()) {
+        throw new Error(
+          `the enrollment request for challenge ${kept.challengeId} awaits its answer until ${new Date(kept.expiresAt * 1000).toISOString()}: call enrollResume()`,
+        );
+      }
+      // Its challenge expired: that request can no longer enroll; this one replaces it.
+      await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);
+      kept = null;
+    }
+    if (kept === null) {
+      // Recipient signatures are randomized: a request signed again after a lost response never
+      // matches the Worker's exact-resubmission check. Keep the signed bytes durably before the
+      // POST; a concurrent submit that kept its request first wins, and both send its bytes.
+      const request = await prepareEnrollment(
         this.#ctx,
         this.#secretAccount,
         pending,
         sourceSignature,
         backup,
       );
-      const record: RecordedEnrollment = { challengeId: pending.challenge.challenge_id, request };
-      await this.#deps.kv.put(ENROLLMENT_REQUEST_KEY, prettyJsonBytes(record));
+      const record = KeptEnrollmentSchema.parse({
+        challengeId,
+        expiresAt: pending.challenge.expires_at,
+        sourceSignature,
+        backup: acknowledged,
+        request,
+      });
+      try {
+        await this.#deps.kv.create(ENROLLMENT_REQUEST_KEY, prettyJsonBytes(record));
+        kept = record;
+      } catch (error) {
+        if (!(error instanceof KeyExistsError)) throw error;
+        kept = (await this.#keptEnrollment()) ?? fail("the kept enrollment request vanished");
+      }
     }
-    const projection = await postEnrollment(this.#ctx, this.#api(), pending, request);
+    if (
+      kept.challengeId !== challengeId ||
+      kept.sourceSignature !== sourceSignature ||
+      JSON.stringify(kept.backup) !== JSON.stringify(acknowledged)
+    ) {
+      throw new Error(
+        `the enrollment request for challenge ${kept.challengeId}, with another source signature or backup, awaits its answer: retry with the same ones or call enrollResume()`,
+      );
+    }
+    return this.#postKept(kept);
+  }
+
+  async enrollResume(): Promise<BindingProjection | null> {
+    const kept = await this.#keptEnrollment();
+    return kept === null ? null : this.#postKept(kept);
+  }
+
+  async #keptEnrollment(): Promise<KeptEnrollment | null> {
+    const bytes = await this.#deps.kv.get(ENROLLMENT_REQUEST_KEY);
+    if (bytes === null) return null;
+    try {
+      return KeptEnrollmentSchema.parse(parseJsonBytes(bytes));
+    } catch (error) {
+      throw new Error(
+        `the kept enrollment request (${ENROLLMENT_REQUEST_KEY}) is unreadable; it is never posted`,
+        { cause: error },
+      );
+    }
+  }
+
+  /**
+   * POSTs the kept request byte for byte and records its binding, backup commitment and token
+   * acknowledgement in `state.json` from the request itself, then forgets it. A 4xx answer is an
+   * outright refusal: the request is forgotten, so the next submit prepares a new one.
+   */
+  async #postKept(kept: KeptEnrollment): Promise<BindingProjection> {
+    const { request } = kept;
+    let projection: BindingProjection;
+    try {
+      projection = await postEnrollment(this.#ctx, this.#api(), request);
+    } catch (error) {
+      if (error instanceof EnrollmentApiError && error.status >= 400 && error.status < 500) {
+        await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);
+      }
+      throw error;
+    }
+    const persistence = request.acknowledgements.find(
+      (ack) => ack.primary_type === "BackupPersistenceAck",
+    );
+    const { backupCommitment } = z
+      .object({ backupCommitment: z.string().min(1) })
+      .parse(persistence?.message);
+    const tokenRegistrationAck = SignedAckSchema.nullable().parse(
+      request.acknowledgements.find((ack) => ack.primary_type === "TokenRegistrationAck") ?? null,
+    );
     await this.#journals.state.update((current) => {
       const { pending: _done, ...state } = current ?? fail("the recipient state record is missing");
       return {
         ...state,
-        ...(backup.mode === "sealed_file" ? { backupCommitment: backup.commitment } : {}),
-        tokenRegistrationAck: pending.tokenRegistrationAck as State["tokenRegistrationAck"],
+        // A passkey binding acknowledges the passkey, not a sealed file.
+        ...(request.backup_passkey === undefined ? { backupCommitment } : {}),
+        tokenRegistrationAck,
         bindingId: projection.binding_id,
-        bindingDigest: bindingTypedData(this.#deps.corridor, pending.binding).digest,
+        bindingDigest: request.recipient_authorization.digest,
       };
     });
     await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);

@@ -233,6 +233,106 @@ describe("enrollment", () => {
     await core.close();
   });
 
+  it("refuses another signature or backup for a kept request, before any POST", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.loseEnrollResponses = 1;
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/connection reset/);
+    const kept = h.kv.text("enrollment-request.json");
+    const posts = h.xochi.posts();
+
+    const awaiting =
+      "the enrollment request for challenge TEST-ONLY-challenge, with another source signature or backup, awaits its answer: retry with the same ones or call enrollResume()";
+    await expect(
+      core.enrollSubmit(pending, signature, { mode: "sealed_file", commitment: hex("bd") }),
+    ).rejects.toThrow(awaiting);
+    const otherSignature = await SOURCE.signTypedData({
+      ...pending.typedData,
+      message: { ...pending.typedData.message, purpose: "TEST ONLY other" },
+    } as typeof pending.typedData);
+    await expect(core.enrollSubmit(pending, otherSignature, SEALED)).rejects.toThrow(awaiting);
+    expect(h.xochi.posts()).toEqual(posts);
+    expect(h.kv.text("enrollment-request.json")).toBe(kept);
+    await core.close();
+  });
+
+  it("forgets a request the Worker refuses outright, so a corrected one is prepared", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.rejectEnrollments = 1;
+
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/answered 400/);
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
+    const other = { mode: "sealed_file", commitment: hex("bd") } as const;
+    expect(await core.enrollSubmit(pending, signature, other)).toMatchObject({
+      binding_id: BINDING_ID,
+    });
+    expect(await stateOf(h.kv)).toMatchObject({ backupCommitment: other.commitment });
+    await core.close();
+  });
+
+  it("after a reload, enrollStart refuses while the kept request is unexpired; enrollResume resends it", async () => {
+    const h = harness();
+    const first = await h.open();
+    const pending = await first.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.loseEnrollResponses = 1;
+    await expect(first.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(
+      /connection reset/,
+    );
+    await first.close();
+
+    const core = await h.open();
+    await expect(core.enrollStart(SOURCE.address)).rejects.toThrow(
+      `the enrollment request for challenge TEST-ONLY-challenge awaits its answer until ${new Date((NOW + 600) * 1000).toISOString()}: call enrollResume()`,
+    );
+    expect(await core.enrollResume()).toMatchObject({ binding_id: BINDING_ID });
+    expect(h.xochi.enrollBodies).toHaveLength(2);
+    expect(h.xochi.enrollBodies[1]).toBe(h.xochi.enrollBodies[0]);
+    expect(await stateOf(h.kv)).toMatchObject({
+      bindingId: BINDING_ID,
+      bindingDigest: bindingTypedData(corridor, pending.binding).digest,
+      backupCommitment: SEALED.commitment,
+    });
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
+    expect(await core.enrollResume()).toBeNull();
+    await core.close();
+  });
+
+  it("two concurrent submits for one challenge send the same kept bytes", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+
+    const [left, right] = await Promise.all([
+      core.enrollSubmit(pending, signature, SEALED),
+      core.enrollSubmit(pending, signature, SEALED),
+    ]);
+    expect(left).toEqual(right);
+    expect(h.xochi.enrollBodies).toHaveLength(2);
+    expect(h.xochi.enrollBodies[1]).toBe(h.xochi.enrollBodies[0]);
+    await core.close();
+  });
+
+  it("refuses an unreadable kept request instead of posting it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.kv.setJson("enrollment-request.json", { challengeId: "TEST-ONLY-challenge" });
+
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(
+      "the kept enrollment request (enrollment-request.json) is unreadable; it is never posted",
+    );
+    expect(h.xochi.posts()).not.toContain("/api/shielded/recipients");
+    await core.close();
+  });
+
   it("submits a sealed-file binding and records its id, digest and commitment", async () => {
     const h = harness();
     const core = await h.open();

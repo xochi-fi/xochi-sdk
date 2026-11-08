@@ -225,7 +225,7 @@ export async function enrollSubmit(
   backup: BackupMode,
 ): Promise<BindingProjection> {
   const request = await prepareEnrollment(ctx, account, pending, sourceSignature, backup);
-  return postEnrollment(ctx, api, pending, request);
+  return postEnrollment(ctx, api, request);
 }
 
 /**
@@ -255,16 +255,16 @@ export async function prepareEnrollment(
   });
 }
 
-/** `enrollSubmit`'s POST of a prepared request, refused unless it projects this descriptor. */
+/** `enrollSubmit`'s POST of a prepared request, refused unless it projects the request's descriptor. */
 export async function postEnrollment(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
-  pending: PendingEnrollment,
   request: EnrollmentRequest,
 ): Promise<BindingProjection> {
   const projection = await api.enroll(request);
   if (
-    projection.descriptor_digest.toLowerCase() !== pending.binding.descriptorDigest.toLowerCase()
+    projection.descriptor_digest.toLowerCase() !==
+    (request.binding["descriptorDigest"] ?? "").toLowerCase()
   ) {
     throw new Error("enrollment API returned a projection for a different recipient descriptor");
   }
