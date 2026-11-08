@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // xochi-recipient: the Xochi OXDAI recipient tool (xochi#759). See README.md.
 //
-// It contacts only the Aztec node you name (--node-url), the Xochi enrollment API (--api-url,
-// enroll commands only), the zk.money enclave and an L1 JSON-RPC you name (--l1-rpc; spend,
+// It contacts only the Aztec node you name (--node-url), the Xochi API (--api-url; enroll and
+// receipt only), the zk.money enclave and an L1 JSON-RPC you name (--l1-rpc; spend,
 // exit and refund only). No telemetry. The account's secret key and signing key are stored only
 // sealed with your passphrase (keystore, backups); the PXE store under the data directory holds
 // the account's viewing, tagging and nullifier hiding keys in plaintext (README "Disclosures").
@@ -37,7 +37,14 @@ import {
   type AccountSecrets,
   type RecipientAccount,
 } from "./account.js";
-import { DryRunEnrollmentApi, HttpEnrollmentApi, type EnrollmentApi } from "./api.js";
+import {
+  DryRunEnrollmentApi,
+  HttpEnrollmentApi,
+  assertIntentId,
+  type DryRunReceiptSubject,
+  type EnrollmentApi,
+  type ReceiptApi,
+} from "./api.js";
 import {
   backupContents,
   openBackup,
@@ -54,6 +61,7 @@ import {
   enrollStatus,
   enrollSubmit,
   exit,
+  receipt,
   registerSenders,
   registerToken,
   setupAccount,
@@ -77,6 +85,7 @@ import { assertPinnedNetwork } from "./network.js";
 import { loadBroadcasterArtifact } from "./broadcaster-artifact.js";
 import { loadTokenArtifact } from "./oxide-token.js";
 import { OperationJournal } from "./operation-journal.js";
+import { ReceiptJournal } from "./receipt.js";
 import { durablyIncluded } from "./reconciliation.js";
 import { open, seal } from "./sealed.js";
 import {
@@ -96,6 +105,9 @@ Commands (in round-trip order):
   setup                    check the network; publish + initialize the account; register the
                            corridor senders and the OxideToken (+ store_immutables)
   balance                  sync and show the OXDAI balance and received payouts' order fingerprints
+  receipt INTENT_ID [--tx HASH]
+                           after a shielded payout: confirm receipt to Xochi with a signed
+                           PaymentReceiptAck for the payout this PXE found finalized and can spend
   backup --out A --out B   write two encrypted copies, including spend/exit/refund journals
   enroll start             request a challenge; write the binding the source wallet signs
   enroll submit            sign and submit the authorization plus the Worker's required
@@ -118,11 +130,12 @@ Options:
   --oxide-token-artifact FILE  OxideToken artifact (class and artifact hash are checked)
   --fee-juice-claim FILE       Xochi's sponsored Fee Juice claim for the deployment (setup) or
                                bridged Fee Juice claimed to pay the exit's fee (exit)
-  --api-url URL                Xochi API (enroll); bearer from XOCHI_JWT
+  --api-url URL                Xochi API (enroll, receipt); bearer from XOCHI_JWT
   --source-wallet ADDR         enroll start
   --source-signature SIG       enroll submit
   --binding-id ID              enroll status
   --l1-rpc URL                 L1 JSON-RPC of your choice (spend, exit, refund)
+  --tx HASH                    receipt: the payout transaction, if several payouts match
   --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
@@ -231,6 +244,7 @@ interface Values {
   "refund-evidence"?: string;
   bundle?: string;
   "raw-transaction"?: string;
+  tx?: string;
   "dry-run"?: boolean;
   version?: boolean;
   help?: boolean;
@@ -265,6 +279,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       "refund-evidence": string,
       bundle: string,
       "raw-transaction": string,
+      tx: string,
       "dry-run": { type: "boolean" },
       version: { type: "boolean" },
       help: { type: "boolean" },
@@ -340,9 +355,13 @@ async function port(values: Values, store: Store, corridor: Corridor): Promise<A
   });
 }
 
-function api(values: Values, descriptorDigest: string): EnrollmentApi {
+function api(
+  values: Values,
+  descriptorDigest: string,
+  receiptSubject: DryRunReceiptSubject | null = null,
+): EnrollmentApi & ReceiptApi {
   if (values["dry-run"]) {
-    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest);
+    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest, receiptSubject);
   }
   const jwt =
     process.env["XOCHI_JWT"] ?? fail("XOCHI_JWT (the source wallet's SIWE session) is required");
@@ -837,6 +856,45 @@ export async function run(argv: string[]): Promise<void> {
           log(`exit: record written to ${file}`);
         }
       });
+    case "receipt": {
+      const intentId = assertIntentId(
+        sub ?? fail("receipt needs the intent id: receipt INTENT_ID"),
+      );
+      // A spend or exit whose outcome is unknown may have spent the payout's notes: the
+      // spendability simulation could not tell, so no receipt until it is reconciled.
+      const operations = join(store.dir, "operations");
+      const unresolved = existsSync(operations)
+        ? new OperationJournal(operations).unresolved()
+        : null;
+      if (unresolved) {
+        fail(
+          `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile it before confirming a receipt`,
+        );
+      }
+      return withTokenArtifactAccount(values, store, async (ctx, account, state, artifact) => {
+        await registerAndRecord(ctx, store, artifact);
+        const xochi = api(values, hashRecipientDescriptor(account.descriptor), {
+          binding_id: state.bindingId ?? "dry-run-binding",
+          aztec_recipient: account.descriptor.aztecAddress,
+          aztec_token: state.corridor.token.address,
+          network: state.corridor.network,
+        });
+        try {
+          const journal = new ReceiptJournal(join(store.dir, "receipts"));
+          const record = await receipt(ctx, xochi, account, artifact, journal, {
+            intentId,
+            tx: values.tx ?? null,
+            knownBindingId: state.bindingId ?? null,
+            dryRun: ctx.port.mode === "dry-run",
+          });
+          if (record) log(`receipt: recorded in ${join(journal.directory, `${intentId}.json`)}`);
+        } finally {
+          if (xochi instanceof DryRunEnrollmentApi) {
+            for (const call of xochi.calls) log(`  [dry-run] ${call}`);
+          }
+        }
+      });
+    }
     case "refund": {
       const state = store.readState();
       const account = await deriveRecipientAccount(await store.secrets(), state.corridor);

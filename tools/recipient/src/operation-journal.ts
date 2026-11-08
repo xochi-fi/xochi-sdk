@@ -189,7 +189,7 @@ const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>>
   aborted: [],
 };
 
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -207,7 +207,7 @@ function syncDirectory(path: string): void {
   }
 }
 
-function writePrivateJson(path: string, value: unknown): void {
+export function writePrivateJson(path: string, value: unknown): void {
   const temporary = `${path}.${randomUUID()}.tmp`;
   const fd = openSync(temporary, "wx", 0o600);
   try {

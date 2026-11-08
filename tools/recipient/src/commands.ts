@@ -1,13 +1,22 @@
-// The tool's steps, written once against `AztecPort` and `EnrollmentApi`, so a dry run walks
-// the exact sequence a live run makes. Order follows the round-trip-critical path (xochi#759):
-// network, account, senders, token, balance, enrollment; then backup, spend and exit.
+// The tool's steps, written once against `AztecPort`, `EnrollmentApi` and `ReceiptApi`, so a dry
+// run walks the exact sequence a live run makes. Order follows the round-trip-critical path
+// (xochi#759): network, account, senders, token, balance, enrollment; then backup, spend and
+// exit; `receipt` once a shielded payout has landed.
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { TxStatus } from "@aztec-labs/stdlib/tx";
 import { hashRecipientDescriptor } from "@xochi/signer";
 
 import { signRecipientDigest, type RecipientAccount } from "./account.js";
-import type { BindingProjection, EnrollmentApi } from "./api.js";
+import {
+  EnrollmentApiError,
+  assertIntentId,
+  type BindingProjection,
+  type EnrollmentApi,
+  type ReceiptApi,
+  type ReceiptChallenge,
+} from "./api.js";
 import type { AztecPort, ExitRequest, ExitResult, FeeJuiceClaim } from "./chain.js";
 import { anyCaseEvm, anyCaseHex32, type Corridor } from "./corridor.js";
 import {
@@ -23,6 +32,13 @@ import {
 import { assertPinnedNetwork } from "./network.js";
 import { tokenImmutables } from "./oxide-token.js";
 import { orderFingerprintFromMeta } from "./order-fingerprint.js";
+import {
+  assertReceiptSubject,
+  selectReceiptTransfer,
+  signPaymentReceipt,
+  type ReceiptJournal,
+  type ReceiptRecord,
+} from "./receipt.js";
 
 export interface Ctx {
   corridor: Corridor;
@@ -275,4 +291,150 @@ export async function exit(
     );
   }
   return result;
+}
+
+export interface ReceiptRequest {
+  intentId: string;
+  /** `--tx`: the payout transaction, when more than one unreceipted payout matches. */
+  tx: string | null;
+  /** The binding id this data directory enrolled, when it still knows it. */
+  knownBindingId: string | null;
+  /** Dry run: the journal is read, never locked or written. */
+  dryRun: boolean;
+}
+
+function assertUnexpired(challenge: ReceiptChallenge): void {
+  if (challenge.expires_at <= Math.floor(Date.now() / 1000)) {
+    throw new Error(
+      `receipt challenge ${challenge.challenge_id} expired at ${new Date(challenge.expires_at * 1000).toISOString()}; run receipt again`,
+    );
+  }
+}
+
+/**
+ * The recipient's PaymentReceiptAck for a shielded payout (design "independently discovered and
+ * spendable"): request the Worker's receipt challenge; find the payout of exactly its amount
+ * among the transfers this account's own PXE discovered; require the node's receipt for it to be
+ * finalized, successful and in the discovered block; simulate spending the amount; only then
+ * sign, journal and post. An accepted receipt is answered from the journal; an unaccepted one is
+ * first resent byte for byte, and started over only if the Worker refuses it.
+ */
+export async function receipt(
+  ctx: Ctx,
+  api: ReceiptApi,
+  account: RecipientAccount,
+  artifact: ContractArtifact,
+  journal: ReceiptJournal,
+  request: ReceiptRequest,
+): Promise<ReceiptRecord | null> {
+  const intentId = assertIntentId(request.intentId);
+  const release = request.dryRun ? () => undefined : journal.lock();
+  try {
+    const recorded = journal.read(intentId);
+    if (recorded?.status === "submitted") {
+      ctx.log(
+        `receipt: intent ${intentId} already accepted (payout ${recorded.txHash}, receipt_digest ${recorded.receipt_digest})`,
+      );
+      return recorded;
+    }
+    if (recorded) {
+      ctx.log(`receipt: resending the recorded receipt for payout ${recorded.txHash}`);
+      try {
+        const result = await api.submitReceipt(intentId, recorded.request);
+        return accept(ctx, journal, request, intentId, result.intent_id, result.receipt_digest);
+      } catch (error) {
+        if (!(error instanceof EnrollmentApiError) || error.status < 400 || error.status >= 500) {
+          throw error;
+        }
+        ctx.log(
+          `receipt: the Worker refused the recorded receipt (${error.status}); starting over`,
+        );
+      }
+    }
+
+    const challenge = await api.requestReceiptChallenge(intentId);
+    assertUnexpired(challenge);
+    assertReceiptSubject(ctx.corridor, account, challenge.receipt, request.knownBindingId);
+    const amount = BigInt(challenge.receipt.amount);
+    ctx.log(
+      `receipt: challenge ${challenge.challenge_id} for intent ${intentId}: ${amount} base units, expires ${new Date(challenge.expires_at * 1000).toISOString()}`,
+    );
+
+    const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
+    const transfer = selectReceiptTransfer(
+      await ctx.port.transfers(artifact, token, account.address),
+      amount,
+      journal.receiptedTxHashes(intentId),
+      request.tx,
+    );
+    const node = await ctx.port.txReceipt(transfer.txHash);
+    if (node.status !== TxStatus.FINALIZED) {
+      throw new Error(
+        `payout ${transfer.txHash} is ${node.status} on this node, not finalized; run receipt again once it is`,
+      );
+    }
+    if (!node.executionSucceeded) {
+      throw new Error(`payout ${transfer.txHash} reverted on this node; nothing to acknowledge`);
+    }
+    if (node.blockNumber !== transfer.blockNumber) {
+      throw new Error(
+        `payout ${transfer.txHash} was discovered in block ${transfer.blockNumber}, but this node puts it in block ${node.blockNumber}`,
+      );
+    }
+    ctx.log(
+      `receipt: payout ${transfer.txHash} (block ${transfer.blockNumber}) finalized on this node`,
+    );
+    try {
+      await ctx.port.simulateTransfer(account, artifact, account.address, amount);
+    } catch (error) {
+      throw new Error(
+        `this PXE cannot spend ${amount} base units (private transfer simulation failed); receipt not signed`,
+        { cause: error },
+      );
+    }
+    ctx.log(`receipt: ${amount} base units spendable (simulated in this PXE; nothing sent)`);
+
+    assertUnexpired(challenge);
+    const { submission, digest } = await signPaymentReceipt({
+      corridor: ctx.corridor,
+      account,
+      challenge,
+      transfer,
+      sign: signRecipientDigest,
+    });
+    ctx.log(`receipt: signed PaymentReceiptAck ${digest}`);
+    if (!request.dryRun) {
+      journal.begin(
+        {
+          intentId,
+          txHash: transfer.txHash,
+          blockNumber: String(transfer.blockNumber),
+          amount: amount.toString(),
+          request: submission,
+        },
+        { replace: recorded !== null },
+      );
+    }
+    const result = await api.submitReceipt(intentId, submission);
+    return accept(ctx, journal, request, intentId, result.intent_id, result.receipt_digest);
+  } finally {
+    release();
+  }
+}
+
+function accept(
+  ctx: Ctx,
+  journal: ReceiptJournal,
+  request: ReceiptRequest,
+  intentId: string,
+  answeredIntentId: string,
+  receiptDigest: string,
+): ReceiptRecord | null {
+  if (answeredIntentId !== intentId) {
+    throw new Error(`the Worker answered for intent ${answeredIntentId}, not ${intentId}`);
+  }
+  ctx.log(`receipt: intent ${intentId} completed; receipt_digest ${receiptDigest}`);
+  return request.dryRun
+    ? null
+    : journal.complete(intentId, receiptDigest, new Date().toISOString());
 }

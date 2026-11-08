@@ -4,6 +4,14 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ## [Unreleased]
 
+### Added
+
+- `receipt INTENT_ID [--tx HASH]`: after a shielded payout, signs and submits the recipient's
+  `PaymentReceiptAck` (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). It signs
+  only for a payout this PXE discovered at the challenge's exact amount, found `finalized` and
+  successful on the chosen node, and could spend in a local simulation. Receipts are journaled
+  under `<data-dir>/receipts/` (README "Confirming receipt").
+
 ### Fixed
 
 - `exit` registers the verified Broadcaster instance with the wallet before simulating, so PXE no

@@ -7,7 +7,7 @@
 import { dirname, join } from "node:path";
 import { NO_FROM } from "@aztec-labs/aztec.js/account";
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
-import { Contract } from "@aztec-labs/aztec.js/contracts";
+import { BatchCall, Contract, toSimulateOptions } from "@aztec-labs/aztec.js/contracts";
 import { FeeJuicePaymentMethodWithClaim, type FeePaymentMethod } from "@aztec-labs/aztec.js/fee";
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import { createAztecNodeClient, type AztecNode } from "@aztec-labs/aztec.js/node";
@@ -16,7 +16,7 @@ import { BlockNumber } from "@aztec-labs/foundation/branded-types";
 import { EthAddress } from "@aztec-labs/stdlib/block";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
-import { TxHash } from "@aztec-labs/stdlib/tx";
+import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
 import { createPublicClient, http, parseAbi, type Hex } from "viem";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 
@@ -38,9 +38,11 @@ import { transferEventMetadata } from "./oxide-token.js";
 import { buildPlainWithdrawal } from "./oxide/vendor/oxide-client/executors/plain_withdrawal_executor.js";
 import { plainWithdrawalNetAmount } from "./oxide/vendor/oxide-lib/plain_withdrawal_executor.js";
 import { FleetSigner } from "./oxide/vendor/oxide-client/fleet_signer.js";
+import { buildSeedCapsule } from "./oxide/vendor/oxide-client/capsules.js";
 import {
   submit,
   getTransferMetaLen,
+  simulateWalletTransaction,
   type Operation,
   type SubmitResult,
 } from "./oxide/vendor/oxide-client/l2_operations.js";
@@ -70,6 +72,14 @@ export interface ReceivedTransfer {
   meta: bigint[];
   txHash: string;
   blockNumber: number;
+}
+
+/** What the node's `getTxReceipt` says about one transaction. */
+export interface ObservedTxReceipt {
+  status: TxStatus;
+  /** Null until the transaction is in a block. */
+  blockNumber: number | null;
+  executionSucceeded: boolean;
 }
 
 export interface ExitRequest {
@@ -132,6 +142,19 @@ export interface AztecPort {
     to: AztecAddress,
     amount: bigint,
   ): Promise<string>;
+  /** The node's receipt for `txHash` (`node.getTxReceipt`). */
+  txReceipt(txHash: string): Promise<ObservedTxReceipt>;
+  /**
+   * Simulates, in this PXE only, a private transfer of `amount` from `account` to `to`: the
+   * simulate pass of the enclave-signed path, without the enclave, a proof or a send. Throws if
+   * this account's notes cannot pay it.
+   */
+  simulateTransfer(
+    account: RecipientAccount,
+    artifact: ContractArtifact,
+    to: AztecAddress,
+    amount: bigint,
+  ): Promise<void>;
   /**
    * A withdrawal to L1 through the enclave-signed path. Returns the tx hash and, per
    * withdrawal, the finalization data and the broadcast L1 operation id: the record anyone
@@ -366,6 +389,39 @@ export class LiveAztec implements AztecPort {
         txHash: e.metadata.txHash.toString(),
         blockNumber: Number(e.metadata.l2BlockNumber),
       }));
+  }
+
+  async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
+    const receipt = await this.node.getTxReceipt(TxHash.fromString(txHash));
+    return {
+      status: receipt.status,
+      blockNumber: receipt.isMined() ? Number(receipt.blockNumber) : null,
+      executionSucceeded: receipt.hasExecutionSucceeded(),
+    };
+  }
+
+  async simulateTransfer(
+    account: RecipientAccount,
+    artifact: ContractArtifact,
+    to: AztecAddress,
+    amount: bigint,
+  ): Promise<void> {
+    // `submit`'s own simulate pass (seed capsule, no strict mode, no note signatures): it needs
+    // no enclave and sends no key, and it fails unless this PXE holds notes that pay `amount`.
+    const contract = Contract.at(
+      AztecAddress.fromStringUnsafe(this.corridor.token.address),
+      artifact,
+      this.wallet,
+    );
+    const meta = Array(getTransferMetaLen(artifact)).fill(Fr.ZERO);
+    const payload = await new BatchCall(this.wallet, [
+      contract.methods["transfer"]!(account.address, to, amount, meta, Fr.ZERO),
+    ]).request({ capsules: [buildSeedCapsule(contract.address)] });
+    await simulateWalletTransaction(
+      this.wallet,
+      payload,
+      toSimulateOptions({ from: account.address }),
+    );
   }
 
   private async oxideSigner(): Promise<FleetSigner> {
@@ -705,6 +761,22 @@ export class DryRunAztec implements AztecPort {
       `wallet.getPrivateEvents(OxideToken::Transfer, { contractAddress: ${token.toString()}, scopes: [${owner.toString()}] }) (synthetic: none)`,
     );
     return [];
+  }
+
+  async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
+    this.record(`node.getTxReceipt(${txHash}) (synthetic: unknown, pending)`);
+    return { status: TxStatus.PENDING, blockNumber: null, executionSucceeded: false };
+  }
+
+  async simulateTransfer(
+    account: RecipientAccount,
+    _artifact: ContractArtifact,
+    to: AztecAddress,
+    amount: bigint,
+  ): Promise<void> {
+    this.record(
+      `token.methods.transfer(${account.address.toString()}, ${to.toString()}, ${amount}, zero meta, nonce 0) simulate only (seed capsule; no enclave, no proof, no send)`,
+    );
   }
 
   async spend(
