@@ -49,7 +49,7 @@ All notable changes to `@xochi/sdk` are documented here. Format follows [Keep a 
 ### Removed
 
 - **BREAKING: the `@xochi/sdk/provider` subpath export is removed.** Import provider signing from `@xochi/provider` instead. Production custody implements its non-exportable `DigestSigner`; tests and development can use `loadLocalSigner(new RawPrivateKeyLoader(...))`. Proof generation is unaffected: the signed builders and `prove*Signed` take the same byte bundles, and the two byte helpers they borrowed from the provider module are now the sdk's own copies (`packages/sdk/src/inputs/field-bytes.ts`), so the sdk has no dependency on `@xochi/provider`.
-- **BREAKING: `PxeBridgeClient` and the `@xochi/sdk/pxe-bridge-client` subpath export are removed.** The bridge never shipped a compatible server and no production caller used it; consumers must integrate their bridge transport directly.
+- **BREAKING: `PxeBridgeClient` and the `@xochi/sdk/pxe-bridge-client` subpath export are removed.** Consumers integrate their bridge transport directly.
 - **The `@noble/curves` dependency** (only the provider signer used it; `@xochi/provider` depends on it now). The sdk's `npm run daemon` script and its daemon typecheck are gone.
 - The `prepare` script (a build on `npm install`). `npm install github:xochi-fi/xochi-sdk#<ref>` no longer yields a usable package: install from npm, or build the workspace (`npm run build -w @xochi/sdk`) and pack it.
 
@@ -249,7 +249,7 @@ Reference daemon: add `SIGNER_CHAIN_ID` and `SIGNER_ORACLE_ADDRESS`; add `SIGNER
 
 ## [0.3.0] - 2026-09-25
 
-Deprecated on npm; superseded by [0.4.0], whose entry is cumulative from 0.2.0.
+Deprecated on npm; see [0.4.0].
 
 ## [0.2.0] - 2026-05-10
 

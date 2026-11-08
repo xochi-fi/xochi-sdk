@@ -1,6 +1,6 @@
 # xochi-sdk
 
-TypeScript packages for building on Xochi: ERC-8262 ZK compliance proofs, provider attestations, the trade API client and widget, intent signing, and the wire contract. The root is a private workspace and publishes nothing.
+TypeScript packages for building on Xochi: ERC-8262 ZK compliance proofs, provider attestations, the trade API client and widget, intent signing, and the wire contract.
 
 ## Packages
 
@@ -17,13 +17,13 @@ TypeScript packages for building on Xochi: ERC-8262 ZK compliance proofs, provid
 | `runners/{python,go,rust}` | `xochi-conformance` | Byte-parity runners over `conformance.json`, for CI                        | none            | never                       |
 | `tools/recipient`          | none                | OXDAI recipient operator CLI; moves funds; not a workspace                 | `recipient-v*`  | never (GitHub prerelease)   |
 
-Tags publish through `.github/workflows/release.yml`, one package per tag; `tools/recipient` test artifacts through `recipient-release.yml`. Each package has its own README: [sdk](packages/sdk/README.md), [provider](packages/provider/README.md) ([daemon](packages/provider/daemon/README.md)), [client](packages/client/README.md), [widget-lib](packages/widget-lib/README.md), [signer](packages/signer/README.md), [spec](packages/spec/README.md), [solver-sdk](packages/solver-sdk/README.md), [recipient](tools/recipient/README.md), and [Python](runners/python/README.md), [Go](runners/go/README.md), [Rust](runners/rust/README.md).
+Tags publish through `.github/workflows/release.yml`, one package per tag; `tools/recipient` test artifacts through `recipient-release.yml`. Package READMEs: [sdk](packages/sdk/README.md), [provider](packages/provider/README.md) ([daemon](packages/provider/daemon/README.md)), [client](packages/client/README.md), [widget-lib](packages/widget-lib/README.md), [signer](packages/signer/README.md), [spec](packages/spec/README.md), [solver-sdk](packages/solver-sdk/README.md), [recipient](tools/recipient/README.md), [Python](runners/python/README.md), [Go](runners/go/README.md), [Rust](runners/rust/README.md).
 
 ## Three kinds of signing
 
 - **`@xochi/signer`: the taker's signer. It moves funds.** EIP-712 Xochi intents, ERC-3009 and Permit2 pull authorizations, plus the pre-sign checks that hold a server quote to the request. A bug here loses money.
 - **`@xochi/provider`: a compliance-data provider's attestations. It moves no funds.** Secp256k1 signatures over risk signals that the ERC-8262 signed circuits (0x07, 0x08, 0x09) verify in-circuit, and EIP-712 credential-root publications. `@xochi/sdk` turns them into proofs.
-- **`runners/*` (`xochi-conformance`): CI byte-parity runners, not production.** They reproduce every `@xochi/spec` `conformance.json` vector byte-for-byte; each runner's README states its input rules.
+- **`runners/*` (`xochi-conformance`): CI byte-parity runners, not production.** Each reproduces every `@xochi/spec` `conformance.json` vector; its README states its input rules.
 
 ## Development
 
@@ -33,5 +33,5 @@ Node 22.12+. From the root: `npm ci`, then `npm run build`, `npm run typecheck`,
 
 - Changelogs: each published package's own `packages/<name>/CHANGELOG.md`
 - [SECURITY.md](SECURITY.md)
-- [CLAUDE.md](CLAUDE.md): repo rules and invariants (fund-safety, wire contract, parity state)
+- [CLAUDE.md](CLAUDE.md): repo rules and invariants
 - [LICENSE](LICENSE) (MIT)
