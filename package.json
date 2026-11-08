@@ -7,7 +7,14 @@
     "node": ">=22.22.2"
   },
   "workspaces": [
-    "packages/*"
+    "packages/client",
+    "packages/provider",
+    "packages/reference",
+    "packages/sdk",
+    "packages/signer",
+    "packages/solver-sdk",
+    "packages/spec",
+    "packages/widget-lib"
   ],
   "scripts": {
     "build": "npm run build:workspaces",

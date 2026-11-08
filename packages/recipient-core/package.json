@@ -14,6 +14,10 @@
     "./browser": {
       "types": "./dist/browser/index.d.ts",
       "default": "./dist/browser/index.js"
+    },
+    "./attestation": {
+      "types": "./dist/attestation/index.d.ts",
+      "default": "./dist/attestation/index.js"
     }
   },
   "files": [
@@ -37,6 +41,7 @@
     "@aztec-labs/constants": "6.0.0",
     "@aztec-labs/foundation": "6.0.0",
     "@aztec-labs/kv-store": "6.0.0",
+    "@aztec-labs/pxe": "6.0.0",
     "@aztec-labs/stdlib": "6.0.0",
     "@aztec-labs/wallets": "6.0.0",
     "@hpke/core": "1.9.0",
@@ -48,6 +53,7 @@
     "zod4": "npm:zod@4.4.3"
   },
   "devDependencies": {
+    "@aztec-labs/sqlite3mc-wasm": "6.0.0",
     "@types/node": "^22.15.17",
     "esbuild": "0.28.2",
     "playwright": "1.59.1",
