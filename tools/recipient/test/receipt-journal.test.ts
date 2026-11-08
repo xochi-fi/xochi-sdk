@@ -48,6 +48,7 @@ async function signed(intentId: string, txHash = hex("a7")) {
       txHash,
       blockNumber: "4242",
       untagged: false,
+      legacyBinding: false,
       alreadySpentBy: null,
       request: submission,
     },

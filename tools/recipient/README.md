@@ -282,6 +282,16 @@ If you already spent or exited the payout, the simulation fails. `--already-spen
 if this account's own completed spend or exit in `operations/` was mined after the payout's block.
 That spend's transaction hash is recorded with the receipt.
 
+A data directory that enrolled before the binding digest was recorded (its `state.json` has
+`bindingId` but no `bindingDigest`) is refused until it passes `--legacy-binding`. With that flag
+the tool adopts the challenge's `binding_digest`, but only when all of these hold: no binding
+digest is recorded; the challenge's `binding_id` equals `state.json` `bindingId`; and the signed
+terms name that digest, this account as recipient, this data directory's descriptor digest, the
+corridor token, network and corridor. All the other checks above also apply. It prints the digest
+it signs under, records it in `state.json` so later runs need no flag, and marks the receipt
+record `legacyBinding`. Such a directory saved no node URL or artifact path either, so pass
+`--node-url` and `--oxide-token-artifact` on that run.
+
 `receipt` holds the fund-movement lock under `operations/` for the whole run, so no spend, exit
 or refund runs alongside it. It refuses while one of them is unresolved. A receipt run that died
 (or ran on another host before a restore) is released by the next command.

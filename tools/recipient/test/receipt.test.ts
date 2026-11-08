@@ -230,6 +230,11 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
         untagged: false,
         alreadySpent: false,
         bindingDigest: enrolledAccount.bindingDigest,
+        bindingId: "TEST-ONLY-binding",
+        legacyBinding: false,
+        rememberBindingDigest: () => {
+          throw new Error("TEST ONLY: no binding digest to remember");
+        },
         dryRun: false,
         ...request,
       },
@@ -326,6 +331,23 @@ describe("receipt command", () => {
     await expect(run({ alreadySpent: true })).rejects.toThrow(/no completed spend or exit/);
   });
 
+  it("--legacy-binding: signs under the challenge's digest for this directory's binding id, and records it", async () => {
+    const remembered: string[] = [];
+    const { lines, receipts, run } = await setup();
+    await expect(run({ bindingDigest: null })).rejects.toThrow(/--legacy-binding/);
+    expect(receipts.read(INTENT)).toBeNull();
+    const record = await run({
+      bindingDigest: null,
+      legacyBinding: true,
+      rememberBindingDigest: (digest) => remembered.push(digest),
+    });
+    expect(record).toMatchObject({ status: "submitted", legacyBinding: true });
+    expect(remembered).toEqual([E.bindingDigest]);
+    expect(lines).toContain(
+      `receipt: --legacy-binding: signing under binding TEST-ONLY-binding, digest ${E.bindingDigest} (recorded in state.json; later runs need no flag)`,
+    );
+  });
+
   it("acknowledges an untagged payout only as --tx HASH --untagged, and says so", async () => {
     const { lines, run } = await setup([payoutFor(E, TERMS, { meta: UNTAGGED_META })]);
     await expect(run()).rejects.toThrow(/--untagged/);
@@ -407,6 +429,9 @@ describe("receipt command", () => {
           untagged: false,
           alreadySpent: false,
           bindingDigest: E.bindingDigest,
+          bindingId: "TEST-ONLY-binding",
+          legacyBinding: false,
+          rememberBindingDigest: () => undefined,
           dryRun: false,
         },
       ),
@@ -431,6 +456,9 @@ describe("receipt command", () => {
           untagged: false,
           alreadySpent: false,
           bindingDigest: E.bindingDigest,
+          bindingId: "TEST-ONLY-binding",
+          legacyBinding: false,
+          rememberBindingDigest: () => undefined,
           dryRun: true,
         },
       ),

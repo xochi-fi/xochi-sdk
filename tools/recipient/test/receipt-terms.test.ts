@@ -72,6 +72,8 @@ describe("receipt challenge terms", () => {
       amount: AMOUNT,
       validUntil: DEADLINE,
       orderFingerprint: expectedFingerprint(E, TERMS),
+      bindingDigest: E.bindingDigest,
+      legacyBinding: false,
     });
   });
 
@@ -134,6 +136,59 @@ describe("receipt challenge terms", () => {
     expect(() =>
       check({ ...CHALLENGE, receipt: { ...CHALLENGE.receipt, binding_digest: hex("b1") } }),
     ).toThrow(/binding/);
+  });
+
+  describe("--legacy-binding (a data directory enrolled before the digest was recorded)", () => {
+    const legacy = (
+      challenge: ReceiptChallenge,
+      bindingId: string | null = "TEST-ONLY-binding",
+      bindingDigest: string | null = null,
+    ) =>
+      checkReceiptChallenge(corridor, E.account, challenge, {
+        intentId: INTENT,
+        bindingDigest,
+        bindingId,
+        legacyBinding: true,
+      });
+
+    it("adopts the challenge's binding digest when its binding id is this data directory's", () => {
+      expect(legacy(CHALLENGE)).toMatchObject({
+        bindingDigest: E.bindingDigest,
+        legacyBinding: true,
+        termsDigest: termsDigest(TERMS),
+      });
+    });
+
+    it("names the flag and its conditions in the refusal without it", () => {
+      expect(() => check(CHALLENGE, null)).toThrow(
+        /--legacy-binding.*binding_id.*TEST-ONLY|--legacy-binding.*binding id/,
+      );
+    });
+
+    it("refuses another binding id, an unknown one, or a data directory that knows its digest", () => {
+      expect(() => legacy(CHALLENGE, "another-binding")).toThrow(/binding id/);
+      expect(() => legacy(CHALLENGE, null)).toThrow(/no enrolled binding id/);
+      expect(() => legacy(CHALLENGE, "TEST-ONLY-binding", E.bindingDigest)).toThrow(
+        /only for a data directory without a recorded binding digest/,
+      );
+    });
+
+    it("still requires the terms to name that digest, this account, descriptor, token and network", () => {
+      const otherBinding = edited((m) => (m.recipientBindingDigest = hex("b1")));
+      expect(() => legacy(otherBinding)).toThrow(/binding/);
+      expect(() => legacy(edited((m) => (m.destination.aztecRecipient = hex("22"))))).toThrow(
+        /recipient/,
+      );
+      expect(() => legacy(edited((m) => (m.destination.descriptorDigest = hex("d5"))))).toThrow(
+        /descriptor/,
+      );
+      expect(() => legacy(edited((m) => (m.destination.aztecToken = hex("11"))))).toThrow(/token/);
+      expect(() =>
+        legacy(
+          edited((m) => (m.destination.network = { ...m.destination.network, l1ChainId: "5" })),
+        ),
+      ).toThrow(/network/);
+    });
   });
 });
 

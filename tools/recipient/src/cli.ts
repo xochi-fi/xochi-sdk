@@ -141,6 +141,8 @@ Options:
   --tx HASH                    receipt: the payout transaction, if several payouts match
   --untagged                   receipt: with --tx, a payout made before order tagging (warned)
   --already-spent              receipt: this account spent the payout after it landed
+  --legacy-binding             receipt: a data directory enrolled before its binding digest was
+                               recorded adopts the challenge's, for its own binding id only
   --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
@@ -258,6 +260,7 @@ interface Values {
   tx?: string;
   untagged?: boolean;
   "already-spent"?: boolean;
+  "legacy-binding"?: boolean;
   "dry-run"?: boolean;
   version?: boolean;
   help?: boolean;
@@ -295,6 +298,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       tx: string,
       untagged: { type: "boolean" },
       "already-spent": { type: "boolean" },
+      "legacy-binding": { type: "boolean" },
       "dry-run": { type: "boolean" },
       version: { type: "boolean" },
       help: { type: "boolean" },
@@ -309,7 +313,7 @@ const required = (
   values: Values,
   name: Exclude<
     keyof Values,
-    "out" | "dry-run" | "version" | "help" | "untagged" | "already-spent"
+    "out" | "dry-run" | "version" | "help" | "untagged" | "already-spent" | "legacy-binding"
   >,
 ): string => {
   const v = values[name];
@@ -943,6 +947,10 @@ export async function run(argv: string[]): Promise<void> {
               untagged: values.untagged ?? false,
               alreadySpent: values["already-spent"] ?? false,
               bindingDigest: state.bindingDigest ?? null,
+              bindingId: state.bindingId ?? null,
+              legacyBinding: values["legacy-binding"] ?? false,
+              rememberBindingDigest: (bindingDigest) =>
+                store.writeState({ ...store.readState(), bindingDigest }),
               dryRun: ctx.port.mode === "dry-run",
             },
           );

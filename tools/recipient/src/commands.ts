@@ -311,6 +311,12 @@ export interface ReceiptRequest {
   alreadySpent: boolean;
   /** The RecipientBinding digest this data directory enrolled, if it knows it. */
   bindingDigest: string | null;
+  /** The binding id this data directory enrolled (`state.json` `bindingId`), if any. */
+  bindingId: string | null;
+  /** `--legacy-binding`: adopt the challenge's digest for `bindingId` (no digest recorded). */
+  legacyBinding: boolean;
+  /** Records a binding digest adopted with `--legacy-binding`, so later runs need no flag. */
+  rememberBindingDigest: (digest: string) => void;
   /** Dry run: nothing is locked or written. */
   dryRun: boolean;
 }
@@ -400,6 +406,8 @@ async function receiptUnderLock(
   const checked = checkReceiptChallenge(ctx.corridor, account, challenge, {
     intentId,
     bindingDigest: request.bindingDigest,
+    bindingId: request.bindingId,
+    legacyBinding: request.legacyBinding,
   });
   const pinnedBy = receipts.intentPinning(checked, intentId);
   if (pinnedBy !== null) {
@@ -415,6 +423,12 @@ async function receiptUnderLock(
   ) {
     throw new Error(
       `receipt refused: the new challenge's terms, operation or amount differ from the recorded receipt of intent ${intentId}`,
+    );
+  }
+  if (checked.legacyBinding) {
+    if (!request.dryRun) request.rememberBindingDigest(checked.bindingDigest);
+    ctx.log(
+      `receipt: --legacy-binding: signing under binding ${challenge.receipt.binding_id}, digest ${checked.bindingDigest} (recorded in state.json; later runs need no flag)`,
     );
   }
   ctx.log(
@@ -480,6 +494,7 @@ async function receiptUnderLock(
         txHash: transfer.txHash,
         blockNumber: String(transfer.blockNumber),
         untagged: !tagged,
+        legacyBinding: checked.legacyBinding,
         alreadySpentBy,
         request: submission,
       });

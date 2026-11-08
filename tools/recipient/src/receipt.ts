@@ -139,19 +139,39 @@ export interface CheckedReceiptChallenge {
   validUntil: number;
   /** The order fingerprint the intent's payout carries in its `Transfer` meta. */
   orderFingerprint: string;
+  /** The binding digest the receipt is signed under. */
+  bindingDigest: string;
+  /** True when `--legacy-binding` adopted `bindingDigest` from the challenge. */
+  legacyBinding: boolean;
 }
+
+/** Where the binding the receipt is signed under comes from. */
+export interface ExpectedBinding {
+  intentId: string;
+  /** The RecipientBinding digest this data directory recorded, if any. */
+  bindingDigest: string | null;
+  /** The binding id this data directory enrolled (`state.json` `bindingId`), if any. */
+  bindingId?: string | null;
+  /** `--legacy-binding`: adopt the challenge's digest when no digest was recorded (below). */
+  legacyBinding?: boolean;
+}
+
+const LEGACY_BINDING_CONDITIONS =
+  "it signs under the challenge's binding_digest only when this data directory recorded no binding digest, the challenge's binding_id is this data directory's enrolled binding id (state.json bindingId), and the signed terms name that digest, this account as recipient, this data directory's descriptor digest, the corridor token, network and corridor";
 
 /**
  * Refuses a challenge unless its terms are the signed ShieldedTermsV1 of `intentId` (pinned
  * types, this corridor's terms domain, hashing to `terms_digest`) paying exactly the challenge's
  * amount to this account, descriptor, token, network and corridor, under this data directory's
- * enrolled binding; and unless `operation_id` is keccak256 of the terms' operation id.
+ * enrolled binding; and unless `operation_id` is keccak256 of the terms' operation id. A data
+ * directory that enrolled before its binding digest was recorded passes `legacyBinding`: the
+ * challenge's digest is adopted only for its own enrolled binding id, and the terms must name it.
  */
 export function checkReceiptChallenge(
   corridor: Corridor,
   account: RecipientAccount,
   challenge: ReceiptChallenge,
-  expected: { intentId: string; bindingDigest: string | null },
+  expected: ExpectedBinding,
 ): CheckedReceiptChallenge {
   const subject = challenge.receipt;
   const { terms } = subject;
@@ -211,14 +231,32 @@ export function checkReceiptChallenge(
   ) {
     refuse("the terms name another corridor or revision than this data directory's");
   }
-  if (expected.bindingDigest === null) {
+  let bindingDigest = expected.bindingDigest;
+  const legacyBinding = expected.legacyBinding === true;
+  if (legacyBinding) {
+    if (bindingDigest !== null) {
+      refuse("--legacy-binding is only for a data directory without a recorded binding digest");
+    }
+    if (!expected.bindingId) {
+      refuse(
+        "--legacy-binding needs this data directory's enrolled binding id, and it has no enrolled binding id",
+      );
+    }
+    if (subject.binding_id !== expected.bindingId) {
+      refuse(
+        `the challenge names binding id ${subject.binding_id}, not this data directory's enrolled binding id ${expected.bindingId}`,
+      );
+    }
+    bindingDigest = lower(subject.binding_digest);
+  }
+  if (bindingDigest === null) {
     refuse(
-      "this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup without it): run enroll again, or restore a backup written after enroll start",
+      `this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup without it): run enroll again, restore a backup written after enroll start, or pass --legacy-binding: ${LEGACY_BINDING_CONDITIONS}`,
     );
   }
   if (
-    lower(message.recipientBindingDigest) !== expected.bindingDigest ||
-    lower(subject.binding_digest) !== expected.bindingDigest
+    lower(message.recipientBindingDigest) !== bindingDigest ||
+    lower(subject.binding_digest) !== bindingDigest
   ) {
     refuse("the terms or challenge name another binding than the one this data directory enrolled");
   }
@@ -243,6 +281,8 @@ export function checkReceiptChallenge(
       amount: destination.amount,
       validUntil,
     }),
+    bindingDigest,
+    legacyBinding,
   };
 }
 
@@ -473,6 +513,8 @@ export const ReceiptRecordSchema = z
     blockNumber: decimal,
     /** Taken with `--untagged`: no order fingerprint tied this payout to the intent. */
     untagged: z.boolean(),
+    /** Signed under a binding digest adopted with `--legacy-binding`. */
+    legacyBinding: z.boolean().default(false),
     /** Taken with `--already-spent`: this account's spend or exit that spent it. */
     alreadySpentBy: hex32.nullable(),
     /** Every request signed for this intent, oldest first; the last is resent. Append-only. */
