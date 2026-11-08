@@ -148,5 +148,22 @@ describe("PKW1 wrapped import", () => {
         await expect(attempt()).rejects.toThrow(new SealError("wrap key must be AES-256-GCM"));
       }
     });
+
+    it("refuses an extractable wrap key on wrap and unwrap", async () => {
+      const { wrapped } = await wrap();
+      const extractable = await crypto.subtle.importKey(
+        "raw",
+        Uint8Array.from(Buffer.from(WRAP_KEY_HEX, "hex")),
+        "AES-GCM",
+        true,
+        ["encrypt", "decrypt"],
+      );
+      for (const attempt of [
+        () => wrapImported(PLAINTEXT, extractable, CREDENTIAL_ID_HASH),
+        () => unwrapImported(wrapped, extractable, CREDENTIAL_ID_HASH),
+      ]) {
+        await expect(attempt()).rejects.toThrow(new SealError("wrap key must be non-extractable"));
+      }
+    });
   });
 });

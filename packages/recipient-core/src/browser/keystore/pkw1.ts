@@ -22,10 +22,12 @@ export async function importWrapKey(raw: Uint8Array): Promise<CryptoKey> {
   }
 }
 
-/** AAD = MAGIC || credentialIdHash, after refusing a malformed hash or a key that is not AES-256-GCM. */
+/** AAD = MAGIC || credentialIdHash, after refusing a malformed hash or a key that is not a
+ *  non-extractable AES-256-GCM key. */
 function checkedAad(wrapKey: CryptoKey, credentialIdHash: `0x${string}`): Uint8Array<ArrayBuffer> {
   const { name, length } = wrapKey.algorithm as AesKeyAlgorithm;
   if (name !== "AES-GCM" || length !== 256) throw new SealError("wrap key must be AES-256-GCM");
+  if (wrapKey.extractable) throw new SealError("wrap key must be non-extractable");
   if (!/^0x[0-9a-f]{64}$/.test(credentialIdHash)) {
     throw new SealError("credentialIdHash must be 0x followed by 64 lowercase hex digits");
   }
