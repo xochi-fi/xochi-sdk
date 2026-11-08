@@ -73,6 +73,53 @@ describe("IndexedDbKeyValueStore", () => {
     await page.close();
   });
 
+  it("keeps each recipient scope and the profiles in their own database", async () => {
+    const page = await openTab();
+    const result = await page.evaluate(async () => {
+      const { IndexedDbKeyValueStore } = window.storage;
+      const alice = await IndexedDbKeyValueStore.open(`0x${"a".repeat(64)}`);
+      const bob = await IndexedDbKeyValueStore.open(`0x${"b".repeat(64)}`);
+      const profiles = await IndexedDbKeyValueStore.openProfiles();
+      await alice.put("operations/active.lock", new Uint8Array([1]));
+      await profiles.put("recipient/0xab/profile.json", new Uint8Array([2]));
+      const seen = {
+        bobLock: await bob.get("operations/active.lock"),
+        bobOperations: await bob.list("operations/"),
+        profilesLock: await profiles.get("operations/active.lock"),
+        aliceProfiles: await alice.list("recipient/"),
+        aliceLock: Array.from((await alice.get("operations/active.lock")) ?? []),
+      };
+      for (const store of [alice, bob, profiles]) store.close();
+      const databases = (await indexedDB.databases()).map(({ name }) => name).sort();
+      const badScopes: string[] = [];
+      for (const scope of ["", "0xAB", "a/b", "../x", ".x", "a".repeat(129)]) {
+        badScopes.push(
+          await IndexedDbKeyValueStore.open(scope).then(
+            () => "opened",
+            (error: unknown) => (error instanceof TypeError ? "TypeError" : String(error)),
+          ),
+        );
+      }
+      return { seen, databases, badScopes };
+    });
+    expect(result.seen).toEqual({
+      bobLock: null,
+      bobOperations: [],
+      profilesLock: null,
+      aliceProfiles: [],
+      aliceLock: [1],
+    });
+    expect(result.databases).toEqual(
+      expect.arrayContaining([
+        `xochi-recipient-0x${"a".repeat(64)}-kv`,
+        `xochi-recipient-0x${"b".repeat(64)}-kv`,
+        "xochi-recipient-profiles",
+      ]),
+    );
+    expect(result.badScopes).toEqual(Array<string>(6).fill("TypeError"));
+    await page.close();
+  });
+
   it("keeps a put value across a browser restart", async () => {
     const writer = await openTab();
     await writer.evaluate(async () => {

@@ -7,6 +7,7 @@
 // promises no flush; worker-only `createSyncAccessHandle().flush()` is durable but writes in place,
 // so a crash mid-write tears the value.
 import { KeyExistsError, type KeyValueStore } from "../../ports.js";
+import { assertScope } from "./scope.js";
 
 const OBJECT_STORE = "kv";
 const MAX_KEY_LENGTH = 512;
@@ -22,9 +23,20 @@ function assertKey(key: string): void {
 export class IndexedDbKeyValueStore implements KeyValueStore {
   private constructor(private readonly db: IDBDatabase) {}
 
-  static async open(databaseName: string): Promise<IndexedDbKeyValueStore> {
+  /** The journals (`operations/`, `receipts/`, `exits/`, `state.json`) of one recipient. */
+  static async open(scope: string): Promise<IndexedDbKeyValueStore> {
+    assertScope(scope);
+    return IndexedDbKeyValueStore.openDatabase(`xochi-recipient-${scope}-kv`);
+  }
+
+  /** The origin's recipient profiles (`recipient/<credentialIdHash>/...`), apart from any journal. */
+  static async openProfiles(): Promise<IndexedDbKeyValueStore> {
+    return IndexedDbKeyValueStore.openDatabase("xochi-recipient-profiles");
+  }
+
+  private static async openDatabase(name: string): Promise<IndexedDbKeyValueStore> {
     const opened = Promise.withResolvers<IDBDatabase>();
-    const request = indexedDB.open(databaseName, 1);
+    const request = indexedDB.open(name, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(OBJECT_STORE);
     request.onsuccess = () => opened.resolve(request.result);
     request.onerror = () => opened.reject(request.error);
