@@ -18,6 +18,7 @@ import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
   openRecipientCore,
   restoreJournals,
+  restoreLockName,
   type BackupMode,
   type RecipientCore,
   type RecipientCoreDeps,
@@ -1146,6 +1147,24 @@ describe("restoreJournals", () => {
     );
   }
 
+  function restoreMarker(
+    backupCommitment: string,
+    phase: "checking" | "copying" = "copying",
+  ): Uint8Array {
+    return new TextEncoder().encode(
+      `${JSON.stringify(
+        {
+          version: 1,
+          address: account.descriptor.aztecAddress,
+          backupCommitment,
+          phase,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+
   it("restores into an empty profile and records the backup's commitment and binding", async () => {
     const h = harness();
     const core = await h.open();
@@ -1202,6 +1221,50 @@ describe("restoreJournals", () => {
     await core.close();
   });
 
+  it("recovers a durable partial restore left by a terminated process", async () => {
+    const h = harness();
+    const core = await h.open();
+    const operations = await journalRecords(async (journal) => {
+      const first = await journal.begin("spend", { amount: "1" });
+      await journal.update(first.id, { status: "aborted" });
+      const second = await journal.begin("spend", { amount: "2" });
+      await journal.update(second.id, { status: "aborted" });
+    });
+    const contents = backupOf(operations);
+    const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
+    await h.kv.create("restore.lock", restoreMarker(sealed.commitment));
+    await h.kv.put(
+      `operations/${operations[0]!.id}.json`,
+      new TextEncoder().encode("TEST ONLY partial record"),
+    );
+
+    await restoreJournals(core, contents, sealed.bytes);
+
+    expect(await h.kv.list("operations/")).toEqual(
+      operations.map((record) => `operations/${record.id}.json`).sort(),
+    );
+    expect(h.kv.text("restore.lock")).toBeNull();
+    await core.close();
+  });
+
+  it("keeps existing journals after a crash during the empty check", async () => {
+    const h = harness();
+    const core = await h.open();
+    const contents = backupOf([]);
+    const sealed = await sealBackup(contents, "TEST ONLY long passphrase", crypto);
+    const existing = new TextEncoder().encode("TEST ONLY existing record");
+    await h.kv.put("receipts/xi_existing.json", existing);
+    await h.kv.create("restore.lock", restoreMarker(sealed.commitment, "checking"));
+
+    await expect(restoreJournals(core, contents, sealed.bytes)).rejects.toThrow(
+      "restoreJournals needs a profile with empty journals",
+    );
+
+    expect(await h.kv.get("receipts/xi_existing.json")).toEqual(existing);
+    expect(h.kv.text("restore.lock")).toBeNull();
+    await core.close();
+  });
+
   it("keeps an interrupted restore blocked when copied journal cleanup fails", async () => {
     const kv = new InterruptedRestoreStore(true);
     const h = harness({ kind: "keystore", accountSecrets }, kv);
@@ -1223,13 +1286,16 @@ describe("restoreJournals", () => {
     expect(failure).toBeInstanceOf(AggregateError);
     expect(failure).toMatchObject({
       message:
-        "journal restore cleanup failed; this profile remains blocked by restore.lock and must be recreated",
+        "journal restore cleanup failed; this profile remains blocked by restore.lock; retry the same backup or recreate the profile",
     });
     expect(await kv.list("operations/")).toEqual([kv.interruptedKey]);
     expect(kv.text("restore.lock")).not.toBeNull();
-    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
-      "a journal restore already holds this profile (restore.lock)",
+
+    await restoreJournals(core, contents, sealed);
+    expect(await kv.list("operations/")).toEqual(
+      operations.map((record) => `operations/${record.id}.json`).sort(),
     );
+    expect(kv.text("restore.lock")).toBeNull();
     await core.close();
   });
 
@@ -1335,8 +1401,23 @@ describe("restoreJournals", () => {
     await h.kv.create("restore.lock", new Uint8Array([1]));
 
     await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
-      "a journal restore already holds this profile (restore.lock)",
+      "an unfinished journal restore has an unreadable restore.lock; the profile must be recreated",
     );
+    const restoreLease = await h.locks.tryAcquire(
+      restoreLockName(account.descriptor.aztecAddress),
+      {
+        id: "TEST ONLY live restore",
+        nonce: "TEST ONLY live restore nonce",
+        kind: "restore",
+      },
+    );
+    expect(restoreLease).not.toBeNull();
+    await h.kv.delete("restore.lock");
+    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
+      "another journal restore is running for this profile",
+    );
+    await restoreLease!.release();
+    await h.kv.create("restore.lock", new Uint8Array([1]));
     await expect(core.signReceipt(INTENT)).rejects.toThrow(
       "a journal restore holds this profile (restore.lock); move funds once it finishes",
     );

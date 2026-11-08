@@ -51,6 +51,12 @@ atomic `create`s. Liveness of a receipt run or a release claimant is its holder 
 random session id. The `LockManager` is that liveness probe, not the fund-movement lock. The facade
 runs every `state.json` read-modify-write under the exclusive `stateLockName(address)` lease
 (`...:operations:state`), waiting up to about five seconds for another tab's.
+`restoreJournals` also holds `restoreLockName(address)` while `restore.lock` blocks operations. The
+marker records the backup commitment. If a browser or process terminates between durable journal
+writes, a retry with the same backup acquires the released lease, removes only that interrupted
+restore's records under the still-held marker, and restores again. A different backup or unreadable
+marker fails closed.
+
 
 Storage keys follow `[a-z0-9_][a-z0-9._-]{0,127}` per segment; intent ids are
 `^[a-z0-9_][a-z0-9_-]{0,63}$` (`INTENT_ID_GRAMMAR`, which covers the Worker's `xi_<32 hex>`), so

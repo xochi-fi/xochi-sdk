@@ -50,7 +50,7 @@ import {
 } from "./commands.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
 import type { EnrollmentRequest, SignedAck } from "./enrollment.js";
-import { parseJsonBytes, prettyJsonBytes, utf8Bytes } from "./json.js";
+import { parseJsonBytes, prettyJsonBytes } from "./json.js";
 import {
   OperationJournal,
   RESTORE_MARKER_KEY,
@@ -257,6 +257,11 @@ export function stateLockName(address: string): string {
   return `${operationsLockName(address)}:state`;
 }
 
+/** The live lease that distinguishes an active restore from a crashed one. */
+export function restoreLockName(address: string): string {
+  return `${operationsLockName(address)}:restore`;
+}
+
 const STATE_LEASE_ATTEMPTS = 200;
 const STATE_LEASE_RETRY_MS = 25;
 
@@ -318,6 +323,8 @@ interface CoreJournals {
   receipts: ReceiptJournal;
   exits: ExitJournal;
   state: StateRecord;
+  locks: LockManager;
+  restoreHolder: LockHolder;
   corridor: Corridor;
   address: string;
 }
@@ -921,6 +928,12 @@ export async function openRecipientCore(
     state,
     corridor: deps.corridor,
     address,
+    locks: deps.locks,
+    restoreHolder: {
+      id: String(pid),
+      nonce: crypto.randomUUID(),
+      kind: "restore",
+    },
   };
   const core = new Core(deps, account, port, tokenArtifact, journals);
   try {
@@ -944,6 +957,35 @@ export function importCliBackup(
   return openBackup(sealed, passphrase, crypto);
 }
 
+const RestoreMarkerSchema = z
+  .object({
+    version: z.literal(1),
+    address: z.string(),
+    backupCommitment: z.string().regex(/^0x[0-9a-f]{64}$/),
+    phase: z.enum(["checking", "copying"]),
+  })
+  .strict();
+
+const RESTORE_JOURNAL_PREFIXES = ["operations/", "exits/", "receipts/"] as const;
+
+async function clearRestoreRecords(kv: KeyValueStore): Promise<unknown[]> {
+  const failures: unknown[] = [];
+  for (const prefix of RESTORE_JOURNAL_PREFIXES) {
+    try {
+      for (const key of await kv.list(prefix)) {
+        try {
+          await kv.delete(key);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  return failures;
+}
+
 /**
  * Restores a CLI backup's operation, exit and receipt journals and its enrolled binding into an
  * open core of the same account and corridor whose journals are empty, and records the backup
@@ -951,11 +993,12 @@ export function importCliBackup(
  * `importCliBackup` opened) and `backupTokenAckSignature` its TokenRegistrationAck's signature.
  * Refused before anything is written: a backup with an unresolved fund movement (the facade cannot
  * reconcile it, so the CLI must first), a profile that records another binding, and a next
- * `state.json` that does not validate. The restore holds `RESTORE_MARKER_KEY` throughout, so no
- * session moves funds or runs a receipt meanwhile. A failed restore after the empty-journal check
- * removes every copied journal record and the marker so it can be retried; failed cleanup retains
- * the marker and requires recreating the profile. State restoration may remain because a retry
- * validates matching state. An unfinished receipt run moved no funds and is restored aborted.
+ * `state.json` that does not validate. The restore holds `RESTORE_MARKER_KEY` and a live
+ * `restoreLockName` lease throughout, so no session moves funds or runs a receipt meanwhile.
+ * A failed restore removes every copied journal record and the marker so the backup can be retried.
+ * If the process terminates first, the next call with that backup owns the now-free lease, rolls
+ * back the durable partial records under the marker and retries. Failed cleanup leaves the marker
+ * blocking movement until the same backup can finish recovery or the profile is recreated.
  */
 export async function restoreJournals(
   core: RecipientCore,
@@ -1006,24 +1049,85 @@ export async function restoreJournals(
   };
   restoredState(await journals.state.read());
 
-  const marker = utf8Bytes(journals.address);
-  try {
-    await journals.kv.create(RESTORE_MARKER_KEY, marker);
-  } catch (error) {
-    if (!(error instanceof KeyExistsError)) throw error;
-    throw new Error(
-      `a journal restore already holds this profile (${RESTORE_MARKER_KEY}); if none is running, the profile must be recreated`,
-    );
+  const restoreLease = await journals.locks.tryAcquire(
+    restoreLockName(journals.address),
+    journals.restoreHolder,
+  );
+  if (!restoreLease) {
+    throw new Error("another journal restore is running for this profile");
   }
-  const journalPrefixes = ["operations/", "exits/", "receipts/"] as const;
-  let destinationsProvenEmpty = false;
   try {
-    for (const prefix of journalPrefixes) {
-      if ((await journals.kv.list(prefix)).length !== 0) {
-        throw new Error("restoreJournals needs a profile with empty journals");
+    const markerIdentity = {
+      version: 1 as const,
+      address: journals.address,
+      backupCommitment,
+    };
+    const existingMarkerBytes = await journals.kv.get(RESTORE_MARKER_KEY);
+    let destinationsProvenEmpty = false;
+    if (existingMarkerBytes) {
+      let existingMarker;
+      try {
+        existingMarker = RestoreMarkerSchema.parse(parseJsonBytes(existingMarkerBytes));
+      } catch {
+        throw new Error(
+          `an unfinished journal restore has an unreadable ${RESTORE_MARKER_KEY}; the profile must be recreated`,
+        );
+      }
+      if (
+        existingMarker.address !== markerIdentity.address ||
+        existingMarker.backupCommitment !== markerIdentity.backupCommitment
+      ) {
+        throw new Error(
+          `an unfinished journal restore used another backup; retry that backup or recreate the profile`,
+        );
+      }
+      if (existingMarker.phase === "copying") {
+        const recoveryFailures = await clearRestoreRecords(journals.kv);
+        if (recoveryFailures.length !== 0) {
+          throw new AggregateError(
+            recoveryFailures,
+            `unfinished journal restore recovery failed; this profile remains blocked by ${RESTORE_MARKER_KEY}`,
+          );
+        }
+        destinationsProvenEmpty = true;
+      } else {
+        // No restore record is copied until the marker advances to "copying".
+        await journals.kv.delete(RESTORE_MARKER_KEY);
       }
     }
-    destinationsProvenEmpty = true;
+
+    if (!destinationsProvenEmpty) {
+      for (const prefix of RESTORE_JOURNAL_PREFIXES) {
+        if ((await journals.kv.list(prefix)).length !== 0) {
+          throw new Error("restoreJournals needs a profile with empty journals");
+        }
+      }
+      try {
+        await journals.kv.create(
+          RESTORE_MARKER_KEY,
+          prettyJsonBytes({ ...markerIdentity, phase: "checking" }),
+        );
+      } catch (error) {
+        if (!(error instanceof KeyExistsError)) throw error;
+        throw new Error("another journal restore started for this profile");
+      }
+      try {
+        // Closes the empty-check/marker race with a movement that began just before the marker.
+        for (const prefix of RESTORE_JOURNAL_PREFIXES) {
+          if ((await journals.kv.list(prefix)).length !== 0) {
+            throw new Error("restoreJournals needs a profile with empty journals");
+          }
+        }
+        await journals.kv.put(
+          RESTORE_MARKER_KEY,
+          prettyJsonBytes({ ...markerIdentity, phase: "copying" }),
+        );
+        destinationsProvenEmpty = true;
+      } finally {
+        if (!destinationsProvenEmpty) await journals.kv.delete(RESTORE_MARKER_KEY);
+      }
+    }
+
     try {
       await journals.operations.restore(backup.journals.operations);
       await journals.exits.restore(backup.journals.exits);
@@ -1031,20 +1135,7 @@ export async function restoreJournals(
       await journals.state.update(restoredState);
       await journals.kv.delete(RESTORE_MARKER_KEY);
     } catch (restoreError) {
-      const cleanupFailures: unknown[] = [];
-      for (const prefix of journalPrefixes) {
-        try {
-          for (const key of await journals.kv.list(prefix)) {
-            try {
-              await journals.kv.delete(key);
-            } catch (error) {
-              cleanupFailures.push(error);
-            }
-          }
-        } catch (error) {
-          cleanupFailures.push(error);
-        }
-      }
+      const cleanupFailures = await clearRestoreRecords(journals.kv);
       if (cleanupFailures.length === 0) {
         try {
           await journals.kv.delete(RESTORE_MARKER_KEY);
@@ -1053,20 +1144,15 @@ export async function restoreJournals(
         }
       }
       if (cleanupFailures.length !== 0) {
-        try {
-          await journals.kv.create(RESTORE_MARKER_KEY, marker);
-        } catch (error) {
-          if (!(error instanceof KeyExistsError)) cleanupFailures.push(error);
-        }
         throw new AggregateError(
           [restoreError, ...cleanupFailures],
-          `journal restore cleanup failed; this profile remains blocked by ${RESTORE_MARKER_KEY} and must be recreated`,
+          `journal restore cleanup failed; this profile remains blocked by ${RESTORE_MARKER_KEY}; retry the same backup or recreate the profile`,
         );
       }
       throw restoreError;
     }
   } finally {
-    if (!destinationsProvenEmpty) await journals.kv.delete(RESTORE_MARKER_KEY);
+    await restoreLease.release();
   }
 }
 
