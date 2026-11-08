@@ -21,9 +21,23 @@ function assertKey(key: string): void {
 
 export type KvEvent = { op: "create" | "put" | "delete"; key: string; value?: string };
 
+/** Resolves after a later macrotask: every microtask queued before it has run. */
+function nextMacrotask(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 0);
+  return promise;
+}
+
+/**
+ * A write is applied at once (atomic create sees it) but becomes durable only on a later
+ * macrotask, and its promise resolves only then, like a disk or IndexedDB commit. Code that
+ * drops an `await` on a write runs on before it is durable, and `durable*` shows it.
+ */
 export class MemoryKeyValueStore implements KeyValueStore {
   readonly entries = new Map<string, Uint8Array>();
-  /** Every completed write, in order: what was durable when. */
+  /** What survives a crash right now. */
+  readonly durableEntries = new Map<string, Uint8Array>();
+  /** Every write once durable, in order: what was durable when. */
   readonly events: KvEvent[] = [];
 
   async get(key: string): Promise<Uint8Array | null> {
@@ -36,24 +50,31 @@ export class MemoryKeyValueStore implements KeyValueStore {
     assertKey(key);
     if (this.entries.has(key)) throw new KeyExistsError(key);
     this.entries.set(key, value.slice());
-    this.events.push({ op: "create", key, value: new TextDecoder().decode(value) });
+    await this.persist({ op: "create", key, value: new TextDecoder().decode(value) }, value);
   }
 
   async put(key: string, value: Uint8Array): Promise<void> {
     assertKey(key);
     this.entries.set(key, value.slice());
-    this.events.push({ op: "put", key, value: new TextDecoder().decode(value) });
+    await this.persist({ op: "put", key, value: new TextDecoder().decode(value) }, value);
   }
 
   async delete(key: string): Promise<void> {
     assertKey(key);
     this.entries.delete(key);
-    this.events.push({ op: "delete", key });
+    await this.persist({ op: "delete", key }, null);
   }
 
   async list(prefix: string): Promise<string[]> {
     if (!prefix.endsWith("/")) throw new Error(`prefix must end with "/": ${prefix}`);
     return [...this.entries.keys()].filter((key) => key.startsWith(prefix)).sort();
+  }
+
+  private async persist(event: KvEvent, value: Uint8Array | null): Promise<void> {
+    await nextMacrotask();
+    if (value === null) this.durableEntries.delete(event.key);
+    else this.durableEntries.set(event.key, value.slice());
+    this.events.push(event);
   }
 
   text(key: string): string | null {
@@ -66,8 +87,17 @@ export class MemoryKeyValueStore implements KeyValueStore {
     return text === null ? null : (JSON.parse(text) as unknown);
   }
 
+  /** The record as a crash right now would leave it. */
+  durableJson(key: string): unknown {
+    const value = this.durableEntries.get(key);
+    return value === undefined ? null : (JSON.parse(new TextDecoder().decode(value)) as unknown);
+  }
+
+  /** Seeds a record as if written and made durable earlier. */
   setJson(key: string, value: unknown): void {
-    this.entries.set(key, new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`));
+    const bytes = new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
+    this.entries.set(key, bytes);
+    this.durableEntries.set(key, bytes.slice());
   }
 }
 

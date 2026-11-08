@@ -2,6 +2,7 @@ import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
+import { recordBroadcastBeforeSend } from "../src/chain.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import {
   OperationJournal,
@@ -31,31 +32,74 @@ function journalFor(
   });
 }
 
+/** Sends one transaction through `NodeSubmission` and records the journal as durable at send. */
+async function submitSeeingDurable(
+  kv: MemoryKeyValueStore,
+  operationId: string,
+  beforeSubmit: (txHash: TxHash) => Promise<void>,
+): Promise<unknown[]> {
+  const seenAtBroadcast: unknown[] = [];
+  const broadcaster = {
+    async sendTx() {
+      seenAtBroadcast.push(kv.durableJson(`operations/${operationId}.json`));
+    },
+  } as unknown as AztecNode;
+  const submission = new NodeSubmission(broadcaster);
+  const hash = TxHash.fromString(TX_HASH);
+  await submission.run(
+    beforeSubmit,
+    async () => submission.node.sendTx({ getTxHash: () => hash } as Tx),
+    createSubmissionDiagnosticState("spend"),
+  );
+  return seenAtBroadcast;
+}
+
 describe("operation journal over the storage and lock ports", () => {
   it("makes the transaction hash durable before the node can receive the transaction", async () => {
     const kv = new MemoryKeyValueStore();
     const journal = journalFor(kv, new MemoryLockManager(), TAB_A);
     const operation = await journal.begin("spend", { amount: "1" });
-    const seenAtBroadcast: unknown[] = [];
-    const broadcaster = {
-      async sendTx() {
-        seenAtBroadcast.push(kv.json(`operations/${operation.id}.json`));
-      },
-    } as unknown as AztecNode;
-    const submission = new NodeSubmission(broadcaster);
-    const hash = TxHash.fromString(TX_HASH);
 
-    await submission.run(
-      async (txHash) => {
-        await journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
-      },
-      async () => submission.node.sendTx({ getTxHash: () => hash } as Tx),
-      createSubmissionDiagnosticState("spend"),
-    );
+    const seen = await submitSeeingDurable(kv, operation.id, async (txHash) => {
+      await journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
+    });
 
-    expect(seenAtBroadcast).toEqual([
+    expect(seen).toEqual([
       expect.objectContaining({ id: operation.id, status: "broadcast", txHash: TX_HASH }),
     ]);
+  });
+
+  it("LiveAztec's submit hook makes the transaction hash durable before the send", async () => {
+    const kv = new MemoryKeyValueStore();
+    const journal = journalFor(kv, new MemoryLockManager(), TAB_A);
+    const operation = await journal.begin("exit", { amount: "1" });
+
+    const seen = await submitSeeingDurable(
+      kv,
+      operation.id,
+      recordBroadcastBeforeSend(journal, operation.id),
+    );
+
+    expect(seen).toEqual([
+      expect.objectContaining({ id: operation.id, status: "broadcast", txHash: TX_HASH }),
+    ]);
+  });
+
+  it("the storage double exposes a dropped await: the send sees the record still building", async () => {
+    const kv = new MemoryKeyValueStore();
+    const journal = journalFor(kv, new MemoryLockManager(), TAB_A);
+    const operation = await journal.begin("spend", { amount: "1" });
+    let dropped: Promise<unknown> = Promise.resolve();
+
+    const seen = await submitSeeingDurable(kv, operation.id, async (txHash) => {
+      dropped = journal.update(operation.id, { status: "broadcast", txHash: txHash.toString() });
+    });
+    await dropped;
+
+    expect(seen).toEqual([expect.objectContaining({ id: operation.id, status: "building" })]);
+    expect(kv.durableJson(`operations/${operation.id}.json`)).toMatchObject({
+      status: "broadcast",
+    });
   });
 
   it("writes a precomputed transaction hash in the first durable lock write", async () => {

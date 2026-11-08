@@ -253,6 +253,19 @@ function feeJuiceClaimPayment(
   });
 }
 
+/**
+ * The `NodeSubmission` hook spend and exit run before `sendTx`: the operation's record names the
+ * transaction hash and is durable (the `update` resolved) before the node can receive it.
+ */
+export function recordBroadcastBeforeSend(
+  journal: OperationJournal,
+  operationId: string,
+): (txHash: TxHash) => Promise<void> {
+  return async (txHash) => {
+    await journal.update(operationId, { status: "broadcast", txHash: txHash.toString() });
+  };
+}
+
 export interface LiveAztecOptions {
   nodeUrl: string;
   /** Where the PXE and wallet DB live; `scope` names this recipient's stores. */
@@ -541,12 +554,7 @@ export class LiveAztec implements AztecPort {
         });
 
       return await this.nodeSubmission.run(
-        async (txHash) => {
-          await this.operationJournal.update(operation.id, {
-            status: "broadcast",
-            txHash: txHash.toString(),
-          });
-        },
+        recordBroadcastBeforeSend(this.operationJournal, operation.id),
         submitOperation,
         diagnosticState,
       );
