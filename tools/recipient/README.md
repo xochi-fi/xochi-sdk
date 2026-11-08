@@ -222,7 +222,7 @@ before any receipt challenge.
 - **Order fingerprint**: `balance` prints each received payout's order fingerprint from its
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
-The corridor record is built in (`src/corridor.ts`, OXDAI mainnet rev 2); its `manifestDigest`
+The corridor record is built in (`src/core/corridor.ts`, OXDAI mainnet rev 2); its `manifestDigest`
 `0x80b6abd7...865e` is the agreed rev 2 digest (xochi#778 pins it; Riddler#1437 records the same
 value). `--corridor FILE` takes another record, validated by the same schema.
 
@@ -236,7 +236,8 @@ it carries that exact signed acknowledgement. Backup and fresh-PXE restore prese
 Broadcaster from the vendored Noir source in `contracts/oxide` and refuses it unless its
 artifact hash is `0x2d001a2e...7d70` and its class the deployed `0x24f2762a...78ae`.
 
-Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.
+Vendored Oxide client: `src/core/oxide/vendor/VENDORED.md` (the recipient core,
+`packages/recipient-core`); its Node-only Nitro verifier: `src/node/vendor/README.md`.
 
 ## Confirming receipt
 

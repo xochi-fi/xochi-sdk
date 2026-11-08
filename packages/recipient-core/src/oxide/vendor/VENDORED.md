@@ -67,10 +67,10 @@ Global `Buffer`: the vendored files use Node's global `Buffer` unchanged, some a
   are the corridor's. pxe-bridge vendors the Noir sources and builds it reproducibly
   (`npm run build:oxide-token` there, toolchain aztec-up 6.0.0).
 - The compiled L2 Broadcaster artifact, for exits. zk.money publishes none, but its source is
-  public: `../../../contracts/oxide/` holds `noir-projects/{broadcaster_contract, oxide_lib}` from
+  public: `tools/recipient/contracts/oxide/` holds `noir-projects/{broadcaster_contract, oxide_lib}` from
   the same upstream commit, byte for byte (`Nargo.toml` and `src/`; `oxide_lib` is identical to
-  pxe-bridge's copy), with upstream's `LICENSE` and `NOTICE`. `npm run build:broadcaster`
-  (`scripts/build-broadcaster.sh`) compiles it with pxe-bridge's toolchain and flags and refuses
+  pxe-bridge's copy), with upstream's `LICENSE` and `NOTICE`. The CLI's `npm run build:broadcaster`
+  (`tools/recipient/scripts/build-broadcaster.sh`) compiles it with pxe-bridge's toolchain and flags and refuses
   the result unless its class is the deployed `0x24f2762a...78ae`; a native arm64 build on
   2026-11-03 gave exactly that class. `exit` re-checks the class against the live
   `l2Broadcaster` instance before use.
