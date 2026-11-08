@@ -16,6 +16,9 @@ All releases are private test artifacts; see the README CAUTION for what they do
   `<data-dir>/receipts/` and carried by backups. The run holds the fund-movement lock
   (README "Confirming receipt").
 - `enroll submit` records the enrolled binding digest; backups carry it and restore puts it back.
+- `receipt --legacy-binding`: a data directory enrolled before the binding digest was recorded
+  adopts the challenge's digest for its own `bindingId` only, records it in `state.json` and
+  marks the receipt record.
 - `setup`, `enroll start` and `restore` save the node URL and OxideToken artifact path for
   `receipt`; `--api-url` defaults to `https://api.xochi.fi`.
 
