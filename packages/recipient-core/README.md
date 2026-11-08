@@ -11,20 +11,27 @@ these sources into its own `dist/` (see "Consumers") instead of depending on a p
 ## Ports
 
 `src/ports.ts` is the contract every adapter implements; nothing in `src/` outside
-`src/browser/**` and the vendored Oxide subset touches a platform API (`test/platform-neutral.test.ts`
-walks the import graph from `index.ts` and `core.ts`: no `node:*`, no builtin module, no `process`,
-no global `Buffer`).
+`src/browser/**` touches a platform API. `test/platform-neutral.test.ts` checks every file under
+`src/` (static, dynamic and `require` imports: no `node:*`, no builtin module; no `process`; no
+global `Buffer`) and bundles `src/index.ts` and `src/browser/index.ts` with esbuild
+`platform: "browser"` (only the Aztec SDK's Node-only corners, `net` and `tty`, stay external).
 
-| Port                                  | Node (CLI, `tools/recipient/src/node/`)                                                                                                                                                                                                                        | Browser (`src/browser/**`)                                                                 |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `KeyValueStore`                       | `NodeKeyValueStore`: key = path under the data directory (`operations/*.json`, `operations/active.lock`, `operations/released-*.lock`, `receipts/`, `exits/`, `state.json`), 0600 files in 0700 directories, fsync + rename (`put`) or fsync + link (`create`) | OPFS (or IndexedDB `durability: "strict"`)                                                 |
-| `LockManager`                         | `NodePidLockManager`: a journal holder lock `...:holder:<pid>` is held exactly while that pid runs                                                                                                                                                             | Web Locks (a tab holds its holder lock until it closes)                                    |
-| `KeystoreCrypto`                      | `NodeKeystoreCrypto` (`sealed.ts`: node:crypto scrypt N=2^17 + AES-256-GCM)                                                                                                                                                                                    | WebCrypto AES-GCM + `@noble/hashes/scrypt`, byte-compatible                                |
-| `ArtifactLoader`                      | `NodeArtifactLoader`: the files `--oxide-token-artifact` / `--broadcaster-artifact` name                                                                                                                                                                       | `fetch` of the artifacts                                                                   |
-| `AttestationVerifier`                 | `NodeAttestationVerifier`: the vendored `verify_nitro_attestation.ts` (node:crypto X.509)                                                                                                                                                                      | `src/attestation/` (pure-JS X.509 + WebCrypto)                                             |
-| `WalletStorage` (`wallet-storage.ts`) | `NodeWalletStorage`: `{ pxe: { dataDirectory: <data-dir>/pxe }, walletDb: { store } }`, an encrypted ephemeral LMDB WalletDB                                                                                                                                   | `openEncryptedEmbeddedStores`, ONE sqlite-opfs pool per store (`storePoolDirectory(name)`) |
-| `RecipientKeySource`                  | `SealedKeystoreKeySource`: `keystore.sealed` + passphrase                                                                                                                                                                                                      | the passkey (PRF derivation) or a PKW1 unwrap                                              |
-| `Clock`, `HttpFetch`, `Log`           | `Date.now`, global `fetch`, stdout                                                                                                                                                                                                                             | the same globals                                                                           |
+The one exception is the global `Buffer`: the vendored Oxide subset (`src/oxide/vendor/`, kept
+byte for byte upstream) uses Node's global `Buffer`, some of it at module load. A browser build
+must set `globalThis.Buffer` (the `buffer` package) before it imports the core; without it the
+import throws a `ReferenceError`, and `openRecipientCore` refuses with a clear error. The Node-only
+vendored Nitro verifier (`node:crypto`) lives in the CLI (`tools/recipient/src/node/vendor/`).
+
+| Port                                  | Node (CLI, `tools/recipient/src/node/`)                                                                                                                                                                                                                        | Browser (`src/browser/**`)                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `KeyValueStore`                       | `NodeKeyValueStore`: key = path under the data directory (`operations/*.json`, `operations/active.lock`, `operations/released-*.lock`, `receipts/`, `exits/`, `state.json`), 0600 files in 0700 directories, fsync + rename (`put`) or fsync + link (`create`) | OPFS (or IndexedDB `durability: "strict"`)                                                          |
+| `LockManager`                         | `NodePidLockManager`: a journal holder lock `...:holder:<pid>` is held exactly while that pid runs (holder names only; the CLI does not open the facade, so it never takes the `...:state` lease)                                                              | Web Locks: exclusive; a tab holds its holder lock until it closes                                   |
+| `KeystoreCrypto`                      | `NodeKeystoreCrypto` (`sealed.ts`: node:crypto scrypt N=2^17 + AES-256-GCM)                                                                                                                                                                                    | WebCrypto AES-GCM + `@noble/hashes/scrypt`, byte-compatible                                         |
+| `ArtifactLoader`                      | `NodeArtifactLoader`: the files `--oxide-token-artifact` / `--broadcaster-artifact` name                                                                                                                                                                       | `fetch` of the artifacts                                                                            |
+| `AttestationVerifier`                 | `NodeAttestationVerifier`: the vendored `verify_nitro_attestation.ts` (node:crypto X.509), in `tools/recipient/src/node/vendor/`                                                                                                                               | `src/attestation/` (pure-JS X.509 + WebCrypto)                                                      |
+| `WalletStorage` (`wallet-storage.ts`) | `NodeWalletStorage`: `{ pxe: { dataDirectory: <data-dir>/pxe }, walletDb: { store } }`, an encrypted ephemeral LMDB WalletDB                                                                                                                                   | `openEncryptedEmbeddedStores`, ONE sqlite-opfs pool per store (`storePoolDirectory(name)`)          |
+| `RecipientKeySource`                  | `SealedKeystoreKeySource`: `keystore.sealed` + passphrase                                                                                                                                                                                                      | the passkey (PRF derivation) or a PKW1 unwrap                                                       |
+| `Clock`, `HttpFetch`, `Log`           | `Date.now`, global `fetch`, stdout                                                                                                                                                                                                                             | the same globals (the SDK's node reads and the enclave transport use the global `fetch` regardless) |
 
 SHA-256, keccak and HKDF come from `@noble/hashes`; randomness from `crypto.getRandomValues` /
 `crypto.randomUUID`. Where an Aztec API demands a `Buffer` the core imports it from `buffer`
@@ -41,18 +48,36 @@ before `sendTx`). `active.lock` (an atomic `create`) is the cross-process / cros
 the release-claim chain (`released-<id>-<nonce>[-<claim>].lock`) is an append-only sequence of
 atomic `create`s. Liveness of a receipt run or a release claimant is its holder lock
 (`holderLockName(operationsLockName(address), pid)`): the CLI records the process pid, the facade a
-random session id.
+random session id. The `LockManager` is that liveness probe, not the fund-movement lock. The facade
+runs every `state.json` read-modify-write under the exclusive `stateLockName(address)` lease
+(`...:operations:state`), waiting up to about five seconds for another tab's.
+
+Storage keys follow `[a-z0-9_][a-z0-9._-]{0,127}` per segment; intent ids are
+`^[a-z0-9_][a-z0-9_-]{0,63}$` (`INTENT_ID_GRAMMAR`, which covers the Worker's `xi_<32 hex>`), so
+`receipts/<intentId>.json` is always a key. Wider ids from a claim URL are refused, never mapped.
 
 ## Facade
 
-`openRecipientCore(deps)` derives the account from `deps.keys`, validates the token artifact
-against the corridor pins, opens the PXE over `deps.walletStorage`, refuses any node that is not
-the corridor's network and adds the account. `RecipientCore` then offers `sync`, `balance`,
-`payouts`, `accountState`, `signReceipt` (the CLI's `receipt` up to the POST, journaled
-`submitting`), `submitReceipt` (the POST, resent byte for byte; re-signed only after an outright
-rejection), `deploy`, `enrollStart` / `enrollSubmit` (sealed file or passkey backup mode,
-`backup-mode.ts`) / `enrollStatus`, `send`, `exit` and `close`. `importCliBackup` and
-`restoreJournals` bring a CLI recipient into a profile.
+`openRecipientCore(deps)` refuses without `globalThis.Buffer`, derives the account from
+`deps.keys`, refuses a profile recorded for another account or corridor, validates the token
+artifact against the corridor pins, opens the PXE over `deps.walletStorage`, refuses any node that
+is not the corridor's network and adds the account (closing the node and stores if a step after
+connecting fails). Its optional second argument replaces `LiveAztec.connect` (tests pass an
+`AztecPort` double). The deps and the secret account are ECMAScript `#private`: a logged or
+serialised core shows only `account` (address, instance, descriptor). `RecipientCore` then offers
+`sync`, `balance`, `payouts`, `accountState`, `signReceipt` (the CLI's `receipt` up to the POST,
+journaled `submitting`), `submitReceipt` (the POST, resent byte for byte; re-signed only after an
+outright rejection), `deploy`, `enrollStart` / `enrollSubmit` / `enrollStatus`, `send`, `exit` and
+`close`. `enrollSubmit` takes the sealed-file or passkey backup mode (`backup-mode.ts`); it refuses
+the passkey mode unless `deps.keys.kind` is `"passkey"`, and while the resolved `@xochi/signer`
+is older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request.
+
+`importCliBackup(sealed, passphrase, crypto)` opens a CLI backup; `restoreJournals(core, backup,
+sealed)` restores its journals and binding into an open core of the same account and corridor
+whose journals are empty, and records `backupCommitment` (keccak256 of `sealed`) and
+`backupTokenAckSignature` as the CLI's `restore` does. A backup with an unresolved spend, exit or
+refund is refused: reconcile it with the CLI (`xochi-recipient operations reconcile`) and back up
+again.
 
 ## Consumers
 

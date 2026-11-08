@@ -54,6 +54,12 @@ The core is platform-neutral (contract C), so nothing here imports a Node builti
 - `oxide-lib/attestation/verify_tee_attestation.ts` was removed: nothing imports it since
   `../enclave.ts` computes the user-data binding itself and checks the verifier's result.
 
+Global `Buffer`: the vendored files use Node's global `Buffer` unchanged, some at module load
+(`oxide-client/capsules.ts`, `oxide-lib-tee/account_address.ts`,
+`oxide-lib-tee/attestation/user_data.ts`). A browser build must install the `buffer` package as
+`globalThis.Buffer` before it imports the core: without it the import itself throws a
+`ReferenceError`, and `openRecipientCore` refuses with a clear error if it is gone later.
+
 ## Not vendored
 
 - The OxideToken artifact and its Noir sources. The tool takes the artifact as a file
