@@ -57,6 +57,7 @@
     "@types/node": "^22.15.17",
     "esbuild": "0.28.2",
     "playwright": "1.59.1",
+    "prettier": "~3.8.3",
     "rolldown": "1.2.16",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
