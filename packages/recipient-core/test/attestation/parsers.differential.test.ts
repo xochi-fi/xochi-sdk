@@ -43,13 +43,39 @@ function attempt(run: () => unknown): Result {
   }
 }
 
+/**
+ * The one allowed message difference: a 64-bit CBOR argument cut short. The vendored reader
+ * calls Buffer#readBigUInt64BE, which throws Node's own RangeError; the port reports it like
+ * every other short read.
+ */
+const SHORT_64_BIT_READ: Result = {
+  ok: false,
+  name: "Error",
+  message: "unexpected end of CBOR integer",
+};
+
 function expectSameDecode(bytes: Uint8Array): void {
   // An unpooled copy: Buffer.from(Uint8Array) would allocate inside Node's shared pool.
   const unpooled = Buffer.from(Uint8Array.from(bytes).buffer);
   const node = attempt(() => plain(vendored.decodeCbor(unpooled)));
   const port = attempt(() => plain(decodeCbor(bytes)));
-  expect(port, Buffer.from(bytes).toString("hex")).toEqual(node);
+  const context = Buffer.from(bytes).toString("hex");
+  if (!node.ok && node.name === "RangeError") {
+    expect(port, context).toEqual(SHORT_64_BIT_READ);
+    return;
+  }
+  expect(port, context).toEqual(node);
 }
+
+describe("decodeCbor results never alias the input", () => {
+  it("copies byte strings out of a Buffer input, as the vendored reader does", () => {
+    const input = Buffer.from("4401020304", "hex");
+    const decoded = decodeCbor(input);
+    input.fill(0xff);
+    expect(decoded).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(Buffer.isBuffer(decoded)).toBe(false);
+  });
+});
 
 const hex = (s: string): Uint8Array => new Uint8Array(Buffer.from(s.replace(/\s/g, ""), "hex"));
 

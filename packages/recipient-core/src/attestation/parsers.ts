@@ -3,8 +3,9 @@
 // (zkmoney-public 8fd1984, MIT, Copyright (c) 2026 Aztec Labs; see that directory's VENDORED.md).
 // The vendored file reads Node's global Buffer and lives outside this package, so it cannot be
 // imported here; this copy keeps its control flow, its order of checks and its error messages,
-// and replaces only the Buffer calls. test/attestation holds it to the vendored file
-// differentially (same values, same refusals).
+// and replaces only the Buffer calls. A 64-bit argument cut short reports "unexpected end of CBOR
+// integer" like every other short read (the vendored reader surfaces Node's Buffer RangeError).
+// test/attestation holds it to the vendored file differentially (same values, same refusals).
 
 import type { ParsedNitroAttestation } from "../ports.js";
 
@@ -138,14 +139,8 @@ class CborReader {
       return BigInt(this.readUInt(4));
     }
     if (additional === 27) {
-      // Buffer.readBigUInt64BE's refusal of a short read (Node lib/internal/buffer.js boundsError).
-      const last = this.bytes.length - 8;
-      if (this.offset > last) {
-        throw new RangeError(
-          last < 0
-            ? "Attempt to access memory outside buffer bounds"
-            : `The value of "offset" is out of range. It must be >= 0 and <= ${last}. Received ${this.offset}`,
-        );
+      if (this.offset + 8 > this.bytes.length) {
+        throw new Error("unexpected end of CBOR integer");
       }
       const view = new DataView(this.bytes.buffer, this.bytes.byteOffset, this.bytes.byteLength);
       const value = view.getBigUint64(this.offset, false);
@@ -223,7 +218,9 @@ function concatBytes(chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
 }
 
 export function decodeCbor(bytes: Uint8Array): CborValue {
-  const reader = new CborReader(bytes);
+  // A plain view, never a Buffer: Buffer#slice returns a view, Uint8Array#slice a copy, and the
+  // decoded byte strings must not alias the caller's bytes.
+  const reader = new CborReader(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
   const value = reader.read();
   reader.assertDone();
   return value;
