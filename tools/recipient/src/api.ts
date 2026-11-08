@@ -37,72 +37,16 @@ const NetworkIdentitySchema = z
   .strict();
 
 /**
- * The intent's signed ShieldedTermsV1 typed data, verbatim as Xochi stored it (`signed_eip712`
- * `.terms`; members as the Worker's own schema types them). `receipt.ts` checks it hashes to
- * `terms_digest` under the pinned types and this corridor's terms domain.
+ * The intent's ShieldedTermsV1 typed data, verbatim as Xochi stored it (`signed_eip712`
+ * `.terms`). Only its envelope is checked here: `receipt.ts` refuses, by name, any types,
+ * domain or message that are not ShieldedTermsV1's before hashing it against `terms_digest`.
  */
 const ReceiptTermsSchema = z
   .object({
     types: z.record(z.string(), z.array(z.object({ name: z.string(), type: z.string() }).strict())),
-    primaryType: z.literal("ShieldedTermsV1"),
-    domain: z
-      .object({
-        name: z.string(),
-        version: z.string(),
-        chainId: z.number().int().positive(),
-        salt: anyCaseHex32,
-      })
-      .strict(),
-    message: z
-      .object({
-        protocolVersion: z.string(),
-        environment: z.string(),
-        intentId: z.string(),
-        quoteId: z.string(),
-        operationId: z.string(),
-        source: z
-          .object({
-            chainId: decimal,
-            token: anyCaseEvm,
-            wallet: anyCaseEvm,
-            collector: anyCaseEvm,
-            amount: decimal,
-          })
-          .strict(),
-        destination: z
-          .object({
-            settlementType: z.string(),
-            privacyLevel: z.string(),
-            disclosureProfile: z.string(),
-            rail: z.string(),
-            network: NetworkIdentitySchema,
-            corridor: z
-              .object({
-                corridorId: anyCaseHex32,
-                corridorRevision: decimal,
-                manifestDigest: anyCaseHex32,
-              })
-              .strict(),
-            assetId: z.string(),
-            aztecToken: anyCaseHex32,
-            recipientBindingId: z.string(),
-            descriptorDigest: anyCaseHex32,
-            aztecRecipient: anyCaseHex32,
-            amount: decimal,
-            feePayer: anyCaseHex32,
-          })
-          .strict(),
-        feeBreakdown: z.record(z.string(), decimal),
-        sourceAuthorizationDigest: anyCaseHex32,
-        refundAddress: anyCaseEvm,
-        refundAmount: decimal,
-        collectBefore: decimal,
-        settlementServiceDeadline: decimal,
-        recipientBindingDigest: anyCaseHex32,
-        policyRevision: decimal,
-        reservationId: z.string(),
-      })
-      .strict(),
+    primaryType: z.string(),
+    domain: z.record(z.string(), z.unknown()),
+    message: z.record(z.string(), z.unknown()),
   })
   .strict();
 export type ReceiptTerms = z.infer<typeof ReceiptTermsSchema>;
@@ -164,12 +108,14 @@ export function assertIntentId(intentId: string): string {
 /**
  * The receipt refusals that reject the signed acknowledgement or its challenge outright, so a
  * fresh challenge may replace it (`error_category`, wire contract): never a 401/403/408/429/5xx,
- * nor `payout_not_final` or `receipt_tx_conflict`.
+ * nor `payout_not_final` or `receipt_tx_conflict`. `receipt_challenge_unknown` is a challenge the
+ * Worker purged unconsumed (or never issued): nothing was accepted under it.
  */
 const RECEIPT_REJECTIONS: Readonly<Record<string, number>> = {
   receipt_challenge_expired: 410,
   receipt_challenge_consumed: 409,
   receipt_ack_rejected: 409,
+  receipt_challenge_unknown: 400,
 };
 
 export class EnrollmentApiError extends Error {

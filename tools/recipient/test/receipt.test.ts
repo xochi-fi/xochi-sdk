@@ -125,10 +125,13 @@ describe("receipt API", () => {
     });
     expect(refusal(410, "receipt_challenge_expired").rejectsReceipt).toBe(true);
     expect(refusal(409, "receipt_challenge_consumed").rejectsReceipt).toBe(true);
+    expect(refusal(400, "receipt_challenge_unknown").rejectsReceipt).toBe(true);
     for (const kept of [
       refusal(409, "payout_not_final"),
       refusal(409, "receipt_tx_conflict"),
       refusal(409),
+      refusal(400),
+      refusal(409, "receipt_challenge_unknown"),
       refusal(429, "receipt_ack_rejected"),
       refusal(401),
       refusal(503),
@@ -149,6 +152,8 @@ const ARTIFACT = { name: "OxideToken" } as ContractArtifact;
 /** The recipient's own node and PXE: discovered payouts, node receipts and spendability. */
 class PayoutNode extends DryRunAztec {
   simulationError: Error | null = null;
+  /** The PXE's balance after sync; 0 unless a test sets it. */
+  balanceValue = 0n;
 
   constructor(
     private readonly events: string[],
@@ -166,6 +171,10 @@ class PayoutNode extends DryRunAztec {
   override async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
     this.events.push(`txReceipt ${txHash}`);
     return this.nodeReceipts[txHash] ?? FINALIZED;
+  }
+
+  override async balance(): Promise<bigint> {
+    return this.balanceValue;
   }
 
   override async simulateTransfer(
@@ -227,7 +236,6 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
       {
         intentId: INTENT,
         tx: null,
-        untagged: false,
         alreadySpent: false,
         bindingDigest: enrolledAccount.bindingDigest,
         bindingId: "TEST-ONLY-binding",
@@ -242,9 +250,9 @@ function setup(payouts: ReceivedTransfer[] = [payoutFor(E, TERMS)], enrolledAcco
   return { events, lines, port, operations, receipts, worker, run };
 }
 
-/** A completed spend in the fund-movement journal, mined in `txHash`. */
-function completedSpend(operations: OperationJournal, txHash: string): void {
-  const spend = operations.begin("spend", { amount: AMOUNT.toString() });
+/** A completed spend of `amount` in the fund-movement journal, mined in `txHash`. */
+function completedSpend(operations: OperationJournal, txHash: string, amount = AMOUNT): void {
+  const spend = operations.begin("spend", { amount: amount.toString() });
   operations.update(spend.id, { status: "broadcast", txHash });
   operations.update(spend.id, { status: "complete", txHash });
 }
@@ -267,7 +275,6 @@ describe("receipt command", () => {
       operationId: CHALLENGE.receipt.operation_id,
       txHash: hex("a7"),
       blockNumber: "4242",
-      untagged: false,
       alreadySpentBy: null,
     });
     expect(receipts.read(INTENT)).toEqual(record);
@@ -323,39 +330,91 @@ describe("receipt command", () => {
     expect(record).toMatchObject({ status: "submitted", alreadySpentBy: hex("5e") });
   });
 
-  it("refuses --already-spent without a spend or exit mined after the payout", async () => {
+  it("refuses --already-spent without a spend or exit of the amount mined after the payout", async () => {
+    for (const [block, amount] of [
+      [4000, AMOUNT],
+      [5000, AMOUNT - 1n],
+    ] as const) {
+      const { port, operations, run } = await setup();
+      port.simulationError = new Error("TEST ONLY balance too low");
+      completedSpend(operations, hex("5e"), amount);
+      port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: block };
+      await expect(run()).rejects.toThrow(/simulation failed/);
+      await expect(run()).rejects.not.toThrow(/--already-spent/);
+      await expect(run({ alreadySpent: true })).rejects.toThrow(
+        /no completed spend or exit of at least 25000000000000000000/,
+      );
+    }
+  });
+
+  it("never offers --already-spent when the balance still covers the amount", async () => {
     const { port, operations, run } = await setup();
+    port.simulationError = new Error("TEST ONLY node unreachable");
+    port.balanceValue = AMOUNT;
+    completedSpend(operations, hex("5e"));
+    port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
+    await expect(run()).rejects.toThrow(/simulation failed: TEST ONLY node unreachable/);
+    await expect(run()).rejects.not.toThrow(/--already-spent/);
+    await expect(run({ alreadySpent: true })).rejects.toThrow(
+      /balance still covers the amount: the simulation failed for another reason/,
+    );
+  });
+
+  it("records --already-spent on a re-signed attempt too", async () => {
+    const { port, operations, receipts, worker, run } = await setup();
+    worker.refusals.push(refusal(503));
+    await expect(run()).rejects.toThrow(/503/);
+    expect(receipts.read(INTENT)).toMatchObject({ alreadySpentBy: null });
     port.simulationError = new Error("TEST ONLY balance too low");
     completedSpend(operations, hex("5e"));
-    port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 4000 };
-    await expect(run({ alreadySpent: true })).rejects.toThrow(/no completed spend or exit/);
+    port.nodeReceipts[hex("5e")] = { ...FINALIZED, blockNumber: 5000 };
+    worker.refusals.push(refusal(409, "receipt_ack_rejected"));
+    expect(await run({ alreadySpent: true })).toMatchObject({
+      status: "submitted",
+      alreadySpentBy: hex("5e"),
+    });
   });
 
-  it("--legacy-binding: signs under the challenge's digest for this directory's binding id, and records it", async () => {
+  it("--legacy-binding: signs under the challenge's digest, saves it only once Xochi accepts", async () => {
     const remembered: string[] = [];
-    const { lines, receipts, run } = await setup();
-    await expect(run({ bindingDigest: null })).rejects.toThrow(/--legacy-binding/);
-    expect(receipts.read(INTENT)).toBeNull();
-    const record = await run({
+    const { lines, receipts, worker, run } = await setup();
+    const legacy = {
       bindingDigest: null,
-      legacyBinding: true,
-      rememberBindingDigest: (digest) => remembered.push(digest),
-    });
+      rememberBindingDigest: (digest: string) => remembered.push(digest),
+    };
+    await expect(run(legacy)).rejects.toThrow(/--legacy-binding/);
+    expect(receipts.read(INTENT)).toBeNull();
+    worker.refusals.push(refusal(503));
+    await expect(run({ ...legacy, legacyBinding: true })).rejects.toThrow(/503/);
+    expect(remembered).toEqual([]);
+    expect(lines).toContain(
+      `receipt: --legacy-binding: signing under binding TEST-ONLY-binding, digest ${E.bindingDigest} (saved to state.json once Xochi accepts the receipt)`,
+    );
+    const record = await run(legacy);
     expect(record).toMatchObject({ status: "submitted", legacyBinding: true });
     expect(remembered).toEqual([E.bindingDigest]);
-    expect(lines).toContain(
-      `receipt: --legacy-binding: signing under binding TEST-ONLY-binding, digest ${E.bindingDigest} (recorded in state.json; later runs need no flag)`,
-    );
   });
 
-  it("acknowledges an untagged payout only as --tx HASH --untagged, and says so", async () => {
-    const { lines, run } = await setup([payoutFor(E, TERMS, { meta: UNTAGGED_META })]);
-    await expect(run()).rejects.toThrow(/--untagged/);
-    const record = await run({ tx: hex("a7"), untagged: true });
-    expect(record).toMatchObject({ status: "submitted", untagged: true });
-    expect(lines.some((line) => /WARNING: payout .* carries no order fingerprint/.test(line))).toBe(
-      true,
-    );
+  it("never acknowledges an untagged payout", async () => {
+    const { worker, run } = await setup([payoutFor(E, TERMS, { meta: UNTAGGED_META })]);
+    await expect(run()).rejects.toThrow(/no payout of this intent/);
+    await expect(run({ tx: hex("a7") })).rejects.toThrow(/not a payout of this intent/);
+    expect(worker.bodies).toEqual([]);
+  });
+
+  it("signs again under a new challenge when Xochi purged the recorded one", async () => {
+    const { events, receipts, worker, run } = await setup();
+    worker.refusals.push(refusal(401));
+    await expect(run()).rejects.toThrow(/401/);
+    worker.refusals.push(refusal(400, "receipt_challenge_unknown"));
+    events.length = 0;
+    expect(await run()).toMatchObject({ status: "submitted", txHash: hex("a7") });
+    expect(events.filter((e) => e.startsWith("challenge") || e.startsWith("submit"))).toEqual([
+      `submit ${INTENT}`,
+      `challenge ${INTENT}`,
+      `submit ${INTENT}`,
+    ]);
+    expect(receipts.read(INTENT)!.attempts).toHaveLength(2);
   });
 
   it("answers an accepted receipt from the journal without any call", async () => {
@@ -426,7 +485,6 @@ describe("receipt command", () => {
         {
           intentId: other,
           tx: null,
-          untagged: false,
           alreadySpent: false,
           bindingDigest: E.bindingDigest,
           bindingId: "TEST-ONLY-binding",
@@ -453,7 +511,6 @@ describe("receipt command", () => {
         {
           intentId: INTENT,
           tx: null,
-          untagged: false,
           alreadySpent: false,
           bindingDigest: E.bindingDigest,
           bindingId: "TEST-ONLY-binding",

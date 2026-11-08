@@ -105,7 +105,7 @@ Commands (in round-trip order):
   setup                    check the network; publish + initialize the account; register the
                            corridor senders and the OxideToken (+ store_immutables)
   balance                  sync and show the OXDAI balance and received payouts' order fingerprints
-  receipt INTENT_ID [--tx HASH [--untagged]] [--already-spent]
+  receipt INTENT_ID [--tx HASH] [--already-spent] [--legacy-binding [--binding-id ID]]
                            after a shielded payout, before spending it: confirm receipt to Xochi
                            with a signed PaymentReceiptAck for this intent's payout, found by
                            this PXE, finalized on your node and spendable. Reuses the node URL
@@ -139,10 +139,10 @@ Options:
   --binding-id ID              enroll status
   --l1-rpc URL                 L1 JSON-RPC of your choice (spend, exit, refund)
   --tx HASH                    receipt: the payout transaction, if several payouts match
-  --untagged                   receipt: with --tx, a payout made before order tagging (warned)
   --already-spent              receipt: this account spent the payout after it landed
   --legacy-binding             receipt: a data directory enrolled before its binding digest was
                                recorded adopts the challenge's, for its own binding id only
+                               (--binding-id ID when state.json has none)
   --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
@@ -258,7 +258,6 @@ interface Values {
   bundle?: string;
   "raw-transaction"?: string;
   tx?: string;
-  untagged?: boolean;
   "already-spent"?: boolean;
   "legacy-binding"?: boolean;
   "dry-run"?: boolean;
@@ -296,7 +295,6 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       bundle: string,
       "raw-transaction": string,
       tx: string,
-      untagged: { type: "boolean" },
       "already-spent": { type: "boolean" },
       "legacy-binding": { type: "boolean" },
       "dry-run": { type: "boolean" },
@@ -313,7 +311,7 @@ const required = (
   values: Values,
   name: Exclude<
     keyof Values,
-    "out" | "dry-run" | "version" | "help" | "untagged" | "already-spent" | "legacy-binding"
+    "out" | "dry-run" | "version" | "help" | "already-spent" | "legacy-binding"
   >,
 ): string => {
   const v = values[name];
@@ -676,10 +674,11 @@ export async function run(argv: string[]): Promise<void> {
         exits: readExitJournal(join(store.dir, "exits")),
         receipts: new ReceiptJournal(join(store.dir, "receipts")).records(),
       };
-      // The binding being enrolled (its backup is acknowledged), else the one enrolled.
-      const bindingDigest = state.pending
-        ? bindingTypedData(state.corridor, state.pending.binding).digest
-        : (state.bindingDigest ?? null);
+      // The binding being enrolled (its backup is acknowledged; it has no id yet), else the one
+      // enrolled.
+      const binding = state.pending
+        ? { id: null, digest: bindingTypedData(state.corridor, state.pending.binding).digest }
+        : { id: state.bindingId ?? null, digest: state.bindingDigest ?? null };
       const sealed = sealBackup(
         backupContents(
           state.corridor,
@@ -689,7 +688,7 @@ export async function run(argv: string[]): Promise<void> {
           tokenAck,
           Math.floor(Date.now() / 1000),
           journals,
-          bindingDigest,
+          binding,
         ),
         await passphrase(true),
       );
@@ -814,6 +813,7 @@ export async function run(argv: string[]): Promise<void> {
         backupCommitment: keccak256(backupBytes),
         backupTokenAckSignature: contents.tokenRegistrationAck?.signature ?? null,
         tokenRegistrationAck: tokenAckForState(contents.tokenRegistrationAck),
+        ...(contents.bindingId ? { bindingId: contents.bindingId } : {}),
         ...(contents.bindingDigest ? { bindingDigest: contents.bindingDigest } : {}),
       };
       store.writeKeystore(secrets, pass);
@@ -840,9 +840,13 @@ export async function run(argv: string[]): Promise<void> {
           fail("use refund reconcile for an L1 refund operation");
         }
         if (operation.kind === "receipt") {
-          fail(
-            `a receipt run (pid ${operation.request["pid"]} on ${operation.request["host"]}) holds the lock; it moves no funds, and the next command releases it once that run has ended`,
+          // A receipt run moved no funds: releasing its lock is always safe. Only the operator
+          // runs this, and only when no receipt run is still active (its pid may be reused).
+          journal.releaseReceiptLock(operation.id);
+          log(
+            `operation ${operation.id}: released the lock of receipt run pid ${operation.request["pid"]} on ${operation.request["host"]} (it moved no funds)`,
           );
+          return;
         }
         const txHash =
           operation.txHash ??
@@ -916,8 +920,18 @@ export async function run(argv: string[]): Promise<void> {
       const intentId = assertIntentId(
         sub ?? fail("receipt needs the intent id: receipt INTENT_ID"),
       );
-      // The offline artifact preflight runs first, as for every artifact command.
+      // Before the artifact preflight: a binding id conflict needs no file.
       const saved = store.readState();
+      const legacyBindingId = values["binding-id"] ?? null;
+      if (legacyBindingId !== null && !values["legacy-binding"]) {
+        fail("--binding-id is only for receipt --legacy-binding");
+      }
+      if (legacyBindingId !== null && saved.bindingId && legacyBindingId !== saved.bindingId) {
+        fail(
+          `--binding-id ${legacyBindingId} is not this data directory's enrolled binding id ${saved.bindingId}`,
+        );
+      }
+      // The offline artifact preflight runs first, as for every artifact command.
       const artifact = await loadTokenArtifact(
         flagOrSaved(
           values,
@@ -944,13 +958,18 @@ export async function run(argv: string[]): Promise<void> {
             {
               intentId,
               tx: values.tx ?? null,
-              untagged: values.untagged ?? false,
               alreadySpent: values["already-spent"] ?? false,
               bindingDigest: state.bindingDigest ?? null,
-              bindingId: state.bindingId ?? null,
+              bindingId: state.bindingId ?? legacyBindingId,
               legacyBinding: values["legacy-binding"] ?? false,
-              rememberBindingDigest: (bindingDigest) =>
-                store.writeState({ ...store.readState(), bindingDigest }),
+              rememberBindingDigest: (bindingDigest) => {
+                const current = store.readState();
+                store.writeState({
+                  ...current,
+                  bindingDigest,
+                  bindingId: current.bindingId ?? legacyBindingId ?? undefined,
+                });
+              },
               dryRun: ctx.port.mode === "dry-run",
             },
           );

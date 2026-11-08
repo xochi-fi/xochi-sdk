@@ -305,8 +305,6 @@ export interface ReceiptRequest {
   intentId: string;
   /** `--tx`: the payout transaction, when more than one payout of the intent matches. */
   tx: string | null;
-  /** `--untagged`: `tx` is a payout made before order tagging (warned, never automatic). */
-  untagged: boolean;
   /** `--already-spent`: this account spent the payout after it landed (recorded). */
   alreadySpent: boolean;
   /** The RecipientBinding digest this data directory enrolled, if it knows it. */
@@ -315,7 +313,7 @@ export interface ReceiptRequest {
   bindingId: string | null;
   /** `--legacy-binding`: adopt the challenge's digest for `bindingId` (no digest recorded). */
   legacyBinding: boolean;
-  /** Records a binding digest adopted with `--legacy-binding`, so later runs need no flag. */
+  /** Saves an adopted binding digest once Xochi accepts its receipt; later runs need no flag. */
   rememberBindingDigest: (digest: string) => void;
   /** Dry run: nothing is locked or written. */
   dryRun: boolean;
@@ -426,16 +424,15 @@ async function receiptUnderLock(
     );
   }
   if (checked.legacyBinding) {
-    if (!request.dryRun) request.rememberBindingDigest(checked.bindingDigest);
     ctx.log(
-      `receipt: --legacy-binding: signing under binding ${challenge.receipt.binding_id}, digest ${checked.bindingDigest} (recorded in state.json; later runs need no flag)`,
+      `receipt: --legacy-binding: signing under binding ${challenge.receipt.binding_id}, digest ${checked.bindingDigest} (saved to state.json once Xochi accepts the receipt)`,
     );
   }
   ctx.log(
     `receipt: challenge ${challenge.challenge_id} for intent ${intentId}: ${checked.amount} base units, terms ${checked.termsDigest}, order fingerprint ${checked.orderFingerprint}`,
   );
 
-  const { transfer, tagged } = selectReceiptTransfer(
+  const transfer = selectReceiptTransfer(
     transfers,
     {
       amount: checked.amount,
@@ -443,13 +440,8 @@ async function receiptUnderLock(
       senders: ctx.corridor.registeredSenders,
     },
     receipts.receiptedTxHashes(intentId),
-    { tx: recorded?.txHash ?? request.tx, untagged: recorded?.untagged ?? request.untagged },
+    recorded?.txHash ?? request.tx,
   );
-  if (!tagged) {
-    ctx.log(
-      `receipt: WARNING: payout ${transfer.txHash} carries no order fingerprint; only your --tx ties it to intent ${intentId}. Acknowledge it only if you know it is this intent's payout.`,
-    );
-  }
   const node = await ctx.port.txReceipt(transfer.txHash);
   if (node.status !== TxStatus.FINALIZED) {
     throw new Error(
@@ -484,7 +476,7 @@ async function receiptUnderLock(
   ctx.log(`receipt: signed PaymentReceiptAck ${digest}`);
   if (!request.dryRun) {
     if (recorded) {
-      receipts.retry(intentId, submission);
+      receipts.retry(intentId, submission, alreadySpentBy);
     } else {
       receipts.begin({
         intentId,
@@ -493,7 +485,6 @@ async function receiptUnderLock(
         amount: checked.amount.toString(),
         txHash: transfer.txHash,
         blockNumber: String(transfer.blockNumber),
-        untagged: !tagged,
         legacyBinding: checked.legacyBinding,
         alreadySpentBy,
         request: submission,
@@ -505,9 +496,10 @@ async function receiptUnderLock(
 }
 
 /**
- * Simulates spending `amount` in this PXE. When that fails and `--already-spent` is given, the
- * payout counts as received only if this account's own completed spend or exit was mined after
- * it; that transaction is returned for the record. Otherwise nothing is signed.
+ * Simulates spending `amount` in this PXE. When that fails, `--already-spent` lets the payout
+ * count as received only if the balance no longer covers the amount and this account's own
+ * completed spend or exit of at least the amount was mined after the payout; that transaction is
+ * returned for the record. Otherwise nothing is signed.
  */
 async function assertSpendable(
   ctx: Ctx,
@@ -523,41 +515,52 @@ async function assertSpendable(
     return null;
   } catch (error) {
     const cause = error instanceof Error ? error.message : String(error);
-    const spender = await spentAfter(ctx, operations, transfer.blockNumber);
+    const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
+    const balance = await ctx.port.balance(artifact, token, account.address);
+    const spender =
+      balance < amount ? await spentAfter(ctx, operations, transfer.blockNumber, amount) : null;
     if (!alreadySpent) {
       throw new Error(
         `simulation failed: ${cause}; receipt not signed${
           spender
-            ? `. This account's ${spender.kind} ${spender.txHash} was mined after the payout: if it spent the payout, run receipt again with --already-spent`
+            ? `. The balance (${balance}) no longer covers the amount, and this account's ${spender.kind} ${spender.txHash} of at least the amount was mined after the payout: if it spent the payout, run receipt again with --already-spent`
             : ""
         }`,
         { cause: error },
       );
     }
+    if (balance >= amount) {
+      throw new Error(
+        `simulation failed: ${cause}; --already-spent refused: this PXE's balance still covers the amount: the simulation failed for another reason`,
+        { cause: error },
+      );
+    }
     if (!spender) {
       throw new Error(
-        `simulation failed: ${cause}; --already-spent needs this account's completed spend or exit mined after the payout's block ${transfer.blockNumber}, and the journal has no completed spend or exit after it`,
+        `simulation failed: ${cause}; --already-spent refused: the journal has no completed spend or exit of at least ${amount} base units mined after the payout's block ${transfer.blockNumber}`,
         { cause: error },
       );
     }
     ctx.log(
-      `receipt: simulation failed (${cause}); --already-spent: this account's ${spender.kind} ${spender.txHash} spent after the payout, recorded with the receipt`,
+      `receipt: simulation failed (${cause}); --already-spent: this account's ${spender.kind} ${spender.txHash} spent the payout after it landed, recorded with the receipt`,
     );
     return spender.txHash;
   }
 }
 
-/** This account's first completed spend or exit that the node puts after `block`. */
+/** This account's first completed spend or exit of at least `amount` mined after `block`. */
 async function spentAfter(
   ctx: Ctx,
   operations: OperationJournal,
   block: number,
+  amount: bigint,
 ): Promise<{ kind: string; txHash: string } | null> {
   for (const record of operations.records()) {
     if ((record.kind !== "spend" && record.kind !== "exit") || record.status !== "complete") {
       continue;
     }
-    if (!record.txHash) continue;
+    const spent = record.request["amount"];
+    if (!record.txHash || spent === undefined || BigInt(spent) < amount) continue;
     const node = await ctx.port.txReceipt(record.txHash);
     if (node.executionSucceeded && node.blockNumber !== null && node.blockNumber > block) {
       return { kind: record.kind, txHash: record.txHash };
@@ -577,7 +580,12 @@ function accept(
     throw new Error(`the Worker answered for intent ${answeredIntentId}, not ${request.intentId}`);
   }
   ctx.log(`receipt: intent ${request.intentId} completed; receipt_digest ${receiptDigest}`);
-  return request.dryRun
-    ? null
-    : receipts.complete(request.intentId, receiptDigest, new Date().toISOString());
+  if (request.dryRun) return null;
+  const record = receipts.complete(request.intentId, receiptDigest, new Date().toISOString());
+  if (record.legacyBinding && request.bindingDigest === null) {
+    const adopted = record.attempts.at(-1)!.request.acknowledgement.message.bindingDigest;
+    request.rememberBindingDigest(adopted);
+    ctx.log(`receipt: binding digest ${adopted} saved to state.json; later runs need no flag`);
+  }
+  return record;
 }

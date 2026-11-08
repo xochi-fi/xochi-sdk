@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { RECIPIENT_ACK_PURPOSES } from "@xochi/signer";
 
 import { signRecipientDigest } from "../src/account.js";
-import type { ReceiptChallenge } from "../src/api.js";
+import { HttpEnrollmentApi, type ReceiptChallenge } from "../src/api.js";
 import {
   SHIELDED_TERMS_TYPES,
   checkReceiptChallenge,
@@ -31,6 +31,15 @@ import {
   termsFor,
   workerVerifies,
 } from "./receipt-fixtures.js";
+
+/** The challenge as the HTTP client parses it from a 201 body. */
+const http = (challenge: unknown) =>
+  new HttpEnrollmentApi(
+    "https://api.xochi.fi",
+    "TEST ONLY jwt",
+    (async () =>
+      new Response(JSON.stringify(challenge), { status: 201 })) as unknown as typeof fetch,
+  );
 
 const spec = JSON.parse(
   readFileSync(
@@ -128,6 +137,35 @@ describe("receipt challenge terms", () => {
     expect(() => check(otherDomain)).toThrow(/domain/);
   });
 
+  it("refuse a terms member ShieldedTermsV1 does not have, by name, not with a schema dump", async () => {
+    const extraTypes = {
+      ...SHIELDED_TERMS_TYPES,
+      ShieldedTermsV1: [...SHIELDED_TERMS_TYPES.ShieldedTermsV1, { name: "memo", type: "string" }],
+    };
+    const extended = { ...TERMS, types: extraTypes, message: { ...TERMS.message, memo: "x" } };
+    const challenge = challengeFor(E, extended as typeof TERMS);
+    const parsed = await http(challenge).requestReceiptChallenge(INTENT);
+    expect(() => check(parsed)).toThrow(/other typed-data types than ShieldedTermsV1/);
+    const { reservationId: _dropped, ...short } = TERMS.message;
+    const missing = {
+      ...CHALLENGE,
+      receipt: { ...CHALLENGE.receipt, terms: { ...CHALLENGE.receipt.terms, message: short } },
+    };
+    expect(() => check(missing)).toThrow(
+      /the terms message does not match ShieldedTermsV1 \(reservationId/,
+    );
+  });
+
+  it("refuse a corridor revision whose payout send mode is not known", () => {
+    const revision3 = { ...corridor, corridorRevision: "3" };
+    expect(() =>
+      checkReceiptChallenge(revision3, E.account, CHALLENGE, {
+        intentId: INTENT,
+        bindingDigest: E.bindingDigest,
+      }),
+    ).toThrow(/corridor revision 3 has no known payout send mode/);
+  });
+
   it("refuse unless the terms and challenge name this data directory's enrolled binding", () => {
     expect(() => check(CHALLENGE, null)).toThrow(/enrolled binding digest is unknown/);
     expect(() => check(CHALLENGE, hex("b1"))).toThrow(/binding/);
@@ -167,10 +205,15 @@ describe("receipt challenge terms", () => {
 
     it("refuses another binding id, an unknown one, or a data directory that knows its digest", () => {
       expect(() => legacy(CHALLENGE, "another-binding")).toThrow(/binding id/);
-      expect(() => legacy(CHALLENGE, null)).toThrow(/no enrolled binding id/);
+      expect(() => legacy(CHALLENGE, null)).toThrow(/no enrolled binding id.*--binding-id/);
       expect(() => legacy(CHALLENGE, "TEST-ONLY-binding", E.bindingDigest)).toThrow(
         /only for a data directory without a recorded binding digest/,
       );
+    });
+
+    it("requires the terms' hashed recipientBindingId to be this data directory's binding id", () => {
+      const relabelled = edited((m) => (m.destination.recipientBindingId = "another-binding"));
+      expect(() => legacy(relabelled)).toThrow(/recipientBindingId another-binding/);
     });
 
     it("still requires the terms to name that digest, this account, descriptor, token and network", () => {
@@ -196,7 +239,6 @@ describe("payout selection", () => {
   const fp = expectedFingerprint(E, TERMS);
   const want = { amount: AMOUNT, orderFingerprint: fp, senders: corridor.registeredSenders };
   const none = new Set<string>();
-  const auto = { tx: null, untagged: false };
 
   it("picks the corridor sender's payout tagged with this intent's order fingerprint", () => {
     const chosen = selectReceiptTransfer(
@@ -207,62 +249,44 @@ describe("payout selection", () => {
       ],
       want,
       none,
-      auto,
+      null,
     );
-    expect(chosen).toMatchObject({ tagged: true, transfer: { txHash: hex("a7") } });
+    expect(chosen.txHash).toBe(hex("a7"));
   });
 
   it("never counts a transfer from any other sender, such as the account's own", () => {
     const self = payoutFor(E, TERMS, { from: E.account.descriptor.aztecAddress });
-    expect(() => selectReceiptTransfer([self], want, none, auto)).toThrow(
+    expect(() => selectReceiptTransfer([self], want, none, null)).toThrow(
       /no payout from the corridor's sender/,
     );
-    expect(() =>
-      selectReceiptTransfer([self], want, none, { tx: hex("a7"), untagged: true }),
-    ).toThrow(/not from the corridor's sender/);
+    expect(() => selectReceiptTransfer([self], want, none, hex("a7"))).toThrow(
+      /no payout from the corridor's sender/,
+    );
   });
 
-  it("refuses an untagged payout unless --tx names it with --untagged", () => {
+  it("never acknowledges an untagged payout, and never suggests one", () => {
     const untagged = payoutFor(E, TERMS, { meta: UNTAGGED_META });
-    expect(() => selectReceiptTransfer([untagged], want, none, auto)).toThrow(/--untagged/);
-    expect(() =>
-      selectReceiptTransfer([untagged], want, none, { tx: null, untagged: true }),
-    ).toThrow(/--untagged needs --tx/);
-    expect(
-      selectReceiptTransfer([untagged], want, none, { tx: hex("a7"), untagged: true }),
-    ).toMatchObject({ tagged: false, transfer: { txHash: hex("a7") } });
-    const otherOrder = payoutFor(E, TERMS, { meta: metaFor(hex("ee")) });
-    expect(() =>
-      selectReceiptTransfer([otherOrder], want, none, { tx: hex("a7"), untagged: true }),
-    ).toThrow(/another order/);
-  });
-
-  it("refuses --untagged while this intent's tagged payout exists", () => {
-    const tagged = payoutFor(E, TERMS);
-    const untagged = payoutFor(E, TERMS, { txHash: hex("b2"), meta: UNTAGGED_META });
-    expect(() =>
-      selectReceiptTransfer([tagged, untagged], want, none, { tx: hex("b2"), untagged: true }),
-    ).toThrow(new RegExp(`tagged payout ${hex("a7")}`));
+    expect(() => selectReceiptTransfer([untagged], want, none, null)).toThrow(
+      /no payout of this intent/,
+    );
+    expect(() => selectReceiptTransfer([untagged], want, none, null)).not.toThrow(/untagged/);
+    expect(() => selectReceiptTransfer([untagged], want, none, hex("a7"))).toThrow(
+      /not a payout of this intent/,
+    );
   });
 
   it("lets --tx pick only among this intent's tagged payouts, never a receipted one", () => {
     const two = [payoutFor(E, TERMS), payoutFor(E, TERMS, { txHash: hex("b2") })];
-    expect(() => selectReceiptTransfer(two, want, none, auto)).toThrow(/--tx/);
-    expect(
-      selectReceiptTransfer(two, want, none, { tx: `0x${"B2".repeat(32)}`, untagged: false }),
-    ).toMatchObject({ transfer: { txHash: hex("b2") } });
-    expect(() =>
-      selectReceiptTransfer(two, want, none, { tx: hex("c3"), untagged: false }),
-    ).toThrow(/not a payout of this intent/);
-    expect(selectReceiptTransfer(two, want, new Set([hex("a7")]), auto).transfer.txHash).toBe(
-      hex("b2"),
+    expect(() => selectReceiptTransfer(two, want, none, null)).toThrow(/--tx/);
+    expect(selectReceiptTransfer(two, want, none, `0x${"B2".repeat(32)}`).txHash).toBe(hex("b2"));
+    expect(() => selectReceiptTransfer(two, want, none, hex("c3"))).toThrow(
+      /not a payout of this intent/,
     );
-    expect(() =>
-      selectReceiptTransfer(two, want, new Set([hex("a7")]), { tx: hex("a7"), untagged: false }),
-    ).toThrow(/already acknowledged for another intent/);
-    expect(() => selectReceiptTransfer(two, want, none, { tx: "0x1234", untagged: false })).toThrow(
-      /--tx/,
+    expect(selectReceiptTransfer(two, want, new Set([hex("a7")]), null).txHash).toBe(hex("b2"));
+    expect(() => selectReceiptTransfer(two, want, new Set([hex("a7")]), hex("a7"))).toThrow(
+      /already acknowledged for another intent/,
     );
+    expect(() => selectReceiptTransfer(two, want, none, "0x1234")).toThrow(/--tx/);
   });
 });
 

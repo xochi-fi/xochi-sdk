@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { run } from "../src/cli.js";
+import { OperationJournal } from "../src/operation-journal.js";
 
 const PASS = "receipt cli TEST ONLY";
 const INTENT = "3f0c2a5e-8d7b-4e1a-9c6f-0b1d2e3f4a5b";
@@ -63,6 +64,40 @@ describe("receipt invocation", () => {
     await expect(run(["receipt", INTENT, "--data-dir", dataDir])).rejects.toThrow(
       /ENOENT.*saved-artifact-TEST-ONLY\.json/,
     );
+  });
+
+  it("takes --binding-id only with --legacy-binding, and never against the saved one", async () => {
+    const dataDir = await initialized();
+    await expect(
+      run(["receipt", INTENT, "--data-dir", dataDir, "--binding-id", "TEST-ONLY-b"]),
+    ).rejects.toThrow(/--binding-id is only for receipt --legacy-binding/);
+    editState(dataDir, (state) => {
+      state["bindingId"] = "TEST-ONLY-a";
+    });
+    await expect(
+      run([
+        "receipt",
+        INTENT,
+        "--data-dir",
+        dataDir,
+        "--legacy-binding",
+        "--binding-id",
+        "TEST-ONLY-b",
+      ]),
+    ).rejects.toThrow(
+      "--binding-id TEST-ONLY-b is not this data directory's enrolled binding id TEST-ONLY-a",
+    );
+  });
+});
+
+describe("operations reconcile", () => {
+  it("releases a receipt run's lock: the run moved no funds", async () => {
+    const dataDir = await initialized();
+    const operations = new OperationJournal(join(dataDir, "operations"));
+    const held = operations.beginReceipt(INTENT);
+    await run(["operations", "reconcile", "--data-dir", dataDir]);
+    expect(operations.get(held.id).status).toBe("aborted");
+    expect(operations.unresolved()).toBeNull();
   });
 });
 

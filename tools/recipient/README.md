@@ -82,6 +82,9 @@ The tool itself publishes nothing that names the account a Xochi recipient, but:
   its generic error. The diagnostic never contains the upstream message, cause, stack, data,
   operation ID, address, amount, fee, calldata, note, nullifier, witness, proof, recipient, or
   transaction material. Retain captured stderr privately; do not attach it to public issues.
+  `receipt` is the exception: it moves no funds, and its spend simulation's error is printed raw
+  (`simulation failed: <cause>`), so its stderr can name this account's notes and amounts. Keep
+  it private too.
 - **Exit needs a fee ceiling and a relayer.** `exit` requires `--max-executor-fee` in base units,
   reads the live executor `FEE()`, and refuses a fee above that ceiling before creating an exit
   journal, proving, signing, or submitting. The exact ceiling is accepted. It also refuses a zero
@@ -209,10 +212,13 @@ before any receipt challenge.
   `TokenRegistrationAck`; below).
 - **Backup** (format `xochi.shielded.backup-format.v1`): account keys, instance and class,
   network, token registration/immutables, senders, scan checkpoint, `TokenRegistrationAck`, the
-  enrolled binding digest, and validated spend/exit/refund journals and receipt records. Restore
-  accepts earlier v1 backups without journals, receipts or binding digest, recreates an unresolved
-  operation's exact lock on the independent host, and never copies a wallet database. The
-  `backupCommitment` is keccak256 of the sealed bytes. Keep the two copies apart.
+  enrolled binding id and digest, and validated spend/exit/refund journals and receipt records.
+  Restore accepts earlier v1 backups without journals, receipts or binding. A directory restored
+  from one has no binding digest: its first `receipt` needs `--legacy-binding`, plus `--binding-id`
+  when the backup had no binding id either. Restore recreates an unresolved operation's exact lock
+  on the independent host (an unfinished `receipt` run is restored aborted: it moved no funds),
+  and never copies a wallet database. The `backupCommitment` is keccak256 of the sealed bytes.
+  Keep the two copies apart. Builds before receipts cannot open these backups.
 - **Order fingerprint**: `balance` prints each received payout's order fingerprint from its
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
@@ -253,17 +259,21 @@ saved is refused by name (`--node-url is required: no node URL was saved ...`); 
 **What it proves.** The signed `PaymentReceiptAck` asserts that this account independently found
 and can spend this intent's payout. Before signing, the tool requires all of the following:
 
-- Xochi's challenge carries the intent's signed `ShieldedTermsV1`. The terms must use the pinned
-  types and this corridor's terms domain, and hash to the challenge's `terms_digest`. They must be
-  for this intent, and pay exactly the challenge's amount to this account, descriptor, token,
-  network and corridor. `operation_id` must be keccak256 of the terms' operation id. Both the
-  terms and the challenge must name the binding digest this data directory enrolled. It is
-  recorded at `enroll submit` and carried by backups; without it, `receipt` refuses.
+- Xochi's challenge carries the intent's `ShieldedTermsV1` as Xochi stored it. The tool checks
+  that it hashes to the challenge's `terms_digest`; it does not verify the source wallet's
+  signature. The terms must use the pinned types and this corridor's terms domain, under any
+  other types or members they are refused by name. They must be for this intent, and pay exactly
+  the challenge's amount to this account, descriptor, token, network and corridor. The corridor
+  must be revision 2, whose payouts the Oxide sender makes; another revision is refused.
+  `operation_id` must be keccak256 of the terms' operation id. Both the terms and the challenge
+  must name the binding digest this data directory enrolled. It is recorded at `enroll submit` and
+  carried by backups; without it, `receipt` refuses (see `--legacy-binding` below).
 - Its own PXE discovered the payout: an OxideToken `Transfer` to this account from the
   corridor's registered sender, of exactly that amount, whose meta carries the order fingerprint
   those terms produce (pxe-bridge's settlement fingerprint, `validUntil` = the terms'
   `settlementServiceDeadline`). A transfer from any other sender, including this account's own,
-  never counts. `--tx` only picks among such payouts.
+  never counts, nor does a transfer without that fingerprint: every revision 2 payout is tagged.
+  `--tx` only picks among such payouts.
 - No other intent's receipt in this data directory or its backups names that transaction, those
   terms or that operation.
 - Your node reports that transaction `finalized`, successful, and in the block where it was
@@ -273,28 +283,30 @@ and can spend this intent's payout. Before signing, the tool requires all of the
   It shows that this account's notes can pay the amount, not which note. A failure is reported as
   `simulation failed: <cause>`.
 
-A payout made before order tagging carries no fingerprint. `receipt` lists such payouts and takes
-one only as `--tx HASH --untagged`. The payout must come from the corridor's sender with the
-exact amount, and no tagged payout of the intent may exist. The run prints a warning; only your
-`--tx` ties it to the intent. Xochi refuses one transaction for two intents.
-
 If you already spent or exited the payout, the simulation fails. `--already-spent` then signs only
-if this account's own completed spend or exit in `operations/` was mined after the payout's block.
-That spend's transaction hash is recorded with the receipt.
+if this PXE's balance no longer covers the amount and this account's own completed spend or exit
+of at least the amount, in `operations/`, was mined after the payout's block. That spend's
+transaction hash is recorded with the receipt. The tool suggests the flag only in that case; when
+the balance still covers the amount, the simulation failed for another reason and the flag is
+refused.
 
 A data directory that enrolled before the binding digest was recorded (its `state.json` has
 `bindingId` but no `bindingDigest`) is refused until it passes `--legacy-binding`. With that flag
 the tool adopts the challenge's `binding_digest`, but only when all of these hold: no binding
-digest is recorded; the challenge's `binding_id` equals `state.json` `bindingId`; and the signed
-terms name that digest, this account as recipient, this data directory's descriptor digest, the
-corridor token, network and corridor. All the other checks above also apply. It prints the digest
-it signs under, records it in `state.json` so later runs need no flag, and marks the receipt
-record `legacyBinding`. Such a directory saved no node URL or artifact path either, so pass
-`--node-url` and `--oxide-token-artifact` on that run.
+digest is recorded; the challenge's `binding_id` and the signed terms' `recipientBindingId` equal
+`state.json` `bindingId`; and the signed terms name that digest, this account as recipient, this
+data directory's descriptor digest, the corridor token, network and corridor. A directory with
+no `bindingId` (restored from a backup that had none) passes the original enrollment's id with
+`--binding-id ID`. All the other checks above also apply. It prints the digest it signs under and
+marks the receipt record `legacyBinding`. Once Xochi accepts that receipt it saves the digest (and
+the id) in `state.json`, so later runs need no flag. Such a directory saved no node URL or
+artifact path either, so pass `--node-url` and `--oxide-token-artifact` on that run.
 
 `receipt` holds the fund-movement lock under `operations/` for the whole run, so no spend, exit
-or refund runs alongside it. It refuses while one of them is unresolved. A receipt run that died
-(or ran on another host before a restore) is released by the next command.
+or refund runs alongside it. It refuses while one of them is unresolved. A receipt run whose
+process is gone is released by the next command. If its process id was reused after a crash, the
+lock stays: `operations reconcile` releases a receipt run's lock (it moved no funds). Run that only
+when no `receipt` is running.
 
 **What it sends.** `POST /api/shielded/operations/<intentId>/receipt/challenge` with `{}`, after
 the PXE sync, then `POST /api/shielded/operations/<intentId>/receipt` with the challenge id and
@@ -310,10 +322,14 @@ digest, operation id, amount and payout transaction and block, and holds every r
 it (append-only), then, once Xochi accepts one, `receipt_digest` and `submitted_at`. Backups carry
 these records, and restore puts them back: they keep a payout acknowledged for one intent from
 being offered for another. A request whose answer was lost is resent byte for byte on the next
-run. Only an outright rejection (`error_category` `receipt_challenge_expired`,
-`receipt_challenge_consumed` or `receipt_ack_rejected`) lets a run sign again under a new
-challenge, and then only for the recorded terms and payout. `--tx` naming another payout than the
-recorded one is refused.
+run. Only an outright rejection lets a run sign again under a new challenge, and then only for
+the recorded terms and payout. The rejections are `error_category` `receipt_challenge_expired`,
+`receipt_challenge_consumed`, `receipt_ack_rejected`, and `receipt_challenge_unknown`, which
+Xochi answers once it has purged an unconsumed challenge (about five minutes after it expires).
+So a receipt whose first answer was lost (an expired `XOCHI_JWT`, Xochi or its nodes briefly
+unavailable) completes on a later run: renew `XOCHI_JWT` if needed and run `receipt` again. Never
+delete the record. `payout_not_final`, `receipt_tx_conflict`, 401, 429 and 5xx keep the recorded
+request. `--tx` naming another payout than the recorded one is refused.
 
 ## Qualification (R1-R6)
 

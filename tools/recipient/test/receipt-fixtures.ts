@@ -18,12 +18,16 @@ import {
 } from "@xochi/signer";
 
 import { deriveRecipientAccount, type RecipientAccount } from "../src/account.js";
-import type { ReceiptChallenge, ReceiptTerms } from "../src/api.js";
+import type { ReceiptChallenge } from "../src/api.js";
 import type { ReceivedTransfer } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { buildBinding } from "../src/enrollment.js";
 import { ORDER_FINGERPRINT_TAG } from "../src/order-fingerprint.js";
-import { SHIELDED_TERMS_TYPES } from "../src/receipt.js";
+import {
+  SHIELDED_TERMS_TYPES,
+  type ShieldedTermsMessage,
+  type ShieldedTermsTypedData,
+} from "../src/receipt.js";
 import { fingerprintTerms } from "../src/settlement-fingerprint.js";
 import { TEST_SECRETS, TEST_SOURCE_KEY } from "./fixtures.js";
 
@@ -66,10 +70,10 @@ export async function enrolled(): Promise<Enrolled> {
 export function termsFor(
   { account, bindingDigest }: Enrolled,
   intentId = INTENT,
-  edit: (message: ReceiptTerms["message"]) => void = () => undefined,
-): ReceiptTerms {
+  edit: (message: ShieldedTermsMessage) => void = () => undefined,
+): ShieldedTermsTypedData {
   const domain = termsDomain(corridor.sourceChainId, corridor.environment, corridor.network);
-  const message: ReceiptTerms["message"] = {
+  const message: ShieldedTermsMessage = {
     protocolVersion: "xochi.shielded.terms.v1",
     environment: corridor.environment,
     intentId,
@@ -132,13 +136,13 @@ export function termsFor(
   };
 }
 
-export const termsDigest = (terms: ReceiptTerms): string =>
+export const termsDigest = (terms: ShieldedTermsTypedData): string =>
   hashTypedData(terms as unknown as TypedDataDefinition).toLowerCase();
 
 /** The Worker's challenge for `terms`, every member consistent with it. */
 export function challengeFor(
   enrolledAccount: Enrolled,
-  terms: ReceiptTerms = termsFor(enrolledAccount),
+  terms: ShieldedTermsTypedData = termsFor(enrolledAccount),
   expiresAt = 1_900_000_000,
 ): ReceiptChallenge {
   return {
@@ -160,7 +164,7 @@ export function challengeFor(
 }
 
 /** The order fingerprint of the Oxide payout for `terms` (pxe-bridge oxide send). */
-export function expectedFingerprint({ account }: Enrolled, terms: ReceiptTerms): string {
+export function expectedFingerprint({ account }: Enrolled, terms: ShieldedTermsTypedData): string {
   return fingerprintTerms({
     network: corridor.network,
     corridor: {
@@ -190,7 +194,7 @@ export const UNTAGGED_META: bigint[] = Array<bigint>(7).fill(Fr.ZERO.toBigInt())
 /** The payout the corridor's sender makes for `terms`, unless overridden. */
 export function payoutFor(
   enrolledAccount: Enrolled,
-  terms: ReceiptTerms,
+  terms: ShieldedTermsTypedData,
   overrides: Partial<ReceivedTransfer> = {},
 ): ReceivedTransfer {
   return {

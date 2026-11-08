@@ -6,21 +6,31 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ### Added
 
-- `receipt INTENT_ID [--tx HASH [--untagged]] [--already-spent]`: after a shielded payout, signs
-  and submits the recipient's `PaymentReceiptAck`
-  (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). The challenge's signed
-  `ShieldedTermsV1` must hash to `terms_digest` and name this account, corridor and enrolled
-  binding digest. Only the corridor sender's payout tagged with those terms' order fingerprint
-  (pxe-bridge settlement fingerprint, ported) is signed, once found `finalized` on the chosen
-  node and spendable in a local simulation. Receipts are pinned per intent in
-  `<data-dir>/receipts/` and carried by backups. The run holds the fund-movement lock
-  (README "Confirming receipt").
-- `enroll submit` records the enrolled binding digest; backups carry it and restore puts it back.
-- `receipt --legacy-binding`: a data directory enrolled before the binding digest was recorded
-  adopts the challenge's digest for its own `bindingId` only, records it in `state.json` and
-  marks the receipt record.
+- `receipt INTENT_ID [--tx HASH] [--already-spent]`: after a shielded payout, signs and submits
+  the recipient's `PaymentReceiptAck`
+  (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). The challenge's
+  `ShieldedTermsV1` must hash to `terms_digest` and name this account, corridor (revision 2 only)
+  and enrolled binding digest. Only the corridor sender's payout tagged with those terms' order
+  fingerprint (pxe-bridge settlement fingerprint, ported) is signed, once found `finalized` on the
+  chosen node and spendable in a local simulation. Receipts are pinned per intent in
+  `<data-dir>/receipts/` and carried by backups. A recorded receipt is resent until Xochi accepts
+  it, and signed again under a new challenge only after an outright rejection (including a purged
+  challenge, `receipt_challenge_unknown`). The run holds the fund-movement lock, which
+  `operations reconcile` releases for a receipt run (README "Confirming receipt").
+- `enroll submit` records the enrolled binding digest; backups carry the binding id and digest
+  and restore puts them back.
+- `receipt --legacy-binding [--binding-id ID]`: a data directory enrolled before the binding
+  digest was recorded adopts the challenge's digest for its own binding id only (the challenge's
+  `binding_id` and the terms' `recipientBindingId`), saves it in `state.json` once Xochi accepts
+  the receipt, and marks the receipt record.
 - `setup`, `enroll start` and `restore` save the node URL and OxideToken artifact path for
   `receipt`; `--api-url` defaults to `https://api.xochi.fi`.
+
+### Changed
+
+- Backups now carry `journals.receipts`, `bindingId` and `bindingDigest` under the same format
+  name. Builds before this release refuse to open them (strict schema); keep the release that
+  wrote a backup, or a newer one, for restore. This release still opens older backups.
 
 ### Fixed
 

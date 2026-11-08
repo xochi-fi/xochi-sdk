@@ -47,7 +47,6 @@ async function signed(intentId: string, txHash = hex("a7")) {
       amount: AMOUNT.toString(),
       txHash,
       blockNumber: "4242",
-      untagged: false,
       legacyBinding: false,
       alreadySpentBy: null,
       request: submission,
@@ -91,14 +90,15 @@ describe("receipt journal", () => {
     const first = await signed(INTENT);
     journal.begin(first.entry);
     expect(() => journal.begin(first.entry)).toThrow(/already/);
-    journal.retry(INTENT, first.entry.request);
+    journal.retry(INTENT, first.entry.request, hex("5e"));
+    expect(journal.read(INTENT)).toMatchObject({ alreadySpentBy: hex("5e") });
     expect(journal.read(INTENT)!.attempts).toHaveLength(2);
     const otherTx = await signed(INTENT, hex("b2"));
-    expect(() => journal.retry(INTENT, otherTx.entry.request)).toThrow(/recorded/);
+    expect(() => journal.retry(INTENT, otherTx.entry.request, null)).toThrow(/recorded/);
     const otherTerms = await signed("another-intent");
-    expect(() => journal.retry(INTENT, otherTerms.entry.request)).toThrow(/recorded/);
+    expect(() => journal.retry(INTENT, otherTerms.entry.request, null)).toThrow(/recorded/);
     journal.complete(INTENT, hex("dd"), "2026-11-08T00:00:00.000Z");
-    expect(() => journal.retry(INTENT, first.entry.request)).toThrow(/already accepted/);
+    expect(() => journal.retry(INTENT, first.entry.request, null)).toThrow(/already accepted/);
   });
 
   it("names every payout and every terms digest another intent's receipt holds", async () => {
@@ -129,7 +129,7 @@ describe("receipt journal", () => {
 });
 
 describe("backup", () => {
-  it("carries the receipt records and the enrolled binding digest through seal and open", async () => {
+  it("carries the receipt records and the enrolled binding id and digest through seal and open", async () => {
     const journal = new ReceiptJournal(temp("receipts"));
     journal.begin((await signed(INTENT)).entry);
     const contents = backupContents(
@@ -140,20 +140,22 @@ describe("backup", () => {
       null,
       1_800_000_000,
       { operations: [], exits: [], receipts: journal.records() },
-      E.bindingDigest,
+      { id: "TEST-ONLY-binding", digest: E.bindingDigest },
     );
     const opened = openBackup(sealBackup(contents, PASS).bytes, PASS);
     expect(opened.journals.receipts).toEqual(journal.records());
     expect(opened.bindingDigest).toBe(E.bindingDigest);
+    expect(opened.bindingId).toBe("TEST-ONLY-binding");
   });
 
-  it("opens an earlier backup without receipts or binding digest", () => {
+  it("opens an earlier backup without receipts or binding", () => {
     const earlier = backupContents(corridor, TEST_SECRETS, E.account, null, null, 1_800_000_000);
-    const { bindingDigest: _unset, ...plain } = earlier;
+    const { bindingDigest: _digest, bindingId: _id, ...plain } = earlier;
     const json = { ...plain, journals: { operations: [], exits: [] } };
     const opened = openBackup(sealBackup(json as unknown as typeof earlier, PASS).bytes, PASS);
     expect(opened.journals.receipts).toEqual([]);
     expect(opened.bindingDigest ?? null).toBeNull();
+    expect(opened.bindingId ?? null).toBeNull();
   });
 });
 
@@ -174,24 +176,43 @@ describe("receipt run and the fund-movement lock", () => {
     expect(() => operations.beginReceipt(INTENT)).toThrow(/spend/);
   });
 
-  it("recovers the lock of a receipt run that died, here or on another host", () => {
+  it("recovers the lock of a receipt run whose process is gone", () => {
     const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
-    for (const holder of [
-      { pid: dead, host: hostname() },
-      { pid: process.pid, host: "another-host.invalid" },
-    ]) {
-      const operations = new OperationJournal(temp("operations"));
-      const crashed = operations.beginReceipt(INTENT, holder);
-      const spend = operations.begin("spend", { amount: "1" });
-      expect(operations.get(crashed.id).status).toBe("aborted");
-      operations.update(spend.id, { status: "aborted" });
-    }
+    const operations = new OperationJournal(temp("operations"));
+    const crashed = operations.beginReceipt(INTENT, { pid: dead, host: hostname() });
+    const spend = operations.begin("spend", { amount: "1" });
+    expect(operations.get(crashed.id).status).toBe("aborted");
+    operations.update(spend.id, { status: "aborted" });
   });
 
-  it("never recovers a live receipt run's lock", () => {
+  it("never recovers a live receipt run's lock, even after a hostname change", () => {
     const operations = new OperationJournal(temp("operations"));
-    operations.beginReceipt(INTENT);
+    operations.beginReceipt(INTENT, { pid: process.pid, host: "renamed-host.invalid" });
     writeFileSync(join(operations.directory, "unrelated.txt"), "");
     expect(() => operations.beginReceipt("another-intent")).toThrow(/receipt/);
+    expect(() => operations.begin("spend", { amount: "1" })).toThrow(/receipt/);
+  });
+
+  it("restores an unfinished receipt run as aborted, with no lock (it moved no funds)", () => {
+    const source = new OperationJournal(temp("operations"));
+    const run = source.beginReceipt(INTENT);
+    const restored = new OperationJournal(temp("restored"));
+    restored.restore(source.records());
+    expect(restored.get(run.id).status).toBe("aborted");
+    expect(restored.unresolved()).toBeNull();
+    const spend = restored.begin("spend", { amount: "1" });
+    restored.update(spend.id, { status: "aborted" });
+  });
+
+  it("lets an operator release a receipt run's lock (operations reconcile)", () => {
+    const operations = new OperationJournal(temp("operations"));
+    operations.beginReceipt(INTENT);
+    const held = operations.activeUnresolved()!;
+    operations.releaseReceiptLock(held.id);
+    expect(operations.get(held.id).status).toBe("aborted");
+    expect(() => operations.releaseReceiptLock(held.id)).toThrow(/not an unfinished receipt run/);
+    const spend = operations.begin("spend", { amount: "1" });
+    expect(() => operations.releaseReceiptLock(spend.id)).toThrow(/not an unfinished receipt run/);
+    operations.update(spend.id, { status: "aborted" });
   });
 });

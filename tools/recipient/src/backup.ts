@@ -118,9 +118,11 @@ export const BackupSchema = z
     tokenRegistrationAck: SignedAckSchema.nullable(),
     journals: JournalBackupSchema,
     /**
-     * The RecipientBinding digest this account enrolled (or is enrolling): `receipt` refuses
-     * terms for any other binding. Absent from backups written before it was recorded.
+     * The RecipientBinding this account enrolled (or is enrolling): `receipt` refuses terms for
+     * any other binding. Absent from backups written before they were recorded; a restored
+     * binding id without a digest is what `receipt --legacy-binding` recovers from.
      */
+    bindingId: z.string().min(1).max(128).nullable().optional(),
     bindingDigest: hex32.nullable().optional(),
     recovery: z.string().min(1),
   })
@@ -135,7 +137,7 @@ export function backupContents(
   tokenRegistrationAck: SignedAck | null,
   now: number,
   journals: JournalBackup = { operations: [], exits: [], receipts: [] },
-  bindingDigest: string | null = null,
+  binding: { id: string | null; digest: string | null } = { id: null, digest: null },
 ): BackupContents {
   return BackupSchema.parse({
     format: BACKUP_FORMAT_V1_NAME,
@@ -162,7 +164,8 @@ export function backupContents(
     scanCheckpoint: scanCheckpoint === null ? null : { blockNumber: scanCheckpoint },
     tokenRegistrationAck,
     journals,
-    bindingDigest,
+    bindingId: binding.id,
+    bindingDigest: binding.digest,
     recovery: RECOVERY_INSTRUCTIONS,
   });
 }

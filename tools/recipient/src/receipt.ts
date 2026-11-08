@@ -27,7 +27,7 @@ import {
   type ReceiptTerms,
 } from "./api.js";
 import type { ReceivedTransfer } from "./chain.js";
-import { anyCaseHex32, decimal, evm, hex32, type Corridor } from "./corridor.js";
+import { anyCaseEvm, anyCaseHex32, decimal, evm, hex32, type Corridor } from "./corridor.js";
 import type { RecipientSigner } from "./enrollment.js";
 import { writePrivateJson } from "./operation-journal.js";
 import { orderFingerprintFromMeta } from "./order-fingerprint.js";
@@ -157,7 +157,109 @@ export interface ExpectedBinding {
 }
 
 const LEGACY_BINDING_CONDITIONS =
-  "it signs under the challenge's binding_digest only when this data directory recorded no binding digest, the challenge's binding_id is this data directory's enrolled binding id (state.json bindingId), and the signed terms name that digest, this account as recipient, this data directory's descriptor digest, the corridor token, network and corridor";
+  "it signs under the challenge's binding_digest only when this data directory recorded no binding digest, the challenge's binding_id and the signed terms' recipientBindingId are this data directory's enrolled binding id (state.json bindingId, or --binding-id when state.json has none), and the signed terms name that digest, this account as recipient, this data directory's descriptor digest, the corridor token, network and corridor";
+
+const NetworkSchema = z
+  .object({
+    aztecChainId: decimal,
+    protocolVersion: decimal,
+    rollupAddress: anyCaseEvm,
+    l1ChainId: decimal,
+    genesisOrNetworkDigest: anyCaseHex32,
+  })
+  .strict();
+
+const ShieldedTermsDomainSchema = z
+  .object({
+    name: z.string(),
+    version: z.string(),
+    chainId: z.number().int().positive(),
+    salt: anyCaseHex32,
+  })
+  .strict();
+
+/** A ShieldedTermsV1 message (the Worker's `TermsMessageSchema`): every member, nothing else. */
+const ShieldedTermsMessageSchema = z
+  .object({
+    protocolVersion: z.string(),
+    environment: z.string(),
+    intentId: z.string(),
+    quoteId: z.string(),
+    operationId: z.string(),
+    source: z
+      .object({
+        chainId: decimal,
+        token: anyCaseEvm,
+        wallet: anyCaseEvm,
+        collector: anyCaseEvm,
+        amount: decimal,
+      })
+      .strict(),
+    destination: z
+      .object({
+        settlementType: z.string(),
+        privacyLevel: z.string(),
+        disclosureProfile: z.string(),
+        rail: z.string(),
+        network: NetworkSchema,
+        corridor: z
+          .object({
+            corridorId: anyCaseHex32,
+            corridorRevision: decimal,
+            manifestDigest: anyCaseHex32,
+          })
+          .strict(),
+        assetId: z.string(),
+        aztecToken: anyCaseHex32,
+        recipientBindingId: z.string(),
+        descriptorDigest: anyCaseHex32,
+        aztecRecipient: anyCaseHex32,
+        amount: decimal,
+        feePayer: anyCaseHex32,
+      })
+      .strict(),
+    feeBreakdown: z
+      .object({
+        gasFloor: decimal,
+        solverFeeBps: decimal,
+        solverFee: decimal,
+        priceImpactBps: decimal,
+        priceImpact: decimal,
+        venueFeeBps: decimal,
+        venueFee: decimal,
+        routingFeeBps: decimal,
+        routingFee: decimal,
+        totalBps: decimal,
+        totalFee: decimal,
+      })
+      .strict(),
+    sourceAuthorizationDigest: anyCaseHex32,
+    refundAddress: anyCaseEvm,
+    refundAmount: decimal,
+    collectBefore: decimal,
+    settlementServiceDeadline: decimal,
+    recipientBindingDigest: anyCaseHex32,
+    policyRevision: decimal,
+    reservationId: z.string(),
+  })
+  .strict();
+export type ShieldedTermsMessage = z.infer<typeof ShieldedTermsMessageSchema>;
+
+/** ShieldedTermsV1 typed data whose members `checkReceiptChallenge` accepts. */
+export interface ShieldedTermsTypedData {
+  types: ReceiptTerms["types"];
+  primaryType: "ShieldedTermsV1";
+  domain: z.infer<typeof ShieldedTermsDomainSchema>;
+  message: ShieldedTermsMessage;
+}
+
+/**
+ * The payout send mode of each corridor revision this tool knows (Riddler
+ * `SendMode.for_revision`: revision 2 pays through the Oxide sender from a standard account).
+ * The order fingerprint depends on it, so an unknown revision is refused, never guessed.
+ */
+const PAYOUT_SEND_MODES: Readonly<Record<string, { accountMode: "standard"; sendMode: "oxide" }>> =
+  { "2": { accountMode: "standard", sendMode: "oxide" } };
 
 /**
  * Refuses a challenge unless its terms are the signed ShieldedTermsV1 of `intentId` (pinned
@@ -173,17 +275,35 @@ export function checkReceiptChallenge(
   challenge: ReceiptChallenge,
   expected: ExpectedBinding,
 ): CheckedReceiptChallenge {
+  const mode =
+    PAYOUT_SEND_MODES[corridor.corridorRevision] ??
+    refuse(
+      `corridor revision ${corridor.corridorRevision} has no known payout send mode: this tool computes payout order fingerprints for revision 2 (Oxide sender) only`,
+    );
   const subject = challenge.receipt;
   const { terms } = subject;
-  const { message } = terms;
+  if (terms.primaryType !== "ShieldedTermsV1" || !sameTypes(terms.types)) {
+    refuse("the terms use other typed-data types than ShieldedTermsV1");
+  }
+  const parsedDomain = ShieldedTermsDomainSchema.safeParse(terms.domain);
+  if (!parsedDomain.success) {
+    refuse("the terms domain is not ShieldedTermsV1's { name, version, chainId, salt }");
+  }
+  const parsedMessage = ShieldedTermsMessageSchema.safeParse(terms.message);
+  if (!parsedMessage.success) {
+    const issue = parsedMessage.error.issues[0];
+    refuse(
+      `the terms message does not match ShieldedTermsV1 (${issue?.path.join(".") || "message"}: ${issue?.message ?? "invalid"})`,
+    );
+  }
+  const message = parsedMessage.data;
   const destination = message.destination;
-  if (!sameTypes(terms.types)) refuse("the terms use other typed-data types than ShieldedTermsV1");
   const domain = termsDomain(corridor.sourceChainId, corridor.environment, corridor.network);
   if (
-    terms.domain.name !== domain.name ||
-    terms.domain.version !== domain.version ||
-    String(terms.domain.chainId) !== domain.chainId ||
-    lower(terms.domain.salt) !== lower(domain.salt)
+    parsedDomain.data.name !== domain.name ||
+    parsedDomain.data.version !== domain.version ||
+    String(parsedDomain.data.chainId) !== domain.chainId ||
+    lower(parsedDomain.data.salt) !== lower(domain.salt)
   ) {
     refuse("the terms are signed under another domain than this corridor's terms domain");
   }
@@ -239,7 +359,7 @@ export function checkReceiptChallenge(
     }
     if (!expected.bindingId) {
       refuse(
-        "--legacy-binding needs this data directory's enrolled binding id, and it has no enrolled binding id",
+        "--legacy-binding needs this data directory's enrolled binding id, and it has no enrolled binding id: pass the original enrollment's id with --binding-id",
       );
     }
     if (subject.binding_id !== expected.bindingId) {
@@ -247,11 +367,16 @@ export function checkReceiptChallenge(
         `the challenge names binding id ${subject.binding_id}, not this data directory's enrolled binding id ${expected.bindingId}`,
       );
     }
+    if (destination.recipientBindingId !== expected.bindingId) {
+      refuse(
+        `the terms name recipientBindingId ${destination.recipientBindingId}, not this data directory's enrolled binding id ${expected.bindingId}`,
+      );
+    }
     bindingDigest = lower(subject.binding_digest);
   }
   if (bindingDigest === null) {
     refuse(
-      `this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup without it): run enroll again, restore a backup written after enroll start, or pass --legacy-binding: ${LEGACY_BINDING_CONDITIONS}`,
+      `this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup that lacks it). Pass --legacy-binding (with --binding-id ID when state.json has no bindingId): ${LEGACY_BINDING_CONDITIONS}. Enrolling again creates a new binding, which cannot acknowledge intents signed under this one`,
     );
   }
   if (
@@ -273,8 +398,8 @@ export function checkReceiptChallenge(
         corridorRevision: Number(corridor.corridorRevision),
         manifestDigest: corridor.manifestDigest,
       },
-      accountMode: "standard",
-      sendMode: "oxide",
+      accountMode: mode.accountMode,
+      sendMode: mode.sendMode,
       recipient,
       recipientDescriptorDigest: descriptorDigest,
       token,
@@ -293,25 +418,16 @@ export interface WantedPayout {
   senders: readonly string[];
 }
 
-/** `--tx` and `--untagged`. */
-export interface PayoutChoice {
-  tx: string | null;
-  untagged: boolean;
-}
-
-export interface SelectedPayout {
-  transfer: ReceivedTransfer;
-  /** False only for an `--untagged` payout: no order fingerprint ties it to the intent. */
-  tagged: boolean;
-}
-
-/** The meta's order fingerprint; `null` untagged, `"malformed"` for a tagged meta that is not. */
-function fingerprintOf(transfer: ReceivedTransfer): string | null | "malformed" {
+/**
+ * The meta's order fingerprint, or null for an untagged meta or a malformed tagged one: neither
+ * is ever this order's.
+ */
+function fingerprintOf(transfer: ReceivedTransfer): string | null {
   try {
     return orderFingerprintFromMeta(transfer.meta);
   } catch {
     // `orderFingerprintFromMeta` throws only on a malformed tagged meta: never this order's.
-    return "malformed";
+    return null;
   }
 }
 
@@ -334,16 +450,15 @@ export function assertCorridorPayoutDiscovered(
 /**
  * The intent's payout among the transfers this PXE discovered: from one of the corridor's
  * senders, of exactly the amount, tagged with the terms' order fingerprint, and named by no other
- * intent's receipt. `--tx` picks only among those. An untagged payout (made before tagging) is
- * taken only as `--tx HASH --untagged`, from a corridor sender with the exact amount, and only
- * while no tagged payout of this intent exists.
+ * intent's receipt. `tx` (`--tx`) picks only among those. Every revision 2 payout is tagged by the
+ * Oxide sender, so an untagged transfer is never this intent's.
  */
 export function selectReceiptTransfer(
   transfers: readonly ReceivedTransfer[],
   want: WantedPayout,
   receiptedTxHashes: ReadonlySet<string>,
-  choice: PayoutChoice,
-): SelectedPayout {
+  txChoice: string | null,
+): ReceivedTransfer {
   const senders = new Set(want.senders.map(lower));
   const fromSender = transfers
     .map((t) => ({ ...t, txHash: lower(t.txHash) }))
@@ -356,59 +471,31 @@ export function selectReceiptTransfer(
     ).values(),
   ];
   let tx: string | null = null;
-  if (choice.tx !== null) {
-    if (!anyCaseHex32.safeParse(choice.tx).success) {
+  if (txChoice !== null) {
+    if (!anyCaseHex32.safeParse(txChoice).success) {
       throw new Error("--tx must be a 0x-prefixed 32-byte Aztec transaction hash");
     }
-    tx = lower(choice.tx);
+    tx = lower(txChoice);
     if (receiptedTxHashes.has(tx)) {
       throw new Error(`payout ${tx} is already acknowledged for another intent`);
     }
-  }
-  if (choice.untagged) {
-    if (tx === null) throw new Error("--untagged needs --tx naming the payout");
-    if (tagged[0]) {
-      throw new Error(
-        `this intent's tagged payout ${tagged[0].txHash} exists: run receipt without --untagged`,
-      );
-    }
-    const named = transfers.find((t) => lower(t.txHash) === tx);
-    if (!named) throw new Error(`this PXE discovered no transfer in ${tx}: run balance to sync`);
-    if (!senders.has(lower(named.from))) {
-      throw new Error(`transfer ${tx} is not from the corridor's sender`);
-    }
-    if (named.amount !== want.amount) {
-      throw new Error(`transfer ${tx} carries ${named.amount}, not ${want.amount}`);
-    }
-    if (fingerprintOf(named) !== null) {
-      throw new Error(`transfer ${tx} is tagged for another order`);
-    }
-    return { transfer: { ...named, txHash: tx }, tagged: false };
   }
   assertCorridorPayoutDiscovered(fromSender, want.senders);
   const wanted = `the corridor sender's transfer of ${want.amount} base units tagged with order fingerprint ${want.orderFingerprint}`;
   if (tx !== null) {
     const named = tagged.find((t) => t.txHash === tx);
     if (!named) throw new Error(`${tx} is not a payout of this intent (${wanted})`);
-    return { transfer: named, tagged: true };
+    return named;
   }
   const unused = tagged.filter((t) => !receiptedTxHashes.has(t.txHash));
-  if (unused.length === 1) return { transfer: unused[0]!, tagged: true };
+  if (unused.length === 1) return unused[0]!;
   if (unused.length > 1) {
     throw new Error(
       `${unused.length} payouts of this intent (${unused.map((t) => t.txHash).join(", ")}): name one with --tx`,
     );
   }
-  const untagged = fromSender.filter(
-    (t) =>
-      t.amount === want.amount && fingerprintOf(t) === null && !receiptedTxHashes.has(t.txHash),
-  );
   throw new Error(
-    `no payout of this intent discovered (${wanted})${
-      untagged.length > 0
-        ? `; untagged payouts of the amount: ${untagged.map((t) => t.txHash).join(", ")}. If one is this intent's (paid before order tagging), name it with --tx HASH --untagged`
-        : ": run balance to sync, and run receipt again once it has landed"
-    }`,
+    `no payout of this intent discovered (${wanted}): run balance to sync, and run receipt again once it has landed`,
   );
 }
 
@@ -511,10 +598,8 @@ export const ReceiptRecordSchema = z
     amount: decimal,
     txHash: hex32,
     blockNumber: decimal,
-    /** Taken with `--untagged`: no order fingerprint tied this payout to the intent. */
-    untagged: z.boolean(),
     /** Signed under a binding digest adopted with `--legacy-binding`. */
-    legacyBinding: z.boolean().default(false),
+    legacyBinding: z.boolean(),
     /** Taken with `--already-spent`: this account's spend or exit that spent it. */
     alreadySpentBy: hex32.nullable(),
     /** Every request signed for this intent, oldest first; the last is resent. Append-only. */
@@ -646,8 +731,15 @@ export class ReceiptJournal {
     });
   }
 
-  /** Appends a re-signed request (after Xochi rejected the last); its subject must be the pinned one. */
-  retry(intentId: string, request: ReceiptSubmission): ReceiptRecord {
+  /**
+   * Appends a re-signed request (after Xochi rejected the last); its subject must be the pinned
+   * one. `alreadySpentBy` is this attempt's `--already-spent` spend, if any.
+   */
+  retry(
+    intentId: string,
+    request: ReceiptSubmission,
+    alreadySpentBy: string | null,
+  ): ReceiptRecord {
     const record = this.read(intentId);
     if (!record) throw new Error(`no receipt record for ${intentId}`);
     if (record.status === "submitted") {
@@ -655,6 +747,7 @@ export class ReceiptJournal {
     }
     const next = ReceiptRecordSchema.safeParse({
       ...record,
+      alreadySpentBy: alreadySpentBy ?? record.alreadySpentBy,
       attempts: [...record.attempts, { signedAt: new Date().toISOString(), request }],
     });
     if (!next.success) {

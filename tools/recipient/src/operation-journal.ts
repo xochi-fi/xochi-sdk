@@ -304,13 +304,20 @@ export class OperationJournal {
   /**
    * Restores an encrypted backup's journal into a new, empty data directory. An unresolved
    * operation recreates its exact ownership lock, so the second host can reconcile but cannot
-   * accidentally replace it with another fund-moving operation.
+   * accidentally replace it with another fund-moving operation. An unfinished `receipt` run moved
+   * no funds and its process is on another host: it is restored aborted, without a lock.
    */
   restore(recordsInput: readonly unknown[]): void {
     if (readdirSync(this.directory).length !== 0) {
       throw new Error("operation journal restore needs an empty destination");
     }
-    const records = recordsInput.map((record) => OperationRecordSchema.parse(record));
+    const records = recordsInput
+      .map((record) => OperationRecordSchema.parse(record))
+      .map((record) =>
+        record.kind === "receipt" && !terminal(record.status)
+          ? OperationRecordSchema.parse({ ...record, status: "aborted" })
+          : record,
+      );
     const ids = new Set(records.map((record) => record.id));
     if (ids.size !== records.length)
       throw new Error("operation journal backup contains duplicate ids");
@@ -336,8 +343,10 @@ export class OperationJournal {
   /**
    * Holds the fund-movement lock for one `receipt` run. A receipt moves no funds; holding the
    * lock keeps any spend, exit or refund from running while it checks and signs a payout, and
-   * refuses the receipt while one is unresolved. The record names the holding process, so the
-   * next `begin` aborts the lock of a run that died, or ran on another host before a restore.
+   * refuses the receipt while one is unresolved. The record names the holding process: the next
+   * `begin` aborts the lock once that process is gone. Liveness is the pid alone (a hostname can
+   * change under a live run); a pid reused after a crash keeps the lock until `operations
+   * reconcile` releases it (`releaseReceiptLock`). `host` is recorded for the operator.
    */
   beginReceipt(
     intentId: string,
@@ -348,6 +357,18 @@ export class OperationJournal {
 
   /** Releases a receipt run's lock; its record ends `aborted`, as it moved no funds. */
   endReceipt(id: string): void {
+    this.update(id, { status: "aborted" });
+  }
+
+  /**
+   * The operator's release of an unfinished `receipt` run's lock (`operations reconcile`): it
+   * moved no funds, so aborting it is always safe. Run it only when no receipt run is active.
+   */
+  releaseReceiptLock(id: string): void {
+    const record = this.get(id);
+    if (record.kind !== "receipt" || record.status !== "building") {
+      throw new Error(`operation ${id} is not an unfinished receipt run`);
+    }
     this.update(id, { status: "aborted" });
   }
 
@@ -522,7 +543,7 @@ export class OperationJournal {
     return record;
   }
 
-  /** Aborts the lock of a `receipt` run whose process is gone (or on another host). */
+  /** Aborts the lock of a `receipt` run whose process is gone. */
   private abortDeadReceiptRun(): boolean {
     let record: OperationRecord;
     try {
@@ -531,8 +552,7 @@ export class OperationJournal {
       return false;
     }
     if (record.kind !== "receipt" || record.status !== "building") return false;
-    const { pid, host } = record.request;
-    if (host === hostname() && processAlive(Number(pid))) return false;
+    if (processAlive(Number(record.request["pid"]))) return false;
     this.update(record.id, { status: "aborted" });
     return true;
   }
