@@ -43,6 +43,7 @@ import {
   NOW,
   PayoutNode,
   SOURCE,
+  SPEND_TX,
   TEST_SECRETS,
   TOKEN_ARTIFACT_JSON,
   XochiApi,
@@ -129,7 +130,13 @@ function harness(keys: RecipientKeySource = { kind: "keystore", accountSecrets }
     l1RpcUrl: null,
     api: { baseUrl: "https://api.xochi.fi", jwt: async () => "TEST ONLY jwt" },
   };
-  return { deps, kv, locks, node, xochi, open: () => openRecipientCore(deps, async () => node) };
+  // A second core over the same profile keeps the first one's journal on the node double.
+  const open = () =>
+    openRecipientCore(deps, async (options) => {
+      node.options ??= options;
+      return node;
+    });
+  return { deps, kv, locks, node, xochi, open };
 }
 
 async function accountSecrets() {
@@ -311,7 +318,7 @@ describe("deploy", () => {
   it("reconciles a recorded deployment instead of sending blind", async () => {
     const h = harness();
     const core = await h.open();
-    const pending = { blockNumber: null, executionSucceeded: false };
+    const pending = { blockNumber: null, blockHash: null, executionSucceeded: false };
     h.kv.setJson("deploy.json", { txHash: hex("aa") });
 
     h.node.receipts[hex("aa")] = { status: TxStatus.PENDING, ...pending };
@@ -323,6 +330,7 @@ describe("deploy", () => {
     h.node.receipts[hex("aa")] = {
       status: TxStatus.PROVEN,
       blockNumber: 7,
+      blockHash: hex("b7"),
       executionSucceeded: true,
     };
     expect(await core.deploy(null)).toEqual({ txHash: hex("aa") });
@@ -368,6 +376,7 @@ describe("receipts", () => {
 describe("operations and reconcile", () => {
   const TX = hex("1e");
   const EXIT_REQUEST = { amount: "100", executorFee: "10", recipientAmount: "85" };
+  const included = { blockNumber: 9, blockHash: hex("b1"), executionSucceeded: true };
 
   /** Another session over this profile's journal: a tab that crashed or reloaded once closed. */
   function otherSession(h: Harness, pid = 4242): OperationJournal {
@@ -454,11 +463,11 @@ describe("operations and reconcile", () => {
     const broadcast = await other.update(prepared.id, { status: "broadcast", txHash: TX });
     await other.close();
 
-    h.node.receipts[TX] = { status: TxStatus.PROPOSED, blockNumber: 9, executionSucceeded: true };
+    h.node.receipts[TX] = { status: TxStatus.PROPOSED, ...included };
     expect(await core.reconcile()).toEqual(broadcast);
     expect(await new ExitJournal(h.kv).records()).toEqual([]);
 
-    h.node.receipts[TX] = { status: TxStatus.FINALIZED, blockNumber: 9, executionSucceeded: true };
+    h.node.receipts[TX] = { status: TxStatus.FINALIZED, ...included };
     const data = finalizationData();
     const operationId = operationIdOf(data, TX);
     expect(await core.reconcile()).toMatchObject({
@@ -500,6 +509,7 @@ describe("operations and reconcile", () => {
       ],
     };
     await new ExitJournal(h.kv).record(entry);
+    await other.close();
 
     expect(await core.reconcile()).toMatchObject({
       status: "complete",
@@ -515,7 +525,8 @@ describe("operations and reconcile", () => {
     const other = otherSession(h);
     const spend = await other.begin("spend", { amount: "1" });
     await other.update(spend.id, { status: "broadcast", txHash: TX });
-    h.node.receipts[TX] = { status: TxStatus.PROVEN, blockNumber: 9, executionSucceeded: true };
+    await other.close();
+    h.node.receipts[TX] = { status: TxStatus.PROVEN, ...included };
 
     expect(await core.reconcile()).toMatchObject({
       id: spend.id,
@@ -523,6 +534,63 @@ describe("operations and reconcile", () => {
       txHash: TX,
       receiptStatus: "proven",
     });
+    expect(await new ExitJournal(h.kv).records()).toEqual([]);
+    await core.close();
+  });
+
+  it("leaves a broadcast spend to its live holder: a reconcile racing the send cannot fail it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const tab = await h.open();
+    h.node.receipts[SPEND_TX] = { status: TxStatus.CHECKPOINTED, ...included };
+    const raced: (OperationRecord | null)[] = [];
+    h.node.onSpendSent = async () => {
+      raced.push(await core.reconcile(), await tab.reconcile());
+    };
+
+    expect(await core.send(account.address.toString(), 5n, null)).toEqual({ txHash: SPEND_TX });
+    expect(raced).toMatchObject([
+      { status: "broadcast", txHash: SPEND_TX },
+      { status: "broadcast", txHash: SPEND_TX },
+    ]);
+    expect(await core.operations()).toMatchObject([{ status: "complete", txHash: SPEND_TX }]);
+    await tab.close();
+    await core.close();
+  });
+
+  it("fails a reverted spend only once finalized, with its block evidence", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    const broadcast = await other.update(spend.id, { status: "broadcast", txHash: TX });
+    await other.close();
+
+    h.node.receipts[TX] = { status: TxStatus.CHECKPOINTED, ...included, executionSucceeded: false };
+    expect(await core.reconcile()).toEqual(broadcast);
+    h.node.receipts[TX] = { status: TxStatus.FINALIZED, ...included, executionSucceeded: false };
+    expect(await core.reconcile()).toMatchObject({
+      id: spend.id,
+      status: "failed",
+      receiptStatus: "finalized-failed",
+      receiptBlockNumber: "9",
+      receiptBlockHash: included.blockHash,
+      error: "operation finalized with a reverted receipt",
+    });
+    expect(await core.reconcile()).toBeNull();
+    await core.close();
+  });
+
+  it("journals no exit record for a reverted exit", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const prepared = await preparedExit(other);
+    await recordBroadcastBeforeSend(other, prepared.id, corridor)(TxHash.fromString(TX));
+    await other.close();
+    h.node.receipts[TX] = { status: TxStatus.FINALIZED, ...included, executionSucceeded: false };
+
+    expect(await core.reconcile()).toMatchObject({ status: "failed" });
     expect(await new ExitJournal(h.kv).records()).toEqual([]);
     await core.close();
   });

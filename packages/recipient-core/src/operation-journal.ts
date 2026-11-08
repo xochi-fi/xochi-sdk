@@ -416,9 +416,17 @@ export class OperationJournal {
     if (!abandonable || record.status !== "building") {
       throw new Error(`operation ${id} is not an unfinished receipt run, spend or exit`);
     }
-    const pid = record.request["pid"];
-    if (pid === undefined || (await this.holderAlive(Number(pid)))) return null;
+    if ((await this.recordedHolderAlive(record)) !== false) return null;
     return this.update(id, { status: "aborted" });
+  }
+
+  /**
+   * Whether the holder a record names (its request's `pid`) still runs; null when the record
+   * names none (a spend or exit begun before `begin` recorded its holder).
+   */
+  async recordedHolderAlive(record: OperationRecord): Promise<boolean | null> {
+    const pid = record.request["pid"];
+    return pid === undefined ? null : this.holderAlive(Number(pid));
   }
 
   /**
@@ -500,11 +508,23 @@ export class OperationJournal {
     }
   }
 
+  /**
+   * Applies `patch` while the operation owns the lock. Completing an operation that is already
+   * `complete` with the same tx hash answers it unchanged: a reconcile may have completed it, and
+   * released its lock, while its holder still waited for the receipt.
+   */
   async update(
     id: string,
     patch: Partial<Omit<OperationRecord, "id" | "lockNonce" | "kind" | "createdAt">>,
   ): Promise<OperationRecord> {
     const current = await this.get(id);
+    if (
+      current.status === "complete" &&
+      patch.status === "complete" &&
+      (patch.txHash === undefined || patch.txHash === current.txHash)
+    ) {
+      return current;
+    }
     const owner: ActiveLock = {
       id: current.id,
       lockNonce: current.lockNonce,

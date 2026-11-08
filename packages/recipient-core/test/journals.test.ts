@@ -17,12 +17,16 @@ const EXIT = {
 };
 
 describe("exit and state records over the storage port", () => {
-  it("writes an exit record once, in the CLI's bytes, and never overwrites it", async () => {
+  it("writes an exit record once, in the CLI's bytes; accepts it again, never another", async () => {
     const kv = new MemoryKeyValueStore();
     const exits = new ExitJournal(kv);
     await exits.record(EXIT);
     expect(kv.text(`exits/${TX}.json`)).toBe(`${JSON.stringify(EXIT, null, 2)}\n`);
-    await expect(exits.record(EXIT)).rejects.toBeInstanceOf(KeyExistsError);
+    await exits.record({ ...EXIT });
+    await expect(exits.record({ ...EXIT, recipientAmount: "91" })).rejects.toThrow(
+      `exit record exits/${TX}.json differs from this exit's; it is never overwritten`,
+    );
+    expect(kv.text(`exits/${TX}.json`)).toBe(`${JSON.stringify(EXIT, null, 2)}\n`);
     expect(await exits.records()).toEqual([EXIT]);
     await expect(new ExitJournal(kv).restore([EXIT])).rejects.toThrow(/empty destination/);
   });

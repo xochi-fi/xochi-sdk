@@ -56,6 +56,27 @@ async function submitSeeingDurable(
 }
 
 describe("operation journal over the storage and lock ports", () => {
+  it("lets the holder complete an operation a reconcile already completed with its tx hash", async () => {
+    const kv = new MemoryKeyValueStore();
+    const locks = new MemoryLockManager();
+    const holder = journalFor(kv, locks, TAB_A);
+    const reconciler = journalFor(kv, locks, TAB_B);
+    const operation = await holder.begin("spend", { amount: "1" });
+    await holder.update(operation.id, { status: "broadcast", txHash: TX_HASH });
+    const reconciled = await reconciler.update(operation.id, {
+      status: "complete",
+      receiptStatus: "checkpointed",
+    });
+
+    expect(await holder.update(operation.id, { status: "complete", txHash: TX_HASH })).toEqual(
+      reconciled,
+    );
+    await expect(
+      holder.update(operation.id, { status: "complete", txHash: `0x${"34".repeat(32)}` }),
+    ).rejects.toThrow();
+    expect(await holder.get(operation.id)).toEqual(reconciled);
+  });
+
   it("makes the transaction hash durable before the node can receive the transaction", async () => {
     const kv = new MemoryKeyValueStore();
     const journal = journalFor(kv, new MemoryLockManager(), TAB_A);

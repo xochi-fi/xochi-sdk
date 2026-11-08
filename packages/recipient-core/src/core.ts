@@ -6,11 +6,12 @@
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { TxStatus } from "@aztec-labs/stdlib/tx";
 import { keccak256 } from "viem";
 
 import { deriveRecipientAccount, type RecipientAccount } from "./account.js";
 import { HttpEnrollmentApi, type BindingProjection } from "./api.js";
-import { ExitJournal, openBackup, type BackupContents, type ExitJournalRecord } from "./backup.js";
+import { ExitJournal, openBackup, type BackupContents } from "./backup.js";
 import {
   BACKUP_FORMAT_PASSKEY_V1_ID,
   signerSignsPasskeyBackup,
@@ -147,11 +148,14 @@ export interface RecipientCore {
   operations(): Promise<OperationRecord[]>;
   /**
    * The CLI's `operations reconcile` for the operation holding the fund-movement lock; null when
-   * none does. A spend or exit with a tx hash completes once its receipt is durably included (an
-   * exit also journals its exit record and each withdrawal's L1 operation id) and is answered
-   * unchanged before. A `building` receipt run, spend or exit is aborted once its recorded holder
-   * is gone (a hashless spend or exit never reached the node; the CLI refuses it) and answered
-   * unchanged while that holder lives. An L1 refund is refused.
+   * none does; any other answer is that operation's record. A `broadcast` spend or exit is left to
+   * its holder while that holder runs (it completes it itself). Otherwise, with a tx hash: it
+   * completes once its receipt is durably included (an exit also journals its exit record and
+   * each withdrawal's L1 operation id), fails once a reverted receipt is finalized (with its block
+   * evidence; no exit record) and is answered unchanged before. A `building` receipt run, spend
+   * or exit is aborted once its recorded holder is gone (a hashless spend or exit never reached
+   * the node; the CLI refuses it) and answered unchanged while that holder lives. An L1 refund is
+   * refused.
    */
   reconcile(): Promise<OperationRecord | null>;
   close(): Promise<void>;
@@ -531,8 +535,28 @@ class Core implements RecipientCore {
     const { txHash } = operation;
     // Hashless means `building`: the hash is durable before `sendTx`, so nothing reached the node.
     if (txHash === undefined) return (await journal.abortAbandonedRun(operation.id)) ?? operation;
+    // A live holder is still waiting for this receipt and completes the operation itself.
+    if (operation.status === "broadcast" && (await journal.recordedHolderAlive(operation))) {
+      return operation;
+    }
     const receipt = await this.#port.txReceipt(txHash);
     if (!durablyIncluded(receipt.status)) return operation;
+    if (!receipt.executionSucceeded) {
+      if (
+        receipt.status !== TxStatus.FINALIZED ||
+        receipt.blockNumber === null ||
+        receipt.blockHash === null
+      ) {
+        return operation;
+      }
+      return journal.update(operation.id, {
+        status: "failed",
+        receiptStatus: "finalized-failed",
+        receiptBlockNumber: String(receipt.blockNumber),
+        receiptBlockHash: receipt.blockHash,
+        error: "operation finalized with a reverted receipt",
+      });
+    }
     if (operation.kind !== "exit") {
       return journal.update(operation.id, { status: "complete", receiptStatus: receipt.status });
     }
@@ -541,7 +565,7 @@ class Core implements RecipientCore {
       operation.withdrawals ?? [],
       txHash,
     );
-    await this.#recordExit({
+    await this.#journals.exits.record({
       txHash,
       executorFee: operation.request["executorFee"] ?? null,
       recipientAmount: operation.request["recipientAmount"] ?? null,
@@ -557,13 +581,6 @@ class Core implements RecipientCore {
       receiptStatus: receipt.status,
       withdrawals,
     });
-  }
-
-  /** Journals an exit record unless an interrupted reconcile already did. */
-  async #recordExit(record: ExitJournalRecord): Promise<void> {
-    const exits = this.#journals.exits;
-    if ((await exits.records()).some((recorded) => recorded.txHash === record.txHash)) return;
-    await exits.record(record);
   }
 
   async close(): Promise<void> {

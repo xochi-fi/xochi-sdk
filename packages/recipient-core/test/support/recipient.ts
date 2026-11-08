@@ -6,11 +6,12 @@
 
 import { readFileSync } from "node:fs";
 
+import type { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import { sha256ToField } from "@aztec-labs/foundation/crypto/sha256";
-import { loadContractArtifact } from "@aztec-labs/stdlib/abi";
+import { loadContractArtifact, type ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { computeArtifactHash, getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
-import { TxStatus } from "@aztec-labs/stdlib/tx";
+import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
 import {
   AZTEC_RECIPIENT_PROFILES,
   hashRecipientDescriptor,
@@ -26,7 +27,9 @@ import type { AccountSecrets, RecipientAccount } from "../../src/account.js";
 import type { ReceiptChallenge, ReceiptSubmission } from "../../src/api.js";
 import {
   DryRunAztec,
+  recordBroadcastBeforeSend,
   type FeeJuiceClaim,
+  type LiveAztecOptions,
   type ObservedTxReceipt,
   type ReceivedTransfer,
 } from "../../src/chain.js";
@@ -37,7 +40,12 @@ import { ORDER_FINGERPRINT_TAG } from "../../src/order-fingerprint.js";
 import { predictOxideTokenInstanceWithArtifact } from "../../src/oxide/vendor/oxide-client/token_registration.js";
 import { tokenImmutables } from "../../src/oxide-token.js";
 import { SHIELDED_TERMS_TYPES, type ShieldedTermsTypedData } from "../../src/receipt.js";
+import { durablyIncluded } from "../../src/reconciliation.js";
 import { fingerprintTerms } from "../../src/settlement-fingerprint.js";
+
+function fail(message: string): never {
+  throw new Error(message);
+}
 
 function testField(label: string): string {
   if (!label.includes("TEST ONLY")) throw new Error(`test label must say TEST ONLY: ${label}`);
@@ -56,6 +64,8 @@ export const AMOUNT = 25n * 10n ** 18n;
 /** Unix seconds of the tests' clock: before every expiry below. */
 export const NOW = 1_899_999_900;
 export const hex = (byte: string): Hex => `0x${byte.repeat(32)}`;
+/** The tx hash the node double's spend sends. */
+export const SPEND_TX = hex("05");
 export const BINDING_ID = "TEST-ONLY-binding";
 export const ENROLLMENT_CHALLENGE: EnrollmentChallenge = {
   challenge_id: "TEST-ONLY-challenge",
@@ -242,6 +252,7 @@ export class PayoutNode extends DryRunAztec {
       this.receipts[txHash] ?? {
         status: TxStatus.FINALIZED,
         blockNumber: 4242,
+        blockHash: hex("bb"),
         executionSucceeded: true,
       }
     );
@@ -249,6 +260,33 @@ export class PayoutNode extends DryRunAztec {
 
   /** The node's receipt per tx hash; finalized unless set. */
   receipts: Record<string, ObservedTxReceipt> = {};
+  /** What `openRecipientCore` connected this double with (its journal and corridor). */
+  options: LiveAztecOptions | null = null;
+  /** Runs once a spend's broadcast record is durable and the node has the transaction. */
+  onSpendSent: () => Promise<void> = async () => undefined;
+
+  /** `LiveAztec.spend`'s journal steps around a synthetic submission of `SPEND_TX`. */
+  override async spend(
+    account: RecipientAccount,
+    _artifact: ContractArtifact,
+    to: AztecAddress,
+    amount: bigint,
+  ): Promise<string> {
+    const { journal, corridor } = this.options ?? fail("the node double was not connected");
+    const operation = await journal.begin("spend", {
+      from: account.address.toString(),
+      to: to.toString(),
+      amount: amount.toString(),
+    });
+    await recordBroadcastBeforeSend(journal, operation.id, corridor)(TxHash.fromString(SPEND_TX));
+    await this.onSpendSent();
+    if (!durablyIncluded((await this.txReceipt(SPEND_TX)).status)) {
+      throw new Error("Aztec transaction receipt is not durably included");
+    }
+    await journal.update(operation.id, { status: "complete", txHash: SPEND_TX });
+    return SPEND_TX;
+  }
+
   /** Called as the deploy reaches the node, after its `beforeSubmit` hook. */
   onDeploySend: () => void = () => undefined;
   deploySends = 0;

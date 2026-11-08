@@ -18,7 +18,7 @@ import { CorridorSchema, decimal, hex32, type Corridor } from "./corridor.js";
 import type { SignedAck } from "./enrollment.js";
 import { parseJsonBytes, prettyJsonBytes, utf8Bytes } from "./json.js";
 import { OperationRecordSchema } from "./operation-journal.js";
-import type { KeystoreCrypto, KeyValueStore } from "./ports.js";
+import { KeyExistsError, type KeystoreCrypto, type KeyValueStore } from "./ports.js";
 import { ReceiptRecordSchema } from "./receipt.js";
 
 const RECOVERY_INSTRUCTIONS = [
@@ -215,9 +215,28 @@ export class ExitJournal {
     return this.describeKey(`${EXITS}${txHash}.json`);
   }
 
-  /** Writes the exit's record exactly as `exit` returned it; refuses to overwrite one. */
+  /**
+   * Writes the exit's record exactly as `exit` returned it. The same record already there is
+   * accepted (an exit and a reconcile of it both journal it); a different one is never overwritten.
+   */
   async record(result: ExitJournalRecord): Promise<void> {
-    await this.kv.create(`${EXITS}${result.txHash}.json`, prettyJsonBytes(result));
+    const key = `${EXITS}${result.txHash}.json`;
+    try {
+      await this.kv.create(key, prettyJsonBytes(result));
+    } catch (error) {
+      if (!(error instanceof KeyExistsError)) throw error;
+      const recorded = await this.kv.get(key);
+      // Schema order makes the comparison independent of key order.
+      const same =
+        recorded !== null &&
+        JSON.stringify(ExitJournalRecordSchema.parse(parseJsonBytes(recorded))) ===
+          JSON.stringify(ExitJournalRecordSchema.parse(result));
+      if (!same) {
+        throw new Error(
+          `exit record ${this.path(result.txHash)} differs from this exit's; it is never overwritten`,
+        );
+      }
+    }
   }
 
   /** Reads only validated exit recovery records; file names must be the transaction they describe. */

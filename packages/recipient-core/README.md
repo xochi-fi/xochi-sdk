@@ -75,12 +75,14 @@ the resolved `@xochi/signer` is older than 0.8.0 (0.7.0 cannot sign the passkey 
 before any request.
 
 `reconcile()` is the CLI's `operations reconcile` for the operation holding the fund-movement lock
-(null when none does). A spend or exit with a tx hash completes once its receipt is durably
-included (an exit also journals `exits/<txHash>.json` and each withdrawal's L1 operation id) and is
-answered unchanged until then. A `building` receipt run, spend or exit is aborted once the holder
-its record names is gone (a reloaded tab) and answered unchanged while that holder lives: the tx
-hash is durable before `sendTx`, so a hashless spend or exit never reached the node. The CLI still
-refuses a hashless spend or exit. An L1 refund is refused.
+(null when none does). A `broadcast` spend or exit is left to its holder while that holder runs.
+Otherwise a spend or exit with a tx hash completes once its receipt is durably included (an exit
+also journals `exits/<txHash>.json` and each withdrawal's L1 operation id), fails once a reverted
+receipt is finalized (with its block number and hash; no exit record) and is answered unchanged
+until then. A `building` receipt run, spend or exit is aborted once the holder its record names is
+gone (a reloaded tab) and answered unchanged while that holder lives: the tx hash is durable
+before `sendTx`, so a hashless spend or exit never reached the node. The CLI still refuses a
+hashless spend or exit. An L1 refund is refused.
 
 `importCliBackup(sealed, passphrase, crypto)` opens a CLI backup; `restoreJournals(core, backup,
 sealed)` restores its journals and binding into an open core of the same account and corridor

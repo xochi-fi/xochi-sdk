@@ -88,6 +88,8 @@ export interface ObservedTxReceipt {
   status: TxStatus;
   /** Null until the transaction is in a block. */
   blockNumber: number | null;
+  /** The including block's hash; null until the transaction is in a block. */
+  blockHash: string | null;
   executionSucceeded: boolean;
 }
 
@@ -535,6 +537,7 @@ export class LiveAztec implements AztecPort {
     return {
       status: receipt.status,
       blockNumber: receipt.isMined() ? Number(receipt.blockNumber) : null,
+      blockHash: receipt.isMined() ? receipt.blockHash.toString() : null,
       executionSucceeded: receipt.hasExecutionSucceeded(),
     };
   }
@@ -911,7 +914,12 @@ export class DryRunAztec implements AztecPort {
 
   async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
     this.record(`node.getTxReceipt(${txHash}) (synthetic: unknown, pending)`);
-    return { status: TxStatus.PENDING, blockNumber: null, executionSucceeded: false };
+    return {
+      status: TxStatus.PENDING,
+      blockNumber: null,
+      blockHash: null,
+      executionSucceeded: false,
+    };
   }
 
   async blockNumber(): Promise<number> {

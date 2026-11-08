@@ -145,6 +145,7 @@ describe("receipt API", () => {
 const FINALIZED: ObservedTxReceipt = {
   status: TxStatus.FINALIZED,
   blockNumber: 4242,
+  blockHash: hex("b1"),
   executionSucceeded: true,
 };
 const ARTIFACT = { name: "OxideToken" } as ContractArtifact;
