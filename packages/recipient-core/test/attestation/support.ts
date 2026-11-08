@@ -31,10 +31,7 @@ rfMCMQCi85sWBbJwKKXdS6BptQFuZbT73o/gBh1qUxl/nNr12UO8Yfwr6wPLb+6N
 IwLz3/Y=
 -----END CERTIFICATE-----`;
 
-export const ENCLAVE_TS_URL = new URL(
-  "../../src/oxide/enclave.ts",
-  import.meta.url,
-);
+export const ENCLAVE_TS_URL = new URL("../../src/oxide/enclave.ts", import.meta.url);
 
 export function awsNitroRootDer(): Uint8Array {
   const body = AWS_NITRO_ROOT_G1_PEM.replace(/-----(BEGIN|END) CERTIFICATE-----|\s/g, "");
