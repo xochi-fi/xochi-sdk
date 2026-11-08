@@ -41,6 +41,7 @@ import { StateStore } from "../src/state.js";
 import { FixedClock, MemoryKeyValueStore, MemoryLockManager } from "./support/memory.js";
 import {
   BINDING_ID,
+  ENROLLMENT_CHALLENGE,
   INTENT,
   NOW,
   PayoutNode,
@@ -58,6 +59,8 @@ import {
 } from "./support/recipient.js";
 
 const SEALED = { mode: "sealed_file", commitment: hex("bc") } as const satisfies BackupMode;
+/** When the test challenge expires: a kept request for it can be replaced after then. */
+const EXPIRY = new Date(ENROLLMENT_CHALLENGE.expires_at * 1000).toISOString();
 const PASSKEY: BackupMode = {
   mode: "passkey",
   credentialIdHash: keccak256(toHex("TEST ONLY credential id")),
@@ -245,8 +248,7 @@ describe("enrollment", () => {
     const kept = h.kv.text("enrollment-request.json");
     const posts = h.xochi.posts();
 
-    const awaiting =
-      "the enrollment request for challenge TEST-ONLY-challenge, with another source signature or backup, awaits its answer: retry with the same ones or call enrollResume()";
+    const awaiting = `the enrollment request for challenge TEST-ONLY-challenge, with another source signature or backup, awaits its answer until ${EXPIRY}: retry with the same ones or call enrollResume(), or start a new enrollment after then`;
     await expect(
       core.enrollSubmit(pending, signature, { mode: "sealed_file", commitment: hex("bd") }),
     ).rejects.toThrow(awaiting);
@@ -260,20 +262,123 @@ describe("enrollment", () => {
     await core.close();
   });
 
-  it("forgets a request the Worker refuses outright, so a corrected one is prepared", async () => {
+  it("forgets a request the Worker refuses outright (categorized), so a corrected one is prepared", async () => {
     const h = harness();
     const core = await h.open();
     const pending = await core.enrollStart(SOURCE.address);
     const signature = await SOURCE.signTypedData(pending.typedData);
-    h.xochi.rejectEnrollments = 1;
+    h.xochi.enrollRefusals.push({
+      status: 409,
+      body: { error: "TEST ONLY passkey elsewhere", error_category: "passkey_recipient_mismatch" },
+    });
 
-    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/answered 400/);
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/answered 409/);
     expect(h.kv.text("enrollment-request.json")).toBeNull();
     const other = { mode: "sealed_file", commitment: hex("bd") } as const;
     expect(await core.enrollSubmit(pending, signature, other)).toMatchObject({
       binding_id: BINDING_ID,
     });
     expect(await stateOf(h.kv)).toMatchObject({ backupCommitment: other.commitment });
+    await core.close();
+  });
+
+  it("keeps the request on a 403 after a lost response; a retry with a fresh JWT resumes the same binding", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.loseEnrollResponses = 1;
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/connection reset/);
+    const kept = h.kv.text("enrollment-request.json");
+
+    h.xochi.enrollRefusals.push({
+      status: 403,
+      body: { error: "Wallet-bound Member authentication required" },
+    });
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/answered 403/);
+    expect(h.kv.text("enrollment-request.json")).toBe(kept);
+
+    expect(await core.enrollSubmit(pending, signature, SEALED)).toMatchObject({
+      binding_id: BINDING_ID,
+    });
+    expect(h.xochi.enrollBodies).toHaveLength(2);
+    expect(h.xochi.enrollBodies[1]).toBe(h.xochi.enrollBodies[0]);
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
+    await core.close();
+  });
+
+  it("keeps the request on 401, 408, 429 and an uncategorized 400 while its challenge is unexpired", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    const refusals = [
+      { status: 401, body: { error: "Unauthorized" } },
+      { status: 408, body: "TEST ONLY proxy timeout" },
+      { status: 429, body: { error: "TEST ONLY rate limited" } },
+      { status: 400, body: { error: "Source binding signature invalid" } },
+    ];
+    for (const refusal of refusals) {
+      h.xochi.enrollRefusals.push(refusal);
+      await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(
+        `answered ${refusal.status}`,
+      );
+      expect(h.kv.json("enrollment-request.json")).toMatchObject({
+        challengeId: "TEST-ONLY-challenge",
+      });
+    }
+    await core.close();
+  });
+
+  it("resends an expired kept request before replacing it, and answers the binding it enrolled", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.loseEnrollResponses = 1;
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/connection reset/);
+
+    (h.deps.clock as FixedClock).ms = (NOW + 601) * 1000;
+    h.xochi.challenge = { ...ENROLLMENT_CHALLENGE, challenge_id: "TEST-ONLY-challenge-2" };
+    h.xochi.challenge.expires_at = NOW + 1200;
+    const next = await core.enrollStart(SOURCE.address);
+    const nextSignature = await SOURCE.signTypedData(next.typedData);
+
+    expect(await core.enrollSubmit(next, nextSignature, SEALED)).toMatchObject({
+      binding_id: BINDING_ID,
+    });
+    expect(h.xochi.enrollBodies).toHaveLength(2);
+    expect(h.xochi.enrollBodies[1]).toBe(h.xochi.enrollBodies[0]);
+    expect(await stateOf(h.kv)).toMatchObject({
+      bindingDigest: bindingTypedData(corridor, pending.binding).digest,
+    });
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
+    await core.close();
+  });
+
+  it("replaces an expired kept request the Worker refuses on its one resend", async () => {
+    const h = harness();
+    const core = await h.open();
+    const pending = await core.enrollStart(SOURCE.address);
+    const signature = await SOURCE.signTypedData(pending.typedData);
+    h.xochi.enrollRefusals.push({ status: 503, body: "TEST ONLY unavailable" });
+    await expect(core.enrollSubmit(pending, signature, SEALED)).rejects.toThrow(/answered 503/);
+
+    (h.deps.clock as FixedClock).ms = (NOW + 601) * 1000;
+    h.xochi.challenge = { ...ENROLLMENT_CHALLENGE, challenge_id: "TEST-ONLY-challenge-2" };
+    h.xochi.challenge.expires_at = NOW + 1200;
+    const next = await core.enrollStart(SOURCE.address);
+    const nextSignature = await SOURCE.signTypedData(next.typedData);
+    h.xochi.enrollRefusals.push({ status: 400, body: { error: "Enrollment challenge expired" } });
+
+    expect(await core.enrollSubmit(next, nextSignature, SEALED)).toMatchObject({
+      binding_id: BINDING_ID,
+    });
+    expect(h.xochi.enrollBodies).toHaveLength(1);
+    expect(JSON.parse(h.xochi.enrollBodies[0]!)).toMatchObject({
+      challenge_id: "TEST-ONLY-challenge-2",
+    });
+    expect(h.kv.text("enrollment-request.json")).toBeNull();
     await core.close();
   });
 
@@ -290,7 +395,7 @@ describe("enrollment", () => {
 
     const core = await h.open();
     await expect(core.enrollStart(SOURCE.address)).rejects.toThrow(
-      `the enrollment request for challenge TEST-ONLY-challenge awaits its answer until ${new Date((NOW + 600) * 1000).toISOString()}: call enrollResume()`,
+      `the enrollment request for challenge TEST-ONLY-challenge awaits its answer until ${EXPIRY}: call enrollResume(), or start a new enrollment after then`,
     );
     expect(await core.enrollResume()).toMatchObject({ binding_id: BINDING_ID });
     expect(h.xochi.enrollBodies).toHaveLength(2);

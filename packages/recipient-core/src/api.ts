@@ -126,6 +126,17 @@ const RECEIPT_REJECTIONS: Readonly<Record<string, number>> = {
   receipt_challenge_unknown: 400,
 };
 
+/**
+ * The enrollment refusals that reject the request outright, so a new request may replace the
+ * kept one (`error_category`, wire contract `ENROLLMENT_ERROR_CATEGORIES`): never a
+ * 401/403/408/429/5xx. The Worker categorizes only `passkey_recipient_mismatch` so far; its other
+ * refusals name no category and keep the request (`rejectsExpiredEnrollment` covers them once its
+ * challenge has expired).
+ */
+const ENROLLMENT_REJECTIONS: Readonly<Record<string, number>> = {
+  passkey_recipient_mismatch: 409,
+};
+
 export class EnrollmentApiError extends Error {
   /** The Worker's `error_category`, or null when the body names none. */
   readonly category: string | null;
@@ -142,7 +153,26 @@ export class EnrollmentApiError extends Error {
 
   /** True only when Xochi rejected the receipt's acknowledgement or challenge outright. */
   get rejectsReceipt(): boolean {
-    return this.category !== null && RECEIPT_REJECTIONS[this.category] === this.status;
+    return this.rejectedBy(RECEIPT_REJECTIONS);
+  }
+
+  /** True only when Xochi rejected the enrollment request outright. */
+  get rejectsEnrollment(): boolean {
+    return this.rejectedBy(ENROLLMENT_REJECTIONS);
+  }
+
+  /**
+   * For a request whose challenge has expired, also the Worker's uncategorized 400 (challenge
+   * expired or unknown, request invalid) and 409 (challenge consumed by another binding): an
+   * expired challenge enrolls nothing new, and the Worker answers the request a consumed one
+   * enrolled with its binding, so neither answer leaves anything this request could still enroll.
+   */
+  get rejectsExpiredEnrollment(): boolean {
+    return this.rejectsEnrollment || this.status === 400 || this.status === 409;
+  }
+
+  private rejectedBy(rejections: Readonly<Record<string, number>>): boolean {
+    return this.category !== null && rejections[this.category] === this.status;
   }
 }
 

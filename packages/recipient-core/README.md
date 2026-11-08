@@ -76,10 +76,14 @@ older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request
 
 `enrollSubmit` keeps the exact signed request in `enrollment-request.json` before the POST, with
 the source signature and backup acknowledgement it was built from, and resends it byte for byte on
-a retry with the same ones; a retry with others is refused while it awaits its answer, and a 4xx
-answer forgets it. `state.json` records the commitment and binding of the request actually sent.
-After a reload an app calls `enrollResume()` (null when nothing is kept): `enrollStart` refuses
-while a kept request's challenge is unexpired.
+a retry with the same ones. A retry with others is refused until the challenge expires (the
+message names the expiry time). Only the Worker's outright refusal forgets the request
+(`EnrollmentApiError.rejectsEnrollment`: today only `passkey_recipient_mismatch`), never a
+401/403/408/429/5xx or an uncategorized 4xx. Once its challenge has expired, the next submit
+resends it once: the binding it enrolled is answered, and an uncategorized 400 or 409 also lets
+the new request replace it (`rejectsExpiredEnrollment`). `state.json` records the commitment and
+binding of the request actually sent. After a reload an app calls `enrollResume()` (null when
+nothing is kept): `enrollStart` refuses while a kept request's challenge is unexpired.
 
 `reconcile()` is the CLI's `operations reconcile` for the operation holding the fund-movement lock
 (null when none does). A `broadcast` spend or exit is left to its holder while that holder runs.

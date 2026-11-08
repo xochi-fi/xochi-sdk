@@ -100,7 +100,8 @@ const DROPPED_GRACE_MS = 30_000;
  * The signed enrollment request `enrollSubmit` keeps from before its POST until the Worker
  * answers: the challenge, the exact request, and the source signature and backup acknowledgement
  * it was built from. Created once per challenge; removed once the binding is recorded or the
- * Worker refuses the request outright (4xx).
+ * Worker refuses the request outright (`EnrollmentApiError.rejectsEnrollment`; once its challenge
+ * expired, `rejectsExpiredEnrollment`).
  */
 const ENROLLMENT_REQUEST_KEY = "enrollment-request.json";
 const BackupAcknowledgementSchema = z
@@ -152,6 +153,11 @@ const KeptEnrollmentSchema = z
   })
   .strict();
 type KeptEnrollment = z.infer<typeof KeptEnrollmentSchema>;
+
+/** When the kept request's challenge expires (ISO): until then nothing may replace it. */
+function expiryOf(kept: KeptEnrollment): string {
+  return new Date(kept.expiresAt * 1000).toISOString();
+}
 
 export interface RecipientCoreDeps {
   corridor: Corridor;
@@ -209,9 +215,11 @@ export interface RecipientCore {
    * recipients acknowledge their sealed backup file), and while the resolved @xochi/signer cannot
    * sign the passkey format (< 0.8.0); both before any request. The signed request is kept
    * (`enrollment-request.json`) before the POST and resent byte for byte on a retry with the same
-   * signature and backup; a retry with others is refused while it awaits its answer. A request
-   * the Worker refuses outright (4xx) is forgotten, so the next call prepares a new one.
-   * `state.json` records the commitment and binding of the request actually sent.
+   * signature and backup; a retry with others is refused, naming the challenge expiry, until that
+   * expiry. A kept request for an expired challenge is resent once first: the binding it enrolled
+   * is answered, and only an outright refusal lets this request replace it. Only an outright
+   * refusal forgets a request (`rejectsEnrollment`), never a 401/403/408/429/5xx or an
+   * uncategorized 4xx. `state.json` records the commitment and binding of the request actually sent.
    */
   enrollSubmit(
     pending: PendingEnrollment,
@@ -553,9 +561,9 @@ class Core implements RecipientCore {
 
   async enrollStart(sourceWallet: string): Promise<PendingEnrollment> {
     const kept = await this.#keptEnrollment();
-    if (kept !== null && kept.expiresAt * 1000 > this.#deps.clock.nowMs()) {
+    if (kept !== null && !this.#expired(kept)) {
       throw new Error(
-        `the enrollment request for challenge ${kept.challengeId} awaits its answer until ${new Date(kept.expiresAt * 1000).toISOString()}: call enrollResume()`,
+        `the enrollment request for challenge ${kept.challengeId} awaits its answer until ${expiryOf(kept)}: call enrollResume(), or start a new enrollment after then`,
       );
     }
     const { tokenRegisteredAt } = await this.#journals.state.read();
@@ -599,15 +607,24 @@ class Core implements RecipientCore {
     }
     const acknowledged = BackupAcknowledgementSchema.parse(backupAcknowledgement(backup));
     const challengeId = pending.challenge.challenge_id;
+    const matches = (record: KeptEnrollment) =>
+      record.challengeId === challengeId &&
+      record.sourceSignature === sourceSignature &&
+      JSON.stringify(record.backup) === JSON.stringify(acknowledged);
+    const otherAwaits = (record: KeptEnrollment) =>
+      new Error(
+        `the enrollment request for challenge ${record.challengeId}, with another source signature or backup, awaits its answer until ${expiryOf(record)}: retry with the same ones or call enrollResume(), or start a new enrollment after then`,
+      );
     let kept = await this.#keptEnrollment();
-    if (kept !== null && kept.challengeId !== challengeId) {
-      if (kept.expiresAt * 1000 > this.#deps.clock.nowMs()) {
-        throw new Error(
-          `the enrollment request for challenge ${kept.challengeId} awaits its answer until ${new Date(kept.expiresAt * 1000).toISOString()}: call enrollResume()`,
-        );
+    if (kept !== null && !matches(kept)) {
+      if (!this.#expired(kept)) throw otherAwaits(kept);
+      // The Worker still answers an expired challenge's request with the binding it enrolled
+      // (its response may have been lost): resend it once, and replace it only once refused.
+      try {
+        return await this.#postKept(kept);
+      } catch (error) {
+        if (!(error instanceof EnrollmentApiError && error.rejectsExpiredEnrollment)) throw error;
       }
-      // Its challenge expired: that request can no longer enroll; this one replaces it.
-      await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);
       kept = null;
     }
     if (kept === null) {
@@ -634,16 +651,8 @@ class Core implements RecipientCore {
       } catch (error) {
         if (!(error instanceof KeyExistsError)) throw error;
         kept = (await this.#keptEnrollment()) ?? fail("the kept enrollment request vanished");
+        if (!matches(kept)) throw otherAwaits(kept);
       }
-    }
-    if (
-      kept.challengeId !== challengeId ||
-      kept.sourceSignature !== sourceSignature ||
-      JSON.stringify(kept.backup) !== JSON.stringify(acknowledged)
-    ) {
-      throw new Error(
-        `the enrollment request for challenge ${kept.challengeId}, with another source signature or backup, awaits its answer: retry with the same ones or call enrollResume()`,
-      );
     }
     return this.#postKept(kept);
   }
@@ -666,10 +675,16 @@ class Core implements RecipientCore {
     }
   }
 
+  #expired(kept: KeptEnrollment): boolean {
+    return kept.expiresAt * 1000 <= this.#deps.clock.nowMs();
+  }
+
   /**
    * POSTs the kept request byte for byte and records its binding, backup commitment and token
-   * acknowledgement in `state.json` from the request itself, then forgets it. A 4xx answer is an
-   * outright refusal: the request is forgotten, so the next submit prepares a new one.
+   * acknowledgement in `state.json` from the request itself, then forgets it. Only an outright
+   * refusal forgets it unsent (`rejectsEnrollment`; once its challenge expired,
+   * `rejectsExpiredEnrollment`), so the next submit prepares a new one: an auth, rate-limit,
+   * timeout or uncategorized answer keeps it for a retry.
    */
   async #postKept(kept: KeptEnrollment): Promise<BindingProjection> {
     const { request } = kept;
@@ -677,7 +692,10 @@ class Core implements RecipientCore {
     try {
       projection = await postEnrollment(this.#ctx, this.#api(), request);
     } catch (error) {
-      if (error instanceof EnrollmentApiError && error.status >= 400 && error.status < 500) {
+      if (
+        error instanceof EnrollmentApiError &&
+        (this.#expired(kept) ? error.rejectsExpiredEnrollment : error.rejectsEnrollment)
+      ) {
         await this.#deps.kv.delete(ENROLLMENT_REQUEST_KEY);
       }
       throw error;
