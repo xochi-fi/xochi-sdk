@@ -174,9 +174,9 @@ node dist/cli.js enroll submit --data-dir "$DATA" --api-url https://api.xochi.fi
 node dist/cli.js enroll status --data-dir "$DATA" --api-url https://api.xochi.fi
 node dist/cli.js balance --data-dir "$DATA" --node-url "$NODE" \
   --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT"
-# After the widget shows "Paid on Aztec. Waiting for the recipient to confirm receipt.":
-node dist/cli.js receipt "$INTENT_ID" --data-dir "$DATA" --node-url "$NODE" \
-  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT" --api-url https://api.xochi.fi
+# After the widget shows "Paid on Aztec. Waiting for the recipient to confirm receipt."
+# (before spending that payout); the node URL and artifact path are the ones saved above:
+node dist/cli.js receipt "$INTENT_ID" --data-dir "$DATA"
 node dist/cli.js operations --data-dir "$DATA"
 # Exit on mainnet: EXIT_CLAIM_JSON is a second operator claim file, not the setup one.
 node dist/cli.js exit --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
@@ -188,7 +188,8 @@ node dist/cli.js exit --data-dir "$DATA" --node-url "$NODE" --l1-rpc "$L1" \
 
 `qualify/EVIDENCE.md` contains the complete, fail-fast R1-R6 operator sequence, including spend,
 exit and restore on a second host. `--dry-run` records every node, PXE and API call without making
-it.
+it. For `receipt`, the dry-run PXE discovers no payout, so a dry run shows the PXE read and stops
+before any receipt challenge.
 
 - **Network pin**: every command refuses a node that is not rollup version 2070860440, rollup
   `0xe37a2663cc9c119ba41572c40fab0bbb23a5402f`, L1 chain 1, node 6.0.x, with block 1's
@@ -207,10 +208,11 @@ it.
   authorization and all acknowledgements required by the Worker (for OXDAI, including
   `TokenRegistrationAck`; below).
 - **Backup** (format `xochi.shielded.backup-format.v1`): account keys, instance and class,
-  network, token registration/immutables, senders, scan checkpoint, `TokenRegistrationAck`, and
-  validated spend/exit/refund journals. Restore accepts earlier v1 backups without journals,
-  recreates an unresolved operation's exact lock on the independent host, and never copies a wallet
-  database. The `backupCommitment` is keccak256 of the sealed bytes. Keep the two copies apart.
+  network, token registration/immutables, senders, scan checkpoint, `TokenRegistrationAck`, the
+  enrolled binding digest, and validated spend/exit/refund journals and receipt records. Restore
+  accepts earlier v1 backups without journals, receipts or binding digest, recreates an unresolved
+  operation's exact lock on the independent host, and never copies a wallet database. The
+  `backupCommitment` is keccak256 of the sealed bytes. Keep the two copies apart.
 - **Order fingerprint**: `balance` prints each received payout's order fingerprint from its
   `Transfer` meta (pxe-bridge `oxide.orderFingerprint` vector).
 
@@ -233,47 +235,75 @@ Vendored Oxide client: `src/oxide/vendor/VENDORED.md`.
 ## Confirming receipt
 
 Run `receipt` on the recipient's machine once the widget (or the Xochi app) shows "Paid on Aztec.
-Waiting for the recipient to confirm receipt." for an intent. Until a receipt is accepted, Xochi
-keeps the intent at `settling`; an accepted receipt completes it. Rerunning is safe: an accepted
-receipt is answered from the local record without contacting Xochi again.
+Waiting for the recipient to confirm receipt." for an intent, and before spending or exiting that
+payout. Until a receipt is accepted, Xochi keeps the intent at `settling`; an accepted receipt
+completes it. An accepted receipt is answered from the local record without contacting Xochi
+again.
 
 ```bash
-node dist/cli.js receipt "$INTENT_ID" --data-dir "$DATA" --node-url "$NODE" \
-  --oxide-token-artifact "$OXIDE_TOKEN_ARTIFACT" --api-url https://api.xochi.fi [--tx 0x...]
+export XOCHI_JWT=...   # the source wallet's current Member session
+xochi-recipient receipt "$INTENT_ID" --data-dir "$DATA"
 ```
 
+That is the whole invocation after `setup`, `enroll start` or `restore`: `receipt` reuses the node
+URL and OxideToken artifact path the last live one of them saved in `state.json`, the corridor
+recorded at `init`, and `--api-url` defaults to `https://api.xochi.fi`. A value that was never
+saved is refused by name (`--node-url is required: no node URL was saved ...`); pass that flag.
+
 **What it proves.** The signed `PaymentReceiptAck` asserts that this account independently found
-and can spend the payout. Before signing, the tool requires all of the following:
+and can spend this intent's payout. Before signing, the tool requires all of the following:
 
-- its own PXE discovered an OxideToken `Transfer` to this account of exactly the amount Xochi
-  names, at the corridor token;
-- no other intent's receipt in this data directory names that transaction (`--tx` picks one when
-  several unreceipted payouts match);
-- your node reports that transaction `finalized`, successful, and in the block where it was
-  discovered;
-- a private transfer of the amount to itself simulates in this PXE. That is the simulate pass of
+- Xochi's challenge carries the intent's signed `ShieldedTermsV1`. The terms must use the pinned
+  types and this corridor's terms domain, and hash to the challenge's `terms_digest`. They must be
+  for this intent, and pay exactly the challenge's amount to this account, descriptor, token,
+  network and corridor. `operation_id` must be keccak256 of the terms' operation id. Both the
+  terms and the challenge must name the binding digest this data directory enrolled. It is
+  recorded at `enroll submit` and carried by backups; without it, `receipt` refuses.
+- Its own PXE discovered the payout: an OxideToken `Transfer` to this account from the
+  corridor's registered sender, of exactly that amount, whose meta carries the order fingerprint
+  those terms produce (pxe-bridge's settlement fingerprint, `validUntil` = the terms'
+  `settlementServiceDeadline`). A transfer from any other sender, including this account's own,
+  never counts. `--tx` only picks among such payouts.
+- No other intent's receipt in this data directory or its backups names that transaction, those
+  terms or that operation.
+- Your node reports that transaction `finalized`, successful, and in the block where it was
+  discovered.
+- A private transfer of the amount to itself simulates in this PXE. That is the simulate pass of
   the spend path without the enclave, so no key leaves the machine and nothing is proven or sent.
-  It shows that this account's notes can pay the amount. It does not single out the payout's own
-  note.
+  It shows that this account's notes can pay the amount, not which note. A failure is reported as
+  `simulation failed: <cause>`.
 
-The challenge must name this account, the corridor token and network, and the binding this data
-directory enrolled. `receipt` refuses while a spend or exit is unresolved under `operations/`,
-because its notes may already be spent.
+A payout made before order tagging carries no fingerprint. `receipt` lists such payouts and takes
+one only as `--tx HASH --untagged`. The payout must come from the corridor's sender with the
+exact amount, and no tagged payout of the intent may exist. The run prints a warning; only your
+`--tx` ties it to the intent. Xochi refuses one transaction for two intents.
 
-**What it sends.** `POST /api/shielded/operations/<intentId>/receipt/challenge` with `{}`, then
-`POST /api/shielded/operations/<intentId>/receipt` with the challenge id and the
-acknowledgement: binding and terms digests, operation id, network, payout transaction hash and
-block, token, amount, this account's Aztec address, the challenge nonce and expiry, and the
+If you already spent or exited the payout, the simulation fails. `--already-spent` then signs only
+if this account's own completed spend or exit in `operations/` was mined after the payout's block.
+That spend's transaction hash is recorded with the receipt.
+
+`receipt` holds the fund-movement lock under `operations/` for the whole run, so no spend, exit
+or refund runs alongside it. It refuses while one of them is unresolved. A receipt run that died
+(or ran on another host before a restore) is released by the next command.
+
+**What it sends.** `POST /api/shielded/operations/<intentId>/receipt/challenge` with `{}`, after
+the PXE sync, then `POST /api/shielded/operations/<intentId>/receipt` with the challenge id and
+the acknowledgement: binding and terms digests, operation id, network, payout transaction hash
+and block, token, amount, this account's Aztec address, the challenge nonce and expiry, and the
 account's Schnorr signature. Both requests carry `XOCHI_JWT`. Xochi then checks the transaction
 against its own Aztec nodes. Nothing else is sent: no key, note, nullifier or balance. Your node
-sees a receipt lookup for the payout transaction.
+sees a receipt lookup for the payout transaction (and, when the simulation fails, for this
+account's completed spends and exits).
 
-**What it keeps.** `<data-dir>/receipts/<intentId>.json` (mode 0600) holds the payout hash,
-block, amount, the exact signed request, and, once Xochi accepts it, `receipt_digest` and
-`submitted_at`. A request whose answer was lost is resent byte for byte on the next run. If Xochi
-refuses that resend, the run starts over with a new challenge. Receipt runs are single-flight
-(`receipts/active.lock`). Backups do not include receipt records: they are not needed to recover
-funds.
+**What it keeps.** `<data-dir>/receipts/<intentId>.json` (mode 0600) pins the intent's terms
+digest, operation id, amount and payout transaction and block, and holds every request signed for
+it (append-only), then, once Xochi accepts one, `receipt_digest` and `submitted_at`. Backups carry
+these records, and restore puts them back: they keep a payout acknowledged for one intent from
+being offered for another. A request whose answer was lost is resent byte for byte on the next
+run. Only an outright rejection (`error_category` `receipt_challenge_expired`,
+`receipt_challenge_consumed` or `receipt_ack_rejected`) lets a run sign again under a new
+challenge, and then only for the recorded terms and payout. `--tx` naming another payout than the
+recorded one is refused.
 
 ## Qualification (R1-R6)
 
