@@ -3,5 +3,10 @@
   "compilerOptions": {
     "declaration": true,
     "sourceMap": true
-  }
+  },
+  "references": [
+    {
+      "path": "src/oxide/vendor"
+    }
+  ]
 }
