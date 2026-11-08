@@ -59,7 +59,9 @@ describe("browser keystore in headless Chromium", () => {
     await browser?.close();
   });
 
-  it("runs without Node globals in a secure context", async () => {
+  // Only shows the page offers no Node globals to fall back on. The proof that the keystore imports
+  // no node:* module is the platform: "browser" esbuild build in beforeAll, which fails on one.
+  it("serves the page as a secure context without Buffer or process globals", async () => {
     expect(
       await page.evaluate(() => ({
         secure: isSecureContext,
