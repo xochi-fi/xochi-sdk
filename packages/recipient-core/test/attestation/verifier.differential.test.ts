@@ -498,6 +498,35 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
     await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
   });
 
+  // OpenSSL fails to decode the impostor's key when the vendored walk reads `candidate.publicKey`
+  // and the whole verification throws; WebCrypto's importKey throws a DataError at the same
+  // step. Skipping the candidate instead would accept what the vendored verifier refuses.
+  it("refuses, like OpenSSL, a same-subject candidate whose key point is not on the curve", async () => {
+    const chain = await syntheticChain();
+    const impostor = await selfSigned(chain.root.subject);
+    const point = new Uint8Array(await crypto.subtle.exportKey("raw", impostor.keys.publicKey));
+    const impostorDer = der(impostor.cert);
+    const at = Buffer.from(impostorDer).indexOf(Buffer.from(point));
+    expect(at).toBeGreaterThan(0);
+    const offCurve = Uint8Array.from(impostorDer);
+    const lastByte = at + point.length - 1;
+    offCurve[lastByte] = (offCurve[lastByte] ?? 0) ^ 0x01;
+    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [offCurve, der(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+    });
+    const { node, port } = await differential({
+      attestationDocument,
+      trustedRootCertificates: [der(chain.root)],
+    });
+    expect(node).toEqual({
+      ok: false,
+      message: "error:03000072:digital envelope routines::decode error",
+    });
+    expect(port).toEqual({ ok: false, message: "Invalid keyData" });
+  });
+
   it("accepts certificates given as PEM, in the document and as the trusted root", async () => {
     const chain = await syntheticChain();
     const pem = (cert: typeof chain.root): Uint8Array =>

@@ -4,8 +4,9 @@
 // step for step (order of checks, validation time, root pinning, error messages); only the
 // certificate chain and COSE signature checks are re-expressed for WebCrypto, with OpenSSL's
 // rules made explicit where @peculiar/x509 is laxer (exact-DER ECDSA signatures, outer and TBS
-// signature algorithms equal, PEM framing and base64 as OpenSSL reads them). test/attestation runs both
-// on the same inputs and requires the same accept/reject, except for the differences below.
+// signature algorithms equal, PEM framing and base64 as OpenSSL reads them). test/attestation
+// runs both on the same inputs and requires the same accept/reject, except for the differences
+// below.
 //
 // Known differences (all fail-closed: the port refuses what the vendored verifier accepts):
 // - An empty `trustedRootCertificates` is refused ("at least one trusted root is required");
@@ -158,10 +159,12 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
   /**
    * True when `issuerKey` verifies `cert`'s signature, by OpenSSL's `X509_verify` rules: the outer
    * signatureAlgorithm equals TBSCertificate.signature, the BIT STRING has no unused bits, and the
-   * ECDSA-Sig-Value is exact DER with r and s that fit the issuer's curve. Anything else is
-   * "not signed by this key" (false), as Node's `X509Certificate.verify` answers it, so the walk
-   * skips a same-subject candidate that is not the issuer. The signature is verified over the
-   * certificate's own TBS bytes, never a re-encoding.
+   * ECDSA-Sig-Value is exact DER with r and s that fit the issuer's curve. A signature failing
+   * those rules, or a key of another type or curve, is "not signed by this key" (false), as
+   * Node's `X509Certificate.verify` answers it, so the walk skips a same-subject candidate that
+   * is not the issuer. A key WebCrypto cannot import (an off-curve point) throws its DataError
+   * instead, ending the verification, as OpenSSL's decode error ends the vendored one. The
+   * signature is verified over the certificate's own TBS bytes, never a re-encoding.
    */
   private async signedBy(cert: X509Certificate, issuerKey: PublicKey): Promise<boolean> {
     const fields = certificateSignatureFields(new Uint8Array(cert.rawData));
