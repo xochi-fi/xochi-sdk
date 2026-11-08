@@ -44,6 +44,7 @@ The receive side of stealth (`stealth-receive.ts`) derives a wallet's keys from 
 - **`signERC3009` is USDC-only**; use `signPermit2` for other tokens.
 - **`signUserOpHash` signs raw** (no EIP-191 prefix); only sign a hash `assertPreparedClaimMatchesRequest` or `verifyClaimUserOp` recomputed.
 - **Deposit routes verify against your pinned attestation signer and a store you supply** ([Deposit-address routes](#deposit-address-routes)).
+- **A passkey recipient refuses without its PRF output, and a mismatched derived address refuses** ([Passkey recipients](#passkey-recipients)).
 
 ## Pull verification
 
@@ -94,10 +95,21 @@ Inert: nothing in the signing path calls `shielded*.ts`, and shielded settlement
 
 - **`verifyRecipientAck` trusts only your inputs.** `binding` is the one you accepted from the source-wallet ceremony, `descriptor` the one it names, `environment` and `network` your corridor record's, and `profile` the `AZTEC_RECIPIENT_PROFILES` entry your corridor record pins for that network. Never take any of them from the recipient. The descriptor is checked against the profile you pass, not against the network: nothing maps a `NetworkIdentity` to a profile for you.
 - **`expected` is the subject you hold**: the backup commitment you stored, the sender set you registered, or the receipt challenge you issued and the settlement you recorded. The two enrollment acknowledgements are held to the binding's own nonce and expiry, a receipt's token to the binding's and its network to yours.
+- **`expected.backupFormatId` selects the backup mode.** Without it only the sealed-file format verifies, and a passkey-mode acknowledgement refuses with `backup_format_mismatch`. For a passkey recipient, compute `passkeyBackupCommitment({ credentialIdHash, rpId: PASSKEY_RP_ID, derivationVersion: PASSKEY_DERIVATION_V1 })` from the descriptor you were sent. Then verify with `{ backupCommitment: thatCommitment, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID }`. Never take the commitment from the acknowledgement itself.
 - **`consumeReplayKey` keys on `recipientAckReplayKey(primaryType, bindingDigest, nonce)`, never the bare nonce**: both enrollment acknowledgements reuse the binding's nonce, which the binding ceremony itself consumed. It must be durable and atomic across processes; it runs last, after every other check.
 - Refusals are `AckEncodingError`, malformed input included; an unknown `primaryType` (untrusted wire input, any non-string included) refuses as `unknown_primary_type`, never a bare `TypeError`. A descriptor or profile of yours that fails its own check throws `RecipientEncodingError`.
 - **`verifyReadinessRecord`** rebuilds the domain from your corridor record and pins `expectedSigner` to the corridor's dedicated attestation key. Pin `expected.root` on a `Membership` check whenever you hold the latest attested root; without it, `minBlock` must be that root's `rootBlock`, or a member record under a superseded root verifies until it ages out. A `RootUpdate` is how a new root is learned, so its root is usually unpinned. `maxAgeSeconds` and `maxFutureSkewSeconds` are capped at 86 400 and 300; choose stricter values per consumer.
 - `recoverReadinessSigner` returns an address, not a verdict: compare it with your pin, or use `verifyReadinessRecord`.
+
+## Passkey recipients
+
+PROPOSED until product-owner sign-off ([`@xochi/spec` `PASSKEY-RECIPIENT.md`](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/spec/PASSKEY-RECIPIENT.md)).
+
+`derivePasskeyRecipientKeys({ first, second })` turns the two PRF outputs of one WebAuthn ceremony (evaluated with `PASSKEY_PRF_INPUTS`, RP ID `PASSKEY_RP_ID`) into the recipient CLI's `AccountSecrets` and a 32-byte `wrapKey`. The ceremony itself is the caller's; this package only derives.
+
+- **A missing or short PRF output refuses** (`PasskeyDerivationError`, `prf_output_invalid`). The authenticator did not evaluate PRF: refuse the claim and show the supported list. Never fall back to a passphrase or a random key.
+- **The derived account must be the recorded one.** A passkey that answers with different PRF bytes in another browser derives a different, empty account, not an error. Compare the derived address with the address you recorded, and refuse on a mismatch.
+- **`wrapKey` is raw key material**: import it as a non-extractable AES-GCM `CryptoKey` and zero the array. Errors never carry PRF or derived bytes; do not log `PasskeyRecipientKeys`.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/signer/CHANGELOG.md).
 
