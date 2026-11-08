@@ -1,21 +1,29 @@
 // The recipient core facade (contract C): one recipient's account, PXE, journals and Xochi API
-// behind the platform ports. Every fund-moving and receipt method holds the fund-movement lock
-// and journals before any broadcast or POST, exactly as the CLI's commands do (they are the same
-// functions, `commands.ts`).
+// behind the platform ports. `send`, `exit` and the receipt methods hold the fund-movement lock
+// and journal before any broadcast or POST, exactly as the CLI's commands do (they are the same
+// functions, `commands.ts`); `deploy`, like the CLI's `setup`, is neither locked nor journaled.
+// Every `state.json` read-modify-write runs under the short `…:state` lease (`stateLockName`).
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
+import { keccak256 } from "viem";
 
 import { deriveRecipientAccount, type RecipientAccount } from "./account.js";
 import { HttpEnrollmentApi, type BindingProjection } from "./api.js";
 import { ExitJournal, openBackup, type BackupContents } from "./backup.js";
-import type { BackupMode } from "./backup-mode.js";
+import {
+  BACKUP_FORMAT_PASSKEY_V1_ID,
+  signerSignsPasskeyBackup,
+  type BackupMode,
+} from "./backup-mode.js";
 import { validateBroadcasterArtifact } from "./broadcaster-artifact.js";
 import {
   LiveAztec,
+  type AztecPort,
   type ExitRequest,
   type ExitResult,
   type FeeJuiceClaim,
+  type LiveAztecOptions,
   type ReceivedTransfer,
 } from "./chain.js";
 import {
@@ -34,9 +42,9 @@ import {
   type PendingEnrollment,
   type ReceiptRequest,
 } from "./commands.js";
-import type { Corridor } from "./corridor.js";
+import { CorridorSchema, type Corridor } from "./corridor.js";
 import { bindingTypedData, type SignedAck } from "./enrollment.js";
-import { OperationJournal, operationsLockName } from "./operation-journal.js";
+import { OperationJournal, isTerminalStatus, operationsLockName } from "./operation-journal.js";
 import { validateTokenArtifact } from "./oxide-token.js";
 import type {
   ArtifactLoader,
@@ -45,6 +53,7 @@ import type {
   HttpFetch,
   KeystoreCrypto,
   KeyValueStore,
+  LockHolder,
   LockManager,
   Log,
   RecipientKeySource,
@@ -75,6 +84,9 @@ export interface RecipientCoreDeps {
   api: { baseUrl: string; jwt: () => Promise<string> };
 }
 
+/** Connects the Aztec port; `LiveAztec.connect` unless a test supplies a double. */
+export type ConnectAztec = (options: LiveAztecOptions) => Promise<AztecPort>;
+
 /** The account as the facade shows it: address, instance and descriptor; never a key. */
 export type RecipientAccountView = Pick<RecipientAccount, "address" | "instance" | "descriptor">;
 
@@ -99,6 +111,11 @@ export interface RecipientCore {
   deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }>;
   /** `typedData` is what the source wallet signs (`signTypedData`). */
   enrollStart(sourceWallet: string): Promise<PendingEnrollment>;
+  /**
+   * Refuses `{ mode: "passkey" }` unless `deps.keys.kind` is `"passkey"` (keystore and imported
+   * recipients acknowledge their sealed backup file), and while the resolved @xochi/signer cannot
+   * sign the passkey format (< 0.8.0); both before any request.
+   */
   enrollSubmit(
     pending: PendingEnrollment,
     sourceSignature: string,
@@ -110,12 +127,73 @@ export interface RecipientCore {
   close(): Promise<void>;
 }
 
+/** The lease every `state.json` read-modify-write holds (contract C): `…:operations:state`. */
+export function stateLockName(address: string): string {
+  return `${operationsLockName(address)}:state`;
+}
+
+const STATE_LEASE_ATTEMPTS = 200;
+const STATE_LEASE_RETRY_MS = 25;
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
+/** One recipient's `state.json` behind its lease. */
+class StateRecord {
+  private readonly store: StateStore;
+  private readonly lockName: string;
+
+  constructor(
+    kv: KeyValueStore,
+    private readonly locks: LockManager,
+    address: string,
+    private readonly holder: LockHolder,
+  ) {
+    this.store = new StateStore(kv);
+    this.lockName = stateLockName(address);
+  }
+
+  async read(): Promise<State> {
+    return (await this.store.read()) ?? fail("the recipient state record is missing");
+  }
+
+  /**
+   * Reads, edits and writes the record under the state lease, waiting (up to about five seconds)
+   * while another session holds it. `edit` sees null before the first write; a throw writes nothing.
+   */
+  async update(edit: (current: State | null) => State): Promise<State> {
+    for (let attempt = 1; ; attempt += 1) {
+      const lease = await this.locks.tryAcquire(this.lockName, this.holder);
+      if (lease) {
+        try {
+          const next = edit(await this.store.read());
+          await this.store.write(next);
+          return next;
+        } finally {
+          await lease.release();
+        }
+      }
+      if (attempt === STATE_LEASE_ATTEMPTS) {
+        throw new Error(
+          `another session is updating this recipient's state.json (${this.lockName}); try again`,
+        );
+      }
+      await delay(STATE_LEASE_RETRY_MS);
+    }
+  }
+}
+
 /** The journals behind an open core, for `restoreJournals` only. */
 interface CoreJournals {
+  kv: KeyValueStore;
   operations: OperationJournal;
   receipts: ReceiptJournal;
   exits: ExitJournal;
-  state: StateStore;
+  state: StateRecord;
+  corridor: Corridor;
   address: string;
 }
 const journalsOf = new WeakMap<RecipientCore, CoreJournals>();
@@ -126,16 +204,48 @@ function sessionHolderId(): number {
   return (value! % 0x7fff_fffe) + 1;
 }
 
+/** Corridor records compare by their schema's canonical JSON (key order is not identity). */
+function sameCorridor(left: Corridor, right: Corridor): boolean {
+  return JSON.stringify(CorridorSchema.parse(left)) === JSON.stringify(CorridorSchema.parse(right));
+}
+
+const describeCorridor = (corridor: Corridor) =>
+  `corridor ${corridor.name} (token ${corridor.token.address})`;
+
+/**
+ * The vendored Oxide subset reads Node's global `Buffer` (some of it at module load, so a missing
+ * one usually fails the import itself): browsers install the `buffer` package's.
+ */
+function assertGlobalBuffer(): void {
+  if (typeof Reflect.get(globalThis, "Buffer") !== "function") {
+    throw new Error(
+      "@xochi/recipient-core needs globalThis.Buffer: install the buffer package's Buffer as globalThis.Buffer before importing it",
+    );
+  }
+}
+
 class Core implements RecipientCore {
   readonly account: RecipientAccountView;
+  // ECMAScript private: never in `util.inspect`, `JSON.stringify`, `Object.values` or devtools'
+  // property lists, so the account secret and signing key cannot leak through a logged core.
+  readonly #deps: RecipientCoreDeps;
+  readonly #secretAccount: RecipientAccount;
+  readonly #port: AztecPort;
+  readonly #tokenArtifact: ContractArtifact;
+  readonly #journals: CoreJournals;
 
   constructor(
-    private readonly deps: RecipientCoreDeps,
-    private readonly secretAccount: RecipientAccount,
-    private readonly port: LiveAztec,
-    private readonly tokenArtifact: ContractArtifact,
-    private readonly journals: CoreJournals,
+    deps: RecipientCoreDeps,
+    secretAccount: RecipientAccount,
+    port: AztecPort,
+    tokenArtifact: ContractArtifact,
+    journals: CoreJournals,
   ) {
+    this.#deps = deps;
+    this.#secretAccount = secretAccount;
+    this.#port = port;
+    this.#tokenArtifact = tokenArtifact;
+    this.#journals = journals;
     this.account = {
       address: secretAccount.address,
       instance: secretAccount.instance,
@@ -143,53 +253,50 @@ class Core implements RecipientCore {
     };
   }
 
-  private get ctx(): Ctx {
+  get #ctx(): Ctx {
     return {
-      corridor: this.deps.corridor,
-      port: this.port,
-      log: this.deps.log,
-      clock: this.deps.clock,
+      corridor: this.#deps.corridor,
+      port: this.#port,
+      log: this.#deps.log,
+      clock: this.#deps.clock,
     };
   }
 
-  private api(): HttpEnrollmentApi {
-    return new HttpEnrollmentApi(this.deps.api.baseUrl, this.deps.api.jwt, this.deps.fetch);
-  }
-
-  private async state(): Promise<State> {
-    const state = await this.journals.state.read();
-    if (!state) throw new Error("the recipient state record is missing");
-    return state;
+  #api(): HttpEnrollmentApi {
+    return new HttpEnrollmentApi(this.#deps.api.baseUrl, this.#deps.api.jwt, this.#deps.fetch);
   }
 
   async sync(): Promise<{ blockNumber: number }> {
-    await registerSenders(this.ctx);
-    const registeredAt = await registerToken(this.ctx, this.tokenArtifact);
-    await this.journals.state.write({ ...(await this.state()), tokenRegisteredAt: registeredAt });
+    await registerSenders(this.#ctx);
+    const registeredAt = await registerToken(this.#ctx, this.#tokenArtifact);
+    await this.#journals.state.update((current) => ({
+      ...(current ?? fail("the recipient state record is missing")),
+      tokenRegisteredAt: registeredAt,
+    }));
     await this.payouts();
-    return { blockNumber: await this.port.blockNumber() };
+    return { blockNumber: await this.#port.blockNumber() };
   }
 
   async balance(): Promise<bigint> {
-    return this.port.balance(
-      this.tokenArtifact,
-      AztecAddress.fromStringUnsafe(this.deps.corridor.token.address),
+    return this.#port.balance(
+      this.#tokenArtifact,
+      AztecAddress.fromStringUnsafe(this.#deps.corridor.token.address),
       this.account.address,
     );
   }
 
   async payouts(): Promise<ReceivedTransfer[]> {
-    const senders = new Set(this.deps.corridor.registeredSenders);
-    const transfers = await this.port.transfers(
-      this.tokenArtifact,
-      AztecAddress.fromStringUnsafe(this.deps.corridor.token.address),
+    const senders = new Set(this.#deps.corridor.registeredSenders);
+    const transfers = await this.#port.transfers(
+      this.#tokenArtifact,
+      AztecAddress.fromStringUnsafe(this.#deps.corridor.token.address),
       this.account.address,
     );
     return transfers.filter((transfer) => senders.has(transfer.from.toLowerCase()));
   }
 
   async accountState(): Promise<"undeployed" | "deployed"> {
-    const state = await this.port.accountState(this.account.address);
+    const state = await this.#port.accountState(this.account.address);
     return state.initialized && state.published ? "deployed" : "undeployed";
   }
 
@@ -198,31 +305,31 @@ class Core implements RecipientCore {
     opts: { tx?: string; alreadySpent?: boolean } = {},
   ): Promise<ReceiptRecord> {
     return signReceipt(
-      this.ctx,
-      this.api(),
-      this.secretAccount,
-      this.tokenArtifact,
-      this.journals,
-      await this.receiptRequest(intentId, opts),
+      this.#ctx,
+      this.#api(),
+      this.#secretAccount,
+      this.#tokenArtifact,
+      this.#journals,
+      await this.#receiptRequest(intentId, opts),
     );
   }
 
   async submitReceipt(intentId: string): Promise<ReceiptRecord> {
     return submitReceipt(
-      this.ctx,
-      this.api(),
-      this.secretAccount,
-      this.tokenArtifact,
-      this.journals,
-      await this.receiptRequest(intentId, {}),
+      this.#ctx,
+      this.#api(),
+      this.#secretAccount,
+      this.#tokenArtifact,
+      this.#journals,
+      await this.#receiptRequest(intentId, {}),
     );
   }
 
-  private async receiptRequest(
+  async #receiptRequest(
     intentId: string,
     opts: { tx?: string; alreadySpent?: boolean },
   ): Promise<ReceiptRequest> {
-    const state = await this.state();
+    const state = await this.#journals.state.read();
     return {
       intentId,
       tx: opts.tx ?? null,
@@ -231,11 +338,9 @@ class Core implements RecipientCore {
       bindingId: state.bindingId ?? null,
       legacyBinding: false,
       rememberBindingDigest: async (bindingDigest, bindingId) => {
-        const current = await this.state();
-        await this.journals.state.write({
-          ...current,
-          bindingDigest,
-          bindingId: current.bindingId ?? bindingId,
+        await this.#journals.state.update((current) => {
+          const recorded = current ?? fail("the recipient state record is missing");
+          return { ...recorded, bindingDigest, bindingId: recorded.bindingId ?? bindingId };
         });
       },
       dryRun: false,
@@ -243,7 +348,7 @@ class Core implements RecipientCore {
   }
 
   async deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }> {
-    const txHash = await setupAccount(this.ctx, this.secretAccount, claim);
+    const txHash = await setupAccount(this.#ctx, this.#secretAccount, claim);
     if (txHash === null) {
       throw new Error(`account ${this.account.address.toString()} is already deployed`);
     }
@@ -251,24 +356,24 @@ class Core implements RecipientCore {
   }
 
   async enrollStart(sourceWallet: string): Promise<PendingEnrollment> {
-    const state = await this.state();
+    const { tokenRegisteredAt } = await this.#journals.state.read();
     const pending = await enrollStart(
-      this.ctx,
-      this.api(),
-      this.secretAccount,
+      this.#ctx,
+      this.#api(),
+      this.#secretAccount,
       sourceWallet,
-      state.tokenRegisteredAt ?? null,
+      tokenRegisteredAt ?? null,
     );
     const tokenRegistrationAck = pending.tokenRegistrationAck as State["tokenRegistrationAck"];
-    await this.journals.state.write({
-      ...state,
+    await this.#journals.state.update((current) => ({
+      ...(current ?? fail("the recipient state record is missing")),
       tokenRegistrationAck,
       pending: {
         challenge: pending.challenge,
         binding: pending.binding,
         tokenRegistrationAck: tokenRegistrationAck ?? null,
       },
-    });
+    }));
     return pending;
   }
 
@@ -277,73 +382,105 @@ class Core implements RecipientCore {
     sourceSignature: string,
     backup: BackupMode,
   ): Promise<BindingProjection> {
+    if (backup.mode === "passkey") {
+      const { kind } = this.#deps.keys;
+      if (kind !== "passkey") {
+        throw new Error(
+          `the passkey backup mode is only for a passkey recipient; this recipient's keys are ${kind}: acknowledge its sealed backup file`,
+        );
+      }
+      if (!signerSignsPasskeyBackup()) {
+        throw new Error(
+          `the passkey backup mode requires @xochi/signer >= 0.8.0 (it signs format ${BACKUP_FORMAT_PASSKEY_V1_ID})`,
+        );
+      }
+    }
     const projection = await enrollSubmit(
-      this.ctx,
-      this.api(),
-      this.secretAccount,
+      this.#ctx,
+      this.#api(),
+      this.#secretAccount,
       pending,
       sourceSignature,
       backup,
     );
-    const { pending: _done, ...state } = await this.state();
-    await this.journals.state.write({
-      ...state,
-      ...(backup.mode === "sealed_file" ? { backupCommitment: backup.commitment } : {}),
-      tokenRegistrationAck: pending.tokenRegistrationAck as State["tokenRegistrationAck"],
-      bindingId: projection.binding_id,
-      bindingDigest: bindingTypedData(this.deps.corridor, pending.binding).digest,
+    await this.#journals.state.update((current) => {
+      const { pending: _done, ...state } = current ?? fail("the recipient state record is missing");
+      return {
+        ...state,
+        ...(backup.mode === "sealed_file" ? { backupCommitment: backup.commitment } : {}),
+        tokenRegistrationAck: pending.tokenRegistrationAck as State["tokenRegistrationAck"],
+        bindingId: projection.binding_id,
+        bindingDigest: bindingTypedData(this.#deps.corridor, pending.binding).digest,
+      };
     });
     return projection;
   }
 
   enrollStatus(bindingId: string): Promise<BindingProjection> {
-    return enrollStatus(this.ctx, this.api(), bindingId, this.secretAccount);
+    return enrollStatus(this.#ctx, this.#api(), bindingId, this.#secretAccount);
   }
 
   async send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }> {
     return {
-      txHash: await spend(this.ctx, this.secretAccount, this.tokenArtifact, to, amount, fee),
+      txHash: await spend(this.#ctx, this.#secretAccount, this.#tokenArtifact, to, amount, fee),
     };
   }
 
   async exit(request: CoreExitRequest): Promise<ExitResult> {
     const broadcasterArtifact = await validateBroadcasterArtifact(
-      await this.deps.artifacts.broadcasterArtifact(),
+      await this.#deps.artifacts.broadcasterArtifact(),
       "from the artifact loader",
     );
-    const result = await exit(this.ctx, this.secretAccount, this.tokenArtifact, {
+    const result = await exit(this.#ctx, this.#secretAccount, this.#tokenArtifact, {
       ...request,
       broadcasterArtifact,
     });
-    await this.journals.exits.record(result);
+    await this.#journals.exits.record(result);
     return result;
   }
 
   async close(): Promise<void> {
     try {
-      await this.port.close();
+      await this.#port.close();
     } finally {
-      await this.journals.operations.close();
+      await this.#journals.operations.close();
     }
   }
 }
 
 /**
- * Opens one recipient: derives the account from `deps.keys`, validates the token artifact,
- * creates the PXE over `deps.walletStorage`, refuses any node that is not the corridor's network
- * and adds the account to the PXE.
+ * Opens one recipient: derives the account from `deps.keys`, refuses a profile recorded for
+ * another account or corridor, validates the token artifact, creates the PXE over
+ * `deps.walletStorage`, refuses any node that is not the corridor's network and adds the account
+ * to the PXE. `connect` is the Aztec port's constructor (a test double; `LiveAztec` otherwise).
  */
-export async function openRecipientCore(deps: RecipientCoreDeps): Promise<RecipientCore> {
+export async function openRecipientCore(
+  deps: RecipientCoreDeps,
+  connect: ConnectAztec = LiveAztec.connect,
+): Promise<RecipientCore> {
+  assertGlobalBuffer();
   const account = await deriveRecipientAccount(await deps.keys.accountSecrets(), deps.corridor);
   const address = account.descriptor.aztecAddress;
-  const state = new StateStore(deps.kv);
-  const recorded = await state.read();
-  if (recorded && recorded.address !== address) {
-    throw new Error(
-      `this profile records recipient ${recorded.address}, the keys derive ${address}`,
-    );
-  }
-  if (!recorded) await state.write({ corridor: deps.corridor, address });
+  const pid = sessionHolderId();
+  const state = new StateRecord(deps.kv, deps.locks, address, {
+    id: String(pid),
+    nonce: crypto.randomUUID(),
+    kind: "state",
+  });
+  await state.update((recorded) => {
+    if (!recorded) return { corridor: deps.corridor, address };
+    if (recorded.address !== address) {
+      throw new Error(
+        `this profile records recipient ${recorded.address}, the keys derive ${address}`,
+      );
+    }
+    if (!sameCorridor(recorded.corridor, deps.corridor)) {
+      throw new Error(
+        `this profile records ${describeCorridor(recorded.corridor)}, not this core's`,
+      );
+    }
+    return recorded;
+  });
   const tokenArtifact = await validateTokenArtifact(
     await deps.artifacts.tokenArtifact(),
     deps.corridor,
@@ -353,9 +490,9 @@ export async function openRecipientCore(deps: RecipientCoreDeps): Promise<Recipi
     locks: deps.locks,
     clock: deps.clock,
     lockName: operationsLockName(address),
-    holder: { pid: sessionHolderId(), host: "recipient-core" },
+    holder: { pid, host: "recipient-core" },
   });
-  const port = await LiveAztec.connect({
+  const port = await connect({
     nodeUrl: deps.nodeUrl,
     walletStorage: deps.walletStorage,
     scope: address,
@@ -366,10 +503,12 @@ export async function openRecipientCore(deps: RecipientCoreDeps): Promise<Recipi
     fetch: deps.fetch,
   });
   const journals: CoreJournals = {
+    kv: deps.kv,
     operations,
     receipts: new ReceiptJournal(deps.kv, deps.clock),
     exits: new ExitJournal(deps.kv),
     state,
+    corridor: deps.corridor,
     address,
   };
   const core = new Core(deps, account, port, tokenArtifact, journals);
@@ -395,11 +534,18 @@ export function importCliBackup(
 }
 
 /**
- * Restores a CLI backup's operation, exit and receipt journals (and its enrolled binding) into an
- * open core of the same account whose journals are empty. An unresolved operation keeps its lock
- * and must be reconciled; an unfinished receipt run is restored aborted.
+ * Restores a CLI backup's operation, exit and receipt journals and its enrolled binding into an
+ * open core of the same account and corridor whose journals are empty, and records the backup
+ * as the CLI's `restore` does: `backupCommitment` is keccak256 of `sealed` (the file
+ * `importCliBackup` opened) and `backupTokenAckSignature` its TokenRegistrationAck's signature.
+ * A backup with an unresolved fund movement is refused: the facade cannot reconcile it, so the
+ * CLI must first. An unfinished receipt run moved no funds and is restored aborted.
  */
-export async function restoreJournals(core: RecipientCore, backup: BackupContents): Promise<void> {
+export async function restoreJournals(
+  core: RecipientCore,
+  backup: BackupContents,
+  sealed: Uint8Array,
+): Promise<void> {
   const journals =
     journalsOf.get(core) ?? fail("restoreJournals needs a core from openRecipientCore");
   if (backup.account.address !== journals.address) {
@@ -407,17 +553,37 @@ export async function restoreJournals(core: RecipientCore, backup: BackupContent
       `the backup is for ${backup.account.address}, this core is ${journals.address}`,
     );
   }
+  if (!sameCorridor(backup.corridor, journals.corridor)) {
+    throw new Error(`the backup is for ${describeCorridor(backup.corridor)}, not this core's`);
+  }
+  const open = backup.journals.operations.find(
+    (record) => record.kind !== "receipt" && !isTerminalStatus(record.status),
+  );
+  if (open) {
+    throw new Error(
+      `the backup's ${open.kind} operation ${open.id} is ${open.status}: reconcile it with the CLI first (xochi-recipient operations reconcile), then back up again`,
+    );
+  }
+  for (const prefix of ["operations/", "exits/", "receipts/"]) {
+    if ((await journals.kv.list(prefix)).length !== 0) {
+      throw new Error("restoreJournals needs a profile with empty journals");
+    }
+  }
   await journals.operations.restore(backup.journals.operations);
   await journals.exits.restore(backup.journals.exits);
   await journals.receipts.restore(backup.journals.receipts);
-  const state = await journals.state.read();
-  if (!state) throw new Error("the recipient state record is missing");
-  await journals.state.write({
-    ...state,
-    tokenRegistrationAck: (backup.tokenRegistrationAck as SignedAck | null) ?? null,
-    ...(backup.bindingId ? { bindingId: backup.bindingId } : {}),
-    ...(backup.bindingDigest ? { bindingDigest: backup.bindingDigest } : {}),
-  } as State);
+  const tokenRegistrationAck = (backup.tokenRegistrationAck as SignedAck | null) ?? null;
+  await journals.state.update(
+    (current) =>
+      ({
+        ...(current ?? fail("the recipient state record is missing")),
+        backupCommitment: keccak256(sealed),
+        backupTokenAckSignature: tokenRegistrationAck?.signature ?? null,
+        tokenRegistrationAck,
+        ...(backup.bindingId ? { bindingId: backup.bindingId } : {}),
+        ...(backup.bindingDigest ? { bindingDigest: backup.bindingDigest } : {}),
+      }) as State,
+  );
 }
 
 function fail(message: string): never {

@@ -8,7 +8,7 @@
 // to the contract vectors, until the core depends on a signer that exports them.
 
 import { encodeAbiParameters, keccak256, toHex, type Hex } from "viem";
-import { BACKUP_FORMAT_V1_ID } from "@xochi/signer";
+import * as signer from "@xochi/signer";
 
 export const BACKUP_FORMAT_PASSKEY_V1_NAME = "xochi.shielded.backup-format.passkey.v1";
 export const BACKUP_FORMAT_PASSKEY_V1_ID: Hex = keccak256(toHex(BACKUP_FORMAT_PASSKEY_V1_NAME));
@@ -17,6 +17,15 @@ export const PASSKEY_BACKUP_COMMITMENT_TAG: Hex = keccak256(
 );
 export const PASSKEY_RP_ID = "xochi.fi";
 export const PASSKEY_DERIVATION_V1 = 1;
+
+/**
+ * Whether the resolved @xochi/signer signs the passkey format: 0.8.0 (xochi-sdk#155) exports
+ * `BACKUP_FORMAT_PASSKEY_V1_ID` and its `hashRecipientAck` accepts it; 0.7.0 refuses it with
+ * `backup_format_mismatch`.
+ */
+export function signerSignsPasskeyBackup(): boolean {
+  return Reflect.get(signer, "BACKUP_FORMAT_PASSKEY_V1_ID") === BACKUP_FORMAT_PASSKEY_V1_ID;
+}
 
 export type BackupMode =
   | { mode: "sealed_file"; commitment: Hex }
@@ -38,7 +47,7 @@ export interface BackupAcknowledgement {
 
 export function backupAcknowledgement(mode: BackupMode): BackupAcknowledgement {
   if (mode.mode === "sealed_file") {
-    return { backupCommitment: mode.commitment, backupFormatId: BACKUP_FORMAT_V1_ID };
+    return { backupCommitment: mode.commitment, backupFormatId: signer.BACKUP_FORMAT_V1_ID };
   }
   if (!/^0x[0-9a-f]{64}$/.test(mode.credentialIdHash) || BigInt(mode.credentialIdHash) === 0n) {
     throw new Error("passkey credential id hash must be a nonzero lowercase bytes32");

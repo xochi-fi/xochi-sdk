@@ -170,8 +170,10 @@ const ReleaseClaimSchema = z
   .strict();
 type ReleaseClaim = z.infer<typeof ReleaseClaimSchema>;
 
-const terminal = (status: OperationStatus) =>
-  status === "complete" || status === "failed" || status === "aborted";
+/** A finished operation (complete, failed or aborted): its outcome is known and it holds no lock. */
+export function isTerminalStatus(status: OperationStatus): boolean {
+  return status === "complete" || status === "failed" || status === "aborted";
+}
 
 const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>> = {
   building: ["broadcast", "aborted"],
@@ -292,13 +294,13 @@ export class OperationJournal {
   }
 
   async unresolved(): Promise<OperationRecord | null> {
-    return (await this.records()).find((record) => !terminal(record.status)) ?? null;
+    return (await this.records()).find((record) => !isTerminalStatus(record.status)) ?? null;
   }
 
   async activeUnresolved(): Promise<OperationRecord | null> {
     if ((await this.kv.get(LOCK_KEY)) === null) return null;
     const record = await this.recordForLock(await this.readActiveLock());
-    return terminal(record.status) ? null : record;
+    return isTerminalStatus(record.status) ? null : record;
   }
 
   /**
@@ -314,14 +316,14 @@ export class OperationJournal {
     const records = recordsInput
       .map((record) => OperationRecordSchema.parse(record))
       .map((record) =>
-        record.kind === "receipt" && !terminal(record.status)
+        record.kind === "receipt" && !isTerminalStatus(record.status)
           ? OperationRecordSchema.parse({ ...record, status: "aborted" })
           : record,
       );
     const ids = new Set(records.map((record) => record.id));
     if (ids.size !== records.length)
       throw new Error("operation journal backup contains duplicate ids");
-    const unresolved = records.filter((record) => !terminal(record.status));
+    const unresolved = records.filter((record) => !isTerminalStatus(record.status));
     if (unresolved.length > 1) {
       throw new Error("operation journal backup contains more than one unresolved operation");
     }
@@ -479,13 +481,13 @@ export class OperationJournal {
       updatedAt: this.now(),
     });
     await this.kv.put(recordKey(id), prettyJsonBytes(next));
-    if (terminal(next.status)) await this.releaseLock(owner);
+    if (isTerminalStatus(next.status)) await this.releaseLock(owner);
     return next;
   }
 
   async failOrAbort(id: string, submissionBoundaryReached?: boolean): Promise<Error> {
     const current = await this.get(id);
-    if (terminal(current.status)) {
+    if (isTerminalStatus(current.status)) {
       return new Error(
         "operation reached a terminal journal state but lock release was interrupted; restart before moving funds",
       );
@@ -626,11 +628,12 @@ export class OperationJournal {
     } catch {
       return false;
     }
-    if (!terminal(record.status)) {
+    if (!isTerminalStatus(record.status)) {
       return false;
     }
     try {
-      if ((await this.records()).some((candidate) => !terminal(candidate.status))) return false;
+      if ((await this.records()).some((candidate) => !isTerminalStatus(candidate.status)))
+        return false;
     } catch {
       return false;
     }
