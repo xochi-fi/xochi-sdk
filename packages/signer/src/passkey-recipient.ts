@@ -1,10 +1,9 @@
 // Passkey recipient keys (xochi-sdk#155, epic xochi#833; @xochi/spec PASSKEY-RECIPIENT.md).
-// One WebAuthn passkey, evaluated once with the PRF extension (`eval: PASSKEY_PRF_INPUTS`),
+// One WebAuthn passkey, evaluated once with the PRF extension (`eval: passkeyPrfInputBytes()`),
 // yields the recipient's Aztec account secrets, the AES-256-GCM key that wraps an imported CLI
 // recipient, and the key of the browser's persisted encrypted PXE store. The package root
-// exports this module. Platform-neutral and network-free: the
-// WebAuthn ceremony is the caller's; this module only derives, and never puts a PRF byte or a
-// derived byte into an error.
+// exports this module. Platform-neutral and network-free: the WebAuthn ceremony is the
+// caller's; this module only derives, and never puts a PRF byte or a derived byte into an error.
 //
 //   accountSecret = OS2IP(HKDF-SHA256(first,  salt, "<label>/account-secret", 64)) mod r
 //   accountSalt   = OS2IP(HKDF-SHA256(first,  salt, "<label>/account-salt",   64)) mod r
@@ -15,8 +14,11 @@
 // `{ secret, salt }` is the recipient CLI's `AccountSecrets`: a stock SchnorrAccount 6.0.0 with
 // signing key `deriveMasterMessageSigningSecretKey(secret)`, keys `deriveKeys(secret)`, that
 // salt and deployer zero. One passkey is one recipient.
+//
+// Erasure is best effort: the PRF copies, both HKDF pseudorandom keys and every 64-byte output
+// are zeroed once used, but JavaScript cannot erase the hex strings, bigints or engine copies.
 
-import { hkdf } from "@noble/hashes/hkdf.js";
+import { expand, extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 
@@ -32,20 +34,30 @@ const LABEL = "xochi.recipient.passkey.v1";
 const HKDF_SALT = utf8ToBytes(LABEL);
 const PRF_OUTPUT_BYTES = 32;
 
-/** `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/<purpose>"))`: a PRF `eval` input. */
-const prfInput = (purpose: string): Hex =>
-  `0x${bytesToHex(sha256(utf8ToBytes(`${LABEL}/prf/${purpose}`)))}`;
-
 /**
- * The page's `extensions.prf.eval.{first, second}`, both evaluated in one ceremony: `first`
- * (account purpose) derives the account secrets, `second` (wrap purpose) the wrap key. The
- * browser hashes each again (`SHA-256("WebAuthn PRF" || 0x00 || input)`) before the
- * authenticator sees it.
+ * The page's `extensions.prf.eval.{first, second}` as the 32 raw bytes WebAuthn takes: `first`
+ * = `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/account"))` derives the account secrets,
+ * `second` = `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/wrap"))` the wrap and PXE store
+ * keys. Both are evaluated in one ceremony; the browser hashes each again
+ * (`SHA-256("WebAuthn PRF" || 0x00 || input)`) before the authenticator sees it. A fresh pair
+ * per call. Pass these bytes, never the text of `PASSKEY_PRF_INPUTS`: any other encoding
+ * derives a different account.
  */
-export const PASSKEY_PRF_INPUTS: { readonly first: Hex; readonly second: Hex } = Object.freeze({
-  first: prfInput("account"),
-  second: prfInput("wrap"),
-});
+export function passkeyPrfInputBytes(): { first: Uint8Array; second: Uint8Array } {
+  return {
+    first: sha256(utf8ToBytes(`${LABEL}/prf/account`)),
+    second: sha256(utf8ToBytes(`${LABEL}/prf/wrap`)),
+  };
+}
+
+/** `passkeyPrfInputBytes()` as `0x` hex, for display and comparison. */
+export const PASSKEY_PRF_INPUTS: { readonly first: Hex; readonly second: Hex } = (() => {
+  const { first, second } = passkeyPrfInputBytes();
+  return Object.freeze({
+    first: `0x${bytesToHex(first)}` as Hex,
+    second: `0x${bytesToHex(second)}` as Hex,
+  });
+})();
 
 export type PasskeyDerivationRefusal =
   | "prf_output_invalid"
@@ -59,10 +71,13 @@ export class PasskeyDerivationError extends RefusalError<PasskeyDerivationRefusa
 
 const refusePasskey = refuser(PasskeyDerivationError);
 
-/** `getClientExtensionResults().prf.results.{first, second}`, each exactly 32 bytes. */
+/**
+ * `getClientExtensionResults().prf.results.{first, second}`: each exactly 32 bytes, as the
+ * `ArrayBuffer` the browser returns or any view of 32 bytes. They are copied, never written.
+ */
 export interface PasskeyPrfOutputs {
-  first: Uint8Array;
-  second: Uint8Array;
+  first: ArrayBuffer | ArrayBufferView;
+  second: ArrayBuffer | ArrayBufferView;
 }
 
 /**
@@ -78,28 +93,35 @@ export interface PasskeyRecipientKeys {
   pxeStoreKey: Uint8Array;
 }
 
-function prfOutput(field: "first" | "second", value: unknown): Uint8Array {
-  if (!(value instanceof Uint8Array)) {
+// A private copy of one output. `ArrayBuffer.isView` and the brand check hold across realms
+// (an iframe's or a worker's buffers), where `instanceof` would not.
+function prfOutputCopy(field: "first" | "second", value: unknown): Uint8Array {
+  let bytes: Uint8Array;
+  if (ArrayBuffer.isView(value)) {
+    bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  } else if (Object.prototype.toString.call(value) === "[object ArrayBuffer]") {
+    bytes = new Uint8Array(value as ArrayBuffer);
+  } else {
     const kind = value === null ? "null" : Array.isArray(value) ? "an array" : `a ${typeof value}`;
     return refusePasskey(
       "prf_output_invalid",
       `prf.${field}`,
-      `expected a Uint8Array, got ${kind}`,
+      `expected an ArrayBuffer or a view of one, got ${kind}`,
     );
   }
-  if (value.length !== PRF_OUTPUT_BYTES) {
+  if (bytes.length !== PRF_OUTPUT_BYTES) {
     refusePasskey(
       "prf_output_invalid",
       `prf.${field}`,
-      `expected ${PRF_OUTPUT_BYTES} bytes, got ${value.length}`,
+      `expected ${PRF_OUTPUT_BYTES} bytes, got ${bytes.length}`,
     );
   }
-  return value;
+  return bytes.slice();
 }
 
-// Wide (64-byte) reduction into the field; the HKDF output is zeroed once read.
-function fieldElement(field: string, ikm: Uint8Array, info: string): Hex {
-  const okm = hkdf(sha256, ikm, HKDF_SALT, utf8ToBytes(`${LABEL}/${info}`), 64);
+// HKDF-Expand under `prk`, wide-reduced into the field; the 64-byte output is zeroed once read.
+function fieldElement(field: string, prk: Uint8Array, info: string): Hex {
+  const okm = expand(sha256, prk, utf8ToBytes(`${LABEL}/${info}`), 64);
   const value = BigInt(`0x${bytesToHex(okm)}`) % AZTEC_FIELD_MODULUS;
   okm.fill(0);
   if (value === 0n) refusePasskey("derived_zero", field, "reduces to 0 mod r");
@@ -108,11 +130,11 @@ function fieldElement(field: string, ikm: Uint8Array, info: string): Hex {
 
 /**
  * Derives a passkey recipient's account secrets, wrap key and PXE store key from its two PRF
- * outputs.
- * Refuses (`PasskeyDerivationError`) a version other than `PASSKEY_DERIVATION_V1`
- * (`unsupported_version`), a PRF output that is not a 32-byte `Uint8Array`
- * (`prf_output_invalid`; a missing result means the authenticator does not support PRF), and
- * an account secret or salt that reduces to zero (`derived_zero`).
+ * outputs. Refuses (`PasskeyDerivationError`) a version other than `PASSKEY_DERIVATION_V1`
+ * (`unsupported_version`); an output that is not 32 bytes (`prf_output_invalid`; a missing
+ * result means the authenticator did not evaluate PRF); a `second` equal to `first`
+ * (`prf_output_invalid` on `prf.second`: the same result passed twice); and an account secret
+ * or salt that reduces to zero (`derived_zero`).
  */
 export function derivePasskeyRecipientKeys(
   prf: PasskeyPrfOutputs,
@@ -124,12 +146,27 @@ export function derivePasskeyRecipientKeys(
   if (typeof prf !== "object" || prf === null) {
     refusePasskey("prf_output_invalid", "prf", "expected { first, second }");
   }
-  const first = prfOutput("first", prf.first);
-  const second = prfOutput("second", prf.second);
-  return {
-    secret: fieldElement("accountSecret", first, "account-secret"),
-    salt: fieldElement("accountSalt", first, "account-salt"),
-    wrapKey: hkdf(sha256, second, HKDF_SALT, utf8ToBytes(`${LABEL}/wrap-key`), 32),
-    pxeStoreKey: hkdf(sha256, second, HKDF_SALT, utf8ToBytes(`${LABEL}/pxe-store-key`), 32),
-  };
+  const first = prfOutputCopy("first", prf.first);
+  let second: Uint8Array | undefined;
+  let firstPrk: Uint8Array | undefined;
+  let secondPrk: Uint8Array | undefined;
+  try {
+    second = prfOutputCopy("second", prf.second);
+    let difference = 0;
+    for (let i = 0; i < PRF_OUTPUT_BYTES; i++) difference |= first[i]! ^ second[i]!;
+    if (difference === 0) refusePasskey("prf_output_invalid", "prf.second", "equals prf.first");
+    firstPrk = extract(sha256, first, HKDF_SALT);
+    secondPrk = extract(sha256, second, HKDF_SALT);
+    return {
+      secret: fieldElement("accountSecret", firstPrk, "account-secret"),
+      salt: fieldElement("accountSalt", firstPrk, "account-salt"),
+      wrapKey: expand(sha256, secondPrk, utf8ToBytes(`${LABEL}/wrap-key`), 32),
+      pxeStoreKey: expand(sha256, secondPrk, utf8ToBytes(`${LABEL}/pxe-store-key`), 32),
+    };
+  } finally {
+    first.fill(0);
+    second?.fill(0);
+    firstPrk?.fill(0);
+    secondPrk?.fill(0);
+  }
 }

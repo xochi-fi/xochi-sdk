@@ -10,6 +10,7 @@ import { createHash, hkdfSync } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { ethers } from "ethers";
 import { describe, it, expect } from "vitest";
 
@@ -26,6 +27,7 @@ import {
   PasskeyDerivationError,
   RECIPIENT_ACK_PURPOSES,
   derivePasskeyRecipientKeys,
+  passkeyPrfInputBytes,
   hashRecipientAck,
   passkeyBackupCommitment,
   verifyRecipientAck,
@@ -100,6 +102,21 @@ describe("passkey derivation constants", () => {
     );
     expect(Object.isFrozen(PASSKEY_PRF_INPUTS)).toBe(true);
   });
+
+  it("hands out the eval inputs as their 32 raw bytes, a fresh pair per call", () => {
+    const a = passkeyPrfInputBytes();
+    expect(a.first).toBeInstanceOf(Uint8Array);
+    expect(a.first.length).toBe(32);
+    expect(hex(a.first)).toBe(hex(sha256("xochi.recipient.passkey.v1/prf/account")));
+    expect(hex(a.second)).toBe(hex(sha256("xochi.recipient.passkey.v1/prf/wrap")));
+    expect(hex(a.first)).toBe(PASSKEY_PRF_INPUTS.first);
+    a.first.fill(0);
+    a.second.fill(0);
+    const b = passkeyPrfInputBytes();
+    expect(hex(b.first)).toBe(PASSKEY_PRF_INPUTS.first);
+    expect(hex(b.second)).toBe(PASSKEY_PRF_INPUTS.second);
+    expect(b.first.buffer).not.toBe(b.second.buffer);
+  });
 });
 
 describe("derivePasskeyRecipientKeys", () => {
@@ -143,16 +160,38 @@ describe("derivePasskeyRecipientKeys", () => {
     expect(hex(second)).toBe(hex(v.second));
   });
 
+  it("takes each output as an ArrayBuffer or any 32-byte view, from any realm", () => {
+    const v = DECIDED[1]!;
+    const expected = derivePasskeyRecipientKeys({ first: v.first, second: v.second });
+    const padded = new Uint8Array(64);
+    padded.set(v.first, 16);
+    const foreign = vm.runInNewContext("new Uint8Array(32)") as Uint8Array;
+    foreign.set(v.second);
+    const forms: [unknown, unknown][] = [
+      [v.first.slice().buffer, v.second.slice().buffer],
+      [new DataView(v.first.slice().buffer), Buffer.from(v.second)],
+      [padded.subarray(16, 48), foreign],
+    ];
+    for (const [first, second] of forms) {
+      expect(derivePasskeyRecipientKeys({ first, second } as never)).toEqual(expected);
+    }
+    // The caller's buffers are read, never written.
+    expect(hex(padded.subarray(16, 48))).toBe(hex(v.first));
+    expect(hex(foreign)).toBe(hex(v.second));
+  });
+
   it("refuses PRF outputs that are not exactly 32 bytes", () => {
     const ok = new Uint8Array(32);
+    const other = new Uint8Array(32).fill(1);
     const cases: [unknown, unknown, string][] = [
-      [new Uint8Array(31), ok, "prf.first"],
-      [new Uint8Array(33), ok, "prf.first"],
-      [new Uint8Array(0), ok, "prf.first"],
-      [undefined, ok, "prf.first"],
-      [new Uint8Array(32).buffer, ok, "prf.first"],
-      [hex(ok), ok, "prf.first"],
-      [Array.from(ok), ok, "prf.first"],
+      [new Uint8Array(31), other, "prf.first"],
+      [new Uint8Array(33), other, "prf.first"],
+      [new Uint8Array(0), other, "prf.first"],
+      [new ArrayBuffer(31), other, "prf.first"],
+      [new Uint16Array(17), other, "prf.first"],
+      [undefined, other, "prf.first"],
+      [hex(ok), other, "prf.first"],
+      [Array.from(ok), other, "prf.first"],
       [ok, new Uint8Array(31), "prf.second"],
       [ok, null, "prf.second"],
     ];
@@ -166,6 +205,16 @@ describe("derivePasskeyRecipientKeys", () => {
       code: "prf_output_invalid",
       field: "prf",
     });
+  });
+
+  it("refuses a second output equal to the first (results.first passed twice)", () => {
+    const first = DECIDED[1]!.first;
+    for (const second of [first, first.slice(), first.slice().buffer]) {
+      expect(refusalOf(() => derivePasskeyRecipientKeys({ first, second } as never))).toEqual({
+        code: "prf_output_invalid",
+        field: "prf.second",
+      });
+    }
   });
 
   it("refuses every derivation version but 1", () => {
