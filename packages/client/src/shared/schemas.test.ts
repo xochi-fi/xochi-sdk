@@ -462,4 +462,14 @@ describe("QuoteResponseSchema (deposit route)", () => {
     expect(result.success).toBe(true);
     expect(result.success && result.data.recipient_address).toBe(TRON_RECIPIENT);
   });
+
+  it("carries a recipient_tag echo beside the bound recipient_address", () => {
+    const result = QuoteResponseSchema.safeParse({
+      ...base,
+      recipient_tag: "alice",
+      recipient_address: USDC_BASE,
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.recipient_tag).toBe("alice");
+  });
 });

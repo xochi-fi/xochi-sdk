@@ -945,6 +945,8 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
           settlement_preference: request.settlementPreference,
           // Recipient on a non-EVM destination (Tron); omitted for EVM routes.
           recipient_address: request.recipientAddress,
+          // zk.money tag the Worker resolves and binds; omitted when none.
+          recipient_tag: request.recipientTag,
           // Refund destination on the origin chain for a deposit-route origin.
           // Omitted for EVM origins, which refund to the connected wallet.
           refund_address: request.refundAddress,
@@ -1290,6 +1292,7 @@ function hashQuoteRequest(request: QuoteRequest): string {
     request.settlementPreference,
     // Distinct recipients (non-EVM dest) are distinct quotes.
     (request.recipientAddress ?? "").toLowerCase(),
+    request.recipientTag ?? "",
     request.refundAddress ?? "",
     // A code changes the price (promo) or who earns the routing layer (ref),
     // and the response carries its outcome: each pair of codes is its own quote.

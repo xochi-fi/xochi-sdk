@@ -102,6 +102,7 @@ The machine checks every quote against the request (via `@xochi/signer`), the pu
 
 - **Pins are yours.** Never derive `pullRecipients` or `depositAttestationSigner` from `/api/capabilities` (same channel as the quote).
 - **Quotes with an `escrow` envelope are refused.**
+- **A tag quote is held to its echo.** When the request carried `recipientTag`, the quote is signable only if it echoes that exact tag and names a `recipientAddress`; that address is then the expected intent recipient for the signer check and the sign-time payout pin, read off the held quote and never off the context or the wallet. A request without a tag is checked against the wallet (or its `recipientAddress`) exactly as before.
 - **A deposit address is never revealed with under 60 s of its attested window left.**
 - **On resume, run stored deposits through `verifyStoredDeposit`** and render and re-persist `result.stored`, not your input.
 - **The machine never sees a read token.** `const { readToken, ...response } = await xochi.execute(request)`, keep `readToken` outside replayable state keyed by the intent id, and dispatch `{ ok: true, response }` (or a token-free `ErrorReport`). Pass the token to `getIntentStatus` when performing a `status` effect.

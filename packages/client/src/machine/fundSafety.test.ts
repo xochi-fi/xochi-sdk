@@ -130,6 +130,87 @@ describe("intent checked against the request at ingest", () => {
   });
 });
 
+// ============================================================
+// zk.money tag requests
+// ============================================================
+
+const DAI_MAINNET = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+const BOUND = "0x2222222222222222222222222222222222222222";
+const REFUSED_TAG = "[useIntent] Refusing a quote that does not bind the requested recipient tag:";
+
+/** An Ethereum DAI payout to `alice.zk.money`, as the Worker resolves it. */
+const tagCtx = () => ctx({ toChainId: 1, toToken: DAI_MAINNET, recipientTag: "alice" });
+
+function tagQuote(over: Partial<QuoteResponse> = {}, recipient = BOUND): QuoteResponse {
+  return quote({
+    recipientTag: "alice",
+    recipientAddress: BOUND,
+    eip712Data: intentTypedData({ toChainId: 1, toToken: DAI_MAINNET, recipient }),
+    ...over,
+  });
+}
+
+describe("tag request bound to the resolved address at ingest", () => {
+  it("accepts a quote that echoes the tag and binds its address, and signs that address", () => {
+    const s = new Session(tagCtx());
+    const call = s.requestQuote();
+    expect(call.request.recipientTag).toBe("alice");
+    expect(call.request.recipientAddress).toBeUndefined();
+    s.send({ type: "QuoteReplied", flight: call.flight, result: { ok: true, quote: tagQuote() } });
+    expect(s.intent.status).toBe("quoted");
+    const prompt = only(walletCalls(s.send({ type: "SignRequested" }), "signTypedData"));
+    expect(prompt.purpose).toBe("intent");
+    expect(prompt.typedData.message.recipient).toBe(BOUND);
+  });
+
+  it.each([
+    ["no tag echo", { recipientTag: undefined }],
+    ["another tag", { recipientTag: "mallory" }],
+    ["no bound address", { recipientAddress: undefined }],
+    ["an empty bound address", { recipientAddress: "" }],
+  ] as [string, Partial<QuoteResponse>][])("refuses a tag quote with %s", (_name, over) => {
+    const s = new Session(tagCtx());
+    const fx = s.quoteWith(tagQuote(over));
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.quote).toBeNull();
+    expect(s.intent.error).toBe(REFUSED_QUOTE);
+    expect(logs(fx, "error")).toContain(REFUSED_TAG);
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toHaveLength(0);
+  });
+
+  it("refuses a tag quote whose intent pays the wallet instead of the bound address", () => {
+    const s = new Session(tagCtx());
+    const fx = s.quoteWith(tagQuote({}, WALLET));
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toBe(REFUSED_QUOTE);
+    expect(JSON.stringify(fx)).toContain("intent recipient");
+  });
+
+  it("refuses a tag quote whose bound address is the destination token", () => {
+    const s = new Session(tagCtx());
+    s.quoteWith(tagQuote({ recipientAddress: DAI_MAINNET }, DAI_MAINNET));
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toMatch(/token's own contract/);
+  });
+
+  it("still refuses a non-tag quote whose intent pays anyone but the wallet", () => {
+    // The tag path binds the quoted address only when a tag was sent: a quote
+    // that volunteers a tag and an address on a plain request is held to the
+    // wallet as before.
+    const s = new Session();
+    const fx = s.quoteWith(
+      quote({
+        recipientTag: "alice",
+        recipientAddress: BOUND,
+        eip712Data: intentTypedData({ recipient: BOUND }),
+      }),
+    );
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.error).toBe(REFUSED_QUOTE);
+    expect(JSON.stringify(fx)).toContain("intent recipient");
+  });
+});
+
 describe("origin pull checked against the intent at ingest", () => {
   it("refuses a pull on another chain", () => {
     const pull = erc3009Pull();

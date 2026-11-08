@@ -47,6 +47,11 @@ export interface IntentDestination {
    * The user types it; EVM routes settle to the connected wallet and omit it.
    */
   recipientAddress?: string;
+  /**
+   * The zk.money tag the host entered, for display only. The recipient the
+   * quote binds is `QuoteResponse.recipientAddress`.
+   */
+  recipientTag?: string;
 }
 
 // ============================================================
@@ -71,6 +76,13 @@ export interface QuoteRequest {
   settlementPreference: SettlementType;
   /** Recipient on the destination chain (non-EVM routes); omit for EVM. */
   recipientAddress?: string;
+  /**
+   * zk.money tag (`<tag>.zk.money`), normalised (`normalizeTradeFields`):
+   * lowercase `[a-z0-9-]{1,63}`, no `@`. Mutually exclusive with
+   * `recipientAddress`; the Worker resolves it and binds the resolved L1
+   * address as the intent recipient.
+   */
+  recipientTag?: string;
   /**
    * Refund destination on the ORIGIN chain, for a deposit-route origin (Tron).
    * Omit for EVM origins, where a refund goes back to the connected wallet.
@@ -193,9 +205,15 @@ export interface QuoteResponse {
   /**
    * Echo of the requested destination recipient (non-EVM/Tron routes). The
    * client asserts a solvable quote echoes exactly the address it asked for
-   * (fail-closed on mismatch); absent for EVM routes.
+   * (fail-closed on mismatch); absent for EVM routes. On a tag request it is
+   * the L1 address the Worker bound as the intent recipient.
    */
   recipientAddress?: string;
+  /**
+   * Echo of the requested `recipientTag`, normalised. A tag request is
+   * accepted only if this equals the tag sent AND `recipientAddress` is set.
+   */
+  recipientTag?: string;
   settlementOptions: SettlementOption[];
   claimInfo?: ClaimInfo;
   error?: string;
@@ -450,6 +468,7 @@ export function mapQuoteResponse(
     depositDeadline: w.deposit_deadline,
     settlementType: readResolvedSettlementType(w.route),
     recipientAddress: w.recipient_address,
+    recipientTag: w.recipient_tag,
     settlementOptions: w.settlement_options ?? [],
     claimInfo: w.claim_info
       ? { factoryAddress: w.claim_info.factory_address, salt: w.claim_info.salt }

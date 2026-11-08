@@ -157,6 +157,12 @@ export interface Context {
   slippageBps: number;
   /** Recipient on the destination chain (non-EVM routes); null for EVM. */
   recipientAddress: string | null;
+  /**
+   * zk.money tag the payout resolves to (`<tag>.zk.money`), as presented; null
+   * for none. Mutually exclusive with `recipientAddress`. The address the quote
+   * binds for it is read off the quote, never the context.
+   */
+  recipientTag: string | null;
   /** Refund destination on a deposit-route ORIGIN; null for EVM origins. */
   refundAddress: string | null;
   stealthMetaAddress: StealthMetaAddress | null;
@@ -870,6 +876,7 @@ function sendQuote(m: Model, fx: Effect[], flight: QuoteFlight, now: number): Mo
     trustScore: ctx.trustScore,
     settlementPreference: ctx.settlementPreference,
     recipientAddress: ctx.recipientAddress ?? undefined,
+    recipientTag: ctx.recipientTag,
     refundAddress: ctx.refundAddress ?? undefined,
     stealthMetaAddress: ctx.stealthMetaAddress ?? undefined,
     ref: ctx.ref,
@@ -1053,6 +1060,26 @@ function quoteRefusal(
     };
   }
 
+  // Tag request: the Worker resolved `<tag>.zk.money` and bound the result as
+  // the intent recipient. The quote must echo the tag it resolved and name the
+  // address it bound, or no downstream check knows where the funds go.
+  const requestedTag = flight.request?.recipientTag;
+  if (requestedTag && (quote.recipientTag !== requestedTag || !quote.recipientAddress)) {
+    return {
+      level: "error",
+      message: `${LOG} Refusing a quote that does not bind the requested recipient tag:`,
+      data: [
+        {
+          requestedTag,
+          servedTag: quote.recipientTag,
+          hasRecipientAddress: !!quote.recipientAddress,
+        },
+      ],
+      error: QUOTE_MISMATCH_ERROR,
+      quote: null,
+    };
+  }
+
   // Stealth: the served factory decides who owns the payout account. A
   // stealth REQUEST answered without one is refused, never read as public.
   const claimError = claimInfoError(
@@ -1070,8 +1097,11 @@ function quoteRefusal(
     };
   }
 
-  // The RESOLVED payout address: the request's recipient, or the wallet.
-  const resolvedRecipient = ctx.recipientAddress?.trim() || address || "";
+  // The RESOLVED payout address: the tag's bound address, the request's
+  // recipient, or the wallet.
+  const resolvedRecipient = requestedTag
+    ? (quote.recipientAddress ?? "")
+    : ctx.recipientAddress?.trim() || address || "";
 
   // Never pay the destination token contract (raxol#869). Runs on EVERY route.
   if (recipientIsDestinationToken(resolvedRecipient, ctx.toToken)) {
@@ -1371,10 +1401,15 @@ function beginSign(m: Model, fx: Effect[], now: number): Model {
   }
 
   // Bind the DESTINATION leg before the wallet is prompted: the signed
-  // `recipient` and `toAmount` must be what this client rendered.
+  // `recipient` and `toAmount` must be what this client rendered. On a tag
+  // request the recipient is the address the held quote bound (ingest held it
+  // to the tag echo); `holdsCurrentQuote` above makes the form's tag the one
+  // that quote was requested with.
   const payoutPin = validatePayoutPin(quote.eip712Data, {
     toAmount: quote.toAmount,
-    recipient: m.ctx.recipientAddress?.trim() || m.ctx.wallet.address || undefined,
+    recipient: normalizeTradeFields(m.ctx).recipientTag
+      ? quote.recipientAddress
+      : m.ctx.recipientAddress?.trim() || m.ctx.wallet.address || undefined,
   });
   if (!payoutPin.ok) {
     log(fx, "error", `${LOG} Refusing to sign intent:`, payoutPin);
@@ -2174,7 +2209,8 @@ function sweptPastFinish(intent: IntentState, id: string, now: number): boolean 
  * trade. `paused` and `stepwise` shape the ceremony, not the trade.
  */
 function tradeKey(c: Context): string {
-  const { recipientAddress, refundAddress, stealthMetaAddress } = normalizeTradeFields(c);
+  const { recipientAddress, recipientTag, refundAddress, stealthMetaAddress } =
+    normalizeTradeFields(c);
   return JSON.stringify([
     c.fromChainId,
     c.toChainId,
@@ -2184,6 +2220,7 @@ function tradeKey(c: Context): string {
     c.trustScore,
     c.slippageBps,
     recipientAddress ?? null,
+    recipientTag ?? null,
     refundAddress ?? null,
     stealthMetaAddress?.spendingPubKey ?? null,
     stealthMetaAddress?.viewingPubKey ?? null,

@@ -4,6 +4,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **zk.money tag recipients**: `QuoteRequest.recipientTag` / `Context.recipientTag`, sent as `recipient_tag` (normalised: trimmed, one leading `@` dropped, lowercase; `validateSwapParams` refuses one outside `[a-z0-9-]{1,63}` or beside a `recipientAddress`). The Worker resolves `<tag>.zk.money` and binds the L1 address as the intent recipient; the quote echoes `recipientTag` and `recipientAddress` (`QuoteResponse.recipientTag`). A tag quote is accepted only when the echoed tag equals the one sent and `recipientAddress` is present; that bound address is then the expected intent recipient for the `@xochi/signer` check and the sign-time payout pin. Non-tag quotes are checked exactly as before. The tag is part of the trade key and the quote-cache key, and `IntentDestination.recipientTag` carries it for display.
+
 ### Changed
 
 - `@xochi/signer` dependency range is `^0.7.0` (was `^0.6.0`); `viem` is `^2.57.7` (was `^2.21.0`).
