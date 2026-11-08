@@ -44,7 +44,9 @@ function attempt(run: () => unknown): Result {
 }
 
 function expectSameDecode(bytes: Uint8Array): void {
-  const node = attempt(() => plain(vendored.decodeCbor(Buffer.from(bytes))));
+  // An unpooled copy: Buffer.from(Uint8Array) would allocate inside Node's shared pool.
+  const unpooled = Buffer.from(Uint8Array.from(bytes).buffer);
+  const node = attempt(() => plain(vendored.decodeCbor(unpooled)));
   const port = attempt(() => plain(decodeCbor(bytes)));
   expect(port, Buffer.from(bytes).toString("hex")).toEqual(node);
 }
@@ -63,7 +65,13 @@ describe("decodeCbor port vs vendored decodeCbor", () => {
       "1bffffffffffffffff",
     ],
     "negative integers": ["20", "37", "3818", "3bffffffffffffffff"],
-    "short 64-bit arguments": ["1b010203", "1b", "8200 1b0102030405", "820000 1b01020304050607"],
+    "short 64-bit arguments": [
+      "1b010203",
+      "1b",
+      "8200 1b0102030405",
+      "830000 1b01020304050607",
+      "820000 1b01020304050607",
+    ],
     "short arguments": ["18", "1901", "1a010203", "3901"],
     "reserved additional information": ["1c", "1d", "1e", "3c", "5c", "fc"],
     "indefinite integers": ["1f", "3f"],
