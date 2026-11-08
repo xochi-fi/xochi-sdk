@@ -140,6 +140,19 @@ describe("buildQuoteRequest", () => {
     expect(req.recipientAddress).toBeUndefined();
     expect(req.refundAddress).toBeUndefined();
   });
+
+  it("normalises a recipientTag: trimmed, one leading @ dropped, lowercase", () => {
+    const tagged = (recipientTag: string) =>
+      buildQuoteRequest({ ...base, settlementPreference: "public", recipientTag });
+    expect(tagged("@Foo-Bar ").recipientTag).toBe("foo-bar");
+    expect(tagged("foo-bar").recipientTag).toBe("foo-bar");
+    expect(tagged("@@foo").recipientTag).toBe("@foo");
+    expect(tagged("  ").recipientTag).toBeUndefined();
+    expect(tagged("@").recipientTag).toBeUndefined();
+    expect(
+      buildQuoteRequest({ ...base, settlementPreference: "public" }).recipientTag,
+    ).toBeUndefined();
+  });
 });
 
 describe("computeRefreshDelayMs", () => {

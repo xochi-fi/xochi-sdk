@@ -29,8 +29,15 @@ import type { QuoteRequest, QuoteResponse } from "./wire.js";
  * `buildQuoteRequest`), never from the panel state, so the checks compare the
  * served terms against the bytes that asked for them. The widget only quotes
  * exact-input, so `swap_kind` is stated rather than left to the signer's default.
+ *
+ * On a tag request the expected recipient is the L1 address the Worker bound
+ * (`quote.recipientAddress`, already held to the tag echo by `quoteRefusal`),
+ * so the signer compares the intent against that address, never the wallet.
  */
-export function quoteRequestParams(request: QuoteRequest): QuoteRequestParams {
+export function quoteRequestParams(
+  request: QuoteRequest,
+  quote: QuoteResponse,
+): QuoteRequestParams {
   return {
     wallet: request.wallet,
     from_chain_id: request.fromChainId,
@@ -40,7 +47,7 @@ export function quoteRequestParams(request: QuoteRequest): QuoteRequestParams {
     from_amount: request.fromAmount,
     swap_kind: "exact_input",
     settlement_preference: request.settlementPreference,
-    recipient_address: request.recipientAddress,
+    recipient_address: request.recipientTag ? quote.recipientAddress : request.recipientAddress,
     refund_address: request.refundAddress,
     stealth_spending_pub_key: request.stealthMetaAddress?.spendingPubKey,
     stealth_viewing_pub_key: request.stealthMetaAddress?.viewingPubKey,
@@ -72,7 +79,7 @@ export function checkSignableQuote(
     escrow: quote.escrow,
   };
   try {
-    assertIntentMatchesRequest(quoteRequestParams(request), served);
+    assertIntentMatchesRequest(quoteRequestParams(request, quote), served);
   } catch (err) {
     return { ok: false, kind: "intent_mismatch", reason: refusalReason(err) };
   }

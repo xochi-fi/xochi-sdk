@@ -182,6 +182,20 @@ const validateCode = (code: string | undefined, name: string): string[] =>
     ? []
     : [`Invalid ${name} code: at most ${MAX_QUOTE_CODE_LENGTH} characters`];
 
+/** A normalised zk.money tag: one DNS label of `<tag>.zk.money`. */
+const RECIPIENT_TAG_REGEX = /^[a-z0-9-]{1,63}$/;
+
+const validateRecipientTag = (tag: string | undefined): string[] =>
+  tag === undefined || RECIPIENT_TAG_REGEX.test(tag)
+    ? []
+    : ["Invalid recipient tag: use 1-63 letters, digits or hyphens"];
+
+// The Worker binds exactly one destination: a typed address or a resolved tag.
+const validateRecipientExclusive = (p: Partial<QuoteRequest>): string[] =>
+  p.recipientAddress !== undefined && p.recipientTag !== undefined
+    ? ["Choose a recipient address or a recipient tag, not both"]
+    : [];
+
 const validateSameToken = (p: Partial<QuoteRequest>): string[] =>
   p.fromToken &&
   p.toToken &&
@@ -207,6 +221,8 @@ export const validateSwapParams = (
     ...validateSettlement(params.settlementPreference),
     ...validateSameToken(params),
     ...validateCode(params.ref, "referral"),
+    ...validateRecipientTag(params.recipientTag),
+    ...validateRecipientExclusive(params),
     ...validateCode(params.promo, "promo"),
   ];
   return { isValid: errors.length === 0, errors };

@@ -52,6 +52,7 @@ export function ctx(over: Partial<Context> = {}, wallet: Partial<Context["wallet
     trustScore: 0,
     slippageBps: 50,
     recipientAddress: null,
+    recipientTag: null,
     refundAddress: null,
     stealthMetaAddress: null,
     paused: false,

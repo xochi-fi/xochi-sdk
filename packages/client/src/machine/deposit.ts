@@ -205,7 +205,7 @@ export function checkDepositQuote(
     return { ok: false, kind: "unavailable", reason: "malformed deposit attestation signature" };
   }
 
-  const params = quoteRequestParams(request);
+  const params = quoteRequestParams(request, quote);
   let fields: DepositAttestationFields;
   try {
     fields = depositAttestationFields(

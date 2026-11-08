@@ -451,6 +451,10 @@ export const QuoteResponseSchema = z
     // the address it asked for and fail-closes otherwise. Base58 is
     // case-sensitive -- passed through verbatim, never lowercased.
     recipient_address: recipientAddress.optional(),
+    // Echo of the requested zk.money tag, normalised. The client accepts a tag
+    // request only when this equals the tag it sent and `recipient_address`
+    // carries the L1 address the Worker bound.
+    recipient_tag: z.string().optional(),
     settlement_options: z.array(SettlementOptionSchema).optional(),
     claim_info: ClaimInfoSchema.optional(),
     // Execute replay-dedup nonce the GET alias injects (absent from the POST

@@ -909,6 +909,24 @@ describe("quote retries only a transient gateway status", () => {
     expect(plain).not.toHaveProperty("ref");
     expect(plain).not.toHaveProperty("promo");
   });
+
+  it("sends a recipient tag as `recipient_tag`, with no `recipient_address` key", async () => {
+    const { c, calls } = client(() => okQuote());
+    await c.getQuote({ ...req, recipientTag: "alice" });
+    const body: Record<string, unknown> = JSON.parse(String(calls[0].init.body));
+    expect(body.recipient_tag).toBe("alice");
+    expect(body).not.toHaveProperty("recipient_address");
+    await c.getQuote({ ...req, fromAmount: "2000000" });
+    expect(JSON.parse(String(calls[1].init.body))).not.toHaveProperty("recipient_tag");
+  });
+
+  it("reads the Worker's tag echo and bound address", async () => {
+    const bound = "0x2222222222222222222222222222222222222222";
+    const { c } = client(() => okQuote({ recipient_tag: "alice", recipient_address: bound }));
+    const quote = await c.getQuote({ ...req, recipientTag: "alice" });
+    expect(quote.recipientTag).toBe("alice");
+    expect(quote.recipientAddress).toBe(bound);
+  });
 });
 
 describe("timeouts cover the response body", () => {
@@ -1077,6 +1095,8 @@ describe("getQuote cache", () => {
     ["preview vs executable", { wallet: undefined, preview: true }, {}],
     ["referral code", {}, { ref: "PARTNER" }],
     ["promo code", { promo: "LAUNCH10" }, { promo: "SPRING5" }],
+    ["recipient tag", {}, { recipientTag: "alice" }],
+    ["recipient tag value", { recipientTag: "alice" }, { recipientTag: "bob" }],
     [
       "split between the codes",
       { ref: "BAD:CODE", promo: "SAVE10" },

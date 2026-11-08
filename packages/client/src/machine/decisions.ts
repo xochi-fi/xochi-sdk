@@ -274,6 +274,8 @@ export interface BuildQuoteRequestInput {
   trustScore: number;
   settlementPreference: SettlementType;
   recipientAddress?: string;
+  /** zk.money tag as presented (any case, optional leading `@`); mutually exclusive with `recipientAddress`. */
+  recipientTag?: string | null;
   refundAddress?: string;
   stealthMetaAddress?: {
     spendingPubKey: string;
@@ -309,19 +311,34 @@ export function normalizeQuoteCodes(input: {
 }
 
 /**
+ * A presented zk.money tag as sent: trimmed, one leading `@` dropped,
+ * lowercase (the form the Worker resolves as `<tag>.zk.money`), or undefined
+ * when absent or empty. `validateSwapParams` refuses one outside
+ * `[a-z0-9-]{1,63}`.
+ */
+function normalizeRecipientTag(presented: string | null | undefined): string | undefined {
+  const tag = presented?.trim().replace(/^@/, "").toLowerCase();
+  return tag ? tag : undefined;
+}
+
+/**
  * The request fields the server reads through a normalisation: an empty
- * `recipientAddress` or `refundAddress` is undefined (EVM routes settle to, and
- * refund to, the connected wallet) and the stealth meta-address is sent ONLY
- * on a stealth settlement. The machine's trade key reads the same values, so
- * two forms that build one request are one trade.
+ * `recipientAddress`, `recipientTag` or `refundAddress` is undefined (EVM
+ * routes settle to, and refund to, the connected wallet) and the stealth
+ * meta-address is sent ONLY on a stealth settlement. The machine's trade key
+ * reads the same values, so two forms that build one request are one trade.
  */
 export function normalizeTradeFields(
   input: Pick<BuildQuoteRequestInput, "settlementPreference"> & {
     recipientAddress?: string | null;
+    recipientTag?: string | null;
     refundAddress?: string | null;
     stealthMetaAddress?: BuildQuoteRequestInput["stealthMetaAddress"] | null;
   },
-): Pick<QuoteRequest, "recipientAddress" | "refundAddress" | "stealthMetaAddress"> {
+): Pick<
+  QuoteRequest,
+  "recipientAddress" | "recipientTag" | "refundAddress" | "stealthMetaAddress"
+> {
   return {
     // Trimmed HERE, at the single point the request is built, because the
     // deposit attestation rebuilds both of these from the same panel state and
@@ -329,6 +346,7 @@ export function normalizeTradeFields(
     // that cannot recover, reported to the user as a route being unavailable.
     // One deal, one encoding.
     recipientAddress: input.recipientAddress?.trim() || undefined,
+    recipientTag: normalizeRecipientTag(input.recipientTag),
     refundAddress: input.refundAddress?.trim() || undefined,
     stealthMetaAddress:
       input.settlementPreference === "stealth"

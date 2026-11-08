@@ -57,6 +57,31 @@ describe("validateSwapParams", () => {
     ]);
   });
 
+  it("accepts a normalised recipient tag, refuses a malformed one or one beside an address", () => {
+    const req: Partial<QuoteRequest> = {
+      wallet: EVM_WALLET,
+      fromChainId: 8453,
+      toChainId: 1,
+      fromToken: USDC_BASE,
+      toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      fromAmount: "1000000",
+      deadline: soon(),
+      slippageBps: 50,
+      settlementPreference: "public",
+    };
+    const now = Date.now();
+    expect(validateSwapParams({ ...req, recipientTag: "foo-bar9" }, now).isValid).toBe(true);
+    expect(validateSwapParams({ ...req, recipientTag: "a".repeat(63) }, now).isValid).toBe(true);
+    for (const bad of ["@foo", "Foo", "foo.bar", "foo bar", "", "a".repeat(64)]) {
+      expect(validateSwapParams({ ...req, recipientTag: bad }, now).errors).toEqual([
+        "Invalid recipient tag: use 1-63 letters, digits or hyphens",
+      ]);
+    }
+    expect(
+      validateSwapParams({ ...req, recipientTag: "foo", recipientAddress: EVM_WALLET }, now).errors,
+    ).toEqual(["Choose a recipient address or a recipient tag, not both"]);
+  });
+
   it("accepts an EVM origin -> Tron destination (base58 token)", () => {
     const req: Partial<QuoteRequest> = {
       wallet: EVM_WALLET,

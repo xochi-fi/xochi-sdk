@@ -2366,6 +2366,40 @@ describe("the held quote's trade, as the request normalises it", () => {
     expect(s.receipt.signing).toEqual({ kind: "unavailable" });
   });
 
+  it("sends the context's tag, normalised, and keeps the quote across its spellings", () => {
+    const bound = "0x2222222222222222222222222222222222222222";
+    const tagCtx = (recipientTag: string) =>
+      ctx({ toChainId: 1, toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F", recipientTag });
+    const s = new Session(tagCtx("@Foo-Bar "));
+    const call = s.requestQuote();
+    expect(call.request.recipientTag).toBe("foo-bar");
+    s.send({
+      type: "QuoteReplied",
+      flight: call.flight,
+      result: {
+        ok: true,
+        quote: quote({
+          recipientTag: "foo-bar",
+          recipientAddress: bound,
+          eip712Data: intentTypedData({
+            toChainId: 1,
+            toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+            recipient: bound,
+          }),
+        }),
+      },
+    });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // The same tag in another spelling is the same request.
+    s.send({ type: "ContextChanged", ctx: tagCtx("foo-bar") });
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+
+    // Another tag pays someone else.
+    s.send({ type: "ContextChanged", ctx: tagCtx("foo-baz") });
+    expect(s.receipt.signing).toEqual({ kind: "unavailable" });
+  });
+
   it("refuses a code longer than the Worker accepts rather than quoting without it", () => {
     const s = new Session(ctx({ promo: "X".repeat(65) }));
     s.send({ type: "QuoteRequested", amount: AMOUNT });
