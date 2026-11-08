@@ -6,6 +6,18 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [0.13.0] - 2026-11-08
 
+### Changed
+
+- Normatively define authenticated passkey address recovery on a new device:
+  `POST /api/shielded/recipients/passkey-address` computes the commitment server-side, scopes the
+  live-binding lookup to the wallet authenticated by the current SIWE JWT, returns one
+  `aztec_recipient`, uses private/no-store responses, answers missing, other-wallet, revoked and
+  expired records with 404, and fails inconsistent active recipients with 409. The claim page
+  requires exact lowercase equality with its local derivation before writing a profile.
+- Define caller-provided UUIDv4 journal ids for `RecipientCore.send` and
+  `CoreExitRequest.journalId?`, and make `restoreJournals` the sole owner of idempotent complete
+  versus interrupted restore decisions. Vectors and derivation constants are unchanged.
+
 ### Added
 
 - **Passkey recipients, PROPOSED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. It awaits product-owner sign-off, since it departs from xochi#759's sealed backup. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.

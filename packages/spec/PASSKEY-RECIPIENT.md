@@ -26,20 +26,20 @@ The key words MUST, MUST NOT, SHOULD and MAY are as in RFC 2119.
 
 ### 1.1 Constants
 
-| Name | Value |
-|---|---|
-| RP ID (`PASSKEY_RP_ID`) | `"xochi.fi"`. Production code has no override. Tests MAY use `localhost` through an explicit test-only option. |
-| RP name | `"Xochi"` |
-| Derivation version (`PASSKEY_DERIVATION_V1`) | `1` |
-| PRF eval input `first` (account purpose) | `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/account"))` = `0xda78e1a895e2650478d184cb97b68a58a700ebbc2fd12d57a394873c93439dea` |
-| PRF eval input `second` (wrap purpose) | `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/wrap"))` = `0x76b121dc2850fb29af74dcd8357c9c9fd4992d2990cdcd3144c704220b83fda4` |
-| HKDF | HKDF-SHA-256 (RFC 5869) |
-| HKDF salt, every output | `UTF8("xochi.recipient.passkey.v1")` |
-| HKDF info, account secret | `UTF8("xochi.recipient.passkey.v1/account-secret")`, L = 64 |
-| HKDF info, account salt | `UTF8("xochi.recipient.passkey.v1/account-salt")`, L = 64 |
-| HKDF info, wrap key | `UTF8("xochi.recipient.passkey.v1/wrap-key")`, L = 32 |
-| HKDF info, PXE store key | `UTF8("xochi.recipient.passkey.v1/pxe-store-key")`, L = 32 |
-| r | the BN254 scalar field order, `21888242871839275222246405745257275088548364400416034343698204186575808495617` (`AZTEC_FIELD_MODULUS`) |
+| Name                                         | Value                                                                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| RP ID (`PASSKEY_RP_ID`)                      | `"xochi.fi"`. Production code has no override. Tests MAY use `localhost` through an explicit test-only option.                        |
+| RP name                                      | `"Xochi"`                                                                                                                             |
+| Derivation version (`PASSKEY_DERIVATION_V1`) | `1`                                                                                                                                   |
+| PRF eval input `first` (account purpose)     | `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/account"))` = `0xda78e1a895e2650478d184cb97b68a58a700ebbc2fd12d57a394873c93439dea`      |
+| PRF eval input `second` (wrap purpose)       | `SHA-256(UTF8("xochi.recipient.passkey.v1/prf/wrap"))` = `0x76b121dc2850fb29af74dcd8357c9c9fd4992d2990cdcd3144c704220b83fda4`         |
+| HKDF                                         | HKDF-SHA-256 (RFC 5869)                                                                                                               |
+| HKDF salt, every output                      | `UTF8("xochi.recipient.passkey.v1")`                                                                                                  |
+| HKDF info, account secret                    | `UTF8("xochi.recipient.passkey.v1/account-secret")`, L = 64                                                                           |
+| HKDF info, account salt                      | `UTF8("xochi.recipient.passkey.v1/account-salt")`, L = 64                                                                             |
+| HKDF info, wrap key                          | `UTF8("xochi.recipient.passkey.v1/wrap-key")`, L = 32                                                                                 |
+| HKDF info, PXE store key                     | `UTF8("xochi.recipient.passkey.v1/pxe-store-key")`, L = 32                                                                            |
+| r                                            | the BN254 scalar field order, `21888242871839275222246405745257275088548364400416034343698204186575808495617` (`AZTEC_FIELD_MODULUS`) |
 
 The two eval inputs are what the page passes as `extensions.prf.eval.{first, second}`, and both are
 evaluated in one ceremony. The page MUST pass the 32 raw digest bytes (`passkeyPrfInputBytes()` in
@@ -89,17 +89,17 @@ the other.
 
 `derivePasskeyRecipientKeys(prf, version?)` throws `PasskeyDerivationError`:
 
-| `code` | `field` | When |
-|---|---|---|
-| `unsupported_version` | `version` | `version` is anything but `1`. |
-| `prf_output_invalid` | `prf`, `prf.first`, `prf.second` | An output is missing, or is not exactly 32 bytes (an `ArrayBuffer` or any view of one, from any realm; the signer copies it and never writes the caller's buffer). A missing output means the authenticator did not evaluate PRF; see §3. Also `prf.second` equal to `prf.first` (the same result passed twice). |
-| `derived_zero` | `accountSecret`, `accountSalt` | The reduction is 0. No preimage is known, so there is no vector. |
+| `code`                | `field`                          | When                                                                                                                                                                                                                                                                                                             |
+| --------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unsupported_version` | `version`                        | `version` is anything but `1`.                                                                                                                                                                                                                                                                                   |
+| `prf_output_invalid`  | `prf`, `prf.first`, `prf.second` | An output is missing, or is not exactly 32 bytes (an `ArrayBuffer` or any view of one, from any realm; the signer copies it and never writes the caller's buffer). A missing output means the authenticator did not evaluate PRF; see §3. Also `prf.second` equal to `prf.first` (the same result passed twice). |
+| `derived_zero`        | `accountSecret`, `accountSalt`   | The reduction is 0. No preimage is known, so there is no vector.                                                                                                                                                                                                                                                 |
 
 ### 1.4 Reference vectors
 
-| name | prf.first | prf.second | secret | salt | wrapKey | pxeStoreKey |
-|---|---|---|---|---|---|---|
-| `zeros-ones` | 32 x `0x00` | 32 x `0x01` | `0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82` | `0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679` | `0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b` | `0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799` |
+| name            | prf.first                        | prf.second                        | secret                                                               | salt                                                                 | wrapKey                                                              | pxeStoreKey                                                          |
+| --------------- | -------------------------------- | --------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `zeros-ones`    | 32 x `0x00`                      | 32 x `0x01`                       | `0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82` | `0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679` | `0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b` | `0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799` |
 | `sha256-labels` | `SHA-256("TEST ONLY prf first")` | `SHA-256("TEST ONLY prf second")` | `0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6` | `0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7` | `0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94` | `0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4` |
 
 The `pxeStoreKey` values were added in contract A.2 revision 1.1. The generator computes every value
@@ -173,13 +173,13 @@ serialize a credential to a server.
 
 Every ceremony failure is one error class, `PasskeyError`, with one of these `code`s:
 
-| `code` | When | UI |
-|---|---|---|
-| `webauthn_unavailable` | No `PublicKeyCredential`, or not a secure context. | "This browser cannot create passkeys." |
-| `prf_unsupported` | `getClientCapabilities()["extension:prf"] === false` (pre-check); `prf.enabled !== true` at create; `prf.results.first/second` missing or not 32 bytes at get. | "Your browser or passkey provider does not support the PRF extension." Then the supported list (below). |
-| `passkey_cancelled` | `NotAllowedError` / `AbortError` | A retry button. |
-| `prf_unstable` | The confirming get's `first` or `second` differs from the first ceremony's (§2). | "This passkey gives a different key each time, so funds sent to it could be lost. Delete it and use another passkey provider." Nothing is derived, shown or enrolled. |
-| `passkey_failed` | Anything else. The message is kept and logged with `console.error`. | |
+| `code`                 | When                                                                                                                                                           | UI                                                                                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webauthn_unavailable` | No `PublicKeyCredential`, or not a secure context.                                                                                                             | "This browser cannot create passkeys."                                                                                                                                |
+| `prf_unsupported`      | `getClientCapabilities()["extension:prf"] === false` (pre-check); `prf.enabled !== true` at create; `prf.results.first/second` missing or not 32 bytes at get. | "Your browser or passkey provider does not support the PRF extension." Then the supported list (below).                                                               |
+| `passkey_cancelled`    | `NotAllowedError` / `AbortError`                                                                                                                               | A retry button.                                                                                                                                                       |
+| `prf_unstable`         | The confirming get's `first` or `second` differs from the first ceremony's (§2).                                                                               | "This passkey gives a different key each time, so funds sent to it could be lost. Delete it and use another passkey provider." Nothing is derived, shown or enrolled. |
+| `passkey_failed`       | Anything else. The message is kept and logged with `console.error`.                                                                                            |                                                                                                                                                                       |
 
 There is **no passphrase fallback for new passkey recipients**. If PRF is unavailable, the page
 refuses, shows the supported list, and creates nothing. A user who cannot use a supported passkey
@@ -246,10 +246,10 @@ apart, so the Worker cannot enforce this rule. The **recipient core** does:
 `RecipientKeySource.kind === "passkey"` (claim contracts C). A key source of kind `"imported"`
 (PKW1) or `"keystore"` (the CLI's sealed keystore) enrolls only in sealed-file mode.
 
-| | Sealed file (unchanged) | Passkey (new) |
-|---|---|---|
-| `backupFormatId` | `BACKUP_FORMAT_V1_ID` = `keccak256(UTF8("xochi.shielded.backup-format.v1"))` | `BACKUP_FORMAT_PASSKEY_V1_ID` = `keccak256(UTF8("xochi.shielded.backup-format.passkey.v1"))` = `0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2` |
-| `backupCommitment` | `keccak256(sealedBackupBytes)` | `keccak256(abi.encode(bytes32 PASSKEY_BACKUP_COMMITMENT_TAG, bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion))` |
+|                    | Sealed file (unchanged)                                                      | Passkey (new)                                                                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backupFormatId`   | `BACKUP_FORMAT_V1_ID` = `keccak256(UTF8("xochi.shielded.backup-format.v1"))` | `BACKUP_FORMAT_PASSKEY_V1_ID` = `keccak256(UTF8("xochi.shielded.backup-format.passkey.v1"))` = `0xfc8e02b9741f099f45fc73cf480359a580e322ceae9ca66d3964a987ad4517f2` |
+| `backupCommitment` | `keccak256(sealedBackupBytes)`                                               | `keccak256(abi.encode(bytes32 PASSKEY_BACKUP_COMMITMENT_TAG, bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion))`                   |
 
 `PASSKEY_BACKUP_COMMITMENT_TAG` = `keccak256(UTF8("xochi.shielded.passkey-backup-commitment.v1"))` =
 `0x8f222f44e0f186187a38e34bdcf4086619e6536187560450d9a0ce200249f025`.
@@ -257,12 +257,12 @@ apart, so the Worker cannot enforce this rule. The **recipient core** does:
 `passkeyBackupCommitment({ credentialIdHash, rpId, derivationVersion })` refuses with
 `AckEncodingError`:
 
-| `code` | `field` | When |
-|---|---|---|
-| `not_bytes32` | `credentialIdHash` | Not `0x` + 64 hex. Case does not change the commitment. |
-| `digest_zero` | `credentialIdHash` | Zero. |
-| `rp_id_mismatch` | `rpId` | Anything but exactly `"xochi.fi"` (case-sensitive, no subdomain). |
-| `derivation_version_unsupported` | `derivationVersion` | Anything but the number `1`. |
+| `code`                           | `field`             | When                                                              |
+| -------------------------------- | ------------------- | ----------------------------------------------------------------- |
+| `not_bytes32`                    | `credentialIdHash`  | Not `0x` + 64 hex. Case does not change the commitment.           |
+| `digest_zero`                    | `credentialIdHash`  | Zero.                                                             |
+| `rp_id_mismatch`                 | `rpId`              | Anything but exactly `"xochi.fi"` (case-sensitive, no subdomain). |
+| `derivation_version_unsupported` | `derivationVersion` | Anything but the number `1`.                                      |
 
 Vector: `credentialIdHash = keccak256(UTF8("TEST ONLY credential id"))` =
 `0x0f51d6f267f479d4f99be0115f01345c551b48f352902e002a2ff851b20f63f2`, `rpId` `xochi.fi`, version `1`,
@@ -291,6 +291,24 @@ derivation_version: 1 }` on enrollment.
 
 It stores the format id. It stores nothing about the credential beyond the commitment.
 
+### Recipient-core correlation and restore
+
+`RecipientCore.send(to, amount, fee, journalId?)` and `CoreExitRequest.journalId?` MAY carry a
+caller-provided journal id. When present it MUST be a UUIDv4 and MUST become the exact
+`OperationJournal` record id before transaction construction or broadcast. An invalid id or an id
+already present in that profile MUST be refused before node submission. When omitted, the core MUST
+generate the UUIDv4 as before. In both cases the record naming a transaction hash MUST be durable
+before broadcast.
+
+`restoreJournals(core, backup, sealed)` owns the complete-versus-interrupted decision and returns
+`"restored" | "already_present"`. It MUST validate the account address, corridor, unresolved fund
+movements and binding, then inspect any surviving restore marker while holding the live restore
+lease. A surviving marker MUST recover only when its address and exact `keccak256(sealed)`
+commitment name this backup; a different or unreadable marker MUST fail closed without replacing
+it. With no marker, an exact complete journal and state set for this backup MUST return
+`"already_present"` without a write, including when the journal set is empty. Empty destination
+journals whose state does not already commit to this backup MUST restore and return `"restored"`.
+
 The vectors (`passkey.backup`) contain:
 
 - the commitments and their refusals;
@@ -300,7 +318,7 @@ The vectors (`passkey.backup`) contain:
 - an unknown-format refusal;
 - `verification`, the verifier's verdict for each combination of mode and expectation. `error: null`
   means accepted. The sealed-file rows use `acknowledgements.vectors`' `BackupPersistenceAck
-  (binding X)`.
+(binding X)`.
 
 ## 6. Threat model
 
@@ -332,27 +350,46 @@ The vectors (`passkey.backup`) contain:
   derives, shows and enrolls nothing.
 - **The same credential can give different PRF output across clients later.** A different output
   derives a different, empty account, not an error. The page MUST fail closed: it compares the
-  derived address with the profile record's `address` (and, on a new device, with the address the
-  Worker holds for the binding), refuses on mismatch, and never treats the mismatch as a new
-  recipient. An imported recipient fails closed on its own (the AES-GCM tag).
+  locally derived lowercase Aztec address with the profile record's lowercase address and refuses
+  on any mismatch. On a new device, before writing a profile, it MUST authenticate as the current
+  source wallet with that wallet's current SIWE JWT and call:
 
-  The Worker enforces the server-side half (xochi#841). It refuses a passkey-mode enrollment with
-  HTTP 409 and `error_category: "passkey_recipient_mismatch"` when two things hold:
+  `POST /api/shielded/recipients/passkey-address`
+
+  with the strict request
+  `{ "backup_passkey": { "credential_id_hash": string, "rp_id": "xochi.fi",
+"derivation_version": 1 } }`. The Worker computes the backup commitment server-side. It returns
+  `{ "aztec_recipient": string }` when at least one live binding (not revoked; admitted, or pending
+  within its unused expiry) under the authenticated source wallet names that recipient and every
+  matching live binding names the same recipient. No matching commitment, another source wallet,
+  revoked bindings and expired pending bindings are indistinguishable 404 responses. Distinct
+  active recipients for the same commitment and source wallet fail closed with 409. The response
+  is private and `Cache-Control: no-store`; neither the commitment nor recipient address may appear
+  in logs.
+
+  The page MUST require exact lowercase equality between `aztec_recipient` and the locally derived
+  address before writing the profile. A 404, 409, malformed response, address mismatch or request
+  failure MUST refuse adoption and MUST NOT treat the local result as a new recipient. An imported
+  recipient fails closed on its own (the AES-GCM tag).
+
+  The Worker also enforces enrollment consistency (xochi#841). It refuses a passkey-mode enrollment
+  with HTTP 409 and `error_category: "passkey_recipient_mismatch"` when:
   - the enrollment's backup commitment already backs a live binding (not revoked; admitted, or
-    pending within its unused expiry);
+    pending within its unused expiry); and
   - that binding is for a **different** Aztec recipient under the **same** source wallet.
 
   An enrollment for the same recipient is accepted: a retry, a re-enrollment, or the same recipient
   under another source wallet.
 
-  The rule is scoped per source wallet because the commitment is a statement, not proof that the
+  Both rules are scoped per source wallet because the commitment is a statement, not proof that the
   enroller holds the passkey (see "The acknowledgement is a statement" below). A global rule would
   let anyone who learns a `credentialIdHash` squat it and block its owner's enrollments. The
-  residual risk is a mismatch under a different source wallet: the Worker does not catch it, and the
-  page's profile-address check above is the only guard there.
+  residual risk is a mismatch under a different source wallet: the Worker does not disclose it, and
+  a page authenticated as that other wallet cannot look it up.
 
-  Pages MUST treat this 409 as fail-closed: refuse, show nothing derived as the recipient, and never
-  offer to revoke the existing binding to make room for the new address.
+  Pages MUST treat either 409 as fail-closed: refuse, show nothing derived as the recipient, and
+  never offer to revoke the existing binding to make room for the new address.
+
 - **Xochi stores only the commitment.** The Worker learns `credentialIdHash`, the RP ID and the
   version through the commitment, never the credential id, the PRF output or any key. The commitment
   is public data: it identifies a credential but unlocks nothing.
@@ -377,6 +414,7 @@ The vectors (`passkey.backup`) contain:
   the PRF. A claim page on `claim.xochi.fi` (a follow-on) keeps RP ID `xochi.fi`. A different RP ID
   would be a different credential and a different account, so it is a new derivation version, never
   an override.
+
 - **XSS on any `*.xochi.fi` host is key compromise.** Script running in any origin under the RP ID
   (the claim page, the app, `api.xochi.fi`, a marketing page) can run a get with the public eval
   inputs and read the PRF output. COOP/COEP isolate browsing contexts and do nothing against injected
@@ -410,15 +448,15 @@ was found. Create-time results matter for §2: without them the page runs one ex
 
 ### Browsers
 
-| Browser | PRF | Since | Results at create | Status |
-|---|---|---|---|---|
-| Chrome / Edge desktop | yes | 116 | Depends on the authenticator: iCloud Keychain on macOS from 132; CTAP 2.2 security keys (`hmac-secret-mc`) from 146; Windows Hello from 147; hybrid yes | verified [1][2][3][4] |
-| Chrome Android | yes | 116 | Google Password Manager: reportedly yes (secondary). USB security keys yes, NFC no (mid-2025) | verified for get [2][5][6]; create UNVERIFIED |
-| Android WebView (in-app browsers) | **no** | n/a | n/a | verified [2] |
-| Safari macOS | yes | 18.0 (macOS 15) for iCloud Keychain; 26.4 for security keys | Yes for iCloud Keychain. Security keys broken: output returned undecrypted (WebKit 311099); YubiKey Bio returns null (WebKit 314934) | verified [7][8][9][10][11] |
-| Safari iOS / iPadOS (and every iOS browser, all WebKit) | yes | 18.0 | Yes for iCloud Keychain | verified [7][9][12]; security keys on iOS 26.4 UNVERIFIED |
-| Firefox desktop | yes | 135 (Windows, Linux), 139 (all desktop including macOS) | Windows from 147; macOS/Linux UNVERIFIED | verified [13][14][15] |
-| Firefox Android | yes | 149 | UNVERIFIED | verified [16] |
+| Browser                                                 | PRF    | Since                                                       | Results at create                                                                                                                                       | Status                                                    |
+| ------------------------------------------------------- | ------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Chrome / Edge desktop                                   | yes    | 116                                                         | Depends on the authenticator: iCloud Keychain on macOS from 132; CTAP 2.2 security keys (`hmac-secret-mc`) from 146; Windows Hello from 147; hybrid yes | verified [1][2][3][4]                                     |
+| Chrome Android                                          | yes    | 116                                                         | Google Password Manager: reportedly yes (secondary). USB security keys yes, NFC no (mid-2025)                                                           | verified for get [2][5][6]; create UNVERIFIED             |
+| Android WebView (in-app browsers)                       | **no** | n/a                                                         | n/a                                                                                                                                                     | verified [2]                                              |
+| Safari macOS                                            | yes    | 18.0 (macOS 15) for iCloud Keychain; 26.4 for security keys | Yes for iCloud Keychain. Security keys broken: output returned undecrypted (WebKit 311099); YubiKey Bio returns null (WebKit 314934)                    | verified [7][8][9][10][11]                                |
+| Safari iOS / iPadOS (and every iOS browser, all WebKit) | yes    | 18.0                                                        | Yes for iCloud Keychain                                                                                                                                 | verified [7][9][12]; security keys on iOS 26.4 UNVERIFIED |
+| Firefox desktop                                         | yes    | 135 (Windows, Linux), 139 (all desktop including macOS)     | Windows from 147; macOS/Linux UNVERIFIED                                                                                                                | verified [13][14][15]                                     |
+| Firefox Android                                         | yes    | 149                                                         | UNVERIFIED                                                                                                                                              | verified [16]                                             |
 
 `getClientCapabilities()`: Chrome/Edge 133+ and Firefox 135+ report `extension:prf: true`
 unconditionally [17][18]. Safari (17.4+) gets its answer from a private framework, so whether it
@@ -426,26 +464,26 @@ reports `extension:prf` is UNVERIFIED.
 
 ### Platform authenticators
 
-| Provider | PRF | Since | Status |
-|---|---|---|---|
-| iCloud Keychain (Apple Passwords) | yes, results at create | iOS/iPadOS 18, macOS 15. Through Safari 18+, Chrome 132+ on macOS, Firefox 139+ | verified [3][9] |
-| Google Password Manager, Android | yes | before Oct 2023 | verified for get [5]; create UNVERIFIED |
-| Google Password Manager, desktop Chrome | yes | Chrome version unknown | verified for support [1]; version UNVERIFIED |
-| Chrome profile authenticator (legacy, non-GPM) | **no** | n/a | verified [1][19] |
-| Windows Hello, Windows 10 and Windows 11 before Feb 2026 | **no** | n/a | verified [1][6] |
-| Windows Hello, Windows 11 24H2/25H2 with the Feb 2026 cumulative update (KB5077181) or later | reportedly yes, with Chrome/Edge 147+ and Firefox 147+ | Feb 2026 | **UNVERIFIED**: the API exists (`WEBAUTHN_API_VERSION_8`) [20], and a Chromium commit says "PRF on create seems to be working fine on Windows 11" [4]. The KB release notes do not mention PRF, and no Microsoft document says Windows Hello supports it. |
-| Microsoft Password Manager (Edge) | create works, get fails | n/a | UNVERIFIED (secondary only) |
-| Samsung Pass | get only | n/a | UNVERIFIED (secondary only) |
+| Provider                                                                                     | PRF                                                    | Since                                                                           | Status                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud Keychain (Apple Passwords)                                                            | yes, results at create                                 | iOS/iPadOS 18, macOS 15. Through Safari 18+, Chrome 132+ on macOS, Firefox 139+ | verified [3][9]                                                                                                                                                                                                                                           |
+| Google Password Manager, Android                                                             | yes                                                    | before Oct 2023                                                                 | verified for get [5]; create UNVERIFIED                                                                                                                                                                                                                   |
+| Google Password Manager, desktop Chrome                                                      | yes                                                    | Chrome version unknown                                                          | verified for support [1]; version UNVERIFIED                                                                                                                                                                                                              |
+| Chrome profile authenticator (legacy, non-GPM)                                               | **no**                                                 | n/a                                                                             | verified [1][19]                                                                                                                                                                                                                                          |
+| Windows Hello, Windows 10 and Windows 11 before Feb 2026                                     | **no**                                                 | n/a                                                                             | verified [1][6]                                                                                                                                                                                                                                           |
+| Windows Hello, Windows 11 24H2/25H2 with the Feb 2026 cumulative update (KB5077181) or later | reportedly yes, with Chrome/Edge 147+ and Firefox 147+ | Feb 2026                                                                        | **UNVERIFIED**: the API exists (`WEBAUTHN_API_VERSION_8`) [20], and a Chromium commit says "PRF on create seems to be working fine on Windows 11" [4]. The KB release notes do not mention PRF, and no Microsoft document says Windows Hello supports it. |
+| Microsoft Password Manager (Edge)                                                            | create works, get fails                                | n/a                                                                             | UNVERIFIED (secondary only)                                                                                                                                                                                                                               |
+| Samsung Pass                                                                                 | get only                                               | n/a                                                                             | UNVERIFIED (secondary only)                                                                                                                                                                                                                               |
 
 ### Roaming authenticators and third-party providers
 
-| Authenticator / provider | PRF | Notes | Status |
-|---|---|---|---|
-| YubiKey 5 (CTAP2 `hmac-secret`, firmware 5.2+) | yes, through browser PRF | Results at create need firmware 5.8+ (`hmac-secret-mc`) and Chrome/Edge 146+; older keys need a second touch (get). Not synced: single copy. Broken in Safari (WebKit 311099). On Windows, discoverable credentials only (satisfied by `residentKey: "required"`). | verified [6][21][22] |
-| 1Password (browser extension 2.26.1+, Android 8.10.38+) | yes | Synced. Create-time results UNVERIFIED | verified for get [23] |
-| Bitwarden (as a passkey provider for sites) | **no** | Feature request open since 2025-03 | verified (open request) [24] |
-| Dashlane, NordPass | **no** | | UNVERIFIED (secondary only) |
-| Proton Pass, Keeper, Enpass | yes per third-party tests | | UNVERIFIED (secondary only) |
+| Authenticator / provider                                | PRF                       | Notes                                                                                                                                                                                                                                                              | Status                       |
+| ------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| YubiKey 5 (CTAP2 `hmac-secret`, firmware 5.2+)          | yes, through browser PRF  | Results at create need firmware 5.8+ (`hmac-secret-mc`) and Chrome/Edge 146+; older keys need a second touch (get). Not synced: single copy. Broken in Safari (WebKit 311099). On Windows, discoverable credentials only (satisfied by `residentKey: "required"`). | verified [6][21][22]         |
+| 1Password (browser extension 2.26.1+, Android 8.10.38+) | yes                       | Synced. Create-time results UNVERIFIED                                                                                                                                                                                                                             | verified for get [23]        |
+| Bitwarden (as a passkey provider for sites)             | **no**                    | Feature request open since 2025-03                                                                                                                                                                                                                                 | verified (open request) [24] |
+| Dashlane, NordPass                                      | **no**                    |                                                                                                                                                                                                                                                                    | UNVERIFIED (secondary only)  |
+| Proton Pass, Keeper, Enpass                             | yes per third-party tests |                                                                                                                                                                                                                                                                    | UNVERIFIED (secondary only)  |
 
 ### Cross-device (hybrid, phone as authenticator)
 
