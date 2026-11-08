@@ -21,6 +21,7 @@
         "@aztec-labs/stdlib": "6.0.0",
         "@aztec-labs/wallets": "6.0.0",
         "@hpke/core": "1.9.0",
+        "@noble/hashes": "1.8.0",
         "@xochi/signer": "0.7.0",
         "viem": "2.57.1",
         "zod4": "npm:zod@4.4.3"
