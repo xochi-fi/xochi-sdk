@@ -74,8 +74,11 @@ export async function unwrapImported(
       await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, wrapKey, body),
     );
   } catch (cause) {
-    throw new SealError(
-      `PKW1 did not open: wrong passkey, another credential or corrupted bytes (${String(cause)})`,
+    throw Object.assign(
+      new SealError(
+        `PKW1 did not open: wrong passkey, another credential or corrupted bytes (${String(cause)})`,
+      ),
+      { cause },
     );
   }
 }

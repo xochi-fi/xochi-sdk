@@ -63,6 +63,30 @@ describe("BrowserKeystoreCrypto against tools/recipient sealed.ts", () => {
     expect(await refusal(() => browser.seal("backup", PLAINTEXT, short))).toEqual(expected);
   });
 
+  it("reports a key-derivation failure as a SealError carrying its cause", async () => {
+    const sealed = new Uint8Array(node.seal("backup", Buffer.from(PLAINTEXT), PASSPHRASE));
+    // A JavaScript caller can pass a non-string; scrypt's input preparation then throws.
+    const notAString = 1234567890123 as unknown as string;
+    for (const attempt of [
+      () => browser.seal("backup", PLAINTEXT, notAString),
+      () => browser.open("backup", sealed, notAString),
+    ]) {
+      await expect(attempt()).rejects.toBeInstanceOf(SealError);
+      await expect(attempt()).rejects.toMatchObject({
+        message: expect.stringMatching(/^scrypt key derivation failed \(TypeError: /),
+        cause: expect.any(TypeError),
+      });
+    }
+  });
+
+  it("keeps the AES-GCM failure as the cause of a refused open", async () => {
+    const sealed = new Uint8Array(node.seal("backup", Buffer.from(PLAINTEXT), PASSPHRASE));
+    await expect(browser.open("backup", sealed, `${PASSPHRASE}!`)).rejects.toMatchObject({
+      name: "SealError",
+      cause: expect.any(DOMException),
+    });
+  });
+
   describe("refusals when opening", () => {
     let sealed: Uint8Array;
 

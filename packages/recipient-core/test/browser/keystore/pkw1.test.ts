@@ -75,6 +75,7 @@ describe("PKW1 wrapped import", () => {
       const attempt = unwrapImported(wrapped, wrapKey, other);
       await expect(attempt).rejects.toBeInstanceOf(SealError);
       await expect(attempt).rejects.toThrow(DID_NOT_OPEN);
+      await expect(attempt).rejects.toMatchObject({ cause: expect.any(DOMException) });
     });
 
     it("refuses bytes that do not start with the PKW1 magic", async () => {

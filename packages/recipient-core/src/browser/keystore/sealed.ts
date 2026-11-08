@@ -21,14 +21,23 @@ async function key(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
     throw new SealError(`passphrase shorter than ${MIN_PASSPHRASE_LENGTH} characters`);
   }
-  // scryptAsync allocates its output on a plain ArrayBuffer.
-  const raw = (await scryptAsync(
-    passphrase.normalize("NFKC"),
-    salt,
-    SCRYPT,
-  )) as Uint8Array<ArrayBuffer>;
+  let raw: Uint8Array<ArrayBuffer>;
+  try {
+    // scryptAsync allocates its output on a plain ArrayBuffer.
+    raw = (await scryptAsync(
+      passphrase.normalize("NFKC"),
+      salt,
+      SCRYPT,
+    )) as Uint8Array<ArrayBuffer>;
+  } catch (cause) {
+    throw Object.assign(new SealError(`scrypt key derivation failed (${String(cause)})`), {
+      cause,
+    });
+  }
   try {
     return await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  } catch (cause) {
+    throw Object.assign(new SealError(`AES-GCM key import failed (${String(cause)})`), { cause });
   } finally {
     raw.fill(0);
   }
@@ -68,8 +77,11 @@ export class BrowserKeystoreCrypto implements KeystoreCrypto {
         await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: magic }, aesKey, body),
       );
     } catch (cause) {
-      throw new SealError(
-        `sealed ${kind} did not open: wrong passphrase or corrupted bytes (${String(cause)})`,
+      throw Object.assign(
+        new SealError(
+          `sealed ${kind} did not open: wrong passphrase or corrupted bytes (${String(cause)})`,
+        ),
+        { cause },
       );
     }
   }
