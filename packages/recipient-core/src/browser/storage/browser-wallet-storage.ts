@@ -10,7 +10,6 @@ import {
 } from "@aztec-labs/kv-store/sqlite-opfs";
 import { PXE_DATA_SCHEMA_VERSION } from "@aztec-labs/pxe/client/lazy";
 import { DatabaseVersion } from "@aztec-labs/stdlib/database-version/version";
-import { EmbeddedWalletEncryptionError } from "@aztec-labs/wallets/embedded/store-encryption";
 import type {
   EmbeddedWalletStorageOptions,
   WalletStorage,
@@ -61,7 +60,9 @@ export function pxeStoreName(
  *
  * - The PXE store persists: one encrypted sqlite-opfs store in its own OPFS SAH pool
  *   (`storePoolDirectory(name)`), named by `pxeStoreName` and encrypted with the caller's key.
- *   On open it records, or checks, its identity like upstream `assertStoreIdentity`.
+ *   On open it records, or checks, its identity like upstream `assertStoreIdentity`. The store is
+ *   a cache the PXE rebuilds from the chain, so one that is corrupt, or encrypted under another
+ *   key (the same recipient re-imported under a new passkey), is wiped and reopened empty.
  * - The wallet DB is ephemeral: an in-memory sqlite store, so the account secret and signing key
  *   it holds never reach disk. The core re-adds the account every session, as the CLI does with its
  *   ephemeral LMDB wallet store. sqlite3mc cannot encrypt `:memory:`, and nothing of it is written.
@@ -97,7 +98,10 @@ export class BrowserWalletStorage implements WalletStorage {
     }
   }
 
-  /** As `openEncryptedEmbeddedStores` opens each store (@aztec-labs/wallets 6.0.0). */
+  /**
+   * As `openEncryptedEmbeddedStores` opens each store (@aztec-labs/wallets 6.0.0), except that a
+   * store under another key is reset as a corrupt one is.
+   */
   private async openPxeStore(name: string, log: Logger): Promise<AztecSQLiteOPFSStore> {
     const poolDirectory = storePoolDirectory(name);
     try {
@@ -110,11 +114,12 @@ export class BrowserWalletStorage implements WalletStorage {
       );
     } catch (error) {
       if (error instanceof SqliteEncryptionError && error.code === "decrypt_failed") {
-        throw new EmbeddedWalletEncryptionError("pxe", { cause: error });
+        log.warn(`PXE store ${name} is encrypted under another key; resetting it to resync`);
+      } else if (error instanceof SqliteCorruptionError) {
+        log.warn(`PXE store ${name} is corrupt (${error.message}); wiping and reopening fresh`);
+      } else {
+        throw error;
       }
-      if (!(error instanceof SqliteCorruptionError)) throw error;
-      // A corrupt image never opens again; the PXE resyncs from the chain into a fresh store.
-      log.warn(`PXE store ${name} is corrupt (${error.message}); wiping and reopening fresh`);
       await deletePoolDirectory(poolDirectory);
       return AztecSQLiteOPFSStore.open(log, name, false, poolDirectory, await this.pxeStoreKey());
     }

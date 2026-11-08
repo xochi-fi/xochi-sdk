@@ -87,15 +87,7 @@ describe("BrowserWalletStorage", () => {
         ];
         await reopened.pxe.store!.close();
         await reopened.walletDb.store!.close();
-
-        const otherKey = new window.walletStorage.BrowserWalletStorage(async () =>
-          crypto.getRandomValues(new Uint8Array(32)),
-        );
-        const wrongKey = await otherKey.embeddedWalletOptions(scope, network).then(
-          () => "opened",
-          (error: unknown) => (error instanceof Error ? error.name : String(error)),
-        );
-        return { pools: pools.sort(), values, wrongKey };
+        return { pools: pools.sort(), values };
       },
       [SCOPE, MAINNET] as const,
     );
@@ -105,7 +97,46 @@ describe("BrowserWalletStorage", () => {
         `.aztec-kv-xochi-recipient-${SCOPE}-pxe_1-${MAINNET.rollupAddress}-v${schemaVersion}`,
       ],
       values: ["pxe-value", undefined],
-      wrongKey: "EmbeddedWalletEncryptionError",
+    });
+  });
+
+  it("resets a PXE store encrypted under another key and reopens it empty", async () => {
+    const result = await page.evaluate(
+      async ([scope, network]) => {
+        const { BrowserWalletStorage } = window.walletStorage;
+        // Reads the PXE store's value, then leaves `written` there for the next open.
+        const readThenWrite = async (
+          storage: InstanceType<typeof BrowserWalletStorage>,
+          written: string,
+        ) => {
+          const options = await storage.embeddedWalletOptions(scope, network);
+          const map = options.pxe.store!.openMap<string, string>("smoke");
+          const value = await map.getAsync("k");
+          await map.set("k", written);
+          await options.pxe.store!.close();
+          await options.walletDb.store!.close();
+          return value ?? null;
+        };
+        const keyA = crypto.getRandomValues(new Uint8Array(32));
+        const keyB = crypto.getRandomValues(new Uint8Array(32));
+        const underA = new BrowserWalletStorage(async () => keyA.slice());
+        const underB = new BrowserWalletStorage(async () => keyB.slice());
+        const firstUnderA = await readThenWrite(underA, "under-a");
+        const firstUnderB = await readThenWrite(underB, "under-b");
+        const againUnderB = await readThenWrite(underB, "under-b");
+        const pools: string[] = [];
+        for await (const name of (await navigator.storage.getDirectory()).keys()) {
+          if (name.includes(scope)) pools.push(name);
+        }
+        return { firstUnderA, firstUnderB, againUnderB, pools: pools.length };
+      },
+      [`0x${"8c9d".repeat(16)}`, MAINNET] as const,
+    );
+    expect(result).toEqual({
+      firstUnderA: null,
+      firstUnderB: null,
+      againUnderB: "under-b",
+      pools: 1,
     });
   });
 
