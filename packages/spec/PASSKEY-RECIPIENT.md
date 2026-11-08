@@ -11,10 +11,14 @@
 
 A Stealth on Aztec (OXDAI) recipient who claims at `xochi.fi/claim` holds no passphrase and no backup
 file. One WebAuthn passkey, bound to the relying party `xochi.fi` and evaluated with the PRF
-extension, derives the recipient's Aztec account. A recipient created earlier with the
-`xochi-recipient` CLI can be imported and kept wrapped under the same passkey. The
-`BackupPersistenceAck` the recipient signs at enrollment then names the passkey instead of a sealed
-file.
+extension, derives the recipient's Aztec account (profile mode `"passkey"`). The
+`BackupPersistenceAck` that such a recipient signs at enrollment names the passkey instead of a
+sealed file (§5).
+
+A recipient created earlier with the `xochi-recipient` CLI can be imported into the claim page
+(profile mode `"imported"`, §4). Its keys do not come from the passkey: the passkey only unlocks a
+device-local cached copy of them. An imported recipient therefore keeps its sealed backup file as
+its only backup, and its acknowledgement keeps the sealed-file format and commitment.
 
 The key words MUST, MUST NOT, SHOULD and MAY are as in RFC 2119.
 
@@ -38,7 +42,10 @@ The key words MUST, MUST NOT, SHOULD and MAY are as in RFC 2119.
 | r | the BN254 scalar field order, `21888242871839275222246405745257275088548364400416034343698204186575808495617` (`AZTEC_FIELD_MODULUS`) |
 
 The two eval inputs are what the page passes as `extensions.prf.eval.{first, second}`, and both are
-evaluated in one ceremony. Before the authenticator sees an input, the browser hashes it again as
+evaluated in one ceremony. The page MUST pass the 32 raw digest bytes (`passkeyPrfInputBytes()` in
+`@xochi/signer`), never the UTF-8 of their hex text (`PASSKEY_PRF_INPUTS`): any other encoding
+derives a different account for every user, and no vector can catch it because PRF needs a real
+authenticator. Before the authenticator sees an input, the browser hashes it again as
 `SHA-256("WebAuthn PRF" || 0x00 || input)` (WebAuthn Level 3 §10.1.4). The page never computes that
 second hash.
 
@@ -62,8 +69,10 @@ descriptor, binding and every acknowledgement work exactly as for a CLI recipien
 recipient; there is no account index.
 
 The caller imports `wrapKey` into WebCrypto as a non-extractable `AES-GCM` key
-(`["encrypt", "decrypt"]`) and then zeroes the byte array. `@xochi/signer` zeroes its own
-intermediate HKDF outputs and never puts a PRF or derived byte into an error message.
+(`["encrypt", "decrypt"]`) and then zeroes the byte array. `@xochi/signer` never puts a PRF or
+derived byte into an error message. Its erasure is **best effort**: it copies each PRF output,
+runs HKDF-Extract once per output and zeroes the copies, both pseudorandom keys and the 64-byte
+outputs after use, but JavaScript cannot erase the hex strings, bigints or engine-internal copies.
 
 `pxeStoreKey` encrypts the browser's persisted PXE store (one sqlite-opfs pool per recipient,
 network and PXE schema version). It is derived from the passkey on every unlock and handed to the
@@ -83,7 +92,7 @@ the other.
 | `code` | `field` | When |
 |---|---|---|
 | `unsupported_version` | `version` | `version` is anything but `1`. |
-| `prf_output_invalid` | `prf`, `prf.first`, `prf.second` | An output is missing, or is not a `Uint8Array` of exactly 32 bytes. A missing output means the authenticator did not evaluate PRF; see §3. |
+| `prf_output_invalid` | `prf`, `prf.first`, `prf.second` | An output is missing, or is not exactly 32 bytes (an `ArrayBuffer` or any view of one, from any realm; the signer copies it and never writes the caller's buffer). A missing output means the authenticator did not evaluate PRF; see §3. Also `prf.second` equal to `prf.first` (the same result passed twice). |
 | `derived_zero` | `accountSecret`, `accountSalt` | The reduction is 0. No preimage is known, so there is no vector. |
 
 ### 1.4 Reference vectors
@@ -93,9 +102,9 @@ the other.
 | `zeros-ones` | 32 x `0x00` | 32 x `0x01` | `0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82` | `0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679` | `0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b` | `0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799` |
 | `sha256-labels` | `SHA-256("TEST ONLY prf first")` | `SHA-256("TEST ONLY prf second")` | `0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6` | `0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7` | `0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94` | `0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4` |
 
-The decision text gives `pxeStoreKey` as a formula only (contract A.2, revision 1.1). Its values
-above come from the generator's node `hkdfSync`, and `@xochi/signer` reproduces them with
-`@noble/hashes`.
+The `pxeStoreKey` values were added in contract A.2 revision 1.1. The generator computes every value
+with node's `hkdfSync` and refuses to write the file unless it reproduces this table;
+`@xochi/signer` reproduces it with `@noble/hashes`.
 
 The `passkey.derivations` entries also give the raw HKDF outputs and the full account: the descriptor,
 its digest and every address-derivation intermediate under profile `aztec-6.0.0`. Addresses:
@@ -125,12 +134,25 @@ Create:
 } }
 ```
 
-`user.id` is random and MUST NOT be the wallet address. After create:
+`user.id` is random and MUST NOT be the wallet address. `userVerification` MUST be `"required"`
+in create and every get, and the page MUST check that the authenticator data's UV flag (bit 2) is
+set before using a PRF output. CTAP2 `hmac-secret`, which PRF maps to on security keys, keeps two
+independent per-credential secrets, one for assertions with user verification and one without, so
+an evaluation without UV returns different bytes and derives a different account.
+
+After create:
 
 - If `prf.enabled !== true`, refuse with `prf_unsupported`. The credential is useless, so tell the
   user to delete it.
-- If create already returned `prf.results`, use them.
-- Otherwise run one get. Results at create time depend on the authenticator, see §8.
+- **Confirm the PRF is reproducible before anything else.** Always run one confirming get with
+  `allowCredentials: [rawId]`. If create returned `prf.results`, compare them with the confirming
+  get's results; if it did not, run a second get and compare the two. Both `first` and `second`
+  MUST be byte-identical (constant-time compare). Otherwise refuse with `prf_unstable`. Until the
+  confirmation passes, nothing is derived, no address is shown, no profile is written and nothing is
+  enrolled. This is the only point at which a non-reproducible passkey can be caught (§6).
+- Every get also requires the UV flag and `first !== second`.
+
+Results at create time depend on the authenticator (§8); the confirming get runs either way.
 
 Get:
 
@@ -142,8 +164,10 @@ Get:
 
 An empty `allowCredentials` makes the request discoverable, which is how a new device finds a synced
 passkey. The result is `{ credentialId: rawId, credentialIdHash: keccak256(rawId) (lowercase hex),
-prf: { first, second } }`. PRF results MUST NOT leave the page: `PublicKeyCredential.toJSON()`
-includes them, so never serialize a credential to a server.
+prf: { first, second } }`. `getClientExtensionResults().prf.results.{first, second}` are
+`ArrayBuffer`s; `derivePasskeyRecipientKeys` takes them as they are (or any 32-byte view) and copies
+them. PRF results MUST NOT leave the page: `PublicKeyCredential.toJSON()` includes them, so never
+serialize a credential to a server.
 
 ## 3. Refusals and the PRF-unavailable path
 
@@ -154,6 +178,7 @@ Every ceremony failure is one error class, `PasskeyError`, with one of these `co
 | `webauthn_unavailable` | No `PublicKeyCredential`, or not a secure context. | "This browser cannot create passkeys." |
 | `prf_unsupported` | `getClientCapabilities()["extension:prf"] === false` (pre-check); `prf.enabled !== true` at create; `prf.results.first/second` missing or not 32 bytes at get. | "Your browser or passkey provider does not support the PRF extension." Then the supported list (below). |
 | `passkey_cancelled` | `NotAllowedError` / `AbortError` | A retry button. |
+| `prf_unstable` | The confirming get's `first` or `second` differs from the first ceremony's (§2). | "This passkey gives a different key each time, so funds sent to it could be lost. Delete it and use another passkey provider." Nothing is derived, shown or enrolled. |
 | `passkey_failed` | Anything else. The message is kept and logged with `console.error`. | |
 
 There is **no passphrase fallback for new passkey recipients**. If PRF is unavailable, the page
@@ -173,11 +198,15 @@ are its weakest claims:
 > (iCloud Keychain) on iOS/iPadOS 18.4+ or macOS 15+ in Safari, Chrome or Firefox; Google Password
 > Manager on Android or in desktop Chrome; 1Password; or Windows Hello on an up-to-date Windows 11 in
 > current Chrome, Edge or Firefox. Bitwarden, Dashlane, NordPass, Windows 10 and in-app browsers do
-> not work. Security keys work in Chrome, Edge or Firefox but are not synced (see "single copy").
+> not work. Security keys work in Chrome, Edge or Firefox (not Safari) but are not synced (see
+> "single copy").
 
 ## 4. Wrapped import (`PKW1`)
 
-This brings a CLI-created recipient under the passkey.
+This brings a CLI-created recipient under the passkey. **`PKW1` is a device-local cache, not a
+backup.** It lives in this browser's storage, is not synced, and can be evicted or cleared; the
+passkey only unlocks it and cannot rebuild the account. The user's sealed backup file stays the
+recovery copy, and the UI MUST say so (keep the sealed backup file and its passphrase).
 
 ```
 PKW1 = MAGIC (16) || IV (12) || ciphertext || tag (16)
@@ -195,12 +224,25 @@ The non-secret profile record is stored under `recipient/<credentialIdHash>/prof
 `{ version: 1, mode: "passkey" | "imported", credentialId (base64url), credentialIdHash, rpId,
 derivationVersion: 1, address, createdAt }`.
 
+An imported recipient (`mode: "imported"`) MUST NOT use passkey backup mode (§5). Its
+`BackupPersistenceAck` keeps the sealed-file format `BACKUP_FORMAT_V1_ID` and the commitment
+`keccak256(sealed backup bytes)` of its original sealed file, and enrollment refuses
+`{ mode: "passkey" }` for an imported profile.
+
 ## 5. Backup acknowledgement: passkey mode
 
 There is no new primary type and no new purpose. `BackupPersistenceAck` keeps its type, its typehash
 `0xed3674ce…4539`, its purpose `xochi.shielded.backup-persistence-ack.v1` and its struct, and gains a
 second accepted `backupFormatId`. **The format id is the mode.** Every sealed-file vector is
-byte-identical.
+byte-identical. In the vector file, `passkey.backup.rule` supersedes `acknowledgements.rules`'
+sealed-file-only `backupFormatId` rule for the passkey format.
+
+**Only a recipient whose keys derive from the passkey (profile `mode: "passkey"`) may use passkey
+mode.** An imported recipient keeps the sealed-file format and its sealed file's commitment (§4):
+its passkey unlocks a device-local cache and cannot rebuild the account, so a passkey-mode
+acknowledgement from it would be a false backup statement. The commitment cannot tell the two kinds
+apart, so this rule is enforced by the client that enrolls (the recipient core refuses
+`{ mode: "passkey" }` for an imported profile), not by the Worker.
 
 | | Sealed file (unchanged) | Passkey (new) |
 |---|---|---|
@@ -228,10 +270,12 @@ Encoding: `hashRecipientAck` accepts `backupFormatId` in {`BACKUP_FORMAT_V1_ID`,
 `BACKUP_FORMAT_PASSKEY_V1_ID`}. Any other value refuses with `backup_format_mismatch`.
 
 Verification: `verifyRecipientAck`'s `expected` for `BackupPersistenceAck` is
-`{ backupCommitment, backupFormatId? }`.
+`{ backupCommitment, backupFormatId?: string | null }`. The verifier sets both from its own stored
+record, never from the acknowledgement.
 
-- `backupFormatId` absent: the acknowledgement MUST name `BACKUP_FORMAT_V1_ID`, else
-  `backup_format_mismatch`. A verifier that predates passkey mode therefore never accepts one.
+- `backupFormatId` absent or `null` (for example a legacy row whose `backup_format_id` column is
+  NULL): the acknowledgement MUST name `BACKUP_FORMAT_V1_ID`, else `backup_format_mismatch`. A
+  verifier that predates passkey mode therefore never accepts one.
 - `backupFormatId` present: the acknowledgement MUST name exactly that id, else `subject_mismatch`.
 - The commitment is compared as before (`subject_mismatch`).
 
@@ -258,47 +302,76 @@ The vectors (`passkey.backup`) contain:
 
 ## 6. Threat model
 
-- **A lost passkey means lost funds.** The passkey is the only key: the account secret exists only
-  as a PRF output of that credential. Nobody can recover the funds if the passkey is lost and not
-  synced to another device, Xochi included. The UI MUST say so before create and in the claim page
-  footer: "Your passkey is the only key to these funds. If you lose it (and it is not synced to
-  another device), the funds cannot be recovered by anyone, including Xochi."
-- **Recovery is the synced passkey.** iCloud Keychain, Google Password Manager and 1Password sync the
-  credential, and its PRF secret with it, so another signed-in device derives the same account.
-  Deleting the passkey from the provider deletes the funds' key everywhere.
+- **For a passkey recipient, a lost passkey means lost funds.** The passkey is the only key: the
+  account secret exists only as a PRF output of that credential. Nobody can recover the funds if the
+  passkey is lost and not synced to another device, Xochi included. The UI MUST say so before create
+  and in the claim page footer: "Your passkey is the only key to these funds. If you lose it (and it
+  is not synced to another device), the funds cannot be recovered by anyone, including Xochi."
+- **For a passkey recipient, recovery is the synced passkey.** iCloud Keychain, Google Password
+  Manager and 1Password sync the credential, and its PRF secret with it, so another signed-in device
+  derives the same account. Deleting the passkey from the provider deletes the funds' key
+  everywhere.
+- **For an imported recipient, the sealed backup file stays the only backup.** Its `PKW1` copy is a
+  device-local cache in one browser's storage: it is not synced, and clearing site data or storage
+  eviction deletes it. The passkey cannot rebuild an imported account. The UI MUST tell the user to
+  keep the sealed file and its passphrase, and the recipient keeps the sealed-file acknowledgement
+  (§4, §5).
 - **A non-synced authenticator is a single copy.** A hardware security key, or a device-bound platform
   credential, holds the only copy. Losing or resetting that authenticator loses the funds. The UI
   SHOULD warn when the credential is not backed up. The authenticator data's backup-eligible and
   backup-state flags (BE/BS) are the hint, not a guarantee.
-- **The same credential can give different PRF output across clients.**
-  - Safari 26.4 returns undecrypted `hmac-secret` output for security keys (WebKit bug 311099).
-  - iOS 18.0-18.3 differed over hybrid (UNVERIFIED, §8).
-  - A different output derives a different, empty account, not an error. The page MUST fail closed:
-    it compares the derived address with the profile record's `address` (and, on a new device, with
-    the address the Worker holds for the binding), refuses on mismatch, and never treats the
-    mismatch as a new recipient. An imported recipient fails closed on its own (the AES-GCM tag).
+- **A passkey whose PRF is not reproducible would lose every payout.** Some clients return different
+  bytes for the same credential on every ceremony. Safari 26.4 with security keys returns the
+  `hmac-secret` output still encrypted under a per-session key (WebKit bug 311099), and iOS
+  18.0-18.3 reportedly differed over hybrid (UNVERIFIED, §8). Accepted at creation, such a passkey
+  derives an address that no later ceremony reproduces, so funds sent there can never be spent. The
+  confirming get of §2 is the only guard. A new credential is accepted only when a second ceremony
+  returns byte-identical `first` and `second`; otherwise the page refuses with `prf_unstable` and
+  derives, shows and enrolls nothing.
+- **The same credential can give different PRF output across clients later.** A different output
+  derives a different, empty account, not an error. The page MUST fail closed: it compares the
+  derived address with the profile record's `address` (and, on a new device, with the address the
+  Worker holds for the binding), refuses on mismatch, and never treats the mismatch as a new
+  recipient. An imported recipient fails closed on its own (the AES-GCM tag).
 - **Xochi stores only the commitment.** The Worker learns `credentialIdHash`, the RP ID and the
   version through the commitment, never the credential id, the PRF output or any key. The commitment
   is public data: it identifies a credential but unlocks nothing.
 - **The acknowledgement is a statement, not a proof.** The Worker cannot verify that the passkey
   exists or is synced, just as it cannot verify that a sealed file exists. The acknowledgement is the
   recipient's statement, signed by the derived account.
-- **The RP ID binds the passkey to `xochi.fi` and every subdomain of it.** A page on another site
-  cannot evaluate this credential's PRF. But WebAuthn lets any origin whose host is `xochi.fi` or
-  ends in `.xochi.fi` use RP ID `xochi.fi`, so every such origin can derive the recipient's keys
-  with the user's consent to one passkey prompt. Every host under `xochi.fi` is therefore inside the
-  key's trust boundary and MUST be served only by Xochi. A claim page on `claim.xochi.fi` (a
-  follow-on) keeps RP ID `xochi.fi`. A different RP ID would be a different credential and a
-  different account, so it is a new derivation version, never an override.
-- **XSS on the claim page is key compromise.** Script running in the page can call the ceremony and
-  read the PRF output. The claim page carries the epic's isolation headers (COOP/COEP) and SHOULD
-  load no third-party script.
+- **The trust boundary is RP ID `xochi.fi`: every host under it, and everything that can act for
+  it.** WebAuthn lets any origin whose host is `xochi.fi` or ends in `.xochi.fi` use RP ID
+  `xochi.fi`, so every such origin can derive the recipient's keys with the user's consent to one
+  passkey prompt, which the user cannot tell apart from the claim page's. Every host under
+  `xochi.fi` is therefore inside the key's trust boundary and MUST be served only by Xochi. Three
+  more ways to act for the RP ID MUST NOT be published for `xochi.fi`:
+  - a Related Origin Requests list (`https://xochi.fi/.well-known/webauthn`, WebAuthn Level 3
+    §5.11), which would let every origin listed there use the RP ID;
+  - an Apple `apple-app-site-association` `webcredentials` entry;
+  - an Android `assetlinks.json` `delegate_permission/common.get_login_creds` statement.
+
+  Publishing any of them later widens the boundary to code outside it, so it requires a new
+  derivation version (§7), never an edit. The passkey provider and its sync account (Apple account,
+  Google account, 1Password vault) are inside the boundary too: whoever controls them can evaluate
+  the PRF. A claim page on `claim.xochi.fi` (a follow-on) keeps RP ID `xochi.fi`. A different RP ID
+  would be a different credential and a different account, so it is a new derivation version, never
+  an override.
+- **XSS on any `*.xochi.fi` host is key compromise.** Script running in any origin under the RP ID
+  (the claim page, the app, `api.xochi.fi`, a marketing page) can run a get with the public eval
+  inputs and read the PRF output. COOP/COEP isolate browsing contexts and do nothing against injected
+  script. The claim page MUST ship a strict Content Security Policy: `script-src 'self'` (or nonces
+  or hashes) with no `'unsafe-inline'` and no `'unsafe-eval'`, `require-trusted-types-for 'script'`
+  (Trusted Types), `object-src 'none'`, `base-uri 'none'` and `frame-ancestors 'none'`. Every other
+  host under `xochi.fi` is in scope for the same review. **Rollout prerequisite:** before passkey
+  claims are enabled, every host under `xochi.fi` is inventoried, serves only Xochi code under a
+  policy at least that strict, and none of the three association files above exists.
 
 ## 7. Versioning
 
 Any change to a label, salt, info string, length, reduction, RP ID or account construction is a new
-derivation version. It gets a new `derivationVersion` and new labels, and with them a new
-commitment. Version 1 is never reinterpreted.
+derivation version, and so is any widening of who may act for the RP ID (§6). It gets a new
+`derivationVersion` and new labels, and with them a new commitment. Version 1 is never
+reinterpreted.
 
 ## 8. PRF support matrix (as of 2026-11-08)
 
