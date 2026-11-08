@@ -46,9 +46,24 @@ export class IndexedDbKeyValueStore implements KeyValueStore {
   private static async openDatabase(name: string): Promise<IndexedDbKeyValueStore> {
     const persisted = await navigator.storage.persist();
     const opened = Promise.withResolvers<IDBDatabase>();
+    let blocked = false;
     const request = indexedDB.open(name, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(OBJECT_STORE);
-    request.onsuccess = () => opened.resolve(request.result);
+    request.onblocked = () => {
+      blocked = true;
+      opened.reject(new Error(`IndexedDB ${name}: open blocked by another tab's connection`));
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (blocked) {
+        db.close();
+        return;
+      }
+      // Another tab deleting or upgrading the database must not wait on this connection forever;
+      // operations after the close reject with InvalidStateError.
+      db.onversionchange = () => db.close();
+      opened.resolve(db);
+    };
     request.onerror = () => opened.reject(request.error);
     return new IndexedDbKeyValueStore(await opened.promise, persisted);
   }

@@ -17,6 +17,7 @@ declare global {
     lease?: Ports.LockLease;
     lockFreed?: Promise<void>;
     idbTransactions: IDBTransaction[];
+    heldStore?: KvStoreModule.IndexedDbKeyValueStore;
   }
 }
 
@@ -336,6 +337,33 @@ describe("IndexedDbKeyValueStore", () => {
     });
     expect(value).toEqual([2]);
     await page.close();
+  });
+
+  it("closes its connection when another tab deletes or upgrades the database", async () => {
+    const [holder, deleter] = await Promise.all([openTab(), openTab()]);
+    await holder.evaluate(async () => {
+      window.heldStore = await window.storage.IndexedDbKeyValueStore.open("kv-versionchange");
+      await window.heldStore.put("state.json", new Uint8Array([1]));
+    });
+    const deletion = await deleter.evaluate(() => {
+      const outcome = Promise.withResolvers<string>();
+      const request = indexedDB.deleteDatabase("xochi-recipient-kv-versionchange-kv");
+      request.onblocked = () => outcome.resolve("blocked");
+      request.onsuccess = () => outcome.resolve("deleted");
+      request.onerror = () => outcome.resolve(String(request.error));
+      return outcome.promise;
+    });
+    const afterClose = await holder.evaluate(() =>
+      window.heldStore!.get("state.json").then(
+        () => "read",
+        (error: unknown) => (error instanceof DOMException ? error.name : String(error)),
+      ),
+    );
+    expect({ deletion, afterClose }).toEqual({
+      deletion: "deleted",
+      afterClose: "InvalidStateError",
+    });
+    await Promise.all([holder.close(), deleter.close()]);
   });
 });
 
