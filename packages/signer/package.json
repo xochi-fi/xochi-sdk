@@ -54,6 +54,7 @@
   },
   "dependencies": {
     "@noble/curves": "^1.9.0",
+    "@noble/hashes": "1.8.0",
     "@zkpassport/poseidon2": "0.6.2",
     "ethers": "^6.17.0"
   },
