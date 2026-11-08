@@ -3,7 +3,12 @@
 // tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.ts
 // step for step (order of checks, validation time, root pinning, error messages); only the
 // certificate chain and COSE signature checks are re-expressed for WebCrypto. test/attestation
-// runs both on the same inputs and requires the same accept/reject.
+// runs both on the same inputs and requires the same accept/reject, except for the differences
+// below.
+//
+// Known differences (all fail-closed: the port refuses what the vendored verifier accepts):
+// - An empty `trustedRootCertificates` is refused ("at least one trusted root is required");
+//   the vendored verifier then accepts any self-consistent chain, pinning nothing.
 
 import { X509Certificate, type PublicKey } from "@peculiar/x509";
 import type {
@@ -26,6 +31,9 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
   constructor(private readonly clock: Clock) {}
 
   async verifyNitroAttestation(input: NitroAttestationInput): Promise<ParsedNitroAttestation> {
+    if (input.trustedRootCertificates.length === 0) {
+      throw new Error("at least one trusted root is required");
+    }
     const { protectedHeaders, payloadBytes, signature } = parseCoseSign1(input.attestationDocument);
     const parsed = parseNitroPayload(payloadBytes);
 
@@ -135,22 +143,19 @@ async function verifyCertificateChain(
     current = issuer;
   }
 
-  if (trustedRoots.length > 0) {
-    const terminal = current;
-    const roots = trustedRoots.map(parseCertificate);
-    let trusted = false;
-    for (const root of roots) {
-      if (
-        bytesEqual(new Uint8Array(terminal.rawData), new Uint8Array(root.rawData)) ||
-        (await signedBy(terminal, root.publicKey))
-      ) {
-        trusted = true;
-        break;
-      }
+  const roots = trustedRoots.map(parseCertificate);
+  let trusted = false;
+  for (const root of roots) {
+    if (
+      bytesEqual(new Uint8Array(current.rawData), new Uint8Array(root.rawData)) ||
+      (await signedBy(current, root.publicKey))
+    ) {
+      trusted = true;
+      break;
     }
-    if (!trusted) {
-      throw new Error("Nitro certificate chain does not terminate in a trusted root");
-    }
+  }
+  if (!trusted) {
+    throw new Error("Nitro certificate chain does not terminate in a trusted root");
   }
 }
 

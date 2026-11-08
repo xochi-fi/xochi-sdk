@@ -88,6 +88,13 @@ async function expectBothRefuseCertificateBytes(input: NitroAttestationInput): P
   expect(port).toEqual({ ok: false, message: "X.509 certificate is neither PEM nor DER" });
 }
 
+/** A known difference, fail-closed: the vendored verifier accepts, the port refuses. */
+async function expectPortStricter(input: NitroAttestationInput, message: string): Promise<void> {
+  const { node, port } = await differential(input);
+  expect(node.ok).toBe(true);
+  expect(port).toEqual({ ok: false, message });
+}
+
 describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: real fleet document", () => {
   const fixture = realFixture();
   const root = awsNitroRootDer();
@@ -155,8 +162,11 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: real 
     });
   });
 
-  it("accepts with no trusted roots at all (the vendored verifier then pins nothing)", async () => {
-    await expectBothAccept({ ...base(), trustedRootCertificates: [] });
+  it("refuses an empty trusted root list, which the vendored verifier accepts unpinned", async () => {
+    await expectPortStricter(
+      { ...base(), trustedRootCertificates: [] },
+      "at least one trusted root is required",
+    );
   });
 
   describe("validation time", () => {
