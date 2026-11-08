@@ -226,7 +226,10 @@ export function holderLockName(lockName: string, pid: number): string {
   return `${lockName}:holder:${pid}`;
 }
 
-/** Who runs this journal: recorded in receipt runs (`pid`, `host`) and release claims (`pid`). */
+/**
+ * Who runs this journal: its `pid` is recorded in every run's request and in release claims;
+ * `host` only in receipt runs, for the operator.
+ */
 export interface JournalHolder {
   pid: number;
   host: string;
@@ -357,18 +360,15 @@ export class OperationJournal {
   }
 
   /**
-   * Starts a `building` operation. Its request records this holder (`pid`, `host`) unless the
-   * caller names one (`beginReceipt`), so a successor can tell an abandoned run from a live one
-   * (`abortAbandonedRun`).
+   * Starts a `building` operation. Its request records this holder's `pid` unless the caller
+   * names one (`beginReceipt`), so a successor can tell an abandoned run from a live one
+   * (`abortAbandonedRun`). Liveness needs the pid alone: no hostname is recorded (an older
+   * record's `host` is read and ignored).
    */
   begin(kind: OperationRecord["kind"], request: Record<string, string>): Promise<OperationRecord> {
     return this.beginWithState(
       kind,
-      {
-        ...request,
-        pid: request["pid"] ?? String(this.holder.pid),
-        host: request["host"] ?? this.holder.host,
-      },
+      { ...request, pid: request["pid"] ?? String(this.holder.pid) },
       { status: "building" },
     );
   }

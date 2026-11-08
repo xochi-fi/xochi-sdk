@@ -51,8 +51,8 @@ All releases are private test artifacts; see the README CAUTION for what they do
   "... holds an entry that is not a regular file: NAME", instead of being read or skipped: fund
   movement stays blocked until it is removed.
 - The Node-only Nitro attestation verifier moved, unchanged, to `src/node/vendor/`.
-- A spend's or exit's operation record names its process in `request` (`pid`, `host`), as a
-  receipt run's did, and an exit's `broadcast` record names each withdrawal's L1 `operationId`
+- A spend's or exit's operation record names its process's `pid` in `request` (no hostname), as
+  a receipt run's did, and an exit's `broadcast` record names each withdrawal's L1 `operationId`
   before the transaction is sent. Just before it, spend and exit create
   `operations/submission-<id>-<lockNonce>.lock`, the operation's one submission decision.
   `operations reconcile` is unchanged: it still refuses a spend or exit with no transaction hash.

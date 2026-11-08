@@ -33,8 +33,8 @@ import type { L1OperationBroadcaster } from "../src/oxide/vendor/oxide-client/br
 import { buildFinalizationRequestOperation } from "../src/oxide/vendor/oxide-client/withdrawal_finalization_request.js";
 import { computeL1OperationId } from "../src/oxide/vendor/oxide-lib/l1_operation_calldata.js";
 import {
-  decodeFinalizationData,
   encodeFinalizationData,
+  type WithdrawalFinalizationData,
 } from "../src/oxide/vendor/oxide-lib/withdrawal_finalization_data.js";
 import type { KeystoreCrypto, RecipientKeySource } from "../src/ports.js";
 import { StateStore } from "../src/state.js";
@@ -599,28 +599,35 @@ describe("operations and reconcile", () => {
     });
   }
 
-  /** A withdrawal's finalization data as `onPreparedWithdrawals` journals it. */
-  function finalizationData(): string {
-    const data = encodeFinalizationData({
+  /** The enclave-signed finalization data of the exit's one withdrawal. */
+  function withdrawal(): WithdrawalFinalizationData {
+    return {
       executor: EthAddress.fromString(corridor.oxide.plainWithdrawalExecutor),
       amount: 100n,
       proverTip: 1n,
       randomness: new Fr(7n),
       withdrawalSignature: { sLo: new Fr(1n), sHi: new Fr(2n), rLo: new Fr(3n), rHi: new Fr(4n) },
       userPayload: Buffer.alloc(0),
-    });
-    return `0x${data.toString("hex")}`;
+    };
   }
 
-  /** The L1 operation id of the withdrawal's broadcast finalization request, by Oxide's builder. */
-  function operationIdOf(data: string, txHash: string): string {
+  /** The withdrawal's finalization data as `onPreparedWithdrawals` journals it. */
+  function finalizationData(): string {
+    return `0x${encodeFinalizationData(withdrawal()).toString("hex")}`;
+  }
+
+  /**
+   * The L1 operation id Oxide's `submit` reports for the withdrawal's broadcast finalization
+   * request: built from the signed data itself, not from its journaled encoding.
+   */
+  function operationIdOf(txHash: string): string {
     const operation = buildFinalizationRequestOperation(
       {
         broadcaster: {} as L1OperationBroadcaster,
         portal: EthAddress.fromString(corridor.token.immutables.portal),
         payoutToken: EthAddress.fromString(corridor.oxide.payoutToken),
       },
-      decodeFinalizationData(Buffer.from(data.slice(2), "hex")),
+      withdrawal(),
     );
     return computeL1OperationId(operation, TxHash.fromString(txHash));
   }
@@ -657,9 +664,7 @@ describe("operations and reconcile", () => {
     expect(await other.get(exit.id)).toMatchObject({
       status: "broadcast",
       txHash: TX,
-      withdrawals: [
-        { withdrawalIndex: 0, finalizationData: data, operationId: operationIdOf(data, TX) },
-      ],
+      withdrawals: [{ withdrawalIndex: 0, finalizationData: data, operationId: operationIdOf(TX) }],
     });
     await core.close();
   });
@@ -679,7 +684,7 @@ describe("operations and reconcile", () => {
 
     h.node.receipts[TX] = { status: TxStatus.FINALIZED, ...included };
     const data = finalizationData();
-    const operationId = operationIdOf(data, TX);
+    const operationId = operationIdOf(TX);
     expect(await core.reconcile()).toMatchObject({
       id: prepared.id,
       status: "complete",
@@ -713,7 +718,7 @@ describe("operations and reconcile", () => {
         {
           txHash: TX,
           withdrawalIndex: 0,
-          operationId: operationIdOf(data, TX),
+          operationId: operationIdOf(TX),
           finalizationData: data,
         },
       ],
@@ -850,7 +855,8 @@ describe("operations and reconcile", () => {
     const core = await h.open();
     const other = otherSession(h);
     const spend = await other.begin("spend", { amount: "1" });
-    expect(spend.request).toEqual({ amount: "1", pid: "4242", host: "TEST ONLY other tab" });
+    // Liveness needs the pid alone; no hostname is recorded.
+    expect(spend.request).toEqual({ amount: "1", pid: "4242" });
 
     expect(await core.reconcile()).toEqual(spend);
     await other.close();
@@ -861,6 +867,18 @@ describe("operations and reconcile", () => {
     const next = otherSession(h, 5151);
     expect(await next.begin("spend", { amount: "2" })).toMatchObject({ status: "building" });
     await next.close();
+    await core.close();
+  });
+
+  it("still reads an older spend record that names its host, by its pid", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    await other.update(spend.id, { request: { amount: "1", pid: "4242", host: "TEST ONLY host" } });
+    await other.close();
+
+    expect(await core.reconcile()).toMatchObject({ id: spend.id, status: "aborted" });
     await core.close();
   });
 

@@ -1,7 +1,8 @@
 // The recipient core facade (contract C): one recipient's account, PXE, journals and Xochi API
 // behind the platform ports. `send`, `exit` and the receipt methods hold the fund-movement lock
 // and journal before any broadcast or POST, exactly as the CLI's commands do (they are the same
-// functions, `commands.ts`); `deploy`, like the CLI's `setup`, is neither locked nor journaled.
+// functions, `commands.ts`). `deploy` holds no lock and writes no operation record, but keeps its
+// tx hash in `deploy.json` before the node can receive it (the CLI's `setup` keeps nothing).
 // Every `state.json` read-modify-write runs under the short `…:state` lease (`stateLockName`).
 
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
