@@ -29,6 +29,14 @@ import {
   hashRecipientAck,
   passkeyBackupCommitment,
   verifyRecipientAck,
+  PASSKEY_RP_NAME,
+  bindingDomain,
+  hashRecipientDescriptor,
+  recipientAckDigest,
+  recipientBindingDigest,
+  recipientMessage,
+  verifyRecipientDescriptor,
+  verifyRecipientSchnorr,
   AZTEC_RECIPIENT_PROFILES,
   type AztecRecipientProfile,
   type BackupPersistenceAck,
@@ -297,18 +305,64 @@ type SignedVector = {
   network: NetworkIdentity;
   domain: ShieldedDomain;
   message: Record<string, string>;
+  structHash: string;
   digest: string;
+  wrapper: { messageField: string };
+  publicKey: { x: string; y: string };
   signature: string;
 };
+type DescriptorVector = {
+  profile: string;
+  descriptor: RecipientDescriptor;
+  descriptorDigest: string;
+};
+type Refusal = { code: string; field: string };
 const here = path.dirname(fileURLToPath(import.meta.url));
 const recipientFile = JSON.parse(
   fs.readFileSync(path.join(here, "../../spec/conformance/shielded-recipient.json"), "utf8"),
 ) as {
-  descriptor: {
-    vectors: { profile: string; descriptor: RecipientDescriptor; descriptorDigest: string }[];
-  };
+  descriptor: { vectors: DescriptorVector[] };
   recipientMessage: { bindingMessages: SignedVector[] };
   acknowledgements: { vectors: (SignedVector & { primaryType: string })[] };
+  passkey: {
+    rpId: string;
+    rpName: string;
+    derivationVersion: number;
+    prfInputs: {
+      first: { label: string; value: string };
+      second: { label: string; value: string };
+    };
+    derivations: {
+      name: string;
+      prf: { first: string; second: string };
+      secret: string;
+      salt: string;
+      wrapKey: string;
+      account: DescriptorVector & { testOnlySecrets: { secretKey: string } };
+    }[];
+    derivationRefusals: {
+      name: string;
+      prf: { first: string | null; second: string | null };
+      version: number;
+      error: Refusal;
+    }[];
+    backup: {
+      formatName: string;
+      formatId: string;
+      commitmentTag: { name: string; value: string };
+      commitments: { name: string; descriptor: PasskeyBackupDescriptor; commitment: string }[];
+      commitmentRefusals: { name: string; descriptor: PasskeyBackupDescriptor; error: Refusal }[];
+      binding: SignedVector;
+      acks: SignedVector[];
+      ackRefusals: { name: string; message: BackupPersistenceAck; error: Refusal }[];
+      verification: {
+        name: string;
+        vector: string;
+        expected: BackupExpected;
+        error: Refusal | null;
+      }[];
+    };
+  };
 };
 
 type BackupExpected = { backupCommitment: string; backupFormatId?: string };
@@ -318,7 +372,7 @@ type BackupExpected = { backupCommitment: string; backupFormatId?: string };
 function backupPolicy(
   ack: SignedVector,
   bindings: SignedVector[],
-  descriptors: { profile: string; descriptor: RecipientDescriptor; descriptorDigest: string }[],
+  descriptors: DescriptorVector[],
   expected: BackupExpected,
 ): RecipientAckVerificationPolicy<"BackupPersistenceAck"> {
   const binding = bindings.find((b) => b.digest === ack.message.bindingDigest)!
@@ -409,5 +463,130 @@ describe("verifyRecipientAck backup format expectation", () => {
         sealedPolicy({ backupCommitment: commitment, backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID }),
       ),
     ).toEqual({ code: "signature_invalid", field: "signature" });
+  });
+});
+
+describe("@xochi/spec passkey vectors", () => {
+  const PK = recipientFile.passkey;
+  const bytesOf = (h: string | null) =>
+    h === null ? null : new Uint8Array(Buffer.from(h.slice(2), "hex"));
+  const accounts = PK.derivations.map((d) => d.account);
+
+  it("publishes the constants this package exports", () => {
+    expect(PK.rpId).toBe(PASSKEY_RP_ID);
+    expect(PK.rpName).toBe(PASSKEY_RP_NAME);
+    expect(PK.derivationVersion).toBe(PASSKEY_DERIVATION_V1);
+    expect(PK.prfInputs.first.value).toBe(PASSKEY_PRF_INPUTS.first);
+    expect(PK.prfInputs.second.value).toBe(PASSKEY_PRF_INPUTS.second);
+    expect(PK.backup.formatName).toBe(BACKUP_FORMAT_PASSKEY_V1_NAME);
+    expect(PK.backup.formatId).toBe(BACKUP_FORMAT_PASSKEY_V1_ID);
+    expect(PK.backup.commitmentTag.value).toBe(PASSKEY_BACKUP_COMMITMENT_TAG);
+  });
+
+  it("derives every published recipient and its stock account", () => {
+    expect(PK.derivations.map((d) => d.name)).toEqual(["zeros-ones", "sha256-labels"]);
+    for (const d of PK.derivations) {
+      const keys = derivePasskeyRecipientKeys({
+        first: bytesOf(d.prf.first)!,
+        second: bytesOf(d.prf.second)!,
+      });
+      expect(keys.secret, d.name).toBe(d.secret);
+      expect(keys.salt, d.name).toBe(d.salt);
+      expect(hex(keys.wrapKey), d.name).toBe(d.wrapKey);
+      // The account is the CLI's: the derived secret and salt, deployer zero, a pinned profile.
+      const a = d.account;
+      expect(a.testOnlySecrets.secretKey, d.name).toBe(d.secret);
+      expect(a.descriptor.salt, d.name).toBe(d.salt);
+      expect(a.descriptor.deployer, d.name).toBe("0x" + "00".repeat(32));
+      expect(a.profile, d.name).toBe("aztec-6.0.0");
+      expect(() =>
+        verifyRecipientDescriptor(a.descriptor, AZTEC_RECIPIENT_PROFILES["aztec-6.0.0"]),
+      ).not.toThrow();
+      expect(hashRecipientDescriptor(a.descriptor), d.name).toBe(a.descriptorDigest);
+    }
+  });
+
+  it("refuses every published malformed derivation input", () => {
+    for (const r of PK.derivationRefusals) {
+      expect(
+        refusalOf(() =>
+          derivePasskeyRecipientKeys(
+            { first: bytesOf(r.prf.first), second: bytesOf(r.prf.second) } as never,
+            r.version as never,
+          ),
+        ),
+        r.name,
+      ).toEqual(r.error);
+    }
+  });
+
+  it("reproduces every published commitment and commitment refusal", () => {
+    for (const c of PK.backup.commitments) {
+      expect(passkeyBackupCommitment(c.descriptor), c.name).toBe(c.commitment);
+    }
+    for (const r of PK.backup.commitmentRefusals) {
+      let got: Refusal | null = null;
+      try {
+        passkeyBackupCommitment(r.descriptor);
+      } catch (e) {
+        if (!(e instanceof AckEncodingError)) throw e;
+        got = { code: e.code, field: e.field };
+      }
+      expect(got, r.name).toEqual(r.error);
+    }
+  });
+
+  it("verifies the passkey recipient's binding and acknowledgement signatures", () => {
+    for (const v of [PK.backup.binding, ...PK.backup.acks]) {
+      expect(recipientMessage(v.digest).messageField, v.name).toBe(v.wrapper.messageField);
+      expect(verifyRecipientSchnorr(v.publicKey, v.wrapper.messageField, v.signature), v.name).toBe(
+        true,
+      );
+    }
+    const binding = PK.backup.binding.message as unknown as RecipientBinding;
+    expect(
+      recipientBindingDigest(binding, PK.backup.binding.environment, PK.backup.binding.network),
+    ).toBe(PK.backup.binding.digest);
+    expect(
+      bindingDomain(
+        binding.sourceChainId,
+        PK.backup.binding.environment,
+        PK.backup.binding.network,
+      ),
+    ).toEqual(PK.backup.binding.domain);
+    for (const v of PK.backup.acks) {
+      const m = v.message as unknown as BackupPersistenceAck;
+      expect(m.backupFormatId, v.name).toBe(BACKUP_FORMAT_PASSKEY_V1_ID);
+      expect(hashRecipientAck("BackupPersistenceAck", m), v.name).toBe(v.structHash);
+      expect(recipientAckDigest("BackupPersistenceAck", m, v.domain), v.name).toBe(v.digest);
+    }
+    for (const r of PK.backup.ackRefusals) {
+      let got: Refusal | null = null;
+      try {
+        hashRecipientAck("BackupPersistenceAck", r.message);
+      } catch (e) {
+        if (!(e instanceof AckEncodingError)) throw e;
+        got = { code: e.code, field: e.field };
+      }
+      expect(got, r.name).toEqual(r.error);
+    }
+  });
+
+  it("reaches every published verifier verdict with real signatures", async () => {
+    const vectors = [...PK.backup.acks, ...recipientFile.acknowledgements.vectors];
+    const bindings = [PK.backup.binding, ...recipientFile.recipientMessage.bindingMessages];
+    const descriptors = [...accounts, ...recipientFile.descriptor.vectors];
+    const names = new Set<string>();
+    for (const c of PK.backup.verification) {
+      const ack = vectors.find((v) => v.name === c.vector)!;
+      names.add(c.vector);
+      expect(
+        await verdict(ack, ack.message, backupPolicy(ack, bindings, descriptors, c.expected)),
+        c.name,
+      ).toEqual(c.error ?? "accepted");
+    }
+    // Both modes are exercised, each accepted at least once.
+    expect(names.size).toBe(2);
+    expect(PK.backup.verification.filter((c) => c.error === null).length).toBeGreaterThanOrEqual(2);
   });
 });
