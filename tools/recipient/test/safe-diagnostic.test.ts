@@ -9,7 +9,7 @@ import {
   safeOperationDiagnostic,
   safeOperationError,
   type PreSubmissionPhase,
-} from "../src/safe-diagnostic.js";
+} from "../src/core/safe-diagnostic.js";
 
 describe("safe operation diagnostic allowlists", () => {
   it.each(ALLOWLISTED_PRE_SUBMISSION_PHASES)("preserves the allowlisted %s phase", (phase) => {

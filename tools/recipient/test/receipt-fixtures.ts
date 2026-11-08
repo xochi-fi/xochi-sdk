@@ -17,18 +17,18 @@ import {
   type VerifiedRecipientAck,
 } from "@xochi/signer";
 
-import { deriveRecipientAccount, type RecipientAccount } from "../src/account.js";
-import type { ReceiptChallenge } from "../src/api.js";
-import type { ReceivedTransfer } from "../src/chain.js";
-import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
-import { buildBinding } from "../src/enrollment.js";
-import { ORDER_FINGERPRINT_TAG } from "../src/order-fingerprint.js";
+import { deriveRecipientAccount, type RecipientAccount } from "../src/core/account.js";
+import type { ReceiptChallenge } from "../src/core/api.js";
+import type { ReceivedTransfer } from "../src/core/chain.js";
+import { OXDAI_MAINNET_REV2 } from "../src/core/corridor.js";
+import { buildBinding } from "../src/core/enrollment.js";
+import { ORDER_FINGERPRINT_TAG } from "../src/core/order-fingerprint.js";
 import {
   SHIELDED_TERMS_TYPES,
   type ShieldedTermsMessage,
   type ShieldedTermsTypedData,
-} from "../src/receipt.js";
-import { fingerprintTerms } from "../src/settlement-fingerprint.js";
+} from "../src/core/receipt.js";
+import { fingerprintTerms } from "../src/core/settlement-fingerprint.js";
 import { TEST_SECRETS, TEST_SOURCE_KEY } from "./fixtures.js";
 
 export const corridor = OXDAI_MAINNET_REV2;

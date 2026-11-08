@@ -1,20 +1,22 @@
-import { X509Certificate } from "node:crypto";
 import { Buffer32 } from "@aztec-labs/foundation/buffer";
-import { keccak256 } from "@aztec-labs/foundation/crypto/keccak";
 import { AztecAddress } from "@aztec-labs/stdlib/aztec-address";
 import { EthAddress } from "@aztec-labs/stdlib/block";
-import { createPublicClient, http, parseAbi, type Hex } from "viem";
+import { bytesToHex } from "@noble/hashes/utils";
+import { createPublicClient, hexToBytes, http, keccak256, parseAbi, type Hex } from "viem";
+import type { AttestationVerifier, HttpFetch } from "../ports.js";
 import type { AttestationData } from "./vendor/oxide-lib/attestation/attestation_data.js";
-import { getPcr0, hashPcr0 } from "./vendor/oxide-lib/attestation/pcr0.js";
-import { verifyTeeAttestation } from "./vendor/oxide-lib/attestation/verify_tee_attestation.js";
+import { getPcr0 } from "./vendor/oxide-lib/attestation/pcr0.js";
+import { computeAttestationUserData } from "./vendor/oxide-lib/attestation/user_data.js";
 import type { PortalDomain } from "./vendor/oxide-lib/types.js";
 import type { FleetRegistry, TEEKeys } from "./vendor/oxide-client/fleet_signer.js";
 import type { OxidePins } from "./pins.js";
 
 /**
  * Copied from xochi-fi/pxe-bridge `src/oxide/enclave.ts` at 0e01c17 (MIT, Copyright (c) 2026
- * Xochi; see ./vendor/VENDORED.md). Changed only so the pins are the caller's (built from the
- * corridor record by `oxidePins`) instead of a default `OXIDE_V6_MAINNET`.
+ * Xochi; see ./vendor/VENDORED.md). Changed so the pins are the caller's (built from the
+ * corridor record by `oxidePins`) instead of a default `OXIDE_V6_MAINNET`, and so the Nitro
+ * document check is the injected `AttestationVerifier` (the Node adapter wraps the vendored
+ * `verify_nitro_attestation.ts`; `verifyTeeAttestation`'s user-data binding is computed here).
  *
  * The enclave trust checks the Oxide sender runs before it seals anything to an
  * enclave (xochi-fi/pxe-bridge#84), and the L1 reads they rest on.
@@ -50,8 +52,10 @@ rfMCMQCi85sWBbJwKKXdS6BptQFuZbT73o/gBh1qUxl/nNr12UO8Yfwr6wPLb+6N
 IwLz3/Y=
 -----END CERTIFICATE-----`;
 
-export function awsNitroRootDer(): Buffer {
-  return Buffer.from(new X509Certificate(AWS_NITRO_ROOT_G1_PEM).raw);
+/** The DER bytes of `AWS_NITRO_ROOT_G1_PEM` (its base64 body). */
+export function awsNitroRootDer(): Uint8Array {
+  const body = AWS_NITRO_ROOT_G1_PEM.replace(/-----(BEGIN|END) CERTIFICATE-----|\s/g, "");
+  return Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
 }
 
 /** The enclave image, its attestation or its L1 registration is not the pinned one. Never retried in place. */
@@ -109,9 +113,9 @@ const PORTAL_ABI = parseAbi([
 ]);
 
 /** `OxideL1Reader` over an L1 JSON-RPC endpoint. Read-only: no wallet client exists. */
-export function viemL1Reader(rpcUrl: string, pins: OxidePins): OxideL1Reader {
+export function viemL1Reader(rpcUrl: string, pins: OxidePins, fetchFn?: HttpFetch): OxideL1Reader {
   const client = createPublicClient({
-    transport: http(rpcUrl, { timeout: 10_000, retryCount: 1 }),
+    transport: http(rpcUrl, { timeout: 10_000, retryCount: 1, fetchFn }),
   });
   const registry = pins.teeRegistry as Hex;
   const portal = pins.bridge.portal as Hex;
@@ -190,11 +194,10 @@ export async function assertL1Pinned(reader: OxideL1Reader, pins: OxidePins): Pr
   const off: string[] = [];
   if (chainId !== pins.l1ChainId) off.push(`chainId ${chainId}`);
   if (!eqHex(pcr0Hash, pins.pcr0Hash)) off.push("TeeRegistry.PCR0_HASH");
-  if (!eqHex(pcr0Hash, hashPcr0(Buffer.from(pins.pcr0, "hex")).toString()))
+  if (!eqHex(pcr0Hash, keccak256(hexToBytes(`0x${pins.pcr0}`))))
     off.push("pinned pcr0 vs pcr0Hash");
   if (!eqHex(rootHash, pins.rootCaCertHash)) off.push("CertManager.ROOT_CA_CERT_HASH");
-  if (!eqHex(rootHash, `0x${keccak256(awsNitroRootDer()).toString("hex")}`))
-    off.push("AWS root vs ROOT_CA_CERT_HASH");
+  if (!eqHex(rootHash, keccak256(awsNitroRootDer()))) off.push("AWS root vs ROOT_CA_CERT_HASH");
   if (!eqHex(portal.l2Token, pins.bridge.l2Token)) off.push("OxidePortal.L2_TOKEN");
   if (!eqHex(portal.teeRegistry, pins.teeRegistry)) off.push("OxidePortal.TEE_REGISTRY");
   if (portal.rollupVersion !== pins.rollupVersion) off.push("OxidePortal.ROLLUP_VERSION");
@@ -209,24 +212,25 @@ export async function assertL1Pinned(reader: OxideL1Reader, pins: OxidePins): Pr
  * The checks on one attestation document, before any key in it is trusted.
  * `onChainPcr0Hash` is `TeeRegistry.PCR0_HASH()` read for this pin.
  */
-export function verifyEnclaveAttestation(
+export async function verifyEnclaveAttestation(
   attestation: AttestationData,
   onChainPcr0Hash: string,
   pins: OxidePins,
-): void {
-  let pcr0: Buffer;
+  verifier: AttestationVerifier,
+): Promise<void> {
+  let pcr0: Uint8Array;
   try {
     pcr0 = getPcr0(attestation.attestation);
   } catch (cause) {
     throw new EnclaveTrustRefused("attestation_invalid", "PCR0 unreadable", { cause });
   }
-  if (pcr0.toString("hex") !== pins.pcr0) {
+  if (bytesToHex(pcr0) !== pins.pcr0) {
     throw new EnclaveTrustRefused(
       "pcr0_not_pinned",
-      `PCR0 ${pcr0.toString("hex")} is not the pinned image`,
+      `PCR0 ${bytesToHex(pcr0)} is not the pinned image`,
     );
   }
-  const hash = hashPcr0(pcr0).toString();
+  const hash = keccak256(pcr0);
   if (!eqHex(hash, onChainPcr0Hash)) {
     throw new EnclaveTrustRefused(
       "pcr0_hash_mismatch",
@@ -234,10 +238,10 @@ export function verifyEnclaveAttestation(
     );
   }
   try {
-    verifyTeeAttestation({
+    await verifier.verifyNitroAttestation({
       attestationDocument: attestation.attestation,
       trustedRootCertificates: [awsNitroRootDer()],
-      userData: attestation.userData,
+      expectedUserData: computeAttestationUserData(attestation.userData),
     });
   } catch (cause) {
     throw new EnclaveTrustRefused(
@@ -266,12 +270,18 @@ export class OxideFleetRegistry implements FleetRegistry {
   constructor(
     private readonly reader: OxideL1Reader,
     private readonly pins: OxidePins,
+    private readonly verifier: AttestationVerifier,
   ) {
     this.portalDomain = pinnedPortalDomain(pins);
   }
 
   async verifyAttestation(attestation: AttestationData): Promise<void> {
-    verifyEnclaveAttestation(attestation, await this.reader.pcr0Hash(), this.pins);
+    await verifyEnclaveAttestation(
+      attestation,
+      await this.reader.pcr0Hash(),
+      this.pins,
+      this.verifier,
+    );
   }
 
   async getRegistration(tee: EthAddress): Promise<{ leafIndex: bigint; keys: TEEKeys }> {

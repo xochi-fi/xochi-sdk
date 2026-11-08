@@ -9,21 +9,6 @@
 // bytes; Xochi stores only that digest. The user keeps two independently retained copies of
 // the same sealed bytes.
 
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  fsyncSync,
-  linkSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { randomUUID } from "node:crypto";
-import { basename, dirname, join, resolve } from "node:path";
 import { keccak256, type Hex } from "viem";
 import { z } from "zod4";
 import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
@@ -31,8 +16,9 @@ import { BACKUP_FORMAT_V1_NAME, oxideTokenImmutablesHash } from "@xochi/signer";
 import type { AccountSecrets, RecipientAccount } from "./account.js";
 import { CorridorSchema, decimal, hex32, type Corridor } from "./corridor.js";
 import type { SignedAck } from "./enrollment.js";
-import { open, seal } from "./sealed.js";
+import { parseJsonBytes, prettyJsonBytes, utf8Bytes } from "./json.js";
 import { OperationRecordSchema } from "./operation-journal.js";
+import type { KeystoreCrypto, KeyValueStore } from "./ports.js";
 import { ReceiptRecordSchema } from "./receipt.js";
 
 const RECOVERY_INSTRUCTIONS = [
@@ -171,20 +157,28 @@ export function backupContents(
 }
 
 export interface SealedBackup {
-  bytes: Buffer;
+  bytes: Uint8Array;
   /** keccak256 of `bytes`: `BackupPersistenceAck.backupCommitment`. */
   commitment: Hex;
 }
 
-export function sealBackup(contents: BackupContents, passphrase: string): SealedBackup {
-  const bytes = seal("backup", Buffer.from(JSON.stringify(contents), "utf8"), passphrase);
+export async function sealBackup(
+  contents: BackupContents,
+  passphrase: string,
+  crypto: KeystoreCrypto,
+): Promise<SealedBackup> {
+  const bytes = await crypto.seal("backup", utf8Bytes(JSON.stringify(contents)), passphrase);
   return { bytes, commitment: keccak256(bytes) };
 }
 
 /** Opens and validates a sealed backup; refuses a token whose immutables do not hash as recorded. */
-export function openBackup(bytes: Buffer, passphrase: string): BackupContents {
+export async function openBackup(
+  bytes: Uint8Array,
+  passphrase: string,
+  crypto: KeystoreCrypto,
+): Promise<BackupContents> {
   const contents = BackupSchema.parse(
-    JSON.parse(open("backup", bytes, passphrase).toString("utf8")),
+    parseJsonBytes(await crypto.open("backup", bytes, passphrase)),
   );
   if (oxideTokenImmutablesHash(contents.token.immutables) !== contents.token.immutablesHash) {
     throw new Error("backup token immutables do not hash to the recorded immutablesHash");
@@ -192,138 +186,60 @@ export function openBackup(bytes: Buffer, passphrase: string): BackupContents {
   return contents;
 }
 
-/** Reads only validated exit recovery records; file names must be the transaction they describe. */
-export function readExitJournal(directory: string): ExitJournalRecord[] {
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory)
-    .filter((entry) => entry.endsWith(".json"))
-    .map((entry) => {
-      const record = ExitJournalRecordSchema.parse(
-        JSON.parse(readFileSync(join(directory, entry), "utf8")),
-      );
+const EXITS = "exits/";
+
+/**
+ * `exits/<txHash>.json` (CLI: `<data-dir>/exits/`): per exit transaction, the record anyone needs
+ * to finalize its withdrawals on L1. Created once, never overwritten.
+ */
+export class ExitJournal {
+  private readonly describeKey: (key: string) => string;
+
+  constructor(
+    private readonly kv: KeyValueStore,
+    describeKey?: (key: string) => string,
+  ) {
+    this.describeKey = describeKey ?? ((key) => key);
+  }
+
+  /** The record's name in messages (the CLI: its file path). */
+  path(txHash: string): string {
+    return this.describeKey(`${EXITS}${txHash}.json`);
+  }
+
+  /** Writes the exit's record exactly as `exit` returned it; refuses to overwrite one. */
+  async record(result: ExitJournalRecord): Promise<void> {
+    await this.kv.create(`${EXITS}${result.txHash}.json`, prettyJsonBytes(result));
+  }
+
+  /** Reads only validated exit recovery records; file names must be the transaction they describe. */
+  async records(): Promise<ExitJournalRecord[]> {
+    const records: ExitJournalRecord[] = [];
+    for (const key of await this.kv.list(EXITS)) {
+      const entry = key.slice(EXITS.length);
+      if (!entry.endsWith(".json")) continue;
+      const bytes = await this.kv.get(key);
+      if (bytes === null) continue;
+      const record = ExitJournalRecordSchema.parse(parseJsonBytes(bytes));
       if (entry !== `${record.txHash}.json`) {
         throw new Error("exit journal record does not own its filename");
       }
-      return record;
-    })
-    .sort((left, right) => left.txHash.localeCompare(right.txHash));
-}
-
-/** Restores exit recovery records without overwriting anything already present. */
-export function restoreExitJournal(directory: string, recordsInput: readonly unknown[]): void {
-  if (existsSync(directory) && readdirSync(directory).length !== 0) {
-    throw new Error("exit journal restore needs an empty destination");
-  }
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  chmodSync(directory, 0o700);
-  const records = recordsInput.map((record) => ExitJournalRecordSchema.parse(record));
-  if (new Set(records.map((record) => record.txHash)).size !== records.length) {
-    throw new Error("exit journal backup contains duplicate transaction hashes");
-  }
-  for (const record of records) {
-    writePrivateFileExclusive(
-      join(directory, `${record.txHash}.json`),
-      Buffer.from(`${JSON.stringify(record, null, 2)}\n`),
-    );
-  }
-}
-
-function syncDirectory(path: string): void {
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/** Writes a private file without overwrite and durably publishes its directory entry. */
-export function writePrivateFileExclusive(path: string, bytes: Buffer): void {
-  const finalPath = resolve(path);
-  const parent = dirname(finalPath);
-  const temporary = join(parent, `.${basename(finalPath)}.${randomUUID()}.tmp`);
-  let published = false;
-  try {
-    const fd = openSync(temporary, "wx", 0o600);
-    try {
-      writeFileSync(fd, bytes);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+      records.push(record);
     }
-    linkSync(temporary, finalPath);
-    published = true;
-    syncDirectory(parent);
-  } catch (error) {
-    if (published) {
-      unlinkSync(finalPath);
-      syncDirectory(parent);
-    }
-    throw error;
-  } finally {
-    if (existsSync(temporary)) unlinkSync(temporary);
-  }
-}
-
-/**
- * Creates both backup copies as one application-level operation. Final paths appear only after
- * each complete temp file is fsynced. If either final link fails, the other is rolled back, so a
- * retry cannot be mistaken for a successful two-copy backup.
- */
-export function writeBackupCopies(bytes: Buffer, firstPath: string, secondPath: string): void {
-  const first = resolve(firstPath);
-  const second = resolve(secondPath);
-  if (first === second) throw new Error("backup paths must identify two different files");
-  if (existsSync(first) || existsSync(second)) {
-    throw new Error("backup refuses to overwrite an existing copy");
+    return records.sort((left, right) => left.txHash.localeCompare(right.txHash));
   }
 
-  const nonce = randomUUID();
-  const firstTmp = join(dirname(first), `.${basename(first)}.${nonce}.tmp`);
-  const secondTmp = join(dirname(second), `.${basename(second)}.${nonce}.tmp`);
-  const createdFinals: string[] = [];
-
-  try {
-    for (const temporary of [firstTmp, secondTmp]) {
-      const fd = openSync(temporary, "wx", 0o600);
-      try {
-        writeFileSync(fd, bytes);
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
+  /** Restores exit recovery records without overwriting anything already present. */
+  async restore(recordsInput: readonly unknown[]): Promise<void> {
+    if ((await this.kv.list(EXITS)).length !== 0) {
+      throw new Error("exit journal restore needs an empty destination");
     }
-
-    linkSync(firstTmp, first);
-    createdFinals.push(first);
-    linkSync(secondTmp, second);
-    createdFinals.push(second);
-    for (const parent of new Set([dirname(first), dirname(second)])) {
-      syncDirectory(parent);
+    const records = recordsInput.map((record) => ExitJournalRecordSchema.parse(record));
+    if (new Set(records.map((record) => record.txHash)).size !== records.length) {
+      throw new Error("exit journal backup contains duplicate transaction hashes");
     }
-  } catch (error) {
-    for (const finalPath of createdFinals) {
-      try {
-        unlinkSync(finalPath);
-      } catch {
-        // Preserve the original failure; a remaining final path is visible and never overwritten.
-      }
-    }
-    for (const parent of new Set(createdFinals.map(dirname))) {
-      try {
-        syncDirectory(parent);
-      } catch {
-        // Preserve the publication failure; the retry still refuses any surviving final path.
-      }
-    }
-    throw error;
-  } finally {
-    for (const temporary of [firstTmp, secondTmp]) {
-      try {
-        unlinkSync(temporary);
-      } catch {
-        // The final path, not a best-effort temp cleanup, determines operation success.
-      }
+    for (const record of records) {
+      await this.kv.create(`${EXITS}${record.txHash}.json`, prettyJsonBytes(record));
     }
   }
 }

@@ -4,7 +4,6 @@
 // (`npm run build:oxide-token` there) or takes it from a party it trusts, and the tool refuses
 // it unless its class and in-protocol artifact hash are the corridor's.
 
-import { readFileSync } from "node:fs";
 import { EthAddress } from "@aztec-labs/foundation/eth-address";
 import {
   EventSelector,
@@ -31,14 +30,15 @@ export class ArtifactRefused extends Error {
 }
 
 /**
- * Loads the artifact and completes every offline validation before any caller may open a PXE:
- * artifact hash, class, derived instance address and immutable hash.
+ * Validates the artifact JSON (from any `ArtifactLoader`, never trusted) and completes every
+ * offline validation before any caller may open a PXE: artifact hash, class, derived instance
+ * address and immutable hash.
  */
-export async function loadTokenArtifact(
-  path: string,
+export async function validateTokenArtifact(
+  json: unknown,
   corridor: Corridor,
 ): Promise<ContractArtifact> {
-  const artifact = loadContractArtifact(JSON.parse(readFileSync(path, "utf8")));
+  const artifact = loadContractArtifact(json as Parameters<typeof loadContractArtifact>[0]);
   const [klass, artifactHash] = await Promise.all([
     getContractClassFromArtifact(artifact),
     computeArtifactHash(artifact),

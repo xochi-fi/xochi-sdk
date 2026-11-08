@@ -5,6 +5,12 @@
     "rootDir": "."
   },
   "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
-  "exclude": ["node_modules", "dist", "src/oxide/vendor"],
-  "references": [{ "path": "src/oxide/vendor" }]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/core/oxide/vendor",
+    "src/core/browser",
+    "src/core/attestation"
+  ],
+  "references": [{ "path": "tsconfig.vendor.json" }]
 }

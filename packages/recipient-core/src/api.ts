@@ -7,6 +7,7 @@ import { z } from "zod4";
 
 import { anyCaseEvm, anyCaseHex32, decimal } from "./corridor.js";
 import type { EnrollmentChallenge, EnrollmentRequest, SignedAck } from "./enrollment.js";
+import type { HttpFetch } from "./ports.js";
 
 const ChallengeSchema = z
   .object({
@@ -165,10 +166,14 @@ export interface ReceiptApi {
 export const XOCHI_API_URL = "https://api.xochi.fi";
 
 export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
+  /**
+   * `jwt` is the source wallet's SIWE session, or a provider of it read per call (never stored
+   * by the core). `fetchImpl` defaults to the global `fetch`, read at call time.
+   */
   constructor(
     private readonly baseUrl: string,
-    private readonly jwt: string,
-    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly jwt: string | (() => Promise<string>),
+    private readonly fetchImpl?: HttpFetch,
   ) {
     const url = new URL(baseUrl);
     if (url.origin !== XOCHI_API_URL) {
@@ -185,10 +190,13 @@ export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
     body: unknown,
     schema: z.ZodType<T>,
   ): Promise<T> {
-    const response = await this.fetchImpl(new URL(route, this.baseUrl), {
+    const bearer = typeof this.jwt === "string" ? this.jwt : await this.jwt();
+    // Called unbound: a browser's `fetch` refuses any other `this` than the global.
+    const send = this.fetchImpl ?? fetch;
+    const response = await send(new URL(route, this.baseUrl), {
       method,
       headers: {
-        authorization: `Bearer ${this.jwt}`,
+        authorization: `Bearer ${bearer}`,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: body === undefined ? null : JSON.stringify(body),

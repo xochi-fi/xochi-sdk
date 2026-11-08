@@ -6,8 +6,6 @@
 // directory's enrolled binding; the payout acknowledged is only the one the corridor's sender
 // tagged with the order fingerprint those terms produce.
 
-import { existsSync, mkdirSync, chmodSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { hashTypedData, keccak256, toHex, type TypedDataDefinition } from "viem";
 import {
   RECIPIENT_ACK_PURPOSES,
@@ -30,7 +28,8 @@ import {
 import type { ReceivedTransfer } from "./chain.js";
 import { anyCaseEvm, anyCaseHex32, decimal, evm, hex32, type Corridor } from "./corridor.js";
 import type { RecipientSigner } from "./enrollment.js";
-import { writePrivateJson } from "./operation-journal.js";
+import { parseJsonBytes, prettyJsonBytes } from "./json.js";
+import type { Clock, KeyValueStore } from "./ports.js";
 import { orderFingerprintFromMeta } from "./order-fingerprint.js";
 import { fingerprintTerms } from "./settlement-fingerprint.js";
 
@@ -643,76 +642,87 @@ export type ReceiptEntry = Omit<
   "status" | "attempts" | "receipt_digest" | "submitted_at"
 > & { request: ReceiptSubmission };
 
+const RECEIPTS = "receipts/";
+
 /**
- * `<data-dir>/receipts/<intentId>.json`, one per intent, mode 0600 in a 0700 directory: the
- * terms, operation, amount and payout each receipt is pinned to, and every request signed for it,
- * never a key. A payout or terms digest one intent's receipt names is never used for another.
- * Backups carry these records. Writers run under the fund-movement lock (`operations/`).
+ * `receipts/<intentId>.json` (CLI: `<data-dir>/receipts/<intentId>.json`, mode 0600 in a 0700
+ * directory), one per intent: the terms, operation, amount and payout each receipt is pinned to,
+ * and every request signed for it, never a key. A payout or terms digest one intent's receipt
+ * names is never used for another. Backups carry these records. Writers run under the
+ * fund-movement lock (`operations/`).
  */
 export class ReceiptJournal {
-  constructor(readonly directory: string) {}
+  private readonly describeKey: (key: string) => string;
 
-  private ensureDirectory(): void {
-    mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    chmodSync(this.directory, 0o700);
+  constructor(
+    private readonly kv: KeyValueStore,
+    private readonly clock: Clock,
+    describeKey?: (key: string) => string,
+  ) {
+    this.describeKey = describeKey ?? ((key) => key);
   }
 
-  private path(intentId: string): string {
-    return join(this.directory, `${assertIntentId(intentId)}.json`);
+  /** The record's name in messages (the CLI: its file path). */
+  path(intentId: string): string {
+    return this.describeKey(`${RECEIPTS}${assertIntentId(intentId)}.json`);
   }
 
-  private parse(path: string): ReceiptRecord {
+  private async parse(key: string): Promise<ReceiptRecord | null> {
     try {
-      return ReceiptRecordSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+      const bytes = await this.kv.get(key);
+      if (bytes === null) return null;
+      return ReceiptRecordSchema.parse(parseJsonBytes(bytes));
     } catch {
       throw new Error(
-        `receipt journal record ${path} is unreadable; inspect it before any receipt`,
+        `receipt journal record ${this.describeKey(key)} is unreadable; inspect it before any receipt`,
       );
     }
   }
 
   /** Validates `record` (attempts against the pinned subject) and writes it atomically. */
-  private write(record: unknown): ReceiptRecord {
+  private async write(record: unknown): Promise<ReceiptRecord> {
     const parsed = ReceiptRecordSchema.parse(record);
-    this.ensureDirectory();
-    writePrivateJson(this.path(parsed.intentId), parsed);
+    await this.kv.put(
+      `${RECEIPTS}${assertIntentId(parsed.intentId)}.json`,
+      prettyJsonBytes(parsed),
+    );
     return parsed;
   }
 
-  records(): ReceiptRecord[] {
-    if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory)
-      .filter((entry) => entry.endsWith(".json"))
-      .sort()
-      .map((entry) => {
-        const record = this.parse(join(this.directory, entry));
-        if (entry !== `${record.intentId}.json`) {
-          throw new Error(`receipt journal record ${entry} does not own its filename`);
-        }
-        return record;
-      });
+  async records(): Promise<ReceiptRecord[]> {
+    const records: ReceiptRecord[] = [];
+    for (const key of await this.kv.list(RECEIPTS)) {
+      const entry = key.slice(RECEIPTS.length);
+      if (!entry.endsWith(".json")) continue;
+      const record = await this.parse(key);
+      if (record === null) continue;
+      if (entry !== `${record.intentId}.json`) {
+        throw new Error(`receipt journal record ${entry} does not own its filename`);
+      }
+      records.push(record);
+    }
+    return records;
   }
 
-  read(intentId: string): ReceiptRecord | null {
-    const path = this.path(intentId);
-    return existsSync(path) ? this.parse(path) : null;
+  read(intentId: string): Promise<ReceiptRecord | null> {
+    return this.parse(`${RECEIPTS}${assertIntentId(intentId)}.json`);
   }
 
   /** Every payout the receipts of the other intents ever signed, accepted or not. */
-  receiptedTxHashes(intentId: string): Set<string> {
+  async receiptedTxHashes(intentId: string): Promise<Set<string>> {
     return new Set(
-      this.records()
+      (await this.records())
         .filter((record) => record.intentId !== intentId)
         .map((record) => record.txHash),
     );
   }
 
   /** The other intent whose receipt is pinned to these terms or this operation, if any. */
-  intentPinning(
+  async intentPinning(
     subject: { termsDigest: string; operationId: string },
     intentId: string,
-  ): string | null {
-    const other = this.records().find(
+  ): Promise<string | null> {
+    const other = (await this.records()).find(
       (record) =>
         record.intentId !== intentId &&
         (record.termsDigest === lower(subject.termsDigest) ||
@@ -722,15 +732,15 @@ export class ReceiptJournal {
   }
 
   /** Records the first signed receipt of an intent, before it is posted. */
-  begin(entry: ReceiptEntry): ReceiptRecord {
-    if (this.read(entry.intentId)) {
+  async begin(entry: ReceiptEntry): Promise<ReceiptRecord> {
+    if (await this.read(entry.intentId)) {
       throw new Error(`intent ${entry.intentId} already has a receipt record`);
     }
     const { request, ...subject } = entry;
     return this.write({
       ...subject,
       status: "submitting",
-      attempts: [{ signedAt: new Date().toISOString(), request }],
+      attempts: [{ signedAt: this.now(), request }],
     });
   }
 
@@ -738,12 +748,12 @@ export class ReceiptJournal {
    * Appends a re-signed request (after Xochi rejected the last); its subject must be the pinned
    * one. `alreadySpentBy` lists this attempt's `--already-spent` spends, if any.
    */
-  retry(
+  async retry(
     intentId: string,
     request: ReceiptSubmission,
     alreadySpentBy: readonly string[],
-  ): ReceiptRecord {
-    const record = this.read(intentId);
+  ): Promise<ReceiptRecord> {
+    const record = await this.read(intentId);
     if (!record) throw new Error(`no receipt record for ${intentId}`);
     if (record.status === "submitted") {
       throw new Error(`intent ${intentId}'s receipt is already accepted`);
@@ -751,7 +761,7 @@ export class ReceiptJournal {
     const next = ReceiptRecordSchema.safeParse({
       ...record,
       alreadySpentBy: alreadySpentBy.length > 0 ? [...alreadySpentBy] : record.alreadySpentBy,
-      attempts: [...record.attempts, { signedAt: new Date().toISOString(), request }],
+      attempts: [...record.attempts, { signedAt: this.now(), request }],
     });
     if (!next.success) {
       throw new Error(
@@ -762,8 +772,12 @@ export class ReceiptJournal {
   }
 
   /** Marks the receipt accepted with Xochi's `receipt_digest`. */
-  complete(intentId: string, receiptDigest: string, submittedAt: string): ReceiptRecord {
-    const record = this.read(intentId);
+  async complete(
+    intentId: string,
+    receiptDigest: string,
+    submittedAt: string,
+  ): Promise<ReceiptRecord> {
+    const record = await this.read(intentId);
     if (!record) throw new Error(`no receipt record for ${intentId}`);
     return this.write({
       ...record,
@@ -774,14 +788,18 @@ export class ReceiptJournal {
   }
 
   /** Restores a backup's records into an empty (or absent) directory. */
-  restore(recordsInput: readonly unknown[]): void {
-    if (existsSync(this.directory) && readdirSync(this.directory).length !== 0) {
+  async restore(recordsInput: readonly unknown[]): Promise<void> {
+    if ((await this.kv.list(RECEIPTS)).length !== 0) {
       throw new Error("receipt journal restore needs an empty destination");
     }
     const records = recordsInput.map((record) => ReceiptRecordSchema.parse(record));
     if (new Set(records.map((record) => record.intentId)).size !== records.length) {
       throw new Error("receipt journal backup contains duplicate intents");
     }
-    for (const record of records) this.write(record);
+    for (const record of records) await this.write(record);
+  }
+
+  private now(): string {
+    return new Date(this.clock.nowMs()).toISOString();
   }
 }

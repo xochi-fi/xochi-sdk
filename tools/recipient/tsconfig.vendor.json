@@ -1,0 +1,10 @@
+{
+  "extends": "./src/core/oxide/vendor/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src/core/oxide/vendor",
+    "outDir": "dist/core/oxide/vendor",
+    "tsBuildInfoFile": "dist/core/oxide/vendor/.tsbuildinfo",
+    "preserveSymlinks": true
+  },
+  "include": ["src/core/oxide/vendor/**/*.ts"]
+}

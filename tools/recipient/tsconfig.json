@@ -16,9 +16,16 @@
     "declaration": false,
     "sourceMap": true,
     "isolatedModules": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "preserveSymlinks": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/oxide/vendor"],
-  "references": [{ "path": "src/oxide/vendor" }]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/core/oxide/vendor",
+    "src/core/browser",
+    "src/core/attestation"
+  ],
+  "references": [{ "path": "tsconfig.vendor.json" }]
 }

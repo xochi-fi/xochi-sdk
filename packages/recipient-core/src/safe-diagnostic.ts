@@ -1,5 +1,3 @@
-import { isNativeError } from "node:util/types";
-
 import { isTrustedSubmissionAmbiguousError } from "./node-submission.js";
 import { isTrustedWalletSimulationFailure } from "./oxide/vendor/oxide-client/l2_operations.js";
 
@@ -190,9 +188,9 @@ export function safeOperationError(
 }
 
 export function safeOperationDiagnostic(error: unknown): Readonly<SafeOperationDiagnostic> | null {
-  if (!isNativeError(error)) return null;
+  if (typeof error !== "object" || error === null) return null;
   try {
-    const stored = safeDiagnostics.get(error);
+    const stored = safeDiagnostics.get(error as Error);
     if (stored === undefined) return null;
     const diagnostic = projectDiagnostic(stored);
     return diagnostic === null ? null : Object.freeze(diagnostic);

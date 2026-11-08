@@ -9,7 +9,10 @@
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 
-export type SealKind = "keystore" | "backup";
+import { SealError, type KeystoreCrypto, type SealKind } from "../core/ports.js";
+
+export { SealError, type SealKind };
+
 const MAGIC: Record<SealKind, Buffer> = {
   keystore: Buffer.from("XOCHI-RCPT-KEY1\n", "ascii"),
   backup: Buffer.from("XOCHI-RCPT-BAK1\n", "ascii"),
@@ -20,13 +23,6 @@ const TAG_BYTES = 16;
 const SCRYPT = { N: 1 << 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 };
 /** Fewer characters than this is refused: the backup is the only copy of the account keys. */
 export const MIN_PASSPHRASE_LENGTH = 12;
-
-export class SealError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SealError";
-  }
-}
 
 function key(passphrase: string, salt: Buffer): Buffer {
   if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
@@ -64,5 +60,16 @@ export function open(kind: SealKind, sealed: Buffer, passphrase: string): Buffer
     throw new SealError(
       `sealed ${kind} did not open: wrong passphrase or corrupted bytes (${String(cause)})`,
     );
+  }
+}
+
+/** The CLI's `KeystoreCrypto`: node:crypto scrypt + AES-256-GCM, exactly `seal`/`open` above. */
+export class NodeKeystoreCrypto implements KeystoreCrypto {
+  async seal(kind: SealKind, plaintext: Uint8Array, passphrase: string): Promise<Uint8Array> {
+    return seal(kind, Buffer.from(plaintext), passphrase);
+  }
+
+  async open(kind: SealKind, sealed: Uint8Array, passphrase: string): Promise<Uint8Array> {
+    return open(kind, Buffer.from(sealed), passphrase);
   }
 }

@@ -1,6 +1,7 @@
 {
   "name": "@xochi/recipient-core",
   "version": "0.1.0",
+  "private": true,
   "description": "Platform-neutral Stealth on Aztec recipient core (account, sync, receipt, enrollment, spend, exit) behind storage, lock, crypto, artifact and attestation ports.",
   "license": "MIT",
   "type": "module",
@@ -24,16 +25,32 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -b src/oxide/vendor && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"!src/oxide/vendor/**\""
   },
   "dependencies": {
-    "@noble/hashes": "1.8.0"
+    "@aztec-labs/accounts": "6.0.0",
+    "@aztec-labs/aztec.js": "6.0.0",
+    "@aztec-labs/blob-lib": "6.0.0",
+    "@aztec-labs/constants": "6.0.0",
+    "@aztec-labs/foundation": "6.0.0",
+    "@aztec-labs/kv-store": "6.0.0",
+    "@aztec-labs/stdlib": "6.0.0",
+    "@aztec-labs/wallets": "6.0.0",
+    "@hpke/core": "1.9.0",
+    "@noble/hashes": "1.8.0",
+    "@xochi/signer": "0.7.0",
+    "buffer": "6.0.3",
+    "viem": "2.57.1",
+    "zod4": "npm:zod@4.4.3"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
+    "@types/node": "^22.15.17",
+    "esbuild": "0.28.2",
+    "playwright": "1.59.1",
+    "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }
 }

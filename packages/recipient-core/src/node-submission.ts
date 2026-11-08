@@ -2,9 +2,9 @@ import type { AztecNode } from "@aztec-labs/aztec.js/node";
 import type { JsonRpcFetch } from "@aztec-labs/foundation/json-rpc/client";
 import { NoRetryError } from "@aztec-labs/foundation/retry";
 import { jsonStringify } from "@aztec-labs/foundation/json-rpc";
-import { isNativeError } from "node:util/types";
 import type { TxHash } from "@aztec-labs/stdlib/tx";
 
+import type { HttpFetch } from "./ports.js";
 import { safeOperationError, type SubmissionDiagnosticState } from "./safe-diagnostic.js";
 
 const trustedSubmissionErrors = new WeakSet<Error>();
@@ -16,60 +16,72 @@ const submissionAmbiguousError = (message: string): Error => {
 };
 
 export const isTrustedSubmissionAmbiguousError = (error: unknown): error is NoRetryError =>
-  isNativeError(error) &&
-  Object.getPrototypeOf(error) === NoRetryError.prototype &&
-  trustedSubmissionErrors.has(error);
+  typeof error === "object" &&
+  error !== null &&
+  trustedSubmissionErrors.has(error as Error) &&
+  Object.getPrototypeOf(error) === NoRetryError.prototype;
 
 type BeforeSubmit = (txHash: TxHash) => void | Promise<void>;
 /**
  * The SDK's default JSON-RPC transport retries requests whose response may have been lost. Writes
  * must instead make exactly one HTTP attempt: after `beforeSubmit` is durable, any transport error
- * is ambiguous and the journal deliberately blocks a resend.
+ * is ambiguous and the journal deliberately blocks a resend. `fetchImpl` defaults to the global
+ * `fetch`, read at call time.
  */
-export const singleAttemptJsonRpcFetch: JsonRpcFetch = async (host, body, extraHeaders = {}) => {
-  let response: Response;
-  try {
-    response = await fetch(host, {
-      method: "POST",
-      body: jsonStringify(body),
-      headers: { "content-type": "application/json", ...extraHeaders },
-      redirect: "error",
-    });
-  } catch {
-    throw submissionAmbiguousError(
-      "Aztec node submission failed after the HTTP request may have been written",
-    );
-  }
+export function createSingleAttemptJsonRpcFetch(fetchImpl?: HttpFetch): JsonRpcFetch {
+  return async (host, body, extraHeaders = {}) => {
+    const send = fetchImpl ?? fetch;
+    let response: Response;
+    try {
+      response = await send(host, {
+        method: "POST",
+        body: jsonStringify(body),
+        headers: { "content-type": "application/json", ...extraHeaders },
+        redirect: "error",
+      });
+    } catch {
+      throw submissionAmbiguousError(
+        "Aztec node submission failed after the HTTP request may have been written",
+      );
+    }
 
-  let responseText: string;
-  try {
-    responseText = await response.text();
-  } catch {
-    throw submissionAmbiguousError(
-      "Aztec node submission response ended before its outcome could be read",
-    );
-  }
-  let responseJson: unknown;
-  try {
-    responseJson = JSON.parse(responseText);
-  } catch {
-    throw submissionAmbiguousError(
-      response.ok
-        ? "Aztec node submission returned an invalid JSON response"
-        : `Aztec node submission returned HTTP ${response.status}`,
-    );
-  }
+    let responseText: string;
+    try {
+      responseText = await response.text();
+    } catch {
+      throw submissionAmbiguousError(
+        "Aztec node submission response ended before its outcome could be read",
+      );
+    }
+    let responseJson: unknown;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      throw submissionAmbiguousError(
+        response.ok
+          ? "Aztec node submission returned an invalid JSON response"
+          : `Aztec node submission returned HTTP ${response.status}`,
+      );
+    }
 
-  if (!response.ok) {
-    throw submissionAmbiguousError(`Aztec node submission returned HTTP ${response.status}`);
-  }
-  return { response: responseJson, headers: response.headers };
-};
+    if (!response.ok) {
+      throw submissionAmbiguousError(`Aztec node submission returned HTTP ${response.status}`);
+    }
+    return { response: responseJson, headers: response.headers };
+  };
+}
 
-export function createSingleAttemptAztecNodeBroadcaster(url: string): Pick<AztecNode, "sendTx"> {
+/** The single-attempt transport over the global `fetch`. */
+export const singleAttemptJsonRpcFetch: JsonRpcFetch = createSingleAttemptJsonRpcFetch();
+
+export function createSingleAttemptAztecNodeBroadcaster(
+  url: string,
+  fetchImpl?: HttpFetch,
+): Pick<AztecNode, "sendTx"> {
+  const rpc = createSingleAttemptJsonRpcFetch(fetchImpl);
   return {
     async sendTx(tx) {
-      const { response } = await singleAttemptJsonRpcFetch(url, [
+      const { response } = await rpc(url, [
         {
           jsonrpc: "2.0",
           id: 1,

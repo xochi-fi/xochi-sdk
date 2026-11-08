@@ -16,7 +16,9 @@ import {
   type EnrollmentApi,
   type ReceiptApi,
   type ReceiptChallenge,
+  type ReceiptSubmission,
 } from "./api.js";
+import { backupAcknowledgement, type BackupMode } from "./backup-mode.js";
 import type {
   AztecPort,
   ExitRequest,
@@ -39,6 +41,7 @@ import { assertPinnedNetwork } from "./network.js";
 import { tokenImmutables } from "./oxide-token.js";
 import { orderFingerprintFromMeta } from "./order-fingerprint.js";
 import type { OperationJournal } from "./operation-journal.js";
+import type { Clock } from "./ports.js";
 import {
   assertCorridorPayoutDiscovered,
   checkReceiptChallenge,
@@ -52,10 +55,13 @@ export interface Ctx {
   corridor: Corridor;
   port: AztecPort;
   log: (line: string) => void;
+  clock: Clock;
 }
 
 /** Enrollment touches no node: only the corridor record and the enrollment API. */
 export type EnrollmentCtx = Pick<Ctx, "corridor" | "log">;
+
+const unixSeconds = (clock: Clock) => Math.floor(clock.nowMs() / 1000);
 
 /** Refuses any node that is not the corridor's network, before anything else runs. */
 export async function checkNetwork(ctx: Ctx): Promise<void> {
@@ -68,18 +74,19 @@ export async function checkNetwork(ctx: Ctx): Promise<void> {
 /**
  * Adds the account to the PXE and, unless it is already initialized, publishes its instance and
  * runs its constructor. `claim` is Xochi's sponsored Fee Juice claim (xochi#759 decision
- * 2026-11-02); without one the account pays from its own Fee Juice.
+ * 2026-11-02); without one the account pays from its own Fee Juice. Returns the deployment's
+ * transaction hash, or null when the account was already published and initialized.
  */
 export async function setupAccount(
   ctx: Ctx,
   account: RecipientAccount,
   claim: FeeJuiceClaim | null,
-): Promise<void> {
+): Promise<string | null> {
   await ctx.port.addAccount(account);
   const state = await ctx.port.accountState(account.address);
   if (state.initialized && state.published) {
     ctx.log(`account: ${account.address.toString()} published and initialized`);
-    return;
+    return null;
   }
   if (state.initialized) {
     throw new Error(
@@ -88,6 +95,7 @@ export async function setupAccount(
   }
   const txHash = await ctx.port.deployAccount(account, claim);
   ctx.log(`account: deployed ${account.address.toString()} in ${txHash}`);
+  return txHash;
 }
 
 /** `registerSender` for exactly the corridor's senders, then reads them back. */
@@ -103,7 +111,8 @@ export async function registerSenders(ctx: Ctx): Promise<void> {
 
 /**
  * Registers the prevalidated OxideToken at the corridor's address and runs `store_immutables`
- * with the corridor's `l2TokenImmutables` (never `readOxideTokenImmutables`).
+ * with the corridor's `l2TokenImmutables` (never `readOxideTokenImmutables`). Returns when, in
+ * unix seconds.
  */
 export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promise<number> {
   const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
@@ -116,7 +125,7 @@ export async function registerToken(ctx: Ctx, artifact: ContractArtifact): Promi
   ctx.log(
     `token: registered ${token.toString()} (class ${ctx.corridor.token.classId}) and stored its immutables`,
   );
-  return Math.floor(Date.now() / 1000);
+  return unixSeconds(ctx.clock);
 }
 
 const formatUnits = (amount: bigint, decimals: number): string => {
@@ -199,22 +208,29 @@ export async function enrollStart(
   return { challenge, binding, typedData, tokenRegistrationAck };
 }
 
-/** Signs and submits the authorization plus the exact acknowledgement set the Worker requires. */
+/**
+ * Signs and submits the authorization plus the exact acknowledgement set the Worker requires.
+ * `backup` is how the keys are kept: the sealed backup file's commitment (the CLI) or the
+ * passkey (`backup-mode.ts`).
+ */
 export async function enrollSubmit(
   ctx: EnrollmentCtx,
   api: EnrollmentApi,
   account: RecipientAccount,
   pending: PendingEnrollment,
   sourceSignature: string,
-  backupCommitment: string,
+  backup: BackupMode,
 ): Promise<BindingProjection> {
+  const acknowledged = backupAcknowledgement(backup);
   const request = await buildEnrollmentRequest({
     corridor: ctx.corridor,
     account,
     challenge: pending.challenge,
     binding: pending.binding,
     sourceSignature,
-    backupCommitment,
+    backupCommitment: acknowledged.backupCommitment,
+    backupFormatId: acknowledged.backupFormatId,
+    backupPasskey: acknowledged.backupPasskey,
     tokenRegistrationAck: pending.tokenRegistrationAck,
     sign: signRecipientDigest,
   });
@@ -249,13 +265,17 @@ export async function enrollStatus(
   return projection;
 }
 
-/** A private OXDAI transfer through the enclave-signed path (#739, #740). */
+/**
+ * A private OXDAI transfer through the enclave-signed path (#739, #740). `claim` pays its fee
+ * with a sponsored Fee Juice claim; without one the account pays from its own Fee Juice.
+ */
 export async function spend(
   ctx: Ctx,
   account: RecipientAccount,
   artifact: ContractArtifact,
   to: string,
   amount: bigint,
+  claim: FeeJuiceClaim | null = null,
 ): Promise<string> {
   if (!anyCaseHex32.safeParse(to).success)
     throw new Error("--to must be a 0x-prefixed 32-byte Aztec address");
@@ -264,7 +284,7 @@ export async function spend(
   if (recipient.isZero() || !(await recipient.isValid())) {
     throw new Error("--to must be a valid, nonzero Aztec address");
   }
-  const txHash = await ctx.port.spend(account, artifact, recipient, amount);
+  const txHash = await ctx.port.spend(account, artifact, recipient, amount, claim);
   ctx.log(`spend: ${amount} base units to ${to} in ${txHash}`);
   return txHash;
 }
@@ -317,7 +337,7 @@ export interface ReceiptRequest {
    * Saves the binding digest and id of an accepted `--legacy-binding` receipt (from its record),
    * so later runs need no flag.
    */
-  rememberBindingDigest: (digest: string, bindingId: string) => void;
+  rememberBindingDigest: (digest: string, bindingId: string) => void | Promise<void>;
   /** Dry run: nothing is locked or written. */
   dryRun: boolean;
 }
@@ -328,11 +348,26 @@ export interface ReceiptJournals {
   operations: OperationJournal;
 }
 
-function assertUnexpired(challenge: ReceiptChallenge): void {
-  if (challenge.expires_at <= Math.floor(Date.now() / 1000)) {
+function assertUnexpired(clock: Clock, challenge: ReceiptChallenge): void {
+  if (challenge.expires_at <= unixSeconds(clock)) {
     throw new Error(
       `receipt challenge ${challenge.challenge_id} expired at ${new Date(challenge.expires_at * 1000).toISOString()}; run receipt again`,
     );
+  }
+}
+
+/** Runs `step` under the fund-movement lock (a dry run takes none). */
+async function underReceiptLock<T>(
+  journals: ReceiptJournals,
+  request: ReceiptRequest,
+  step: (request: ReceiptRequest) => Promise<T>,
+): Promise<T> {
+  const intentId = assertIntentId(request.intentId);
+  const run = request.dryRun ? null : await journals.operations.beginReceipt(intentId);
+  try {
+    return await step({ ...request, intentId });
+  } finally {
+    if (run) await journals.operations.endReceipt(run.id);
   }
 }
 
@@ -354,25 +389,71 @@ export async function receipt(
   journals: ReceiptJournals,
   request: ReceiptRequest,
 ): Promise<ReceiptRecord | null> {
-  const intentId = assertIntentId(request.intentId);
-  const run = request.dryRun ? null : journals.operations.beginReceipt(intentId);
-  try {
-    return await receiptUnderLock(ctx, api, account, artifact, journals, { ...request, intentId });
-  } finally {
-    if (run) journals.operations.endReceipt(run.id);
-  }
+  return underReceiptLock(journals, request, async (locked) => {
+    const recorded = await recordedReceipt(ctx, journals.receipts, locked);
+    if (recorded?.status === "submitted") return recorded;
+    return postReceipt(ctx, api, account, artifact, journals, locked, recorded);
+  });
 }
 
-async function receiptUnderLock(
+/**
+ * `receipt`'s steps up to the POST (the browser's first half): under the fund-movement lock,
+ * every check, then the signed request journaled `submitting` before this resolves. An intent
+ * whose receipt is already recorded is answered from the journal; `submitReceipt` posts it.
+ */
+export async function signReceipt(
   ctx: Ctx,
   api: ReceiptApi,
   account: RecipientAccount,
   artifact: ContractArtifact,
-  { receipts, operations }: ReceiptJournals,
+  journals: ReceiptJournals,
+  request: ReceiptRequest,
+): Promise<ReceiptRecord> {
+  if (request.dryRun) throw new Error("signReceipt journals its receipt: no dry run");
+  return underReceiptLock(journals, request, async (locked) => {
+    const recorded = await recordedReceipt(ctx, journals.receipts, locked);
+    if (recorded) return recorded;
+    await signReceiptAttempt(ctx, api, account, artifact, journals, locked, null);
+    const signed = await journals.receipts.read(locked.intentId);
+    if (!signed) throw new Error(`intent ${locked.intentId}'s receipt record was not written`);
+    return signed;
+  });
+}
+
+/**
+ * `receipt`'s POST (the browser's second half): sends the recorded receipt's last request byte
+ * for byte; only an outright rejection signs it again under a new challenge, for the recorded
+ * terms and payout, and posts that.
+ */
+export async function submitReceipt(
+  ctx: Ctx,
+  api: ReceiptApi,
+  account: RecipientAccount,
+  artifact: ContractArtifact,
+  journals: ReceiptJournals,
+  request: ReceiptRequest,
+): Promise<ReceiptRecord> {
+  if (request.dryRun) throw new Error("submitReceipt posts a journaled receipt: no dry run");
+  return underReceiptLock(journals, request, async (locked) => {
+    const recorded = await recordedReceipt(ctx, journals.receipts, locked);
+    if (!recorded) {
+      throw new Error(`intent ${locked.intentId} has no signed receipt: sign it first`);
+    }
+    if (recorded.status === "submitted") return recorded;
+    const accepted = await postReceipt(ctx, api, account, artifact, journals, locked, recorded);
+    if (!accepted) throw new Error(`intent ${locked.intentId}'s receipt was not recorded`);
+    return accepted;
+  });
+}
+
+/** The intent's receipt record, refused when the request names another payout or binding. */
+async function recordedReceipt(
+  ctx: Ctx,
+  receipts: ReceiptJournal,
   request: ReceiptRequest,
 ): Promise<ReceiptRecord | null> {
   const { intentId } = request;
-  const recorded = receipts.read(intentId);
+  const recorded = await receipts.read(intentId);
   if (recorded?.status === "submitted") {
     ctx.log(
       `receipt: intent ${intentId} already accepted (payout ${recorded.txHash}, receipt_digest ${recorded.receipt_digest})`,
@@ -389,11 +470,25 @@ async function receiptUnderLock(
       `binding id ${request.bindingId} is not the recorded receipt's binding id ${recorded.bindingId}`,
     );
   }
+  return recorded;
+}
+
+/** Resends a recorded receipt, else (or after an outright rejection) signs one and posts it. */
+async function postReceipt(
+  ctx: Ctx,
+  api: ReceiptApi,
+  account: RecipientAccount,
+  artifact: ContractArtifact,
+  journals: ReceiptJournals,
+  request: ReceiptRequest,
+  recorded: ReceiptRecord | null,
+): Promise<ReceiptRecord | null> {
+  const { intentId } = request;
   if (recorded) {
     ctx.log(`receipt: resending the recorded receipt for payout ${recorded.txHash}`);
     try {
       const result = await api.submitReceipt(intentId, recorded.attempts.at(-1)!.request);
-      return accept(ctx, receipts, request, result.intent_id, result.receipt_digest);
+      return await accept(ctx, journals.receipts, request, result.intent_id, result.receipt_digest);
     } catch (error) {
       if (!(error instanceof EnrollmentApiError && error.rejectsReceipt)) throw error;
       ctx.log(
@@ -401,21 +496,47 @@ async function receiptUnderLock(
       );
     }
   }
+  const submission = await signReceiptAttempt(
+    ctx,
+    api,
+    account,
+    artifact,
+    journals,
+    request,
+    recorded,
+  );
+  const result = await api.submitReceipt(intentId, submission);
+  return accept(ctx, journals.receipts, request, result.intent_id, result.receipt_digest);
+}
 
+/**
+ * Syncs, takes a new challenge, checks it, selects the payout, requires it finalized and
+ * spendable, signs, and journals the signed request (a dry run journals nothing).
+ */
+async function signReceiptAttempt(
+  ctx: Ctx,
+  api: ReceiptApi,
+  account: RecipientAccount,
+  artifact: ContractArtifact,
+  { receipts, operations }: ReceiptJournals,
+  request: ReceiptRequest,
+  recorded: ReceiptRecord | null,
+): Promise<ReceiptSubmission> {
+  const { intentId } = request;
   // Sync before the challenge: the challenge expires, a first sync may be slow.
   const token = AztecAddress.fromStringUnsafe(ctx.corridor.token.address);
   const transfers = await ctx.port.transfers(artifact, token, account.address);
   assertCorridorPayoutDiscovered(transfers, ctx.corridor.registeredSenders);
 
   const challenge = await api.requestReceiptChallenge(intentId);
-  assertUnexpired(challenge);
+  assertUnexpired(ctx.clock, challenge);
   const checked = checkReceiptChallenge(ctx.corridor, account, challenge, {
     intentId,
     bindingDigest: request.bindingDigest,
     bindingId: request.bindingId,
     legacyBinding: request.legacyBinding,
   });
-  const pinnedBy = receipts.intentPinning(checked, intentId);
+  const pinnedBy = await receipts.intentPinning(checked, intentId);
   if (pinnedBy !== null) {
     throw new Error(
       `receipt refused: intent ${pinnedBy}'s receipt already holds these terms or this operation`,
@@ -447,7 +568,7 @@ async function receiptUnderLock(
       orderFingerprint: checked.orderFingerprint,
       senders: ctx.corridor.registeredSenders,
     },
-    receipts.receiptedTxHashes(intentId),
+    await receipts.receiptedTxHashes(intentId),
     recorded?.txHash ?? request.tx,
   );
   const node = await ctx.port.txReceipt(transfer.txHash);
@@ -473,7 +594,7 @@ async function receiptUnderLock(
     alreadySpent: request.alreadySpent,
   });
 
-  assertUnexpired(challenge);
+  assertUnexpired(ctx.clock, challenge);
   const { submission, digest } = await signPaymentReceipt({
     corridor: ctx.corridor,
     account,
@@ -484,9 +605,9 @@ async function receiptUnderLock(
   ctx.log(`receipt: signed PaymentReceiptAck ${digest}`);
   if (!request.dryRun) {
     if (recorded) {
-      receipts.retry(intentId, submission, alreadySpentBy);
+      await receipts.retry(intentId, submission, alreadySpentBy);
     } else {
-      receipts.begin({
+      await receipts.begin({
         intentId,
         termsDigest: checked.termsDigest,
         operationId: checked.operationId,
@@ -500,8 +621,7 @@ async function receiptUnderLock(
       });
     }
   }
-  const result = await api.submitReceipt(intentId, submission);
-  return accept(ctx, receipts, request, result.intent_id, result.receipt_digest);
+  return submission;
 }
 
 /**
@@ -574,7 +694,7 @@ async function spendsAfter(
   block: number,
 ): Promise<{ kind: string; txHash: string; amount: bigint }[]> {
   const spends: { kind: string; txHash: string; amount: bigint; block: number }[] = [];
-  for (const record of operations.records()) {
+  for (const record of await operations.records()) {
     if ((record.kind !== "spend" && record.kind !== "exit") || record.status !== "complete") {
       continue;
     }
@@ -593,22 +713,26 @@ async function spendsAfter(
   return spends.sort((a, b) => a.block - b.block || a.txHash.localeCompare(b.txHash));
 }
 
-function accept(
+async function accept(
   ctx: Ctx,
   receipts: ReceiptJournal,
   request: ReceiptRequest,
   answeredIntentId: string,
   receiptDigest: string,
-): ReceiptRecord | null {
+): Promise<ReceiptRecord | null> {
   if (answeredIntentId !== request.intentId) {
     throw new Error(`the Worker answered for intent ${answeredIntentId}, not ${request.intentId}`);
   }
   ctx.log(`receipt: intent ${request.intentId} completed; receipt_digest ${receiptDigest}`);
   if (request.dryRun) return null;
-  const record = receipts.complete(request.intentId, receiptDigest, new Date().toISOString());
+  const record = await receipts.complete(
+    request.intentId,
+    receiptDigest,
+    new Date(ctx.clock.nowMs()).toISOString(),
+  );
   if (record.legacyBinding && request.bindingDigest === null) {
     const adopted = record.attempts.at(-1)!.request.acknowledgement.message.bindingDigest;
-    request.rememberBindingDigest(adopted, record.bindingId);
+    await request.rememberBindingDigest(adopted, record.bindingId);
     ctx.log(
       `receipt: binding ${record.bindingId} digest ${adopted} saved to state.json; later runs need no flag`,
     );

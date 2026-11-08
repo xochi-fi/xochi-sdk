@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { run } from "../src/cli.js";
-import { OperationJournal } from "../src/operation-journal.js";
+import { openNodeJournals } from "../src/node/data-dir.js";
 
 const PASS = "receipt cli TEST ONLY";
 const INTENT = "3f0c2a5e-8d7b-4e1a-9c6f-0b1d2e3f4a5b";
@@ -93,15 +93,15 @@ describe("receipt invocation", () => {
 describe("operations reconcile", () => {
   it("refuses to release a live receipt run's lock unless forced: it moved no funds", async () => {
     const dataDir = await initialized();
-    const operations = new OperationJournal(join(dataDir, "operations"));
-    const held = operations.beginReceipt(INTENT);
+    const operations = openNodeJournals(dataDir).operations;
+    const held = await operations.beginReceipt(INTENT);
     await expect(run(["operations", "reconcile", "--data-dir", dataDir])).rejects.toThrow(
       new RegExp(`receipt run pid ${process.pid} on .* is still running.*--force`),
     );
-    expect(operations.get(held.id).status).toBe("building");
+    expect((await operations.get(held.id)).status).toBe("building");
     await run(["operations", "reconcile", "--data-dir", dataDir, "--force"]);
-    expect(operations.get(held.id).status).toBe("aborted");
-    expect(operations.unresolved()).toBeNull();
+    expect((await operations.get(held.id)).status).toBe("aborted");
+    expect(await operations.unresolved()).toBeNull();
   });
 });
 

@@ -4,7 +4,6 @@
 // commands (`commands.ts`) run unchanged on either, so `--dry-run` shows the exact sequence a
 // live run makes.
 
-import { dirname, join } from "node:path";
 import { NO_FROM } from "@aztec-labs/aztec.js/account";
 import { AztecAddress } from "@aztec-labs/aztec.js/addresses";
 import { BatchCall, Contract, toSimulateOptions } from "@aztec-labs/aztec.js/contracts";
@@ -17,15 +16,17 @@ import { EthAddress } from "@aztec-labs/stdlib/block";
 import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
 import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
+import { bytesToHex } from "@noble/hashes/utils";
 import { createPublicClient, http, parseAbi, type Hex } from "viem";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 
 import type { RecipientAccount } from "./account.js";
 import type { Corridor } from "./corridor.js";
-import { openEncryptedEphemeralWalletStore } from "./encrypted-wallet-store.js";
 import type { ObservedNetwork } from "./network.js";
-import { OperationJournal, type OperationRecord } from "./operation-journal.js";
+import type { OperationJournal, OperationRecord } from "./operation-journal.js";
 import { createSingleAttemptAztecNodeBroadcaster, NodeSubmission } from "./node-submission.js";
+import type { AttestationVerifier, HttpFetch } from "./ports.js";
+import type { WalletStorage } from "./wallet-storage.js";
 import { durablyIncluded } from "./reconciliation.js";
 import {
   createSubmissionDiagnosticState,
@@ -134,13 +135,19 @@ export interface AztecPort {
     token: AztecAddress,
     owner: AztecAddress,
   ): Promise<ReceivedTransfer[]>;
-  /** A transfer through the enclave-signed path; returns the tx hash. */
+  /**
+   * A transfer through the enclave-signed path; returns the tx hash. `claim` pays the fee by
+   * claiming bridged Fee Juice in the same tx (Xochi-sponsored); null pays from own Fee Juice.
+   */
   spend(
     account: RecipientAccount,
     artifact: ContractArtifact,
     to: AztecAddress,
     amount: bigint,
+    claim?: FeeJuiceClaim | null,
   ): Promise<string>;
+  /** The node's latest block number (`node.getBlockNumber`). */
+  blockNumber(): Promise<number>;
   /** The node's receipt for `txHash` (`node.getTxReceipt`). */
   txReceipt(txHash: string): Promise<ObservedTxReceipt>;
   /**
@@ -167,18 +174,18 @@ export interface AztecPort {
   close(): Promise<void>;
 }
 
-export function failOrAbortWithSafeDiagnostic(
+export async function failOrAbortWithSafeDiagnostic(
   journal: OperationJournal,
   operationId: string,
   error: unknown,
   diagnosticState: SubmissionDiagnosticState,
-): Error {
+): Promise<Error> {
   const initialMessage = diagnosticState.submissionBoundaryReached
     ? "operation outcome requires transaction reconciliation"
     : "operation failed before Aztec node submission";
   const safeError = safeOperationError(initialMessage, error, diagnosticState);
   try {
-    const journalError = journal.failOrAbort(
+    const journalError = await journal.failOrAbort(
       operationId,
       diagnosticState.submissionBoundaryReached,
     );
@@ -191,12 +198,12 @@ export function failOrAbortWithSafeDiagnostic(
   }
 }
 
-export function sanitizeFundMovementFailure(
+export async function sanitizeFundMovementFailure(
   journal: OperationJournal,
   operation: OperationRecord | null,
   error: unknown,
   diagnosticState: SubmissionDiagnosticState,
-): Error {
+): Promise<Error> {
   return operation === null
     ? safeOperationError(
         "recipient operation failed before Aztec node submission",
@@ -206,12 +213,12 @@ export function sanitizeFundMovementFailure(
     : failOrAbortWithSafeDiagnostic(journal, operation.id, error, diagnosticState);
 }
 
-export function beginExitAfterExecutorFeeCheck(
+export async function beginExitAfterExecutorFeeCheck(
   journal: OperationJournal,
   accountAddress: string,
   request: ExitRequest,
   executorFee: bigint,
-): { operation: OperationRecord; recipientAmount: bigint } {
+): Promise<{ operation: OperationRecord; recipientAmount: bigint }> {
   if (executorFee > request.maxExecutorFee) {
     throw new Error("live executor fee exceeds --max-executor-fee; exit not started");
   }
@@ -222,7 +229,7 @@ export function beginExitAfterExecutorFeeCheck(
     );
   }
   const recipientAmount = netAmount - request.relayerTip;
-  const operation = journal.begin("exit", {
+  const operation = await journal.begin("exit", {
     from: accountAddress,
     l1Recipient: request.l1Recipient,
     amount: request.amount.toString(),
@@ -235,45 +242,93 @@ export function beginExitAfterExecutorFeeCheck(
   return { operation, recipientAmount };
 }
 
-/** Live port. `l1RpcUrl` is read only by spend and exit (TeeRegistry and portal reads). */
+function feeJuiceClaimPayment(
+  account: RecipientAccount,
+  claim: FeeJuiceClaim,
+): FeeJuicePaymentMethodWithClaim {
+  return new FeeJuicePaymentMethodWithClaim(account.address, {
+    claimAmount: BigInt(claim.claimAmount),
+    claimSecret: Fr.fromString(claim.claimSecret),
+    messageLeafIndex: BigInt(claim.messageLeafIndex),
+  });
+}
+
+export interface LiveAztecOptions {
+  nodeUrl: string;
+  /** Where the PXE and wallet DB live; `scope` names this recipient's stores. */
+  walletStorage: WalletStorage;
+  scope: string;
+  corridor: Corridor;
+  /** Read only by spend and exit (TeeRegistry, portal and executor reads). */
+  l1RpcUrl: string | null;
+  /** The fund-movement journal spend and exit write before any broadcast. */
+  journal: OperationJournal;
+  /** Checks the enclave's Nitro attestation before any key is sealed to it. */
+  attestation: AttestationVerifier;
+  /** The single-attempt `sendTx` and L1 reads; defaults to the global `fetch`. */
+  fetch?: HttpFetch;
+}
+
+/**
+ * Live port. Node reads go through the Aztec SDK's retrying JSON-RPC client (global `fetch`);
+ * the one write, `sendTx`, through the single-attempt transport (`NodeSubmission`).
+ */
 export class LiveAztec implements AztecPort {
   readonly mode = "live";
+  private readonly corridor: Corridor;
+  private readonly l1RpcUrl: string | null;
+  private readonly operationJournal: OperationJournal;
+  private readonly attestation: AttestationVerifier;
+  private readonly fetchImpl: HttpFetch | undefined;
+
   private constructor(
     private readonly wallet: EmbeddedWallet,
     private readonly node: AztecNode,
     private readonly nodeSubmission: NodeSubmission,
-    private readonly corridor: Corridor,
-    private readonly l1RpcUrl: string | null,
-    private readonly operationJournal: OperationJournal,
-  ) {}
+    options: LiveAztecOptions,
+  ) {
+    this.corridor = options.corridor;
+    this.l1RpcUrl = options.l1RpcUrl;
+    this.operationJournal = options.journal;
+    this.attestation = options.attestation;
+    this.fetchImpl = options.fetch;
+  }
 
-  static async connect(args: {
-    nodeUrl: string;
-    dataDirectory: string;
-    corridor: Corridor;
-    l1RpcUrl: string | null;
-  }): Promise<LiveAztec> {
-    const rawNode = createAztecNodeClient(args.nodeUrl);
+  static async connect(options: LiveAztecOptions): Promise<LiveAztec> {
+    const rawNode = createAztecNodeClient(options.nodeUrl);
     const nodeSubmission = new NodeSubmission(
       rawNode,
-      createSingleAttemptAztecNodeBroadcaster(args.nodeUrl),
+      createSingleAttemptAztecNodeBroadcaster(options.nodeUrl, options.fetch),
     );
-    const wallet = await EmbeddedWallet.create(nodeSubmission.node, {
-      pxe: { proverEnabled: true, dataDirectory: args.dataDirectory },
-      // Aztec 6.0.0 stores the account secret, salt and signing key in its WalletDB.
-      // Keep the DB outside the durable PXE directory and encrypt every account value with
-      // a random process-only key, so a crash cannot leave key bytes in temporary LMDB pages.
-      // Every run restores the account from the sealed keystore.
-      walletDb: { store: await openEncryptedEphemeralWalletStore() },
+    const network = options.corridor.network;
+    const storage = await options.walletStorage.embeddedWalletOptions(options.scope, {
+      l1ChainId: Number(network.l1ChainId),
+      rollupAddress: network.rollupAddress,
     });
-    return new LiveAztec(
-      wallet,
-      nodeSubmission.node,
-      nodeSubmission,
-      args.corridor,
-      args.l1RpcUrl,
-      new OperationJournal(join(dirname(args.dataDirectory), "operations")),
-    );
+    let wallet: EmbeddedWallet;
+    try {
+      wallet = await EmbeddedWallet.create(nodeSubmission.node, {
+        pxe: { ...storage.pxe, proverEnabled: true },
+        walletDb: storage.walletDb,
+      });
+    } catch (error) {
+      // The stores were opened for this wallet (browser: they hold OPFS pool locks).
+      const closing = await Promise.allSettled(
+        [storage.pxe.store, storage.walletDb.store].map((store) => store?.close()),
+      );
+      const failures = closing.flatMap((result) =>
+        result.status === "rejected" ? [result.reason as unknown] : [],
+      );
+      if (failures.length > 0) {
+        throw new AggregateError([error, ...failures], "wallet creation and store close failed");
+      }
+      throw error;
+    }
+    return new LiveAztec(wallet, nodeSubmission.node, nodeSubmission, options);
+  }
+
+  async blockNumber(): Promise<number> {
+    return Number(await this.node.getBlockNumber());
   }
 
   async observeNetwork(): Promise<ObservedNetwork> {
@@ -319,13 +374,7 @@ export class LiveAztec implements AztecPort {
       account.signingKey,
     );
     const deploy = await manager.getDeployMethod();
-    const paymentMethod = claim
-      ? new FeeJuicePaymentMethodWithClaim(account.address, {
-          claimAmount: BigInt(claim.claimAmount),
-          claimSecret: Fr.fromString(claim.claimSecret),
-          messageLeafIndex: BigInt(claim.messageLeafIndex),
-        })
-      : undefined;
+    const paymentMethod = claim ? feeJuiceClaimPayment(account, claim) : undefined;
     const result = await deploy.send({
       from: NO_FROM,
       fee: paymentMethod ? { paymentMethod } : {},
@@ -426,9 +475,12 @@ export class LiveAztec implements AztecPort {
       throw new Error("spend and exit need --l1-rpc: the enclave's registration is read from L1");
     }
     const pins = oxidePins(this.corridor);
-    const reader = viemL1Reader(this.l1RpcUrl, pins);
+    const reader = viemL1Reader(this.l1RpcUrl, pins, this.fetchImpl);
     await assertL1Pinned(reader, pins);
-    return FleetSigner.connect(pins.enclaveUrl, new OxideFleetRegistry(reader, pins));
+    return FleetSigner.connect(
+      pins.enclaveUrl,
+      new OxideFleetRegistry(reader, pins, this.attestation),
+    );
   }
 
   private async submitOperations(
@@ -479,10 +531,10 @@ export class LiveAztec implements AztecPort {
             diagnosticState.phase = phase;
           },
           onPreparedWithdrawals: async (withdrawals) => {
-            this.operationJournal.update(operation.id, {
+            await this.operationJournal.update(operation.id, {
               withdrawals: withdrawals.map(({ withdrawalIndex, finalizationData }) => ({
                 withdrawalIndex,
-                finalizationData: `0x${encodeFinalizationData(finalizationData).toString("hex")}`,
+                finalizationData: `0x${bytesToHex(encodeFinalizationData(finalizationData))}`,
               })),
             });
           },
@@ -490,7 +542,7 @@ export class LiveAztec implements AztecPort {
 
       return await this.nodeSubmission.run(
         async (txHash) => {
-          this.operationJournal.update(operation.id, {
+          await this.operationJournal.update(operation.id, {
             status: "broadcast",
             txHash: txHash.toString(),
           });
@@ -514,11 +566,12 @@ export class LiveAztec implements AztecPort {
     artifact: ContractArtifact,
     to: AztecAddress,
     amount: bigint,
+    claim: FeeJuiceClaim | null = null,
   ): Promise<string> {
     const diagnosticState = createSubmissionDiagnosticState("spend");
     let operation: OperationRecord | null = null;
     try {
-      operation = this.operationJournal.begin("spend", {
+      operation = await this.operationJournal.begin("spend", {
         from: account.address.toString(),
         to: to.toString(),
         amount: amount.toString(),
@@ -537,15 +590,21 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
         diagnosticState,
+        claim ? feeJuiceClaimPayment(account, claim) : undefined,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
       }
       const txHash = result.receipt.txHash.toString();
-      this.operationJournal.update(operation.id, { status: "complete", txHash });
+      await this.operationJournal.update(operation.id, { status: "complete", txHash });
       return txHash;
     } catch (error) {
-      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
+      throw await sanitizeFundMovementFailure(
+        this.operationJournal,
+        operation,
+        error,
+        diagnosticState,
+      );
     }
   }
 
@@ -577,13 +636,13 @@ export class LiveAztec implements AztecPort {
       await this.wallet.registerContract(instance, request.broadcasterArtifact);
       const executor = this.corridor.oxide.plainWithdrawalExecutor as Hex;
       const executorFee = await createPublicClient({
-        transport: http(this.l1RpcUrl),
+        transport: http(this.l1RpcUrl, { fetchFn: this.fetchImpl }),
       }).readContract({
         address: executor,
         abi: parseAbi(["function FEE() view returns (uint256)"]),
         functionName: "FEE",
       });
-      const prepared = beginExitAfterExecutorFeeCheck(
+      const prepared = await beginExitAfterExecutorFeeCheck(
         this.operationJournal,
         account.address.toString(),
         request,
@@ -611,13 +670,7 @@ export class LiveAztec implements AztecPort {
         ],
         operation,
         diagnosticState,
-        request.feeJuiceClaim
-          ? new FeeJuicePaymentMethodWithClaim(account.address, {
-              claimAmount: BigInt(request.feeJuiceClaim.claimAmount),
-              claimSecret: Fr.fromString(request.feeJuiceClaim.claimSecret),
-              messageLeafIndex: BigInt(request.feeJuiceClaim.messageLeafIndex),
-            })
-          : undefined,
+        request.feeJuiceClaim ? feeJuiceClaimPayment(account, request.feeJuiceClaim) : undefined,
       );
       if (!durablyIncluded(result.receipt.status)) {
         throw new Error("Aztec transaction receipt is not durably included");
@@ -631,10 +684,10 @@ export class LiveAztec implements AztecPort {
           txHash,
           withdrawalIndex: w.withdrawalIndex,
           operationId: w.finalizationRequest?.operationId ?? null,
-          finalizationData: `0x${encodeFinalizationData(w.finalizationData).toString("hex")}`,
+          finalizationData: `0x${bytesToHex(encodeFinalizationData(w.finalizationData))}`,
         })),
       };
-      this.operationJournal.update(operation.id, {
+      await this.operationJournal.update(operation.id, {
         status: "complete",
         txHash,
         withdrawals: response.withdrawals.map(
@@ -647,7 +700,12 @@ export class LiveAztec implements AztecPort {
       });
       return response;
     } catch (error) {
-      throw sanitizeFundMovementFailure(this.operationJournal, operation, error, diagnosticState);
+      throw await sanitizeFundMovementFailure(
+        this.operationJournal,
+        operation,
+        error,
+        diagnosticState,
+      );
     }
   }
 
@@ -765,6 +823,11 @@ export class DryRunAztec implements AztecPort {
     return { status: TxStatus.PENDING, blockNumber: null, executionSucceeded: false };
   }
 
+  async blockNumber(): Promise<number> {
+    this.record("node.getBlockNumber() (synthetic: 0)");
+    return 0;
+  }
+
   async simulateTransfer(
     account: RecipientAccount,
     _artifact: ContractArtifact,
@@ -781,6 +844,7 @@ export class DryRunAztec implements AztecPort {
     _artifact: ContractArtifact,
     to: AztecAddress,
     amount: bigint,
+    claim: FeeJuiceClaim | null = null,
   ): Promise<string> {
     this.record(
       "L1: assertL1Pinned (TeeRegistry.PCR0_HASH, CertManager.ROOT_CA_CERT_HASH, OxidePortal views)",
@@ -789,7 +853,9 @@ export class DryRunAztec implements AztecPort {
       "enclave: FleetSigner.connect (attestation verified against pinned PCR0 + AWS Nitro root)",
     );
     this.record(
-      `submit(transfer ${account.address.toString()} -> ${to.toString()}, ${amount}): simulate, enclave signTokenOperation (sends this account's nhk_m, #740), prove, send`,
+      `submit(transfer ${account.address.toString()} -> ${to.toString()}, ${amount}): simulate, enclave signTokenOperation (sends this account's nhk_m, #740), prove, send${
+        claim ? `, fee: FeeJuicePaymentMethodWithClaim(claim of ${claim.claimAmount})` : ""
+      }`,
     );
     return `0x${"00".repeat(32)}`;
   }

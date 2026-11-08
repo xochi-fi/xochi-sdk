@@ -7,14 +7,14 @@ import { hashTypedData, type TypedDataDefinition } from "viem";
 import { describe, expect, it } from "vitest";
 import { RECIPIENT_ACK_PURPOSES } from "@xochi/signer";
 
-import { signRecipientDigest } from "../src/account.js";
-import { HttpEnrollmentApi, type ReceiptChallenge } from "../src/api.js";
+import { signRecipientDigest } from "../src/core/account.js";
+import { HttpEnrollmentApi, type ReceiptChallenge } from "../src/core/api.js";
 import {
   SHIELDED_TERMS_TYPES,
   checkReceiptChallenge,
   selectReceiptTransfer,
   signPaymentReceipt,
-} from "../src/receipt.js";
+} from "../src/core/receipt.js";
 import {
   AMOUNT,
   DEADLINE,

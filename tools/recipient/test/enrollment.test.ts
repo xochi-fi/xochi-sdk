@@ -14,10 +14,10 @@ import {
   deriveRecipientAccount,
   signRecipientDigest,
   type RecipientAccount,
-} from "../src/account.js";
-import { HttpEnrollmentApi, type BindingProjection, type EnrollmentApi } from "../src/api.js";
-import { enrollStatus, enrollSubmit } from "../src/commands.js";
-import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
+} from "../src/core/account.js";
+import { HttpEnrollmentApi, type BindingProjection, type EnrollmentApi } from "../src/core/api.js";
+import { enrollStatus, enrollSubmit } from "../src/core/commands.js";
+import { OXDAI_MAINNET_REV2, type Corridor } from "../src/core/corridor.js";
 import {
   bindingTypedData,
   buildBinding,
@@ -25,7 +25,7 @@ import {
   signTokenRegistrationAck,
   type EnrollmentRequest,
   type WireBinding,
-} from "../src/enrollment.js";
+} from "../src/core/enrollment.js";
 import { TEST_SECRETS, TEST_SOURCE_KEY } from "./fixtures.js";
 
 const CHALLENGE = {
@@ -220,7 +220,7 @@ describe("enrollment projection binding", () => {
         account,
         { challenge: CHALLENGE, binding, typedData, tokenRegistrationAck },
         sourceSignature,
-        COMMITMENT,
+        { mode: "sealed_file", commitment: COMMITMENT as `0x${string}` },
       ),
     ).rejects.toThrow(/different recipient descriptor/);
     await expect(enrollStatus(ctx, api, "expected-binding", account)).rejects.toThrow(

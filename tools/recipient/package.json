@@ -27,12 +27,12 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b src/oxide/vendor && tsc --noEmit && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -b tsconfig.vendor.json && tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run && npm run test:closure && npm run test:release-preflight",
     "test:closure": "node test/release-closure.test.mjs",
     "test:release-preflight": "node test/release-immutability.test.mjs",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/oxide/vendor/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/core/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"test/**/*.mjs\" \"!src/core/**\" \"qualify/*.mjs\" \"scripts/*.mjs\" \"*.json\"",
     "dry-run": "node dist/cli.js plan",
     "prepack": "npm run build",
     "release:artifact": "node scripts/build-release.mjs",
@@ -52,6 +52,7 @@
     "@aztec-labs/stdlib": "6.0.0",
     "@aztec-labs/wallets": "6.0.0",
     "@hpke/core": "1.9.0",
+    "@noble/hashes": "1.8.0",
     "@xochi/signer": "0.7.0",
     "viem": "2.57.1",
     "zod4": "npm:zod@4.4.3"

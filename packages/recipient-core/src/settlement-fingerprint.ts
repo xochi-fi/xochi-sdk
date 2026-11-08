@@ -5,7 +5,8 @@
 // recompute the fingerprint of the payout it expects and select only that transfer. Pinned by
 // the vendored `oxide.createNote` vector.
 
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 
 /** `pxe-bridge.settlement.v2` terms of an Oxide send (`accountMode` standard, `sendMode` oxide). */
 export interface OxideSettlementTerms {
@@ -54,6 +55,5 @@ export function fingerprintLines(terms: OxideSettlementTerms): string[] {
 
 /** `0x` + SHA-256 of the lines joined with `\n`. */
 export function fingerprintTerms(terms: OxideSettlementTerms): string {
-  const preimage = fingerprintLines(terms).join("\n");
-  return `0x${createHash("sha256").update(preimage, "utf8").digest("hex")}`;
+  return `0x${bytesToHex(sha256(utf8ToBytes(fingerprintLines(terms).join("\n"))))}`;
 }

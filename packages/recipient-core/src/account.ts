@@ -10,6 +10,7 @@ import type { ContractInstanceWithAddress } from "@aztec-labs/stdlib/contract";
 import { getContractInstanceFromInstantiationParams } from "@aztec-labs/stdlib/contract";
 import { deriveMasterMessageSigningSecretKey } from "@aztec-labs/stdlib/keys";
 import { Schnorr } from "@aztec-labs/foundation/crypto/schnorr";
+import { bytesToHex } from "@noble/hashes/utils";
 import {
   AZTEC_RECIPIENT_PROFILES,
   recipientMessage,
@@ -19,12 +20,10 @@ import {
 } from "@xochi/signer";
 
 import type { Corridor } from "./corridor.js";
+import type { AccountSecrets } from "./ports.js";
 
-/** The two secrets the account derives from. The backup's core; never sent anywhere. */
-export interface AccountSecrets {
-  secret: string;
-  salt: string;
-}
+/** The two secrets the account derives from (`ports.ts`). The backup's core; never sent anywhere. */
+export type { AccountSecrets };
 
 export function newAccountSecrets(): AccountSecrets {
   return { secret: Fr.random().toString(), salt: Fr.random().toString() };
@@ -100,7 +99,7 @@ export async function signRecipientDigest(
     Fr.fromString(messageField),
     account.signingKey,
   );
-  const encoded = `0x${signature.toBuffer().toString("hex")}`;
+  const encoded = `0x${bytesToHex(signature.toBuffer())}`;
   const publicKey = {
     x: account.descriptor.signingPublicKeyX,
     y: account.descriptor.signingPublicKeyY,

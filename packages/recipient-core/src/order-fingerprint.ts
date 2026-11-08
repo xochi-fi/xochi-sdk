@@ -6,6 +6,8 @@
 
 import { Fr } from "@aztec-labs/aztec.js/fields";
 import { sha256ToField } from "@aztec-labs/foundation/crypto/sha256";
+// `sha256ToField` serializes only a Buffer as raw bytes; Aztec takes it from the `buffer` package.
+import { Buffer } from "buffer";
 
 export const ORDER_FINGERPRINT_TAG = "pxe-bridge/oxide-order-fingerprint/v1";
 const TAG_FIELD = sha256ToField([Buffer.from(ORDER_FINGERPRINT_TAG)]);

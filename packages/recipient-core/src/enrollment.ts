@@ -21,6 +21,7 @@ import {
 } from "@xochi/signer";
 
 import type { RecipientAccount } from "./account.js";
+import type { WireBackupPasskey } from "./backup-mode.js";
 import type { Corridor } from "./corridor.js";
 
 /** `POST /api/shielded/recipients/challenge` 201 body. */
@@ -160,13 +161,17 @@ export async function assertSourceSignature(
   }
 }
 
-/** The acknowledgement messages of `types`, for this binding. */
+/**
+ * The acknowledgement messages of `types`, for this binding. `backupFormatId` is the backup mode
+ * (`backup-mode.ts`): the sealed file format v1 unless the binding acknowledges a passkey.
+ */
 export function enrollmentAckMessages(
   corridor: Corridor,
   binding: RecipientBinding,
   bindingDigest: string,
   backupCommitment: string,
   types: readonly RecipientAckType[],
+  backupFormatId: string = BACKUP_FORMAT_V1_ID,
 ): { primaryType: RecipientAckType; message: RecipientAckMessages[RecipientAckType] }[] {
   const common = {
     bindingDigest,
@@ -180,7 +185,7 @@ export function enrollmentAckMessages(
       case "BackupPersistenceAck":
         return {
           primaryType,
-          message: { ...common, backupCommitment, backupFormatId: BACKUP_FORMAT_V1_ID, purpose },
+          message: { ...common, backupCommitment, backupFormatId, purpose },
         };
       case "SenderRegistrationAck":
         return {
@@ -216,7 +221,7 @@ async function signAcks(
   corridor: Corridor,
   account: RecipientAccount,
   binding: RecipientBinding,
-  backupCommitment: string,
+  backup: { backupCommitment: string; backupFormatId?: string },
   types: readonly RecipientAckType[],
   sign: RecipientSigner,
 ): Promise<SignedAck[]> {
@@ -227,8 +232,9 @@ async function signAcks(
     corridor,
     binding,
     bindingDigest,
-    backupCommitment,
+    backup.backupCommitment,
     types,
+    backup.backupFormatId,
   )) {
     const digest = recipientAckDigest(primaryType, message as never, domain);
     out.push({ primary_type: primaryType, message, signature: await sign(account, digest) });
@@ -248,7 +254,14 @@ export async function signTokenRegistrationAck(
   sign: RecipientSigner,
 ): Promise<SignedAck | null> {
   if (!requiredEnrollmentAcks(corridor.token.classId).includes("TokenRegistrationAck")) return null;
-  const [ack] = await signAcks(corridor, account, binding, "", ["TokenRegistrationAck"], sign);
+  const [ack] = await signAcks(
+    corridor,
+    account,
+    binding,
+    { backupCommitment: "" },
+    ["TokenRegistrationAck"],
+    sign,
+  );
   return ack ?? null;
 }
 
@@ -259,6 +272,8 @@ export interface EnrollmentRequest {
   descriptor: RecipientAccount["descriptor"];
   recipient_authorization: { digest: string; signature: string };
   acknowledgements: SignedAck[];
+  /** A passkey binding's backup descriptor (xochi#835); absent for a sealed backup file. */
+  backup_passkey?: WireBackupPasskey;
 }
 
 /**
@@ -273,6 +288,10 @@ export async function buildEnrollmentRequest(args: {
   binding: RecipientBinding;
   sourceSignature: string;
   backupCommitment: string;
+  /** The backup mode's format id; the sealed file format v1 when absent. */
+  backupFormatId?: string;
+  /** Sent with a passkey backup mode (`backupAcknowledgement`). */
+  backupPasskey?: WireBackupPasskey;
   tokenRegistrationAck: SignedAck | null;
   sign: RecipientSigner;
 }): Promise<EnrollmentRequest> {
@@ -284,7 +303,7 @@ export async function buildEnrollmentRequest(args: {
     corridor,
     account,
     binding,
-    backupCommitment,
+    { backupCommitment, backupFormatId: args.backupFormatId },
     required.filter((type) => type !== "TokenRegistrationAck"),
     sign,
   );
@@ -309,6 +328,7 @@ export async function buildEnrollmentRequest(args: {
       signature: await sign(account, bindingDigest),
     },
     acknowledgements,
+    ...(args.backupPasskey ? { backup_passkey: args.backupPasskey } : {}),
   };
 }
 

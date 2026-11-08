@@ -1,24 +1,14 @@
-import { randomUUID } from "node:crypto";
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  fsyncSync,
-  linkSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-  writeSync,
-} from "node:fs";
-import { hostname } from "node:os";
-import { dirname, join } from "node:path";
 import { z } from "zod4";
 
 import { decimal } from "./corridor.js";
+import { compactJsonBytes, parseJsonBytes, prettyJsonBytes } from "./json.js";
+import {
+  KeyExistsError,
+  type Clock,
+  type KeyValueStore,
+  type LockLease,
+  type LockManager,
+} from "./ports.js";
 
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hex = /^0x[0-9a-f]+$/i;
@@ -192,112 +182,122 @@ const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>>
   aborted: [],
 };
 
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-function syncDirectory(path: string): void {
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-export function writePrivateJson(path: string, value: unknown): void {
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  const fd = openSync(temporary, "wx", 0o600);
-  try {
-    writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  renameSync(temporary, path);
-  chmodSync(path, 0o600);
-  syncDirectory(dirname(path));
-}
-
-function readJson(path: string): unknown {
-  return JSON.parse(readFileSync(path, "utf8")) as unknown;
-}
-
-function readRecord(path: string): OperationRecord {
-  try {
-    return OperationRecordSchema.parse(readJson(path));
-  } catch {
-    throw new Error(`operation journal record ${path} is unreadable; keep fund movement blocked`);
-  }
-}
-
-function readActiveLock(path: string): ActiveLock {
-  try {
-    return ActiveLockSchema.parse(readJson(path));
-  } catch {
-    throw new Error(`operation lock ${path} is unreadable; keep fund movement blocked`);
-  }
-}
+const DIRECTORY = "operations/";
+const LOCK_KEY = `${DIRECTORY}active.lock`;
+const recordKey = (id: string) => `${DIRECTORY}${id}.json`;
 
 function sameOwner(left: ActiveLock, right: ActiveLock): boolean {
   return left.id === right.id && left.lockNonce === right.lockNonce && left.kind === right.kind;
 }
 
+/** The lock namespace of one recipient's journal (contract C): `xochi-recipient:<address>:operations`. */
+export function operationsLockName(address: string): string {
+  return `xochi-recipient:${address.toLowerCase()}:operations`;
+}
+
 /**
- * Fund-moving commands are single-flight across processes and restarts. The first durable
+ * The lock a journal holder holds for as long as it runs. A process (CLI: its pid) or tab
+ * (browser: a random session id) is alive exactly while this name is held: `LockManager` answers
+ * null for it. Receipt runs and release claims record the pid, so a successor can tell a crashed
+ * holder from a live one.
+ */
+export function holderLockName(lockName: string, pid: number): string {
+  return `${lockName}:holder:${pid}`;
+}
+
+/** Who runs this journal: recorded in receipt runs (`pid`, `host`) and release claims (`pid`). */
+export interface JournalHolder {
+  pid: number;
+  host: string;
+}
+
+export interface OperationJournalOptions {
+  kv: KeyValueStore;
+  locks: LockManager;
+  clock: Clock;
+  /** `operationsLockName(address)`. */
+  lockName: string;
+  holder: JournalHolder;
+  /** How a key is named in messages (the CLI: its file path). Defaults to the key. */
+  describeKey?: (key: string) => string;
+  /** Test seam: runs once a lock release claim is durable, before the lock is removed. */
+  afterReleaseClaimed?: (id: string) => void | Promise<void>;
+  /** Test seam: runs once the first lock write is durable, before the record is published. */
+  afterInitialLockSynced?: (id: string) => void | Promise<void>;
+}
+
+/**
+ * Fund-moving commands are single-flight across processes, tabs and restarts. The first durable
  * `active.lock` write embeds the exact initial record, including a precomputed transaction hash
- * for broadcast operations. The standalone record is then fsynced before the embedded copy is
- * removed. A crash at either boundary therefore has one exact recovery source. Only an observed
- * durable receipt or a failure proven to precede submission releases the lock.
+ * for broadcast operations. The standalone record is then made durable before the embedded copy
+ * is removed. A crash at either boundary therefore has one exact recovery source. Only an observed
+ * durable receipt or a failure proven to precede submission releases the lock. Every write
+ * resolves once durable (`KeyValueStore`), so a record naming a transaction hash is durable before
+ * the caller may broadcast that transaction.
  */
 export class OperationJournal {
-  private readonly lockPath: string;
+  private readonly kv: KeyValueStore;
+  private readonly locks: LockManager;
+  private readonly clock: Clock;
+  private readonly lockName: string;
+  readonly holder: JournalHolder;
+  private readonly describeKey: (key: string) => string;
+  private readonly afterReleaseClaimed: (id: string) => void | Promise<void>;
+  private readonly afterInitialLockSynced: (id: string) => void | Promise<void>;
+  /** The holder lease: undefined until the first write; null when another live holder has it. */
+  private session: LockLease | null | undefined;
 
-  constructor(
-    readonly directory: string,
-    private readonly afterReleaseClaimed: (id: string) => void = () => undefined,
-    private readonly afterInitialLockSynced: (id: string) => void = () => undefined,
-  ) {
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    chmodSync(directory, 0o700);
-    this.lockPath = join(directory, "active.lock");
+  constructor(options: OperationJournalOptions) {
+    if (!Number.isSafeInteger(options.holder.pid) || options.holder.pid <= 0) {
+      throw new Error("operation journal holder pid must be a positive integer");
+    }
+    this.kv = options.kv;
+    this.locks = options.locks;
+    this.clock = options.clock;
+    this.lockName = options.lockName;
+    this.holder = { ...options.holder };
+    this.describeKey = options.describeKey ?? ((key) => key);
+    this.afterReleaseClaimed = options.afterReleaseClaimed ?? (() => undefined);
+    this.afterInitialLockSynced = options.afterInitialLockSynced ?? (() => undefined);
   }
 
-  records(): OperationRecord[] {
-    return readdirSync(this.directory)
-      .filter((entry) => entry.endsWith(".json"))
-      .map((entry) => {
-        const record = readRecord(join(this.directory, entry));
-        if (entry !== `${record.id}.json`) {
-          throw new Error(
-            `operation journal record ${entry} does not own its filename; keep fund movement blocked`,
-          );
-        }
-        return record;
-      })
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  /** Releases this holder's lease (browser: a successor may now recover its receipt run). */
+  async close(): Promise<void> {
+    const session = this.session;
+    this.session = undefined;
+    if (session) await session.release();
   }
 
-  get(id: string): OperationRecord {
+  async records(): Promise<OperationRecord[]> {
+    const records: OperationRecord[] = [];
+    for (const key of await this.kv.list(DIRECTORY)) {
+      const entry = key.slice(DIRECTORY.length);
+      if (!entry.endsWith(".json")) continue;
+      const record = await this.readRecord(key);
+      if (entry !== `${record.id}.json`) {
+        throw new Error(
+          `operation journal record ${entry} does not own its filename; keep fund movement blocked`,
+        );
+      }
+      records.push(record);
+    }
+    return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async get(id: string): Promise<OperationRecord> {
     if (!uuidV4.test(id)) {
       throw new Error("operation journal id is invalid; keep fund movement blocked");
     }
-    return readRecord(this.path(id));
+    return this.readRecord(recordKey(id));
   }
 
-  unresolved(): OperationRecord | null {
-    return this.records().find((record) => !terminal(record.status)) ?? null;
+  async unresolved(): Promise<OperationRecord | null> {
+    return (await this.records()).find((record) => !terminal(record.status)) ?? null;
   }
 
-  activeUnresolved(): OperationRecord | null {
-    if (!existsSync(this.lockPath)) return null;
-    const lock = readActiveLock(this.lockPath);
-    const record = this.recordForLock(lock);
+  async activeUnresolved(): Promise<OperationRecord | null> {
+    if ((await this.kv.get(LOCK_KEY)) === null) return null;
+    const record = await this.recordForLock(await this.readActiveLock());
     return terminal(record.status) ? null : record;
   }
 
@@ -307,8 +307,8 @@ export class OperationJournal {
    * accidentally replace it with another fund-moving operation. An unfinished `receipt` run moved
    * no funds and its process is on another host: it is restored aborted, without a lock.
    */
-  restore(recordsInput: readonly unknown[]): void {
-    if (readdirSync(this.directory).length !== 0) {
+  async restore(recordsInput: readonly unknown[]): Promise<void> {
+    if ((await this.kv.list(DIRECTORY)).length !== 0) {
       throw new Error("operation journal restore needs an empty destination");
     }
     const records = recordsInput
@@ -325,18 +325,17 @@ export class OperationJournal {
     if (unresolved.length > 1) {
       throw new Error("operation journal backup contains more than one unresolved operation");
     }
-    for (const record of records) writePrivateJson(this.path(record.id), record);
+    for (const record of records) await this.kv.put(recordKey(record.id), prettyJsonBytes(record));
     const active = unresolved[0];
     if (active) {
-      writePrivateJson(this.lockPath, {
-        id: active.id,
-        lockNonce: active.lockNonce,
-        kind: active.kind,
-      });
+      await this.kv.put(
+        LOCK_KEY,
+        prettyJsonBytes({ id: active.id, lockNonce: active.lockNonce, kind: active.kind }),
+      );
     }
   }
 
-  begin(kind: OperationRecord["kind"], request: Record<string, string>): OperationRecord {
+  begin(kind: OperationRecord["kind"], request: Record<string, string>): Promise<OperationRecord> {
     return this.beginWithState(kind, request, { status: "building" });
   }
 
@@ -344,14 +343,12 @@ export class OperationJournal {
    * Holds the fund-movement lock for one `receipt` run. A receipt moves no funds; holding the
    * lock keeps any spend, exit or refund from running while it checks and signs a payout, and
    * refuses the receipt while one is unresolved. The record names the holding process: the next
-   * `begin` aborts the lock once that process is gone. Liveness is the pid alone (a hostname can
-   * change under a live run); a pid reused after a crash keeps the lock until `operations
-   * reconcile` releases it (`releaseReceiptLock`). `host` is recorded for the operator.
+   * `begin` aborts the lock once that holder is gone (its holder lock is free). Liveness is the
+   * pid alone (a hostname can change under a live run); a pid reused after a crash keeps the lock
+   * until `operations reconcile` releases it (`releaseReceiptLock`). `host` is recorded for the
+   * operator.
    */
-  beginReceipt(
-    intentId: string,
-    holder: { pid: number; host: string } = { pid: process.pid, host: hostname() },
-  ): OperationRecord {
+  beginReceipt(intentId: string, holder: JournalHolder = this.holder): Promise<OperationRecord> {
     return this.begin("receipt", { intentId, pid: String(holder.pid), host: holder.host });
   }
 
@@ -360,51 +357,51 @@ export class OperationJournal {
    * operator already released (`releaseReceiptLock`) is left as it is: the run's own result,
    * accepted or not, is never masked by its lock's release.
    */
-  endReceipt(id: string): void {
-    if (this.get(id).status !== "building") return;
-    this.update(id, { status: "aborted" });
+  async endReceipt(id: string): Promise<void> {
+    if ((await this.get(id)).status !== "building") return;
+    await this.update(id, { status: "aborted" });
   }
 
   /**
    * The operator's release of an unfinished `receipt` run's lock (`operations reconcile`): it
-   * moved no funds. Refused while the recorded process is alive, unless `force` (a reused pid
+   * moved no funds. Refused while the recorded holder is alive, unless `force` (a reused pid
    * after a crash): releasing a live run's lock would let a spend run beside it.
    */
-  releaseReceiptLock(id: string, { force = false }: { force?: boolean } = {}): void {
-    const record = this.get(id);
+  async releaseReceiptLock(id: string, { force = false }: { force?: boolean } = {}): Promise<void> {
+    const record = await this.get(id);
     if (record.kind !== "receipt" || record.status !== "building") {
       throw new Error(`operation ${id} is not an unfinished receipt run`);
     }
-    if (!force && processAlive(Number(record.request["pid"]))) {
+    if (!force && (await this.holderAlive(Number(record.request["pid"])))) {
       throw new Error(
         `receipt run pid ${record.request["pid"]} on ${record.request["host"]} is still running; wait for it. Only if that process is not a receipt run (its pid was reused after a crash), pass --force`,
       );
     }
-    this.update(id, { status: "aborted" });
+    await this.update(id, { status: "aborted" });
   }
 
   /**
    * Persists a precomputed transaction hash in the first operation record write. The caller may
-   * submit only after this method returns, so no returned operation can ever be hashless.
+   * submit only after this method resolves, so no returned operation can ever be hashless.
    */
   beginBroadcast(
     kind: OperationRecord["kind"],
     request: Record<string, string>,
     initialTxHash: string,
-  ): OperationRecord {
+  ): Promise<OperationRecord> {
     return this.beginWithState(kind, request, {
       status: "broadcast",
       txHash: initialTxHash,
     });
   }
 
-  private beginWithState(
+  private async beginWithState(
     kind: OperationRecord["kind"],
     request: Record<string, string>,
     initial: { status: "building" } | { status: "broadcast"; txHash: string },
-  ): OperationRecord {
-    const owner: ActiveLock = { id: randomUUID(), lockNonce: randomUUID(), kind };
-    const now = new Date().toISOString();
+  ): Promise<OperationRecord> {
+    const owner: ActiveLock = { id: crypto.randomUUID(), lockNonce: crypto.randomUUID(), kind };
+    const now = this.now();
     const record = OperationRecordSchema.parse({
       ...owner,
       ...initial,
@@ -413,16 +410,17 @@ export class OperationJournal {
       request,
     });
     const recoverableLock: ActiveLock = { ...owner, record };
-    let lockFd: number;
+    await this.holdSession();
     for (;;) {
       try {
-        lockFd = openSync(this.lockPath, "wx", 0o600);
+        await this.kv.create(LOCK_KEY, compactJsonBytes(recoverableLock));
         break;
       } catch (error) {
-        const fileError = error as NodeJS.ErrnoException;
-        if (fileError.code !== "EEXIST") throw error;
-        if (this.releaseRecoveredTerminalLock() || this.abortDeadReceiptRun()) continue;
-        const unresolved = this.unresolved();
+        if (!(error instanceof KeyExistsError)) throw error;
+        if ((await this.releaseRecoveredTerminalLock()) || (await this.abortDeadReceiptRun())) {
+          continue;
+        }
+        const unresolved = await this.unresolved();
         if (unresolved?.kind === "receipt") {
           throw new Error(
             `a receipt run (pid ${unresolved.request["pid"]} on ${unresolved.request["host"]}) holds the fund-movement lock; wait for it`,
@@ -431,49 +429,41 @@ export class OperationJournal {
         throw new Error(
           unresolved
             ? `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`
-            : `operation lock ${this.lockPath} exists without its exact readable terminal record; do not move funds until it is reconciled`,
+            : `operation lock ${this.describeKey(LOCK_KEY)} exists without its exact readable terminal record; do not move funds until it is reconciled`,
         );
       }
     }
-
-    try {
-      writeSync(lockFd, `${JSON.stringify(recoverableLock)}\n`);
-      fsyncSync(lockFd);
-    } finally {
-      closeSync(lockFd);
-    }
-    syncDirectory(this.directory);
-    this.afterInitialLockSynced(owner.id);
+    await this.afterInitialLockSynced(owner.id);
 
     let recordPublished = false;
     try {
-      const unresolved = this.unresolved();
+      const unresolved = await this.unresolved();
       if (unresolved) {
         throw new Error(
           `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile ${this.path(unresolved.id)} before moving funds again`,
         );
       }
-      writePrivateJson(this.path(owner.id), record);
+      await this.kv.put(recordKey(owner.id), prettyJsonBytes(record));
       recordPublished = true;
-      writePrivateJson(this.lockPath, owner);
+      await this.kv.put(LOCK_KEY, prettyJsonBytes(owner));
       return record;
     } catch (error) {
-      if (!recordPublished) this.releaseLock(owner);
+      if (!recordPublished) await this.releaseLock(owner);
       throw error;
     }
   }
 
-  update(
+  async update(
     id: string,
     patch: Partial<Omit<OperationRecord, "id" | "lockNonce" | "kind" | "createdAt">>,
-  ): OperationRecord {
-    const current = this.get(id);
+  ): Promise<OperationRecord> {
+    const current = await this.get(id);
     const owner: ActiveLock = {
       id: current.id,
       lockNonce: current.lockNonce,
       kind: current.kind,
     };
-    this.assertOwnsActiveLock(owner);
+    await this.assertOwnsActiveLock(owner);
     if (
       patch.status !== undefined &&
       patch.status !== current.status &&
@@ -486,15 +476,15 @@ export class OperationJournal {
     const next = OperationRecordSchema.parse({
       ...current,
       ...patch,
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.now(),
     });
-    writePrivateJson(this.path(id), next);
-    if (terminal(next.status)) this.releaseLock(owner);
+    await this.kv.put(recordKey(id), prettyJsonBytes(next));
+    if (terminal(next.status)) await this.releaseLock(owner);
     return next;
   }
 
-  failOrAbort(id: string, submissionBoundaryReached?: boolean): Error {
-    const current = this.get(id);
+  async failOrAbort(id: string, submissionBoundaryReached?: boolean): Promise<Error> {
+    const current = await this.get(id);
     if (terminal(current.status)) {
       return new Error(
         "operation reached a terminal journal state but lock release was interrupted; restart before moving funds",
@@ -509,7 +499,7 @@ export class OperationJournal {
     const message = abort
       ? "operation failed before Aztec node submission"
       : "operation outcome requires transaction reconciliation";
-    this.update(id, {
+    await this.update(id, {
       status: abort ? "aborted" : "in_doubt",
       txHash: abort ? undefined : current.txHash,
       error: message,
@@ -517,73 +507,122 @@ export class OperationJournal {
     return new Error(message);
   }
 
+  /** The record's name in messages (the CLI: its file path). */
   path(id: string): string {
-    return join(this.directory, `${id}.json`);
+    return this.describeKey(recordKey(id));
   }
 
-  private assertOwnsActiveLock(owner: ActiveLock): void {
-    const lock = readActiveLock(this.lockPath);
-    if (!sameOwner(lock, owner)) {
+  private now(): string {
+    return new Date(this.clock.nowMs()).toISOString();
+  }
+
+  private async readRecord(key: string): Promise<OperationRecord> {
+    try {
+      const bytes = await this.kv.get(key);
+      if (bytes === null) throw new Error("absent");
+      return OperationRecordSchema.parse(parseJsonBytes(bytes));
+    } catch {
       throw new Error(
-        `operation ${owner.id} does not exactly own ${this.lockPath}; keep fund movement blocked`,
+        `operation journal record ${this.describeKey(key)} is unreadable; keep fund movement blocked`,
       );
     }
   }
 
-  private recordForLock(lock: ActiveLock): OperationRecord {
-    const recordPath = this.path(lock.id);
+  private async readActiveLock(): Promise<ActiveLock> {
+    try {
+      const bytes = await this.kv.get(LOCK_KEY);
+      if (bytes === null) throw new Error("absent");
+      return ActiveLockSchema.parse(parseJsonBytes(bytes));
+    } catch {
+      throw new Error(
+        `operation lock ${this.describeKey(LOCK_KEY)} is unreadable; keep fund movement blocked`,
+      );
+    }
+  }
+
+  /** Takes this holder's lease once; a null answer means this pid is already held (alive). */
+  private async holdSession(): Promise<void> {
+    if (this.session !== undefined) return;
+    this.session = await this.locks.tryAcquire(holderLockName(this.lockName, this.holder.pid), {
+      id: String(this.holder.pid),
+      nonce: crypto.randomUUID(),
+      kind: "journal-holder",
+    });
+  }
+
+  /** True while the holder that recorded `pid` holds its holder lock. */
+  private async holderAlive(pid: number): Promise<boolean> {
+    const probe = await this.locks.tryAcquire(holderLockName(this.lockName, pid), {
+      id: String(pid),
+      nonce: crypto.randomUUID(),
+      kind: "liveness-probe",
+    });
+    if (probe === null) return true;
+    await probe.release();
+    return false;
+  }
+
+  private async assertOwnsActiveLock(owner: ActiveLock): Promise<void> {
+    const lock = await this.readActiveLock();
+    if (!sameOwner(lock, owner)) {
+      throw new Error(
+        `operation ${owner.id} does not exactly own ${this.describeKey(LOCK_KEY)}; keep fund movement blocked`,
+      );
+    }
+  }
+
+  private async recordForLock(lock: ActiveLock): Promise<OperationRecord> {
     let record: OperationRecord;
-    if (existsSync(recordPath)) {
-      record = this.get(lock.id);
+    if ((await this.kv.get(recordKey(lock.id))) !== null) {
+      record = await this.get(lock.id);
     } else {
       if (lock.record === undefined) {
         throw new Error(
-          `operation lock ${this.lockPath} has no recoverable record; keep fund movement blocked`,
+          `operation lock ${this.describeKey(LOCK_KEY)} has no recoverable record; keep fund movement blocked`,
         );
       }
       record = lock.record;
-      writePrivateJson(recordPath, record);
+      await this.kv.put(recordKey(lock.id), prettyJsonBytes(record));
     }
     if (record.id !== lock.id || record.lockNonce !== lock.lockNonce || record.kind !== lock.kind) {
       throw new Error(
-        `operation lock ${this.lockPath} does not own its exact record; keep fund movement blocked`,
+        `operation lock ${this.describeKey(LOCK_KEY)} does not own its exact record; keep fund movement blocked`,
       );
     }
     if (lock.record !== undefined) {
-      writePrivateJson(this.lockPath, {
-        id: lock.id,
-        lockNonce: lock.lockNonce,
-        kind: lock.kind,
-      });
+      await this.kv.put(
+        LOCK_KEY,
+        prettyJsonBytes({ id: lock.id, lockNonce: lock.lockNonce, kind: lock.kind }),
+      );
     }
     return record;
   }
 
-  /** Aborts the lock of a `receipt` run whose process is gone. */
-  private abortDeadReceiptRun(): boolean {
+  /** Aborts the lock of a `receipt` run whose holder is gone. */
+  private async abortDeadReceiptRun(): Promise<boolean> {
     let record: OperationRecord;
     try {
-      record = this.recordForLock(readActiveLock(this.lockPath));
+      record = await this.recordForLock(await this.readActiveLock());
     } catch {
       return false;
     }
     if (record.kind !== "receipt" || record.status !== "building") return false;
-    if (processAlive(Number(record.request["pid"]))) return false;
-    this.update(record.id, { status: "aborted" });
+    if (await this.holderAlive(Number(record.request["pid"]))) return false;
+    await this.update(record.id, { status: "aborted" });
     return true;
   }
 
-  private releaseRecoveredTerminalLock(): boolean {
+  private async releaseRecoveredTerminalLock(): Promise<boolean> {
     let lock: ActiveLock;
     try {
-      lock = readActiveLock(this.lockPath);
+      lock = await this.readActiveLock();
     } catch {
       return false;
     }
 
     let record: OperationRecord;
     try {
-      record = this.recordForLock(lock);
+      record = await this.recordForLock(lock);
     } catch {
       return false;
     }
@@ -591,81 +630,67 @@ export class OperationJournal {
       return false;
     }
     try {
-      if (this.records().some((candidate) => !terminal(candidate.status))) return false;
+      if ((await this.records()).some((candidate) => !terminal(candidate.status))) return false;
     } catch {
       return false;
     }
 
-    this.releaseLock(lock);
+    await this.releaseLock(lock);
     return true;
   }
 
-  private releaseLock(owner: ActiveLock): void {
-    this.assertOwnsActiveLock(owner);
+  private async releaseLock(owner: ActiveLock): Promise<void> {
+    await this.assertOwnsActiveLock(owner);
+    await this.holdSession();
 
-    // Every release path atomically links a complete, durable claim into an append-only chain.
-    // A dead claimant is superseded at the next deterministic path. Claims are never removed or
-    // replaced, so concurrent recoverers cannot unlink a replacement operation's lock.
-    let claimPath = join(this.directory, `released-${owner.id}-${owner.lockNonce}.lock`);
+    // Every release path atomically creates a complete, durable claim in an append-only chain.
+    // A dead claimant is superseded at the next deterministic key. Claims are never removed or
+    // replaced, so concurrent recoverers cannot remove a replacement operation's lock.
+    let claimKey = `${DIRECTORY}released-${owner.id}-${owner.lockNonce}.lock`;
     const visitedClaims = new Set<string>();
     for (;;) {
-      if (visitedClaims.has(claimPath)) {
+      if (visitedClaims.has(claimKey)) {
         throw new Error(`operation ${owner.id} lock release claim chain contains a cycle`);
       }
-      visitedClaims.add(claimPath);
+      visitedClaims.add(claimKey);
 
-      const nonce = randomUUID();
-      const candidatePath = join(
-        this.directory,
-        `release-${owner.id}-${owner.lockNonce}-${nonce}.claimant`,
-      );
       const candidate: ReleaseClaim = {
         id: owner.id,
         lockNonce: owner.lockNonce,
-        pid: process.pid,
-        nonce,
+        pid: this.holder.pid,
+        nonce: crypto.randomUUID(),
       };
-      writePrivateJson(candidatePath, candidate);
-
-      let claimed = false;
       try {
-        linkSync(candidatePath, claimPath);
-        claimed = true;
+        await this.kv.create(claimKey, prettyJsonBytes(candidate));
+        break;
       } catch (error) {
-        const fileError = error as NodeJS.ErrnoException;
-        if (fileError.code !== "EEXIST") throw error;
-      } finally {
-        try {
-          unlinkSync(candidatePath);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        }
-        syncDirectory(this.directory);
+        if (!(error instanceof KeyExistsError)) throw error;
       }
-      if (claimed) break;
 
       let claim: ReleaseClaim;
       try {
-        claim = ReleaseClaimSchema.parse(readJson(claimPath));
+        const bytes = await this.kv.get(claimKey);
+        if (bytes === null) throw new Error("absent");
+        claim = ReleaseClaimSchema.parse(parseJsonBytes(bytes));
       } catch {
         throw new Error(
-          `operation ${owner.id} lock release claim is unreadable; ${this.lockPath} remains held`,
+          `operation ${owner.id} lock release claim is unreadable; ${this.describeKey(LOCK_KEY)} remains held`,
         );
       }
-      if (claim.id !== owner.id || claim.lockNonce !== owner.lockNonce || processAlive(claim.pid)) {
+      if (
+        claim.id !== owner.id ||
+        claim.lockNonce !== owner.lockNonce ||
+        (await this.holderAlive(claim.pid))
+      ) {
         throw new Error(
-          `operation ${owner.id} lock release is already claimed; ${this.lockPath} remains held`,
+          `operation ${owner.id} lock release is already claimed; ${this.describeKey(LOCK_KEY)} remains held`,
         );
       }
-      claimPath = join(
-        this.directory,
-        `released-${owner.id}-${owner.lockNonce}-${claim.nonce}.lock`,
-      );
+      claimKey = `${DIRECTORY}released-${owner.id}-${owner.lockNonce}-${claim.nonce}.lock`;
     }
 
-    this.afterReleaseClaimed(owner.id);
-    this.assertOwnsActiveLock(owner);
-    unlinkSync(this.lockPath);
-    syncDirectory(this.directory);
+    await this.afterReleaseClaimed(owner.id);
+    await this.assertOwnsActiveLock(owner);
+    await this.kv.delete(LOCK_KEY);
   }
 }
