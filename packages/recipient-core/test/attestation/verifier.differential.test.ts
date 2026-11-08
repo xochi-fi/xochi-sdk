@@ -564,6 +564,25 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
     }
   });
 
+  it("refuses a document over 64 KiB, which the vendored verifier parses", async () => {
+    const chain = await syntheticChain();
+    const withUserData = async (size: number) => ({
+      attestationDocument: await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: [der(chain.root)],
+        timestamp: SYNTHETIC_TIMESTAMP,
+        userData: new Uint8Array(size).fill(7),
+      }),
+      trustedRootCertificates: [der(chain.root)],
+    });
+    await expectBothAccept(await withUserData(60_000));
+    const oversized = await withUserData(70_000);
+    await expectPortStricter(
+      oversized,
+      `Nitro attestation document must be at most 65536 bytes, got ${oversized.attestationDocument.length}`,
+    );
+  });
+
   // The vendored verifier: new Date(Number(timestamp)) is an Invalid Date past 8.64e15 ms (or
   // for now = new Date(NaN)), and NaN comparisons make every certificate "valid". The port
   // refuses an invalid validation time.
@@ -731,18 +750,38 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
       }
     });
 
-    it(
-      "refuses, in linear time, many BEGIN lines without an END line",
-      { timeout: 5_000 },
-      async () => {
-        const chain = await syntheticChain();
-        const { node, port } = await differential(
-          await withRoot(chain, "-----BEGIN CERTIFICATE-----\n".repeat(50_000)),
-        );
-        expect(node.ok).toBe(false);
-        expect(port).toEqual({ ok: false, message: "PEM CERTIFICATE block has no END line" });
-      },
-    );
+    it("refuses many BEGIN lines without an END line", async () => {
+      const chain = await syntheticChain();
+      const { node, port } = await differential(
+        await withRoot(chain, "-----BEGIN CERTIFICATE-----\n".repeat(500)),
+      );
+      expect(node.ok).toBe(false);
+      expect(port).toEqual({ ok: false, message: "PEM CERTIFICATE block has no END line" });
+    });
+
+    it("refuses certificate bytes over 16 KiB before reading them, which Node reads", async () => {
+      const chain = await syntheticChain();
+      const padded = `${"comment line\n".repeat(1_300)}${pemOf(chain)}`;
+      expect(padded.length).toBeGreaterThan(16_384);
+      await expectPortStricter(
+        await withRoot(chain, padded),
+        `X.509 certificate must be at most 16384 bytes, got ${padded.length}`,
+      );
+      await expectBothAccept(
+        await withRoot(chain, `${"comment line\n".repeat(1_000)}${pemOf(chain)}`),
+      );
+    });
+
+    it("refuses 50,000 BEGIN lines quickly", { timeout: 5_000 }, async () => {
+      const chain = await syntheticChain();
+      const text = "-----BEGIN CERTIFICATE-----\n".repeat(50_000);
+      const { node, port } = await differential(await withRoot(chain, text));
+      expect(node.ok).toBe(false);
+      expect(port).toEqual({
+        ok: false,
+        message: `X.509 certificate must be at most 16384 bytes, got ${text.length}`,
+      });
+    });
   });
 
   describe("forged chains against the real AWS Nitro root", () => {

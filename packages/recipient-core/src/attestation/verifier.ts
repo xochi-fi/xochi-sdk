@@ -23,6 +23,9 @@
 //   bundles hold 4-5; the issuer search is quadratic in the bundle size).
 // - A validation time that is not a valid date (a timestamp beyond 8.64e15 ms, a NaN `now` or
 //   clock) is refused; the vendored verifier's NaN comparisons then pass every validity check.
+// - Size caps, checked before any parsing: an attestation document over MAX_DOCUMENT_BYTES
+//   (real ones are 4-5 KiB) and any certificate input (leaf, bundle entry, trusted root, DER or
+//   PEM text) over MAX_CERTIFICATE_BYTES (Nitro certificates are under 1 KiB) are refused.
 // Rejection messages that differ in text only: the subject in "could not find issuer ..."
 // (RFC 4514 here, OpenSSL's one-per-line form there) and certificate-encoding errors (OpenSSL's
 // "PEM routines::..." there).
@@ -45,6 +48,8 @@ import {
 } from "./parsers.js";
 
 const MAX_CA_BUNDLE = 16;
+const MAX_DOCUMENT_BYTES = 64 * 1024;
+const MAX_CERTIFICATE_BYTES = 16 * 1024;
 
 export class WebCryptoAttestationVerifier implements AttestationVerifier {
   private readonly subtle: SubtleCrypto;
@@ -73,6 +78,11 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
   async verifyNitroAttestation(input: NitroAttestationInput): Promise<ParsedNitroAttestation> {
     if (input.trustedRootCertificates.length === 0) {
       throw new Error("at least one trusted root is required");
+    }
+    if (input.attestationDocument.length > MAX_DOCUMENT_BYTES) {
+      throw new Error(
+        `Nitro attestation document must be at most ${MAX_DOCUMENT_BYTES} bytes, got ${input.attestationDocument.length}`,
+      );
     }
     const { protectedHeaders, payloadBytes, signature } = parseCoseSign1(input.attestationDocument);
     const parsed = parseNitroPayload(payloadBytes);
@@ -341,6 +351,11 @@ function pemCertificateBase64(text: string): string | null {
  * decided here and the library only ever sees DER.
  */
 function parseCertificate(bytes: Uint8Array): X509Certificate {
+  if (bytes.length > MAX_CERTIFICATE_BYTES) {
+    throw new Error(
+      `X.509 certificate must be at most ${MAX_CERTIFICATE_BYTES} bytes, got ${bytes.length}`,
+    );
+  }
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   const base64 = pemCertificateBase64(text);
   if (base64 !== null) {
