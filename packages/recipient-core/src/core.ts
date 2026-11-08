@@ -10,7 +10,7 @@ import { keccak256 } from "viem";
 
 import { deriveRecipientAccount, type RecipientAccount } from "./account.js";
 import { HttpEnrollmentApi, type BindingProjection } from "./api.js";
-import { ExitJournal, openBackup, type BackupContents } from "./backup.js";
+import { ExitJournal, openBackup, type BackupContents, type ExitJournalRecord } from "./backup.js";
 import {
   BACKUP_FORMAT_PASSKEY_V1_ID,
   signerSignsPasskeyBackup,
@@ -25,6 +25,7 @@ import {
   type FeeJuiceClaim,
   type LiveAztecOptions,
   type ReceivedTransfer,
+  withdrawalsWithOperationIds,
 } from "./chain.js";
 import {
   checkNetwork,
@@ -51,6 +52,7 @@ import {
   RESTORE_MARKER_KEY,
   isTerminalStatus,
   operationsLockName,
+  type OperationRecord,
 } from "./operation-journal.js";
 import { validateTokenArtifact } from "./oxide-token.js";
 import {
@@ -67,6 +69,7 @@ import {
   type RecipientKeySource,
 } from "./ports.js";
 import { ReceiptJournal, type ReceiptRecord } from "./receipt.js";
+import { durablyIncluded } from "./reconciliation.js";
 import { StateSchema, StateStore, type State } from "./state.js";
 import type { WalletStorage } from "./wallet-storage.js";
 
@@ -122,6 +125,8 @@ export interface RecipientCore {
   ): Promise<ReceiptRecord>;
   /** Posts the recorded receipt byte for byte; signs again only after an outright rejection. */
   submitReceipt(intentId: string): Promise<ReceiptRecord>;
+  /** The receipt journal's record of `intentId`; null before its first `signReceipt`. */
+  receipt(intentId: string): Promise<ReceiptRecord | null>;
   deploy(claim: FeeJuiceClaim | null): Promise<{ txHash: string }>;
   /** `typedData` is what the source wallet signs (`signTypedData`). */
   enrollStart(sourceWallet: string): Promise<PendingEnrollment>;
@@ -138,6 +143,17 @@ export interface RecipientCore {
   enrollStatus(bindingId: string): Promise<BindingProjection>;
   send(to: string, amount: bigint, fee: FeeJuiceClaim | null): Promise<{ txHash: string }>;
   exit(request: CoreExitRequest): Promise<ExitResult>;
+  /** The operation journal, oldest first (the CLI's `operations`). */
+  operations(): Promise<OperationRecord[]>;
+  /**
+   * The CLI's `operations reconcile` for the operation holding the fund-movement lock; null when
+   * none does. A spend or exit with a tx hash completes once its receipt is durably included (an
+   * exit also journals its exit record and each withdrawal's L1 operation id) and is answered
+   * unchanged before. A `building` receipt run, spend or exit is aborted once its recorded holder
+   * is gone (a hashless spend or exit never reached the node; the CLI refuses it) and answered
+   * unchanged while that holder lives. An L1 refund is refused.
+   */
+  reconcile(): Promise<OperationRecord | null>;
   close(): Promise<void>;
 }
 
@@ -339,6 +355,10 @@ class Core implements RecipientCore {
     );
   }
 
+  receipt(intentId: string): Promise<ReceiptRecord | null> {
+    return this.#journals.receipts.read(intentId);
+  }
+
   async #receiptRequest(
     intentId: string,
     opts: { tx?: string; alreadySpent?: boolean },
@@ -493,6 +513,57 @@ class Core implements RecipientCore {
     });
     await this.#journals.exits.record(result);
     return result;
+  }
+
+  operations(): Promise<OperationRecord[]> {
+    return this.#journals.operations.records();
+  }
+
+  async reconcile(): Promise<OperationRecord | null> {
+    const journal = this.#journals.operations;
+    const operation = await journal.activeUnresolved();
+    if (operation === null) return null;
+    if (operation.kind !== "receipt" && operation.kind !== "spend" && operation.kind !== "exit") {
+      throw new Error(
+        `operation ${operation.id} is an L1 refund (${operation.kind}); reconcile it with the recipient CLI's refund reconcile`,
+      );
+    }
+    const { txHash } = operation;
+    // Hashless means `building`: the hash is durable before `sendTx`, so nothing reached the node.
+    if (txHash === undefined) return (await journal.abortAbandonedRun(operation.id)) ?? operation;
+    const receipt = await this.#port.txReceipt(txHash);
+    if (!durablyIncluded(receipt.status)) return operation;
+    if (operation.kind !== "exit") {
+      return journal.update(operation.id, { status: "complete", receiptStatus: receipt.status });
+    }
+    const withdrawals = withdrawalsWithOperationIds(
+      this.#deps.corridor,
+      operation.withdrawals ?? [],
+      txHash,
+    );
+    await this.#recordExit({
+      txHash,
+      executorFee: operation.request["executorFee"] ?? null,
+      recipientAmount: operation.request["recipientAmount"] ?? null,
+      withdrawals: withdrawals.map(({ withdrawalIndex, operationId, finalizationData }) => ({
+        txHash,
+        withdrawalIndex,
+        operationId,
+        finalizationData,
+      })),
+    });
+    return journal.update(operation.id, {
+      status: "complete",
+      receiptStatus: receipt.status,
+      withdrawals,
+    });
+  }
+
+  /** Journals an exit record unless an interrupted reconcile already did. */
+  async #recordExit(record: ExitJournalRecord): Promise<void> {
+    const exits = this.#journals.exits;
+    if ((await exits.records()).some((recorded) => recorded.txHash === record.txHash)) return;
+    await exits.record(record);
   }
 
   async close(): Promise<void> {

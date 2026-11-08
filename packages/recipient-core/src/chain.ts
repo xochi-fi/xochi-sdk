@@ -17,6 +17,8 @@ import type { ContractArtifact } from "@aztec-labs/stdlib/abi";
 import { getContractClassFromArtifact } from "@aztec-labs/stdlib/contract";
 import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
 import { bytesToHex } from "@noble/hashes/utils";
+// The vendored finalization-data codec reads a Buffer; Aztec takes it from the `buffer` package.
+import { Buffer } from "buffer";
 import { createPublicClient, http, parseAbi, type Hex } from "viem";
 import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 
@@ -56,7 +58,14 @@ import {
   tokenImmutablesAbiArg,
   type OxideTokenImmutables,
 } from "./oxide/vendor/oxide-lib/token_immutables.js";
-import { encodeFinalizationData } from "./oxide/vendor/oxide-lib/withdrawal_finalization_data.js";
+import {
+  computeL1OperationId,
+  L1OperationCondition,
+} from "./oxide/vendor/oxide-lib/l1_operation_calldata.js";
+import {
+  decodeFinalizationData,
+  encodeFinalizationData,
+} from "./oxide/vendor/oxide-lib/withdrawal_finalization_data.js";
 
 /** A Fee Juice claim bridged from L1 to the recipient account, supplied by Xochi (sponsored). */
 export interface FeeJuiceClaim {
@@ -261,15 +270,65 @@ function feeJuiceClaimPayment(
 }
 
 /**
+ * The L1 operation id of an exit withdrawal's broadcast finalization request: the operation
+ * `buildFinalizationRequestOperation` builds (portal target, payout token, the encoded
+ * finalization data as calldata, message-in-outbox condition) for the exit transaction `txHash`.
+ */
+export function finalizationRequestOperationId(
+  corridor: Corridor,
+  finalizationData: string,
+  txHash: string,
+): string {
+  const decoded = decodeFinalizationData(Buffer.from(finalizationData.slice(2), "hex"));
+  return computeL1OperationId(
+    {
+      target: EthAddress.fromString(corridor.token.immutables.portal),
+      payoutToken: EthAddress.fromString(corridor.oxide.payoutToken),
+      calldata: encodeFinalizationData(decoded),
+      condition: L1OperationCondition.messageInOutbox(),
+    },
+    TxHash.fromString(txHash),
+  );
+}
+
+type JournaledWithdrawal = NonNullable<OperationRecord["withdrawals"]>[number];
+
+/** An exit's journaled withdrawals, each naming its L1 operation id (derived where absent). */
+export function withdrawalsWithOperationIds(
+  corridor: Corridor,
+  withdrawals: readonly JournaledWithdrawal[],
+  txHash: string,
+): (JournaledWithdrawal & { operationId: string | null })[] {
+  return withdrawals.map((withdrawal) => ({
+    ...withdrawal,
+    operationId:
+      withdrawal.operationId === undefined
+        ? finalizationRequestOperationId(corridor, withdrawal.finalizationData, txHash)
+        : withdrawal.operationId,
+  }));
+}
+
+/**
  * The `NodeSubmission` hook spend and exit run before `sendTx`: the operation's record names the
- * transaction hash and is durable (the `update` resolved) before the node can receive it.
+ * transaction hash and is durable (the `update` resolved) before the node can receive it. An
+ * exit's record also names each prepared withdrawal's L1 operation id (it needs the hash), so a
+ * crash after the broadcast keeps it.
  */
 export function recordBroadcastBeforeSend(
   journal: OperationJournal,
   operationId: string,
+  corridor: Corridor,
 ): (txHash: TxHash) => Promise<void> {
   return async (txHash) => {
-    await journal.update(operationId, { status: "broadcast", txHash: txHash.toString() });
+    const hash = txHash.toString();
+    const { kind, withdrawals } = await journal.get(operationId);
+    await journal.update(operationId, {
+      status: "broadcast",
+      txHash: hash,
+      ...(kind === "exit" && withdrawals
+        ? { withdrawals: withdrawalsWithOperationIds(corridor, withdrawals, hash) }
+        : {}),
+    });
   };
 }
 
@@ -573,7 +632,7 @@ export class LiveAztec implements AztecPort {
         });
 
       return await this.nodeSubmission.run(
-        recordBroadcastBeforeSend(this.operationJournal, operation.id),
+        recordBroadcastBeforeSend(this.operationJournal, operation.id, this.corridor),
         submitOperation,
         diagnosticState,
       );

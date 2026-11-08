@@ -3,13 +3,16 @@
 
 import { inspect } from "node:util";
 
-import { TxStatus } from "@aztec-labs/stdlib/tx";
+import { Fr } from "@aztec-labs/aztec.js/fields";
+import { EthAddress } from "@aztec-labs/foundation/eth-address";
+import { TxHash, TxStatus } from "@aztec-labs/stdlib/tx";
 import { keccak256, toHex } from "viem";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { deriveRecipientAccount, type RecipientAccount } from "../src/account.js";
 import { BACKUP_FORMAT_PASSKEY_V1_ID } from "../src/backup-mode.js";
-import { backupContents, sealBackup, type BackupContents } from "../src/backup.js";
+import { ExitJournal, backupContents, sealBackup, type BackupContents } from "../src/backup.js";
+import { recordBroadcastBeforeSend } from "../src/chain.js";
 import { OXDAI_MAINNET_REV2, type Corridor } from "../src/corridor.js";
 import {
   openRecipientCore,
@@ -24,6 +27,13 @@ import {
   operationsLockName,
   type OperationRecord,
 } from "../src/operation-journal.js";
+import type { L1OperationBroadcaster } from "../src/oxide/vendor/oxide-client/broadcaster_calls.js";
+import { buildFinalizationRequestOperation } from "../src/oxide/vendor/oxide-client/withdrawal_finalization_request.js";
+import { computeL1OperationId } from "../src/oxide/vendor/oxide-lib/l1_operation_calldata.js";
+import {
+  decodeFinalizationData,
+  encodeFinalizationData,
+} from "../src/oxide/vendor/oxide-lib/withdrawal_finalization_data.js";
 import type { KeystoreCrypto, RecipientKeySource } from "../src/ports.js";
 import { StateStore } from "../src/state.js";
 import { FixedClock, MemoryKeyValueStore, MemoryLockManager } from "./support/memory.js";
@@ -339,7 +349,9 @@ describe("receipts", () => {
     h.xochi.receiptChallenge = challengeFor(corridor, account, digest, terms);
     h.node.payouts = [payoutFor(corridor, account, terms)];
 
+    expect(await core.receipt(INTENT)).toBeNull();
     const signed = await core.signReceipt(INTENT);
+    expect(await core.receipt(INTENT)).toEqual(signed);
     expect(signed).toMatchObject({ intentId: INTENT, status: "submitting", txHash: hex("a7") });
     expect(h.kv.durableJson(`receipts/${INTENT}.json`)).toMatchObject({ status: "submitting" });
     expect(h.xochi.posts()).not.toContain(`/api/shielded/operations/${INTENT}/receipt`);
@@ -348,6 +360,242 @@ describe("receipts", () => {
     expect(submitted).toMatchObject({ intentId: INTENT, status: "submitted", txHash: hex("a7") });
     expect(h.xochi.posts().filter((path) => path.endsWith(`${INTENT}/receipt`))).toHaveLength(1);
     expect(h.kv.durableJson(`receipts/${INTENT}.json`)).toMatchObject({ status: "submitted" });
+    expect(await core.receipt(INTENT)).toEqual(submitted);
+    await core.close();
+  });
+});
+
+describe("operations and reconcile", () => {
+  const TX = hex("1e");
+  const EXIT_REQUEST = { amount: "100", executorFee: "10", recipientAmount: "85" };
+
+  /** Another session over this profile's journal: a tab that crashed or reloaded once closed. */
+  function otherSession(h: Harness, pid = 4242): OperationJournal {
+    return new OperationJournal({
+      kv: h.kv,
+      locks: h.locks,
+      clock: new FixedClock(NOW * 1000),
+      lockName: operationsLockName(account.descriptor.aztecAddress),
+      holder: { pid, host: "TEST ONLY other tab" },
+    });
+  }
+
+  /** A withdrawal's finalization data as `onPreparedWithdrawals` journals it. */
+  function finalizationData(): string {
+    const data = encodeFinalizationData({
+      executor: EthAddress.fromString(corridor.oxide.plainWithdrawalExecutor),
+      amount: 100n,
+      proverTip: 1n,
+      randomness: new Fr(7n),
+      withdrawalSignature: { sLo: new Fr(1n), sHi: new Fr(2n), rLo: new Fr(3n), rHi: new Fr(4n) },
+      userPayload: Buffer.alloc(0),
+    });
+    return `0x${data.toString("hex")}`;
+  }
+
+  /** The L1 operation id of the withdrawal's broadcast finalization request, by Oxide's builder. */
+  function operationIdOf(data: string, txHash: string): string {
+    const operation = buildFinalizationRequestOperation(
+      {
+        broadcaster: {} as L1OperationBroadcaster,
+        portal: EthAddress.fromString(corridor.token.immutables.portal),
+        payoutToken: EthAddress.fromString(corridor.oxide.payoutToken),
+      },
+      decodeFinalizationData(Buffer.from(data.slice(2), "hex")),
+    );
+    return computeL1OperationId(operation, TxHash.fromString(txHash));
+  }
+
+  /** An exit another session prepared: its withdrawals journaled, not yet sent. */
+  async function preparedExit(journal: OperationJournal): Promise<OperationRecord> {
+    const operation = await journal.begin("exit", EXIT_REQUEST);
+    return journal.update(operation.id, {
+      withdrawals: [{ withdrawalIndex: 0, finalizationData: finalizationData() }],
+    });
+  }
+
+  it("lists the journal and reconciles nothing while no operation holds the lock", async () => {
+    const h = harness();
+    const core = await h.open();
+    expect(await core.operations()).toEqual([]);
+    expect(await core.reconcile()).toBeNull();
+
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    expect(await core.operations()).toEqual([spend]);
+    await core.close();
+  });
+
+  it("names each exit withdrawal's L1 operation id in the broadcast record before the node receives it", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const exit = await preparedExit(other);
+
+    await recordBroadcastBeforeSend(other, exit.id, corridor)(TxHash.fromString(TX));
+
+    const data = finalizationData();
+    expect(await other.get(exit.id)).toMatchObject({
+      status: "broadcast",
+      txHash: TX,
+      withdrawals: [
+        { withdrawalIndex: 0, finalizationData: data, operationId: operationIdOf(data, TX) },
+      ],
+    });
+    await core.close();
+  });
+
+  it("completes a broadcast exit only once durably included, journaling its exit record", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const prepared = await preparedExit(other);
+    // Written before the broadcast record named operation ids: reconcile derives them.
+    const broadcast = await other.update(prepared.id, { status: "broadcast", txHash: TX });
+    await other.close();
+
+    h.node.receipts[TX] = { status: TxStatus.PROPOSED, blockNumber: 9, executionSucceeded: true };
+    expect(await core.reconcile()).toEqual(broadcast);
+    expect(await new ExitJournal(h.kv).records()).toEqual([]);
+
+    h.node.receipts[TX] = { status: TxStatus.FINALIZED, blockNumber: 9, executionSucceeded: true };
+    const data = finalizationData();
+    const operationId = operationIdOf(data, TX);
+    expect(await core.reconcile()).toMatchObject({
+      id: prepared.id,
+      status: "complete",
+      receiptStatus: "finalized",
+      withdrawals: [{ withdrawalIndex: 0, finalizationData: data, operationId }],
+    });
+    expect(await new ExitJournal(h.kv).records()).toEqual([
+      {
+        txHash: TX,
+        executorFee: "10",
+        recipientAmount: "85",
+        withdrawals: [{ txHash: TX, withdrawalIndex: 0, operationId, finalizationData: data }],
+      },
+    ]);
+    expect(await core.reconcile()).toBeNull();
+    await core.close();
+  });
+
+  it("completes an exit whose reconcile stopped after journaling its exit record", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const prepared = await preparedExit(other);
+    await recordBroadcastBeforeSend(other, prepared.id, corridor)(TxHash.fromString(TX));
+    const data = finalizationData();
+    const entry = {
+      txHash: TX,
+      executorFee: "10",
+      recipientAmount: "85",
+      withdrawals: [
+        {
+          txHash: TX,
+          withdrawalIndex: 0,
+          operationId: operationIdOf(data, TX),
+          finalizationData: data,
+        },
+      ],
+    };
+    await new ExitJournal(h.kv).record(entry);
+
+    expect(await core.reconcile()).toMatchObject({
+      status: "complete",
+      receiptStatus: "finalized",
+    });
+    expect(await new ExitJournal(h.kv).records()).toEqual([entry]);
+    await core.close();
+  });
+
+  it("completes a broadcast spend from its durable receipt without an exit record", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    await other.update(spend.id, { status: "broadcast", txHash: TX });
+    h.node.receipts[TX] = { status: TxStatus.PROVEN, blockNumber: 9, executionSucceeded: true };
+
+    expect(await core.reconcile()).toMatchObject({
+      id: spend.id,
+      status: "complete",
+      txHash: TX,
+      receiptStatus: "proven",
+    });
+    expect(await new ExitJournal(h.kv).records()).toEqual([]);
+    await core.close();
+  });
+
+  it("releases a receipt run's lock once its holder is gone, not before", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const run = await other.beginReceipt(INTENT);
+
+    expect(await core.reconcile()).toEqual(run);
+    await other.close();
+    expect(await core.reconcile()).toMatchObject({ id: run.id, status: "aborted" });
+    expect(await core.reconcile()).toBeNull();
+    await core.close();
+  });
+
+  it("aborts a hashless spend once its holder is gone (it never reached the node); begin works again", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    expect(spend.request).toEqual({ amount: "1", pid: "4242", host: "TEST ONLY other tab" });
+
+    expect(await core.reconcile()).toEqual(spend);
+    await other.close();
+    const aborted = await core.reconcile();
+    expect(aborted).toMatchObject({ id: spend.id, status: "aborted" });
+    expect(aborted?.txHash).toBeUndefined();
+
+    const next = otherSession(h, 5151);
+    expect(await next.begin("spend", { amount: "2" })).toMatchObject({ status: "building" });
+    await next.close();
+    await core.close();
+  });
+
+  it("keeps a hashless spend whose record names no holder", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    const unnamed = await other.update(spend.id, { request: { amount: "1" } });
+    await other.close();
+
+    expect(await core.reconcile()).toEqual(unnamed);
+    await core.close();
+  });
+
+  it("aborts a hashless exit of a gone holder, keeping its prepared withdrawals in its record", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const prepared = await preparedExit(other);
+    await other.close();
+
+    expect(await core.reconcile()).toMatchObject({
+      id: prepared.id,
+      status: "aborted",
+      withdrawals: [{ withdrawalIndex: 0, finalizationData: finalizationData() }],
+    });
+    expect(await new ExitJournal(h.kv).records()).toEqual([]);
+    await core.close();
+  });
+
+  it("refuses an L1 refund operation", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const refund = await other.beginBroadcast("refund-frozen-notes", {}, TX);
+
+    await expect(core.reconcile()).rejects.toThrow(
+      `operation ${refund.id} is an L1 refund (refund-frozen-notes); reconcile it with the recipient CLI's refund reconcile`,
+    );
     await core.close();
   });
 });

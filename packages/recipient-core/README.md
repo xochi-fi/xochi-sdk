@@ -67,10 +67,20 @@ connecting fails). Its optional second argument replaces `LiveAztec.connect` (te
 serialised core shows only `account` (address, instance, descriptor). `RecipientCore` then offers
 `sync`, `balance`, `payouts`, `accountState`, `signReceipt` (the CLI's `receipt` up to the POST,
 journaled `submitting`), `submitReceipt` (the POST, resent byte for byte; re-signed only after an
-outright rejection), `deploy`, `enrollStart` / `enrollSubmit` / `enrollStatus`, `send`, `exit` and
-`close`. `enrollSubmit` takes the sealed-file or passkey backup mode (`backup-mode.ts`); it refuses
-the passkey mode unless `deps.keys.kind` is `"passkey"`, and while the resolved `@xochi/signer`
-is older than 0.8.0 (0.7.0 cannot sign the passkey format), both before any request.
+outright rejection), `receipt(intentId)` (the receipt journal's record), `deploy`, `enrollStart` /
+`enrollSubmit` / `enrollStatus`, `send`, `exit`, `operations` (the operation journal),
+`reconcile` and `close`. `enrollSubmit` takes the sealed-file or passkey backup mode
+(`backup-mode.ts`); it refuses the passkey mode unless `deps.keys.kind` is `"passkey"`, and while
+the resolved `@xochi/signer` is older than 0.8.0 (0.7.0 cannot sign the passkey format), both
+before any request.
+
+`reconcile()` is the CLI's `operations reconcile` for the operation holding the fund-movement lock
+(null when none does). A spend or exit with a tx hash completes once its receipt is durably
+included (an exit also journals `exits/<txHash>.json` and each withdrawal's L1 operation id) and is
+answered unchanged until then. A `building` receipt run, spend or exit is aborted once the holder
+its record names is gone (a reloaded tab) and answered unchanged while that holder lives: the tx
+hash is durable before `sendTx`, so a hashless spend or exit never reached the node. The CLI still
+refuses a hashless spend or exit. An L1 refund is refused.
 
 `importCliBackup(sealed, passphrase, crypto)` opens a CLI backup; `restoreJournals(core, backup,
 sealed)` restores its journals and binding into an open core of the same account and corridor

@@ -3,6 +3,7 @@ import { TxHash, type Tx } from "@aztec-labs/stdlib/tx";
 import { describe, expect, it } from "vitest";
 
 import { recordBroadcastBeforeSend } from "../src/chain.js";
+import { OXDAI_MAINNET_REV2 } from "../src/corridor.js";
 import { NodeSubmission } from "../src/node-submission.js";
 import {
   OperationJournal,
@@ -77,7 +78,7 @@ describe("operation journal over the storage and lock ports", () => {
     const seen = await submitSeeingDurable(
       kv,
       operation.id,
-      recordBroadcastBeforeSend(journal, operation.id),
+      recordBroadcastBeforeSend(journal, operation.id, OXDAI_MAINNET_REV2),
     );
 
     expect(seen).toEqual([

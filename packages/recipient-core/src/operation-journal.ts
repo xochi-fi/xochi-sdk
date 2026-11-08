@@ -342,8 +342,21 @@ export class OperationJournal {
     }
   }
 
+  /**
+   * Starts a `building` operation. Its request records this holder (`pid`, `host`) unless the
+   * caller names one (`beginReceipt`), so a successor can tell an abandoned run from a live one
+   * (`abortAbandonedRun`).
+   */
   begin(kind: OperationRecord["kind"], request: Record<string, string>): Promise<OperationRecord> {
-    return this.beginWithState(kind, request, { status: "building" });
+    return this.beginWithState(
+      kind,
+      {
+        ...request,
+        pid: request["pid"] ?? String(this.holder.pid),
+        host: request["host"] ?? this.holder.host,
+      },
+      { status: "building" },
+    );
   }
 
   /**
@@ -385,6 +398,27 @@ export class OperationJournal {
       );
     }
     await this.update(id, { status: "aborted" });
+  }
+
+  /**
+   * Aborts an unfinished `building` run whose recorded holder is gone: a `receipt` run (it moved
+   * no funds) or a spend or exit that never reached the Aztec node. A spend's or exit's tx hash is
+   * durable in its record before the node can receive the transaction (`recordBroadcastBeforeSend`
+   * runs before `sendTx`), so a `building` record, which names no hash, was never sent; a gone
+   * holder can no longer send it. An exit's prepared withdrawals stay in its record. Answers null,
+   * changing nothing, while the holder is alive or when the record names none (a spend or exit
+   * begun before `begin` recorded its holder).
+   */
+  async abortAbandonedRun(id: string): Promise<OperationRecord | null> {
+    const record = await this.get(id);
+    const abandonable =
+      record.kind === "receipt" || record.kind === "spend" || record.kind === "exit";
+    if (!abandonable || record.status !== "building") {
+      throw new Error(`operation ${id} is not an unfinished receipt run, spend or exit`);
+    }
+    const pid = record.request["pid"];
+    if (pid === undefined || (await this.holderAlive(Number(pid)))) return null;
+    return this.update(id, { status: "aborted" });
   }
 
   /**
