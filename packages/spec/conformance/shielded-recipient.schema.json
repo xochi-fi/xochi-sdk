@@ -1734,6 +1734,7 @@
               "secret",
               "salt",
               "wrapKey",
+              "pxeStoreKey",
               "account"
             ],
             "additionalProperties": false,
@@ -1767,7 +1768,8 @@
                 "required": [
                   "accountSecret",
                   "accountSalt",
-                  "wrapKey"
+                  "wrapKey",
+                  "pxeStoreKey"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -1782,6 +1784,10 @@
                   "wrapKey": {
                     "type": "string",
                     "pattern": "^0x[0-9a-f]{64}$"
+                  },
+                  "pxeStoreKey": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]{64}$"
                   }
                 }
               },
@@ -1794,6 +1800,10 @@
                 "pattern": "^0x[0-9a-f]{64}$"
               },
               "wrapKey": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{64}$"
+              },
+              "pxeStoreKey": {
                 "type": "string",
                 "pattern": "^0x[0-9a-f]{64}$"
               },

@@ -4082,6 +4082,12 @@
           "ikm": "second",
           "info": "xochi.recipient.passkey.v1/wrap-key",
           "length": 32
+        },
+        {
+          "name": "pxeStoreKey",
+          "ikm": "second",
+          "info": "xochi.recipient.passkey.v1/pxe-store-key",
+          "length": 32
         }
       ]
     },
@@ -4090,6 +4096,7 @@
       "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid",
       "secret = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSecret, 64)) mod r; salt = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSalt, 64)) mod r; either zero: derived_zero",
       "wrapKey = HKDF-SHA256(prf.second, salt, info = wrapKey, 32): the AES-256-GCM key of the PKW1 wrapped import",
+      "pxeStoreKey = HKDF-SHA256(prf.second, salt, info = pxeStoreKey, 32): the key of the browser's persisted encrypted PXE store; derived on every unlock, never persisted",
       "version: only derivationVersion is accepted, else unsupported_version",
       "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = salt, deployer = 0; one passkey is one recipient"
     ],
@@ -4104,11 +4111,13 @@
         "hkdfOutput": {
           "accountSecret": "0xc95fa4be641abb3d75650e2bdc5afb136e9bc0a9e1a5eb5e89a3fa117773984f4054b3af214e5fbf74c181061dd90430b3f66163a9183a4a97f2e2d3ef2a8a9f",
           "accountSalt": "0x91e897985e17656cad59533c25bed7ee24965202e02ac7ceb1053b58c7749bc63a1cccfe9850f9eda3ecdce40ab2c7b447a60d68a5ada05c3908edceef9cb116",
-          "wrapKey": "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b"
+          "wrapKey": "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+          "pxeStoreKey": "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799"
         },
         "secret": "0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82",
         "salt": "0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679",
         "wrapKey": "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+        "pxeStoreKey": "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799",
         "account": {
           "name": "passkey zeros-ones",
           "profile": "aztec-6.0.0",
@@ -4166,11 +4175,13 @@
         "hkdfOutput": {
           "accountSecret": "0x4d1322241aefc84af8c276ab6f1a91c27a0643ab28e8114eaa47d6dc78efdde83c2f40c007cc7010a2aeeca38ac762754c8437e19bc6bd6b38befa17f108d7a3",
           "accountSalt": "0xbf85dd12e439b504bc9f715114691e5d68187a664589321247449664249c10236961ea246835a2e9d7090a3a39eda5aeea7cfdc29cfc5510712a3e68a72626b3",
-          "wrapKey": "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94"
+          "wrapKey": "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+          "pxeStoreKey": "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4"
         },
         "secret": "0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6",
         "salt": "0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7",
         "wrapKey": "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+        "pxeStoreKey": "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4",
         "account": {
           "name": "passkey sha256-labels",
           "profile": "aztec-6.0.0",

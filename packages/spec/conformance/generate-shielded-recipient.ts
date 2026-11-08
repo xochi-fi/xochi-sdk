@@ -1456,6 +1456,7 @@ const PASSKEY_HKDF = {
   accountSecret: { ikm: "first", info: `${PASSKEY_LABEL}/account-secret`, length: 64 },
   accountSalt: { ikm: "first", info: `${PASSKEY_LABEL}/account-salt`, length: 64 },
   wrapKey: { ikm: "second", info: `${PASSKEY_LABEL}/wrap-key`, length: 32 },
+  pxeStoreKey: { ikm: "second", info: `${PASSKEY_LABEL}/pxe-store-key`, length: 32 },
 } as const;
 const sha256Hex = (label: string) => "0x" + createHash("sha256").update(label).digest("hex");
 
@@ -1497,6 +1498,7 @@ const passkeyDerivations = [
     accountSecret: passkeyOkm(prf, "accountSecret"),
     accountSalt: passkeyOkm(prf, "accountSalt"),
     wrapKey: passkeyOkm(prf, "wrapKey"),
+    pxeStoreKey: passkeyOkm(prf, "pxeStoreKey"),
   };
   const secretKey = os2ip(ethers.getBytes(hkdfOutput.accountSecret)) % R;
   const salt = os2ip(ethers.getBytes(hkdfOutput.accountSalt)) % R;
@@ -1532,6 +1534,7 @@ const passkeyDerivations = [
       secret: hex32(secretKey),
       salt: hex32(salt),
       wrapKey: hkdfOutput.wrapKey,
+      pxeStoreKey: hkdfOutput.pxeStoreKey,
       account: {
         name: a.name,
         profile: a.profile.id,
@@ -1891,6 +1894,7 @@ const out = {
       "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid",
       "secret = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSecret, 64)) mod r; salt = OS2IP(HKDF-SHA256(prf.first, salt, info = accountSalt, 64)) mod r; either zero: derived_zero",
       "wrapKey = HKDF-SHA256(prf.second, salt, info = wrapKey, 32): the AES-256-GCM key of the PKW1 wrapped import",
+      "pxeStoreKey = HKDF-SHA256(prf.second, salt, info = pxeStoreKey, 32): the key of the browser's persisted encrypted PXE store; derived on every unlock, never persisted",
       "version: only derivationVersion is accepted, else unsupported_version",
       "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = salt, deployer = 0; one passkey is one recipient",
     ],
@@ -2175,10 +2179,12 @@ const schema = {
             accountSecret: { type: "string", pattern: "^0x[0-9a-f]{128}$" },
             accountSalt: { type: "string", pattern: "^0x[0-9a-f]{128}$" },
             wrapKey: HEX32,
+            pxeStoreKey: HEX32,
           }),
           secret: HEX32,
           salt: HEX32,
           wrapKey: HEX32,
+          pxeStoreKey: HEX32,
           account: obj({
             name: STR,
             profile: STR,

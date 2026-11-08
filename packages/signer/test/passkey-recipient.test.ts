@@ -51,7 +51,8 @@ import {
 const sha256 = (s: string) => new Uint8Array(createHash("sha256").update(s).digest());
 const hex = (b: Uint8Array) => "0x" + Buffer.from(b).toString("hex");
 
-// Decision text (epic xochi#833, contract A.3).
+// Decision text (epic xochi#833, contract A.3). `pxeStoreKey` (contract A.2 v1.1) is given there
+// as a formula only; its values here come from node's hkdfSync, never from this package.
 const DECIDED = [
   {
     name: "zeros-ones",
@@ -60,6 +61,7 @@ const DECIDED = [
     secret: "0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82",
     salt: "0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679",
     wrapKey: "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+    pxeStoreKey: "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799",
   },
   {
     name: "sha256-labels",
@@ -68,6 +70,7 @@ const DECIDED = [
     secret: "0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6",
     salt: "0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7",
     wrapKey: "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+    pxeStoreKey: "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4",
   },
 ];
 
@@ -106,6 +109,9 @@ describe("derivePasskeyRecipientKeys", () => {
     expect(keys.salt).toBe(v.salt);
     expect(keys.wrapKey).toBeInstanceOf(Uint8Array);
     expect(hex(keys.wrapKey)).toBe(v.wrapKey);
+    expect(keys.pxeStoreKey).toBeInstanceOf(Uint8Array);
+    expect(hex(keys.pxeStoreKey)).toBe(v.pxeStoreKey);
+    expect(hex(keys.pxeStoreKey)).not.toBe(hex(keys.wrapKey));
     expect(derivePasskeyRecipientKeys({ first: v.first, second: v.second }, 1)).toEqual(keys);
   });
 
@@ -119,16 +125,20 @@ describe("derivePasskeyRecipientKeys", () => {
     expect(keys.secret).toBe(field(okm(v.first, "account-secret", 64)));
     expect(keys.salt).toBe(field(okm(v.first, "account-salt", 64)));
     expect(hex(keys.wrapKey)).toBe(hex(okm(v.second, "wrap-key", 32)));
+    expect(hex(keys.pxeStoreKey)).toBe(hex(okm(v.second, "pxe-store-key", 32)));
   });
 
-  it("returns a fresh wrap key and leaves the PRF outputs untouched", () => {
+  it("returns fresh key arrays and leaves the PRF outputs untouched", () => {
     const v = DECIDED[1]!;
     const first = v.first.slice();
     const second = v.second.slice();
     const a = derivePasskeyRecipientKeys({ first, second });
+    expect(a.pxeStoreKey.buffer).not.toBe(a.wrapKey.buffer);
     a.wrapKey.fill(0);
+    a.pxeStoreKey.fill(0);
     const b = derivePasskeyRecipientKeys({ first, second });
     expect(hex(b.wrapKey)).toBe(v.wrapKey);
+    expect(hex(b.pxeStoreKey)).toBe(v.pxeStoreKey);
     expect(hex(first)).toBe(hex(v.first));
     expect(hex(second)).toBe(hex(v.second));
   });
@@ -338,6 +348,7 @@ const recipientFile = JSON.parse(
       secret: string;
       salt: string;
       wrapKey: string;
+      pxeStoreKey: string;
       account: DescriptorVector & { testOnlySecrets: { secretKey: string } };
     }[];
     derivationRefusals: {
@@ -493,6 +504,7 @@ describe("@xochi/spec passkey vectors", () => {
       expect(keys.secret, d.name).toBe(d.secret);
       expect(keys.salt, d.name).toBe(d.salt);
       expect(hex(keys.wrapKey), d.name).toBe(d.wrapKey);
+      expect(hex(keys.pxeStoreKey), d.name).toBe(d.pxeStoreKey);
       // The account is the CLI's: the derived secret and salt, deployer zero, a pinned profile.
       const a = d.account;
       expect(a.testOnlySecrets.secretKey, d.name).toBe(d.secret);

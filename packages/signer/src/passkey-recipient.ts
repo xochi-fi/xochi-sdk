@@ -1,13 +1,15 @@
 // Passkey recipient keys (xochi-sdk#155, epic xochi#833; @xochi/spec PASSKEY-RECIPIENT.md).
 // One WebAuthn passkey, evaluated once with the PRF extension (`eval: PASSKEY_PRF_INPUTS`),
-// yields the recipient's Aztec account secrets and the AES-256-GCM key that wraps an imported
-// CLI recipient. The package root exports this module. Platform-neutral and network-free: the
+// yields the recipient's Aztec account secrets, the AES-256-GCM key that wraps an imported CLI
+// recipient, and the key of the browser's persisted encrypted PXE store. The package root
+// exports this module. Platform-neutral and network-free: the
 // WebAuthn ceremony is the caller's; this module only derives, and never puts a PRF byte or a
 // derived byte into an error.
 //
 //   accountSecret = OS2IP(HKDF-SHA256(first,  salt, "<label>/account-secret", 64)) mod r
 //   accountSalt   = OS2IP(HKDF-SHA256(first,  salt, "<label>/account-salt",   64)) mod r
 //   wrapKey       =       HKDF-SHA256(second, salt, "<label>/wrap-key",       32)
+//   pxeStoreKey   =       HKDF-SHA256(second, salt, "<label>/pxe-store-key",  32)
 //
 // with label = salt = "xochi.recipient.passkey.v1" (UTF-8) and r the BN254 scalar field order.
 // `{ secret, salt }` is the recipient CLI's `AccountSecrets`: a stock SchnorrAccount 6.0.0 with
@@ -66,12 +68,14 @@ export interface PasskeyPrfOutputs {
 /**
  * `secret` / `salt`: BN254 field elements as `0x` + 64 lowercase hex (`Fr.toString()`).
  * `wrapKey`: 32 raw bytes, a fresh array the caller imports as a non-extractable AES-GCM
- * `CryptoKey` and then zeroes.
+ * `CryptoKey` and then zeroes. `pxeStoreKey`: 32 raw bytes, a fresh array, the key of the
+ * persisted encrypted PXE store; derived on every unlock and never persisted itself.
  */
 export interface PasskeyRecipientKeys {
   secret: Hex;
   salt: Hex;
   wrapKey: Uint8Array;
+  pxeStoreKey: Uint8Array;
 }
 
 function prfOutput(field: "first" | "second", value: unknown): Uint8Array {
@@ -103,7 +107,8 @@ function fieldElement(field: string, ikm: Uint8Array, info: string): Hex {
 }
 
 /**
- * Derives a passkey recipient's account secrets and wrap key from its two PRF outputs.
+ * Derives a passkey recipient's account secrets, wrap key and PXE store key from its two PRF
+ * outputs.
  * Refuses (`PasskeyDerivationError`) a version other than `PASSKEY_DERIVATION_V1`
  * (`unsupported_version`), a PRF output that is not a 32-byte `Uint8Array`
  * (`prf_output_invalid`; a missing result means the authenticator does not support PRF), and
@@ -125,5 +130,6 @@ export function derivePasskeyRecipientKeys(
     secret: fieldElement("accountSecret", first, "account-secret"),
     salt: fieldElement("accountSalt", first, "account-salt"),
     wrapKey: hkdf(sha256, second, HKDF_SALT, utf8ToBytes(`${LABEL}/wrap-key`), 32),
+    pxeStoreKey: hkdf(sha256, second, HKDF_SALT, utf8ToBytes(`${LABEL}/pxe-store-key`), 32),
   };
 }
