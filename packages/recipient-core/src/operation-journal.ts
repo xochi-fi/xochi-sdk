@@ -423,16 +423,23 @@ export class OperationJournal {
    * submission decision: a holder that already claimed it (`claimSubmission`) is sending, so it is
    * left as it is. An exit's prepared withdrawals stay in its record. Answers null, changing
    * nothing, while the holder is alive, when the record names none (a spend or exit begun before
-   * `begin` recorded its holder) or when its holder claimed the submission.
+   * `begin` recorded its holder) or when its holder claimed the submission. `ownRunSettled`: this
+   * journal's own holder runs nothing for the record any more (its call returned), so a record it
+   * names counts as abandoned although its holder lease is held.
    */
-  async abortAbandonedRun(id: string): Promise<OperationRecord | null> {
+  async abortAbandonedRun(
+    id: string,
+    { ownRunSettled = false }: { ownRunSettled?: boolean } = {},
+  ): Promise<OperationRecord | null> {
     const record = await this.get(id);
     const abandonable =
       record.kind === "receipt" || record.kind === "spend" || record.kind === "exit";
     if (!abandonable || record.status !== "building") {
       throw new Error(`operation ${id} is not an unfinished receipt run, spend or exit`);
     }
-    if ((await this.recordedHolderAlive(record)) !== false) return null;
+    if (!(ownRunSettled && this.namesThisHolder(record))) {
+      if ((await this.recordedHolderAlive(record)) !== false) return null;
+    }
     if (record.kind !== "receipt" && (await this.decideSubmission(record, "abort")) !== "abort") {
       return null;
     }
@@ -485,6 +492,11 @@ export class OperationJournal {
   async recordedHolderAlive(record: OperationRecord): Promise<boolean | null> {
     const pid = record.request["pid"];
     return pid === undefined ? null : this.holderAlive(Number(pid));
+  }
+
+  /** Whether the record names this journal's own holder (its request's `pid`). */
+  namesThisHolder(record: OperationRecord): boolean {
+    return record.request["pid"] === String(this.holder.pid);
   }
 
   /**

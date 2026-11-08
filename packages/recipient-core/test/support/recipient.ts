@@ -248,6 +248,7 @@ export class PayoutNode extends DryRunAztec {
   }
 
   override async txReceipt(txHash: string): Promise<ObservedTxReceipt> {
+    await this.receiptHold;
     return (
       this.receipts[txHash] ?? {
         status: TxStatus.FINALIZED,
@@ -262,6 +263,10 @@ export class PayoutNode extends DryRunAztec {
   receipts: Record<string, ObservedTxReceipt> = {};
   /** What `openRecipientCore` connected this double with (its journal and corridor). */
   options: LiveAztecOptions | null = null;
+  /** Every receipt read waits for it: a node that has not answered yet. */
+  receiptHold: Promise<void> = Promise.resolve();
+  /** Runs once a spend's record is begun, before its submission. */
+  onSpendBegun: () => Promise<void> = async () => undefined;
   /** Runs once a spend's broadcast record is durable and the node has the transaction. */
   onSpendSent: () => Promise<void> = async () => undefined;
 
@@ -278,6 +283,7 @@ export class PayoutNode extends DryRunAztec {
       to: to.toString(),
       amount: amount.toString(),
     });
+    await this.onSpendBegun();
     await recordBroadcastBeforeSend(journal, operation.id, corridor)(TxHash.fromString(SPEND_TX));
     await this.onSpendSent();
     if (!durablyIncluded((await this.txReceipt(SPEND_TX)).status)) {

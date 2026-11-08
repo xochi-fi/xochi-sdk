@@ -800,6 +800,63 @@ describe("operations and reconcile", () => {
     expect(h.node.closed).toBe(1);
   });
 
+  it("reconciles its own session's broadcast once that send has settled", async () => {
+    const h = harness();
+    const core = await h.open();
+    h.node.onSpendSent = async () => {
+      throw new Error("TEST ONLY journal update failed after the node got the transaction");
+    };
+    await expect(core.send(account.address.toString(), 5n, null)).rejects.toThrow(/TEST ONLY/);
+    expect(await core.operations()).toMatchObject([{ status: "broadcast", txHash: SPEND_TX }]);
+
+    expect(await core.reconcile()).toMatchObject({ status: "complete", txHash: SPEND_TX });
+    expect(await core.reconcile()).toBeNull();
+    await core.close();
+  });
+
+  it("aborts its own session's hashless spend once that send has settled", async () => {
+    const h = harness();
+    const core = await h.open();
+    h.node.onSpendBegun = async () => {
+      throw new Error("TEST ONLY failure before submission, its abort lost");
+    };
+    await expect(core.send(account.address.toString(), 5n, null)).rejects.toThrow(/TEST ONLY/);
+    expect(await core.operations()).toMatchObject([{ status: "building" }]);
+
+    expect(await core.reconcile()).toMatchObject({ status: "aborted" });
+    expect(await core.reconcile()).toBeNull();
+    await core.close();
+  });
+
+  it("close waits for a reconcile in flight, releases its holder lease and refuses one after", async () => {
+    const h = harness();
+    const core = await h.open();
+    const other = otherSession(h);
+    const spend = await other.begin("spend", { amount: "1" });
+    await other.update(spend.id, { status: "broadcast", txHash: TX });
+    await other.close();
+    const answer = Promise.withResolvers<void>();
+    h.node.receiptHold = answer.promise;
+
+    const reconciling = core.reconcile();
+    let closed = false;
+    const closing = core.close().then(() => {
+      closed = true;
+    });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    expect(h.node.closed).toBe(0);
+
+    answer.resolve();
+    expect(await reconciling).toMatchObject({ status: "complete" });
+    await closing;
+    expect([...h.locks.held.keys()].filter((name) => name.includes(":holder:"))).toEqual([]);
+    await expect(core.reconcile()).rejects.toThrow("this recipient core is closed");
+    await expect(core.send(account.address.toString(), 5n, null)).rejects.toThrow(
+      "this recipient core is closed",
+    );
+  });
+
   it("fails a reverted spend only once finalized, with its block evidence", async () => {
     const h = harness();
     const core = await h.open();

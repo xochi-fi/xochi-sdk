@@ -233,11 +233,14 @@ export interface RecipientCore {
    * each withdrawal's L1 operation id), fails once a reverted receipt is finalized (with its block
    * evidence; no exit record) and is answered unchanged before. A `building` receipt run, spend
    * or exit is aborted once its recorded holder is gone (a hashless spend or exit never reached
-   * the node; the CLI refuses it) and answered unchanged while that holder lives. An L1 refund is
-   * refused.
+   * the node; the CLI refuses it) and answered unchanged while that holder lives. A holder that is
+   * this session counts as gone once none of its runs is in flight. An L1 refund is refused.
    */
   reconcile(): Promise<OperationRecord | null>;
-  /** Waits for any send, exit, deploy or receipt run in flight, then closes the node and journal. */
+  /**
+   * Refuses every later call, waits for any send, exit, deploy, receipt run or reconcile in
+   * flight, then closes the node and journal.
+   */
   close(): Promise<void>;
 }
 
@@ -347,7 +350,10 @@ class Core implements RecipientCore {
   readonly #port: AztecPort;
   readonly #tokenArtifact: ContractArtifact;
   readonly #journals: CoreJournals;
-  readonly #inFlight = new Set<Promise<unknown>>();
+  /** Sends, exits, deploys and receipt runs in flight. */
+  readonly #runs = new Set<Promise<unknown>>();
+  readonly #reconciles = new Set<Promise<unknown>>();
+  #closed = false;
 
   constructor(
     deps: RecipientCoreDeps,
@@ -729,7 +735,11 @@ class Core implements RecipientCore {
     return this.#journals.operations.records();
   }
 
-  async reconcile(): Promise<OperationRecord | null> {
+  reconcile(): Promise<OperationRecord | null> {
+    return this.#track(this.#reconciles, () => this.#reconcile());
+  }
+
+  async #reconcile(): Promise<OperationRecord | null> {
     const journal = this.#journals.operations;
     const operation = await journal.activeUnresolved();
     if (operation === null) return null;
@@ -738,12 +748,20 @@ class Core implements RecipientCore {
         `operation ${operation.id} is an L1 refund (${operation.kind}); reconcile it with the recipient CLI's refund reconcile`,
       );
     }
+    // A record this session names, with no run of this session in flight, was left by a call
+    // that already returned (its journal write failed): nobody will finish it but a reconcile.
+    const ownRunSettled = this.#runs.size === 0;
     const { txHash } = operation;
     // Hashless means `building`: the hash is durable before `sendTx`, so nothing reached the node.
-    if (txHash === undefined) return (await journal.abortAbandonedRun(operation.id)) ?? operation;
+    if (txHash === undefined) {
+      return (await journal.abortAbandonedRun(operation.id, { ownRunSettled })) ?? operation;
+    }
     // A live holder is still waiting for this receipt and completes the operation itself.
-    if (operation.status === "broadcast" && (await journal.recordedHolderAlive(operation))) {
-      return operation;
+    if (operation.status === "broadcast") {
+      const holderRuns = journal.namesThisHolder(operation)
+        ? !ownRunSettled
+        : await journal.recordedHolderAlive(operation);
+      if (holderRuns) return operation;
     }
     const receipt = await this.#port.txReceipt(txHash);
     if (!durablyIncluded(receipt.status)) return operation;
@@ -790,12 +808,15 @@ class Core implements RecipientCore {
   }
 
   /**
-   * Waits for every send, exit, deploy and receipt run in flight, then closes the node and
-   * releases this session's holder lease: while a run is in flight its holder must stay alive,
-   * or another session could abort it as abandoned.
+   * Refuses any later call, waits for every send, exit, deploy, receipt run and reconcile in
+   * flight, then closes the node and releases this session's holder lease: while a run is in
+   * flight its holder must stay alive, or another session could abort it as abandoned.
    */
   async close(): Promise<void> {
-    while (this.#inFlight.size > 0) await Promise.allSettled(this.#inFlight);
+    this.#closed = true;
+    while (this.#runs.size + this.#reconciles.size > 0) {
+      await Promise.allSettled([...this.#runs, ...this.#reconciles]);
+    }
     try {
       await this.#port.close();
     } finally {
@@ -804,13 +825,18 @@ class Core implements RecipientCore {
   }
 
   /** Runs one lock-holding or broadcasting call; `close` waits for it. */
-  async #holding<T>(run: () => Promise<T>): Promise<T> {
+  #holding<T>(run: () => Promise<T>): Promise<T> {
+    return this.#track(this.#runs, run);
+  }
+
+  async #track<T>(calls: Set<Promise<unknown>>, run: () => Promise<T>): Promise<T> {
+    if (this.#closed) throw new Error("this recipient core is closed");
     const running = run();
-    this.#inFlight.add(running);
+    calls.add(running);
     try {
       return await running;
     } finally {
-      this.#inFlight.delete(running);
+      calls.delete(running);
     }
   }
 }
