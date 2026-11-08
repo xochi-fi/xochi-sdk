@@ -1,6 +1,6 @@
 // AWS Nitro attestation verification without node:crypto: X.509 parsing through @peculiar/x509
 // (pure JS ASN.1) and every signature through WebCrypto. Mirrors the vendored
-// tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/verify_nitro_attestation.ts
+// tools/recipient/src/node/vendor/nitro_attestation/verify_nitro_attestation.ts
 // step for step (order of checks, validation time, root pinning, error messages); only the
 // certificate chain and COSE signature checks are re-expressed for WebCrypto, with OpenSSL's
 // rules made explicit where @peculiar/x509 is laxer (exact-DER ECDSA signatures, outer and TBS

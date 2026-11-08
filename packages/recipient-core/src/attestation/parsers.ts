@@ -1,5 +1,5 @@
 // A Uint8Array port of the vendored Oxide parser
-// tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/parsers.ts
+// src/oxide/vendor/oxide-lib/attestation/nitro_attestation/parsers.ts
 // (zkmoney-public 8fd1984, MIT, Copyright (c) 2026 Aztec Labs; see that directory's VENDORED.md).
 // The vendored file reads Node's global Buffer and lives outside this package, so it cannot be
 // imported here; this copy keeps its control flow, its order of checks and its error messages,

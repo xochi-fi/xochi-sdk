@@ -72,7 +72,7 @@ export interface LockManager {
 export type SealKind = "keystore" | "backup";
 
 /**
- * Passphrase sealing, byte-compatible with tools/recipient/src/sealed.ts:
+ * Passphrase sealing, byte-compatible with tools/recipient/src/node/sealed.ts:
  * MAGIC (16) || scrypt salt (32) || AES-256-GCM IV (12) || ciphertext || tag (16),
  * scrypt(NFKC(passphrase), salt, N = 2^17, r = 8, p = 1, 32 bytes), AAD = MAGIC.
  */

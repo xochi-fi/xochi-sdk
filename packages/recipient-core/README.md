@@ -24,13 +24,13 @@ vendored Nitro verifier (`node:crypto`) lives in the CLI (`tools/recipient/src/n
 
 | Port                                  | Node (CLI, `tools/recipient/src/node/`)                                                                                                                                                                                                                        | Browser (`src/browser/**`)                                                                          |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `KeyValueStore`                       | `NodeKeyValueStore`: key = path under the data directory (`operations/*.json`, `operations/active.lock`, `operations/released-*.lock`, `receipts/`, `exits/`, `state.json`), 0600 files in 0700 directories, fsync + rename (`put`) or fsync + link (`create`) | OPFS (or IndexedDB `durability: "strict"`)                                                          |
+| `KeyValueStore`                       | `NodeKeyValueStore`: key = path under the data directory (`operations/*.json`, `operations/active.lock`, `operations/released-*.lock`, `receipts/`, `exits/`, `state.json`), 0600 files in 0700 directories, fsync + rename (`put`) or fsync + link (`create`) | `IndexedDbKeyValueStore`: IndexedDB, `durability: "strict"` (chosen over OPFS, see its header)      |
 | `LockManager`                         | `NodePidLockManager`: a journal holder lock `...:holder:<pid>` is held exactly while that pid runs (holder names only; the CLI does not open the facade, so it never takes the `...:state` lease)                                                              | Web Locks: exclusive; a tab holds its holder lock until it closes                                   |
 | `KeystoreCrypto`                      | `NodeKeystoreCrypto` (`sealed.ts`: node:crypto scrypt N=2^17 + AES-256-GCM)                                                                                                                                                                                    | WebCrypto AES-GCM + `@noble/hashes/scrypt`, byte-compatible                                         |
-| `ArtifactLoader`                      | `NodeArtifactLoader`: the files `--oxide-token-artifact` / `--broadcaster-artifact` name                                                                                                                                                                       | `fetch` of the artifacts                                                                            |
+| `ArtifactLoader`                      | `NodeArtifactLoader`: the files `--oxide-token-artifact` / `--broadcaster-artifact` name                                                                                                                                                                       | the claim app (a `fetch` of the artifacts); none in `src/browser/`                                  |
 | `AttestationVerifier`                 | `NodeAttestationVerifier`: the vendored `verify_nitro_attestation.ts` (node:crypto X.509), in `tools/recipient/src/node/vendor/`                                                                                                                               | `src/attestation/` (pure-JS X.509 + WebCrypto)                                                      |
 | `WalletStorage` (`wallet-storage.ts`) | `NodeWalletStorage`: `{ pxe: { dataDirectory: <data-dir>/pxe }, walletDb: { store } }`, an encrypted ephemeral LMDB WalletDB                                                                                                                                   | `openEncryptedEmbeddedStores`, ONE sqlite-opfs pool per store (`storePoolDirectory(name)`)          |
-| `RecipientKeySource`                  | `SealedKeystoreKeySource`: `keystore.sealed` + passphrase                                                                                                                                                                                                      | the passkey (PRF derivation) or a PKW1 unwrap                                                       |
+| `RecipientKeySource`                  | `SealedKeystoreKeySource`: `keystore.sealed` + passphrase                                                                                                                                                                                                      | the claim app (passkey derivation or a PKW1 unwrap); none in `src/browser/`                         |
 | `Clock`, `HttpFetch`, `Log`           | `Date.now`, global `fetch`, stdout                                                                                                                                                                                                                             | the same globals (the SDK's node reads and the enclave transport use the global `fetch` regardless) |
 
 SHA-256, keccak and HKDF come from `@noble/hashes`; randomness from `crypto.getRandomValues` /
@@ -85,12 +85,18 @@ again.
   its `dist/core/` (`preserveSymlinks`, so imports resolve from the CLI's own `node_modules` and its
   `npm-shrinkwrap.json`); the vendored Oxide subset builds under upstream's options
   (`tsconfig.vendor.json`).
-- The browser imports the package (later `@xochi/recipient-core` and `/browser`).
+- The browser imports the package (later `@xochi/recipient-core` and `/browser`). `src/browser/`
+  supplies the storage, lock, keystore crypto and wallet storage adapters; the claim app itself
+  supplies the `ArtifactLoader` (a `fetch` of the artifacts) and the `RecipientKeySource` (the
+  passkey derivation or a PKW1 unwrap).
 
 ## Bundler notes (spike `spike/browser-recipient`, xochi-widget#128)
 
 - Alias `tty`/`node:tty` to a shim whose `isatty()` returns false (colorette, via the Aztec
-  logger, reads it at module scope). The core itself needs no other `node:*` shim.
+  logger, reads it at module scope), and `net`/`node:net` to an empty module: the bundle of
+  `src/index.ts` imports `net` statically from Aztec SDK code it never runs
+  (`@aztec-labs/accounts` `ssh_agent.js`, `@aztec-labs/foundation` `testing/port_allocator.js`).
+  Vite externalises it on its own; other bundlers fail the build without the alias.
 - Set `globalThis.Buffer ??= Buffer` (from `buffer`) before the claim chunk loads: the Aztec SDK and
   the vendored Oxide subset use the global.
 - `optimizeDeps.exclude`: `@aztec-foundation/bb.js`, `@aztec-foundation/noir-acvm_js`,

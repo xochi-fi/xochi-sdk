@@ -2,7 +2,7 @@
 // data directory, names exactly the flag that was never saved, and the Xochi API defaults to
 // https://api.xochi.fi (the only origin the client accepts). No network: fetch is stubbed.
 
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -93,10 +93,11 @@ describe("receipt invocation", () => {
   it.each([["Intent_A1"], ["a".repeat(129)], ["-leading-dash"]])(
     "refuses intent id %s before touching the data directory",
     async (intentId) => {
-      const dataDir = join(tmpdir(), "receipt-cli-never-created");
+      const dataDir = join(mkdtempSync(join(tmpdir(), "receipt-cli-")), "never-created");
       await expect(run(["receipt", "--data-dir", dataDir, "--", intentId])).rejects.toThrow(
         "intent id must be 1-64 characters of a-z, 0-9, '_' and '-', not starting with '-'",
       );
+      expect(existsSync(dataDir)).toBe(false);
     },
   );
 });
