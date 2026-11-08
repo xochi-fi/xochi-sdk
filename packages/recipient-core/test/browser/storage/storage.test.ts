@@ -154,7 +154,7 @@ describe("IndexedDbKeyValueStore", () => {
     const page = await openTab();
     const result = await page.evaluate(async () => {
       const kv = await window.storage.IndexedDbKeyValueStore.open("kv-persist");
-      const reported = kv.persisted;
+      const reported = await kv.persisted;
       kv.close();
       return { reported, actual: await navigator.storage.persisted() };
     });
@@ -162,6 +162,37 @@ describe("IndexedDbKeyValueStore", () => {
     expect(result.reported).toBe(result.actual);
     await page.close();
   });
+
+  it("opens without waiting for a persist answer, and without persist() at all", async () => {
+    const page = await openTab();
+    const result = await page.evaluate(async () => {
+      const { IndexedDbKeyValueStore } = window.storage;
+      const persist = Object.getOwnPropertyDescriptor(StorageManager.prototype, "persist")!;
+      try {
+        // A permission prompt that is never answered.
+        Object.defineProperty(StorageManager.prototype, "persist", {
+          ...persist,
+          value: () => new Promise<boolean>(() => undefined),
+        });
+        const unanswered = await IndexedDbKeyValueStore.open("kv-persist-pending");
+        await unanswered.put("state.json", new Uint8Array([1]));
+        unanswered.close();
+        // A worker: the Storage Standard exposes persist() on Window only.
+        Object.defineProperty(StorageManager.prototype, "persist", {
+          ...persist,
+          value: undefined,
+        });
+        const withoutPersist = await IndexedDbKeyValueStore.open("kv-persist-absent");
+        const persisted = await withoutPersist.persisted;
+        withoutPersist.close();
+        return { opened: true, persisted };
+      } finally {
+        Object.defineProperty(StorageManager.prototype, "persist", persist);
+      }
+    });
+    expect(result).toEqual({ opened: true, persisted: false });
+    await page.close();
+  }, 15_000);
 
   it("keeps a put value across a graceful browser restart", async () => {
     const writer = await openTab();
