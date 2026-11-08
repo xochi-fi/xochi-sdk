@@ -226,8 +226,8 @@ derivationVersion: 1, address, createdAt }`.
 
 An imported recipient (`mode: "imported"`) MUST NOT use passkey backup mode (§5). Its
 `BackupPersistenceAck` keeps the sealed-file format `BACKUP_FORMAT_V1_ID` and the commitment
-`keccak256(sealed backup bytes)` of its original sealed file, and enrollment refuses
-`{ mode: "passkey" }` for an imported profile.
+`keccak256(sealed backup bytes)` of its original sealed file. The recipient core enforces this
+(below).
 
 ## 5. Backup acknowledgement: passkey mode
 
@@ -241,8 +241,10 @@ sealed-file-only `backupFormatId` rule for the passkey format.
 mode.** An imported recipient keeps the sealed-file format and its sealed file's commitment (§4):
 its passkey unlocks a device-local cache and cannot rebuild the account, so a passkey-mode
 acknowledgement from it would be a false backup statement. The commitment cannot tell the two kinds
-apart, so this rule is enforced by the client that enrolls (the recipient core refuses
-`{ mode: "passkey" }` for an imported profile), not by the Worker.
+apart, so the Worker cannot enforce this rule. The **recipient core** does:
+`enrollSubmit(..., backup)` refuses `{ mode: "passkey" }` unless its key source is
+`RecipientKeySource.kind === "passkey"` (claim contracts C). A key source of kind `"imported"`
+(PKW1) or `"keystore"` (the CLI's sealed keystore) enrolls only in sealed-file mode.
 
 | | Sealed file (unchanged) | Passkey (new) |
 |---|---|---|
@@ -344,7 +346,8 @@ The vectors (`passkey.backup`) contain:
   `xochi.fi`, so every such origin can derive the recipient's keys with the user's consent to one
   passkey prompt, which the user cannot tell apart from the claim page's. Every host under
   `xochi.fi` is therefore inside the key's trust boundary and MUST be served only by Xochi. Three
-  more ways to act for the RP ID MUST NOT be published for `xochi.fi`:
+  more ways to act for the RP ID MUST NOT be published for `xochi.fi` (owner: the claim route lane
+  and rollout, claim contracts A.7):
   - a Related Origin Requests list (`https://xochi.fi/.well-known/webauthn`, WebAuthn Level 3
     §5.11), which would let every origin listed there use the RP ID;
   - an Apple `apple-app-site-association` `webcredentials` entry;
@@ -359,12 +362,20 @@ The vectors (`passkey.backup`) contain:
 - **XSS on any `*.xochi.fi` host is key compromise.** Script running in any origin under the RP ID
   (the claim page, the app, `api.xochi.fi`, a marketing page) can run a get with the public eval
   inputs and read the PRF output. COOP/COEP isolate browsing contexts and do nothing against injected
-  script. The claim page MUST ship a strict Content Security Policy: `script-src 'self'` (or nonces
-  or hashes) with no `'unsafe-inline'` and no `'unsafe-eval'`, `require-trusted-types-for 'script'`
-  (Trusted Types), `object-src 'none'`, `base-uri 'none'` and `frame-ancestors 'none'`. Every other
-  host under `xochi.fi` is in scope for the same review. **Rollout prerequisite:** before passkey
-  claims are enabled, every host under `xochi.fi` is inventoried, serves only Xochi code under a
-  policy at least that strict, and none of the three association files above exists.
+  script. **Every document on every host under `xochi.fi` MUST be served with a strict Content
+  Security Policy**, not only the claim route: the app is a single-page application, so a policy
+  scoped to `/claim` stops neither a client-side navigation into the claim view nor script running
+  on any other path of the same origin. The policy MUST contain:
+  - `script-src 'self'` (nonces or hashes are allowed) plus `'wasm-unsafe-eval'`, which the
+    browser PXE's WebAssembly needs, and MUST NOT contain `'unsafe-inline'` or `'unsafe-eval'`;
+  - `require-trusted-types-for 'script'` (Trusted Types);
+  - `object-src 'none'`, `base-uri 'none'` and `frame-ancestors 'none'`.
+
+  **Rollout prerequisite (MUST):** passkey claims MUST NOT be enabled until every host under
+  `xochi.fi` is inventoried, serves only Xochi code, and serves every document under a policy at
+  least that strict, and none of the three association files above exists. Today's app policy
+  allows `'unsafe-inline'` and fails this prerequisite (xochi#839). Owner: the claim route lane and
+  rollout, claim contracts A.7.
 
 ## 7. Versioning
 

@@ -14,8 +14,8 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
     - the WebAuthn parameters (`userVerification: "required"` with the UV flag checked, and a confirming get that must reproduce `first` and `second` byte for byte before anything is derived, else `prf_unstable`);
     - the refusals and the no-PRF path;
     - the `PKW1` wrapped import, a device-local cache that is not a backup;
-    - the passkey backup mode, only for passkey-derived recipients (imported ones keep the sealed-file format);
-    - the threat model: a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; a non-reproducible PRF; the `xochi.fi` trust boundary (no Related Origin Requests, `webcredentials` or `get_login_creds` association; the provider account; XSS on any host; a strict CSP as a rollout prerequisite); Xochi stores only the commitment;
+    - the passkey backup mode, only for passkey-derived recipients (imported ones keep the sealed-file format; the recipient core enforces it through `RecipientKeySource.kind`);
+    - the threat model: a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; a non-reproducible PRF; the `xochi.fi` trust boundary (no Related Origin Requests, `webcredentials` or `get_login_creds` association; the provider account; XSS on any host); a strict CSP, allowing `'wasm-unsafe-eval'` and forbidding `'unsafe-inline'`/`'unsafe-eval'`, on every document of every `xochi.fi` host as a MUST rollout prerequisite that today's app policy fails; Xochi stores only the commitment;
     - a sourced PRF support matrix.
   - `conformance/shielded-recipient.json`, new `passkey` section:
     - the RP ID, version and PRF eval inputs, and the HKDF parameters;
