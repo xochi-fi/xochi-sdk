@@ -141,6 +141,59 @@ describe("BrowserWalletStorage", () => {
     });
   });
 
+  it("refuses a key provider that returns no 32-byte key, before the first open and the reset", async () => {
+    const result = await page.evaluate(
+      async ([scope, network]) => {
+        const { BrowserWalletStorage } = window.walletStorage;
+        const key = crypto.getRandomValues(new Uint8Array(32));
+        const good = await new BrowserWalletStorage(async () => key.slice()).embeddedWalletOptions(
+          scope,
+          network,
+        );
+        await good.pxe.store!.openMap<string, string>("smoke").set("k", "kept");
+        await good.pxe.store!.close();
+        await good.walletDb.store!.close();
+
+        const refusals: string[] = [];
+        for (const provided of [undefined, new Uint8Array(16), "x".repeat(32)]) {
+          const bad = new BrowserWalletStorage(async () => provided as unknown as Uint8Array);
+          refusals.push(
+            await bad.embeddedWalletOptions(scope, network).then(
+              () => "opened",
+              (error: unknown) => (error as Error).message,
+            ),
+          );
+        }
+        // Second call fails only: the first open used a key, the reset must not go unencrypted.
+        let calls = 0;
+        const flaky = new BrowserWalletStorage(async () =>
+          calls++ === 0 ? crypto.getRandomValues(new Uint8Array(32)) : (undefined as never),
+        );
+        refusals.push(
+          await flaky.embeddedWalletOptions(scope, network).then(
+            () => "opened",
+            (error: unknown) => (error as Error).message,
+          ),
+        );
+
+        const reopened = await new BrowserWalletStorage(async () =>
+          key.slice(),
+        ).embeddedWalletOptions(scope, network);
+        const kept = await reopened.pxe.store!.openMap<string, string>("smoke").getAsync("k");
+        await reopened.pxe.store!.close();
+        await reopened.walletDb.store!.close();
+        return { refusals, kept };
+      },
+      [`0x${"4e5f".repeat(16)}`, MAINNET] as const,
+    );
+    expect(result).toEqual({
+      refusals: Array<string>(4).fill(
+        "the PXE store key provider must return a 32-byte Uint8Array",
+      ),
+      kept: "kept",
+    });
+  });
+
   it("selects a different PXE store for a different network or PXE schema", async () => {
     const result = await page.evaluate(
       async ([scope, mainnet]) => {

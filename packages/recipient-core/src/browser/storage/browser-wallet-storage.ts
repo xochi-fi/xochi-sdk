@@ -104,14 +104,9 @@ export class BrowserWalletStorage implements WalletStorage {
    */
   private async openPxeStore(name: string, log: Logger): Promise<AztecSQLiteOPFSStore> {
     const poolDirectory = storePoolDirectory(name);
+    const key = await this.key();
     try {
-      return await AztecSQLiteOPFSStore.open(
-        log,
-        name,
-        false,
-        poolDirectory,
-        await this.pxeStoreKey(),
-      );
+      return await AztecSQLiteOPFSStore.open(log, name, false, poolDirectory, key);
     } catch (error) {
       if (error instanceof SqliteEncryptionError && error.code === "decrypt_failed") {
         log.warn(`PXE store ${name} is encrypted under another key; resetting it to resync`);
@@ -120,9 +115,20 @@ export class BrowserWalletStorage implements WalletStorage {
       } else {
         throw error;
       }
+      // Before the wipe: a store reopened without a key would be created unencrypted.
+      const resetKey = await this.key();
       await deletePoolDirectory(poolDirectory);
-      return AztecSQLiteOPFSStore.open(log, name, false, poolDirectory, await this.pxeStoreKey());
+      return AztecSQLiteOPFSStore.open(log, name, false, poolDirectory, resetKey);
     }
+  }
+
+  /** The provider's key, refused unless it is 32 bytes: "no key" opens a store unencrypted. */
+  private async key(): Promise<Uint8Array> {
+    const key: unknown = await this.pxeStoreKey();
+    if (!(key instanceof Uint8Array) || key.byteLength !== 32) {
+      throw new TypeError("the PXE store key provider must return a 32-byte Uint8Array");
+    }
+    return key;
   }
 }
 
