@@ -20,6 +20,7 @@ import { z } from "zod4";
 
 import type { RecipientAccount } from "./account.js";
 import {
+  INTENT_ID_GRAMMAR,
   assertIntentId,
   type ReceiptChallenge,
   type ReceiptSubmission,
@@ -589,7 +590,7 @@ const ReceiptRequestSchema = z
 
 export const ReceiptRecordSchema = z
   .object({
-    intentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+    intentId: z.string().regex(INTENT_ID_GRAMMAR),
     /** `submitting` from before the first POST until Xochi accepts one; then `submitted`. */
     status: z.enum(["submitting", "submitted"]),
     /** Pinned at the first signing: no later attempt for this intent may name others. */

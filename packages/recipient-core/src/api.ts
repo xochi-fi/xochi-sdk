@@ -96,12 +96,19 @@ export interface ReceiptSubmission {
   acknowledgement: SignedAck;
 }
 
-const INTENT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+/**
+ * The core's intent ids (contract C): one route segment and one storage key segment. Covers the
+ * Worker's route grammar `^[a-z0-9_]{1,64}$` (`xi_<32 hex>`); the claim URL's wider grammar
+ * (contract E) is refused here, never mapped.
+ */
+export const INTENT_ID_GRAMMAR = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
 
-/** An intent id safe as one route segment and one file name. */
+/** An intent id safe as one route segment and one storage key segment. */
 export function assertIntentId(intentId: string): string {
-  if (!INTENT_ID.test(intentId)) {
-    throw new Error("intent id must be 1-128 letters, digits, '-' or '_'");
+  if (!INTENT_ID_GRAMMAR.test(intentId)) {
+    throw new Error(
+      "intent id must be 1-64 characters of a-z, 0-9, '_' and '-', not starting with '-'",
+    );
   }
   return intentId;
 }

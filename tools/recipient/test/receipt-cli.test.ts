@@ -88,6 +88,17 @@ describe("receipt invocation", () => {
       "--binding-id TEST-ONLY-b is not this data directory's enrolled binding id TEST-ONLY-a",
     );
   });
+
+  // After "--", so the leading-dash id reaches the grammar check instead of the option parser.
+  it.each([["Intent_A1"], ["a".repeat(129)], ["-leading-dash"]])(
+    "refuses intent id %s before touching the data directory",
+    async (intentId) => {
+      const dataDir = join(tmpdir(), "receipt-cli-never-created");
+      await expect(run(["receipt", "--data-dir", dataDir, "--", intentId])).rejects.toThrow(
+        "intent id must be 1-64 characters of a-z, 0-9, '_' and '-', not starting with '-'",
+      );
+    },
+  );
 });
 
 describe("operations reconcile", () => {
