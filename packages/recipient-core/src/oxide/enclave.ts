@@ -259,7 +259,7 @@ export async function verifyEnclaveAttestation(
       "verified document does not commit to the enclave's keys",
     );
   }
-  if (bytesToHex(parsed.pcr0) !== pins.pcr0) {
+  if (!parsed.pcr0 || bytesToHex(parsed.pcr0) !== pins.pcr0) {
     throw new EnclaveTrustRefused(
       "attestation_invalid",
       "verified document's PCR0 is not the pinned image",

@@ -88,6 +88,14 @@ describe("enclave attestation result", () => {
         lying((parsed) => ({ ...parsed, pcr0: new Uint8Array(48) })),
       ),
     );
+    await refusal(
+      verifyEnclaveAttestation(
+        attestation,
+        onChain,
+        pins,
+        lying(({ pcr0: _dropped, ...parsed }) => parsed as ParsedNitroAttestation),
+      ),
+    );
   });
 
   it("refuses when the verifier throws", async () => {
