@@ -6,11 +6,18 @@ All releases are private test artifacts; see the README CAUTION for what they do
 
 ### Added
 
-- `receipt INTENT_ID [--tx HASH]`: after a shielded payout, signs and submits the recipient's
-  `PaymentReceiptAck` (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). It signs
-  only for a payout this PXE discovered at the challenge's exact amount, found `finalized` and
-  successful on the chosen node, and could spend in a local simulation. Receipts are journaled
-  under `<data-dir>/receipts/` (README "Confirming receipt").
+- `receipt INTENT_ID [--tx HASH [--untagged]] [--already-spent]`: after a shielded payout, signs
+  and submits the recipient's `PaymentReceiptAck`
+  (`POST /api/shielded/operations/:intentId/receipt[/challenge]`). The challenge's signed
+  `ShieldedTermsV1` must hash to `terms_digest` and name this account, corridor and enrolled
+  binding digest. Only the corridor sender's payout tagged with those terms' order fingerprint
+  (pxe-bridge settlement fingerprint, ported) is signed, once found `finalized` on the chosen
+  node and spendable in a local simulation. Receipts are pinned per intent in
+  `<data-dir>/receipts/` and carried by backups. The run holds the fund-movement lock
+  (README "Confirming receipt").
+- `enroll submit` records the enrolled binding digest; backups carry it and restore puts it back.
+- `setup`, `enroll start` and `restore` save the node URL and OxideToken artifact path for
+  `receipt`; `--api-url` defaults to `https://api.xochi.fi`.
 
 ### Fixed
 

@@ -26,6 +26,87 @@ const ProjectionSchema = z
   .strict();
 export type BindingProjection = z.infer<typeof ProjectionSchema>;
 
+const NetworkIdentitySchema = z
+  .object({
+    aztecChainId: decimal,
+    protocolVersion: decimal,
+    rollupAddress: anyCaseEvm,
+    l1ChainId: decimal,
+    genesisOrNetworkDigest: anyCaseHex32,
+  })
+  .strict();
+
+/**
+ * The intent's signed ShieldedTermsV1 typed data, verbatim as Xochi stored it (`signed_eip712`
+ * `.terms`; members as the Worker's own schema types them). `receipt.ts` checks it hashes to
+ * `terms_digest` under the pinned types and this corridor's terms domain.
+ */
+const ReceiptTermsSchema = z
+  .object({
+    types: z.record(z.string(), z.array(z.object({ name: z.string(), type: z.string() }).strict())),
+    primaryType: z.literal("ShieldedTermsV1"),
+    domain: z
+      .object({
+        name: z.string(),
+        version: z.string(),
+        chainId: z.number().int().positive(),
+        salt: anyCaseHex32,
+      })
+      .strict(),
+    message: z
+      .object({
+        protocolVersion: z.string(),
+        environment: z.string(),
+        intentId: z.string(),
+        quoteId: z.string(),
+        operationId: z.string(),
+        source: z
+          .object({
+            chainId: decimal,
+            token: anyCaseEvm,
+            wallet: anyCaseEvm,
+            collector: anyCaseEvm,
+            amount: decimal,
+          })
+          .strict(),
+        destination: z
+          .object({
+            settlementType: z.string(),
+            privacyLevel: z.string(),
+            disclosureProfile: z.string(),
+            rail: z.string(),
+            network: NetworkIdentitySchema,
+            corridor: z
+              .object({
+                corridorId: anyCaseHex32,
+                corridorRevision: decimal,
+                manifestDigest: anyCaseHex32,
+              })
+              .strict(),
+            assetId: z.string(),
+            aztecToken: anyCaseHex32,
+            recipientBindingId: z.string(),
+            descriptorDigest: anyCaseHex32,
+            aztecRecipient: anyCaseHex32,
+            amount: decimal,
+            feePayer: anyCaseHex32,
+          })
+          .strict(),
+        feeBreakdown: z.record(z.string(), decimal),
+        sourceAuthorizationDigest: anyCaseHex32,
+        refundAddress: anyCaseEvm,
+        refundAmount: decimal,
+        collectBefore: decimal,
+        settlementServiceDeadline: decimal,
+        recipientBindingDigest: anyCaseHex32,
+        policyRevision: decimal,
+        reservationId: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+export type ReceiptTerms = z.infer<typeof ReceiptTermsSchema>;
+
 /** The settlement a receipt challenge names, as the Worker records it (wire contract). */
 const ReceiptSubjectSchema = z
   .object({
@@ -33,19 +114,12 @@ const ReceiptSubjectSchema = z
     binding_digest: anyCaseHex32,
     terms_digest: anyCaseHex32,
     operation_id: anyCaseHex32,
-    network: z
-      .object({
-        aztecChainId: decimal,
-        protocolVersion: decimal,
-        rollupAddress: anyCaseEvm,
-        l1ChainId: decimal,
-        genesisOrNetworkDigest: anyCaseHex32,
-      })
-      .strict(),
+    network: NetworkIdentitySchema,
     aztec_token: anyCaseHex32,
     aztec_recipient: anyCaseHex32,
     /** The terms' exact destination amount in base units. */
     amount: decimal,
+    terms: ReceiptTermsSchema,
   })
   .strict();
 export type ReceiptSubject = z.infer<typeof ReceiptSubjectSchema>;
@@ -87,7 +161,21 @@ export function assertIntentId(intentId: string): string {
   return intentId;
 }
 
+/**
+ * The receipt refusals that reject the signed acknowledgement or its challenge outright, so a
+ * fresh challenge may replace it (`error_category`, wire contract): never a 401/403/408/429/5xx,
+ * nor `payout_not_final` or `receipt_tx_conflict`.
+ */
+const RECEIPT_REJECTIONS: Readonly<Record<string, number>> = {
+  receipt_challenge_expired: 410,
+  receipt_challenge_consumed: 409,
+  receipt_ack_rejected: 409,
+};
+
 export class EnrollmentApiError extends Error {
+  /** The Worker's `error_category`, or null when the body names none. */
+  readonly category: string | null;
+
   constructor(
     readonly status: number,
     readonly body: string,
@@ -95,7 +183,25 @@ export class EnrollmentApiError extends Error {
   ) {
     super(`${route} answered ${status}: ${body.slice(0, 300)}`);
     this.name = "EnrollmentApiError";
+    this.category = errorCategory(body);
   }
+
+  /** True only when Xochi rejected the receipt's acknowledgement or challenge outright. */
+  get rejectsReceipt(): boolean {
+    return this.category !== null && RECEIPT_REJECTIONS[this.category] === this.status;
+  }
+}
+
+function errorCategory(body: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    // A non-JSON body (a proxy's error page) names no category; the status still reports it.
+    return null;
+  }
+  const result = z.object({ error_category: z.string() }).safeParse(parsed);
+  return result.success ? result.data.error_category : null;
 }
 
 export interface EnrollmentApi {
@@ -109,6 +215,9 @@ export interface ReceiptApi {
   submitReceipt(intentId: string, body: ReceiptSubmission): Promise<ReceiptResult>;
 }
 
+/** The only Xochi API origin the client sends the source-wallet bearer to; the default. */
+export const XOCHI_API_URL = "https://api.xochi.fi";
+
 export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
   constructor(
     private readonly baseUrl: string,
@@ -116,8 +225,8 @@ export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     const url = new URL(baseUrl);
-    if (url.origin !== "https://api.xochi.fi") {
-      throw new Error(`enrollment API must be https://api.xochi.fi (got ${url.origin})`);
+    if (url.origin !== XOCHI_API_URL) {
+      throw new Error(`enrollment API must be ${XOCHI_API_URL} (got ${url.origin})`);
     }
     if (url.pathname !== "/" || url.search || url.hash) {
       throw new Error("enrollment API URL must not contain a path, query or fragment");
@@ -181,15 +290,10 @@ export class HttpEnrollmentApi implements EnrollmentApi, ReceiptApi {
   }
 }
 
-/** What a dry-run receipt challenge names: this data directory's own recipient and corridor. */
-export type DryRunReceiptSubject = Pick<
-  ReceiptSubject,
-  "binding_id" | "aztec_recipient" | "aztec_token" | "network"
->;
-
 /**
- * Records the calls and their bodies' shape; answers as a fresh enrollment would, and issues a
- * synthetic receipt challenge (for 1 base unit) for `receiptSubject`.
+ * Records the calls and their bodies' shape; answers as a fresh enrollment would. It issues no
+ * receipt challenge: a challenge carries the intent's terms signed by the source wallet, which a
+ * dry run cannot synthesize (the dry-run PXE discovers no payout, so `receipt` stops before it).
  */
 export class DryRunEnrollmentApi implements EnrollmentApi, ReceiptApi {
   readonly calls: string[] = [];
@@ -197,7 +301,6 @@ export class DryRunEnrollmentApi implements EnrollmentApi, ReceiptApi {
   constructor(
     private readonly now: number,
     descriptorDigest: string | null = null,
-    private readonly receiptSubject: DryRunReceiptSubject | null = null,
   ) {
     this.descriptorDigest = descriptorDigest;
   }
@@ -240,26 +343,12 @@ export class DryRunEnrollmentApi implements EnrollmentApi, ReceiptApi {
 
   async requestReceiptChallenge(intentId: string): Promise<ReceiptChallenge> {
     const route = `/api/shielded/operations/${assertIntentId(intentId)}/receipt/challenge`;
-    this.calls.push(`POST ${route} {} (synthetic challenge for 1 base unit)`);
-    if (!this.receiptSubject) throw new Error("dry-run receipt challenge needs its subject");
-    return {
-      challenge_id: "dry-run-receipt-challenge",
-      nonce: `0x${"0f".repeat(32)}`,
-      expires_at: this.now + 300,
-      receipt: {
-        ...this.receiptSubject,
-        binding_digest: `0x${"0b".repeat(32)}`,
-        terms_digest: `0x${"07".repeat(32)}`,
-        operation_id: `0x${"0d".repeat(32)}`,
-        amount: "1",
-      },
-    };
+    this.calls.push(`POST ${route} {} (not synthesized)`);
+    throw new Error("a dry run cannot synthesize a receipt challenge: its terms are signed");
   }
 
-  async submitReceipt(intentId: string, body: ReceiptSubmission): Promise<ReceiptResult> {
-    this.calls.push(
-      `POST /api/shielded/operations/${assertIntentId(intentId)}/receipt { challenge_id, acknowledgement: ${body.acknowledgement.primary_type} } (synthetic: completed)`,
-    );
-    return { intent_id: intentId, status: "completed", receipt_digest: `0x${"00".repeat(32)}` };
+  async submitReceipt(intentId: string, _body: ReceiptSubmission): Promise<ReceiptResult> {
+    this.calls.push(`POST /api/shielded/operations/${assertIntentId(intentId)}/receipt`);
+    throw new Error("a dry run cannot submit a receipt: it has no receipt challenge");
   }
 }

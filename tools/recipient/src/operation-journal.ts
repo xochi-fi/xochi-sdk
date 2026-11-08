@@ -14,6 +14,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod4";
 
@@ -28,6 +29,8 @@ const OperationKindSchema = z.enum([
   "refund-frozen-notes",
   "refund-frozen-deposits",
   "refund-unprocessed-deposit",
+  // Moves no funds: holds the lock while `receipt` checks and signs a payout (`beginReceipt`).
+  "receipt",
 ]);
 const OperationStatusSchema = z.enum([
   "building",
@@ -189,7 +192,7 @@ const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>>
   aborted: [],
 };
 
-export function processAlive(pid: number): boolean {
+function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -331,6 +334,24 @@ export class OperationJournal {
   }
 
   /**
+   * Holds the fund-movement lock for one `receipt` run. A receipt moves no funds; holding the
+   * lock keeps any spend, exit or refund from running while it checks and signs a payout, and
+   * refuses the receipt while one is unresolved. The record names the holding process, so the
+   * next `begin` aborts the lock of a run that died, or ran on another host before a restore.
+   */
+  beginReceipt(
+    intentId: string,
+    holder: { pid: number; host: string } = { pid: process.pid, host: hostname() },
+  ): OperationRecord {
+    return this.begin("receipt", { intentId, pid: String(holder.pid), host: holder.host });
+  }
+
+  /** Releases a receipt run's lock; its record ends `aborted`, as it moved no funds. */
+  endReceipt(id: string): void {
+    this.update(id, { status: "aborted" });
+  }
+
+  /**
    * Persists a precomputed transaction hash in the first operation record write. The caller may
    * submit only after this method returns, so no returned operation can ever be hashless.
    */
@@ -368,7 +389,7 @@ export class OperationJournal {
       } catch (error) {
         const fileError = error as NodeJS.ErrnoException;
         if (fileError.code !== "EEXIST") throw error;
-        if (this.releaseRecoveredTerminalLock()) continue;
+        if (this.releaseRecoveredTerminalLock() || this.abortDeadReceiptRun()) continue;
         const unresolved = this.unresolved();
         throw new Error(
           unresolved
@@ -499,6 +520,21 @@ export class OperationJournal {
       });
     }
     return record;
+  }
+
+  /** Aborts the lock of a `receipt` run whose process is gone (or on another host). */
+  private abortDeadReceiptRun(): boolean {
+    let record: OperationRecord;
+    try {
+      record = this.recordForLock(readActiveLock(this.lockPath));
+    } catch {
+      return false;
+    }
+    if (record.kind !== "receipt" || record.status !== "building") return false;
+    const { pid, host } = record.request;
+    if (host === hostname() && processAlive(Number(pid))) return false;
+    this.update(record.id, { status: "aborted" });
+    return true;
   }
 
   private releaseRecoveredTerminalLock(): boolean {

@@ -97,7 +97,7 @@ describe("recipient-encrypted backup (format v1)", () => {
     );
     const { journals: _newField, ...legacy } = current;
     const bytes = seal("backup", Buffer.from(JSON.stringify(legacy)), PASS);
-    expect(openBackup(bytes, PASS).journals).toEqual({ operations: [], exits: [] });
+    expect(openBackup(bytes, PASS).journals).toEqual({ operations: [], exits: [], receipts: [] });
   });
 });
 

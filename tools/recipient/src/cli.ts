@@ -40,8 +40,8 @@ import {
 import {
   DryRunEnrollmentApi,
   HttpEnrollmentApi,
+  XOCHI_API_URL,
   assertIntentId,
-  type DryRunReceiptSubject,
   type EnrollmentApi,
   type ReceiptApi,
 } from "./api.js";
@@ -105,9 +105,11 @@ Commands (in round-trip order):
   setup                    check the network; publish + initialize the account; register the
                            corridor senders and the OxideToken (+ store_immutables)
   balance                  sync and show the OXDAI balance and received payouts' order fingerprints
-  receipt INTENT_ID [--tx HASH]
-                           after a shielded payout: confirm receipt to Xochi with a signed
-                           PaymentReceiptAck for the payout this PXE found finalized and can spend
+  receipt INTENT_ID [--tx HASH [--untagged]] [--already-spent]
+                           after a shielded payout, before spending it: confirm receipt to Xochi
+                           with a signed PaymentReceiptAck for this intent's payout, found by
+                           this PXE, finalized on your node and spendable. Reuses the node URL
+                           and artifact path saved by setup, enroll start or restore
   backup --out A --out B   write two encrypted copies, including spend/exit/refund journals
   enroll start             request a challenge; write the binding the source wallet signs
   enroll submit            sign and submit the authorization plus the Worker's required
@@ -130,18 +132,22 @@ Options:
   --oxide-token-artifact FILE  OxideToken artifact (class and artifact hash are checked)
   --fee-juice-claim FILE       Xochi's sponsored Fee Juice claim for the deployment (setup) or
                                bridged Fee Juice claimed to pay the exit's fee (exit)
-  --api-url URL                Xochi API (enroll, receipt); bearer from XOCHI_JWT
+  --api-url URL                Xochi API (enroll, receipt); default ${XOCHI_API_URL}; bearer
+                               from XOCHI_JWT
   --source-wallet ADDR         enroll start
   --source-signature SIG       enroll submit
   --binding-id ID              enroll status
   --l1-rpc URL                 L1 JSON-RPC of your choice (spend, exit, refund)
   --tx HASH                    receipt: the payout transaction, if several payouts match
+  --untagged                   receipt: with --tx, a payout made before order tagging (warned)
+  --already-spent              receipt: this account spent the payout after it landed
   --max-executor-fee BASEUNITS maximum acceptable live PlainWithdrawalExecutor fee for exit
   --refund-evidence FILE       recipient-owned evidence produced by the pinned upstream refund builder
   --bundle FILE                completed refund bundle (refund submit)
   --raw-transaction FILE       externally signed exact refund transaction (refund submit)
   --l1-recipient ADDR          fixed recipient for exit or refund authorization
-  --dry-run                    record every node, PXE and API call; perform none
+  --dry-run                    record every node, PXE and API call; perform none (receipt
+                               stops after the PXE read: the dry-run PXE has no payouts)
   --version                    print the test artifact version
 Passphrase: XOCHI_RECIPIENT_PASSPHRASE, else prompted.`;
 
@@ -176,6 +182,11 @@ const StateSchema = z
       .strict()
       .optional(),
     bindingId: z.string().optional(),
+    /** The RecipientBinding digest enrolled here (`enroll submit`, or restored): `receipt` pins it. */
+    bindingDigest: hex32.optional(),
+    /** The node URL and artifact path the last live setup, enroll start or restore used. */
+    nodeUrl: z.string().min(1).optional(),
+    oxideTokenArtifact: z.string().min(1).optional(),
     /** The TokenRegistrationAck signature the last backup carries, if any. */
     backupTokenAckSignature: z.string().nullable().optional(),
     /** Unix seconds of this data directory's last successful token registration. */
@@ -245,6 +256,8 @@ interface Values {
   bundle?: string;
   "raw-transaction"?: string;
   tx?: string;
+  untagged?: boolean;
+  "already-spent"?: boolean;
   "dry-run"?: boolean;
   version?: boolean;
   help?: boolean;
@@ -280,6 +293,8 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
       bundle: string,
       "raw-transaction": string,
       tx: string,
+      untagged: { type: "boolean" },
+      "already-spent": { type: "boolean" },
       "dry-run": { type: "boolean" },
       version: { type: "boolean" },
       help: { type: "boolean" },
@@ -292,12 +307,35 @@ const readCorridor = (path: string | undefined): Corridor =>
 
 const required = (
   values: Values,
-  name: Exclude<keyof Values, "out" | "dry-run" | "version" | "help">,
+  name: Exclude<
+    keyof Values,
+    "out" | "dry-run" | "version" | "help" | "untagged" | "already-spent"
+  >,
 ): string => {
   const v = values[name];
   if (typeof v !== "string" || v.length === 0) fail(`--${String(name)} is required`);
   return v;
 };
+
+/** The flag's value, else what a live setup, enroll start or restore saved, else a refusal. */
+const flagOrSaved = (
+  values: Values,
+  name: "node-url" | "oxide-token-artifact",
+  savedValue: string | undefined,
+  what: string,
+): string =>
+  values[name] ??
+  savedValue ??
+  fail(`--${name} is required: no ${what} was saved by setup, enroll start or restore`);
+
+/** Saves the node URL and artifact path a live command used, for `receipt` to reuse. */
+function rememberConnection(store: Store, values: Values): void {
+  store.writeState({
+    ...store.readState(),
+    nodeUrl: required(values, "node-url"),
+    oxideTokenArtifact: resolve(required(values, "oxide-token-artifact")),
+  });
+}
 const baseUnits = (name: string, v: string): bigint => {
   if (!decimal.safeParse(v).success) fail(`--${name} must be a decimal number of base units`);
   return BigInt(v);
@@ -355,17 +393,13 @@ async function port(values: Values, store: Store, corridor: Corridor): Promise<A
   });
 }
 
-function api(
-  values: Values,
-  descriptorDigest: string,
-  receiptSubject: DryRunReceiptSubject | null = null,
-): EnrollmentApi & ReceiptApi {
+function api(values: Values, descriptorDigest: string): EnrollmentApi & ReceiptApi {
   if (values["dry-run"]) {
-    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest, receiptSubject);
+    return new DryRunEnrollmentApi(Math.floor(Date.now() / 1000), descriptorDigest);
   }
   const jwt =
     process.env["XOCHI_JWT"] ?? fail("XOCHI_JWT (the source wallet's SIWE session) is required");
-  return new HttpEnrollmentApi(required(values, "api-url"), jwt);
+  return new HttpEnrollmentApi(values["api-url"] ?? XOCHI_API_URL, jwt);
 }
 
 const log = (line: string) => process.stdout.write(`${line}\n`);
@@ -614,6 +648,7 @@ export async function run(argv: string[]): Promise<void> {
         await setupAccount(ctx, account, claim);
         await registerSenders(ctx);
         await registerAndRecord(ctx, store, artifact);
+        if (ctx.port.mode === "live") rememberConnection(store, values);
       });
     case "balance":
       return withTokenArtifactAccount(values, store, async (ctx, account, _state, artifact) => {
@@ -635,7 +670,12 @@ export async function run(argv: string[]): Promise<void> {
       const journals = {
         operations: new OperationJournal(join(store.dir, "operations")).records(),
         exits: readExitJournal(join(store.dir, "exits")),
+        receipts: new ReceiptJournal(join(store.dir, "receipts")).records(),
       };
+      // The binding being enrolled (its backup is acknowledged), else the one enrolled.
+      const bindingDigest = state.pending
+        ? bindingTypedData(state.corridor, state.pending.binding).digest
+        : (state.bindingDigest ?? null);
       const sealed = sealBackup(
         backupContents(
           state.corridor,
@@ -645,6 +685,7 @@ export async function run(argv: string[]): Promise<void> {
           tokenAck,
           Math.floor(Date.now() / 1000),
           journals,
+          bindingDigest,
         ),
         await passphrase(true),
       );
@@ -691,6 +732,7 @@ export async function run(argv: string[]): Promise<void> {
                 tokenRegistrationAck: tokenAckForState(pending.tokenRegistrationAck),
               },
             });
+            if (ctx.port.mode === "live") rememberConnection(store, values);
             log(
               `enroll: sign ${file} with the source wallet (eth_signTypedData_v4), then: enroll submit --source-signature 0x...`,
             );
@@ -711,10 +753,11 @@ export async function run(argv: string[]): Promise<void> {
             "write the backup after enroll start, so it carries this binding's TokenRegistrationAck",
           );
         }
-        const pending: PendingEnrollment = {
-          ...saved,
-          typedData: bindingTypedData(state.corridor, saved.binding).typedData,
-        };
+        const { typedData, digest: bindingDigest } = bindingTypedData(
+          state.corridor,
+          saved.binding,
+        );
+        const pending: PendingEnrollment = { ...saved, typedData };
         const projection = await enrollSubmit(
           ctx,
           xochi,
@@ -728,6 +771,7 @@ export async function run(argv: string[]): Promise<void> {
           ...rest,
           tokenRegistrationAck: tokenAckForState(saved.tokenRegistrationAck),
           bindingId: projection.binding_id,
+          bindingDigest,
         });
         const bindingFile = join(store.dir, "binding-typed-data.json");
         if (existsSync(bindingFile)) unlinkSync(bindingFile);
@@ -766,16 +810,19 @@ export async function run(argv: string[]): Promise<void> {
         backupCommitment: keccak256(backupBytes),
         backupTokenAckSignature: contents.tokenRegistrationAck?.signature ?? null,
         tokenRegistrationAck: tokenAckForState(contents.tokenRegistrationAck),
+        ...(contents.bindingDigest ? { bindingDigest: contents.bindingDigest } : {}),
       };
       store.writeKeystore(secrets, pass);
       store.writeState(restoredState);
       new OperationJournal(join(store.dir, "operations")).restore(contents.journals.operations);
       restoreExitJournal(join(store.dir, "exits"), contents.journals.exits);
+      new ReceiptJournal(join(store.dir, "receipts")).restore(contents.journals.receipts);
       return withAccount(values, store, restoredState, async (ctx, restored) => {
         const state = await ctx.port.accountState(restored.address);
         if (!state.initialized) fail("the backed-up account is not deployed on this network");
         await registerSenders(ctx);
         await registerAndRecord(ctx, store, artifact);
+        if (ctx.port.mode === "live") rememberConnection(store, values);
         await showBalance(ctx, artifact, restored);
       });
     }
@@ -787,6 +834,11 @@ export async function run(argv: string[]): Promise<void> {
           journal.activeUnresolved() ?? fail("no exact lock-owned unresolved operation");
         if (operation.kind.startsWith("refund-")) {
           fail("use refund reconcile for an L1 refund operation");
+        }
+        if (operation.kind === "receipt") {
+          fail(
+            `a receipt run (pid ${operation.request["pid"]} on ${operation.request["host"]}) holds the lock; it moves no funds, and the next command releases it once that run has ended`,
+          );
         }
         const txHash =
           operation.txHash ??
@@ -860,34 +912,41 @@ export async function run(argv: string[]): Promise<void> {
       const intentId = assertIntentId(
         sub ?? fail("receipt needs the intent id: receipt INTENT_ID"),
       );
-      // A spend or exit whose outcome is unknown may have spent the payout's notes: the
-      // spendability simulation could not tell, so no receipt until it is reconciled.
-      const operations = join(store.dir, "operations");
-      const unresolved = existsSync(operations)
-        ? new OperationJournal(operations).unresolved()
-        : null;
-      if (unresolved) {
-        fail(
-          `operation ${unresolved.id} (${unresolved.kind}) is ${unresolved.status}; reconcile it before confirming a receipt`,
-        );
-      }
-      return withTokenArtifactAccount(values, store, async (ctx, account, state, artifact) => {
+      // The offline artifact preflight runs first, as for every artifact command.
+      const saved = store.readState();
+      const artifact = await loadTokenArtifact(
+        flagOrSaved(
+          values,
+          "oxide-token-artifact",
+          saved.oxideTokenArtifact,
+          "OxideToken artifact path",
+        ),
+        saved.corridor,
+      );
+      const resolved: Values = values["dry-run"]
+        ? values
+        : { ...values, "node-url": flagOrSaved(values, "node-url", saved.nodeUrl, "node URL") };
+      return withAccount(resolved, store, saved, async (ctx, account, state) => {
         await registerAndRecord(ctx, store, artifact);
-        const xochi = api(values, hashRecipientDescriptor(account.descriptor), {
-          binding_id: state.bindingId ?? "dry-run-binding",
-          aztec_recipient: account.descriptor.aztecAddress,
-          aztec_token: state.corridor.token.address,
-          network: state.corridor.network,
-        });
+        const xochi = api(resolved, hashRecipientDescriptor(account.descriptor));
         try {
-          const journal = new ReceiptJournal(join(store.dir, "receipts"));
-          const record = await receipt(ctx, xochi, account, artifact, journal, {
-            intentId,
-            tx: values.tx ?? null,
-            knownBindingId: state.bindingId ?? null,
-            dryRun: ctx.port.mode === "dry-run",
-          });
-          if (record) log(`receipt: recorded in ${join(journal.directory, `${intentId}.json`)}`);
+          const receipts = new ReceiptJournal(join(store.dir, "receipts"));
+          const record = await receipt(
+            ctx,
+            xochi,
+            account,
+            artifact,
+            { receipts, operations: new OperationJournal(join(store.dir, "operations")) },
+            {
+              intentId,
+              tx: values.tx ?? null,
+              untagged: values.untagged ?? false,
+              alreadySpent: values["already-spent"] ?? false,
+              bindingDigest: state.bindingDigest ?? null,
+              dryRun: ctx.port.mode === "dry-run",
+            },
+          );
+          if (record) log(`receipt: recorded in ${join(receipts.directory, `${intentId}.json`)}`);
         } finally {
           if (xochi instanceof DryRunEnrollmentApi) {
             for (const call of xochi.calls) log(`  [dry-run] ${call}`);

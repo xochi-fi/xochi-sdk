@@ -1,26 +1,20 @@
 // Shielded payment receipt (`POST /api/shielded/operations/:intentId/receipt`): the recipient's
 // own PaymentReceiptAck that it found the payout on its node, finalized, and could spend it.
-// Like the enrollment acks, every digest is computed here from the full typed preimage; from the
-// Worker's challenge only the values the ack names (binding, terms, operation, nonce) are taken,
-// and the recipient, token, network and amount must be this account's and this corridor's.
+// Like the enrollment acks, every digest is computed here from the full typed preimage. The
+// Worker's challenge must carry the intent's own signed ShieldedTermsV1, for this account, this
+// corridor and this data directory's enrolled binding; the payout acknowledged is only the one
+// the corridor's sender tagged with the order fingerprint those terms produce.
 
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readdirSync,
-  unlinkSync,
-  writeSync,
-} from "node:fs";
+import { existsSync, mkdirSync, chmodSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { hashTypedData, keccak256, toHex, type TypedDataDefinition } from "viem";
 import {
   RECIPIENT_ACK_PURPOSES,
   bindingDomain,
   hashNetworkIdentity,
+  hashRecipientDescriptor,
   recipientAckDigest,
+  termsDomain,
   type PaymentReceiptAck,
 } from "@xochi/signer";
 import { z } from "zod4";
@@ -29,91 +23,352 @@ import type { RecipientAccount } from "./account.js";
 import {
   assertIntentId,
   type ReceiptChallenge,
-  type ReceiptSubject,
   type ReceiptSubmission,
+  type ReceiptTerms,
 } from "./api.js";
 import type { ReceivedTransfer } from "./chain.js";
 import { anyCaseHex32, decimal, evm, hex32, type Corridor } from "./corridor.js";
 import type { RecipientSigner } from "./enrollment.js";
-import { processAlive, writePrivateJson } from "./operation-journal.js";
+import { writePrivateJson } from "./operation-journal.js";
+import { orderFingerprintFromMeta } from "./order-fingerprint.js";
+import { fingerprintTerms } from "./settlement-fingerprint.js";
+
+const field = (name: string, type: string) => ({ name, type });
 
 /**
- * Refuses a challenge that names another recipient, token, network or (when this data directory
- * knows it) binding, or a zero amount: the ack would assert a payout this account never received.
+ * The ShieldedTermsV1 typed-data types, pinned (the Worker's `SHIELDED_TERMS_TYPES`, Riddler
+ * `Shielded.Terms`). `receipt-terms.test.ts` holds them to the @xochi/spec `shielded-terms.json`
+ * baseline digest. Terms under any other types are refused, so `terms_digest` covers exactly the
+ * members read here.
  */
-export function assertReceiptSubject(
+export const SHIELDED_TERMS_TYPES = {
+  EIP712Domain: [
+    field("name", "string"),
+    field("version", "string"),
+    field("chainId", "uint256"),
+    field("salt", "bytes32"),
+  ],
+  ShieldedTermsV1: [
+    field("protocolVersion", "string"),
+    field("environment", "string"),
+    field("intentId", "string"),
+    field("quoteId", "string"),
+    field("operationId", "string"),
+    field("source", "ShieldedSource"),
+    field("destination", "ShieldedDestination"),
+    field("feeBreakdown", "ShieldedFeeBreakdown"),
+    field("sourceAuthorizationDigest", "bytes32"),
+    field("refundAddress", "address"),
+    field("refundAmount", "uint256"),
+    field("collectBefore", "uint64"),
+    field("settlementServiceDeadline", "uint64"),
+    field("recipientBindingDigest", "bytes32"),
+    field("policyRevision", "uint32"),
+    field("reservationId", "string"),
+  ],
+  ShieldedSource: [
+    field("chainId", "uint256"),
+    field("token", "address"),
+    field("wallet", "address"),
+    field("collector", "address"),
+    field("amount", "uint256"),
+  ],
+  ShieldedDestination: [
+    field("settlementType", "string"),
+    field("privacyLevel", "string"),
+    field("disclosureProfile", "string"),
+    field("rail", "string"),
+    field("network", "NetworkIdentity"),
+    field("corridor", "ShieldedCorridor"),
+    field("assetId", "string"),
+    field("aztecToken", "bytes32"),
+    field("recipientBindingId", "string"),
+    field("descriptorDigest", "bytes32"),
+    field("aztecRecipient", "bytes32"),
+    field("amount", "uint256"),
+    field("feePayer", "bytes32"),
+  ],
+  ShieldedCorridor: [
+    field("corridorId", "bytes32"),
+    field("corridorRevision", "uint32"),
+    field("manifestDigest", "bytes32"),
+  ],
+  ShieldedFeeBreakdown: [
+    field("gasFloor", "uint256"),
+    field("solverFeeBps", "uint16"),
+    field("solverFee", "uint256"),
+    field("priceImpactBps", "uint16"),
+    field("priceImpact", "uint256"),
+    field("venueFeeBps", "uint16"),
+    field("venueFee", "uint256"),
+    field("routingFeeBps", "uint16"),
+    field("routingFee", "uint256"),
+    field("totalBps", "uint16"),
+    field("totalFee", "uint256"),
+  ],
+  NetworkIdentity: [
+    field("aztecChainId", "uint256"),
+    field("protocolVersion", "uint256"),
+    field("rollupAddress", "address"),
+    field("l1ChainId", "uint256"),
+    field("genesisOrNetworkDigest", "bytes32"),
+  ],
+};
+
+function sameTypes(types: ReceiptTerms["types"]): boolean {
+  const pinned: Record<string, { name: string; type: string }[]> = SHIELDED_TERMS_TYPES;
+  const names = Object.keys(types).sort();
+  return (
+    names.join() === Object.keys(pinned).sort().join() &&
+    names.every((name) => JSON.stringify(types[name]) === JSON.stringify(pinned[name]))
+  );
+}
+
+const lower = (value: string) => value.toLowerCase();
+
+function refuse(message: string): never {
+  throw new Error(`receipt refused: ${message}`);
+}
+
+/** What a checked challenge binds the receipt to. */
+export interface CheckedReceiptChallenge {
+  termsDigest: string;
+  operationId: string;
+  amount: bigint;
+  /** The terms' `settlementServiceDeadline`: the payout's `validUntil`. */
+  validUntil: number;
+  /** The order fingerprint the intent's payout carries in its `Transfer` meta. */
+  orderFingerprint: string;
+}
+
+/**
+ * Refuses a challenge unless its terms are the signed ShieldedTermsV1 of `intentId` (pinned
+ * types, this corridor's terms domain, hashing to `terms_digest`) paying exactly the challenge's
+ * amount to this account, descriptor, token, network and corridor, under this data directory's
+ * enrolled binding; and unless `operation_id` is keccak256 of the terms' operation id.
+ */
+export function checkReceiptChallenge(
   corridor: Corridor,
   account: RecipientAccount,
-  subject: ReceiptSubject,
-  knownBindingId: string | null,
-): void {
-  if (subject.aztec_recipient.toLowerCase() !== account.descriptor.aztecAddress) {
-    throw new Error(
-      `the receipt challenge names recipient ${subject.aztec_recipient}, not this account ${account.descriptor.aztecAddress}`,
+  challenge: ReceiptChallenge,
+  expected: { intentId: string; bindingDigest: string | null },
+): CheckedReceiptChallenge {
+  const subject = challenge.receipt;
+  const { terms } = subject;
+  const { message } = terms;
+  const destination = message.destination;
+  if (!sameTypes(terms.types)) refuse("the terms use other typed-data types than ShieldedTermsV1");
+  const domain = termsDomain(corridor.sourceChainId, corridor.environment, corridor.network);
+  if (
+    terms.domain.name !== domain.name ||
+    terms.domain.version !== domain.version ||
+    String(terms.domain.chainId) !== domain.chainId ||
+    lower(terms.domain.salt) !== lower(domain.salt)
+  ) {
+    refuse("the terms are signed under another domain than this corridor's terms domain");
+  }
+  const termsDigest = lower(hashTypedData(terms as unknown as TypedDataDefinition));
+  if (termsDigest !== lower(subject.terms_digest)) {
+    refuse(`the terms hash to ${termsDigest}, not terms_digest ${subject.terms_digest}`);
+  }
+  if (message.intentId !== expected.intentId) {
+    refuse(`the terms are for intent ${message.intentId}, not ${expected.intentId}`);
+  }
+  if (destination.amount !== subject.amount) {
+    refuse(`the challenge amount ${subject.amount} is not the terms' ${destination.amount}`);
+  }
+  if (BigInt(destination.amount) === 0n) refuse("the terms name a zero amount");
+  const operationId = lower(keccak256(toHex(message.operationId)));
+  if (operationId !== lower(subject.operation_id)) {
+    refuse("operation_id is not keccak256 of the terms' operationId");
+  }
+  const recipient = account.descriptor.aztecAddress;
+  if (
+    lower(destination.aztecRecipient) !== recipient ||
+    lower(subject.aztec_recipient) !== recipient
+  ) {
+    refuse(`the terms pay recipient ${destination.aztecRecipient}, not this account ${recipient}`);
+  }
+  const descriptorDigest = hashRecipientDescriptor(account.descriptor);
+  if (lower(destination.descriptorDigest) !== descriptorDigest) {
+    refuse("the terms name another recipient descriptor than this account's");
+  }
+  const token = corridor.token.address;
+  if (lower(destination.aztecToken) !== token || lower(subject.aztec_token) !== token) {
+    refuse(`the terms pay token ${destination.aztecToken}, not the corridor token ${token}`);
+  }
+  const network = hashNetworkIdentity(corridor.network);
+  if (
+    hashNetworkIdentity(destination.network) !== network ||
+    hashNetworkIdentity(subject.network) !== network
+  ) {
+    refuse("the terms name another Aztec network than the corridor's");
+  }
+  if (
+    lower(destination.corridor.corridorId) !== corridor.corridorId ||
+    destination.corridor.corridorRevision !== corridor.corridorRevision ||
+    lower(destination.corridor.manifestDigest) !== corridor.manifestDigest
+  ) {
+    refuse("the terms name another corridor or revision than this data directory's");
+  }
+  if (expected.bindingDigest === null) {
+    refuse(
+      "this data directory's enrolled binding digest is unknown (it enrolled before the digest was recorded, or was restored from a backup without it): run enroll again, or restore a backup written after enroll start",
     );
   }
-  if (subject.aztec_token.toLowerCase() !== corridor.token.address) {
-    throw new Error(
-      `the receipt challenge names token ${subject.aztec_token}, not the corridor token ${corridor.token.address}`,
-    );
+  if (
+    lower(message.recipientBindingDigest) !== expected.bindingDigest ||
+    lower(subject.binding_digest) !== expected.bindingDigest
+  ) {
+    refuse("the terms or challenge name another binding than the one this data directory enrolled");
   }
-  if (hashNetworkIdentity(subject.network) !== hashNetworkIdentity(corridor.network)) {
-    throw new Error("the receipt challenge names another Aztec network than the corridor's");
-  }
-  if (knownBindingId !== null && subject.binding_id !== knownBindingId) {
-    throw new Error(
-      `the receipt challenge names binding ${subject.binding_id}, not this account's ${knownBindingId}`,
-    );
-  }
-  if (BigInt(subject.amount) === 0n) {
-    throw new Error("the receipt challenge names a zero amount");
+  const validUntil = Number(message.settlementServiceDeadline);
+  return {
+    termsDigest,
+    operationId,
+    amount: BigInt(destination.amount),
+    validUntil,
+    orderFingerprint: fingerprintTerms({
+      network: corridor.network,
+      corridor: {
+        corridorId: corridor.corridorId,
+        corridorRevision: Number(corridor.corridorRevision),
+        manifestDigest: corridor.manifestDigest,
+      },
+      accountMode: "standard",
+      sendMode: "oxide",
+      recipient,
+      recipientDescriptorDigest: descriptorDigest,
+      token,
+      amount: destination.amount,
+      validUntil,
+    }),
+  };
+}
+
+/** What the intent's payout must be: the corridor sender's transfer of `amount`, tagged. */
+export interface WantedPayout {
+  amount: bigint;
+  orderFingerprint: string;
+  senders: readonly string[];
+}
+
+/** `--tx` and `--untagged`. */
+export interface PayoutChoice {
+  tx: string | null;
+  untagged: boolean;
+}
+
+export interface SelectedPayout {
+  transfer: ReceivedTransfer;
+  /** False only for an `--untagged` payout: no order fingerprint ties it to the intent. */
+  tagged: boolean;
+}
+
+/** The meta's order fingerprint; `null` untagged, `"malformed"` for a tagged meta that is not. */
+function fingerprintOf(transfer: ReceivedTransfer): string | null | "malformed" {
+  try {
+    return orderFingerprintFromMeta(transfer.meta);
+  } catch {
+    // `orderFingerprintFromMeta` throws only on a malformed tagged meta: never this order's.
+    return "malformed";
   }
 }
 
 /**
- * The discovered payout this receipt names: a transfer of the corridor token to this account (as
- * `AztecPort.transfers` returns them) of exactly `amount`, in a transaction no other intent's
- * receipt in this data directory names. Exactly one such transaction, or the one `--tx` names.
+ * Refuses before any receipt challenge when this PXE discovered no transfer from the corridor's
+ * senders at all: there is nothing a challenge could be acknowledged with.
+ */
+export function assertCorridorPayoutDiscovered(
+  transfers: readonly ReceivedTransfer[],
+  senders: readonly string[],
+): void {
+  const corridorSenders = new Set(senders.map(lower));
+  if (!transfers.some((t) => corridorSenders.has(lower(t.from)))) {
+    throw new Error(
+      "no payout from the corridor's sender has been discovered by this PXE: run balance to sync",
+    );
+  }
+}
+
+/**
+ * The intent's payout among the transfers this PXE discovered: from one of the corridor's
+ * senders, of exactly the amount, tagged with the terms' order fingerprint, and named by no other
+ * intent's receipt. `--tx` picks only among those. An untagged payout (made before tagging) is
+ * taken only as `--tx HASH --untagged`, from a corridor sender with the exact amount, and only
+ * while no tagged payout of this intent exists.
  */
 export function selectReceiptTransfer(
   transfers: readonly ReceivedTransfer[],
-  amount: bigint,
+  want: WantedPayout,
   receiptedTxHashes: ReadonlySet<string>,
-  tx: string | null,
-): ReceivedTransfer {
-  const byTx = new Map<string, ReceivedTransfer>();
-  for (const t of transfers) {
-    const txHash = t.txHash.toLowerCase();
-    if (t.amount === amount && !byTx.has(txHash)) byTx.set(txHash, { ...t, txHash });
-  }
-  if (tx !== null) {
-    if (!anyCaseHex32.safeParse(tx).success) {
+  choice: PayoutChoice,
+): SelectedPayout {
+  const senders = new Set(want.senders.map(lower));
+  const fromSender = transfers
+    .map((t) => ({ ...t, txHash: lower(t.txHash) }))
+    .filter((t) => senders.has(lower(t.from)));
+  const tagged = [
+    ...new Map(
+      fromSender
+        .filter((t) => t.amount === want.amount && fingerprintOf(t) === want.orderFingerprint)
+        .map((t) => [t.txHash, t] as const),
+    ).values(),
+  ];
+  let tx: string | null = null;
+  if (choice.tx !== null) {
+    if (!anyCaseHex32.safeParse(choice.tx).success) {
       throw new Error("--tx must be a 0x-prefixed 32-byte Aztec transaction hash");
     }
-    const wanted = tx.toLowerCase();
-    if (receiptedTxHashes.has(wanted)) {
+    tx = lower(choice.tx);
+    if (receiptedTxHashes.has(tx)) {
+      throw new Error(`payout ${tx} is already acknowledged for another intent`);
+    }
+  }
+  if (choice.untagged) {
+    if (tx === null) throw new Error("--untagged needs --tx naming the payout");
+    if (tagged[0]) {
       throw new Error(
-        `payout ${wanted} is already receipted for another intent in this data directory`,
+        `this intent's tagged payout ${tagged[0].txHash} exists: run receipt without --untagged`,
       );
     }
-    const chosen = byTx.get(wanted);
-    if (chosen) return chosen;
-    const other = transfers.find((t) => t.txHash.toLowerCase() === wanted);
+    const named = transfers.find((t) => lower(t.txHash) === tx);
+    if (!named) throw new Error(`this PXE discovered no transfer in ${tx}: run balance to sync`);
+    if (!senders.has(lower(named.from))) {
+      throw new Error(`transfer ${tx} is not from the corridor's sender`);
+    }
+    if (named.amount !== want.amount) {
+      throw new Error(`transfer ${tx} carries ${named.amount}, not ${want.amount}`);
+    }
+    if (fingerprintOf(named) !== null) {
+      throw new Error(`transfer ${tx} is tagged for another order`);
+    }
+    return { transfer: { ...named, txHash: tx }, tagged: false };
+  }
+  assertCorridorPayoutDiscovered(fromSender, want.senders);
+  const wanted = `the corridor sender's transfer of ${want.amount} base units tagged with order fingerprint ${want.orderFingerprint}`;
+  if (tx !== null) {
+    const named = tagged.find((t) => t.txHash === tx);
+    if (!named) throw new Error(`${tx} is not a payout of this intent (${wanted})`);
+    return { transfer: named, tagged: true };
+  }
+  const unused = tagged.filter((t) => !receiptedTxHashes.has(t.txHash));
+  if (unused.length === 1) return { transfer: unused[0]!, tagged: true };
+  if (unused.length > 1) {
     throw new Error(
-      other
-        ? `payout ${wanted} carries ${other.amount}, not ${amount}`
-        : `no discovered payout in ${wanted}: run balance to sync, and check the hash`,
+      `${unused.length} payouts of this intent (${unused.map((t) => t.txHash).join(", ")}): name one with --tx`,
     );
   }
-  const unused = [...byTx.values()].filter((t) => !receiptedTxHashes.has(t.txHash));
-  if (unused.length === 1) return unused[0]!;
-  if (unused.length === 0) {
-    throw new Error(
-      `no discovered payout of ${amount} base units without a receipt: run balance to sync; the payout must be found by this account's own PXE`,
-    );
-  }
+  const untagged = fromSender.filter(
+    (t) =>
+      t.amount === want.amount && fingerprintOf(t) === null && !receiptedTxHashes.has(t.txHash),
+  );
   throw new Error(
-    `${unused.length} discovered payouts of ${amount} base units have no receipt (${unused.map((t) => t.txHash).join(", ")}): name the one for this intent with --tx`,
+    `no payout of this intent discovered (${wanted})${
+      untagged.length > 0
+        ? `; untagged payouts of the amount: ${untagged.map((t) => t.txHash).join(", ")}. If one is this intent's (paid before order tagging), name it with --tx HASH --untagged`
+        : ": run balance to sync, and run receipt again once it has landed"
+    }`,
   );
 }
 
@@ -139,16 +394,16 @@ export async function signPaymentReceipt(args: {
     );
   }
   const message: PaymentReceiptAck = {
-    bindingDigest: subject.binding_digest.toLowerCase(),
-    termsDigest: subject.terms_digest.toLowerCase(),
-    operationId: subject.operation_id.toLowerCase(),
+    bindingDigest: lower(subject.binding_digest),
+    termsDigest: lower(subject.terms_digest),
+    operationId: lower(subject.operation_id),
     network: { ...corridor.network },
-    txHash: transfer.txHash.toLowerCase(),
+    txHash: lower(transfer.txHash),
     blockNumber: String(transfer.blockNumber),
     aztecToken: corridor.token.address,
     amount: transfer.amount.toString(),
     aztecRecipient: account.descriptor.aztecAddress,
-    nonce: challenge.nonce.toLowerCase(),
+    nonce: lower(challenge.nonce),
     challengeExpiry: String(challenge.expires_at),
     purpose: RECIPIENT_ACK_PURPOSES.PaymentReceiptAck,
   };
@@ -192,27 +447,38 @@ const PaymentReceiptAckSchema = z
   })
   .strict();
 
-const ReceiptRecordSchema = z
+const ReceiptRequestSchema = z
   .object({
-    intentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-    /** `submitting` from before the POST until the Worker accepts it; then `submitted`. */
-    status: z.enum(["submitting", "submitted"]),
-    txHash: hex32,
-    blockNumber: decimal,
-    amount: decimal,
-    /** The exact body posted: an identical retry resumes a receipt the Worker already took. */
-    request: z
+    challenge_id: z.string().min(1).max(128),
+    acknowledgement: z
       .object({
-        challenge_id: z.string().min(1).max(128),
-        acknowledgement: z
-          .object({
-            primary_type: z.literal("PaymentReceiptAck"),
-            message: PaymentReceiptAckSchema,
-            signature: z.string().regex(/^0x[0-9a-f]{128}$/),
-          })
-          .strict(),
+        primary_type: z.literal("PaymentReceiptAck"),
+        message: PaymentReceiptAckSchema,
+        signature: z.string().regex(/^0x[0-9a-f]{128}$/),
       })
       .strict(),
+  })
+  .strict();
+
+export const ReceiptRecordSchema = z
+  .object({
+    intentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+    /** `submitting` from before the first POST until Xochi accepts one; then `submitted`. */
+    status: z.enum(["submitting", "submitted"]),
+    /** Pinned at the first signing: no later attempt for this intent may name others. */
+    termsDigest: hex32,
+    operationId: hex32,
+    amount: decimal,
+    txHash: hex32,
+    blockNumber: decimal,
+    /** Taken with `--untagged`: no order fingerprint tied this payout to the intent. */
+    untagged: z.boolean(),
+    /** Taken with `--already-spent`: this account's spend or exit that spent it. */
+    alreadySpentBy: hex32.nullable(),
+    /** Every request signed for this intent, oldest first; the last is resent. Append-only. */
+    attempts: z
+      .array(z.object({ signedAt: z.iso.datetime(), request: ReceiptRequestSchema }).strict())
+      .min(1),
     receipt_digest: hex32.optional(),
     submitted_at: z.iso.datetime().optional(),
   })
@@ -223,22 +489,38 @@ const ReceiptRecordSchema = z
     if (record.status === "submitted" ? !accepted : !unaccepted) {
       ctx.addIssue({ code: "custom", message: "receipt acceptance does not match its status" });
     }
+    for (const { request } of record.attempts) {
+      const m = request.acknowledgement.message;
+      if (
+        m.termsDigest !== record.termsDigest ||
+        m.operationId !== record.operationId ||
+        m.amount !== record.amount ||
+        m.txHash !== record.txHash ||
+        m.blockNumber !== record.blockNumber
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "a receipt attempt differs from the recorded terms, operation, amount or payout",
+        });
+      }
+    }
   });
 export type ReceiptRecord = z.infer<typeof ReceiptRecordSchema>;
 
+/** A new receipt record: its pinned subject and first signed request. */
+export type ReceiptEntry = Omit<
+  ReceiptRecord,
+  "status" | "attempts" | "receipt_digest" | "submitted_at"
+> & { request: ReceiptSubmission };
+
 /**
  * `<data-dir>/receipts/<intentId>.json`, one per intent, mode 0600 in a 0700 directory: the
- * payout each receipt names and the exact signed body, never a key. A transaction one intent's
- * receipt names is never offered for another. `lock` makes receipt runs single-flight, so two
- * runs cannot pick the same payout. Receipts move no funds, so they do not take the fund-movement
- * lock under `operations/`.
+ * terms, operation, amount and payout each receipt is pinned to, and every request signed for it,
+ * never a key. A payout or terms digest one intent's receipt names is never used for another.
+ * Backups carry these records. Writers run under the fund-movement lock (`operations/`).
  */
 export class ReceiptJournal {
-  private readonly lockPath: string;
-
-  constructor(readonly directory: string) {
-    this.lockPath = join(directory, "active.lock");
-  }
+  constructor(readonly directory: string) {}
 
   private ensureDirectory(): void {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
@@ -247,19 +529,6 @@ export class ReceiptJournal {
 
   private path(intentId: string): string {
     return join(this.directory, `${assertIntentId(intentId)}.json`);
-  }
-
-  private records(): ReceiptRecord[] {
-    if (!existsSync(this.directory)) return [];
-    return readdirSync(this.directory)
-      .filter((entry) => entry.endsWith(".json"))
-      .map((entry) => {
-        const record = this.parse(join(this.directory, entry));
-        if (entry !== `${record.intentId}.json`) {
-          throw new Error(`receipt journal record ${entry} does not own its filename`);
-        }
-        return record;
-      });
   }
 
   private parse(path: string): ReceiptRecord {
@@ -272,12 +541,34 @@ export class ReceiptJournal {
     }
   }
 
+  /** Validates `record` (attempts against the pinned subject) and writes it atomically. */
+  private write(record: unknown): ReceiptRecord {
+    const parsed = ReceiptRecordSchema.parse(record);
+    this.ensureDirectory();
+    writePrivateJson(this.path(parsed.intentId), parsed);
+    return parsed;
+  }
+
+  records(): ReceiptRecord[] {
+    if (!existsSync(this.directory)) return [];
+    return readdirSync(this.directory)
+      .filter((entry) => entry.endsWith(".json"))
+      .sort()
+      .map((entry) => {
+        const record = this.parse(join(this.directory, entry));
+        if (entry !== `${record.intentId}.json`) {
+          throw new Error(`receipt journal record ${entry} does not own its filename`);
+        }
+        return record;
+      });
+  }
+
   read(intentId: string): ReceiptRecord | null {
     const path = this.path(intentId);
     return existsSync(path) ? this.parse(path) : null;
   }
 
-  /** Transactions the receipts of every intent but `intentId` name, accepted or not. */
+  /** Every payout the receipts of the other intents ever signed, accepted or not. */
   receiptedTxHashes(intentId: string): Set<string> {
     return new Set(
       this.records()
@@ -286,78 +577,73 @@ export class ReceiptJournal {
     );
   }
 
-  /**
-   * Records the signed receipt before it is posted. `replace` overwrites an unaccepted record
-   * of the same intent (its retry was refused); an accepted record is never replaced.
-   */
-  begin(
-    entry: Omit<ReceiptRecord, "status" | "request" | "receipt_digest" | "submitted_at"> & {
-      request: ReceiptSubmission;
-    },
-    { replace = false }: { replace?: boolean } = {},
-  ): ReceiptRecord {
-    const existing = this.read(entry.intentId);
-    if (existing?.status === "submitted") {
-      throw new Error(`intent ${entry.intentId}'s receipt is already accepted`);
-    }
-    if (existing && !replace) {
-      throw new Error(`intent ${entry.intentId} already has a receipt being submitted`);
-    }
-    const record = ReceiptRecordSchema.parse({ ...entry, status: "submitting" });
-    this.ensureDirectory();
-    writePrivateJson(this.path(record.intentId), record);
-    return record;
+  /** The other intent whose receipt is pinned to these terms or this operation, if any. */
+  intentPinning(
+    subject: { termsDigest: string; operationId: string },
+    intentId: string,
+  ): string | null {
+    const other = this.records().find(
+      (record) =>
+        record.intentId !== intentId &&
+        (record.termsDigest === lower(subject.termsDigest) ||
+          record.operationId === lower(subject.operationId)),
+    );
+    return other?.intentId ?? null;
   }
 
-  /** Marks the receipt accepted with the Worker's `receipt_digest`. */
-  complete(intentId: string, receiptDigest: string, submittedAt: string): ReceiptRecord {
-    const existing = this.read(intentId);
-    if (!existing) throw new Error(`no receipt being submitted for ${intentId}`);
-    const record = ReceiptRecordSchema.parse({
-      ...existing,
-      status: "submitted",
-      receipt_digest: receiptDigest.toLowerCase(),
-      submitted_at: submittedAt,
+  /** Records the first signed receipt of an intent, before it is posted. */
+  begin(entry: ReceiptEntry): ReceiptRecord {
+    if (this.read(entry.intentId)) {
+      throw new Error(`intent ${entry.intentId} already has a receipt record`);
+    }
+    const { request, ...subject } = entry;
+    return this.write({
+      ...subject,
+      status: "submitting",
+      attempts: [{ signedAt: new Date().toISOString(), request }],
     });
-    writePrivateJson(this.path(intentId), record);
-    return record;
   }
 
-  /** Takes the receipt lock (a dead run's lock is recovered); returns its release. */
-  lock(): () => void {
-    this.ensureDirectory();
-    for (let attempt = 0; ; attempt++) {
-      let fd: number;
-      try {
-        fd = openSync(this.lockPath, "wx", 0o600);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt > 0) throw error;
-        const holder = this.lockHolder();
-        if (processAlive(holder)) {
-          throw new Error(`another receipt run (pid ${holder}) holds ${this.lockPath}`);
-        }
-        unlinkSync(this.lockPath);
-        continue;
-      }
-      try {
-        writeSync(fd, JSON.stringify({ pid: process.pid }));
-      } finally {
-        closeSync(fd);
-      }
-      return () => unlinkSync(this.lockPath);
+  /** Appends a re-signed request (after Xochi rejected the last); its subject must be the pinned one. */
+  retry(intentId: string, request: ReceiptSubmission): ReceiptRecord {
+    const record = this.read(intentId);
+    if (!record) throw new Error(`no receipt record for ${intentId}`);
+    if (record.status === "submitted") {
+      throw new Error(`intent ${intentId}'s receipt is already accepted`);
     }
-  }
-
-  private lockHolder(): number {
-    try {
-      return z
-        .object({ pid: z.number().int().positive() })
-        .strict()
-        .parse(JSON.parse(readFileSync(this.lockPath, "utf8"))).pid;
-    } catch {
+    const next = ReceiptRecordSchema.safeParse({
+      ...record,
+      attempts: [...record.attempts, { signedAt: new Date().toISOString(), request }],
+    });
+    if (!next.success) {
       throw new Error(
-        `receipt lock ${this.lockPath} is unreadable; remove it only if no receipt run is active`,
+        `the new receipt for ${intentId} differs from its recorded terms, operation, amount or payout`,
       );
     }
+    return this.write(next.data);
+  }
+
+  /** Marks the receipt accepted with Xochi's `receipt_digest`. */
+  complete(intentId: string, receiptDigest: string, submittedAt: string): ReceiptRecord {
+    const record = this.read(intentId);
+    if (!record) throw new Error(`no receipt record for ${intentId}`);
+    return this.write({
+      ...record,
+      status: "submitted",
+      receipt_digest: lower(receiptDigest),
+      submitted_at: submittedAt,
+    });
+  }
+
+  /** Restores a backup's records into an empty (or absent) directory. */
+  restore(recordsInput: readonly unknown[]): void {
+    if (existsSync(this.directory) && readdirSync(this.directory).length !== 0) {
+      throw new Error("receipt journal restore needs an empty destination");
+    }
+    const records = recordsInput.map((record) => ReceiptRecordSchema.parse(record));
+    if (new Set(records.map((record) => record.intentId)).size !== records.length) {
+      throw new Error("receipt journal backup contains duplicate intents");
+    }
+    for (const record of records) this.write(record);
   }
 }

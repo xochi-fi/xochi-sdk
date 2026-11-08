@@ -42,7 +42,6 @@ import { buildSeedCapsule } from "./oxide/vendor/oxide-client/capsules.js";
 import {
   submit,
   getTransferMetaLen,
-  simulateWalletTransaction,
   type Operation,
   type SubmitResult,
 } from "./oxide/vendor/oxide-client/l2_operations.js";
@@ -408,6 +407,8 @@ export class LiveAztec implements AztecPort {
   ): Promise<void> {
     // `submit`'s own simulate pass (seed capsule, no strict mode, no note signatures): it needs
     // no enclave and sends no key, and it fails unless this PXE holds notes that pay `amount`.
+    // Called on the wallet directly, not through the fund-movement sentinel, so the receipt's
+    // local error names the cause; nothing moves funds here.
     const contract = Contract.at(
       AztecAddress.fromStringUnsafe(this.corridor.token.address),
       artifact,
@@ -417,11 +418,7 @@ export class LiveAztec implements AztecPort {
     const payload = await new BatchCall(this.wallet, [
       contract.methods["transfer"]!(account.address, to, amount, meta, Fr.ZERO),
     ]).request({ capsules: [buildSeedCapsule(contract.address)] });
-    await simulateWalletTransaction(
-      this.wallet,
-      payload,
-      toSimulateOptions({ from: account.address }),
-    );
+    await this.wallet.simulateTx(payload, toSimulateOptions({ from: account.address }));
   }
 
   private async oxideSigner(): Promise<FleetSigner> {

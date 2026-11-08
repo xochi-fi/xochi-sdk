@@ -33,12 +33,13 @@ import { CorridorSchema, decimal, hex32, type Corridor } from "./corridor.js";
 import type { SignedAck } from "./enrollment.js";
 import { open, seal } from "./sealed.js";
 import { OperationRecordSchema } from "./operation-journal.js";
+import { ReceiptRecordSchema } from "./receipt.js";
 
 const RECOVERY_INSTRUCTIONS = [
   "1. Install the verified Xochi recipient test artifact on a new Node 22 macOS/Linux/WSL host.",
   "2. Run `xochi-recipient restore --backup <this file>` with the backup passphrase and a fresh data directory.",
   "3. The tool re-creates the stock SchnorrAccount 6.0.0 from `account.secret` and `account.salt`, refuses unless it derives `account.address`, registers each of `registeredSenders` as a sender, registers the OxideToken at `token.address` with an artifact of class `token.classId` and runs `store_immutables` with `token.immutables`.",
-  "4. It restores the TokenRegistrationAck and operation/exit journals. An unresolved operation recreates its exact lock and must be reconciled; never delete it or retry.",
+  "4. It restores the TokenRegistrationAck, the enrolled binding digest and the operation/exit/receipt journals. An unresolved operation recreates its exact lock and must be reconciled; never delete it or retry.",
   "5. It syncs a fresh PXE from the Aztec node you choose and shows the OXDAI balance. The scan checkpoint is an optimization only.",
   "6. Never copy a wallet database between machines, and never send this file's plaintext to anyone: it holds the account's secret key.",
 ].join("\n");
@@ -74,10 +75,12 @@ const JournalBackupSchema = z
   .object({
     operations: z.array(OperationRecordSchema),
     exits: z.array(ExitJournalRecordSchema),
+    /** Every payout receipt signed here (absent from backups written before receipts). */
+    receipts: z.array(ReceiptRecordSchema).default([]),
   })
   .strict()
-  .default({ operations: [], exits: [] });
-export type JournalBackup = z.infer<typeof JournalBackupSchema>;
+  .default({ operations: [], exits: [], receipts: [] });
+export type JournalBackup = z.input<typeof JournalBackupSchema>;
 
 export const BackupSchema = z
   .object({
@@ -114,6 +117,11 @@ export const BackupSchema = z
      */
     tokenRegistrationAck: SignedAckSchema.nullable(),
     journals: JournalBackupSchema,
+    /**
+     * The RecipientBinding digest this account enrolled (or is enrolling): `receipt` refuses
+     * terms for any other binding. Absent from backups written before it was recorded.
+     */
+    bindingDigest: hex32.nullable().optional(),
     recovery: z.string().min(1),
   })
   .strict();
@@ -126,7 +134,8 @@ export function backupContents(
   scanCheckpoint: number | null,
   tokenRegistrationAck: SignedAck | null,
   now: number,
-  journals: JournalBackup = { operations: [], exits: [] },
+  journals: JournalBackup = { operations: [], exits: [], receipts: [] },
+  bindingDigest: string | null = null,
 ): BackupContents {
   return BackupSchema.parse({
     format: BACKUP_FORMAT_V1_NAME,
@@ -153,6 +162,7 @@ export function backupContents(
     scanCheckpoint: scanCheckpoint === null ? null : { blockNumber: scanCheckpoint },
     tokenRegistrationAck,
     journals,
+    bindingDigest,
     recovery: RECOVERY_INSTRUCTIONS,
   });
 }
