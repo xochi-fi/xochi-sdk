@@ -8,13 +8,21 @@ export interface Clock {
   nowMs(): number;
 }
 
-/** The only network primitive: api.xochi.fi, Aztec node JSON-RPC, the enclave, L1 RPC, artifacts. */
+/**
+ * The network primitive for the core's own requests: api.xochi.fi, the single-attempt `sendTx`,
+ * L1 RPC reads and artifacts. Not the only one: the Aztec SDK's node reads
+ * (`createAztecNodeClient`) and the vendored enclave transport use the global `fetch`, so a
+ * platform must provide one (Node 22 and browsers do).
+ */
 export type HttpFetch = typeof fetch;
 
 /**
- * Durable key-value storage. Keys are "/"-separated segments of [a-z0-9][a-z0-9._-]{0,127},
- * at most 512 characters. A journal record naming a tx hash is `put` (resolved) before that
- * tx is broadcast, so every write resolves only once it is durable.
+ * Durable key-value storage. Keys are "/"-separated segments of [a-z0-9_][a-z0-9._-]{0,127},
+ * at most 512 characters. A leading "." is reserved for an adapter's temp files, which `list()`
+ * never returns; any other entry outside the grammar makes `list()` throw (fail closed). The
+ * core's intent ids are ^[a-z0-9_][a-z0-9_-]{0,63}$, so `receipts/<intentId>.json` is a key.
+ * A journal record naming a tx hash is `put` (resolved) before that tx is broadcast, so every
+ * write resolves only once it is durable.
  */
 export interface KeyValueStore {
   get(key: string): Promise<Uint8Array | null>;
@@ -48,9 +56,15 @@ export interface LockLease {
 
 export interface LockManager {
   /**
-   * Exclusive across processes (Node) or tabs and workers (browser, Web Locks). Resolves null
-   * while a live holder has it. A dead holder's lock is recoverable: Node by pid liveness, as
-   * the CLI does today; the browser because Web Locks drop when the holding tab closes.
+   * Fund movement is exclusive through the atomic `create` of `operations/active.lock`, not
+   * through this port. The journal uses it as a holder-liveness probe: a live journal holder keeps
+   * `xochi-recipient:<address>:operations:holder:<sessionId>` (CLI: its pid) for its lifetime, and
+   * `tryAcquire` resolving null means that holder is alive; a lease on a gone holder's name lets
+   * the journal recover its lock. The facade also takes a short exclusive
+   * `xochi-recipient:<address>:operations:state` lease around each `state.json`
+   * read-modify-write. Browser: Web Locks (exclusive, dropped when the tab closes). The CLI's
+   * `NodePidLockManager` serves holder names only (pid liveness); the CLI does not open the
+   * facade.
    */
   tryAcquire(name: string, holder: LockHolder): Promise<LockLease | null>;
 }
