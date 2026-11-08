@@ -15,7 +15,7 @@ declare global {
   interface Window {
     storage: typeof KvStoreModule & typeof WebLocksModule & Pick<typeof Ports, "KeyExistsError">;
     lease?: Ports.LockLease;
-    lockFreed?: Promise<void>;
+    lockFreed?: Promise<unknown>;
     idbTransactions: IDBTransaction[];
     heldStore?: KvStoreModule.IndexedDbKeyValueStore;
   }

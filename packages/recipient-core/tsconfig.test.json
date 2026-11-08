@@ -3,9 +3,14 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
   },
   "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
   "exclude": ["src/oxide/vendor"],
-  "references": [{ "path": "src/oxide/vendor" }]
+  "references": [
+    {
+      "path": "src/oxide/vendor"
+    }
+  ]
 }

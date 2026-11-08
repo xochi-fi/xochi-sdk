@@ -74,11 +74,11 @@ describe("WebCryptoAttestationVerifier construction", () => {
 
 describe("provenance pins", () => {
   const vendoredDir = new URL(
-    "../../../../tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
+    "../../src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
     import.meta.url,
   );
 
-  it("the test copy of the AWS Nitro root is the one tools/recipient pins", () => {
+  it("the test copy of the AWS Nitro root is the one src/oxide/enclave.ts pins", () => {
     expect(readFileSync(ENCLAVE_TS_URL, "utf8")).toContain(AWS_NITRO_ROOT_G1_PEM);
   });
 

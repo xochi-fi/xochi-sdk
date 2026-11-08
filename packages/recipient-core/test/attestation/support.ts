@@ -15,7 +15,7 @@ import type { NitroAttestationInput, ParsedNitroAttestation } from "../../src/po
  */
 const FIXTURE_URL = new URL("./fixtures/attestation-0xcb88.json", import.meta.url);
 
-/** `AWS_NITRO_ROOT_G1_PEM` of tools/recipient/src/oxide/enclave.ts (drift-tested). */
+/** `AWS_NITRO_ROOT_G1_PEM` of packages/recipient-core/src/oxide/enclave.ts (drift-tested). */
 export const AWS_NITRO_ROOT_G1_PEM = `-----BEGIN CERTIFICATE-----
 MIICETCCAZagAwIBAgIRAPkxdWgbkK/hHUbMtOTn+FYwCgYIKoZIzj0EAwMwSTEL
 MAkGA1UEBhMCVVMxDzANBgNVBAoMBkFtYXpvbjEMMAoGA1UECwwDQVdTMRswGQYD
@@ -32,7 +32,7 @@ IwLz3/Y=
 -----END CERTIFICATE-----`;
 
 export const ENCLAVE_TS_URL = new URL(
-  "../../../../tools/recipient/src/oxide/enclave.ts",
+  "../../src/oxide/enclave.ts",
   import.meta.url,
 );
 
@@ -65,12 +65,12 @@ export function realFixture(): RealFixture {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The vendored (Node) verifier and parser, loaded at runtime from tools/recipient. A computed
+// The vendored (Node) verifier and parser, loaded at runtime from src/oxide/vendor. A computed
 // specifier keeps them out of this package's TypeScript program (they sit outside its rootDir
 // and need Node's Buffer types); vitest transforms them like any other module.
 
 const VENDORED_DIR = new URL(
-  "../../../../tools/recipient/src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
+  "../../src/oxide/vendor/oxide-lib/attestation/nitro_attestation/",
   import.meta.url,
 );
 

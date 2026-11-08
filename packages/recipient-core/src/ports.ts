@@ -104,7 +104,11 @@ export interface NitroAttestationInput {
   now?: Date;
 }
 
-/** Same accept/reject results as the vendored verify_nitro_attestation.ts; async for WebCrypto. */
+/**
+ * Same accept/reject results as the vendored verify_nitro_attestation.ts on every input an attacker
+ * without AWS or NSM keys can build, except where an implementation is deliberately stricter (fail
+ * closed; listed in its own header). Async for WebCrypto.
+ */
 export interface AttestationVerifier {
   verifyNitroAttestation(input: NitroAttestationInput): Promise<ParsedNitroAttestation>;
 }

@@ -4,6 +4,4 @@ export {
   BrowserWalletStorage,
   StoreIdentityMismatchError,
   pxeStoreName,
-  type EmbeddedWalletStorageOptions,
-  type WalletStorageNetwork,
 } from "./browser-wallet-storage.js";

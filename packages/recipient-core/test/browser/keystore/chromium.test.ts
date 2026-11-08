@@ -9,12 +9,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type * as Keystore from "../../../src/browser/keystore/index.js";
 import type { SealKind } from "../../../src/ports.js";
 
-/** tools/recipient/src/sealed.ts, loaded at run time because it lies outside this package's rootDir. */
+/** tools/recipient/src/node/sealed.ts, loaded at run time because it lies outside this package's rootDir. */
 interface NodeSealed {
   seal(kind: SealKind, plaintext: Buffer, passphrase: string): Buffer;
   open(kind: SealKind, sealed: Buffer, passphrase: string): Buffer;
 }
-const NODE_SEALED = new URL("../../../../../tools/recipient/src/sealed.ts", import.meta.url);
+const NODE_SEALED = new URL("../../../../../tools/recipient/src/node/sealed.ts", import.meta.url);
 const node = (await import(fileURLToPath(NODE_SEALED))) as NodeSealed;
 
 const ENTRY = fileURLToPath(new URL("../../../src/browser/keystore/index.ts", import.meta.url));

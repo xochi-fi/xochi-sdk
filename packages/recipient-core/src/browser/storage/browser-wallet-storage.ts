@@ -10,20 +10,13 @@ import {
 } from "@aztec-labs/kv-store/sqlite-opfs";
 import { PXE_DATA_SCHEMA_VERSION } from "@aztec-labs/pxe/client/lazy";
 import { DatabaseVersion } from "@aztec-labs/stdlib/database-version/version";
-import type { EmbeddedWalletOptions } from "@aztec-labs/wallets/embedded";
 import { EmbeddedWalletEncryptionError } from "@aztec-labs/wallets/embedded/store-encryption";
+import type {
+  EmbeddedWalletStorageOptions,
+  WalletStorage,
+  WalletStorageNetwork,
+} from "../../wallet-storage.js";
 import { assertScope } from "./scope.js";
-
-/** The storage members of `EmbeddedWallet.create`'s options (@aztec-labs/wallets 6.0.0). */
-export type EmbeddedWalletStorageOptions = Required<
-  Pick<EmbeddedWalletOptions, "pxe" | "walletDb">
->;
-
-/** The network the PXE store belongs to (the corridor's pinned L1 chain and rollup). */
-export interface WalletStorageNetwork {
-  l1ChainId: number;
-  rollupAddress: string;
-}
 
 /** A PXE store whose recorded identity is not the one in its name: a naming bug; data untouched. */
 export class StoreIdentityMismatchError extends Error {
@@ -77,7 +70,7 @@ export function pxeStoreName(
  * If `EmbeddedWallet.create` throws, the caller closes both stores: an open PXE store keeps its
  * OPFS pool locked, so a retry in the same tab would fail with SqlitePoolBusyError.
  */
-export class BrowserWalletStorage {
+export class BrowserWalletStorage implements WalletStorage {
   /**
    * @param pxeStoreKey returns the PXE store's 32-byte key as a fresh buffer on every call (opening
    *   transfers, so detaches, the buffer). The app passes the passkey-derived `pxeStoreKey`; it is

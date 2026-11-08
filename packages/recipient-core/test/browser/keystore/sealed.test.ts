@@ -6,13 +6,13 @@ import {
 } from "../../../src/browser/keystore/index.js";
 import { SealError, type SealKind } from "../../../src/ports.js";
 
-/** tools/recipient/src/sealed.ts, the CLI's implementation. Loaded at run time because it lies
+/** tools/recipient/src/node/sealed.ts, the CLI's implementation. Loaded at run time because it lies
  *  outside this package's rootDir, so typed here structurally. */
 interface NodeSealed {
   seal(kind: SealKind, plaintext: Buffer, passphrase: string): Buffer;
   open(kind: SealKind, sealed: Buffer, passphrase: string): Buffer;
 }
-const NODE_SEALED = new URL("../../../../../tools/recipient/src/sealed.ts", import.meta.url);
+const NODE_SEALED = new URL("../../../../../tools/recipient/src/node/sealed.ts", import.meta.url);
 const node = (await import(fileURLToPath(NODE_SEALED))) as NodeSealed;
 
 const PASSPHRASE = "correct horse battery staple";
