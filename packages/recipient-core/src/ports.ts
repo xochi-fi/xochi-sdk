@@ -121,6 +121,8 @@ export interface AccountSecrets {
 
 /** Node: keystore.sealed + passphrase. Browser: the passkey derivation or a PKW1 unwrap. */
 export interface RecipientKeySource {
+  /** Where the secrets come from: the passkey backup mode is open only to `"passkey"`. */
+  readonly kind: "keystore" | "passkey" | "imported";
   accountSecrets(): Promise<AccountSecrets>;
 }
 

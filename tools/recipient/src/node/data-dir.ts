@@ -62,6 +62,8 @@ const SecretsSchema = z.object({ secret: hex32, salt: hex32 }).strict();
 
 /** `keystore.sealed` opened with the operator's passphrase (asked only when the secrets are). */
 export class SealedKeystoreKeySource implements RecipientKeySource {
+  readonly kind = "keystore";
+
   constructor(
     private readonly keystorePath: string,
     private readonly passphrase: () => Promise<string>,
