@@ -13,7 +13,7 @@ import { assertScope } from "./scope.js";
 
 const OBJECT_STORE = "kv";
 const MAX_KEY_LENGTH = 512;
-const KEY = /^[a-z0-9][a-z0-9._-]{0,127}(?:\/[a-z0-9][a-z0-9._-]{0,127})*$/;
+const KEY = /^[a-z0-9_][a-z0-9._-]{0,127}(?:\/[a-z0-9_][a-z0-9._-]{0,127})*$/;
 const PREFIX = /^(?:[a-z0-9][a-z0-9._-]{0,127}\/)+$/;
 
 function assertKey(key: string): void {

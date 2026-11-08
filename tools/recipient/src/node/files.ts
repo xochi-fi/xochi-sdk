@@ -17,7 +17,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 /** Atomically replaces `path` with `bytes` (mode 0600) and durably publishes it. */
 export function writePrivateFileAtomic(path: string, bytes: Uint8Array): void {
-  const temporary = `${path}.${randomUUID()}.tmp`;
+  const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
   const fd = openSync(temporary, "wx", 0o600);
   try {
     writeFileSync(fd, bytes);

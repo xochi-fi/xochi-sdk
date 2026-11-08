@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { KeyExistsError, type KeyValueStore } from "../core/ports.js";
 import { syncDirectory, writePrivateFileAtomic, writePrivateFileExclusive } from "./files.js";
 
-const SEGMENT = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const SEGMENT = /^[a-z0-9_][a-z0-9._-]{0,127}$/;
 
 function errorCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
@@ -70,10 +70,19 @@ export class NodeKeyValueStore implements KeyValueStore {
       if (errorCode(error) === "ENOENT") return [];
       throw error;
     }
-    return entries
-      .filter((entry) => entry.isFile() && SEGMENT.test(entry.name))
-      .map((entry) => `${prefix}${entry.name}`)
-      .sort();
+    const keys: string[] = [];
+    for (const entry of entries) {
+      // A leading dot is this adapter's temporary file; anything else outside the grammar is not
+      // ours, and a journal listing it could miss a record: fail closed.
+      if (entry.name.startsWith(".")) continue;
+      if (!SEGMENT.test(entry.name)) {
+        throw new Error(
+          `storage directory ${prefix} holds an entry outside the key grammar: ${entry.name}`,
+        );
+      }
+      if (entry.isFile()) keys.push(`${prefix}${entry.name}`);
+    }
+    return keys.sort();
   }
 
   private privateParent(path: string): void {

@@ -11,7 +11,7 @@ import {
   type LockManager,
 } from "../../src/ports.js";
 
-const SEGMENT = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const SEGMENT = /^[a-z0-9_][a-z0-9._-]{0,127}$/;
 
 function assertKey(key: string): void {
   if (key.length > 512 || !key.split("/").every((segment) => SEGMENT.test(segment))) {
