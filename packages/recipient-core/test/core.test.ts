@@ -95,7 +95,6 @@ function harness(keys: RecipientKeySource = { kind: "keystore", accountSecrets }
     keys,
     kv,
     locks,
-    crypto,
     artifacts: {
       tokenArtifact: async () => TOKEN_ARTIFACT_JSON,
       broadcasterArtifact: async () => {
@@ -145,7 +144,7 @@ describe("openRecipientCore", () => {
     expect(h.node.closed).toBe(1);
   });
 
-  it("closes the node and stores when a check after connecting fails", async () => {
+  it("closes the node when a check after connecting fails", async () => {
     const h = harness();
     h.node.network = { l1ChainId: "11155111" };
     await expect(h.open()).rejects.toThrow(/l1ChainId|network/);
@@ -303,17 +302,20 @@ describe("restoreJournals", () => {
   function backupOf(
     operations: OperationRecord[],
     backupCorridor: Corridor = corridor,
-    ack: BackupContents["tokenRegistrationAck"] = null,
+    binding: { id: string | null; digest: string | null } = {
+      id: "TEST-ONLY-restored-binding",
+      digest: hex("d1"),
+    },
   ): BackupContents {
     return backupContents(
       backupCorridor,
       TEST_SECRETS,
       account,
       null,
-      ack,
+      null,
       NOW,
       { operations, exits: [], receipts: [] },
-      { id: "TEST-ONLY-restored-binding", digest: hex("d1") },
+      binding,
     );
   }
 
@@ -355,7 +357,7 @@ describe("restoreJournals", () => {
     h.node.payouts = [payoutFor(corridor, account, terms)];
     await core.signReceipt(INTENT);
     const state = await stateOf(h.kv);
-    const contents = backupOf([]);
+    const contents = backupOf([], corridor, { id: null, digest: null });
 
     await expect(
       restoreJournals(
@@ -403,6 +405,58 @@ describe("restoreJournals", () => {
     ).rejects.toThrow(
       `the backup is for corridor ${OXDAI_MAINNET_REV2.name} (token ${OXDAI_MAINNET_REV2.token.address}), not this core's`,
     );
+    await core.close();
+  });
+
+  it("refuses a profile enrolled with another binding, writing nothing", async () => {
+    const h = harness();
+    const core = await h.open();
+    await enroll(core);
+    const state = await stateOf(h.kv);
+    const contents = backupOf([]);
+    const sealed = (await sealBackup(contents, "TEST ONLY long passphrase", crypto)).bytes;
+
+    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
+      `this profile is enrolled with binding ${BINDING_ID}; the backup's is TEST-ONLY-restored-binding`,
+    );
+    expect(await stateOf(h.kv)).toEqual(state);
+    expect(h.kv.text("restore.lock")).toBeNull();
+    await core.close();
+  });
+
+  it("refuses without the sealed bytes before writing any journal", async () => {
+    const h = harness();
+    const core = await h.open();
+    const operations = await journalRecords(async (journal) => {
+      const spend = await journal.begin("spend", { amount: "1" });
+      await journal.update(spend.id, { status: "aborted" });
+    });
+
+    await expect(
+      restoreJournals(core, backupOf(operations), undefined as unknown as Uint8Array),
+    ).rejects.toThrow("restoreJournals needs the sealed backup bytes importCliBackup opened");
+    expect(await h.kv.list("operations/")).toEqual([]);
+    await core.close();
+  });
+
+  it("holds the restore marker: no receipt or fund movement starts while it exists", async () => {
+    const h = harness();
+    const core = await h.open();
+    const contents = backupOf([]);
+    const sealed = (await sealBackup(contents, "TEST ONLY long passphrase", crypto)).bytes;
+    await h.kv.create("restore.lock", new Uint8Array([1]));
+
+    await expect(restoreJournals(core, contents, sealed)).rejects.toThrow(
+      "a journal restore already holds this profile (restore.lock)",
+    );
+    await expect(core.signReceipt(INTENT)).rejects.toThrow(
+      "a journal restore holds this profile (restore.lock); move funds once it finishes",
+    );
+    expect(h.kv.text("operations/active.lock")).toBeNull();
+
+    await h.kv.delete("restore.lock");
+    await restoreJournals(core, contents, sealed);
+    expect(h.kv.text("restore.lock")).toBeNull();
     await core.close();
   });
 });

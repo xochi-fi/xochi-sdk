@@ -44,22 +44,29 @@ import {
 } from "./commands.js";
 import { CorridorSchema, type Corridor } from "./corridor.js";
 import { bindingTypedData, type SignedAck } from "./enrollment.js";
-import { OperationJournal, isTerminalStatus, operationsLockName } from "./operation-journal.js";
+import { utf8Bytes } from "./json.js";
+import {
+  OperationJournal,
+  RESTORE_MARKER_KEY,
+  isTerminalStatus,
+  operationsLockName,
+} from "./operation-journal.js";
 import { validateTokenArtifact } from "./oxide-token.js";
-import type {
-  ArtifactLoader,
-  AttestationVerifier,
-  Clock,
-  HttpFetch,
-  KeystoreCrypto,
-  KeyValueStore,
-  LockHolder,
-  LockManager,
-  Log,
-  RecipientKeySource,
+import {
+  KeyExistsError,
+  type ArtifactLoader,
+  type AttestationVerifier,
+  type Clock,
+  type HttpFetch,
+  type KeystoreCrypto,
+  type KeyValueStore,
+  type LockHolder,
+  type LockManager,
+  type Log,
+  type RecipientKeySource,
 } from "./ports.js";
 import { ReceiptJournal, type ReceiptRecord } from "./receipt.js";
-import { StateStore, type State } from "./state.js";
+import { StateSchema, StateStore, type State } from "./state.js";
 import type { WalletStorage } from "./wallet-storage.js";
 
 export type { BackupMode } from "./backup-mode.js";
@@ -69,7 +76,6 @@ export interface RecipientCoreDeps {
   keys: RecipientKeySource;
   kv: KeyValueStore;
   locks: LockManager;
-  crypto: KeystoreCrypto;
   artifacts: ArtifactLoader;
   attestation: AttestationVerifier;
   walletStorage: WalletStorage;
@@ -538,8 +544,12 @@ export function importCliBackup(
  * open core of the same account and corridor whose journals are empty, and records the backup
  * as the CLI's `restore` does: `backupCommitment` is keccak256 of `sealed` (the file
  * `importCliBackup` opened) and `backupTokenAckSignature` its TokenRegistrationAck's signature.
- * A backup with an unresolved fund movement is refused: the facade cannot reconcile it, so the
- * CLI must first. An unfinished receipt run moved no funds and is restored aborted.
+ * Refused before anything is written: a backup with an unresolved fund movement (the facade cannot
+ * reconcile it, so the CLI must first), a profile that records another binding, and a next
+ * `state.json` that does not validate. The restore holds `RESTORE_MARKER_KEY` throughout, so no
+ * session moves funds or runs a receipt meanwhile; if a journal write fails the marker stays and
+ * keeps fund movement blocked (the profile must be recreated). An unfinished receipt run moved no
+ * funds and is restored aborted.
  */
 export async function restoreJournals(
   core: RecipientCore,
@@ -564,26 +574,56 @@ export async function restoreJournals(
       `the backup's ${open.kind} operation ${open.id} is ${open.status}: reconcile it with the CLI first (xochi-recipient operations reconcile), then back up again`,
     );
   }
-  for (const prefix of ["operations/", "exits/", "receipts/"]) {
-    if ((await journals.kv.list(prefix)).length !== 0) {
-      throw new Error("restoreJournals needs a profile with empty journals");
-    }
+  if (!(sealed instanceof Uint8Array)) {
+    throw new TypeError("restoreJournals needs the sealed backup bytes importCliBackup opened");
   }
-  await journals.operations.restore(backup.journals.operations);
-  await journals.exits.restore(backup.journals.exits);
-  await journals.receipts.restore(backup.journals.receipts);
+  const backupCommitment = keccak256(sealed);
   const tokenRegistrationAck = (backup.tokenRegistrationAck as SignedAck | null) ?? null;
-  await journals.state.update(
-    (current) =>
-      ({
-        ...(current ?? fail("the recipient state record is missing")),
-        backupCommitment: keccak256(sealed),
-        backupTokenAckSignature: tokenRegistrationAck?.signature ?? null,
-        tokenRegistrationAck,
-        ...(backup.bindingId ? { bindingId: backup.bindingId } : {}),
-        ...(backup.bindingDigest ? { bindingDigest: backup.bindingDigest } : {}),
-      }) as State,
-  );
+  const restoredState = (current: State | null): State => {
+    const recorded = current ?? fail("the recipient state record is missing");
+    for (const [name, mine, theirs] of [
+      ["binding", recorded.bindingId, backup.bindingId],
+      ["binding digest", recorded.bindingDigest, backup.bindingDigest],
+    ] as const) {
+      if (mine && theirs && mine !== theirs) {
+        throw new Error(`this profile is enrolled with ${name} ${mine}; the backup's is ${theirs}`);
+      }
+    }
+    return StateSchema.parse({
+      ...recorded,
+      backupCommitment,
+      backupTokenAckSignature: tokenRegistrationAck?.signature ?? null,
+      tokenRegistrationAck,
+      ...(backup.bindingId ? { bindingId: backup.bindingId } : {}),
+      ...(backup.bindingDigest ? { bindingDigest: backup.bindingDigest } : {}),
+    });
+  };
+  restoredState(await journals.state.read());
+
+  try {
+    await journals.kv.create(RESTORE_MARKER_KEY, utf8Bytes(journals.address));
+  } catch (error) {
+    if (!(error instanceof KeyExistsError)) throw error;
+    throw new Error(
+      `a journal restore already holds this profile (${RESTORE_MARKER_KEY}); if none is running, the profile must be recreated`,
+    );
+  }
+  let written = false;
+  try {
+    for (const prefix of ["operations/", "exits/", "receipts/"]) {
+      if ((await journals.kv.list(prefix)).length !== 0) {
+        throw new Error("restoreJournals needs a profile with empty journals");
+      }
+    }
+    written = true;
+    await journals.operations.restore(backup.journals.operations);
+    await journals.exits.restore(backup.journals.exits);
+    await journals.receipts.restore(backup.journals.receipts);
+    await journals.state.update(restoredState);
+    await journals.kv.delete(RESTORE_MARKER_KEY);
+  } finally {
+    if (!written) await journals.kv.delete(RESTORE_MARKER_KEY);
+  }
 }
 
 function fail(message: string): never {

@@ -187,6 +187,11 @@ const transitions: Readonly<Record<OperationStatus, readonly OperationStatus[]>>
 const DIRECTORY = "operations/";
 const LOCK_KEY = `${DIRECTORY}active.lock`;
 const recordKey = (id: string) => `${DIRECTORY}${id}.json`;
+/**
+ * Created atomically by `restoreJournals` and held for the whole restore; `begin` refuses while it
+ * exists. Outside `operations/`, so an empty journal stays empty.
+ */
+export const RESTORE_MARKER_KEY = "restore.lock";
 
 function sameOwner(left: ActiveLock, right: ActiveLock): boolean {
   return left.id === right.id && left.lockNonce === right.lockNonce && left.kind === right.kind;
@@ -434,6 +439,12 @@ export class OperationJournal {
             : `operation lock ${this.describeKey(LOCK_KEY)} exists without its exact readable terminal record; do not move funds until it is reconciled`,
         );
       }
+    }
+    if ((await this.kv.get(RESTORE_MARKER_KEY)) !== null) {
+      await this.kv.delete(LOCK_KEY);
+      throw new Error(
+        `a journal restore holds this profile (${this.describeKey(RESTORE_MARKER_KEY)}); move funds once it finishes`,
+      );
     }
     await this.afterInitialLockSynced(owner.id);
 
