@@ -17,6 +17,10 @@
 //   which Node verifies for 'sha384', is refused.
 // - PEM: only the "CERTIFICATE" label is read; "X509 CERTIFICATE" and "TRUSTED CERTIFICATE"
 //   blocks, which OpenSSL reads, are refused ("unsupported PEM label: ...").
+// - A cabundle of more than MAX_CA_BUNDLE certificates is refused before any parsing (real Nitro
+//   bundles hold 4-5; the issuer search is quadratic in the bundle size).
+// - A validation time that is not a valid date (a timestamp beyond 8.64e15 ms, a NaN `now` or
+//   clock) is refused; the vendored verifier's NaN comparisons then pass every validity check.
 // Rejection messages that differ in text only: the subject in "could not find issuer ..."
 // (RFC 4514 here, OpenSSL's one-per-line form there) and certificate-encoding errors (OpenSSL's
 // "PEM routines::..." there).
@@ -38,12 +42,19 @@ import {
   parseNitroPayload,
 } from "./parsers.js";
 
+const MAX_CA_BUNDLE = 16;
+
 export class WebCryptoAttestationVerifier implements AttestationVerifier {
   private readonly subtle: SubtleCrypto;
 
   /**
    * `clock` is read only when the caller gives no `now` and the document has no timestamp.
    * `webCrypto` must provide SubtleCrypto, which browsers expose only in secure contexts.
+   *
+   * Certificates are validated at the document's own timestamp by default, so an old document
+   * still verifies: this check proves the document came from a Nitro enclave, not that it is
+   * fresh. Freshness comes from the on-chain enclave registry the caller checks the keys
+   * against, or from an `expectedNonce` the caller had the enclave sign.
    */
   constructor(
     private readonly clock: Clock,
@@ -76,6 +87,9 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
       (parsed.timestamp != null
         ? new Date(Number(parsed.timestamp))
         : new Date(this.clock.nowMs()));
+    if (!Number.isFinite(validationTime.getTime())) {
+      throw new Error("Nitro validation time is not a valid date");
+    }
     await this.verifyCertificateChain(parsed, input.trustedRootCertificates, validationTime);
     await this.verifyCoseSignature(protectedHeaders, payloadBytes, signature, parsed.certificate);
     return parsed;
@@ -86,6 +100,11 @@ export class WebCryptoAttestationVerifier implements AttestationVerifier {
     trustedRoots: Uint8Array[],
     now: Date,
   ): Promise<void> {
+    if (parsed.caBundle.length > MAX_CA_BUNDLE) {
+      throw new Error(
+        `Nitro cabundle must contain at most ${MAX_CA_BUNDLE} certificates, got ${parsed.caBundle.length}`,
+      );
+    }
     const leaf = parseCertificate(parsed.certificate);
     const chain = parsed.caBundle.map(parseCertificate);
     if (chain.length === 0) {

@@ -447,17 +447,47 @@ describe("WebCryptoAttestationVerifier vs vendored verifyNitroAttestation: synth
     }
   });
 
-  // Inherited, not introduced: new Date(Number(timestamp)) is an Invalid Date past 8.64e15 ms,
-  // and NaN comparisons make every certificate "valid". The timestamp is inside the signed
-  // payload, so only a document signed by a chain-valid leaf can carry one.
-  it("accepts expired certificates when the timestamp is beyond the Date range, in both", async () => {
+  // The vendored verifier: new Date(Number(timestamp)) is an Invalid Date past 8.64e15 ms (or
+  // for now = new Date(NaN)), and NaN comparisons make every certificate "valid". The port
+  // refuses an invalid validation time.
+  it("refuses a validation time that is not a valid date, which the vendored verifier accepts", async () => {
     const chain = await syntheticChain();
-    const attestationDocument = await syntheticDocument(chain.leafKeys.privateKey, {
+    const beyondDateRange = await syntheticDocument(chain.leafKeys.privateKey, {
       certificate: der(chain.leaf),
       caBundle: [der(chain.root)],
       timestamp: 2n ** 60n,
     });
-    await expectBothAccept({ attestationDocument, trustedRootCertificates: [der(chain.root)] });
+    const roots = [der(chain.root)];
+    await expectPortStricter(
+      { attestationDocument: beyondDateRange, trustedRootCertificates: roots },
+      "Nitro validation time is not a valid date",
+    );
+    const timed = await syntheticDocument(chain.leafKeys.privateKey, {
+      certificate: der(chain.leaf),
+      caBundle: [der(chain.root)],
+      timestamp: SYNTHETIC_TIMESTAMP,
+    });
+    await expectPortStricter(
+      { attestationDocument: timed, trustedRootCertificates: roots, now: new Date(Number.NaN) },
+      "Nitro validation time is not a valid date",
+    );
+  });
+
+  it("accepts 16 bundle certificates, refuses 17, which the vendored verifier walks", async () => {
+    const chain = await syntheticChain();
+    const withBundle = async (size: number) => ({
+      attestationDocument: await syntheticDocument(chain.leafKeys.privateKey, {
+        certificate: der(chain.leaf),
+        caBundle: Array.from({ length: size }, () => der(chain.root)),
+        timestamp: SYNTHETIC_TIMESTAMP,
+      }),
+      trustedRootCertificates: [der(chain.root)],
+    });
+    await expectBothAccept(await withBundle(16));
+    await expectPortStricter(
+      await withBundle(17),
+      "Nitro cabundle must contain at most 16 certificates, got 17",
+    );
   });
 
   describe("certificate signature encodings (OpenSSL accepts only exact DER)", () => {
