@@ -4,6 +4,13 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-11-09
+
+### Fixed
+
+- Preserve `errorCategory` on API and machine errors. Make `tag_resolution_unavailable` manual-retry only.
+- Do not cache tag-derived addresses. Invalidate payable quotes after lookup failures or `tag_unresolved`, including silent refreshes.
+
 ## [0.1.12] - 2026-11-09
 
 ### Added

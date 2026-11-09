@@ -147,6 +147,7 @@ export interface XochiClientOptions {
 export class ApiError extends Error {
   readonly code: number;
   readonly retryAfter?: number;
+  readonly errorCategory?: string;
   /**
    * True only on the Worker's not-accepted answer to `execute`
    * (`isNotAcceptedExecuteBody`), whose `retryAfter` is the body's
@@ -174,11 +175,13 @@ export class ApiError extends Error {
     retryAfter?: number,
     notAccepted = false,
     inDoubt = false,
+    errorCategory?: string,
   ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.retryAfter = retryAfter;
+    this.errorCategory = errorCategory;
     this.notAccepted = notAccepted;
     this.inDoubt = inDoubt;
   }
@@ -301,6 +304,7 @@ function safeErrorForLog(error: unknown): unknown {
     message: error.message,
     code: error.code,
     ...(error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter }),
+    ...(error.errorCategory === undefined ? {} : { errorCategory: error.errorCategory }),
     ...(error.notAccepted ? { notAccepted: true } : {}),
   };
 }
@@ -540,7 +544,7 @@ function sameOriginRedirectTarget(fetched: Response, requestUrl: string): string
 // ============================================================
 
 export interface XochiClient {
-  /** Request a quote. Cached for the TTL (pull-bearing quotes never) and deduplicated. */
+  /** Request a quote. Cached for the TTL (pull-bearing or tag quotes never) and deduplicated. */
   getQuote(request: QuoteRequest, opts?: { forceRefresh?: boolean }): Promise<QuoteResponse>;
   invalidateQuote(request: QuoteRequest): void;
   clearQuoteCache(): void;
@@ -837,6 +841,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
               retryAfter,
               notAccepted,
               inDoubt,
+              typeof record?.error_category === "string" ? record.error_category : undefined,
             );
             if (servedToken !== undefined) errorReadTokens.set(error, servedToken);
             throw error;
@@ -861,7 +866,13 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
         // Retry only a transient gateway status. A 4xx is the caller's to fix; a
         // 429 carries its own retryAfter, and retrying in-call would stale a
         // quote and stack against the limit. A 500 is deterministic.
-        if (lastError instanceof ApiError && !RETRYABLE_STATUS[lastError.code]) break;
+        if (
+          lastError instanceof ApiError &&
+          (lastError.errorCategory === "tag_resolution_unavailable" ||
+            !RETRYABLE_STATUS[lastError.code])
+        ) {
+          break;
+        }
         // Don't retry an abort (the timeout fired).
         if (lastError.name === "AbortError") break;
 
@@ -1003,11 +1014,9 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
 
       try {
         const quote = await promise;
-        // Cache successful quotes -- EXCEPT pull-bearing ones. A quote carrying a
-        // pull_authorization embeds a single-use ERC-3009 nonce; re-serving it
-        // from the cache would re-sign a spent nonce and fail with "pull
-        // authorization has already been used". Pull routes always refetch.
-        if (quote.success && !quote.pullAuthorization) {
+        // Pull nonces and tag-resolved addresses are single-use: a fresh quote
+        // must mint a new authorization or resolve a new recipient address.
+        if (quote.success && !quote.pullAuthorization && !request.recipientTag) {
           quoteCache.set(requestHash, { quote, timestamp: Date.now() });
         }
         return quote;

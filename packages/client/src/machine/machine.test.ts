@@ -184,6 +184,28 @@ describe("quote", () => {
     expect(s.intent.error).toBeNull();
   });
 
+  it("keeps the reviewed quote on an unrelated silent-refresh 503", () => {
+    const s = new Session(ctx({ paused: true }));
+    s.quoteWith(quote());
+    const refresh = only(apiCalls(s.send({ type: "TimerFired", timer: "refresh" }), "quote"));
+    s.send({
+      type: "QuoteReplied",
+      flight: refresh.flight,
+      result: {
+        ok: false,
+        error: {
+          rejected: false,
+          value: { message: "Solver busy", code: 503, errorCategory: "inventory_unverified" },
+          detail: "HTTP 503",
+        },
+      },
+    });
+    expect(s.intent.status).toBe("quoted");
+    expect(s.intent.quoteId).toBe("xq_1");
+    expect(s.intent.error).toBeNull();
+    expect(s.receipt.signing).toEqual({ kind: "ready", signatures: 1 });
+  });
+
   it("expires a quote the user left on screen past its expiry", () => {
     const s = new Session();
     s.quoteWith(quote());

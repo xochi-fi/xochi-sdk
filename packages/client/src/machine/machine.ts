@@ -246,9 +246,9 @@ export interface ErrorReport {
   /** The wallet said the user declined (EIP-1193 4001 and kin). */
   rejected: boolean;
   /**
-   * What `intent.error` becomes: a StructuredError for an API failure (code +
-   * retryAfter), the message for an Error, null for a non-Error throw (the
-   * machine then supplies its own fallback copy).
+   * What `intent.error` becomes: a StructuredError for an API failure (code,
+   * retryAfter, errorCategory), the message for an Error, null for a non-Error
+   * throw (the machine then supplies its own fallback copy).
    */
   value: string | StructuredError | null;
   /** For the log line only. */
@@ -330,7 +330,7 @@ export interface QuoteFlight {
   amount: string;
   /**
    * Refresh in place without churning the confirm surface: no "quoting" flash,
-   * and a failed refresh keeps the last good quote.
+   * and a failed refresh keeps the last good quote unless its tag lookup failed.
    */
   silent: boolean;
   forceRefresh: boolean;
@@ -511,7 +511,14 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
         log(fx, "debug", `${LOG} Ignoring quote request during`, m.intent.status);
         return m;
       }
-      return m.amount ? startQuote(m, fx, msg.now, quoteOpts(m.amount)) : m;
+      return m.amount
+        ? startQuote(m, fx, msg.now, {
+            ...quoteOpts(m.amount),
+            forceRefresh:
+              typeof m.intent.error !== "string" &&
+              m.intent.error?.errorCategory === "tag_resolution_unavailable",
+          })
+        : m;
 
     case "SignRequested":
       return beginSign(m, fx, msg.now);
@@ -917,15 +924,31 @@ function refuseQuote(
   return transition(m, fx, "failed", updates);
 }
 
-/** The request or the proof threw: keep the confirm surface intact when silent. */
+/** A lookup outage invalidates even a silently refreshed quote's one-time address. */
 function quoteThrew(m: Model, fx: Effect[], flight: QuoteFlight, report: ErrorReport): Model {
   log(fx, "error", `${LOG} Quote error:`, report.detail);
   endAllocation(fx, flight, false);
-  if (flight.silent) return m;
   const error = report.value ?? "Quote request failed";
+  if (typeof error !== "string" && error.errorCategory === "tag_resolution_unavailable") {
+    return failTagQuote(m, fx, error);
+  }
+  if (flight.silent) return m;
   return flight.allocate
     ? allocationFailed(m, error)
     : patch(m, { status: "failed", error, quote: null });
+}
+
+/** A failed tag lookup must not leave a prior one-time recipient payable. */
+function failTagQuote(m: Model, fx: Effect[], error: IntentState["error"]): Model {
+  clearTimer(fx, "debounce");
+  clearTimer(fx, "refresh");
+  return {
+    ...abandonSign(supersedeFlights(m, fx), fx),
+    intent: { ...INITIAL_INTENT_STATE, status: "failed", error },
+    refresh: null,
+    quotedTrade: null,
+    quoteExpiresIn: null,
+  };
 }
 
 /**
@@ -963,6 +986,13 @@ function onQuote(
   const refusal = quoteRefusal(quote, flight, m.config.pullRecipients);
   if (refusal) {
     log(fx, refusal.level, refusal.message, ...refusal.data);
+    if (quote.errorCategory === "tag_unresolved") {
+      endAllocation(fx, flight, false);
+      return failTagQuote(m, fx, {
+        message: refusal.error,
+        errorCategory: quote.errorCategory,
+      });
+    }
     return refuseQuote(m, fx, flight, { error: refusal.error, quote: refusal.quote });
   }
   if (!quote.depositAddress) return acceptQuote(m, fx, flight, quote, null, now);
