@@ -68,6 +68,19 @@ function defaultAnswer(method: string): unknown {
   }
 }
 
+function hosted(
+  provider: Eip1193Provider | null,
+  onConnectRequest: () => void = () => {},
+): Pick<XochiWidgetOptions, "wallet"> {
+  return { wallet: { ui: "host", provider, onConnectRequest } };
+}
+
+function hex(message: string): string {
+  return `0x${Array.from(new TextEncoder().encode(message), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 interface Hop {
   to: "host" | "frame";
   targetOrigin: string;
@@ -166,6 +179,19 @@ function nextAvailability(frame: HostConnection): Promise<boolean> {
   return promise;
 }
 
+function nextWalletUi(frame: HostConnection): Promise<"widget" | "host"> {
+  const { promise, resolve } = Promise.withResolvers<"widget" | "host">();
+  let stop: (() => void) | undefined;
+  let settled = false;
+  stop = frame.onWalletUi((ui) => {
+    settled = true;
+    stop?.();
+    resolve(ui);
+  });
+  if (settled) stop();
+  return promise;
+}
+
 /**
  * A request the host answers from its wallet. Once it resolves, everything
  * either side posted before it has been delivered (delivery is FIFO).
@@ -195,7 +221,7 @@ async function hostAnswers(
 describe("host and frame", () => {
   it("hand the host wallet to the frame and carry requests, answers and events", async () => {
     const wallet = new TestWallet();
-    const { frame, iframe, events } = mount({ provider: wallet });
+    const { frame, iframe, events } = mount(hosted(wallet));
     expect(await nextAvailability(frame)).toBe(true);
     await expect(frame.provider.request({ method: "eth_requestAccounts" })).resolves.toEqual([
       ACCOUNT,
@@ -241,7 +267,7 @@ describe("host and frame", () => {
   });
 
   it("hold resizes and events until the handshake, then deliver the latest height", async () => {
-    const { frame, iframe, events } = mount({ provider: new TestWallet() });
+    const { frame, iframe, events } = mount(hosted(new TestWallet()));
     frame.resize(400);
     frame.resize(640.5);
     frame.emit({ name: "trade:completed", tradeRef: TRADE_REF });
@@ -261,7 +287,7 @@ describe("host and frame", () => {
       }
       return defaultAnswer(method);
     });
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     await nextAvailability(frame);
     const error = await frame.provider
       .request({ method: "personal_sign", params: ["0x00", ACCOUNT] })
@@ -277,7 +303,7 @@ describe("host and frame", () => {
 
   it("refuse in the frame exactly what the host would refuse", async () => {
     const wallet = new TestWallet();
-    const { frame, frameWin, hostWin, hops } = mount({ provider: wallet });
+    const { frame, frameWin, hostWin, hops } = mount(hosted(wallet));
     await nextAvailability(frame);
     const cases: [{ method: string; params?: unknown }, Record<string, unknown>][] = [
       [{ method: "eth_sign" }, { id: "a", method: "eth_sign" }],
@@ -289,6 +315,44 @@ describe("host and frame", () => {
       [
         { method: "personal_sign", params: ["x".repeat(MAX_MESSAGE_LENGTH)] },
         { id: "d", method: "personal_sign", params: ["x".repeat(MAX_MESSAGE_LENGTH)] },
+      ],
+      [
+        {
+          method: "personal_sign",
+          params: [
+            "Sign this message to derive your Xochi stealth keys.\n\nThis signature will be used to create receiving addresses that only you can spend from.",
+            ACCOUNT,
+          ],
+        },
+        {
+          id: "e",
+          method: "personal_sign",
+          params: [
+            "Sign this message to derive your Xochi stealth keys.\n\nThis signature will be used to create receiving addresses that only you can spend from.",
+            ACCOUNT,
+          ],
+        },
+      ],
+      [
+        {
+          method: "personal_sign",
+          params: [
+            hex(
+              "host.example wants you to sign in with your Ethereum account:\n0x0000000000000000000000000000000000000000\n\nURI: https://host.example",
+            ),
+            ACCOUNT,
+          ],
+        },
+        {
+          id: "f",
+          method: "personal_sign",
+          params: [
+            hex(
+              "host.example wants you to sign in with your Ethereum account:\n0x0000000000000000000000000000000000000000\n\nURI: https://host.example",
+            ),
+            ACCOUNT,
+          ],
+        },
       ],
     ];
     for (const [args, raw] of cases) {
@@ -305,7 +369,7 @@ describe("host and frame", () => {
   it(`refuse the request past ${MAX_PENDING_RPC} in flight as the host would`, async () => {
     const { promise: never } = Promise.withResolvers<unknown>();
     const wallet = new TestWallet((method) => (method === "eth_chainId" ? never : null));
-    const { frame, frameWin, hostWin } = mount({ provider: wallet });
+    const { frame, frameWin, hostWin } = mount(hosted(wallet));
     await nextAvailability(frame);
     const inFlight = Array.from({ length: MAX_PENDING_RPC }, () =>
       frame.provider.request({ method: "eth_chainId" }).catch((e: unknown) => e),
@@ -325,7 +389,7 @@ describe("host and frame", () => {
   it("reject the frame's pending request and report it when the host detaches its wallet", async () => {
     const { promise: never } = Promise.withResolvers<unknown>();
     const wallet = new TestWallet((method) => (method === "eth_requestAccounts" ? never : null));
-    const { widget, frame } = mount({ provider: wallet });
+    const { widget, frame } = mount(hosted(wallet));
     await nextAvailability(frame);
     const pending = frame.provider.request({ method: "eth_requestAccounts" });
     const detached = nextAvailability(frame);
@@ -340,25 +404,23 @@ describe("host and frame", () => {
     });
   });
 
-  it("follow the host's autoConnect option", async () => {
-    const { frame } = mount({ provider: new TestWallet(), autoConnect: true });
-    let connects = 0;
-    frame.onAutoConnect(() => connects++);
-    await nextAvailability(frame);
-    expect(frame.autoConnect()).toBe(true);
-    expect(connects).toBe(1);
+  it("carry a hosted connect request to the host callback", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const { frame } = mount(hosted(null, () => resolve()));
+    expect(await nextWalletUi(frame)).toBe("host");
+    frame.requestConnect();
+    await promise;
   });
 
   it("talk to no one when the frame expects another host", () => {
-    const { frame, hops, hostWin, frameWin } = mount(
-      { provider: new TestWallet() },
-      { hostOrigin: "https://other.example" },
-    );
+    const { frame, hops, hostWin, frameWin } = mount(hosted(new TestWallet()), {
+      hostOrigin: "https://other.example",
+    });
     expect(hops).toEqual([{ to: "host", targetOrigin: "https://other.example", delivered: false }]);
     // Even the right message from the real parent does not pin the wrong origin.
     frameWin.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "xochi:provider", available: true, autoConnect: false },
+        data: { type: "xochi:provider", ui: "host", available: true },
         origin: HOST,
         source: hostWin,
       }),
@@ -368,7 +430,7 @@ describe("host and frame", () => {
 
   it("ignore each other across origins: a frame served elsewhere drives no wallet", async () => {
     const wallet = new TestWallet();
-    const { frame, hops } = mount({ provider: wallet }, { frameOrigin: "https://evil.example" });
+    const { frame, hops } = mount(hosted(wallet), { frameOrigin: "https://evil.example" });
     // The ready's delivery was queued before this await resumes, and the host
     // handles (here: ignores) a message synchronously on delivery.
     await Promise.resolve();

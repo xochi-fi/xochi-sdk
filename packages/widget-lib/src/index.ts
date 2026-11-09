@@ -1,7 +1,7 @@
 /**
- * @xochi/widget-lib: embed the Xochi swap widget in any page and lend it the
- * host's wallet (`createXochiWidget`), and the frame's end of that bridge
- * (`connectToHost`). See README.md for usage and the security model.
+ * @xochi/widget-lib: embed Xochi with explicit widget-owned or host-owned
+ * wallet UI, plus the frame's end of that capability-driven bridge. See
+ * README.md for usage and the security model.
  */
 
 export {
@@ -12,6 +12,7 @@ export {
   type XochiWidget,
   type XochiWidgetListeners,
   type XochiWidgetOptions,
+  type XochiWidgetWallet,
 } from "./widget.js";
 export {
   HostRpcError,
@@ -61,4 +62,5 @@ export {
   type RpcId,
   type XochiWidgetEvent,
   type XochiWidgetEventName,
+  type WalletUi,
 } from "./protocol.js";

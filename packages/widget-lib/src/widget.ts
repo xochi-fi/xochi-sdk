@@ -10,7 +10,14 @@
  * consent for each signature and transaction.
  */
 
-import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
+import {
+  HOSTED_PERSONAL_SIGN_ERROR,
+  asJson,
+  isRecord,
+  isRefusedHostedPersonalSign,
+  normalizeOrigin,
+  truncate,
+} from "./internal.js";
 import { encodeEmbedParams, type EmbedParams } from "./params.js";
 import {
   ALLOWED_RPC_METHODS,
@@ -46,19 +53,20 @@ export type XochiWidgetListeners = {
   [E in XochiWidgetEvent as E["name"]]?: (event: E) => void;
 };
 
+/** The widget owns wallet UI, or delegates it explicitly to the host page. */
+export type XochiWidgetWallet =
+  | { ui: "widget" }
+  | {
+      ui: "host";
+      provider: Eip1193Provider | null;
+      onConnectRequest: () => void;
+    };
+
 export interface XochiWidgetOptions {
   /** What the frame opens on (see params.ts). `{}` for its own defaults. */
   params: EmbedParams;
-  /** The host wallet the frame signs with. Omitted or null: the frame has none. */
-  provider?: Eip1193Provider | null;
-  /**
-   * Connect the host wallet in the frame as soon as it loads. Default false:
-   * the frame lists the host wallet as an option and connects only when the
-   * user picks it, so mounting the widget never opens a wallet prompt or reads
-   * accounts on its own. Set true when the host page has already connected the
-   * user and the frame should simply follow it.
-   */
-  autoConnect?: boolean;
+  /** Wallet UI owner. Default: `{ ui: "widget" }`. */
+  wallet?: XochiWidgetWallet;
   /** Where the widget is served, an origin only. Default `https://widget.xochi.fi`. */
   origin?: string;
   listeners?: XochiWidgetListeners;
@@ -67,7 +75,7 @@ export interface XochiWidgetOptions {
 export interface XochiWidget {
   /** Reload the frame on new params. A no-op when they encode identically. */
   updateParams(params: EmbedParams): void;
-  /** Attach, replace or (with null) detach the host wallet. */
+  /** Attach, replace or (with null) detach the host wallet without reloading the frame. */
   updateProvider(provider: Eip1193Provider | null): void;
   /** Remove the frame and every listener. Idempotent. */
   destroy(): void;
@@ -88,6 +96,59 @@ export function embedUrl(origin: string, params: EmbedParams): string {
 }
 
 const PROVIDER_EVENTS = ["accountsChanged", "chainChanged", "disconnect"] as const;
+
+function validateProvider(provider: unknown, field: string): asserts provider is Eip1193Provider {
+  if (
+    (typeof provider !== "object" && typeof provider !== "function") ||
+    provider === null ||
+    typeof (provider as Eip1193Provider).request !== "function"
+  ) {
+    throw new TypeError(`${field} must be an EIP-1193 provider or null`);
+  }
+  const { on, removeListener } = provider as Eip1193Provider;
+  if (
+    (on !== undefined && typeof on !== "function") ||
+    (removeListener !== undefined && typeof removeListener !== "function") ||
+    (typeof on === "function") !== (typeof removeListener === "function")
+  ) {
+    throw new TypeError(`${field} must provide both on and removeListener, or neither`);
+  }
+}
+
+function resolveWallet(options: XochiWidgetOptions): XochiWidgetWallet {
+  const rawOptions = options as unknown as Record<string, unknown>;
+  if ("provider" in rawOptions || "autoConnect" in rawOptions) {
+    throw new TypeError(
+      'provider and autoConnect were removed; use wallet: { ui: "host", provider, onConnectRequest }',
+    );
+  }
+  const wallet = options.wallet ?? { ui: "widget" };
+  if (!isRecord(wallet)) throw new TypeError("wallet must be an object");
+  if (wallet.ui === "widget") {
+    if (Object.keys(wallet).some((key) => key !== "ui")) {
+      throw new TypeError('wallet with ui: "widget" accepts no host wallet fields');
+    }
+    return { ui: "widget" };
+  }
+  if (wallet.ui !== "host") throw new TypeError('wallet.ui must be "widget" or "host"');
+  if (!("provider" in wallet)) throw new TypeError("wallet.provider is required for host UI");
+  if (wallet.provider !== null) validateProvider(wallet.provider, "wallet.provider");
+  if (typeof wallet.onConnectRequest !== "function") {
+    throw new TypeError("wallet.onConnectRequest must be a function");
+  }
+  if (
+    Object.keys(wallet).some(
+      (key) => key !== "ui" && key !== "provider" && key !== "onConnectRequest",
+    )
+  ) {
+    throw new TypeError("wallet contains an unknown field");
+  }
+  return {
+    ui: "host",
+    provider: wallet.provider,
+    onConnectRequest: wallet.onConnectRequest,
+  };
+}
 
 function isRpcId(value: unknown): value is RpcId {
   return (
@@ -144,14 +205,15 @@ function toWidgetEvent(value: unknown): XochiWidgetEvent | null {
 }
 
 /**
- * Mount the widget frame as the last child of `container` and bridge
- * `provider` into it. Throws a TypeError for a bad origin or params before
+ * Mount the widget frame as the last child of `container`. Wallet ownership is
+ * fixed for the instance's lifetime. Throws a TypeError for bad options before
  * touching the page.
  */
 export function createXochiWidget(
   container: HTMLElement,
   options: XochiWidgetOptions,
 ): XochiWidget {
+  const wallet = resolveWallet(options);
   const origin = normalizeWidgetOrigin(options.origin ?? DEFAULT_WIDGET_ORIGIN);
   let src = embedUrl(origin, options.params);
   const listeners: XochiWidgetListeners = { ...options.listeners };
@@ -170,7 +232,6 @@ export function createXochiWidget(
   iframe.style.maxWidth = "100%";
 
   let provider: Eip1193Provider | null = null;
-  const autoConnect = options.autoConnect === true;
   let destroyed = false;
   /** The frame has said `xochi:ready` since it last loaded. */
   let ready = false;
@@ -187,16 +248,23 @@ export function createXochiWidget(
    */
   let inFlight = 0;
   /**
-   * The frame has connected the host wallet this session: it asked for accounts
-   * itself (`eth_requestAccounts` / `eth_accounts`) and got some, or the host
-   * opted into `autoConnect`. Until then provider events are not forwarded, so a
-   * frame the user never connected learns no accounts or chain from the host.
+   * The frame has connected the host wallet this session by receiving accounts.
+   * Until then provider events are not forwarded, so a frame the user never
+   * connected learns no accounts or chain from the host.
    */
-  let connected = autoConnect;
+  let connected = false;
 
   /** Post to the frame, naming the widget origin as the only acceptable recipient. */
   function post(message: HostMessage): void {
     iframe.contentWindow?.postMessage(message, origin);
+  }
+
+  function providerState(): HostMessage {
+    return {
+      type: MESSAGE.provider,
+      ui: wallet.ui,
+      available: wallet.ui === "host" && provider !== null,
+    };
   }
 
   function reply(id: RpcId, outcome: { result: unknown } | { error: RpcErrorObject }): void {
@@ -264,6 +332,12 @@ export function createXochiWidget(
     if (params !== undefined && !Array.isArray(params) && !isRecord(params)) {
       reply(id, {
         error: { code: RPC_ERROR.invalidParams, message: "params must be an array or an object" },
+      });
+      return;
+    }
+    if (isRefusedHostedPersonalSign(method, params)) {
+      reply(id, {
+        error: { code: RPC_ERROR.unsupportedMethod, message: HOSTED_PERSONAL_SIGN_ERROR },
       });
       return;
     }
@@ -346,9 +420,19 @@ export function createXochiWidget(
       case MESSAGE.ready:
         session += 1;
         pending.clear();
-        connected = autoConnect;
+        connected = false;
         ready = true;
-        post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
+        post(providerState());
+        return;
+      case MESSAGE.connectRequest:
+        if (
+          ready &&
+          wallet.ui === "host" &&
+          isRecord(message) &&
+          Object.keys(message).length === 1
+        ) {
+          wallet.onConnectRequest();
+        }
         return;
       case MESSAGE.rpc:
         handleRpc(raw, message);
@@ -370,7 +454,7 @@ export function createXochiWidget(
     }
   }
 
-  attach(options.provider ?? null);
+  attach(wallet.ui === "host" ? wallet.provider : null);
   host.addEventListener("message", onMessage);
   container.appendChild(iframe);
 
@@ -383,7 +467,7 @@ export function createXochiWidget(
       ready = false;
       session += 1;
       pending.clear();
-      connected = autoConnect;
+      connected = false;
       iframe.height = String(params.height ?? EMBED_FRAME.height);
       // The style height an earlier document reported would override it.
       if (params.height !== undefined) iframe.style.height = `${params.height}px`;
@@ -391,9 +475,13 @@ export function createXochiWidget(
     },
     updateProvider(next) {
       if (destroyed) throw new Error("the Xochi widget was destroyed");
+      if (wallet.ui !== "host") {
+        throw new Error("updateProvider is available only when wallet.ui is host");
+      }
+      if (next !== null) validateProvider(next, "provider");
       if (next === provider) return;
       attach(next);
-      if (ready) post({ type: MESSAGE.provider, available: provider !== null, autoConnect });
+      if (ready) post(providerState());
     },
     destroy() {
       if (destroyed) return;

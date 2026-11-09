@@ -3,11 +3,6 @@
  * `parent` records every `postMessage` as its JSON text and `targetOrigin`, and
  * the host's messages are delivered straight to the frame's listener with the
  * origin and source a browser would stamp on them.
- *
- * `frame.wire.json` was recorded from the widget app's own frame bridge
- * (xochi-widget `src/lib/hostBridge.ts` at 9b80e8d) under this same script, so
- * replaying it proves `connectToHost` puts the same bytes on the wire, to the
- * same origins, and settles the same requests the same way.
  */
 
 import { describe, expect, it } from "vitest";
@@ -20,10 +15,7 @@ import {
   TRADE_REF_PATTERN,
   connectToHost,
   mintTradeRef,
-  type HostConnection,
-  type XochiWidgetEvent,
 } from "./index.js";
-import wire from "./frame.wire.json";
 
 const HOST = "https://host.example";
 const TRADE_REF = `tr_${"a".repeat(32)}`;
@@ -72,9 +64,15 @@ function connect(options: { hostOrigin?: string } = {}) {
   return { frame, connection };
 }
 
-/** Attach the host's wallet: the host's answer to `xochi:ready`. */
-function attach(frame: ScriptedFrame, autoConnect = false): void {
-  frame.receive({ type: "xochi:provider", available: true, autoConnect });
+/** Attach a host-owned wallet: the host's answer to `xochi:ready`. */
+function attach(frame: ScriptedFrame, available = true): void {
+  frame.receive({ type: "xochi:provider", ui: "host", available });
+}
+
+function hex(message: string): string {
+  return `0x${Array.from(new TextEncoder().encode(message), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
 }
 
 function describeError(e: unknown): unknown {
@@ -100,72 +98,6 @@ async function outcome(request: Promise<unknown>): Promise<unknown> {
   );
 }
 
-type Step = (typeof wire)[number];
-
-describe("the wire", () => {
-  it("matches what the widget's own frame bridge sends, byte for byte", async () => {
-    const frame = new ScriptedFrame();
-    let connection: HostConnection | null = null;
-    let observed: unknown[] = [];
-    for (const step of wire as Step[]) {
-      const s = step as Step & Record<string, unknown>;
-      switch (s.do) {
-        case "connect":
-          connection = connectToHost({ window: frame.window });
-          for (const name of ["accountsChanged", "chainChanged", "disconnect"]) {
-            connection!.provider.on(name, (arg) =>
-              observed.push({
-                providerEvent: name,
-                arg: name === "disconnect" ? describeError(arg) : arg,
-              }),
-            );
-          }
-          connection!.onAvailability((available) => observed.push({ availability: available }));
-          break;
-        case "resize":
-          connection!.resize(s.height as number);
-          break;
-        case "emit":
-          connection!.emit(s.event as XochiWidgetEvent);
-          break;
-        case "request": {
-          const args =
-            "params" in s
-              ? { method: s.method as string, params: s.params as unknown[] }
-              : { method: s.method as string };
-          const label = s.label;
-          connection!.provider.request(args).then(
-            (value) => observed.push({ settled: label, value }),
-            (e: unknown) => observed.push({ settled: label, reason: describeError(e) }),
-          );
-          break;
-        }
-        case "host":
-          frame.receive(
-            s.data,
-            (s.origin as string | undefined) ?? HOST,
-            s.source === "stranger" ? frame.stranger : frame.parent,
-          );
-          break;
-        case "destroy":
-          connection!.destroy();
-          break;
-      }
-      // Requests settle synchronously within the step; their callbacks were
-      // queued before this continuation.
-      await Promise.resolve();
-      expect({ step: s, posted: frame.take(), observed }).toEqual({
-        step: s,
-        posted: s.expect.posted,
-        observed: s.expect.observed,
-      });
-      expect(connection!.available()).toBe(s.expect.available);
-      expect(connection!.autoConnect()).toBe(s.expect.autoConnect);
-      observed = [];
-    }
-  });
-});
-
 describe("connectToHost", () => {
   it("is null in a window nobody framed", () => {
     expect(connectToHost({ window })).toBeNull();
@@ -184,7 +116,7 @@ describe("connectToHost", () => {
   it("with hostOrigin, says ready to that origin only and lets nothing else pin", () => {
     const { frame, connection } = connect({ hostOrigin: `${HOST}/` });
     expect(frame.take()).toEqual([{ targetOrigin: HOST, message: '{"type":"xochi:ready"}' }]);
-    frame.receive({ type: "xochi:provider", available: true }, "https://evil.example");
+    frame.receive({ type: "xochi:provider", ui: "host", available: true }, "https://evil.example");
     expect(connection.available()).toBe(false);
     connection.resize(500);
     attach(frame);
@@ -196,7 +128,7 @@ describe("connectToHost", () => {
 
   it("never pins an opaque origin, which no targetOrigin can name", () => {
     const { frame, connection } = connect();
-    frame.receive({ type: "xochi:provider", available: true }, "null");
+    frame.receive({ type: "xochi:provider", ui: "host", available: true }, "null");
     expect(connection.available()).toBe(false);
     attach(frame);
     expect(connection.available()).toBe(true);
@@ -204,7 +136,12 @@ describe("connectToHost", () => {
 
   it("drops an oversized host message, but still answers the request it was for", async () => {
     const { frame, connection } = connect();
-    frame.receive({ type: "xochi:provider", available: true, pad: "x".repeat(MAX_MESSAGE_LENGTH) });
+    frame.receive({
+      type: "xochi:provider",
+      ui: "host",
+      available: true,
+      pad: "x".repeat(MAX_MESSAGE_LENGTH),
+    });
     expect(connection.available()).toBe(false);
     attach(frame);
     const request = connection.provider.request({ method: "eth_chainId" });
@@ -244,7 +181,10 @@ describe("connectToHost", () => {
       const { frame, connection } = connect();
       attach(frame);
       const accounts = connection.provider.request({ method: "eth_accounts" });
-      const rejected = connection.provider.request({ method: "personal_sign", params: [] });
+      const rejected = connection.provider.request({
+        method: "personal_sign",
+        params: ["0x00", "0x0"],
+      });
       frame.receive({ type: "xochi:rpc:result", id: 1, result: ["0xabc"] });
       frame.receive({
         type: "xochi:rpc:result",
@@ -270,6 +210,25 @@ describe("the frame's own refusals", () => {
       expect(error).toMatchObject({
         code: RPC_ERROR.unsupportedMethod,
         message: `Unsupported method: ${method.length <= 64 ? method : `${method.slice(0, 63)}…`}`,
+      });
+    }
+    expect(frame.take()).toEqual([]);
+  });
+
+  it("refuses Stealth derivation and SIWE personal_sign in plain and hex forms", async () => {
+    const { frame, connection } = connect();
+    attach(frame);
+    frame.take();
+    const derive =
+      "Sign this message to derive your Xochi stealth keys.\n\nThis signature will be used to create receiving addresses that only you can spend from.";
+    const siwe =
+      "host.example wants you to sign in with your Ethereum account:\n0x0000000000000000000000000000000000000000\n\nURI: https://host.example";
+    for (const message of [derive, hex(derive), siwe, hex(siwe)]) {
+      await expect(
+        connection.provider.request({ method: "personal_sign", params: [message, "0x0"] }),
+      ).rejects.toMatchObject({
+        code: RPC_ERROR.unsupportedMethod,
+        message: "Hosted wallet bridge refuses Stealth key derivation and SIWE signatures",
       });
     }
     expect(frame.take()).toEqual([]);
@@ -419,67 +378,59 @@ describe("trade events", () => {
   });
 });
 
-describe("onAutoConnect", () => {
-  it("is off until the host says so, and off for anything but a literal true", () => {
+describe("wallet UI ownership", () => {
+  it("requires a valid ownership handshake and never changes owner afterward", () => {
     const { frame, connection } = connect();
-    expect(connection.autoConnect()).toBe(false);
-    frame.receive({ type: "xochi:provider", available: true, autoConnect: "true" });
-    expect(connection.autoConnect()).toBe(false);
-    // An older host that sends no `autoConnect` at all gets the default.
-    frame.receive({ type: "xochi:provider", available: true });
-    expect(connection.autoConnect()).toBe(false);
-    attach(frame, true);
-    expect(connection.autoConnect()).toBe(true);
+    const seen: string[] = [];
+    connection.onWalletUi((ui) => seen.push(ui));
+    expect(connection.walletUi()).toBeNull();
+
+    frame.receive({ type: "xochi:provider", available: false });
+    frame.receive({ type: "xochi:provider", ui: "widget", available: true });
+    expect(connection.walletUi()).toBeNull();
+
+    frame.receive({ type: "xochi:provider", ui: "widget", available: false });
+    expect(connection.walletUi()).toBe("widget");
+    expect(seen).toEqual(["widget"]);
+    frame.receive({ type: "xochi:provider", ui: "host", available: true });
+    expect(connection.walletUi()).toBe("widget");
+    expect(connection.available()).toBe(false);
   });
 
-  it("is read before availability listeners run", () => {
+  it("exposes ownership before availability listeners and replays it to late subscribers", () => {
     const { frame, connection } = connect();
-    const seen: [boolean, boolean][] = [];
-    connection.onAvailability((available) => seen.push([available, connection.autoConnect()]));
-    attach(frame, true);
-    expect(seen).toEqual([[true, true]]);
-  });
-
-  it("never connects in the default mode", () => {
-    const { frame, connection } = connect();
-    let connects = 0;
-    connection.onAutoConnect(() => connects++);
+    const seen: [boolean, string | null][] = [];
+    connection.onAvailability((available) => seen.push([available, connection.walletUi()]));
     attach(frame);
-    frame.receive({ type: "xochi:provider", available: false, autoConnect: false });
-    attach(frame);
-    expect(connects).toBe(0);
+    expect(seen).toEqual([[true, "host"]]);
+
+    const owners: string[] = [];
+    connection.onWalletUi((ui) => owners.push(ui));
+    expect(owners).toEqual(["host"]);
   });
 
-  it("connects once when an opted-in host attaches its wallet, and again only on a re-attach", () => {
-    const { frame, connection } = connect();
-    let connects = 0;
-    connection.onAutoConnect(() => connects++);
-    expect(connects).toBe(0);
-    attach(frame, true);
-    expect(connects).toBe(1);
-    // The host re-sends provider state (a provider swap): still the same
-    // attachment, so a user who disconnected in the frame stays disconnected.
-    attach(frame, true);
-    expect(connects).toBe(1);
-    frame.receive({ type: "xochi:provider", available: false, autoConnect: true });
-    attach(frame, true);
-    expect(connects).toBe(2);
+  it("requests connection only from a host-owned surface", () => {
+    const hosted = connect();
+    attach(hosted.frame, false);
+    hosted.frame.take();
+    hosted.connection.requestConnect();
+    expect(hosted.frame.take()).toEqual([
+      { targetOrigin: HOST, message: '{"type":"xochi:connect:request"}' },
+    ]);
+
+    const standalone = connect();
+    standalone.frame.receive({ type: "xochi:provider", ui: "widget", available: false });
+    standalone.frame.take();
+    standalone.connection.requestConnect();
+    expect(standalone.frame.take()).toEqual([]);
   });
 
-  it("connects at once when the opted-in host wallet is already attached", () => {
+  it("stops ownership listeners on unsubscribe", () => {
     const { frame, connection } = connect();
-    attach(frame, true);
-    let connects = 0;
-    connection.onAutoConnect(() => connects++);
-    expect(connects).toBe(1);
-  });
-
-  it("stops on unsubscribe", () => {
-    const { frame, connection } = connect();
-    let connects = 0;
-    const stop = connection.onAutoConnect(() => connects++);
+    const seen: string[] = [];
+    const stop = connection.onWalletUi((ui) => seen.push(ui));
     stop();
-    attach(frame, true);
-    expect(connects).toBe(0);
+    attach(frame);
+    expect(seen).toEqual([]);
   });
 });

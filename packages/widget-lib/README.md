@@ -2,13 +2,15 @@
 
 Embeds the Xochi swap widget in an iframe with an EIP-1193 wallet bridge, auto-resize and lifecycle events, and implements the frame's end of that bridge. No runtime deps; ESM + CommonJS with types.
 
-> **Third-party embedding is not open yet** (xochi-fi/xochi#573): `widget.xochi.fi` sends `frame-ancestors 'self'`. The deployed widget does not speak this protocol yet.
+> **Third-party embedding is not open yet** (xochi-fi/xochi#573). Production permits only the widget's own origin and the first-party `xochi.fi` hosts. Hosted wallet ownership must not be enabled until the frame app and this package speak the same `0.4` protocol.
 
 ## Install
 
 ```bash
-npm install @xochi/widget-lib
+npm install --save-exact @xochi/widget-lib@0.4.0
 ```
+
+`0.4.0` is a breaking pre-1.0 release. Consumers must exact-pin it only after the registry reports that version; do not merge a consuming branch while the package is unavailable.
 
 ## Usage
 
@@ -17,8 +19,11 @@ import { createXochiWidget } from "@xochi/widget-lib";
 
 const widget = createXochiWidget(document.getElementById("xochi")!, {
   params: { fromChainId: 1, toChainId: 8453, sellSymbol: "USDT", buySymbol: "USDC", amount: "250" },
-  provider: window.ethereum, // any EIP-1193 provider; omit for none
-  autoConnect: false, // default: connect only on the user's click
+  wallet: {
+    ui: "host",
+    provider: window.ethereum ?? null,
+    onConnectRequest: () => openHostWalletModal(),
+  },
   // origin: "https://widget.xochi.fi" (default)
   listeners: {
     "trade:submitted": ({ tradeRef }) => console.log("submitted", tradeRef),
@@ -28,9 +33,11 @@ const widget = createXochiWidget(document.getElementById("xochi")!, {
 });
 
 widget.updateParams({ sellSymbol: "USDC" }); // reloads the frame
-widget.updateProvider(otherProvider); // or null
+widget.updateProvider(otherProvider); // host UI only; null detaches, frame stays mounted
 widget.destroy();
 ```
+
+Omit `wallet`, or pass `wallet: { ui: "widget" }`, for the standalone widget-owned wallet experience. Host ownership is explicit and fixed for an instance's lifetime. The host callback opens its own connection UI; after connection, call `updateProvider(provider)`. Top-level `provider` and `autoConnect` options are not supported.
 
 ### Frame parameters
 
@@ -61,7 +68,7 @@ widget.destroy();
 
 ### Frame side
 
-`connectToHost` is the other end of the bridge, run inside the frame. The Xochi widget uses it; this package's tests run it against `createXochiWidget`.
+`connectToHost` is the other end of the bridge, run inside the frame. It reports wallet UI ownership separately from host-provider availability.
 
 ```ts
 import { connectToHost, mintTradeRef } from "@xochi/widget-lib";
@@ -69,28 +76,32 @@ import { connectToHost, mintTradeRef } from "@xochi/widget-lib";
 const host = connectToHost(); // null when the window is not framed
 // connectToHost({ hostOrigin: "https://host.example" }) accepts that host only
 if (host) {
-  host.provider; // EIP-1193 provider proxied to the host's wallet; 4900 while none is attached
-  host.onAvailability((available) => {}); // the host attached or detached its wallet
-  host.onAutoConnect(() => connectHostWallet()); // only when the host passed autoConnect: true
+  host.walletUi(); // null until handshake, then "widget" or "host"
+  host.onWalletUi((ui) => setWalletChromeOwner(ui));
+  host.provider; // EIP-1193 provider proxied to a host wallet; 4900 while unavailable
+  host.onAvailability((available) => setHostProviderAvailable(available));
+  host.requestConnect(); // asks host-owned UI to connect; no-op for widget-owned UI
   host.resize(document.body.getBoundingClientRect().height);
   const tradeRef = mintTradeRef(); // once per trade, on every event of it
   host.emit({ name: "trade:submitted", tradeRef });
 }
 ```
 
-- `onAutoConnect` calls back once per attachment of the host wallet, never on a repeated `xochi:provider`, so a user who disconnects in the frame stays disconnected until the host re-attaches.
+- `onWalletUi` immediately reports an ownership value already received and returns an unsubscribe. Ownership cannot change after the handshake.
 - `emit` throws a `TypeError` for an event the host would drop, and cuts a `trade:failed` error to `MAX_ERROR_MESSAGE_LENGTH`.
 - Wallet errors reject as `HostRpcError` (`name` `"ProviderRpcError"`, `code`, optional `data`).
 
 ## Security model
 
-- Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`.
-- Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200` without reaching it. Every connection, signature, chain switch and transaction still prompts.
-- Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
-- Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.
-- Lifecycle events carry `tradeRef`, an opaque reference the frame mints per trade (`TRADE_REF_PATTERN`: `tr_` + 32 lowercase hex, random), the same on every event of one trade. It is not the intent id and the API knows nothing of it, so the events let the host correlate a trade but not read it from the Worker. Events whose `tradeRef` does not match the pattern are dropped.
-- The events carry no intent id, but a host that supplies `provider` sees the full signed `XochiIntent`, `intentId` included, when the frame asks that wallet to sign it (`eth_signTypedData_v4`). Only a wallet the frame owns keeps the intent id from the host.
-- The frame side, `connectToHost`, posts only `xochi:ready` before the handshake (to `"*"`, or to `hostOrigin` when given). It pins the origin of the first well-formed `xochi:provider` from `window.parent` (only `hostOrigin`, when given; never the opaque `"null"`), then handles only messages from that window and origin and posts only to it. It applies the host's limits before asking: off-allowlist methods (`4200`), bad params (`-32602`), requests over `MAX_MESSAGE_LENGTH` (`-32600`) and more than `MAX_PENDING_RPC` in flight (`-32005`) are refused with the host's own code and message, without posting anything. Host messages over `MAX_MESSAGE_LENGTH` are dropped (an answer that size rejects its request with `-32603`), and host error messages are cut to `MAX_ERROR_MESSAGE_LENGTH`.
+- Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post after the initial data-free ready message names that origin as `targetOrigin`.
+- Wallet ownership is a required handshake field. Widget-owned mode never exposes a host provider or invokes a host connection callback. Host-owned mode requests connection only through `xochi:connect:request`; `updateProvider` changes the provider without replacing the iframe.
+- A frame in host-owned mode must suppress Stealth, Claims and standalone sign-in. `settlement: "stealth"` is not an instruction to expose those surfaces; the frame fails closed to public settlement.
+- Only `ALLOWED_RPC_METHODS` reach a hosted wallet; others get `4200` without reaching it. Stealth key-derivation and SIWE `personal_sign` payloads are also refused with `4200`, in plain text or hex, on both ends of the bridge. They do not fall back to a compatibility path.
+- Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is no per-request deadline, so an unanswered wallet prompt holds its slot.
+- Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after `eth_requestAccounts` or `eth_accounts` returned at least one account in the current load.
+- Lifecycle events carry `tradeRef`, an opaque frame-minted reference (`TRADE_REF_PATTERN`: `tr_` + 32 lowercase hex), stable across events for one trade. It is never an intent id; malformed references are dropped.
+- A host-owned provider necessarily sees requests intentionally sent to it, including typed intent data. Widget-owned Stealth derivation and SIWE credentials never cross the hosted bridge.
+- `connectToHost` pins the first well-formed provider handshake from `window.parent` (or only `hostOrigin` when configured), never an opaque `"null"` origin. Malformed, oversized, cross-source and cross-origin messages are dropped. Its local request checks match the host's checks before anything is posted.
 
 Changes: [CHANGELOG.md](https://github.com/xochi-fi/xochi-sdk/blob/main/packages/widget-lib/CHANGELOG.md).
 

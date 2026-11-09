@@ -4,6 +4,20 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Changed
+
+- **Breaking:** wallet ownership is explicit. `createXochiWidget` now accepts `wallet: { ui: "widget" }` (also the default) or `wallet: { ui: "host", provider, onConnectRequest }`. The obsolete top-level `provider` and `autoConnect` options are removed and rejected at runtime.
+- `XochiWidget.updateProvider(provider | null)` updates only a host-owned provider in place and never recreates the iframe. Provider and window listeners are removed on replacement and destruction.
+- The handshake now carries `ui: "widget" | "host"`. `HostConnection` replaces `autoConnect` / `onAutoConnect` with `walletUi`, `onWalletUi` and `requestConnect`; the latter sends the dedicated frame-to-host `xochi:connect:request` message.
+
+### Security
+
+- Both bridge ends refuse the pinned Xochi Stealth derive message and EIP-4361 SIWE `personal_sign` payloads, whether plain text or hex. No compatibility fallback reaches a hosted wallet.
+- Trade lifecycle events continue to expose only the opaque frame-minted `tradeRef`; the wire and public event types do not accept an intent id.
+- Host-owned frames must suppress Stealth, Claims and standalone sign-in. A hosted `settlement: "stealth"` parameter does not opt those surfaces back in.
+
 ## [0.3.1] - 2026-11-01
 
 Additive: `createXochiWidget` and every existing export behave as before.

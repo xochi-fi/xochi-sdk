@@ -6,11 +6,11 @@
  * `connectToHost` (frame.ts).
  *
  *   frame -> host   xochi:ready            the frame loaded and listens
+ *                   xochi:connect:request  open the host-owned wallet UI
  *                   xochi:rpc              an EIP-1193 request for the host wallet
  *                   xochi:resize           the frame's content height, in CSS px
  *                   xochi:event            a trade lifecycle event
- *   host -> frame   xochi:provider         whether a host wallet is attached, and
- *                                          whether the frame may connect it unasked
+ *   host -> frame   xochi:provider         wallet UI ownership and provider availability
  *                   xochi:rpc:result       the answer to one xochi:rpc, by id
  *                   xochi:provider:event   accountsChanged / chainChanged / disconnect
  */
@@ -27,6 +27,7 @@ export const EMBED_FRAME = { width: 460, height: 760, title: "Xochi swap" } as c
 /** The message `type` strings. */
 export const MESSAGE = {
   ready: "xochi:ready",
+  connectRequest: "xochi:connect:request",
   rpc: "xochi:rpc",
   resize: "xochi:resize",
   event: "xochi:event",
@@ -36,19 +37,15 @@ export const MESSAGE = {
 } as const;
 
 /**
- * The wallet methods the frame may call through the host's provider. Anything
- * else is refused with 4200 before the provider sees it.
+ * The wallet methods the frame may call through a host-owned provider.
+ * Anything else is refused with 4200 before the provider sees it. Stealth key
+ * derivation and SIWE `personal_sign` payloads are refused separately even
+ * though other `personal_sign` messages remain allowlisted.
  *
  * This is what the widget's wallet stack (wagmi's injected connector + viem's
- * wallet actions) sends for the calls the widget makes: connect, read account
- * and chain, switch chain (adding it when the wallet answers 4902), sign typed
- * data (pull authorizations), personal_sign (wallet session, stealth key
- * derivation) and send a transaction (Permit2 approve, WETH wrap, ERC-6538
- * registration). Chain READS go through the widget's own RPC transports, never
- * the wallet. wagmi also tries `wallet_requestPermissions` on connect and
- * `wallet_revokePermissions` on disconnect and tolerates a refusal of either,
- * and viem retries a failed `eth_sendTransaction` as `wallet_sendTransaction`
- * only for wallets that do not support the former; all three stay refused.
+ * wallet actions) sends for connection, account and chain state, chain
+ * switching, typed intent signatures, ordinary message signatures and
+ * transactions. Chain reads go through the widget's own RPC transports.
  */
 export const ALLOWED_RPC_METHODS = [
   "eth_requestAccounts",
@@ -126,9 +123,13 @@ export type XochiWidgetEvent =
 
 export type XochiWidgetEventName = XochiWidgetEvent["name"];
 
+/** Which surface owns wallet/account connection UI. */
+export type WalletUi = "widget" | "host";
+
 /** Messages the frame sends to the host. */
 export type FrameMessage =
   | { type: typeof MESSAGE.ready }
+  | { type: typeof MESSAGE.connectRequest }
   | {
       type: typeof MESSAGE.rpc;
       id: RpcId;
@@ -142,13 +143,10 @@ export type FrameMessage =
 export type HostMessage =
   | {
       type: typeof MESSAGE.provider;
+      /** The owner of wallet/account connection UI for this frame's lifetime. */
+      ui: WalletUi;
+      /** Whether a host-owned wallet provider is currently attached. Always false for widget UI. */
       available: boolean;
-      /**
-       * The host's `autoConnect` option. False (the default): the frame offers
-       * the host wallet as an option and connects only on the user's click.
-       * True: the frame connects it on load.
-       */
-      autoConnect: boolean;
     }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; result: unknown }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; error: RpcErrorObject }

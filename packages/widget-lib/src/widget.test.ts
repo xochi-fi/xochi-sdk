@@ -73,6 +73,19 @@ function defaultAnswer(method: string): unknown {
   }
 }
 
+function hosted(
+  provider: Eip1193Provider | null,
+  onConnectRequest: () => void = () => {},
+): Pick<XochiWidgetOptions, "wallet"> {
+  return { wallet: { ui: "host", provider, onConnectRequest } };
+}
+
+function hex(message: string): string {
+  return `0x${Array.from(new TextEncoder().encode(message), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 /** Mail that the host posted into a frame window, in arrival order. */
 class Inbox {
   private readonly queue: unknown[] = [];
@@ -212,6 +225,22 @@ describe("mounting", () => {
     ).toThrow(/https/);
     expect(container.childElementCount).toBe(0);
   });
+
+  it("refuses legacy and malformed wallet ownership options before touching the page", () => {
+    const badOptions: unknown[] = [
+      { params: {}, provider: new TestWallet() },
+      { params: {}, autoConnect: true },
+      { params: {}, wallet: { ui: "host", provider: null } },
+      { params: {}, wallet: { ui: "host", provider: {}, onConnectRequest: () => {} } },
+      { params: {}, wallet: { ui: "widget", provider: null } },
+      { params: {}, wallet: { ui: "other" } },
+    ];
+    for (const options of badOptions) {
+      const container = document.createElement("div");
+      expect(() => createXochiWidget(container, options as XochiWidgetOptions)).toThrow(TypeError);
+      expect(container.childElementCount).toBe(0);
+    }
+  });
 });
 
 describe("normalizeWidgetOrigin", () => {
@@ -240,68 +269,64 @@ describe("normalizeWidgetOrigin", () => {
 });
 
 describe("handshake and provider state", () => {
-  it("answers xochi:ready with whether a wallet is attached, and reports changes", async () => {
+  it("declares widget ownership by default and rejects host-only provider updates", async () => {
     const { widget, frame } = mount();
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "widget",
       available: false,
-      autoConnect: false,
     });
+    expect(() => widget.updateProvider(new TestWallet())).toThrow(/wallet\.ui is host/);
+  });
 
-    widget.updateProvider(new TestWallet());
+  it("declares host ownership and reports provider changes without replacing the frame", async () => {
+    const first = new TestWallet();
+    const { widget, iframe, frame } = mount(hosted(first));
+    const originalFrame = frame();
+    const inbox = new Inbox(originalFrame);
+    fromFrame(originalFrame, { type: "xochi:ready" });
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: true,
-      autoConnect: false,
     });
+
     widget.updateProvider(null);
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: false,
-      autoConnect: false,
-    });
-  });
-
-  // The default never connects for the user: the frame lists the host wallet and
-  // waits for a click. Opting in is the host's call, and it rides on every
-  // provider message so a reload or a provider swap cannot drop it.
-  it("carries autoConnect only when the host opts in, on every provider message", async () => {
-    const { widget, frame } = mount({ provider: new TestWallet(), autoConnect: true });
-    const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
-    expect(await inbox.next()).toEqual({
-      type: "xochi:provider",
-      available: true,
-      autoConnect: true,
     });
     widget.updateProvider(new TestWallet());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: true,
-      autoConnect: true,
     });
+    expect(frame()).toBe(originalFrame);
+    expect(frameOf(iframe)).toBe(originalFrame);
   });
 
-  it("treats anything but a literal true as the default", async () => {
-    const { frame } = mount({
-      provider: new TestWallet(),
-      autoConnect: "yes" as unknown as boolean,
-    });
-    const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
-    expect(await inbox.next()).toEqual({
-      type: "xochi:provider",
-      available: true,
-      autoConnect: false,
-    });
+  it("routes only an exact hosted connect request to the callback", () => {
+    let requests = 0;
+    const hostedFrame = mount(hosted(null, () => requests++)).frame();
+    fromFrame(hostedFrame, { type: "xochi:ready" });
+    fromFrame(hostedFrame, { type: "xochi:connect:request" });
+    fromFrame(hostedFrame, { type: "xochi:connect:request", payload: true });
+    expect(requests).toBe(1);
+
+    const standaloneFrame = mount().frame();
+    fromFrame(standaloneFrame, { type: "xochi:ready" });
+    fromFrame(standaloneFrame, { type: "xochi:connect:request" });
+    expect(requests).toBe(1);
   });
 
   it("posts nothing to a frame that has not said ready", async () => {
-    const { widget, frame } = mount();
-    const inbox = new Inbox(frame());
     const wallet = new TestWallet();
+    const { widget, frame } = mount(hosted(null));
+    const inbox = new Inbox(frame());
     widget.updateProvider(wallet);
     wallet.emit("chainChanged", "0x1");
     wallet.emit("accountsChanged", [ACCOUNT]);
@@ -312,7 +337,7 @@ describe("handshake and provider state", () => {
 describe("wallet bridge", () => {
   it("forwards an allowlisted request to the host wallet and returns its answer by id", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     const typed = JSON.stringify({ domain: { name: "Xochi" }, message: { amount: "1" } });
 
@@ -331,20 +356,21 @@ describe("wallet bridge", () => {
 
   it("forwards every allowlisted method", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     for (const [i, method] of ALLOWED_RPC_METHODS.entries()) {
-      fromFrame(frame(), rpc(i, method, []));
+      const params = method === "personal_sign" ? ["0x00", ACCOUNT] : [];
+      fromFrame(frame(), rpc(i, method, params));
       const reply = await inbox.next();
       expect(reply).toMatchObject({ type: "xochi:rpc:result", id: i });
       expect(reply).toHaveProperty("result", defaultAnswer(method));
     }
-    expect(wallet.calls.map((c) => c.method)).toEqual([...ALLOWED_RPC_METHODS]);
+    expect(wallet.calls.map((call) => call.method)).toEqual([...ALLOWED_RPC_METHODS]);
   });
 
   it("refuses a method off the allowlist with 4200, without asking the wallet", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     for (const [i, method] of [
       "eth_sign",
@@ -365,6 +391,28 @@ describe("wallet bridge", () => {
     expect(wallet.calls).toEqual([]);
   });
 
+  it("refuses Stealth derivation and SIWE personal_sign in plain and hex forms", async () => {
+    const wallet = new TestWallet();
+    const { frame } = mount(hosted(wallet));
+    const inbox = new Inbox(frame());
+    const derive =
+      "Sign this message to derive your Xochi stealth keys.\n\nThis signature will be used to create receiving addresses that only you can spend from.";
+    const siwe =
+      "host.example wants you to sign in with your Ethereum account:\n0x0000000000000000000000000000000000000000\n\nURI: https://host.example";
+    for (const [id, message] of [derive, hex(derive), siwe, hex(siwe)].entries()) {
+      fromFrame(frame(), rpc(id, "personal_sign", [message, ACCOUNT]));
+      expect(await inbox.next()).toEqual({
+        type: "xochi:rpc:result",
+        id,
+        error: {
+          code: 4200,
+          message: "Hosted wallet bridge refuses Stealth key derivation and SIWE signatures",
+        },
+      });
+    }
+    expect(wallet.calls).toEqual([]);
+  });
+
   it("passes the wallet's rejection through as an EIP-1193 error", async () => {
     const rejection = Object.assign(new Error("User rejected the request."), {
       code: 4001,
@@ -375,7 +423,7 @@ describe("wallet bridge", () => {
       if (method === "eth_sendTransaction") throw new Error("");
       throw "not an error object";
     });
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
 
     fromFrame(frame(), rpc(1, "personal_sign", ["0x68656c6c6f", ACCOUNT]));
@@ -407,7 +455,7 @@ describe("wallet bridge", () => {
 
   it("refuses params that are neither an array nor an object", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), rpc(1, "personal_sign", "0x00"));
     expect(await inbox.next()).toMatchObject({ id: 1, error: { code: -32602 } });
@@ -416,7 +464,7 @@ describe("wallet bridge", () => {
 
   it("refuses an oversized request with -32600, without asking the wallet", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     const huge = `0x${"00".repeat(MAX_MESSAGE_LENGTH / 2)}`;
     fromFrame(frame(), rpc(1, "personal_sign", [huge, ACCOUNT]));
@@ -426,7 +474,7 @@ describe("wallet bridge", () => {
 
   it("hands the wallet plain JSON, whatever structured clone carried", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     const params = [{ to: ACCOUNT, at: new Date(0), extra: new Map([["a", 1]]) }];
     fromFrame(frame(), rpc(1, "eth_sendTransaction", params));
@@ -442,7 +490,7 @@ describe("wallet bridge", () => {
   it(`caps requests in flight at ${MAX_PENDING_RPC} with -32005`, async () => {
     const hung = gate();
     const wallet = new TestWallet(() => hung.answer);
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     for (let i = 0; i < MAX_PENDING_RPC; i++) fromFrame(frame(), rpc(i, "eth_requestAccounts"));
     fromFrame(frame(), rpc("one-too-many", "eth_requestAccounts"));
@@ -453,7 +501,7 @@ describe("wallet bridge", () => {
   it("keeps counting requests a reload left unanswered against the cap", async () => {
     const hung = gate();
     const wallet = new TestWallet(() => hung.answer);
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     for (let i = 0; i < MAX_PENDING_RPC; i++) fromFrame(frame(), rpc(i, "eth_requestAccounts"));
     fromFrame(frame(), { type: "xochi:ready" });
@@ -486,7 +534,7 @@ describe("wallet bridge", () => {
       if (method === "eth_accounts") return [ACCOUNT];
       throw (params as unknown[])[0] === 0 ? throwing : revoked;
     });
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     for (let i = 0; i < MAX_PENDING_RPC; i++) {
       fromFrame(frame(), rpc(i, "eth_sendTransaction", [i % 2]));
@@ -510,7 +558,7 @@ describe("wallet bridge", () => {
     const wallet = new TestWallet((method) =>
       method === "eth_requestAccounts" ? pending.answer : "0x1",
     );
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), rpc(1, "eth_requestAccounts"));
     fromFrame(frame(), rpc(1, "eth_chainId"));
@@ -522,7 +570,7 @@ describe("wallet bridge", () => {
   it("delivers an answer from a wallet that was swapped out while it was pending", async () => {
     const pending = gate();
     const first = new TestWallet(() => pending.answer);
-    const { widget, frame } = mount({ provider: first });
+    const { widget, frame } = mount(hosted(first));
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     await inbox.next();
@@ -530,8 +578,8 @@ describe("wallet bridge", () => {
     widget.updateProvider(new TestWallet());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: true,
-      autoConnect: false,
     });
     pending.release("0xhash");
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: "tx", result: "0xhash" });
@@ -541,7 +589,7 @@ describe("wallet bridge", () => {
 describe("trust boundary", () => {
   it("ignores a message with the right source but another origin", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), rpc("spoofed", "eth_requestAccounts"), "https://evil.example");
     fromFrame(
@@ -556,8 +604,8 @@ describe("trust boundary", () => {
 
   it("ignores a message with the right origin but another source", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
-    const other = mount({ provider: new TestWallet() }).frame();
+    const { frame } = mount(hosted(wallet));
+    const other = mount(hosted(new TestWallet())).frame();
     const inbox = new Inbox(frame());
     fromFrame(window, rpc("from-host-page", "eth_requestAccounts"));
     fromFrame(other, rpc("from-other-frame", "eth_requestAccounts"));
@@ -569,13 +617,13 @@ describe("trust boundary", () => {
 
   it("posts nothing a frame navigated to another origin can read", async () => {
     const wallet = new TestWallet();
-    const { iframe, frame } = mount({ provider: wallet });
+    const { iframe, frame } = mount(hosted(wallet));
     const own = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     expect(await own.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: true,
-      autoConnect: false,
     });
 
     // The frame navigates itself away: the host still holds the element.
@@ -593,7 +641,7 @@ describe("trust boundary", () => {
 describe("provider events", () => {
   it("forwards accountsChanged, chainChanged and disconnect once the frame connected", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     await inbox.next();
@@ -614,7 +662,7 @@ describe("provider events", () => {
 
   it("tells a frame that never connected nothing about the host wallet", async () => {
     const wallet = new TestWallet((method) => (method === "eth_accounts" ? [] : "0x2105"));
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     await inbox.next();
@@ -630,9 +678,9 @@ describe("provider events", () => {
     expect(await inbox.drain()).toEqual([]);
   });
 
-  it("starts every frame load unconnected unless the host opted into autoConnect", async () => {
+  it("starts every frame load disconnected from provider events", async () => {
     const wallet = new TestWallet();
-    const { frame } = mount({ provider: wallet });
+    const { frame } = mount(hosted(wallet));
     const inbox = new Inbox(frame());
     fromFrame(frame(), { type: "xochi:ready" });
     await inbox.next();
@@ -642,22 +690,12 @@ describe("provider events", () => {
     await inbox.next();
     wallet.emit("accountsChanged", [ACCOUNT]);
     expect(await inbox.drain()).toEqual([]);
-
-    const auto = new TestWallet();
-    const followed = mount({ provider: auto, autoConnect: true });
-    const autoInbox = new Inbox(followed.frame());
-    fromFrame(followed.frame(), { type: "xochi:ready" });
-    await autoInbox.next();
-    auto.emit("accountsChanged", [ACCOUNT]);
-    expect(await autoInbox.drain()).toEqual([
-      { type: "xochi:provider:event", event: "accountsChanged", data: [ACCOUNT] },
-    ]);
   });
 
   it("stops listening to a wallet once it is replaced or the widget destroyed", () => {
     const first = new TestWallet();
     const second = new TestWallet();
-    const { widget } = mount({ provider: first });
+    const { widget } = mount(hosted(first));
     expect(first.listenerCount()).toBe(3);
     widget.updateProvider(second);
     expect(first.listenerCount()).toBe(0);
@@ -673,7 +711,7 @@ describe("updateParams", () => {
     const wallet = new TestWallet((method) =>
       method === "eth_requestAccounts" ? pending.answer : "0x1",
     );
-    const { widget, iframe, frame } = mount({ provider: wallet });
+    const { widget, iframe, frame } = mount(hosted(wallet));
     const oldFrame = frame();
     fromFrame(oldFrame, { type: "xochi:ready" });
     fromFrame(oldFrame, rpc(1, "eth_requestAccounts"));
@@ -691,8 +729,8 @@ describe("updateParams", () => {
     fromFrame(newFrame, rpc(2, "eth_chainId"));
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      ui: "host",
       available: true,
-      autoConnect: false,
     });
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 2, result: "0x1" });
     // The old document's request (id 1) settled meanwhile; its answer must not arrive.
@@ -779,7 +817,7 @@ describe("trade lifecycle listeners", () => {
 describe("destroy", () => {
   it("removes the frame, stops handling messages, and is idempotent", async () => {
     const wallet = new TestWallet();
-    const { widget, container, frame } = mount({ provider: wallet });
+    const { widget, container, frame } = mount(hosted(wallet));
     const win = frame();
     widget.destroy();
     widget.destroy();
