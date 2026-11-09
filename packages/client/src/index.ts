@@ -17,3 +17,14 @@ export * from "./transport/client.js";
 export * from "./claim.js";
 export * from "./fee.js";
 export type { MethodPin, PinnedPullRecipients, PreparedClaim } from "@xochi/signer";
+export { advertisedRoute, parseCapabilities, routeSupportsPrivacyMode } from "@xochi/signer";
+export type {
+  AdvertisedRouteQuery,
+  CapabilityRoute,
+  ChainRouteDestination,
+  RouteDestination,
+  RouteOrigin,
+  RoutePrivacyMode,
+  SolverCapabilities,
+  ZkMoneyRouteDestination,
+} from "@xochi/signer";

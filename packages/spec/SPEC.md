@@ -743,7 +743,8 @@ source of truth for release. A client MUST NOT release-gate on it.
 (`chain_id`, `chain_name`, `vm_type` `evm|tvm|svm|cvm`, `address_format`
 `hex20|base58check|base58|canton_party`, `min_stealth_notional_usd`,
 `stealth_factory_address`, optional `roles` and `escrow_address`), `tokens[]`,
-`corridors[]`, `conversion_pairs[]`, `pull_recipients`. `GET /xochi/routes` returns
+`corridors[]`, `conversion_pairs[]`, optional `routes[]`, `pull_recipients`.
+`GET /xochi/routes` returns
 `[{from_chain_id, to_chain_id, settlement_type, expected_fill_seconds}]`.
 
 **Stealth chains.** `stealth_chains` lists the chains a stealth settlement may be
@@ -773,6 +774,41 @@ endpoint).
 
 Discovery is the source of truth for supported chains/tokens/corridors; clients
 SHOULD prefer it over any static table. It SHOULD advertise `spec_version`.
+
+**Authoritative exact routes.** `routes[]` is additive and ordered. Each entry is:
+
+```text
+{
+  origin: { chain_id: uint, token: string },
+  destination:
+    | { kind: "chain", chain_id: uint, token: string }
+    | { kind: "zk_money", token: string },
+  privacy_modes: ("public" | "stealth" | "shielded")[]
+}
+```
+
+The destination discriminator is load-bearing: a chain delivery of DAI MUST NOT
+be interpreted as a `zk_money` delivery. A producer MUST advertise only modes
+that the exact route can settle; in particular, it MUST NOT list `shielded`
+before executable shielded settlement is live. Consumers MUST parse each entry
+atomically, discard an entry with a malformed known field or unknown
+discriminator/mode, preserve valid entries in served order, and ignore unknown
+additive object keys.
+
+When present, including as an empty list, `routes` is the authoritative selector
+source: a consumer MUST query an exact origin/destination entry rather than
+cross-producting `chains[]` and `tokens[]`. The current producer derives
+same-symbol cross-chain routes and opted-in cross-token same-chain routes from
+its existing route, token and conversion gates. It advertises no same-token
+self-loop and no implicit cross-token cross-chain route.
+
+If `routes` is absent or unusable, consumers SHOULD downgrade to their prior
+conservative rules: same-symbol cross-chain routes may use existing leg support;
+cross-token same-chain still requires `conversion_pairs[].same_chain: true`;
+cross-token cross-chain stays disabled. `conversion_pairs[].same_chain` retains
+its existing per-pair meaning and MUST NOT be read as an exclusive-route marker.
+A producer may therefore add `routes` without changing any existing quote or
+capability field.
 
 **Escrow (§5.2):** the escrow envelope is gated on a capability advertised
 here: a top-level `escrow { enabled, proof_tiers[], confidentiality_tiers[],

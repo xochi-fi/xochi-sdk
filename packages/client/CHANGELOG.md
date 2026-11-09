@@ -4,7 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
-## [0.1.12] - 2026-11-08
+## [0.1.12] - 2026-11-09
+
+### Added
+
+- Re-export `parseCapabilities`, the typed route model, `advertisedRoute` and `routeSupportsPrivacyMode` from `@xochi/signer`. Hosts can consume authoritative exact `routes[]` without a second SDK dependency; absent is `null`, while a present malformed value or empty list fails closed to no routes.
 
 ### Changed
 

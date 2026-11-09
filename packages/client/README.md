@@ -56,6 +56,23 @@ const quote = await xochi.getQuote(request);
 - Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated); a malformed `read_token` is dropped rather than failing the execute. Each attempt's timeout stays armed until the body is read. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs`.
 - The exported schemas are `.strict()` (the declared wire shape); the transport validates with a `.passthrough()` copy so undeclared served fields (e.g. `escrow`) reach the signer checks. Running the exported schema directly is stricter than the transport.
 
+## Capability routes
+
+`parseCapabilities`, `advertisedRoute` and `routeSupportsPrivacyMode` are re-exported from `@xochi/client` for route discovery:
+
+```ts
+const capabilities = parseCapabilities(await response.json());
+const route = capabilities
+  ? advertisedRoute(capabilities, {
+      origin: { chainId: 8453, token: "USDC" },
+      destination: { kind: "chain", chainId: 8453, token: "DAI" },
+    })
+  : null;
+const stealth = route?.privacyModes.includes("stealth") === true;
+```
+
+When `routes` is present, it is the authoritative selector source for same-symbol and cross-token routes; query the exact typed endpoint and do not reconstruct a cross-product. A served `[]` or malformed present value means no routes. Only an absent field parses as `null` and triggers the legacy conservative downgrade: same-symbol cross-chain corridors may use their existing leg support, cross-token same-chain still requires `conversionPairs[].sameChain`, and cross-token cross-chain remains disabled. A chain destination is never a `zk_money` destination by implication.
+
 ## State machine
 
 ```ts

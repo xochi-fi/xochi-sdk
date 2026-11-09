@@ -319,6 +319,95 @@
             },
             "type": "object"
           },
+          "routes": {
+            "description": "Authoritative exact routes in served order. Each entry binds one\norigin chain/token to a typed destination and the settlement privacy\nmodes that exact route supports. When present, including empty, this\nis the selector source; consumers must not reconstruct a cross-product.\nAbsence means use the documented conservative legacy downgrade.\n`conversion_pairs.same_chain` keeps its existing per-pair meaning.\n\nThe producer derives same-symbol cross-chain routes and opted-in\ncross-token same-chain routes from its existing gates. It emits no\nsame-token self-loop or implicit cross-token cross-chain route. A\n`chain` destination is not a `zk_money` destination by implication,\nand `shielded` is absent until executable shielded settlement is live.\n",
+            "items": {
+              "properties": {
+                "destination": {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "chain_id": {
+                          "$ref": "#/components/schemas/ChainId"
+                        },
+                        "kind": {
+                          "enum": [
+                            "chain"
+                          ],
+                          "type": "string"
+                        },
+                        "token": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "chain_id",
+                        "token"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "zk_money"
+                          ],
+                          "type": "string"
+                        },
+                        "token": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "token"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "origin": {
+                  "properties": {
+                    "chain_id": {
+                      "$ref": "#/components/schemas/ChainId"
+                    },
+                    "token": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "chain_id",
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "privacy_modes": {
+                  "items": {
+                    "enum": [
+                      "public",
+                      "stealth",
+                      "shielded"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "origin",
+                "destination",
+                "privacy_modes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "spec_version": {
             "description": "SemVer of the `@xochi/spec` document this server conforms to.\nLets a taker gate on the normative layered fee model (SPEC section\n4) rather than inferring support from a quote's shape. MAJOR\nsignals a breaking wire or signature-construction change.\n",
             "example": "0.6.0",

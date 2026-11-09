@@ -24,6 +24,9 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
 - **`conformance/{order-id,open-auth,dest-blinding,fill-salt,fill-auth,fill-attestation,slash-attestation,fill-acceptance}.json`**
   (+ `.schema.json`): escrow vectors (ESCROW-RFC, SOLVER-RFC §5.3). Public test keys only.
 - **`conformance/xsp.json`** + `.schema.json`: Xochi Settlement Protocol digests (ESCROW-RFC §13).
+- **`conformance/capability-routes.json`** + `.schema.json`: the producer's
+  ordered typed-route examples. Riddler keeps a byte-identical fixture and
+  asserts its capability derivation against the decoded routes.
 - **`conformance/shielded.json`** + `.schema.json`: shielded settlement contract v1 typed encodings
   (xochi `docs/planning/shielded-execution.md` §7): NetworkIdentity, the salted `Domain (binding)` /
   `Domain (terms)`, RecipientBinding digests with source-wallet signatures (public test keys),
@@ -82,6 +85,10 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
   decimal `output`, absolute `validUntilMs`). Drift silently rejects every honest bid; an
   `rfcVersion` skew moves no digest, so its guard is the pre-bid check (SOLVER-RFC §12).
   `npm run generate:solver-bid-v2 -w @xochi/spec` lands in lockstep with the server.
+- **`capability-routes.json`** mirrors Riddler's producer fixture byte-for-byte.
+  Riddler's live pair, chain, token and settlement gates are authoritative; the
+  vector pins their deterministic capability serialization and the SDK parser
+  consumes the same bytes. Neither side keeps an independent route allowlist.
 - **`shielded.json`** is generated here and vendored inbound by Riddler and the Xochi Worker, which
   never compute their own expectations (§7 "Vector authority"). Its generator derives every value
   from §7's literals with ethers primitives and imports nothing from `@xochi/signer`, whose
