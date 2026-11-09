@@ -50,6 +50,16 @@ describe("public token registry", () => {
     });
     expect(getTokenInfoForChain(address, chainId)).toEqual({ symbol: "DAI", decimals: 18 });
   });
+  it("pins Ethereum EURe metadata used by live capability routes", () => {
+    const address = "0x39b8B6385416f4cA36a20319F70D28621895279D";
+    expect(findTokenBySymbol(1, "EURe")).toEqual({
+      address,
+      symbol: "EURe",
+      name: "Monerium EURe",
+      decimals: 18,
+    });
+    expect(getTokenInfoForChain(address, 1)).toEqual({ symbol: "EURe", decimals: 18 });
+  });
 
   it("derives address and decimal lookups from the registry", () => {
     for (const chainId of SUPPORTED_CHAIN_IDS) {

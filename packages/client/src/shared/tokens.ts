@@ -65,6 +65,12 @@ export const TOKENS: Readonly<Record<ChainId, readonly TokenInfo[]>> = {
       decimals: 18,
     },
     {
+      address: "0x39b8B6385416f4cA36a20319F70D28621895279D",
+      symbol: "EURe",
+      name: "Monerium EURe",
+      decimals: 18,
+    },
+    {
       address: "0xB58E61C3098d85632Df34EecfB899A1Ed80921cB",
       symbol: "ZCHF",
       name: "Frankencoin",

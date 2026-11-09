@@ -9,7 +9,7 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 ### Added
 
 - Re-export `parseCapabilities`, the typed route model, `advertisedRoute` and `routeSupportsPrivacyMode` from `@xochi/signer`. Hosts can consume authoritative exact `routes[]` without a second SDK dependency; absent is `null`, while a present malformed value or empty list fails closed to no routes.
-- Add public token metadata vocabulary: `TokenInfo`, the per-chain `TOKENS` registry and address/decimal lookups (including verified DAI metadata on Ethereum, Optimism, Arbitrum and Base), Tron-aware resolution, and case-sensitive dollar-stablecoin classification. Registry presence is metadata only and does not advertise a route.
+- Add public token metadata vocabulary: `TokenInfo`, the per-chain `TOKENS` registry and address/decimal lookups (including verified DAI metadata on Ethereum, Optimism, Arbitrum and Base, plus EURe on Ethereum), Tron-aware resolution, and case-sensitive dollar-stablecoin classification. Registry presence is metadata only and does not advertise a route.
 
 ### Changed
 
