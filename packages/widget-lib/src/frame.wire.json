@@ -5,7 +5,7 @@
       "posted": [
         {
           "targetOrigin": "*",
-          "message": "{\"type\":\"xochi:ready\"}"
+          "message": "{\"type\":\"xochi:ready\",\"protocolVersion\":1}"
         }
       ],
       "observed": [],
