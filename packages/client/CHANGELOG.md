@@ -4,6 +4,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve the Worker's `error_category` as optional `ApiError.errorCategory` and `StructuredError.errorCategory`; hosts must copy it into machine error reports. `tag_resolution_unavailable` is manual-retry only, even on HTTP 503 with `Retry-After`. A failed lookup clears any held quote and refresh timers, including silent refreshes; manual refresh requests bypass the cache. Tag quotes never cache a one-time resolved recipient address, while signing keeps the address bound by the successful quote.
+- An HTTP 200 `tag_unresolved` decline also clears any prior payable quote on silent refresh, preserving the category in the structured machine error rather than retaining a stale recipient.
+
 ## [0.1.12] - 2026-11-09
 
 ### Added
@@ -15,7 +20,6 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 ### Changed
 
 - `@xochi/signer` dependency range is `^0.8.0`, so the client resolves the passkey-recipient signer release without installing a second signer line.
-
 ## [0.1.11] - 2026-11-08
 
 ### Added

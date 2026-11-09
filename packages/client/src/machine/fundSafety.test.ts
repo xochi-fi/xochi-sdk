@@ -163,6 +163,39 @@ describe("tag request bound to the resolved address at ingest", () => {
     expect(prompt.typedData.message.recipient).toBe(BOUND);
   });
 
+  it.each([false, true])("invalidates a missing-tag refresh (silent: %s)", (paused) => {
+    const s = new Session({ ...tagCtx(), paused });
+    s.quoteWith(tagQuote());
+    const refresh = only(apiCalls(s.send({ type: "TimerFired", timer: "refresh" }), "quote"));
+    const error = "No address found for @alice.";
+    s.send({
+      type: "QuoteReplied",
+      flight: refresh.flight,
+      result: {
+        ok: true,
+        quote: tagQuote({
+          success: false,
+          canSolve: false,
+          error,
+          errorCategory: "tag_unresolved",
+          eip712Data: undefined,
+          recipientAddress: undefined,
+        }),
+      },
+    });
+    expect(s.intent).toMatchObject({
+      status: "failed",
+      quote: null,
+      quoteId: null,
+      error: { message: error, errorCategory: "tag_unresolved" },
+    });
+    expect(s.model.refresh).toBeNull();
+    expect(s.model.quoteExpiresIn).toBeNull();
+    expect(s.receipt.payout).toEqual({ kind: "none" });
+    expect(walletCalls(s.send({ type: "SignRequested" }), "signTypedData")).toEqual([]);
+    expect(apiCalls(s.send({ type: "TimerFired", timer: "refresh" }), "quote")).toEqual([]);
+  });
+
   it.each([
     ["no tag echo", { recipientTag: undefined }],
     ["another tag", { recipientTag: "mallory" }],
