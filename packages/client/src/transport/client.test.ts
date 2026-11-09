@@ -1228,7 +1228,9 @@ describe("tag lookup outage through transport and machine", () => {
 
     const refreshEffects = s.send({ type: "TimerFired", timer: "refresh" });
     const refresh = only(apiCalls(refreshEffects, "quote"));
-    const error = await rejection(c.getQuote(refresh.request, { forceRefresh: refresh.forceRefresh }));
+    const error = await rejection(
+      c.getQuote(refresh.request, { forceRefresh: refresh.forceRefresh }),
+    );
     if (!(error instanceof ApiError)) throw new Error("expected an API lookup failure");
     const fx = s.send({
       type: "QuoteReplied",
