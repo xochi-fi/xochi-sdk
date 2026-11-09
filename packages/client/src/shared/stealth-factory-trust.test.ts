@@ -9,6 +9,8 @@ import {
   STEALTH_ACCOUNT_SALT,
   TRUSTED_STEALTH_FACTORIES,
   isTrustedStealthFactory,
+  effectiveStealthChains,
+  trustedStealthChains,
 } from "./stealth.js";
 
 const ATTACKER_FACTORY = "0xAbC0000000000000000000000000000000000123";
@@ -70,6 +72,36 @@ describe("isTrustedStealthFactory", () => {
     for (const list of Object.values(TRUSTED_STEALTH_FACTORIES)) {
       for (const f of list) expect(f).toMatch(/^0x[0-9a-fA-F]{40}$/);
     }
+  });
+});
+describe("effectiveStealthChains", () => {
+  it("fails closed when the solver does not advertise a list", () => {
+    expect(effectiveStealthChains(undefined)).toEqual([]);
+  });
+
+  it("preserves solver order while removing duplicates and untrusted chains", () => {
+    expect(effectiveStealthChains([BASE, UNTRUSTED_CHAIN, MAINNET, BASE])).toEqual([BASE, MAINNET]);
+  });
+
+  it("does not trust a chain with an empty factory allowlist", () => {
+    expect(
+      effectiveStealthChains([BASE, MAINNET], {
+        [BASE]: [],
+        [MAINNET]: [SIMPLE_ACCOUNT_FACTORY],
+      }),
+    ).toEqual([MAINNET]);
+  });
+});
+
+describe("trustedStealthChains", () => {
+  it("keeps scan and claim coverage independent of current solver routes", () => {
+    expect(trustedStealthChains()).toEqual([MAINNET, BASE]);
+    expect(
+      trustedStealthChains({
+        [BASE]: [],
+        [MAINNET]: [SIMPLE_ACCOUNT_FACTORY],
+      }),
+    ).toEqual([MAINNET]);
   });
 });
 

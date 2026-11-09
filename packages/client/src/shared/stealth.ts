@@ -73,3 +73,29 @@ export function isTrustedStealthFactory(
   const normalized = address.toLowerCase();
   return allowed.some((f) => f.toLowerCase() === normalized);
 }
+
+/**
+ * Solver-advertised stealth destination chains narrowed to this client's
+ * per-chain trusted factory allowlist. Unknown, empty, duplicated, or
+ * untrusted entries never widen availability.
+ */
+export function effectiveStealthChains(
+  advertised: readonly number[] | undefined,
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
+): readonly number[] {
+  if (advertised === undefined) return [];
+  return advertised.filter(
+    (chainId, index) =>
+      (trusted[chainId]?.length ?? 0) > 0 && advertised.indexOf(chainId) === index,
+  );
+}
+
+/** Chains whose previously settled stealth payments this client can scan and claim. */
+export function trustedStealthChains(
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
+): readonly number[] {
+  return Object.entries(trusted)
+    .filter(([, factories]) => factories.length > 0)
+    .map(([chainId]) => Number(chainId))
+    .sort((a, b) => a - b);
+}

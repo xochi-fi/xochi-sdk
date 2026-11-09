@@ -56,6 +56,20 @@ const quote = await xochi.getQuote(request);
 - Quote and execute bodies are validated against `QuoteResponseSchema` / `ExecuteResponseSchema` (undeclared top-level keys tolerated); a malformed `read_token` is dropped rather than failing the execute. Each attempt's timeout stays armed until the body is read. The only quote-cache TTL is `DEFAULT_TIMEOUTS.quoteCacheTtlMs`.
 - The exported schemas are `.strict()` (the declared wire shape); the transport validates with a `.passthrough()` copy so undeclared served fields (e.g. `escrow`) reach the signer checks. Running the exported schema directly is stricter than the transport.
 
+## Token metadata
+
+`TOKENS` is the public per-chain metadata registry. `TokenInfo`, `findTokenBySymbol`,
+`findTokenByAddress`, `getTokenInfoByAddress`, `getTokenInfoForChain`,
+`getTokenDecimals` and `TOKEN_DECIMALS` expose the same address/symbol/decimal
+vocabulary to widgets and headless clients. `getTokenInfoForChain` preserves
+case-sensitive Tron addresses; the address-only lookup is for EVM addresses.
+
+Registry presence means only that metadata can be resolved. It never advertises
+a route: use the live capability `routes` contract and `advertisedRoute` before
+offering a chain/token pair. `isStableSymbol` is the case-sensitive domain
+classification used for dollar-stablecoin pricing and rate checks, not a token
+picker or route allowlist.
+
 ## Capability routes
 
 `parseCapabilities`, `advertisedRoute` and `routeSupportsPrivacyMode` are re-exported from `@xochi/client` for route discovery:
