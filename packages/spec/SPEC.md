@@ -39,7 +39,7 @@
 
 | SPEC | XochiIntent domain.version |
 |---|---|
-| `0.1.0-draft` to `0.12.0` | `3` |
+| `0.1.0-draft` to `0.13.0` | `3` |
 
 History: [CHANGELOG.md](CHANGELOG.md).
 

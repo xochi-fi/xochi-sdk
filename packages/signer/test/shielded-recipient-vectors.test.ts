@@ -55,6 +55,9 @@ import {
   type RecipientAckType,
   type RecipientBinding,
   type RecipientDescriptor,
+  type RecipientAckCommitOutcome,
+  type RecipientAckStoredResult,
+  type VerifiedRecipientAck,
   type ShieldedDomain,
 } from "@xochi/signer";
 
@@ -677,7 +680,15 @@ describe("acknowledgements", () => {
   const ackOf = (primaryType: RecipientAckType): AckVector =>
     file.acknowledgements.vectors.find((v) => v.primaryType === primaryType)!;
   // The trusted inputs a verifier holds for vector `v`, with `expected` read off the message.
-  function ackPolicy(v: AckVector, consumeReplayKey: (key: string) => Promise<boolean>): AckPolicy {
+  function ackPolicy(
+    v: AckVector,
+    commitAcceptance: (
+      acceptance: Readonly<VerifiedRecipientAck>,
+    ) => Promise<RecipientAckCommitOutcome<string>>,
+    lookupAcceptance: (
+      replayKey: VerifiedRecipientAck["replayKey"],
+    ) => Promise<RecipientAckStoredResult<string> | null> = async () => null,
+  ): AckPolicy {
     const binding = file.recipientMessage.bindingMessages.find(
       (candidate) => candidate.digest === v.message.bindingDigest,
     )!.message as unknown as RecipientBinding;
@@ -697,6 +708,7 @@ describe("acknowledgements", () => {
               }
             : {
                 nonce: m.nonce,
+                challengeExpiry: m.challengeExpiry,
                 termsDigest: m.termsDigest,
                 operationId: m.operationId,
                 txHash: m.txHash,
@@ -716,7 +728,8 @@ describe("acknowledgements", () => {
       network: v.network,
       expected,
       now: Number(binding.challengeExpiry) - 1,
-      consumeReplayKey,
+      lookupAcceptance,
+      commitAcceptance,
     };
   }
   const verify = (v: AckVector, message: unknown, policy: AckPolicy) =>
@@ -729,13 +742,20 @@ describe("acknowledgements", () => {
     expect(BACKUP_FORMAT_V1_ID).toBe(ethers.id(BACKUP_FORMAT_V1_NAME));
     expect(BACKUP_FORMAT_V1_NAME).toBe("xochi.shielded.backup-format.v1");
     // One durable store, as a verifier runs it. Both enrollment acks reuse binding X's
-    // nonce, so a store keyed by the bare nonce would refuse the second.
-    const consumed = new Set<string>();
-    const consume = async (key: string) => {
-      if (consumed.has(key)) return false;
-      consumed.add(key);
-      return true;
+    // nonce, so a store keyed by the bare nonce would refuse the second. Each committed
+    // acceptance retains both the verified digest and complete application result.
+    const committed = new Map<string, { digest: VerifiedRecipientAck["digest"]; result: string }>();
+    const commit = async (
+      acceptance: Readonly<VerifiedRecipientAck>,
+    ): Promise<RecipientAckCommitOutcome<string>> => {
+      const existing = committed.get(acceptance.replayKey);
+      if (existing) return { status: "existing", ...existing };
+      const result = `accepted:${acceptance.digest}`;
+      committed.set(acceptance.replayKey, { digest: acceptance.digest, result });
+      return { status: "committed", result };
     };
+    const lookup = async (replayKey: VerifiedRecipientAck["replayKey"]) =>
+      committed.get(replayKey) ?? null;
     const enrollment = [
       ackOf("BackupPersistenceAck"),
       ackOf("SenderRegistrationAck"),
@@ -748,9 +768,11 @@ describe("acknowledgements", () => {
         v.primaryType,
         v.message as never,
         v.signature,
-        ackPolicy(v, consume) as never,
+        ackPolicy(v, commit) as never,
       );
       expect(verified.digest, v.name).toBe(v.digest);
+      expect(verified.result, v.name).toBe(`accepted:${v.digest}`);
+      expect(verified.replayed, v.name).toBe(false);
       expect(verified.replayKey, v.name).toBe(
         recipientAckReplayKey(
           v.primaryType,
@@ -758,24 +780,101 @@ describe("acknowledgements", () => {
           v.message.nonce as string,
         ),
       );
+      expect(committed.get(verified.replayKey)?.digest, v.name).toBe(verified.digest);
     }
-    expect(consumed.size).toBe(file.acknowledgements.vectors.length);
+    expect(committed.size).toBe(file.acknowledgements.vectors.length);
     for (const v of file.acknowledgements.vectors) {
-      expect(await verify(v, v.message, ackPolicy(v, consume)), v.name).toEqual({
-        code: "nonce_replayed",
-        field: "nonce",
-      });
+      const replayed = await verifyRecipientAck(
+        v.primaryType,
+        v.message as never,
+        v.signature,
+        ackPolicy(v, commit, lookup) as never,
+      );
+      expect(replayed.result, v.name).toBe(`accepted:${v.digest}`);
+      expect(replayed.replayed, v.name).toBe(true);
     }
+    const expiredRetry = file.acknowledgements.vectors[0]!;
+    const replayedAfterExpiry = await verifyRecipientAck(
+      expiredRetry.primaryType,
+      expiredRetry.message as never,
+      expiredRetry.signature,
+      {
+        ...ackPolicy(expiredRetry, commit, lookup),
+        now: Number(expiredRetry.message.challengeExpiry) + 1,
+      } as never,
+    );
+    expect(replayedAfterExpiry.result).toBe(`accepted:${expiredRetry.digest}`);
+    expect(replayedAfterExpiry.replayed).toBe(true);
+    let expiredCommitCalls = 0;
+    const expiredConflict = await verify(expiredRetry, expiredRetry.message, {
+      ...ackPolicy(
+        expiredRetry,
+        async () => {
+          expiredCommitCalls++;
+          return { status: "committed", result: "must not commit" };
+        },
+        async () => ({
+          digest: `0x${"11".repeat(32)}`,
+          result: "other acceptance",
+        }),
+      ),
+      now: Number(expiredRetry.message.challengeExpiry) + 1,
+    });
+    expect(expiredConflict).toEqual({
+      code: "challenge_expired",
+      field: "challengeExpiry",
+    });
+    expect(expiredCommitCalls).toBe(0);
+    const conflicting = ackOf("BackupPersistenceAck");
+    expect(
+      await verify(
+        conflicting,
+        conflicting.message,
+        ackPolicy(conflicting, async () => ({
+          status: "existing",
+          digest: `0x${"11".repeat(32)}`,
+          result: "other acceptance",
+        })),
+      ),
+    ).toEqual({ code: "nonce_replayed", field: "nonce" });
+  });
+
+  it("fails closed on malformed acceptance-store outcomes", async () => {
+    const v = ackOf("BackupPersistenceAck");
+    await expect(
+      verifyRecipientAck(
+        v.primaryType,
+        v.message as never,
+        v.signature,
+        ackPolicy(v, async () => false as never) as never,
+      ),
+    ).rejects.toThrow("commitAcceptance returned an invalid acceptance-store outcome");
+
+    await expect(
+      verifyRecipientAck(v.primaryType, v.message as never, v.signature, {
+        ...ackPolicy(v, async () => ({
+          status: "committed",
+          result: "must not commit",
+        })),
+        lookupAcceptance: async () => false as never,
+        now: Number(v.message.challengeExpiry) + 1,
+      } as never),
+    ).rejects.toThrow("lookupAcceptance returned an invalid acceptance-store outcome");
   });
 
   it("rejects expired, mismatched and invalid acknowledgements before consumption", async () => {
     let consumeCalls = 0;
-    const consume = async () => {
+    let lookupCalls = 0;
+    const consume = async (): Promise<RecipientAckCommitOutcome<string>> => {
       consumeCalls++;
-      return true;
+      return { status: "committed", result: "accepted" };
+    };
+    const lookup = async (): Promise<RecipientAckStoredResult<string> | null> => {
+      lookupCalls++;
+      return null;
     };
     const v = ackOf("BackupPersistenceAck");
-    const policy = ackPolicy(v, consume);
+    const policy = ackPolicy(v, consume, lookup);
     const expiredNow = Number(policy.binding.challengeExpiry) + 1;
     const refusals: [unknown, AckPolicy, string, string][] = [
       [v.message, { ...policy, now: expiredNow }, "challenge_expired", "challengeExpiry"],
@@ -890,6 +989,15 @@ describe("acknowledgements", () => {
         "nonce",
       ],
       [
+        {
+          ...r.message,
+          challengeExpiry: (BigInt(String(r.message.challengeExpiry)) + 1n).toString(),
+        },
+        rPolicy,
+        "expiry_mismatch",
+        "challengeExpiry",
+      ],
+      [
         { ...r.message, aztecToken: "0x" + "2c".repeat(32) },
         rPolicy,
         "token_mismatch",
@@ -929,13 +1037,14 @@ describe("acknowledgements", () => {
       expect(await verify(r, message, p), `${code} ${field}`).toEqual({ code, field });
     }
     expect(consumeCalls).toBe(0);
+    expect(lookupCalls).toBe(1);
   });
 
   it("refuses an unknown primary type from the wire as AckEncodingError", async () => {
     let consumeCalls = 0;
-    const consume = async () => {
+    const consume = async (): Promise<RecipientAckCommitOutcome<string>> => {
       consumeCalls++;
-      return true;
+      return { status: "committed", result: "accepted" };
     };
     const unknown = { code: "unknown_primary_type", field: "primaryType" };
     const refusals = async (v: AckVector, primaryType: unknown, label: string) => {

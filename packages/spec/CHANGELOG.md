@@ -4,23 +4,38 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
-## [0.13.0] - 2026-11-08
+## [0.13.0] - 2026-11-09
 
 ### Changed
 
 - Normatively define authenticated passkey address recovery on a new device:
   `POST /api/shielded/recipients/passkey-address` computes the commitment server-side, scopes the
-  live-binding lookup to the wallet authenticated by the current SIWE JWT, returns one
-  `aztec_recipient`, uses private/no-store responses, answers missing, other-wallet, revoked and
-  expired records with 404, and fails inconsistent active recipients with 409. The claim page
-  requires exact lowercase equality with its local derivation before writing a profile.
+  lookup to the wallet authenticated by the current SIWE JWT, and returns one `aztec_recipient`.
+  Durable admitted records remain recovery-eligible after revocation solely for existing funds;
+  unexpired unused pending records remain eligible, while expired unused pending records do not.
+  Every matching durable admitted record, active or revoked, and every eligible pending record must
+  name one recipient or the lookup fails with 409. Missing, other-wallet and ineligible records
+  answer 404; responses are private/no-store. Revocation still prevents the binding from
+  authorizing new enrollment or payment, but a revoked admitted record remains in same-wallet
+  enrollment consistency checks so its commitment cannot be rebound to another recipient. A
+  durable unique `(source_wallet, backup_commitment)` guard makes the check and binding admission
+  atomic, including concurrent first enrollments. A guard backed by an admitted binding is
+  permanent; one backed only by expired unused pending bindings may be reassigned only under its
+  lock after rechecking that no eligible or admitted binding remains. The claim page requires exact
+  lowercase equality with its local derivation before writing a profile.
+- Require recipient-acknowledgement replay consumption and application acceptance/result to commit
+  atomically. The signer callback returns either a newly committed result or the existing result
+  with its stored digest; an exact retry returns that result, including after challenge expiry,
+  while a digest conflict fails closed. An expired acknowledgement without the same stored digest
+  never reaches the commit operation. A replay key may never be committed alone.
+- Extend SPEC §0.2 compatibility through `0.13.0`; the XochiIntent domain version remains `3`.
 - Define caller-provided UUIDv4 journal ids for `RecipientCore.send` and
   `CoreExitRequest.journalId?`, and make `restoreJournals` the sole owner of idempotent complete
   versus interrupted restore decisions. Vectors and derivation constants are unchanged.
 
 ### Added
 
-- **Passkey recipients, PROPOSED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. It awaits product-owner sign-off, since it departs from xochi#759's sealed backup. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.
+- **Passkey recipients, APPROVED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0; product-owner sign-off 2026-11-09). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. Approval fixes the protocol but does not authorize deployment: passkey claims remain default-off until the mandatory CSP and `xochi.fi` host prerequisites are satisfied. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.
   - New `PASSKEY-RECIPIENT.md` (shipped and exported). It covers:
     - the derivation (pass the 32 raw eval-input bytes);
     - the WebAuthn parameters (`userVerification: "required"` with the UV flag checked, and a confirming get that must reproduce `first` and `second` byte for byte before anything is derived, else `prf_unstable`);

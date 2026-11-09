@@ -12,10 +12,12 @@ RFCs, and the byte-equality vector sets every signer implementation (TypeScript,
 version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk`.
 - **`ESCROW-RFC.md`**: non-custodial escrow (`orderId` preimage, `OpenAuth`, proof-of-fill).
   `[RESERVED]` and inert.
-- **`PASSKEY-RECIPIENT.md`**: **PROPOSED** passkey recipients (xochi-sdk#155). Covers the WebAuthn
-  PRF key derivation, the WebAuthn parameters and refusals, the `PKW1` wrapped import, the passkey
-  `BackupPersistenceAck` mode, the threat model and the PRF support matrix. Its vectors are the
-  `passkey` section of `conformance/shielded-recipient.json`.
+- **`PASSKEY-RECIPIENT.md`**: **APPROVED** passkey recipients (xochi-sdk#155; product-owner
+  sign-off 2026-11-09). Covers the WebAuthn PRF key derivation, the WebAuthn parameters and
+  refusals, the `PKW1` wrapped import, the passkey `BackupPersistenceAck` mode, the threat model and
+  the PRF support matrix. Approval does not authorize deployment: passkey claims remain default-off
+  until every CSP and host rollout prerequisite in §6 is satisfied. Its vectors are the `passkey`
+  section of `conformance/shielded-recipient.json`.
 - **`conformance/conformance.json`** + `schema.json`: 45 signing vectors (9 erc3009, 19 permit2, 17
   xochi) with inputs and `expected_{signer,digest,signature,signed_object}`.
 - **`conformance/solver-bid-v2.json`** + `.schema.json`: SolverBid v2 sealing (SOLVER-RFC §5.1).
@@ -38,9 +40,10 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   `PaymentReceiptAck`, and `TokenRegistrationAck` contracts. Its `oxideToken` section records
   the OxideToken immutables hash, OXDAI vector, and corridors that require the acknowledgement
   (xochi#753). The enrollment acknowledgements reuse the named binding's exact
-  nonce and expiry; a payment receipt uses its own receipt challenge. Its **PROPOSED** `passkey`
-  section (`PASSKEY-RECIPIENT.md`) pins the passkey derivation, the passkey backup commitment and a
-  passkey-mode acknowledgement with the verifier's verdicts. TEST ONLY keys.
+  nonce and expiry; a payment receipt uses its own receipt challenge. Its **APPROVED** `passkey`
+  section (`PASSKEY-RECIPIENT.md`; product-owner sign-off 2026-11-09) pins the passkey derivation,
+  the passkey backup commitment and a passkey-mode acknowledgement with the verifier's verdicts.
+  TEST ONLY keys.
 - **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
   attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the
   `Xochi Shielded Readiness` domain, with replay and record-parse refusals. Public test key.
@@ -112,6 +115,9 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
   accepts only the first. The verifiers (`verifyRecipientAck`,
   `verifyReadinessRecord`) and what their callers must supply are `@xochi/signer`'s: its
   README, "Shielded recipient and readiness".
+  A caller accepting an acknowledgement MUST atomically commit replay-key consumption with the
+  application acceptance/result, or persist an exact-request durable idempotent result with the
+  consumption and return it on retry; committing the consumed key alone is forbidden.
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` in lockstep: the schedule is
   `fee/schedule.json`, the rules SPEC §4. A schedule change lands on both sides and regenerates
   the vectors (`npm run generate:fee -w @xochi/spec`, from `@xochi/client`'s built

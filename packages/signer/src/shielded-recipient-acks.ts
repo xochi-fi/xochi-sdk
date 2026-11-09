@@ -192,6 +192,12 @@ export interface PasskeyBackupDescriptor {
   derivationVersion: number;
 }
 
+/** The complete passkey-mode expectation for `RecipientAckVerificationPolicy.expected`. */
+export type PasskeyBackupAckExpected = Readonly<{
+  backupCommitment: Hex;
+  backupFormatId: typeof BACKUP_FORMAT_PASSKEY_V1_ID;
+}>;
+
 /**
  * A passkey-mode `backupCommitment`: `keccak256(abi.encode(bytes32 PASSKEY_BACKUP_COMMITMENT_TAG,
  * bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion))`. Refuses
@@ -223,6 +229,20 @@ export function passkeyBackupCommitment(d: PasskeyBackupDescriptor): Hex {
       ),
     );
   });
+}
+
+/**
+ * Builds the passkey-mode acknowledgement expectation from a trusted descriptor. Verifier callers
+ * must load the expectation from trusted storage or call this helper with a trusted descriptor;
+ * never copy either value from the signed acknowledgement.
+ */
+export function passkeyBackupAckExpected(
+  descriptor: PasskeyBackupDescriptor,
+): PasskeyBackupAckExpected {
+  return {
+    backupCommitment: passkeyBackupCommitment(descriptor),
+    backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID,
+  };
 }
 
 function registeredSendersHash(senders: string[]): Hex {
@@ -336,14 +356,16 @@ export interface RecipientAckExpected {
    * `backupFormatId` absent or `null` (a legacy row's NULL column): the acknowledgement must
    * name `BACKUP_FORMAT_V1_ID` (`backup_format_mismatch`), so a verifier that predates passkey
    * mode never accepts it. Present: the acknowledgement must name exactly it
-   * (`subject_mismatch`). Set it from your own stored record, never from the acknowledgement.
+   * (`subject_mismatch`). Build this expectation from trusted storage or with
+   * `passkeyBackupAckExpected`; never copy either field from the signed acknowledgement.
    */
   BackupPersistenceAck: { backupCommitment: string; backupFormatId?: string | null };
   /** The exact panel sender set the verifier registered, strictly ascending. */
   SenderRegistrationAck: { registeredSenders: string[] };
-  /** The receipt challenge the verifier issued and the settlement it recorded. */
+  /** The receipt challenge nonce and expiry the verifier issued, plus the settlement it recorded. */
   PaymentReceiptAck: {
     nonce: string;
+    challengeExpiry: UintLike;
     termsDigest: string;
     operationId: string;
     txHash: string;
@@ -357,7 +379,7 @@ export interface RecipientAckExpected {
   TokenRegistrationAck: { aztecTokenClassId: string; tokenImmutablesHash: string };
 }
 
-export interface RecipientAckVerificationPolicy<T extends RecipientAckType> {
+export interface RecipientAckVerificationPolicy<T extends RecipientAckType, TResult = unknown> {
   /** Trusted binding previously accepted from the source-wallet ceremony. */
   binding: RecipientBinding;
   /** Descriptor named by `binding`; verified and used to derive the signing key. */
@@ -373,18 +395,28 @@ export interface RecipientAckVerificationPolicy<T extends RecipientAckType> {
   network: NetworkIdentity;
   /**
    * The exact subject for this use. The enrollment acks take their nonce and expiry from
-   * `binding`; PaymentReceiptAck's receipt challenge is `expected.nonce`.
+   * `binding`; PaymentReceiptAck's receipt challenge is `expected.nonce` plus
+   * `expected.challengeExpiry`.
    */
   expected: RecipientAckExpected[T];
   /** Caller-controlled Unix time in seconds. */
   now: UintLike;
   /**
-   * Durably and atomically marks `replayKey` (`recipientAckReplayKey`) consumed. Resolves
-   * true only for its first committed use across every process. Called last, after every
-   * other check succeeds. The key differs from the bare nonce, so the binding ceremony's
-   * own use of that nonce does not consume it.
+   * Reads a durable acceptance by replay key after every cryptographic and subject check succeeds.
+   * An expired exact retry may return its stored result, but an expired acknowledgement with no
+   * matching digest MUST NOT be committed.
    */
-  consumeReplayKey: (replayKey: Hex) => Promise<boolean>;
+  lookupAcceptance: (replayKey: Hex) => Promise<RecipientAckStoredResult<TResult> | null>;
+  /**
+   * Atomically commits this fully verified, unexpired acknowledgement with the complete application
+   * state/result it authorizes. The outcome returns that result for both a new commit and an exact
+   * retry. An existing replay key MUST include its stored acknowledgement digest so this verifier
+   * can distinguish an exact retry from a conflicting replay. Called last, after every other check
+   * succeeds. It MUST NOT commit replay consumption alone.
+   */
+  commitAcceptance: (
+    acceptance: Readonly<VerifiedRecipientAck>,
+  ) => Promise<RecipientAckCommitOutcome<TResult>>;
 }
 
 export interface VerifiedRecipientAck {
@@ -392,6 +424,40 @@ export interface VerifiedRecipientAck {
   messageField: Hex;
   nonce: Hex;
   replayKey: Hex;
+}
+export interface RecipientAckStoredResult<TResult> {
+  digest: Hex;
+  result: TResult;
+}
+
+export type RecipientAckCommitOutcome<TResult> =
+  | { status: "committed"; result: TResult }
+  | ({ status: "existing" } & RecipientAckStoredResult<TResult>);
+
+export interface AcceptedRecipientAck<TResult> extends VerifiedRecipientAck {
+  result: TResult;
+  replayed: boolean;
+}
+interface CheckedRecipientAck extends VerifiedRecipientAck {
+  expiry: bigint;
+  now: bigint;
+}
+
+function acceptanceStoreRecord(
+  value: unknown,
+  callback: "lookupAcceptance" | "commitAcceptance",
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError(`${callback} returned an invalid acceptance-store outcome`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function hasAcceptanceField(
+  value: Record<string, unknown>,
+  field: "status" | "digest" | "result",
+): boolean {
+  return Object.prototype.hasOwnProperty.call(value, field);
 }
 
 // Untrusted wire input names the type, so an unknown one is a refusal, not a programming
@@ -507,6 +573,12 @@ function assertAckSubject<T extends RecipientAckType>(
     const e = policy.expected as RecipientAckExpected["PaymentReceiptAck"];
     expectSame("nonce_mismatch", "nonce", nonce, nonzeroDigest("expected.nonce", e.nonce));
     expectSame(
+      "expiry_mismatch",
+      "challengeExpiry",
+      expiry,
+      uint("expected.challengeExpiry", e.challengeExpiry, UINT64_MAX),
+    );
+    expectSame(
       "token_mismatch",
       "aztecToken",
       assertAztecBytes32("aztecToken", m.aztecToken),
@@ -547,7 +619,7 @@ function checkRecipientAck<T extends RecipientAckType>(
   message: RecipientAckMessages[T],
   signature: string,
   policy: RecipientAckVerificationPolicy<T>,
-): VerifiedRecipientAck {
+): CheckedRecipientAck {
   const binding = policy.binding;
   const descriptorDigest = hashRecipientDescriptor(policy.descriptor);
   expectSame(
@@ -587,9 +659,6 @@ function checkRecipientAck<T extends RecipientAckType>(
   const expiry = uint("challengeExpiry", message.challengeExpiry, UINT64_MAX);
   assertAckSubject(primaryType, message, policy, nonce, expiry);
   const now = uint("now", policy.now, UINT64_MAX);
-  if (expiry < now) {
-    refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
-  }
   const digest = recipientAckDigest(primaryType, message, domain);
   const messageField = recipientMessage(digest).messageField;
   const expectedPublicKey = {
@@ -604,27 +673,74 @@ function checkRecipientAck<T extends RecipientAckType>(
     messageField,
     nonce,
     replayKey: recipientAckReplayKey(primaryType, bindingDigest, nonce),
+    expiry,
+    now,
   };
 }
 
 /**
  * Fail-closed acknowledgement verification. The binding domain and recipient signing key
  * are reconstructed from trusted inputs; the exact subject is pinned (`expected`, and the
- * binding's nonce and expiry for the enrollment acks); durable replay consumption runs
- * last. Refuses with `AckEncodingError`; a trusted descriptor or profile that fails its own
- * check throws `RecipientEncodingError` (`verifyRecipientDescriptor`).
+ * binding's nonce and expiry for the enrollment acks). A valid exact retry may retrieve its
+ * durable result after expiry; a new expired acknowledgement still fails closed. Application
+ * acceptance runs last and receives the verified digest and replay key. Refuses with
+ * `AckEncodingError`; a trusted descriptor or profile that fails its own check throws
+ * `RecipientEncodingError` (`verifyRecipientDescriptor`).
  */
-export async function verifyRecipientAck<T extends RecipientAckType>(
+export async function verifyRecipientAck<T extends RecipientAckType, TResult>(
   primaryType: T,
   message: RecipientAckMessages[T],
   signature: string,
-  policy: RecipientAckVerificationPolicy<T>,
-): Promise<VerifiedRecipientAck> {
+  policy: RecipientAckVerificationPolicy<T, TResult>,
+): Promise<AcceptedRecipientAck<TResult>> {
   assertAckType(primaryType);
   verifyRecipientDescriptor(policy.descriptor, policy.profile);
-  const verified = ackRules(() => checkRecipientAck(primaryType, message, signature, policy));
-  if (!(await policy.consumeReplayKey(verified.replayKey))) {
-    refuseAck("nonce_replayed", "nonce", "already consumed for this type and binding");
+  const checked = ackRules(() => checkRecipientAck(primaryType, message, signature, policy));
+  const { expiry, now, ...verified } = checked;
+  if (expiry < now) {
+    const stored = await policy.lookupAcceptance(verified.replayKey);
+    if (stored === null) {
+      refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
+    }
+    const existing = acceptanceStoreRecord(stored, "lookupAcceptance");
+    if (
+      !hasAcceptanceField(existing, "digest") ||
+      typeof existing.digest !== "string" ||
+      !hasAcceptanceField(existing, "result")
+    ) {
+      throw new TypeError("lookupAcceptance returned an invalid acceptance-store outcome");
+    }
+    if (existing.digest !== verified.digest) {
+      refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
+    }
+    return { ...verified, result: existing.result as TResult, replayed: true };
   }
-  return verified;
+
+  const committed = acceptanceStoreRecord(
+    await policy.commitAcceptance(verified),
+    "commitAcceptance",
+  );
+  if (!hasAcceptanceField(committed, "status")) {
+    throw new TypeError("commitAcceptance returned an invalid acceptance-store outcome");
+  }
+  if (committed.status === "committed") {
+    if (!hasAcceptanceField(committed, "result")) {
+      throw new TypeError("commitAcceptance returned an invalid acceptance-store outcome");
+    }
+    return { ...verified, result: committed.result as TResult, replayed: false };
+  }
+  if (committed.status !== "existing") {
+    throw new TypeError("commitAcceptance returned an invalid acceptance-store outcome");
+  }
+  if (
+    !hasAcceptanceField(committed, "digest") ||
+    typeof committed.digest !== "string" ||
+    !hasAcceptanceField(committed, "result")
+  ) {
+    throw new TypeError("commitAcceptance returned an invalid acceptance-store outcome");
+  }
+  if (committed.digest !== verified.digest) {
+    refuseAck("nonce_replayed", "nonce", "already consumed by a different acknowledgement");
+  }
+  return { ...verified, result: committed.result as TResult, replayed: true };
 }

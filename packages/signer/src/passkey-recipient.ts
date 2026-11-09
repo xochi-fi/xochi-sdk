@@ -160,7 +160,7 @@ function fieldElement(field: string, prk: Uint8Array, info: string): Hex {
  */
 export function derivePasskeyRecipientKeys(
   prf: PasskeyPrfOutputs,
-  version: typeof PASSKEY_DERIVATION_V1 = PASSKEY_DERIVATION_V1,
+  version: number = PASSKEY_DERIVATION_V1,
 ): PasskeyRecipientKeys {
   if (version !== PASSKEY_DERIVATION_V1) {
     refusePasskey("unsupported_version", "version", `expected ${PASSKEY_DERIVATION_V1}`);

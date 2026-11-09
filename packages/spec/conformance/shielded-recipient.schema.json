@@ -1955,7 +1955,76 @@
                     "pattern": "^0x[0-9a-f]{64}$"
                   },
                   "derivation": {
-                    "type": "object"
+                    "type": "object",
+                    "required": [
+                      "constructorArgsHash",
+                      "initializationHash",
+                      "immutablesHash",
+                      "saltedInitializationHash",
+                      "partialAddress",
+                      "ivpkMHash",
+                      "publicKeysHash",
+                      "preaddress",
+                      "addressPoint",
+                      "address"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "constructorArgsHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "initializationHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "immutablesHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "saltedInitializationHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "partialAddress": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "ivpkMHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "publicKeysHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "preaddress": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "addressPoint": {
+                        "type": "object",
+                        "required": [
+                          "x",
+                          "y"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "x": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          },
+                          "y": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          }
+                        }
+                      },
+                      "address": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      }
+                    }
                   }
                 }
               }
@@ -2179,7 +2248,33 @@
                     "type": "string"
                   },
                   "descriptor": {
-                    "type": "object"
+                    "type": "object",
+                    "required": [
+                      "credentialIdHash",
+                      "rpId",
+                      "derivationVersion"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "credentialIdHash": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]*$"
+                      },
+                      "rpId": {
+                        "type": "string"
+                      },
+                      "derivationVersion": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^(0|[1-9][0-9]*)$"
+                          }
+                        ]
+                      }
+                    }
                   },
                   "error": {
                     "type": "object",
@@ -2252,7 +2347,7 @@
                   "type": "string"
                 },
                 "primaryType": {
-                  "type": "string"
+                  "const": "RecipientBinding"
                 },
                 "environment": {
                   "type": "string"
@@ -2317,7 +2412,66 @@
                   }
                 },
                 "message": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "sourceWallet",
+                    "sourceChainId",
+                    "aztecRecipient",
+                    "aztecToken",
+                    "descriptorDigest",
+                    "corridorId",
+                    "corridorRevision",
+                    "manifestDigest",
+                    "nonce",
+                    "challengeExpiry",
+                    "purpose"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "sourceWallet": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{40}$"
+                    },
+                    "sourceChainId": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]*)$"
+                    },
+                    "aztecRecipient": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "aztecToken": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "descriptorDigest": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "corridorId": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "corridorRevision": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]*)$"
+                    },
+                    "manifestDigest": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "nonce": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    },
+                    "challengeExpiry": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]*)$"
+                    },
+                    "purpose": {
+                      "const": "xochi.shielded.recipient-binding.v1"
+                    }
+                  }
                 },
                 "structHash": {
                   "type": "string",
@@ -2403,7 +2557,7 @@
                     "type": "string"
                   },
                   "primaryType": {
-                    "type": "string"
+                    "const": "BackupPersistenceAck"
                   },
                   "environment": {
                     "type": "string"
@@ -2468,7 +2622,46 @@
                     }
                   },
                   "message": {
-                    "type": "object"
+                    "type": "object",
+                    "required": [
+                      "bindingDigest",
+                      "aztecRecipient",
+                      "backupCommitment",
+                      "backupFormatId",
+                      "nonce",
+                      "challengeExpiry",
+                      "purpose"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "aztecRecipient": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "backupCommitment": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "backupFormatId": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "nonce": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "challengeExpiry": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "purpose": {
+                        "const": "xochi.shielded.backup-persistence-ack.v1"
+                      }
+                    }
                   },
                   "structHash": {
                     "type": "string",
@@ -2548,10 +2741,49 @@
                     "type": "string"
                   },
                   "primaryType": {
-                    "type": "string"
+                    "const": "BackupPersistenceAck"
                   },
                   "message": {
-                    "type": "object"
+                    "type": "object",
+                    "required": [
+                      "bindingDigest",
+                      "aztecRecipient",
+                      "backupCommitment",
+                      "backupFormatId",
+                      "nonce",
+                      "challengeExpiry",
+                      "purpose"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingDigest": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "aztecRecipient": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "backupCommitment": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "backupFormatId": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "nonce": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{64}$"
+                      },
+                      "challengeExpiry": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "purpose": {
+                        "const": "xochi.shielded.backup-persistence-ack.v1"
+                      }
+                    }
                   },
                   "error": {
                     "type": "object",
@@ -2630,8 +2862,15 @@
                         "pattern": "^0x[0-9a-f]{64}$"
                       },
                       "backupFormatId": {
-                        "type": "string",
-                        "pattern": "^0x[0-9a-f]{64}$"
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{64}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   },
