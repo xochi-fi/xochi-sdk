@@ -1,5 +1,5 @@
 import type { ChainId } from "./chains.js";
-import { SUPPORTED_CHAIN_IDS, isTronChainId } from "./chains.js";
+import { SUPPORTED_CHAIN_IDS, isChainId, isTronChainId } from "./chains.js";
 
 /** Address, symbol, name, and base-unit precision for a known token contract. */
 export interface TokenInfo {
@@ -26,10 +26,13 @@ export const TRON_USDC: TokenInfo = {
 };
 
 /** Known Tron tokens keyed by their verbatim base58 address. */
-export const TRON_TOKENS_BY_ADDRESS: Readonly<Record<string, TokenInfo>> = {
-  [TRON_USDT.address]: TRON_USDT,
-  [TRON_USDC.address]: TRON_USDC,
-};
+export const TRON_TOKENS_BY_ADDRESS: Readonly<Record<string, TokenInfo | undefined>> =
+  Object.freeze(
+    Object.assign(Object.create(null) as Record<string, TokenInfo | undefined>, {
+      [TRON_USDT.address]: TRON_USDT,
+      [TRON_USDC.address]: TRON_USDC,
+    }),
+  );
 
 /**
  * Token metadata by supported EVM chain.
@@ -243,14 +246,25 @@ export const USDC_ADDRESSES = addressesBySymbol("USDC");
 /** USDG addresses on chains where the registry knows a USDG deployment. */
 export const USDG_ADDRESSES = addressesBySymbol("USDG");
 
+function immutableLookup<T>(
+  entries: readonly (readonly [string, T])[],
+): Readonly<Record<string, T | undefined>> {
+  return Object.freeze(
+    Object.assign(
+      Object.create(null) as Record<string, T | undefined>,
+      Object.fromEntries(entries),
+    ),
+  );
+}
+
 /** Token decimals by lowercase EVM address, derived from {@link TOKENS}. */
-export const TOKEN_DECIMALS: Readonly<Record<string, number>> = Object.fromEntries(
+export const TOKEN_DECIMALS = immutableLookup(
   Object.values(TOKENS)
     .flat()
     .map((token): [string, number] => [token.address.toLowerCase(), token.decimals]),
 );
 
-const TOKEN_SYMBOL_BY_ADDRESS: Readonly<Record<string, string>> = Object.fromEntries(
+const TOKEN_SYMBOL_BY_ADDRESS = immutableLookup(
   Object.values(TOKENS)
     .flat()
     .map((token): [string, string] => [token.address.toLowerCase(), token.symbol]),
@@ -272,19 +286,22 @@ export function getTokenInfoByAddress(address: string): { symbol: string; decima
 }
 
 /**
- * Resolve token metadata with chain-aware handling for case-sensitive non-EVM
- * addresses. Unknown tokens retain the cross-chain lookup's safe fallback.
+ * Resolve metadata only when the address is registered on the named chain.
+ * Tron addresses remain case-sensitive; unknown chains and deployments return
+ * `undefined` rather than fabricating a symbol or precision.
  */
 export function getTokenInfoForChain(
   address: string,
   chainId: number,
-): { symbol: string; decimals: number } {
-  if (!address) return { symbol: "?", decimals: 18 };
-  if (!isTronChainId(chainId)) return getTokenInfoByAddress(address);
-  const token = TRON_TOKENS_BY_ADDRESS[address];
-  return token
-    ? { symbol: token.symbol, decimals: token.decimals }
-    : { symbol: address.slice(0, 6), decimals: 18 };
+): Pick<TokenInfo, "symbol" | "decimals"> | undefined {
+  if (!address) return undefined;
+  if (isTronChainId(chainId)) {
+    const token = TRON_TOKENS_BY_ADDRESS[address];
+    return token ? { symbol: token.symbol, decimals: token.decimals } : undefined;
+  }
+  if (!isChainId(chainId)) return undefined;
+  const token = findTokenByAddress(chainId, address);
+  return token ? { symbol: token.symbol, decimals: token.decimals } : undefined;
 }
 
 /** Find a registry token by its case-sensitive wire symbol. */

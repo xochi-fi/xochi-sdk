@@ -91,10 +91,20 @@ describe("public token registry", () => {
       symbol: "USDT",
       decimals: 6,
     });
-    expect(getTokenInfoForChain(TRON_USDT.address.toLowerCase(), TRON_CHAIN_ID)).toEqual({
-      symbol: TRON_USDT.address.toLowerCase().slice(0, 6),
-      decimals: 18,
-    });
+    expect(getTokenInfoForChain(TRON_USDT.address.toLowerCase(), TRON_CHAIN_ID)).toBeUndefined();
+  });
+
+  it("refuses metadata that is not registered on the named chain", () => {
+    const ethereumEure = "0x39b8B6385416f4cA36a20319F70D28621895279D";
+    expect(getTokenInfoForChain(ethereumEure, 8453)).toBeUndefined();
+    expect(getTokenInfoForChain(ethereumEure, 31337)).toBeUndefined();
+  });
+
+  it("does not expose inherited object properties as token metadata", () => {
+    expect(TOKEN_DECIMALS.__proto__).toBeUndefined();
+    expect(getTokenDecimals("constructor")).toBe(18);
+    expect(getTokenInfoByAddress("__proto__")).toEqual({ symbol: "__prot", decimals: 18 });
+    expect(getTokenInfoForChain("constructor", TRON_CHAIN_ID)).toBeUndefined();
   });
 
   it("does not advertise a route merely because metadata is registered", () => {

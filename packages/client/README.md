@@ -61,8 +61,10 @@ const quote = await xochi.getQuote(request);
 `TOKENS` is the public per-chain metadata registry. `TokenInfo`, `findTokenBySymbol`,
 `findTokenByAddress`, `getTokenInfoByAddress`, `getTokenInfoForChain`,
 `getTokenDecimals` and `TOKEN_DECIMALS` expose the same address/symbol/decimal
-vocabulary to widgets and headless clients. `getTokenInfoForChain` preserves
-case-sensitive Tron addresses; the address-only lookup is for EVM addresses.
+vocabulary to widgets and headless clients. `getTokenInfoForChain` resolves only
+an address registered on that exact chain and returns `undefined` otherwise;
+Tron addresses remain case-sensitive. The address-only EVM lookup keeps its
+explicit display fallback for unknown contracts.
 
 Registry presence means only that metadata can be resolved. It never advertises
 a route: use the live capability `routes` contract and `advertisedRoute` before
@@ -86,6 +88,16 @@ const stealth = route?.privacyModes.includes("stealth") === true;
 ```
 
 When `routes` is present, it is the authoritative selector source for same-symbol and cross-token routes; query the exact typed endpoint and do not reconstruct a cross-product. A served `[]` or malformed present value means no routes. Only an absent field parses as `null` and triggers the legacy conservative downgrade: same-symbol cross-chain corridors may use their existing leg support, cross-token same-chain still requires `conversionPairs[].sameChain`, and cross-token cross-chain remains disabled. A chain destination is never a `zk_money` destination by implication.
+
+### Trusted Stealth chains
+
+`effectiveStealthChains(capabilities.stealthChains, (chainId) =>
+stealthFactoryFor(capabilities, chainId))` intersects current solver
+advertisement and its per-chain factory with `TRUSTED_STEALTH_FACTORIES` for
+quote availability. Missing, untrusted, or mismatched factories and missing
+advertisement fail closed to `[]`. `trustedStealthChains()` is different: it
+lists every locally trusted chain for scanning and claiming historical payments,
+regardless of current quote availability.
 
 ## State machine
 

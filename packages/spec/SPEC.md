@@ -802,13 +802,14 @@ same-symbol cross-chain routes and opted-in cross-token same-chain routes from
 its existing route, token and conversion gates. It advertises no same-token
 self-loop and no implicit cross-token cross-chain route.
 
-If `routes` is absent or unusable, consumers SHOULD downgrade to their prior
-conservative rules: same-symbol cross-chain routes may use existing leg support;
-cross-token same-chain still requires `conversion_pairs[].same_chain: true`;
-cross-token cross-chain stays disabled. `conversion_pairs[].same_chain` retains
-its existing per-pair meaning and MUST NOT be read as an exclusive-route marker.
-A producer may therefore add `routes` without changing any existing quote or
-capability field.
+If `routes` is absent, consumers MAY downgrade to their prior conservative
+rules: same-symbol cross-chain routes may use existing leg support; cross-token
+same-chain still requires `conversion_pairs[].same_chain: true`; cross-token
+cross-chain stays disabled. A present but non-array or otherwise unusable
+`routes` value MUST fail closed to no routes and MUST NOT trigger the legacy
+downgrade. `conversion_pairs[].same_chain` retains its existing per-pair meaning
+and MUST NOT be read as an exclusive-route marker. A producer may therefore add
+`routes` without changing any existing quote or capability field.
 
 **Escrow (§5.2):** the escrow envelope is gated on a capability advertised
 here: a top-level `escrow { enabled, proof_tiers[], confidentiality_tiers[],

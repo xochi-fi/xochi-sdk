@@ -66,9 +66,10 @@ export const TRUSTED_STEALTH_FACTORIES: Readonly<Record<number, readonly string[
 export function isTrustedStealthFactory(
   address: string | undefined | null,
   chainId: number | undefined | null,
+  trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
 ): boolean {
   if (!address || chainId === undefined || chainId === null) return false;
-  const allowed = TRUSTED_STEALTH_FACTORIES[chainId];
+  const allowed = trusted[chainId];
   if (!allowed) return false;
   const normalized = address.toLowerCase();
   return allowed.some((f) => f.toLowerCase() === normalized);
@@ -80,13 +81,15 @@ export function isTrustedStealthFactory(
  * untrusted entries never widen availability.
  */
 export function effectiveStealthChains(
-  advertised: readonly number[] | undefined,
+  advertised: readonly number[] | null | undefined,
+  advertisedFactory: (chainId: number) => string | null | undefined,
   trusted: Readonly<Record<number, readonly string[]>> = TRUSTED_STEALTH_FACTORIES,
 ): readonly number[] {
-  if (advertised === undefined) return [];
+  if (advertised == null) return [];
   return advertised.filter(
     (chainId, index) =>
-      (trusted[chainId]?.length ?? 0) > 0 && advertised.indexOf(chainId) === index,
+      advertised.indexOf(chainId) === index &&
+      isTrustedStealthFactory(advertisedFactory(chainId), chainId, trusted),
   );
 }
 
