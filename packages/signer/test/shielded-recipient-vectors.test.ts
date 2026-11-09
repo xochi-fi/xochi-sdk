@@ -839,6 +839,55 @@ describe("acknowledgements", () => {
     ).toEqual({ code: "nonce_replayed", field: "nonce" });
   });
 
+  it("requires an exact stored digest and valid signature for an expired retry", async () => {
+    const v = ackOf("BackupPersistenceAck");
+    const wrongSignature = ackOf("SenderRegistrationAck").signature;
+    expect(wrongSignature).not.toBe(v.signature);
+    let commitCalls = 0;
+    const commit = async (): Promise<RecipientAckCommitOutcome<string>> => {
+      commitCalls++;
+      return { status: "committed", result: "must not commit" };
+    };
+    const expiredPolicy = (stored: RecipientAckStoredResult<string> | null) => ({
+      ...ackPolicy(v, commit, async () => stored),
+      now: Number(v.message.challengeExpiry) + 1,
+    });
+    const invalidlySigned = { ...v, signature: wrongSignature };
+
+    expect(await verify(invalidlySigned, v.message, expiredPolicy(null))).toEqual({
+      code: "challenge_expired",
+      field: "challengeExpiry",
+    });
+    expect(
+      await verify(
+        invalidlySigned,
+        v.message,
+        expiredPolicy({
+          digest: `0x${"11".repeat(32)}`,
+          result: "other acceptance",
+        }),
+      ),
+    ).toEqual({ code: "challenge_expired", field: "challengeExpiry" });
+
+    const stored = {
+      digest: v.digest as VerifiedRecipientAck["digest"],
+      result: "stored acceptance",
+    };
+    expect(await verify(invalidlySigned, v.message, expiredPolicy(stored))).toEqual({
+      code: "signature_invalid",
+      field: "signature",
+    });
+    const replayed = await verifyRecipientAck(
+      v.primaryType,
+      v.message as never,
+      v.signature,
+      expiredPolicy(stored) as never,
+    );
+    expect(replayed.result).toBe(stored.result);
+    expect(replayed.replayed).toBe(true);
+    expect(commitCalls).toBe(0);
+  });
+
   it("fails closed on malformed acceptance-store outcomes", async () => {
     const v = ackOf("BackupPersistenceAck");
     await expect(

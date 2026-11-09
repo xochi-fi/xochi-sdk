@@ -402,9 +402,9 @@ export interface RecipientAckVerificationPolicy<T extends RecipientAckType, TRes
   /** Caller-controlled Unix time in seconds. */
   now: UintLike;
   /**
-   * Reads a durable acceptance by replay key after every cryptographic and subject check succeeds.
-   * An expired exact retry may return its stored result, but an expired acknowledgement with no
-   * matching digest MUST NOT be committed.
+   * Reads a durable acceptance by replay key after subject and digest validation for an expired
+   * request. An absent or conflicting digest is refused before signature verification; an exact
+   * stored digest is returned only after its signature also verifies.
    */
   lookupAcceptance: (replayKey: Hex) => Promise<RecipientAckStoredResult<TResult> | null>;
   /**
@@ -613,11 +613,11 @@ function assertAckSubject<T extends RecipientAckType>(
   }
 }
 
-// Every check but replay consumption; synchronous, so its value-rule refusals are rewrapped.
+// Every check but signature and replay consumption; synchronous, so value-rule refusals are
+// rewrapped.
 function checkRecipientAck<T extends RecipientAckType>(
   primaryType: T,
   message: RecipientAckMessages[T],
-  signature: string,
   policy: RecipientAckVerificationPolicy<T>,
 ): CheckedRecipientAck {
   const binding = policy.binding;
@@ -661,13 +661,6 @@ function checkRecipientAck<T extends RecipientAckType>(
   const now = uint("now", policy.now, UINT64_MAX);
   const digest = recipientAckDigest(primaryType, message, domain);
   const messageField = recipientMessage(digest).messageField;
-  const expectedPublicKey = {
-    x: policy.descriptor.signingPublicKeyX,
-    y: policy.descriptor.signingPublicKeyY,
-  };
-  if (!verifyRecipientSchnorr(expectedPublicKey, messageField, signature)) {
-    refuseAck("signature_invalid", "signature", "not valid for the acknowledgement");
-  }
   return {
     digest,
     messageField,
@@ -676,6 +669,20 @@ function checkRecipientAck<T extends RecipientAckType>(
     expiry,
     now,
   };
+}
+
+function assertRecipientAckSignature(
+  verified: VerifiedRecipientAck,
+  signature: string,
+  descriptor: RecipientDescriptor,
+): void {
+  const expectedPublicKey = {
+    x: descriptor.signingPublicKeyX,
+    y: descriptor.signingPublicKeyY,
+  };
+  if (!verifyRecipientSchnorr(expectedPublicKey, verified.messageField, signature)) {
+    refuseAck("signature_invalid", "signature", "not valid for the acknowledgement");
+  }
 }
 
 /**
@@ -695,7 +702,7 @@ export async function verifyRecipientAck<T extends RecipientAckType, TResult>(
 ): Promise<AcceptedRecipientAck<TResult>> {
   assertAckType(primaryType);
   verifyRecipientDescriptor(policy.descriptor, policy.profile);
-  const checked = ackRules(() => checkRecipientAck(primaryType, message, signature, policy));
+  const checked = ackRules(() => checkRecipientAck(primaryType, message, policy));
   const { expiry, now, ...verified } = checked;
   if (expiry < now) {
     const stored = await policy.lookupAcceptance(verified.replayKey);
@@ -713,9 +720,11 @@ export async function verifyRecipientAck<T extends RecipientAckType, TResult>(
     if (existing.digest !== verified.digest) {
       refuseAck("challenge_expired", "challengeExpiry", `${expiry} < ${now}`);
     }
+    ackRules(() => assertRecipientAckSignature(verified, signature, policy.descriptor));
     return { ...verified, result: existing.result as TResult, replayed: true };
   }
 
+  ackRules(() => assertRecipientAckSignature(verified, signature, policy.descriptor));
   const committed = acceptanceStoreRecord(
     await policy.commitAcceptance(verified),
     "commitAcceptance",
