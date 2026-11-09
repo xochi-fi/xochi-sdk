@@ -4,13 +4,28 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-08
+
 ### Added
 
+- **Passkey recipient keys** (`passkey-recipient.ts`, xochi-sdk#155, epic xochi#833; spec `@xochi/spec` `PASSKEY-RECIPIENT.md`). PROPOSED until product-owner sign-off. `derivePasskeyRecipientKeys({ first, second }, version?)` derives three things from the two 32-byte WebAuthn PRF outputs of one passkey: the recipient CLI's `AccountSecrets` (`secret`, `salt`); a 32-byte AES-256-GCM `wrapKey`; and a 32-byte `pxeStoreKey`, the key of the browser's persisted encrypted PXE store, which is derived on every unlock and never persisted.
+  - Inputs: each output is the `ArrayBuffer` the browser returns or any 32-byte view, from any realm; it is copied, never written. An `ArrayBuffer` is recognised by its internal slot (the `byteLength` getter), never by its tag; a detached buffer or view refuses with `prf_output_invalid`.
+  - Derivation: HKDF-SHA-256 (RFC 5869), salt `xochi.recipient.passkey.v1`, one HKDF-Extract per output, and a 64-byte wide reduction mod r for the secret and salt. The copies, pseudorandom keys and 64-byte outputs are zeroed after use; erasure is best effort, since JavaScript cannot erase strings or bigints.
+  - Refusals (`PasskeyDerivationError`): a version other than 1 (`unsupported_version`); an output that is not 32 bytes, or a `second` equal to `first` (`prf_output_invalid`); a zero reduction (`derived_zero`). No message carries key material.
+  - Also exports `passkeyPrfInputBytes()` (the two `prf.eval` inputs as fresh 32-byte arrays, the form WebAuthn takes), their hex form `PASSKEY_PRF_INPUTS`, `PASSKEY_RP_ID` (`"xochi.fi"`), `PASSKEY_RP_NAME`, `PASSKEY_DERIVATION_V1`, and the `PasskeyPrfOutputs`, `PasskeyRecipientKeys` and `PasskeyDerivationRefusal` types.
+  - It reproduces the decided reference vectors and `@xochi/spec`'s `shielded-recipient.json` `passkey` section.
+- **Passkey backup mode for `BackupPersistenceAck`** (same issue). The type, typehash, purpose and struct are unchanged. The ack now accepts a second `backupFormatId`, `BACKUP_FORMAT_PASSKEY_V1_ID` (`keccak256("xochi.shielded.backup-format.passkey.v1")`, name `BACKUP_FORMAT_PASSKEY_V1_NAME`), whose `backupCommitment` is `passkeyBackupCommitment({ credentialIdHash, rpId, derivationVersion })`: `keccak256(abi.encode(PASSKEY_BACKUP_COMMITMENT_TAG, credentialIdHash, keccak256(rpId), uint32 version))`. That function refuses (`AckEncodingError`) a malformed or zero hash (`not_bytes32`, `digest_zero`), an RP ID other than `xochi.fi` (new code `rp_id_mismatch`) and a version other than 1 (new code `derivation_version_unsupported`). Also exports the `PasskeyBackupDescriptor` type.
+- `@noble/hashes` `1.8.0` is now a direct dependency (it was already installed through `@noble/curves`).
 - `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser XSP uses (canonical base-10 string, non-negative safe integer or bigint). Escrow and shielded inputs follow the same spelling rule; escrow also admits leading zeros.
 - The five shielded `*EncodingError` classes expose the refusal `detail` as a property. Names, codes, fields and messages are unchanged.
 
 ### Changed
 
+- **`RecipientAckExpected.BackupPersistenceAck` gains an optional `backupFormatId: string | null`.**
+  - Absent or `null` (a legacy row's NULL column): `verifyRecipientAck` accepts only `BACKUP_FORMAT_V1_ID` and refuses a passkey-mode acknowledgement with `backup_format_mismatch`. An existing caller therefore never accepts passkey mode.
+  - Present: the acknowledgement must name exactly that format (`subject_mismatch`). Set it from the verifier's own record; only a passkey-derived recipient may use passkey mode.
+  - `hashRecipientAck` accepts either format id and refuses any other with `backup_format_mismatch`, as before.
+  - Additive: every sealed-file digest, signature, verdict and committed vector is byte-identical, and no existing export changes behaviour for sealed-file input.
 - **BREAKING: every XSP uint goes through `parseUint`**: the uint256 `originChainId`, `originAmount`, `destChainId`, `destAmount`, `nonce`, transfer and record `amount` and domain `chainId`, and the uint64 `deadline`, `depositedAt` and `expiry`. Spellings `BigInt` used to coerce now throw "`<field>` must be a non-negative base-10 integer": `""` and `" "` (read as 0), `"0x10"` (16), `" 7"`, `"+7"` and `"007"` (7), `"-0"` (0), and numbers above `Number.MAX_SAFE_INTEGER`. Negatives throw the same message. A uint256 above 2^256 - 1 throws "`<field>` out of uint256 range". Canonical inputs hash as before; committed XSP vectors are unchanged. Migration: pass decimal strings or bigints (convert an `eth_chainId` hex result with `BigInt(hex)` first).
 - `@noble/curves` dependency range is `^1.9.0` (was `^1.2.0`).
 

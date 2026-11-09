@@ -1,6 +1,6 @@
 # Riddler Xochi Protocol — SPEC
 
-- **Spec version:** `0.12.0`
+- **Spec version:** `0.13.0`
 - **Status:** Draft (signature and fee layers are substantive and
   conformance-tested; transport defers to the server OpenAPI; escrow/solver
   sections are reserved)

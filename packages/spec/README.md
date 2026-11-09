@@ -12,6 +12,10 @@ RFCs, and the byte-equality vector sets every signer implementation (TypeScript,
 version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk`.
 - **`ESCROW-RFC.md`**: non-custodial escrow (`orderId` preimage, `OpenAuth`, proof-of-fill).
   `[RESERVED]` and inert.
+- **`PASSKEY-RECIPIENT.md`**: **PROPOSED** passkey recipients (xochi-sdk#155). Covers the WebAuthn
+  PRF key derivation, the WebAuthn parameters and refusals, the `PKW1` wrapped import, the passkey
+  `BackupPersistenceAck` mode, the threat model and the PRF support matrix. Its vectors are the
+  `passkey` section of `conformance/shielded-recipient.json`.
 - **`conformance/conformance.json`** + `schema.json`: 45 signing vectors (9 erc3009, 19 permit2, 17
   xochi) with inputs and `expected_{signer,digest,signature,signed_object}`.
 - **`conformance/solver-bid-v2.json`** + `.schema.json`: SolverBid v2 sealing (SOLVER-RFC §5.1).
@@ -34,7 +38,9 @@ version:**` header); makers gate on `SOLVER_RFC_VERSION` from `@xochi/solver-sdk
   `PaymentReceiptAck`, and `TokenRegistrationAck` contracts. Its `oxideToken` section records
   the OxideToken immutables hash, OXDAI vector, and corridors that require the acknowledgement
   (xochi#753). The enrollment acknowledgements reuse the named binding's exact
-  nonce and expiry; a payment receipt uses its own receipt challenge. TEST ONLY keys.
+  nonce and expiry; a payment receipt uses its own receipt challenge. Its **PROPOSED** `passkey`
+  section (`PASSKEY-RECIPIENT.md`) pins the passkey derivation, the passkey backup commitment and a
+  passkey-mode acknowledgement with the verifier's verdicts. TEST ONLY keys.
 - **`conformance/shielded-readiness.json`** + `.schema.json`: the pxe-bridge readiness
   attestations (`Membership`, `RecipientDeployment`, `RootUpdate`) under the
   `Xochi Shielded Readiness` domain, with replay and record-parse refusals. Public test key.
@@ -101,7 +107,9 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
   never between two copies of this repo's own code. Its `acknowledgements` section is approved
   protocol bytes: changing a member, type, purpose or ordering requires a new primary
   type/version. `backupFormatId` is exactly
-  `keccak256(UTF8("xochi.shielded.backup-format.v1"))`. The verifiers (`verifyRecipientAck`,
+  `keccak256(UTF8("xochi.shielded.backup-format.v1"))` (sealed file) or, in passkey mode,
+  `keccak256(UTF8("xochi.shielded.backup-format.passkey.v1"))`; a verifier that names no format
+  accepts only the first. The verifiers (`verifyRecipientAck`,
   `verifyReadinessRecord`) and what their callers must supply are `@xochi/signer`'s: its
   README, "Shielded recipient and readiness".
 - **`fee/*`** mirrors `Riddler.Integrations.Xochi.FeePolicy` in lockstep: the schedule is
@@ -114,7 +122,7 @@ A changed vector is a wire change. Never regenerate one to make a check pass.
 Pin an exact version; never read a sibling checkout:
 
 ```bash
-npm install --save-dev --save-exact @xochi/spec@0.12.0
+npm install --save-dev --save-exact @xochi/spec@0.13.0
 ```
 
 ```ts
@@ -124,7 +132,7 @@ import conformance from "@xochi/spec/conformance/conformance.json" with { type: 
 Non-JS CI:
 
 ```bash
-npm pack @xochi/spec@0.12.0 && tar -xzf xochi-spec-0.12.0.tgz   # -> package/conformance/..., package/fee/...
+npm pack @xochi/spec@0.13.0 && tar -xzf xochi-spec-0.13.0.tgz   # -> package/conformance/..., package/fee/...
 ```
 
 ## Verifying an implementation

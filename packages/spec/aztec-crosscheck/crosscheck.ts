@@ -11,6 +11,8 @@
 //   - the descriptor refusals that are SDK-observable (address and on-curve verdicts);
 //   - the wide reduction (Fr.fromBufferReduce on the 48 bytes);
 //   - every Schnorr signature and replay verdict, through bb.js, under BOTH SDKs.
+//   - each passkey recipient (`passkey`, 6.0.0): the wide reduction of its HKDF outputs and the
+//     CLI's account from the derived secret and salt (deriveKeys, the MSSK_M signing key).
 //
 // Its own package (not a workspace) so ~850 MB of SDK stays out of every other CI job.
 //
@@ -270,7 +272,8 @@ for (const profile of DS.profiles.filter((p: { id: string }) => p.id === PROFILE
   }
 
   // Every Schnorr signature and replay, through bb.js.
-  for (const v of [...RM.bindingMessages, ...file.acknowledgements.vectors]) {
+  const passkeySigned = [file.passkey.backup.binding, ...file.passkey.backup.acks];
+  for (const v of [...RM.bindingMessages, ...file.acknowledgements.vectors, ...passkeySigned]) {
     eq(
       `${tag} Fr.fromBufferReduce(u48) "${v.name}"`,
       sdk.bn.Fr.fromBufferReduce(Buffer.from(v.wrapper.u48.slice(2), "hex")),
@@ -342,6 +345,45 @@ if (PROFILE === "aztec-6.0.0") {
       (await sdk.contract.computeContractAddressFromInstance(forSdk)).toString(),
       v.address,
     );
+  }
+}
+
+// Passkey recipients (xochi-sdk#155, 6.0.0 only: the recipient CLI's line). Each derived secret
+// and salt is the SDK's own wide reduction of the published HKDF output, and the account is
+// what the CLI builds from them: deriveMasterMessageSigningSecretKey(secret) signs,
+// deriveKeys(secret) gives the public keys, the derived salt, deployer zero.
+if (PROFILE === "aztec-6.0.0") {
+  const sdk = loaded;
+  for (const d of file.passkey.derivations) {
+    const pt = `passkey "${d.name}"`;
+    const desc = d.account.descriptor;
+    eq(
+      `${pt} secret == Fr.fromBufferReduce(hkdf accountSecret)`,
+      sdk.bn.Fr.fromBufferReduce(Buffer.from(d.hkdfOutput.accountSecret.slice(2), "hex")),
+      d.secret,
+    );
+    eq(
+      `${pt} salt == Fr.fromBufferReduce(hkdf accountSalt)`,
+      sdk.bn.Fr.fromBufferReduce(Buffer.from(d.hkdfOutput.accountSalt.slice(2), "hex")),
+      d.salt,
+    );
+    const secret = fr(sdk, d.secret);
+    const keys = await sdk.keys.deriveKeys(secret);
+    check(
+      `${pt} deriveKeys(secret).publicKeys == descriptor`,
+      keys.publicKeys.equals(publicKeysOf(sdk, desc)),
+    );
+    const signingKey = sdk.keys.deriveMasterMessageSigningSecretKey(secret);
+    eq(`${pt} signing key == MSSK_M`, signingKey, d.account.testOnlySecrets.signingPrivateKey);
+    const signing = await new sdk.schnorr.Schnorr().computePublicKey(signingKey);
+    eq(`${pt} signing key x`, signing.x, desc.signingPublicKeyX);
+    eq(`${pt} signing key y`, signing.y, desc.signingPublicKeyY);
+    eq(`${pt} descriptor salt`, desc.salt, d.salt);
+    eq(`${pt} deployer zero`, desc.deployer, sdk.addr.AztecAddress.ZERO.toString());
+    const instance = await instanceOf(sdk, desc);
+    eq(`${pt} SDK address == descriptor.aztecAddress`, instance.address, desc.aztecAddress);
+    eq(`${pt} SDK address == derivation.address`, instance.address, d.account.derivation.address);
+    eq(`${pt} class id`, instance.originalContractClassId, desc.classId);
   }
 }
 

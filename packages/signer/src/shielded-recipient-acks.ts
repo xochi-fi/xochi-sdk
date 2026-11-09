@@ -3,9 +3,14 @@
 // purpose string and is signed under `Domain (binding)` through the recipient message
 // wrapper (`recipientMessage`).
 //
-// BackupPersistenceAck binds the exact randomized encrypted backup bytes and decoder
-// contract without exposing plaintext: `backupCommitment = keccak256(encryptedBackupBytes)`
-// and `backupFormatId` identifies the format. SenderRegistrationAck is the enrollment
+// BackupPersistenceAck states that the recipient holds a backup that restores the account, in
+// one of two formats; the format id is the mode. Sealed file (`BACKUP_FORMAT_V1_ID`):
+// `backupCommitment = keccak256(encryptedBackupBytes)`, binding the exact randomized encrypted
+// bytes without exposing plaintext. Passkey (`BACKUP_FORMAT_PASSKEY_V1_ID`, xochi-sdk#155):
+// the keys derive from a synced WebAuthn passkey (`passkey-recipient.ts`) and
+// `backupCommitment = passkeyBackupCommitment(credential)` commits to the credential, never to
+// key material. A verifier without a format expectation accepts the sealed file only.
+// SenderRegistrationAck is the enrollment
 // acknowledgement for address-derived tagging in both designs (the bridge account on the
 // design-A tracer, the panel solvers under B-panel). PaymentReceiptAck binds exact credited
 // value and transaction evidence. TokenRegistrationAck (xochi#753) states that the recipient
@@ -19,6 +24,7 @@
 
 import { ethers } from "ethers";
 
+import { PASSKEY_DERIVATION_V1, PASSKEY_RP_ID } from "./passkey-recipient";
 import {
   NETWORK_IDENTITY_TYPE_STRING,
   bindingDomain,
@@ -71,7 +77,9 @@ export type AckRefusal =
   | "network_mismatch"
   | "expiry_mismatch"
   | "token_mismatch"
-  | "subject_mismatch";
+  | "subject_mismatch"
+  | "rp_id_mismatch"
+  | "derivation_version_unsupported";
 
 export class AckEncodingError extends RefusalError<AckRefusal> {
   override name = "AckEncodingError";
@@ -83,9 +91,12 @@ const ackRules = <T>(fn: () => T): T => withRefusalsAs(fn, AckEncodingError);
 export interface BackupPersistenceAck {
   bindingDigest: string;
   aztecRecipient: string;
-  /** keccak256 of the randomized encrypted backup bytes, never plaintext. */
+  /**
+   * keccak256 of the randomized encrypted backup bytes (sealed file), or
+   * `passkeyBackupCommitment` of the credential (passkey); never plaintext or key material.
+   */
   backupCommitment: string;
-  /** bytes32 identifier of the decoder/schema contract for those encrypted bytes. */
+  /** `BACKUP_FORMAT_V1_ID` (sealed file) or `BACKUP_FORMAT_PASSKEY_V1_ID` (passkey). */
   backupFormatId: string;
   nonce: string;
   challengeExpiry: UintLike;
@@ -162,6 +173,57 @@ export const RECIPIENT_ACK_PURPOSES: Record<RecipientAckType, string> = {
 export const BACKUP_FORMAT_V1_NAME = "xochi.shielded.backup-format.v1";
 /** `keccak256(UTF8(BACKUP_FORMAT_V1_NAME))`. */
 export const BACKUP_FORMAT_V1_ID = ethers.id(BACKUP_FORMAT_V1_NAME) as Hex;
+export const BACKUP_FORMAT_PASSKEY_V1_NAME = "xochi.shielded.backup-format.passkey.v1";
+/** `keccak256(UTF8(BACKUP_FORMAT_PASSKEY_V1_NAME))`. */
+export const BACKUP_FORMAT_PASSKEY_V1_ID = ethers.id(BACKUP_FORMAT_PASSKEY_V1_NAME) as Hex;
+/** `keccak256(UTF8("xochi.shielded.passkey-backup-commitment.v1"))`. */
+export const PASSKEY_BACKUP_COMMITMENT_TAG = ethers.id(
+  "xochi.shielded.passkey-backup-commitment.v1",
+) as Hex;
+const BACKUP_FORMAT_IDS: readonly Hex[] = [BACKUP_FORMAT_V1_ID, BACKUP_FORMAT_PASSKEY_V1_ID];
+
+/** The passkey a passkey-mode backup names. Nothing here is secret. */
+export interface PasskeyBackupDescriptor {
+  /** keccak256 of the credential's raw id. */
+  credentialIdHash: string;
+  /** Exactly `PASSKEY_RP_ID`. */
+  rpId: string;
+  /** Exactly `PASSKEY_DERIVATION_V1`. */
+  derivationVersion: number;
+}
+
+/**
+ * A passkey-mode `backupCommitment`: `keccak256(abi.encode(bytes32 PASSKEY_BACKUP_COMMITMENT_TAG,
+ * bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion))`. Refuses
+ * (`AckEncodingError`) a malformed or zero `credentialIdHash`, an `rpId` other than
+ * `PASSKEY_RP_ID` and a `derivationVersion` other than `PASSKEY_DERIVATION_V1`.
+ */
+export function passkeyBackupCommitment(d: PasskeyBackupDescriptor): Hex {
+  return ackRules(() => {
+    const credentialIdHash = nonzeroDigest("credentialIdHash", d.credentialIdHash);
+    if (d.rpId !== PASSKEY_RP_ID) {
+      refuseAck("rp_id_mismatch", "rpId", `expected ${PASSKEY_RP_ID}`);
+    }
+    if (d.derivationVersion !== PASSKEY_DERIVATION_V1) {
+      refuseAck(
+        "derivation_version_unsupported",
+        "derivationVersion",
+        `expected ${PASSKEY_DERIVATION_V1}`,
+      );
+    }
+    return keccak(
+      coder.encode(
+        ["bytes32", "bytes32", "bytes32", "uint32"],
+        [
+          PASSKEY_BACKUP_COMMITMENT_TAG,
+          credentialIdHash,
+          ethers.id(PASSKEY_RP_ID),
+          PASSKEY_DERIVATION_V1,
+        ],
+      ),
+    );
+  });
+}
 
 function registeredSendersHash(senders: string[]): Hex {
   if (!Array.isArray(senders) || senders.length === 0) {
@@ -198,19 +260,20 @@ export function hashRecipientAck<T extends RecipientAckType>(
     let own: [string, unknown][];
     if (primaryType === "BackupPersistenceAck") {
       const a = message as BackupPersistenceAck;
+      const recipient = assertAztecBytes32("aztecRecipient", a.aztecRecipient);
+      const commitment = nonzeroDigest("backupCommitment", a.backupCommitment);
+      const formatId = nonzeroDigest("backupFormatId", a.backupFormatId);
+      if (!BACKUP_FORMAT_IDS.includes(formatId)) {
+        refuseAck(
+          "backup_format_mismatch",
+          "backupFormatId",
+          `expected ${BACKUP_FORMAT_IDS.join(" or ")}`,
+        );
+      }
       own = [
-        ["bytes32", assertAztecBytes32("aztecRecipient", a.aztecRecipient)],
-        ["bytes32", nonzeroDigest("backupCommitment", a.backupCommitment)],
-        [
-          "bytes32",
-          nonzeroDigest("backupFormatId", a.backupFormatId) === BACKUP_FORMAT_V1_ID
-            ? BACKUP_FORMAT_V1_ID
-            : refuseAck(
-                "backup_format_mismatch",
-                "backupFormatId",
-                `expected ${BACKUP_FORMAT_V1_ID}`,
-              ),
-        ],
+        ["bytes32", recipient],
+        ["bytes32", commitment],
+        ["bytes32", formatId],
       ];
     } else if (primaryType === "SenderRegistrationAck") {
       const a = message as SenderRegistrationAck;
@@ -267,8 +330,15 @@ export function recipientAckDigest<T extends RecipientAckType>(
 
 /** What the verifier expects the acknowledgement to say, beyond the binding it names. */
 export interface RecipientAckExpected {
-  /** keccak256 of the encrypted backup bytes the verifier holds. */
-  BackupPersistenceAck: { backupCommitment: string };
+  /**
+   * The backup commitment the verifier holds: keccak256 of the encrypted backup bytes (sealed
+   * file) or `passkeyBackupCommitment` of the credential it was told about (passkey).
+   * `backupFormatId` absent or `null` (a legacy row's NULL column): the acknowledgement must
+   * name `BACKUP_FORMAT_V1_ID` (`backup_format_mismatch`), so a verifier that predates passkey
+   * mode never accepts it. Present: the acknowledgement must name exactly it
+   * (`subject_mismatch`). Set it from your own stored record, never from the acknowledgement.
+   */
+  BackupPersistenceAck: { backupCommitment: string; backupFormatId?: string | null };
   /** The exact panel sender set the verifier registered, strictly ascending. */
   SenderRegistrationAck: { registeredSenders: string[] };
   /** The receipt challenge the verifier issued and the settlement it recorded. */
@@ -389,6 +459,17 @@ function assertAckSubject<T extends RecipientAckType>(
   if (primaryType === "BackupPersistenceAck") {
     const m = message as BackupPersistenceAck;
     const e = policy.expected as RecipientAckExpected["BackupPersistenceAck"];
+    const formatId = nonzeroDigest("backupFormatId", m.backupFormatId);
+    if (e.backupFormatId === undefined || e.backupFormatId === null) {
+      expectSame("backup_format_mismatch", "backupFormatId", formatId, BACKUP_FORMAT_V1_ID);
+    } else {
+      expectSame(
+        "subject_mismatch",
+        "backupFormatId",
+        formatId,
+        nonzeroDigest("expected.backupFormatId", e.backupFormatId),
+      );
+    }
     expectSame(
       "subject_mismatch",
       "backupCommitment",

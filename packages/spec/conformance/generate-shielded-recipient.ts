@@ -27,7 +27,7 @@
 //
 // Run: npm run generate:shielded-recipient -w @xochi/spec   (SPEC_VECTORS_DIR overrides the output dir)
 
-import { createHash } from "crypto";
+import { createHash, hkdfSync } from "crypto";
 
 import { poseidon2Hash } from "@zkpassport/poseidon2";
 import { ethers } from "ethers";
@@ -522,6 +522,19 @@ function account(
 ): Account {
   const secretKey = testScalar(`xochi-spec TEST ONLY recipient secret key: ${seed}`, R);
   const signingKey = testScalar(`xochi-spec TEST ONLY recipient signing key: ${seed}`, Q);
+  return accountFrom(name, profile, network, secretKey, signingKey, salt, deployer);
+}
+
+/** The account a stock wallet builds from `secretKey`, signing with `signingKey`. */
+function accountFrom(
+  name: string,
+  profile: Profile,
+  network: Network,
+  secretKey: bigint,
+  signingKey: bigint,
+  salt: bigint,
+  deployer: bigint,
+): Account {
   const signingPublicKey = mulG(signingKey);
   const pub = Object.fromEntries(
     Object.entries(KEY_SEP).map(([k, sep]) => [k, mulG(masterScalar(secretKey, sep))]),
@@ -1421,6 +1434,320 @@ const ackRefusals = (() => {
   return out;
 })();
 
+// --- Passkey recipients (xochi-sdk#155, epic xochi#833; PASSKEY-RECIPIENT.md) ---------------
+//
+// One WebAuthn passkey's two PRF outputs (one ceremony) derive the recipient's account secret
+// and salt (RFC 5869 HKDF-SHA256, node's own hkdfSync, 64 bytes wide-reduced mod r) and the
+// AES-256-GCM key that wraps an imported CLI recipient. The account is the recipient CLI's:
+// stock SchnorrAccount 6.0.0, signing key deriveMasterMessageSigningSecretKey(secret) (the
+// MSSK_M master scalar), keys deriveKeys(secret), the derived salt, deployer zero. Its
+// BackupPersistenceAck names the passkey backup format, whose commitment names the credential,
+// never key material. The PRF outputs and credential id are TEST ONLY fixtures.
+
+const PASSKEY_LABEL = "xochi.recipient.passkey.v1";
+const PASSKEY_RP_ID = "xochi.fi";
+const PASSKEY_RP_NAME = "Xochi";
+const PASSKEY_DERIVATION_V1 = 1;
+const PASSKEY_PRF_LABELS = {
+  first: `${PASSKEY_LABEL}/prf/account`,
+  second: `${PASSKEY_LABEL}/prf/wrap`,
+};
+const PASSKEY_HKDF = {
+  accountSecret: { ikm: "first", info: `${PASSKEY_LABEL}/account-secret`, length: 64 },
+  accountSalt: { ikm: "first", info: `${PASSKEY_LABEL}/account-salt`, length: 64 },
+  wrapKey: { ikm: "second", info: `${PASSKEY_LABEL}/wrap-key`, length: 32 },
+  pxeStoreKey: { ikm: "second", info: `${PASSKEY_LABEL}/pxe-store-key`, length: 32 },
+} as const;
+const sha256Hex = (label: string) => "0x" + createHash("sha256").update(label).digest("hex");
+
+type PrfPair = { first: string; second: string };
+const passkeyOkm = (prf: PrfPair, output: keyof typeof PASSKEY_HKDF) => {
+  const { ikm, info, length } = PASSKEY_HKDF[output];
+  const okm = hkdfSync("sha256", ethers.getBytes(prf[ikm]), PASSKEY_LABEL, info, length);
+  return ethers.hexlify(new Uint8Array(okm));
+};
+
+// The decided reference values (epic xochi#833, contract A.2 / A.3, pxeStoreKey from A.2
+// revision 1.1); the derivation above must reproduce them.
+type PasskeyDecided = { secret: string; salt: string; wrapKey: string; pxeStoreKey: string };
+const PASSKEY_DECIDED: Record<string, PasskeyDecided> = {
+  "zeros-ones": {
+    secret: "0x16e61e8361407b35f5355c5a84878cf653f211f0747e0f5070623fcd4a6f7e82",
+    salt: "0x09976444a011a99a61e1c10045618355e1a0170df7322cba11d1230c8c916679",
+    wrapKey: "0x88c5497da2bcbdd9ca0fd9959ced6779ce674025253b1f7d0ab99d123ba6f97b",
+    pxeStoreKey: "0x0f902fee0b27c84738b848f2576a0f47becbba0dcff73822f30853297e9dc799",
+  },
+  "sha256-labels": {
+    secret: "0x25a853a998db29033e2736b012009c2fc43020ed8bb69367683a7c2a8e7af0b6",
+    salt: "0x17d0b81b79aa82aab662c3789626002c5b713e92cb2610a978271c73ddedede7",
+    wrapKey: "0x1154a7392a60a14f07d534d42df8d0231aff0842ef8b230615b02557ba6f2c94",
+    pxeStoreKey: "0xb09631054470ce946fe144d6e1de01afe78483325129b6bb15d5f390979321b4",
+  },
+};
+
+const passkeyDerivations = [
+  {
+    name: "zeros-ones",
+    prfSource: "first = 32 x 0x00, second = 32 x 0x01",
+    prf: { first: "0x" + "00".repeat(32), second: "0x" + "01".repeat(32) },
+  },
+  {
+    name: "sha256-labels",
+    prfSource:
+      'first = SHA-256(UTF8("TEST ONLY prf first")), second = SHA-256(UTF8("TEST ONLY prf second"))',
+    prf: { first: sha256Hex("TEST ONLY prf first"), second: sha256Hex("TEST ONLY prf second") },
+  },
+].map(({ name, prfSource, prf }) => {
+  const hkdfOutput = {
+    accountSecret: passkeyOkm(prf, "accountSecret"),
+    accountSalt: passkeyOkm(prf, "accountSalt"),
+    wrapKey: passkeyOkm(prf, "wrapKey"),
+    pxeStoreKey: passkeyOkm(prf, "pxeStoreKey"),
+  };
+  const secretKey = os2ip(ethers.getBytes(hkdfOutput.accountSecret)) % R;
+  const salt = os2ip(ethers.getBytes(hkdfOutput.accountSalt)) % R;
+  if (secretKey === 0n || salt === 0n) throw new Error(`${name}: derived zero`);
+  const decided = PASSKEY_DECIDED[name]!;
+  if (
+    hex32(secretKey) !== decided.secret ||
+    hex32(salt) !== decided.salt ||
+    hkdfOutput.wrapKey !== decided.wrapKey ||
+    hkdfOutput.pxeStoreKey !== decided.pxeStoreKey
+  ) {
+    throw new Error(`${name}: derivation does not reproduce the decided values`);
+  }
+  const a = accountFrom(
+    `passkey ${name}`,
+    profileById("aztec-6.0.0"),
+    NET_TESTNET_FIXTURE,
+    secretKey,
+    masterScalar(secretKey, KEY_SEP.MSSK_M),
+    salt,
+    0n,
+  );
+  // SchnorrAccount's constructor key is the message-signing master key, so it hashes to mspk_m.
+  if (hex32(hashPublicKey(a.signingPublicKey)) !== a.descriptor.mspkMHash) {
+    throw new Error(`${name}: signing key is not mspk_m`);
+  }
+  return {
+    account: a,
+    vector: {
+      name,
+      prfSource,
+      prf,
+      hkdfOutput,
+      secret: hex32(secretKey),
+      salt: hex32(salt),
+      wrapKey: hkdfOutput.wrapKey,
+      pxeStoreKey: hkdfOutput.pxeStoreKey,
+      account: {
+        name: a.name,
+        profile: a.profile.id,
+        testOnlySecrets: a.secrets,
+        descriptor: a.descriptor,
+        descriptorDigest: descriptorDigest(a.descriptor),
+        derivation: a.derivation,
+      },
+    },
+  };
+});
+
+// Each differs from `zeros-ones` in one input. A secret or salt reducing to zero
+// (`derived_zero`) has no known preimage, so it has no vector.
+const passkeyDerivationRefusals = (() => {
+  const prf = passkeyDerivations[0]!.vector.prf;
+  const prfOutput = (name: string, change: Partial<Record<keyof PrfPair, string | null>>) => {
+    const field = "first" in change ? "prf.first" : "prf.second";
+    return {
+      name,
+      prf: { ...prf, ...change },
+      version: PASSKEY_DERIVATION_V1,
+      error: { code: "prf_output_invalid", field },
+    };
+  };
+  const version = (v: number) => ({
+    name: `derivation version ${v}`,
+    prf,
+    version: v,
+    error: { code: "unsupported_version", field: "version" },
+  });
+  return [
+    prfOutput("first output 31 bytes", { first: "0x" + "00".repeat(31) }),
+    prfOutput("first output 33 bytes", { first: "0x" + "00".repeat(33) }),
+    prfOutput("first output absent (no PRF result)", { first: null }),
+    prfOutput("second output 31 bytes", { second: "0x" + "01".repeat(31) }),
+    prfOutput("second output empty", { second: "0x" }),
+    prfOutput("second output absent (no PRF result)", { second: null }),
+    prfOutput("second output equal to the first (results.first passed twice)", {
+      second: prf.first,
+    }),
+    version(0),
+    version(2),
+  ];
+})();
+
+const PASSKEY_BACKUP_FORMAT_NAME = "xochi.shielded.backup-format.passkey.v1";
+const PASSKEY_BACKUP_FORMAT_ID = ethers.id(PASSKEY_BACKUP_FORMAT_NAME);
+const PASSKEY_COMMITMENT_TAG_NAME = "xochi.shielded.passkey-backup-commitment.v1";
+const PASSKEY_COMMITMENT_TAG = ethers.id(PASSKEY_COMMITMENT_TAG_NAME);
+
+const passkeyCommitments = ["TEST ONLY credential id", "TEST ONLY another credential id"].map(
+  (credentialId) => {
+    const descriptor = {
+      credentialIdHash: ethers.id(credentialId),
+      rpId: PASSKEY_RP_ID,
+      derivationVersion: PASSKEY_DERIVATION_V1,
+    };
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["bytes32", "bytes32", "bytes32", "uint32"],
+      [
+        PASSKEY_COMMITMENT_TAG,
+        descriptor.credentialIdHash,
+        ethers.id(descriptor.rpId),
+        descriptor.derivationVersion,
+      ],
+    );
+    return {
+      name: credentialId,
+      credentialIdHashSource: `keccak256(UTF8("${credentialId}"))`,
+      descriptor,
+      rpIdHash: ethers.id(descriptor.rpId),
+      encoded,
+      commitment: ethers.keccak256(encoded),
+    };
+  },
+);
+if (
+  passkeyCommitments[0]!.commitment !==
+  "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887"
+) {
+  throw new Error("passkey commitment does not reproduce the decided value");
+}
+
+const passkeyCommitmentRefusals = (() => {
+  const base = passkeyCommitments[0]!.descriptor;
+  const refusal = (name: string, change: Record<string, unknown>, code: string, field: string) => ({
+    name,
+    descriptor: { ...base, ...change },
+    error: { code, field },
+  });
+  return [
+    refusal("rpId localhost", { rpId: "localhost" }, "rp_id_mismatch", "rpId"),
+    refusal("rpId another case", { rpId: "XOCHI.FI" }, "rp_id_mismatch", "rpId"),
+    refusal("rpId subdomain", { rpId: "app.xochi.fi" }, "rp_id_mismatch", "rpId"),
+    refusal(
+      "derivation version 2",
+      { derivationVersion: 2 },
+      "derivation_version_unsupported",
+      "derivationVersion",
+    ),
+    refusal(
+      "derivation version as a string",
+      { derivationVersion: "1" },
+      "derivation_version_unsupported",
+      "derivationVersion",
+    ),
+    refusal(
+      "credentialIdHash zero",
+      { credentialIdHash: "0x" + "00".repeat(32) },
+      "digest_zero",
+      "credentialIdHash",
+    ),
+    refusal(
+      "credentialIdHash short",
+      { credentialIdHash: "0x1234" },
+      "not_bytes32",
+      "credentialIdHash",
+    ),
+  ];
+})();
+
+// The sha256-labels recipient, enrolled with its own binding and acknowledging a passkey backup.
+const passkeyAccount = passkeyDerivations[1]!.account;
+const passkeyBinding = {
+  name: `${passkeyAccount.name} binding`,
+  account: passkeyAccount.name,
+  ...signAs(
+    passkeyAccount,
+    "RecipientBinding",
+    ENVIRONMENT,
+    bindingFor(passkeyAccount, "0x" + "0e".repeat(32)),
+  ),
+};
+const passkeyAck = {
+  name: `BackupPersistenceAck (${passkeyAccount.name})`,
+  ...signAs(passkeyAccount, "BackupPersistenceAck", ENVIRONMENT, {
+    bindingDigest: passkeyBinding.digest,
+    aztecRecipient: passkeyAccount.descriptor.aztecAddress,
+    backupCommitment: passkeyCommitments[0]!.commitment,
+    backupFormatId: PASSKEY_BACKUP_FORMAT_ID,
+    ...challengeFrom(passkeyBinding.message),
+    purpose: ACKS.find((a) => a.primaryType === "BackupPersistenceAck")!.purpose,
+  }),
+};
+const passkeyAckRefusals = [
+  {
+    name: "BackupPersistenceAck: an unknown backup format",
+    primaryType: "BackupPersistenceAck",
+    message: {
+      ...passkeyAck.message,
+      backupFormatId: ethers.id("xochi.shielded.backup-format.passkey.v2"),
+    },
+    error: { code: "backup_format_mismatch", field: "backupFormatId" },
+  },
+];
+
+// verifyRecipientAck verdicts: `expected` is what the verifier holds; `error: null` accepts.
+const sealedAck = ackVectors.find((v) => v.primaryType === "BackupPersistenceAck")!;
+const passkeyVerification = (() => {
+  const pk = { vector: passkeyAck.name, commitment: passkeyCommitments[0]!.commitment };
+  const sealed = { vector: sealedAck.name, commitment: String(sealedAck.message.backupCommitment) };
+  const verdict = (
+    name: string,
+    ack: { vector: string; commitment: string },
+    backupFormatId: string | undefined,
+    error: { code: string; field: string } | null,
+    commitment = ack.commitment,
+  ) => ({
+    name,
+    vector: ack.vector,
+    expected:
+      backupFormatId === undefined
+        ? { backupCommitment: commitment }
+        : { backupCommitment: commitment, backupFormatId },
+    error,
+  });
+  const formatMismatch = { code: "subject_mismatch", field: "backupFormatId" };
+  return [
+    verdict("passkey ack, passkey expectation", pk, PASSKEY_BACKUP_FORMAT_ID, null),
+    verdict(
+      "passkey ack, verifier without a format expectation (sealed file only)",
+      pk,
+      undefined,
+      {
+        code: "backup_format_mismatch",
+        field: "backupFormatId",
+      },
+    ),
+    verdict("passkey ack, sealed-file format expected", pk, BACKUP_FORMAT_V1_ID, formatMismatch),
+    verdict(
+      "passkey ack, another credential's commitment",
+      pk,
+      PASSKEY_BACKUP_FORMAT_ID,
+      { code: "subject_mismatch", field: "backupCommitment" },
+      passkeyCommitments[1]!.commitment,
+    ),
+    verdict(
+      "sealed-file ack, passkey expectation",
+      sealed,
+      PASSKEY_BACKUP_FORMAT_ID,
+      formatMismatch,
+    ),
+    verdict("sealed-file ack, verifier without a format expectation", sealed, undefined, null),
+    verdict("sealed-file ack, sealed-file format expected", sealed, BACKUP_FORMAT_V1_ID, null),
+  ];
+})();
+
 // --- Output ------------------------------------------------------------------------------
 
 const out = {
@@ -1429,7 +1756,7 @@ const out = {
   source:
     'xochi docs/planning/shielded-execution.md §7 ("Approved 2026-10-18: typed encodings", Recipient message) and the product-owner decisions of 2026-10-24/25 (xochi#633, xochi#635, xochi-sdk#42)',
   testOnlyKeys:
-    "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced. Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
+    "Every secret here (testOnlySecrets, the signing keys behind every signature) is a synthetic TEST ONLY scalar: keccak256 of a label containing 'TEST ONLY', reduced, or, in the passkey section, derived by the passkey derivation from TEST ONLY PRF fixtures (32 x 0x00 / 32 x 0x01, or SHA-256 of a 'TEST ONLY' label). Never use them for anything else. Networks, corridors, nonces and digests are fixtures.",
   constants: {
     fieldModulus: hex32(R),
     grumpkinOrder: hex32(Q),
@@ -1522,7 +1849,7 @@ const out = {
     })),
     rules: [
       "bindingDigest = the RecipientBinding EIP-712 digest both parties signed",
-      `BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8("${BACKUP_FORMAT_V1_NAME}")) = ${BACKUP_FORMAT_V1_ID}; neither value contains plaintext`,
+      `BackupPersistenceAck.backupCommitment = keccak256(randomized encrypted backup bytes); backupFormatId = keccak256(UTF8("${BACKUP_FORMAT_V1_NAME}")) = ${BACKUP_FORMAT_V1_ID}; neither value contains plaintext. This is the sealed-file format; passkey.backup.rule adds the passkey format and supersedes this rule for it`,
       "BackupPersistenceAck, SenderRegistrationAck and TokenRegistrationAck are enrollment acknowledgements: nonce / challengeExpiry equal the named RecipientBinding challenge members exactly; no second enrollment challenge is issued",
       "PaymentReceiptAck nonce / challengeExpiry are a separate server-issued single-use receipt challenge and signing window",
       "SenderRegistrationAck.registeredSenders: nonempty, strictly ascending (bytewise), each a nonzero in-field Aztec address",
@@ -1553,6 +1880,53 @@ const out = {
     },
     vectors: oxideVectors,
     refusals: oxideRefusals,
+  },
+  passkey: {
+    status:
+      "PROPOSED: decided in epic xochi#833 (xochi-sdk#155); product-owner sign-off on departing from xochi#759's sealed backup is pending. Additive: every value outside this section is unchanged.",
+    spec: "packages/spec/PASSKEY-RECIPIENT.md",
+    rpId: PASSKEY_RP_ID,
+    rpName: PASSKEY_RP_NAME,
+    derivationVersion: PASSKEY_DERIVATION_V1,
+    prfInputs: {
+      first: { label: PASSKEY_PRF_LABELS.first, value: sha256Hex(PASSKEY_PRF_LABELS.first) },
+      second: { label: PASSKEY_PRF_LABELS.second, value: sha256Hex(PASSKEY_PRF_LABELS.second) },
+    },
+    hkdf: {
+      hash: "SHA-256",
+      salt: PASSKEY_LABEL,
+      outputs: Object.entries(PASSKEY_HKDF).map(([name, o]) => ({ name, ...o })),
+    },
+    rule: [
+      "prfInputs.first.value / prfInputs.second.value = SHA-256(UTF8(label)); the page passes those 32 raw bytes (never their hex text) as extensions.prf.eval.{first, second} in one ceremony (the browser hashes each again with the 'WebAuthn PRF' context before the authenticator sees it)",
+      "prf.first / prf.second = getClientExtensionResults().prf.results.{first, second}: each exactly 32 bytes, else prf_output_invalid; prf.second equal to prf.first: prf_output_invalid on prf.second",
+      'every HKDF below is HKDF-SHA256 (RFC 5869) with salt = hkdf.salt = UTF8("xochi.recipient.passkey.v1") and info = UTF8 of the hkdf.outputs entry\'s info string',
+      'secret = OS2IP(HKDF(prf.first, info = UTF8("xochi.recipient.passkey.v1/account-secret"), L = 64)) mod r; salt = OS2IP(HKDF(prf.first, info = UTF8("xochi.recipient.passkey.v1/account-salt"), L = 64)) mod r; either zero: derived_zero',
+      'wrapKey = HKDF(prf.second, info = UTF8("xochi.recipient.passkey.v1/wrap-key"), L = 32): the AES-256-GCM key of the PKW1 wrapped import',
+      'pxeStoreKey = HKDF(prf.second, info = UTF8("xochi.recipient.passkey.v1/pxe-store-key"), L = 32): the key of the browser\'s persisted encrypted PXE store; derived on every unlock, never persisted',
+      "version: only derivationVersion is accepted, else unsupported_version",
+      "account: stock SchnorrAccount (profile aztec-6.0.0), signing key = deriveMasterMessageSigningSecretKey(secret) (the MSSK_M master scalar), keys = deriveKeys(secret), salt = the derived salt, deployer = 0; one passkey is one recipient",
+    ],
+    derivations: passkeyDerivations.map((d) => d.vector),
+    derivationRefusals: passkeyDerivationRefusals,
+    backup: {
+      formatName: PASSKEY_BACKUP_FORMAT_NAME,
+      formatId: PASSKEY_BACKUP_FORMAT_ID,
+      commitmentTag: { name: PASSKEY_COMMITMENT_TAG_NAME, value: PASSKEY_COMMITMENT_TAG },
+      rule: [
+        `BackupPersistenceAck (type, purpose and struct unchanged) accepts two backupFormatId values: ${BACKUP_FORMAT_V1_ID} (sealed file) and ${PASSKEY_BACKUP_FORMAT_ID} (passkey); the format id is the mode. This supersedes acknowledgements.rules' sealed-file-only backupFormatId rule for the passkey format`,
+        "passkey backupCommitment = keccak256(abi.encode(bytes32 commitmentTag, bytes32 credentialIdHash, bytes32 keccak256(UTF8(rpId)), uint32 derivationVersion)); credentialIdHash = keccak256(raw credential id), nonzero; rpId exactly 'xochi.fi' (rp_id_mismatch); derivationVersion exactly 1 (derivation_version_unsupported)",
+        "only a recipient whose keys derive from the passkey (profile mode 'passkey') may use the passkey format; an imported (PKW1) recipient keeps the sealed-file format and its keccak256(sealed backup bytes) commitment, since PKW1 is a device-local cache, not a backup",
+        "a verifier without a format expectation (absent or null) accepts only the sealed-file format (backup_format_mismatch); with one, the acknowledgement's format must equal it (subject_mismatch)",
+        "the commitment names the credential, never key material; nothing proves the passkey exists or is synced: the acknowledgement is the recipient's statement, as for the sealed file",
+      ],
+      commitments: passkeyCommitments,
+      commitmentRefusals: passkeyCommitmentRefusals,
+      binding: passkeyBinding,
+      acks: [passkeyAck],
+      ackRefusals: passkeyAckRefusals,
+      verification: passkeyVerification,
+    },
   },
 };
 
@@ -1611,6 +1985,11 @@ const REFUSAL_CODE = {
     "evm_address_zero",
     "digest_zero",
     "backup_format_mismatch",
+    "subject_mismatch",
+    "rp_id_mismatch",
+    "derivation_version_unsupported",
+    "prf_output_invalid",
+    "unsupported_version",
   ],
 };
 const ERROR = obj({ code: REFUSAL_CODE, field: STR });
@@ -1778,6 +2157,98 @@ const schema = {
       ),
       refusals: arr(obj({ name: STR, immutables: LOOSE, error: ERROR })),
     }),
+    passkey: obj({
+      status: STR,
+      spec: STR,
+      rpId: { const: PASSKEY_RP_ID },
+      rpName: { const: PASSKEY_RP_NAME },
+      derivationVersion: { const: PASSKEY_DERIVATION_V1 },
+      prfInputs: obj({
+        first: obj({ label: STR, value: HEX32 }),
+        second: obj({ label: STR, value: HEX32 }),
+      }),
+      hkdf: obj({
+        hash: { const: "SHA-256" },
+        salt: STR,
+        outputs: arr(
+          obj({
+            name: STR,
+            ikm: { enum: ["first", "second"] },
+            info: STR,
+            length: { enum: [32, 64] },
+          }),
+        ),
+      }),
+      rule: arr(STR),
+      derivations: arr(
+        obj({
+          name: STR,
+          prfSource: STR,
+          prf: obj({ first: HEX32, second: HEX32 }),
+          hkdfOutput: obj({
+            accountSecret: { type: "string", pattern: "^0x[0-9a-f]{128}$" },
+            accountSalt: { type: "string", pattern: "^0x[0-9a-f]{128}$" },
+            wrapKey: HEX32,
+            pxeStoreKey: HEX32,
+          }),
+          secret: HEX32,
+          salt: HEX32,
+          wrapKey: HEX32,
+          pxeStoreKey: HEX32,
+          account: obj({
+            name: STR,
+            profile: STR,
+            testOnlySecrets: obj({ secretKey: HEX32, signingPrivateKey: HEX32 }),
+            descriptor: DESCRIPTOR,
+            descriptorDigest: HEX32,
+            derivation: LOOSE,
+          }),
+        }),
+      ),
+      derivationRefusals: arr(
+        obj({
+          name: STR,
+          prf: obj({
+            first: { anyOf: [HEX, { type: "null" }] },
+            second: { anyOf: [HEX, { type: "null" }] },
+          }),
+          version: { type: "integer" },
+          error: ERROR,
+        }),
+      ),
+      backup: obj({
+        formatName: { const: PASSKEY_BACKUP_FORMAT_NAME },
+        formatId: HEX32,
+        commitmentTag: obj({ name: { const: PASSKEY_COMMITMENT_TAG_NAME }, value: HEX32 }),
+        rule: arr(STR),
+        commitments: arr(
+          obj({
+            name: STR,
+            credentialIdHashSource: STR,
+            descriptor: obj({
+              credentialIdHash: HEX32,
+              rpId: { const: PASSKEY_RP_ID },
+              derivationVersion: { const: PASSKEY_DERIVATION_V1 },
+            }),
+            rpIdHash: HEX32,
+            encoded: HEX,
+            commitment: HEX32,
+          }),
+        ),
+        commitmentRefusals: arr(obj({ name: STR, descriptor: LOOSE, error: ERROR })),
+        binding: obj({ name: STR, account: STR, ...SIGNED }),
+        acks: arr(obj({ name: STR, ...SIGNED })),
+        ackRefusals: arr(obj({ name: STR, primaryType: STR, message: LOOSE, error: ERROR })),
+        verification: arr(
+          obj({
+            name: STR,
+            vector: STR,
+            expected: obj({ backupCommitment: HEX32, backupFormatId: HEX32 }, ["backupFormatId"]),
+            error: { anyOf: [ERROR, { type: "null" }] },
+          }),
+        ),
+      }),
+    }),
   }),
 };
 
@@ -1787,6 +2258,7 @@ writeVectors("shielded-recipient.json", out, {
     `wrote shielded-recipient.json: ${descriptorVectors.length} descriptors, ` +
     `${descriptorRefusals.length} descriptor refusals, ${reductionVectors.length} reductions, ` +
     `${bindingMessages.length} binding messages, ${ackVectors.length} approved acks, ` +
-    `${crossTypeReplays.length} cross-type and ${crossBindingReplays.length} cross-binding replays`,
+    `${crossTypeReplays.length} cross-type and ${crossBindingReplays.length} cross-binding replays, ` +
+    `${passkeyDerivations.length} passkey derivations`,
 });
 for (const v of descriptorVectors) console.log(`  ${v.name.padEnd(30)} ${v.derivation.address}`);

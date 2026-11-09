@@ -4,8 +4,40 @@ All notable changes to `@xochi/spec` are documented here. Format follows [Keep a
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-08
+
+### Changed
+
+- Normatively define authenticated passkey address recovery on a new device:
+  `POST /api/shielded/recipients/passkey-address` computes the commitment server-side, scopes the
+  live-binding lookup to the wallet authenticated by the current SIWE JWT, returns one
+  `aztec_recipient`, uses private/no-store responses, answers missing, other-wallet, revoked and
+  expired records with 404, and fails inconsistent active recipients with 409. The claim page
+  requires exact lowercase equality with its local derivation before writing a profile.
+- Define caller-provided UUIDv4 journal ids for `RecipientCore.send` and
+  `CoreExitRequest.journalId?`, and make `restoreJournals` the sole owner of idempotent complete
+  versus interrupted restore decisions. Vectors and derivation constants are unchanged.
+
 ### Added
 
+- **Passkey recipients, PROPOSED** (xochi-sdk#155, epic xochi#833; shipped in `@xochi/signer` 0.8.0). A Stealth on Aztec recipient whose Aztec keys derive from a WebAuthn passkey (PRF extension), so the claim page needs no passphrase or backup file. It awaits product-owner sign-off, since it departs from xochi#759's sealed backup. Additive: every earlier vector, digest, signature and verdict is byte-identical. Two prose strings outside the new section change: `testOnlyKeys` now covers the passkey fixtures, and the sealed-file `acknowledgements.rules` entry points at `passkey.backup.rule`.
+  - New `PASSKEY-RECIPIENT.md` (shipped and exported). It covers:
+    - the derivation (pass the 32 raw eval-input bytes);
+    - the WebAuthn parameters (`userVerification: "required"` with the UV flag checked, and a confirming get that must reproduce `first` and `second` byte for byte before anything is derived, else `prf_unstable`);
+    - the refusals and the no-PRF path;
+    - the `PKW1` wrapped import, a device-local cache that is not a backup;
+    - the passkey backup mode, only for passkey-derived recipients (imported ones keep the sealed-file format; the recipient core enforces it through `RecipientKeySource.kind`);
+    - the threat model: a lost, unsynced passkey means unrecoverable funds; a non-synced authenticator is a single copy; a non-reproducible PRF; the `xochi.fi` trust boundary (no Related Origin Requests, `webcredentials` or `get_login_creds` association; the provider account; XSS on any host); a strict CSP, allowing `'wasm-unsafe-eval'` and forbidding `'unsafe-inline'`/`'unsafe-eval'`, on every document of every `xochi.fi` host as a MUST rollout prerequisite that today's app policy fails; Xochi stores only the commitment;
+    - a sourced PRF support matrix.
+  - `conformance/shielded-recipient.json`, new `passkey` section:
+    - the RP ID, version and PRF eval inputs, and the HKDF parameters;
+    - the two decided derivation vectors (`zeros-ones`, `sha256-labels`), each with its raw HKDF outputs, secret, salt, wrap key, PXE store key and full stock `SchnorrAccount` 6.0.0 account (descriptor, digest, address derivation);
+    - derivation refusals, including a `second` output equal to the `first`;
+    - the backup format and commitment tag, two credential commitments (`keccak256("TEST ONLY credential id")` -> `0x1eb1bdb8...4887`) and commitment refusals;
+    - the passkey recipient's own signed binding and a signed passkey-mode `BackupPersistenceAck`, with an unknown-format refusal;
+    - `verification`, the verifier verdict for each combination of sealed/passkey ack and expectation.
+  - The schema's refusal-code enum gains `subject_mismatch`, `rp_id_mismatch`, `derivation_version_unsupported`, `prf_output_invalid` and `unsupported_version`.
+  - `aztec-crosscheck` holds each passkey account to the `@aztec-labs` 6.0.0 SDK: `Fr.fromBufferReduce` of the HKDF outputs, `deriveKeys`, `deriveMasterMessageSigningSecretKey`, the instance address. The two new signatures go through bb.js under both SDK lines.
 - **18-decimal shielded vectors** (xochi#736: the first production shielded asset is Oxide DAI, 18 decimals; every shielded vector so far was 6 decimals).
   - `conformance/shielded-terms.json`: manifest `eighteen-decimal-corridor` (L1 DAI to OXDAI, 18 decimals both sides, 1:1 units; the network and other members stay fixtures, so it is not the production manifest), and previews plus terms `eighteen-decimal-floor-binds` (1 DAI, the 5e15 floor binds) and `eighteen-decimal-note-cap` (5,166 DAI, every amount above 2^64, the layers bind).
   - `conformance/shielded.json`: accepted amounts `eighteen-decimal-unit` (1e18) and `oxdai-note-cap` (5166e18).

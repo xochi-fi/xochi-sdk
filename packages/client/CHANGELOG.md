@@ -4,6 +4,12 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-11-08
+
+### Changed
+
+- `@xochi/signer` dependency range is `^0.8.0`, so the client resolves the passkey-recipient signer release without installing a second signer line.
+
 ## [0.1.11] - 2026-11-08
 
 ### Added
