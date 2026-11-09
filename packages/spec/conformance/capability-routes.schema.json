@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.xochi.fi/conformance/capability-routes.schema.json",
+  "title": "Xochi explicit capability routes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "routes"],
+  "properties": {
+    "$schema": { "const": "./capability-routes.schema.json" },
+    "version": { "const": 1 },
+    "routes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/route" }
+    }
+  },
+  "$defs": {
+    "token": { "type": "string", "minLength": 1 },
+    "chainId": { "type": "integer", "minimum": 1 },
+    "origin": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["chain_id", "token"],
+      "properties": {
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "token": { "$ref": "#/$defs/token" }
+      }
+    },
+    "chainDestination": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "chain_id", "token"],
+      "properties": {
+        "kind": { "const": "chain" },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "token": { "$ref": "#/$defs/token" }
+      }
+    },
+    "zkMoneyDestination": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "token"],
+      "properties": {
+        "kind": { "const": "zk_money" },
+        "token": { "$ref": "#/$defs/token" }
+      }
+    },
+    "destination": {
+      "oneOf": [
+        { "$ref": "#/$defs/chainDestination" },
+        { "$ref": "#/$defs/zkMoneyDestination" }
+      ]
+    },
+    "privacyModes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["public", "stealth", "shielded"] }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["origin", "destination", "privacy_modes"],
+      "properties": {
+        "origin": { "$ref": "#/$defs/origin" },
+        "destination": { "$ref": "#/$defs/destination" },
+        "privacy_modes": { "$ref": "#/$defs/privacyModes" }
+      }
+    }
+  }
+}

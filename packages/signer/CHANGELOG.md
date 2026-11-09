@@ -19,6 +19,7 @@ All notable changes to `@xochi/signer` are documented here. Format follows [Keep
 - `@noble/hashes` `1.8.0` is now a direct dependency (it was already installed through `@noble/curves`).
 - `parseUint(value, field, { allowLeadingZeros? })` and `UintLike`: the strict uint parser XSP uses (canonical base-10 string, non-negative safe integer or bigint). Escrow and shielded inputs follow the same spelling rule; escrow also admits leading zeros.
 - The five shielded `*EncodingError` classes expose the refusal `detail` as a property. Names, codes, fields and messages are unchanged.
+- **Typed capability routes**: `parseCapabilities` reads additive `routes[]` into the discriminated `CapabilityRoute` model, dropping malformed entries atomically while preserving served order and ignoring unknown additive keys. `advertisedRoute` and `routeSupportsPrivacyMode` query exact typed endpoints and fail closed on absent or duplicate matches. An absent field is `null`; a present malformed value or empty list is authoritative and fails closed to no routes. `conversion_pairs.same_chain` is unchanged.
 
 ### Changed
 

@@ -5,11 +5,16 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  advertisedConversionPairs,
   SIMPLE_ACCOUNT_FACTORY,
   STEALTH_ACCOUNT_SALT,
   TRUSTED_STEALTH_FACTORIES,
+  effectiveStealthChains,
   isTrustedStealthFactory,
-} from "./stealth.js";
+  parseCapabilities,
+  stealthFactoryFor,
+  trustedStealthChains,
+} from "../index.js";
 
 const ATTACKER_FACTORY = "0xAbC0000000000000000000000000000000000123";
 
@@ -70,6 +75,85 @@ describe("isTrustedStealthFactory", () => {
     for (const list of Object.values(TRUSTED_STEALTH_FACTORIES)) {
       for (const f of list) expect(f).toMatch(/^0x[0-9a-fA-F]{40}$/);
     }
+  });
+});
+describe("effectiveStealthChains", () => {
+  const shippedFactory = (chainId: number): string | null =>
+    chainId === MAINNET || chainId === BASE ? SIMPLE_ACCOUNT_FACTORY : null;
+
+  it("fails closed when the solver does not advertise a list", () => {
+    expect(effectiveStealthChains(undefined, shippedFactory)).toEqual([]);
+    expect(effectiveStealthChains(null, shippedFactory)).toEqual([]);
+  });
+
+  it("composes the parsed advertised factory through the client root", () => {
+    const capabilities = parseCapabilities({
+      stealth_chains: [MAINNET],
+      chains: [
+        {
+          chain_id: MAINNET,
+          chain_name: "Ethereum",
+          vm_type: "evm",
+          stealth_factory_address: SIMPLE_ACCOUNT_FACTORY,
+        },
+      ],
+    });
+    if (!capabilities) throw new Error("capabilities fixture did not parse");
+
+    expect(
+      effectiveStealthChains(capabilities.stealthChains, (chainId) =>
+        stealthFactoryFor(capabilities, chainId),
+      ),
+    ).toEqual([MAINNET]);
+  });
+
+  it("exposes normalized legacy conversion pairs through the client root", () => {
+    const capabilities = parseCapabilities({
+      conversion_pairs: [{ from: "USDC", to: "DAI", same_chain: true }],
+    });
+    if (!capabilities) throw new Error("capabilities fixture did not parse");
+
+    expect(advertisedConversionPairs(capabilities)).toEqual([
+      { from: "USDC", to: "DAI", sameChain: true },
+    ]);
+  });
+
+  it("preserves solver order while removing duplicates and untrusted chains", () => {
+    expect(effectiveStealthChains([BASE, UNTRUSTED_CHAIN, MAINNET, BASE], shippedFactory)).toEqual([
+      BASE,
+      MAINNET,
+    ]);
+  });
+
+  it("refuses missing, attacker-controlled, and wrong-chain factories", () => {
+    expect(effectiveStealthChains([MAINNET], () => null)).toEqual([]);
+    expect(effectiveStealthChains([MAINNET], () => ATTACKER_FACTORY)).toEqual([]);
+    expect(
+      effectiveStealthChains([MAINNET], () => SIMPLE_ACCOUNT_FACTORY, {
+        [BASE]: [SIMPLE_ACCOUNT_FACTORY],
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not trust a chain with an empty factory allowlist", () => {
+    expect(
+      effectiveStealthChains([BASE, MAINNET], shippedFactory, {
+        [BASE]: [],
+        [MAINNET]: [SIMPLE_ACCOUNT_FACTORY],
+      }),
+    ).toEqual([MAINNET]);
+  });
+});
+
+describe("trustedStealthChains", () => {
+  it("keeps scan and claim coverage independent of current solver routes", () => {
+    expect(trustedStealthChains()).toEqual([MAINNET, BASE]);
+    expect(
+      trustedStealthChains({
+        [BASE]: [],
+        [MAINNET]: [SIMPLE_ACCOUNT_FACTORY],
+      }),
+    ).toEqual([MAINNET]);
   });
 });
 
