@@ -1705,7 +1705,7 @@ const passkeyVerification = (() => {
   const verdict = (
     name: string,
     ack: { vector: string; commitment: string },
-    backupFormatId: string | undefined,
+    backupFormatId: string | null | undefined,
     error: { code: string; field: string } | null,
     commitment = ack.commitment,
   ) => ({
@@ -1729,6 +1729,10 @@ const passkeyVerification = (() => {
         field: "backupFormatId",
       },
     ),
+    verdict("passkey ack, explicit null format expectation (sealed file only)", pk, null, {
+      code: "backup_format_mismatch",
+      field: "backupFormatId",
+    }),
     verdict("passkey ack, sealed-file format expected", pk, BACKUP_FORMAT_V1_ID, formatMismatch),
     verdict(
       "passkey ack, another credential's commitment",
@@ -1883,7 +1887,7 @@ const out = {
   },
   passkey: {
     status:
-      "PROPOSED: decided in epic xochi#833 (xochi-sdk#155); product-owner sign-off on departing from xochi#759's sealed backup is pending. Additive: every value outside this section is unchanged.",
+      "APPROVED: product-owner sign-off on departing from xochi#759's sealed backup received 2026-11-09; decided in epic xochi#833 (xochi-sdk#155). Rollout remains gated on PASSKEY-RECIPIENT.md's CSP and xochi.fi host prerequisites. Additive: every value outside this section is unchanged.",
     spec: "packages/spec/PASSKEY-RECIPIENT.md",
     rpId: PASSKEY_RP_ID,
     rpName: PASSKEY_RP_NAME,
@@ -1950,6 +1954,45 @@ const DESCRIPTOR = obj({
 });
 const DOMAIN = obj({ name: STR, version: STR, chainId: UINT, salt: HEX32 });
 const WRAPPER = obj({ u: HEX, u48: HEX, messageField: HEX32, provisionalPlainModR: HEX32 });
+const DERIVATION = obj({
+  constructorArgsHash: HEX32,
+  initializationHash: HEX32,
+  immutablesHash: HEX32,
+  saltedInitializationHash: HEX32,
+  partialAddress: HEX32,
+  ivpkMHash: HEX32,
+  publicKeysHash: HEX32,
+  preaddress: HEX32,
+  addressPoint: POINT,
+  address: HEX32,
+});
+const PASSKEY_COMMITMENT_REFUSAL_DESCRIPTOR = obj({
+  credentialIdHash: HEX,
+  rpId: STR,
+  derivationVersion: { anyOf: [{ type: "integer" }, UINT] },
+});
+const BACKUP_PERSISTENCE_ACK_MESSAGE = obj({
+  bindingDigest: HEX32,
+  aztecRecipient: HEX32,
+  backupCommitment: HEX32,
+  backupFormatId: HEX32,
+  nonce: HEX32,
+  challengeExpiry: UINT,
+  purpose: { const: ACKS.find((a) => a.primaryType === "BackupPersistenceAck")!.purpose },
+});
+const RECIPIENT_BINDING_MESSAGE = obj({
+  sourceWallet: ADDR,
+  sourceChainId: UINT,
+  aztecRecipient: HEX32,
+  aztecToken: HEX32,
+  descriptorDigest: HEX32,
+  corridorId: HEX32,
+  corridorRevision: UINT,
+  manifestDigest: HEX32,
+  nonce: HEX32,
+  challengeExpiry: UINT,
+  purpose: { const: BINDING_PURPOSE },
+});
 const SIGNED = {
   primaryType: STR,
   environment: STR,
@@ -1961,6 +2004,11 @@ const SIGNED = {
   wrapper: WRAPPER,
   publicKey: POINT,
   signature: SIG_SCHNORR,
+};
+const PASSKEY_ACK_SIGNED = {
+  ...SIGNED,
+  primaryType: { const: "BackupPersistenceAck" },
+  message: BACKUP_PERSISTENCE_ACK_MESSAGE,
 };
 const REFUSAL_CODE = {
   enum: [
@@ -2057,18 +2105,7 @@ const schema = {
           testOnlySecrets: obj({ secretKey: HEX32, signingPrivateKey: HEX32 }),
           descriptor: DESCRIPTOR,
           descriptorDigest: HEX32,
-          derivation: obj({
-            constructorArgsHash: HEX32,
-            initializationHash: HEX32,
-            immutablesHash: HEX32,
-            saltedInitializationHash: HEX32,
-            partialAddress: HEX32,
-            ivpkMHash: HEX32,
-            publicKeysHash: HEX32,
-            preaddress: HEX32,
-            addressPoint: POINT,
-            address: HEX32,
-          }),
+          derivation: DERIVATION,
         }),
       ),
       crossProfile: obj({
@@ -2201,7 +2238,7 @@ const schema = {
             testOnlySecrets: obj({ secretKey: HEX32, signingPrivateKey: HEX32 }),
             descriptor: DESCRIPTOR,
             descriptorDigest: HEX32,
-            derivation: LOOSE,
+            derivation: DERIVATION,
           }),
         }),
       ),
@@ -2235,15 +2272,40 @@ const schema = {
             commitment: HEX32,
           }),
         ),
-        commitmentRefusals: arr(obj({ name: STR, descriptor: LOOSE, error: ERROR })),
-        binding: obj({ name: STR, account: STR, ...SIGNED }),
-        acks: arr(obj({ name: STR, ...SIGNED })),
-        ackRefusals: arr(obj({ name: STR, primaryType: STR, message: LOOSE, error: ERROR })),
+        commitmentRefusals: arr(
+          obj({
+            name: STR,
+            descriptor: PASSKEY_COMMITMENT_REFUSAL_DESCRIPTOR,
+            error: ERROR,
+          }),
+        ),
+        binding: obj({
+          name: STR,
+          account: STR,
+          ...SIGNED,
+          primaryType: { const: "RecipientBinding" },
+          message: RECIPIENT_BINDING_MESSAGE,
+        }),
+        acks: arr(obj({ name: STR, ...PASSKEY_ACK_SIGNED })),
+        ackRefusals: arr(
+          obj({
+            name: STR,
+            primaryType: { const: "BackupPersistenceAck" },
+            message: BACKUP_PERSISTENCE_ACK_MESSAGE,
+            error: ERROR,
+          }),
+        ),
         verification: arr(
           obj({
             name: STR,
             vector: STR,
-            expected: obj({ backupCommitment: HEX32, backupFormatId: HEX32 }, ["backupFormatId"]),
+            expected: obj(
+              {
+                backupCommitment: HEX32,
+                backupFormatId: { anyOf: [HEX32, { type: "null" }] },
+              },
+              ["backupFormatId"],
+            ),
             error: { anyOf: [ERROR, { type: "null" }] },
           }),
         ),

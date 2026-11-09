@@ -29,6 +29,7 @@ import {
   derivePasskeyRecipientKeys,
   passkeyPrfInputBytes,
   hashRecipientAck,
+  passkeyBackupAckExpected,
   passkeyBackupCommitment,
   verifyRecipientAck,
   PASSKEY_RP_NAME,
@@ -306,6 +307,19 @@ describe("passkey backup acknowledgement mode", () => {
     );
   });
 
+  it("builds both verifier expectations from the trusted passkey descriptor", () => {
+    const descriptorWithUntrustedAckFields = {
+      ...DESCRIPTOR,
+      backupCommitment: "0x" + "ff".repeat(32),
+      backupFormatId: BACKUP_FORMAT_V1_ID,
+    };
+
+    expect(passkeyBackupAckExpected(descriptorWithUntrustedAckFields)).toEqual({
+      backupCommitment: passkeyBackupCommitment(DESCRIPTOR),
+      backupFormatId: BACKUP_FORMAT_PASSKEY_V1_ID,
+    });
+  });
+
   it("refuses another relying party, another version and a zero or malformed hash", () => {
     const cases: [Partial<Record<keyof PasskeyBackupDescriptor, unknown>>, string, string][] = [
       [{ rpId: "localhost" }, "rp_id_mismatch", "rpId"],
@@ -456,7 +470,8 @@ function backupPolicy(
     network: ack.network,
     expected,
     now: Number(binding.challengeExpiry) - 1,
-    consumeReplayKey: async () => true,
+    lookupAcceptance: async () => null,
+    commitAcceptance: async () => ({ status: "committed", result: undefined }),
   };
 }
 

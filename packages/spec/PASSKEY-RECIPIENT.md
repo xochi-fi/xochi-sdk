@@ -1,8 +1,9 @@
 # Passkey recipients
 
-- **Status:** PROPOSED. Decided in epic xochi-fi/xochi#833 (xochi-fi/xochi-sdk#155) on 2026-11-08.
-  It replaces the sealed backup file of xochi-fi/xochi#759 for passkey recipients, and needs
-  product-owner sign-off before any deployment accepts it.
+- **Status:** APPROVED. Decided in epic xochi-fi/xochi#833 (xochi-fi/xochi-sdk#155) on
+  2026-11-08 and approved by the product owner on 2026-11-09. Approval fixes this protocol; it does
+  not authorize deployment. Passkey claims remain default-off and MUST NOT be enabled until the
+  CSP and host rollout prerequisite in §6 is satisfied.
 - **Version:** derivation version 1, backup format `xochi.shielded.backup-format.passkey.v1`.
 - **Vectors:** `conformance/shielded-recipient.json`, section `passkey`. They are held to the real
   `@aztec-labs` 6.0.0 SDK by `aztec-crosscheck/`.
@@ -291,6 +292,20 @@ derivation_version: 1 }` on enrollment.
 
 It stores the format id. It stores nothing about the credential beyond the commitment.
 
+`verifyRecipientAck` derives
+`recipientAckReplayKey(primaryType, bindingDigest, nonce)` only after every cryptographic, domain,
+recipient and subject check. At the application boundary, replay consumption and the acceptance it
+authorizes MUST NOT be separate commits. The consumer MUST either commit the replay-key consumption
+and the complete application state/result in one atomic transaction, or atomically persist with the
+consumption a durable idempotent result keyed by that replay key and the exact verified
+acknowledgement digest, then return that same result for an exact retry. A cryptographically valid
+exact retry MUST return its stored result even after challenge expiry. After expiry the verifier
+MUST perform only a read of the acceptance store: no stored result, or a different stored digest,
+fails closed as `challenge_expired`, and no application acceptance may commit. A consumer MUST NOT
+commit a consumed replay key alone. If application acceptance cannot commit, replay consumption
+MUST NOT commit; an unexpired retry whose consumed key does not match the stored digest MUST fail
+closed as `nonce_replayed`.
+
 ### Recipient-core correlation and restore
 
 `RecipientCore.send(to, amount, fee, journalId?)` and `CoreExitRequest.journalId?` MAY carry a
@@ -358,14 +373,19 @@ The vectors (`passkey.backup`) contain:
 
   with the strict request
   `{ "backup_passkey": { "credential_id_hash": string, "rp_id": "xochi.fi",
-"derivation_version": 1 } }`. The Worker computes the backup commitment server-side. It returns
-  `{ "aztec_recipient": string }` when at least one live binding (not revoked; admitted, or pending
-  within its unused expiry) under the authenticated source wallet names that recipient and every
-  matching live binding names the same recipient. No matching commitment, another source wallet,
-  revoked bindings and expired pending bindings are indistinguishable 404 responses. Distinct
-  active recipients for the same commitment and source wallet fail closed with 409. The response
-  is private and `Cache-Control: no-store`; neither the commitment nor recipient address may appear
-  in logs.
+"derivation_version": 1 } }`. The Worker computes the backup commitment server-side. An eligible
+  recovery record is either a durable admitted passkey binding, including one later revoked, or a
+  pending binding still within its unused expiry. An expired unused pending record is ineligible.
+  The Worker returns `{ "aztec_recipient": string }` only when at least one eligible record exists
+  under the authenticated source wallet and every matching durable admitted record (active or
+  revoked) plus every eligible pending record names that same recipient. Inconsistent recipients
+  fail closed with 409. No matching eligible record, a record under another source wallet, or only
+  expired unused pending records produce indistinguishable 404 responses. The response is private
+  and `Cache-Control: no-store`; neither the commitment nor recipient address may appear in logs.
+
+  A revoked admitted binding participates in this lookup solely so its owner can recover the same
+  derived recipient and existing funds. Lookup success MUST NOT reactivate it or authorize any new
+  enrollment or payment; a revoked binding remains ineligible for both.
 
   The page MUST require exact lowercase equality between `aztec_recipient` and the locally derived
   address before writing the profile. A 404, 409, malformed response, address mismatch or request
@@ -374,12 +394,24 @@ The vectors (`passkey.backup`) contain:
 
   The Worker also enforces enrollment consistency (xochi#841). It refuses a passkey-mode enrollment
   with HTTP 409 and `error_category: "passkey_recipient_mismatch"` when:
-  - the enrollment's backup commitment already backs a live binding (not revoked; admitted, or
-    pending within its unused expiry); and
+  - the enrollment's backup commitment already backs a durable admitted binding (active or revoked),
+    or a pending binding still within its unused expiry; and
   - that binding is for a **different** Aztec recipient under the **same** source wallet.
 
-  An enrollment for the same recipient is accepted: a retry, a re-enrollment, or the same recipient
-  under another source wallet.
+  An enrollment for the same recipient is accepted as a retry or a new binding. An existing revoked
+  record remains revoked and does not itself authorize enrollment or reactivate anything. The same
+  recipient under another source wallet is also accepted.
+  The consistency decision and binding admission MUST be atomic. The Worker MUST create or lock a
+  durable guard keyed uniquely by `(source_wallet, backup_commitment)` in the same transaction that
+  writes the pending or admitted binding. While any admitted binding exists, including a revoked
+  one, the guard's recipient is permanent: a concurrent or later write for the same key either
+  compares equal and proceeds idempotently, or compares unequal and returns the same 409. A guard
+  backed only by expired unused pending bindings is provisional. A later enrollment MAY reassign
+  that provisional guard, but only while holding the guard lock and after atomically rechecking
+  that every backing pending binding is expired and unused and that no admitted binding exists.
+  Background expiry cleanup MUST NOT independently delete or reassign a guard. Revocation MUST NOT
+  delete the guard. A read followed by an unguarded insert or reassignment is non-conforming because
+  concurrent first enrollments or expiry cleanup could admit two recipients.
 
   Both rules are scoped per source wallet because the commitment is a statement, not proof that the
   enroller holds the passkey (see "The acknowledgement is a statement" below). A global rule would

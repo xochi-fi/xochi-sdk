@@ -4046,7 +4046,7 @@
     ]
   },
   "passkey": {
-    "status": "PROPOSED: decided in epic xochi#833 (xochi-sdk#155); product-owner sign-off on departing from xochi#759's sealed backup is pending. Additive: every value outside this section is unchanged.",
+    "status": "APPROVED: product-owner sign-off on departing from xochi#759's sealed backup received 2026-11-09; decided in epic xochi#833 (xochi-sdk#155). Rollout remains gated on PASSKEY-RECIPIENT.md's CSP and xochi.fi host prerequisites. Additive: every value outside this section is unchanged.",
     "spec": "packages/spec/PASSKEY-RECIPIENT.md",
     "rpId": "xochi.fi",
     "rpName": "Xochi",
@@ -4588,6 +4588,18 @@
           "vector": "BackupPersistenceAck (passkey sha256-labels)",
           "expected": {
             "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887"
+          },
+          "error": {
+            "code": "backup_format_mismatch",
+            "field": "backupFormatId"
+          }
+        },
+        {
+          "name": "passkey ack, explicit null format expectation (sealed file only)",
+          "vector": "BackupPersistenceAck (passkey sha256-labels)",
+          "expected": {
+            "backupCommitment": "0x1eb1bdb8239f3781e41bcc837832336ad05b52229f01c6074e8dcf6da92c4887",
+            "backupFormatId": null
           },
           "error": {
             "code": "backup_format_mismatch",
