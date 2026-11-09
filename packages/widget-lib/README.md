@@ -2,7 +2,7 @@
 
 Embeds the Xochi swap widget in an iframe with an EIP-1193 wallet bridge, auto-resize and lifecycle events, and implements the frame's end of that bridge. No runtime deps; ESM + CommonJS with types.
 
-> **Third-party embedding is not open yet** (xochi-fi/xochi#573): `widget.xochi.fi` sends `frame-ancestors 'self'`. The deployed widget does not speak this protocol yet.
+> **Embedding is origin-allowlisted.** Production currently allows `https://xochi.fi`; other host origins must be approved before their frames will load.
 
 ## Install
 
@@ -19,6 +19,11 @@ const widget = createXochiWidget(document.getElementById("xochi")!, {
   params: { fromChainId: 1, toChainId: 8453, sellSymbol: "USDT", buySymbol: "USDC", amount: "250" },
   provider: window.ethereum, // any EIP-1193 provider; omit for none
   autoConnect: false, // default: connect only on the user's click
+  walletUi: "host",
+  onConnectRequest: () => openWalletModal(),
+  onStatusChange: (status) => {
+    if (status.state === "error") showWidgetError(status.message);
+  },
   // origin: "https://widget.xochi.fi" (default)
   listeners: {
     "trade:submitted": ({ tradeRef }) => console.log("submitted", tradeRef),
@@ -31,6 +36,8 @@ widget.updateParams({ sellSymbol: "USDC" }); // reloads the frame
 widget.updateProvider(otherProvider); // or null
 widget.destroy();
 ```
+
+`walletUi` defaults to `"widget"`, which preserves the standalone widget's wallet and account controls. Set it to `"host"` only when the surrounding page owns that UI; hosted mode requires `onConnectRequest` and throws synchronously without it. A host-owned iframe stays hidden until the frame acknowledges protocol v1 and the requested ownership. Every iframe load or fresh `xochi:ready` starts a new bounded handshake and hides hosted UI again. `onStatusChange` reports `loading`, `ready`, or a bounded error after `WIDGET_READY_TIMEOUT_MS` (10 seconds), so a host can offer retry instead of leaving a blank frame. The iframe calls `onConnectRequest` when a disconnected trade needs the host to connect a wallet. `updateProvider` attaches or replaces the provider without recreating the iframe; replacement emits a detach/attach transition and invalidates requests still pending on the prior wallet.
 
 ### Frame parameters
 
@@ -72,6 +79,9 @@ if (host) {
   host.provider; // EIP-1193 provider proxied to the host's wallet; 4900 while none is attached
   host.onAvailability((available) => {}); // the host attached or detached its wallet
   host.onAutoConnect(() => connectHostWallet()); // only when the host passed autoConnect: true
+  host.walletUi(); // "widget" until the handshake, then the host's ownership choice
+  host.onWalletUi((walletUi) => {}); // ownership changed, even if no wallet is attached
+  host.requestConnect(); // asks a host-owned wallet surface to connect
   host.resize(document.body.getBoundingClientRect().height);
   const tradeRef = mintTradeRef(); // once per trade, on every event of it
   host.emit({ name: "trade:submitted", tradeRef });
@@ -79,12 +89,17 @@ if (host) {
 ```
 
 - `onAutoConnect` calls back once per attachment of the host wallet, never on a repeated `xochi:provider`, so a user who disconnects in the frame stays disconnected until the host re-attaches.
+- `onWalletUi` reports ownership changes from valid provider handshakes independently of wallet availability, including a disconnected host-owned surface.
+- A v1 frame applies `walletUi` before sending `xochi:provider:ack`; a v1 host does not expose host-owned UI or accept its operational messages before that acknowledgement.
+- `requestConnect` queues at most one call before the handshake pins the host origin. It sends only when the handshake says `walletUi: "host"`; widget-owned mode ignores it.
 - `emit` throws a `TypeError` for an event the host would drop, and cuts a `trade:failed` error to `MAX_ERROR_MESSAGE_LENGTH`.
 - Wallet errors reject as `HostRpcError` (`name` `"ProviderRpcError"`, `code`, optional `data`).
 
 ## Security model
 
-- Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post names that origin as `targetOrigin`, never `"*"`.
+- Messages are handled only if `event.source` is this iframe's window **and** `event.origin` is the configured origin; every post after origin pinning names that origin as `targetOrigin`.
+- Hosted connect callbacks run only after a compatible frame acknowledges host wallet ownership, and only for an exact `xochi:connect:request` message from this iframe's window and the configured widget origin. Malformed, oversized, cross-source and cross-origin messages are ignored.
+- Protocol v1 adds `protocolVersion` and a host-generated `handshakeId` to `xochi:provider`; the frame must echo both with the applied `walletUi` in `xochi:provider:ack`. An old, stale, or incompatible host-owned frame stays hidden and reaches a bounded error instead of restoring its own wallet UI.
 - Only `ALLOWED_RPC_METHODS` reach the wallet; others get `4200` without reaching it. Every connection, signature, chain switch and transaction still prompts.
 - Inbound JSON is capped at `MAX_MESSAGE_LENGTH` (128 KiB); at most `MAX_PENDING_RPC` (16) wallet requests may be pending until the wallet settles them, across frame reloads. There is no per-request deadline (a prompt waits on a person), so an unanswered prompt holds its slot.
 - Wallet events (`accountsChanged`, `chainChanged`, `disconnect`) reach the frame only after it has connected in the current load: `autoConnect: true`, or its own `eth_requestAccounts` / `eth_accounts` returned accounts.

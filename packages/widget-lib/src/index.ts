@@ -8,10 +8,12 @@ export {
   createXochiWidget,
   embedUrl,
   normalizeWidgetOrigin,
+  WIDGET_READY_TIMEOUT_MS,
   type Eip1193Provider,
   type XochiWidget,
   type XochiWidgetListeners,
   type XochiWidgetOptions,
+  type XochiWidgetStatus,
 } from "./widget.js";
 export {
   HostRpcError,
@@ -53,12 +55,14 @@ export {
   MAX_PENDING_RPC,
   MESSAGE,
   RPC_ERROR,
+  WIDGET_PROTOCOL_VERSION,
   TRADE_REF_PATTERN,
   type AllowedRpcMethod,
   type FrameMessage,
   type HostMessage,
   type RpcErrorObject,
   type RpcId,
+  type WalletUi,
   type XochiWidgetEvent,
   type XochiWidgetEventName,
 } from "./protocol.js";

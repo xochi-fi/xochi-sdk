@@ -8,16 +8,18 @@
  * The only fixture is `TestWallet`, a minimal in-test EIP-1193 provider.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ALLOWED_RPC_METHODS,
   MAX_MESSAGE_LENGTH,
   MAX_PENDING_RPC,
+  WIDGET_PROTOCOL_VERSION,
   createXochiWidget,
   normalizeWidgetOrigin,
   type Eip1193Provider,
   type XochiWidget,
   type XochiWidgetEvent,
+  type XochiWidgetStatus,
   type XochiWidgetOptions,
 } from "./index.js";
 
@@ -136,6 +138,7 @@ function flushHostMessages(): Promise<void> {
 const mounted: XochiWidget[] = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const widget of mounted.splice(0)) widget.destroy();
   document.body.replaceChildren();
 });
@@ -158,6 +161,20 @@ function frameOf(iframe: HTMLIFrameElement): Window {
 /** A message the frame sends: dispatched on the host window, from the frame's window. */
 function fromFrame(source: Window | null, data: unknown, origin = ORIGIN): void {
   window.dispatchEvent(new MessageEvent("message", { data, origin, source }));
+}
+
+function announceReady(
+  source: Window,
+  walletUi: "widget" | "host" = "widget",
+  handshakeId = 1,
+): void {
+  fromFrame(source, { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+  fromFrame(source, {
+    type: "xochi:provider:ack",
+    protocolVersion: WIDGET_PROTOCOL_VERSION,
+    handshakeId,
+    walletUi,
+  });
 }
 
 function rpc(id: number | string, method: string, params?: unknown) {
@@ -204,6 +221,27 @@ describe("mounting", () => {
     expect(container.childElementCount).toBe(0);
   });
 
+  it("requires a connect handler for host-owned wallet UI before mounting", () => {
+    const container = document.createElement("div");
+    expect(() => createXochiWidget(container, { params: {}, walletUi: "host" })).toThrow(
+      /onConnectRequest/,
+    );
+    expect(() =>
+      createXochiWidget(container, {
+        params: {},
+        walletUi: "host",
+        onConnectRequest: true as never,
+      }),
+    ).toThrow(/onConnectRequest/);
+    expect(() =>
+      createXochiWidget(container, {
+        params: {},
+        walletUi: "other" as unknown as "widget",
+      }),
+    ).toThrow(/walletUi/);
+    expect(container.childElementCount).toBe(0);
+  });
+
   it("refuses bad params and origins before touching the page", () => {
     const container = document.createElement("div");
     expect(() => createXochiWidget(container, { params: { amount: "1e3" } })).toThrow(/amount/);
@@ -243,24 +281,33 @@ describe("handshake and provider state", () => {
   it("answers xochi:ready with whether a wallet is attached, and reports changes", async () => {
     const { widget, frame } = mount();
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: false,
       autoConnect: false,
+      walletUi: "widget",
     });
 
     widget.updateProvider(new TestWallet());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: true,
       autoConnect: false,
+      walletUi: "widget",
     });
     widget.updateProvider(null);
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: false,
       autoConnect: false,
+      walletUi: "widget",
     });
   });
 
@@ -270,17 +317,31 @@ describe("handshake and provider state", () => {
   it("carries autoConnect only when the host opts in, on every provider message", async () => {
     const { widget, frame } = mount({ provider: new TestWallet(), autoConnect: true });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: true,
       autoConnect: true,
+      walletUi: "widget",
     });
     widget.updateProvider(new TestWallet());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      available: false,
+      autoConnect: true,
+      walletUi: "widget",
+    });
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: true,
       autoConnect: true,
+      walletUi: "widget",
     });
   });
 
@@ -290,11 +351,14 @@ describe("handshake and provider state", () => {
       autoConnect: "yes" as unknown as boolean,
     });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: true,
       autoConnect: false,
+      walletUi: "widget",
     });
   });
 
@@ -306,6 +370,205 @@ describe("handshake and provider state", () => {
     wallet.emit("chainChanged", "0x1");
     wallet.emit("accountsChanged", [ACCOUNT]);
     expect(await inbox.drain()).toEqual([]);
+  });
+});
+
+describe("bounded readiness", () => {
+  it("keeps host-owned UI hidden until the frame acknowledges ownership", async () => {
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    const inbox = new Inbox(frame());
+    await Promise.resolve();
+
+    expect(iframe.hidden).toBe(true);
+    fromFrame(frame(), { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+    expect(await inbox.next()).toMatchObject({
+      type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      walletUi: "host",
+    });
+    expect(iframe.hidden).toBe(true);
+
+    fromFrame(frame(), {
+      type: "xochi:provider:ack",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      walletUi: "host",
+    });
+    expect(iframe.hidden).toBe(false);
+    expect(statuses).toEqual([
+      { state: "loading" },
+      { state: "ready", protocolVersion: WIDGET_PROTOCOL_VERSION, walletUi: "host" },
+    ]);
+  });
+
+  it("fails closed when an older frame omits the protocol version", async () => {
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    const inbox = new Inbox(frame());
+    await Promise.resolve();
+
+    fromFrame(frame(), { type: "xochi:ready" });
+    expect(await inbox.drain()).toEqual([]);
+    expect(iframe.hidden).toBe(true);
+    expect(statuses.at(-1)).toMatchObject({ state: "error", code: "protocol-mismatch" });
+  });
+
+  it("reports a bounded timeout when no compatible frame answers", async () => {
+    vi.useFakeTimers();
+    const statuses: XochiWidgetStatus[] = [];
+    const { iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(iframe.hidden).toBe(true);
+    expect(statuses.at(-1)).toMatchObject({ state: "error", code: "timeout" });
+  });
+
+  it("fails closed when a visible frame reloads with an incompatible protocol", async () => {
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    announceReady(frame(), "host");
+    expect(iframe.hidden).toBe(false);
+
+    fromFrame(frame(), { type: "xochi:ready" });
+
+    expect(iframe.hidden).toBe(true);
+    expect(statuses.at(-1)).toMatchObject({ state: "error", code: "protocol-mismatch" });
+  });
+
+  it("rearms the timeout when a visible frame reloads without acknowledging ownership", async () => {
+    vi.useFakeTimers();
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    announceReady(frame(), "host");
+    expect(iframe.hidden).toBe(false);
+
+    fromFrame(frame(), { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+    expect(iframe.hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(statuses.at(-1)).toMatchObject({ state: "error", code: "timeout" });
+  });
+
+  it("ignores an acknowledgement superseded by a later load handshake", async () => {
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    const inbox = new Inbox(frame());
+
+    fromFrame(frame(), { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 1 });
+    iframe.dispatchEvent(new Event("load"));
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 2 });
+
+    fromFrame(frame(), {
+      type: "xochi:provider:ack",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      walletUi: "host",
+    });
+    expect(iframe.hidden).toBe(true);
+    expect(statuses.some((status) => status.state === "error")).toBe(false);
+
+    fromFrame(frame(), {
+      type: "xochi:provider:ack",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 2,
+      walletUi: "host",
+    });
+    expect(iframe.hidden).toBe(false);
+    expect(statuses.at(-1)).toMatchObject({ state: "ready" });
+  });
+  it("fails closed when a loaded replacement document never announces readiness", async () => {
+    vi.useFakeTimers();
+    const statuses: XochiWidgetStatus[] = [];
+    const { frame, iframe } = mount({
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+    });
+    announceReady(frame(), "host");
+    expect(iframe.hidden).toBe(false);
+
+    iframe.dispatchEvent(new Event("load"));
+    expect(iframe.hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(statuses.at(-1)).toMatchObject({ state: "error", code: "timeout" });
+  });
+});
+
+describe("hosted wallet UI", () => {
+  it("carries ownership and accepts only a validated request from its own frame", async () => {
+    let requests = 0;
+    const { widget, frame } = mount({
+      walletUi: "host",
+      onConnectRequest: () => requests++,
+    });
+    const inbox = new Inbox(frame());
+    announceReady(frame(), "host");
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      available: false,
+      autoConnect: false,
+      walletUi: "host",
+    });
+
+    const request = { type: "xochi:connect:request" };
+    fromFrame(frame(), request, "https://evil.example");
+    fromFrame(window, request);
+    fromFrame(null, request);
+    fromFrame(frame(), { ...request, extra: true });
+    fromFrame(frame(), { type: "xochi:connect:request", pad: "x".repeat(MAX_MESSAGE_LENGTH) });
+    expect(requests).toBe(0);
+
+    fromFrame(frame(), request);
+    expect(requests).toBe(1);
+
+    const initialFrame = frame();
+    widget.updateProvider(new TestWallet());
+    expect(frame()).toBe(initialFrame);
+    expect(await inbox.next()).toEqual({
+      type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      available: true,
+      autoConnect: false,
+      walletUi: "host",
+    });
+  });
+
+  it("ignores connect requests when the widget owns wallet UI", () => {
+    let requests = 0;
+    const { frame } = mount({ onConnectRequest: () => requests++ });
+    fromFrame(frame(), { type: "xochi:connect:request" });
+    expect(requests).toBe(0);
   });
 });
 
@@ -456,7 +719,7 @@ describe("wallet bridge", () => {
     const { frame } = mount({ provider: wallet });
     const inbox = new Inbox(frame());
     for (let i = 0; i < MAX_PENDING_RPC; i++) fromFrame(frame(), rpc(i, "eth_requestAccounts"));
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     expect(await inbox.next()).toMatchObject({ type: "xochi:provider" });
     fromFrame(frame(), rpc("after-reload", "eth_requestAccounts"));
     expect(await inbox.next()).toMatchObject({ id: "after-reload", error: { code: -32005 } });
@@ -519,22 +782,25 @@ describe("wallet bridge", () => {
     expect(wallet.calls.map((c) => c.method)).toEqual(["eth_requestAccounts"]);
   });
 
-  it("delivers an answer from a wallet that was swapped out while it was pending", async () => {
+  it("invalidates pending requests and reconnects when the wallet authority changes", async () => {
     const pending = gate();
     const first = new TestWallet(() => pending.answer);
+    const second = new TestWallet();
     const { widget, frame } = mount({ provider: first });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     await inbox.next();
     fromFrame(frame(), rpc("tx", "eth_sendTransaction", [{ to: ACCOUNT }]));
-    widget.updateProvider(new TestWallet());
-    expect(await inbox.next()).toEqual({
-      type: "xochi:provider",
-      available: true,
-      autoConnect: false,
-    });
-    pending.release("0xhash");
-    expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: "tx", result: "0xhash" });
+
+    widget.updateProvider(second);
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", available: false });
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", available: true });
+    pending.release("0xstale");
+    expect(await inbox.drain()).toEqual([]);
+
+    fromFrame(frame(), rpc("tx", "eth_sendTransaction", [{ to: ACCOUNT }]));
+    expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: "tx", result: null });
+    expect(second.calls).toHaveLength(1);
   });
 });
 
@@ -571,11 +837,14 @@ describe("trust boundary", () => {
     const wallet = new TestWallet();
     const { iframe, frame } = mount({ provider: wallet });
     const own = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     expect(await own.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
       available: true,
       autoConnect: false,
+      walletUi: "widget",
     });
 
     // The frame navigates itself away: the host still holds the element.
@@ -595,7 +864,7 @@ describe("provider events", () => {
     const wallet = new TestWallet();
     const { frame } = mount({ provider: wallet });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     await inbox.next();
     fromFrame(frame(), rpc(1, "eth_requestAccounts"));
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 1, result: [ACCOUNT] });
@@ -616,7 +885,7 @@ describe("provider events", () => {
     const wallet = new TestWallet((method) => (method === "eth_accounts" ? [] : "0x2105"));
     const { frame } = mount({ provider: wallet });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     await inbox.next();
     // Reading the chain, or an eth_accounts that returns none, is not a connection.
     fromFrame(frame(), rpc(1, "eth_chainId"));
@@ -634,11 +903,11 @@ describe("provider events", () => {
     const wallet = new TestWallet();
     const { frame } = mount({ provider: wallet });
     const inbox = new Inbox(frame());
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame());
     await inbox.next();
     fromFrame(frame(), rpc(1, "eth_requestAccounts"));
     await inbox.next();
-    fromFrame(frame(), { type: "xochi:ready" });
+    announceReady(frame(), "widget", 2);
     await inbox.next();
     wallet.emit("accountsChanged", [ACCOUNT]);
     expect(await inbox.drain()).toEqual([]);
@@ -646,7 +915,7 @@ describe("provider events", () => {
     const auto = new TestWallet();
     const followed = mount({ provider: auto, autoConnect: true });
     const autoInbox = new Inbox(followed.frame());
-    fromFrame(followed.frame(), { type: "xochi:ready" });
+    announceReady(followed.frame());
     await autoInbox.next();
     auto.emit("accountsChanged", [ACCOUNT]);
     expect(await autoInbox.drain()).toEqual([
@@ -675,7 +944,7 @@ describe("updateParams", () => {
     );
     const { widget, iframe, frame } = mount({ provider: wallet });
     const oldFrame = frame();
-    fromFrame(oldFrame, { type: "xochi:ready" });
+    announceReady(oldFrame);
     fromFrame(oldFrame, rpc(1, "eth_requestAccounts"));
 
     widget.updateParams({ toChainId: 1, settlement: "stealth" });
@@ -687,12 +956,15 @@ describe("updateParams", () => {
     pending.release([ACCOUNT]);
 
     fromFrame(oldFrame, rpc("stale-window", "eth_chainId"));
-    fromFrame(newFrame, { type: "xochi:ready" });
+    announceReady(newFrame, "widget", 2);
     fromFrame(newFrame, rpc(2, "eth_chainId"));
     expect(await inbox.next()).toEqual({
       type: "xochi:provider",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 2,
       available: true,
       autoConnect: false,
+      walletUi: "widget",
     });
     expect(await inbox.next()).toEqual({ type: "xochi:rpc:result", id: 2, result: "0x1" });
     // The old document's request (id 1) settled meanwhile; its answer must not arrive.

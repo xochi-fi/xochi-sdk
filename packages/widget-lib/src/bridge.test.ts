@@ -166,6 +166,16 @@ function nextAvailability(frame: HostConnection): Promise<boolean> {
   return promise;
 }
 
+/** Resolves on the frame's next wallet UI ownership change. */
+function nextWalletUi(frame: HostConnection): Promise<"widget" | "host"> {
+  const { promise, resolve } = Promise.withResolvers<"widget" | "host">();
+  const stop = frame.onWalletUi((walletUi) => {
+    stop();
+    resolve(walletUi);
+  });
+  return promise;
+}
+
 /**
  * A request the host answers from its wallet. Once it resolves, everything
  * either side posted before it has been delivered (delivery is FIFO).
@@ -347,6 +357,28 @@ describe("host and frame", () => {
     await nextAvailability(frame);
     expect(frame.autoConnect()).toBe(true);
     expect(connects).toBe(1);
+  });
+
+  it("carry host wallet UI ownership and a bounded connect request end to end", async () => {
+    let connectRequests = 0;
+    const { frame } = mount({
+      walletUi: "host",
+      onConnectRequest: () => connectRequests++,
+    });
+    expect(frame.available()).toBe(false);
+    expect(frame.walletUi()).toBe("widget");
+    const ownership = nextWalletUi(frame);
+    frame.requestConnect();
+    frame.requestConnect();
+    await expect(ownership).resolves.toBe("host");
+    expect(frame.available()).toBe(false);
+    expect(frame.walletUi()).toBe("host");
+    await Promise.resolve();
+    expect(connectRequests).toBe(1);
+
+    frame.requestConnect();
+    await Promise.resolve();
+    expect(connectRequests).toBe(2);
   });
 
   it("talk to no one when the frame expects another host", () => {

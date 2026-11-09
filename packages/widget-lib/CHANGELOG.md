@@ -4,6 +4,23 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+Runtime-additive: widget-owned wallet UI remains the default and existing RPC methods remain unchanged. TypeScript consumers that implement `HostConnection` must add `walletUi`, `onWalletUi` and `requestConnect`; exhaustive `FrameMessage` switches must handle `xochi:connect:request`, versioned `xochi:ready`, and `xochi:provider:ack`. `XochiWidget` implementations must add the bounded readiness status behavior described below.
+
+### Added
+
+- Hosts can set `walletUi: "host"` with an `onConnectRequest` callback to own the persistent wallet and account UI. The callback is required synchronously in hosted mode, and connect requests are accepted only from the configured widget origin and iframe source.
+- The provider handshake carries wallet UI ownership. `HostConnection.walletUi()` exposes it, `onWalletUi()` observes changes independently of wallet availability, and `requestConnect()` asks the host to open its wallet UI through the new `xochi:connect:request` message. At most one request waits for origin pinning; widget-owned and malformed requests are ignored.
+- Protocol v1 requires a frame to acknowledge the applied wallet ownership before a host-owned iframe becomes visible or may use host RPC. `onStatusChange` reports `loading`, `ready`, and bounded protocol, ownership, load, or timeout failures; `WIDGET_READY_TIMEOUT_MS` is 10 seconds. Older host-owned frames fail visibly instead of hanging or rendering a second wallet UI. New frames remain compatible with older hosts.
+- Exported the `WalletUi` type.
+
+### Changed
+
+- Every iframe load or fresh `xochi:ready` starts a bounded handshake, hides host-owned UI, and invalidates responses for the prior frame document. Provider acknowledgements echo a host-generated handshake id, so a stale document cannot satisfy a later load.
+- Replacing one attached provider with another emits a detach/attach transition, invalidates requests pending on the prior wallet authority, and allows auto-connect to run against the replacement.
+- The frame posts its ownership acknowledgement before availability or wallet-ownership listeners can issue bridge requests.
+
 ## [0.3.1] - 2026-11-01
 
 Additive: `createXochiWidget` and every existing export behave as before.

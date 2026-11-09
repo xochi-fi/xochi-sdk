@@ -2,14 +2,14 @@
  * `connectToHost`: the frame side of the protocol (protocol.ts), run by the
  * widget app inside the iframe that `createXochiWidget` mounts.
  *
- * The frame announces itself with `xochi:ready`; the host answers
- * `xochi:provider { available, autoConnect }`. The frame cannot know who framed
- * it, so the origin of the FIRST well-formed `xochi:provider` sent by
- * `window.parent` is pinned (or, with `hostOrigin`, only that origin may pin),
- * and from then on every message must come from that window and that origin,
- * and everything the frame sends names that origin as `targetOrigin`. Nothing
- * but `xochi:ready`, which carries no data, is posted before the pin: resizes
- * and trade events wait for it.
+ * The frame announces itself with versioned `xochi:ready`; the host answers
+ * `xochi:provider { protocolVersion, available, autoConnect, walletUi }`. A v1
+ * frame applies wallet ownership before acknowledging it with
+ * `xochi:provider:ack`. The frame cannot know who framed it, so the origin of
+ * the FIRST well-formed `xochi:provider` sent by `window.parent` is pinned (or,
+ * with `hostOrigin`, only that origin may pin), and from then on every message
+ * must come from that window and origin, and everything the frame sends names
+ * that origin as `targetOrigin`.
  *
  * The host wallet is an EIP-1193 provider whose `request()` is a `xochi:rpc`
  * answered by `xochi:rpc:result`, and whose events are the host's
@@ -27,9 +27,11 @@ import {
   MAX_PENDING_RPC,
   MESSAGE,
   RPC_ERROR,
+  WIDGET_PROTOCOL_VERSION,
   TRADE_REF_PATTERN,
   type FrameMessage,
   type RpcErrorObject,
+  type WalletUi,
   type XochiWidgetEvent,
 } from "./protocol.js";
 
@@ -88,6 +90,15 @@ export interface HostConnection {
    * attachment and connects again. Returns an unsubscribe.
    */
   onAutoConnect(connect: () => void): () => void;
+  /** Which surface owns persistent wallet and account UI. Defaults to `"widget"`. */
+  walletUi(): WalletUi;
+  /** Called when `walletUi()` changes after a valid provider message. Returns an unsubscribe. */
+  onWalletUi(listener: (walletUi: WalletUi) => void): () => void;
+  /**
+   * Ask the host to open its wallet UI. Before the handshake, at most one
+   * request waits for origin pinning. A widget-owned host ignores it.
+   */
+  requestConnect(): void;
   /** Report the content height in CSS px. Coalesced to the latest value until the origin is pinned. */
   resize(height: number): void;
   /**
@@ -163,12 +174,15 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   let destroyed = false;
   let isAvailable = false;
   let hostAutoConnect = false;
+  let hostWalletUi: WalletUi = "widget";
+  let pendingConnectRequest = false;
   let nextId = 1;
   let pendingHeight: number | null = null;
   const queuedEvents: XochiWidgetEvent[] = [];
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   const listeners = new Map<string, Set<Listener>>();
   const availability = new Set<(available: boolean) => void>();
+  const walletUiListeners = new Set<(walletUi: WalletUi) => void>();
 
   /** Post to the pinned origin only. Every message is plain JSON, so cloning cannot throw. */
   const post = (message: FrameMessage): void => {
@@ -184,33 +198,42 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
     pending.clear();
   };
 
-  const setAvailable = (next: boolean): void => {
-    if (next === isAvailable) return;
-    isAvailable = next;
-    if (!next) {
-      const detached = { code: RPC_ERROR.disconnected, message: "the host detached its wallet" };
-      rejectPending(detached);
-      fire("disconnect", new HostRpcError(detached));
-    }
-    for (const listener of availability) listener(next);
-  };
-
   const onMessage = (event: MessageEvent): void => {
     if (event.source === null || event.source !== parent) return;
     const raw: unknown = event.data;
     if (!isRecord(raw) || typeof raw.type !== "string") return;
     const message = asJson(raw);
 
+    let pinnedNow = false;
+
     if (origin === null) {
       // Only the host's answer to `xochi:ready` may pin the origin, and never
       // an opaque one: no `targetOrigin` can name it.
       if (!isRecord(message) || message.type !== MESSAGE.provider) return;
       if (typeof message.available !== "boolean") return;
+      const versioned = message.protocolVersion === WIDGET_PROTOCOL_VERSION;
+      const legacy = message.protocolVersion === undefined;
+      if (!versioned && !legacy) return;
+      if (
+        versioned &&
+        (typeof message.handshakeId !== "number" ||
+          !Number.isSafeInteger(message.handshakeId) ||
+          message.handshakeId < 0)
+      ) {
+        return;
+      }
+      if (
+        versioned
+          ? message.walletUi !== "widget" && message.walletUi !== "host"
+          : message.walletUi !== undefined &&
+            message.walletUi !== "widget" &&
+            message.walletUi !== "host"
+      ) {
+        return;
+      }
       if (hostOrigin === undefined ? event.origin === "null" : event.origin !== hostOrigin) return;
       origin = event.origin;
-      if (pendingHeight !== null) post({ type: MESSAGE.resize, height: pendingHeight });
-      pendingHeight = null;
-      for (const queued of queuedEvents.splice(0)) post({ type: MESSAGE.event, event: queued });
+      pinnedNow = true;
     } else if (event.origin !== origin) {
       return;
     }
@@ -218,10 +241,67 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
     switch (raw.type) {
       case MESSAGE.provider:
         if (isRecord(message) && typeof message.available === "boolean") {
-          // Before `setAvailable`, so a listener woken by this message reads
-          // the option that came with it.
+          const versioned = message.protocolVersion === WIDGET_PROTOCOL_VERSION;
+          const legacy = message.protocolVersion === undefined;
+          if (!versioned && !legacy) return;
+          if (
+            versioned &&
+            (typeof message.handshakeId !== "number" ||
+              !Number.isSafeInteger(message.handshakeId) ||
+              message.handshakeId < 0)
+          ) {
+            return;
+          }
+          if (
+            versioned
+              ? message.walletUi !== "widget" && message.walletUi !== "host"
+              : message.walletUi !== undefined &&
+                message.walletUi !== "widget" &&
+                message.walletUi !== "host"
+          ) {
+            return;
+          }
+          // Apply every field before acknowledging ownership. External
+          // observers run only after the ACK, so their RPC/connect messages
+          // cannot race the host's readiness gate.
           hostAutoConnect = message.autoConnect === true;
-          setAvailable(message.available);
+          const nextWalletUi: WalletUi = message.walletUi === "host" ? "host" : "widget";
+          const walletUiChanged = nextWalletUi !== hostWalletUi;
+          const availabilityChanged = message.available !== isAvailable;
+          hostWalletUi = nextWalletUi;
+          isAvailable = message.available;
+          if (versioned) {
+            post({
+              type: MESSAGE.providerAck,
+              protocolVersion: WIDGET_PROTOCOL_VERSION,
+              handshakeId: message.handshakeId as number,
+              walletUi: hostWalletUi,
+            });
+          }
+          if (availabilityChanged) {
+            if (!isAvailable) {
+              const detached = {
+                code: RPC_ERROR.disconnected,
+                message: "the host detached its wallet",
+              };
+              rejectPending(detached);
+              fire("disconnect", new HostRpcError(detached));
+            }
+            for (const listener of availability) listener(isAvailable);
+          }
+          if (walletUiChanged) {
+            for (const listener of walletUiListeners) listener(hostWalletUi);
+          }
+          if (pinnedNow) {
+            if (pendingHeight !== null) post({ type: MESSAGE.resize, height: pendingHeight });
+            pendingHeight = null;
+            for (const queued of queuedEvents.splice(0))
+              post({ type: MESSAGE.event, event: queued });
+          }
+          if (pendingConnectRequest) {
+            pendingConnectRequest = false;
+            if (hostWalletUi === "host") post({ type: MESSAGE.connectRequest });
+          }
         }
         return;
       case MESSAGE.rpcResult: {
@@ -261,9 +341,13 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   };
 
   win.addEventListener("message", onMessage);
-  // `xochi:ready` carries nothing, and without `hostOrigin` the frame cannot
-  // know who framed it, so this one message may name no other targetOrigin.
-  parent.postMessage({ type: MESSAGE.ready } satisfies FrameMessage, hostOrigin ?? "*");
+  // `xochi:ready` carries only the public protocol version, and without
+  // `hostOrigin` the frame cannot know who framed it, so this one message may
+  // name no other targetOrigin.
+  parent.postMessage(
+    { type: MESSAGE.ready, protocolVersion: WIDGET_PROTOCOL_VERSION } satisfies FrameMessage,
+    hostOrigin ?? "*",
+  );
 
   const provider: HostProvider = {
     request({ method, params }) {
@@ -347,6 +431,21 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       onChange(isAvailable);
       return onAvailability(onChange);
     },
+    walletUi: () => hostWalletUi,
+    onWalletUi(listener) {
+      walletUiListeners.add(listener);
+      return () => {
+        walletUiListeners.delete(listener);
+      };
+    },
+    requestConnect() {
+      if (destroyed) return;
+      if (origin === null) {
+        pendingConnectRequest = true;
+        return;
+      }
+      if (hostWalletUi === "host") post({ type: MESSAGE.connectRequest });
+    },
     resize(height) {
       if (destroyed || Number.isNaN(height)) return;
       const h = Math.min(Math.max(0, Math.ceil(height)), MAX_FRAME_HEIGHT);
@@ -362,10 +461,12 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      pendingConnectRequest = false;
       win.removeEventListener("message", onMessage);
       rejectPending({ code: RPC_ERROR.disconnected, message: "the frame closed the bridge" });
       listeners.clear();
       availability.clear();
+      walletUiListeners.clear();
     },
   };
 }
