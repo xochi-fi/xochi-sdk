@@ -1,0 +1,773 @@
+/* Launch screen -- the widget: tabs (swap / activity / claims) at the card's width */
+
+/* Positioned with a z-index so the whole widget paints above the fixed
+   background layers (.pearl-bg / .dark-overlay). Those are positioned, so
+   without this they paint over every non-positioned row here (the tabs, the
+   claims row) and wash it out. */
+.launch-screen {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 1rem 2rem;
+}
+
+/* Align the widget's own sections to the swap card's column width. The card is
+   NOT in this list: it carries its own sizing and stacking in trade-layout.css,
+   so that it lays out correctly wherever it is mounted rather than only as a
+   direct child of this page. Keep these matched to the card's max-width. */
+.widget-bar,
+.launch-txlog,
+.launch-stealth,
+.assets-strip,
+.claims-nudge {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Full layout is an application viewport, not a stretched compact card.
+   Before a quote, the form and its navigation share a focused 600px measure.
+   Activity and receipt-bearing states can use the wider 760px workspace. */
+.launch-screen--full {
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.launch-screen--full .trade-card,
+.launch-screen--full .widget-bar {
+  width: 100%;
+  max-width: 600px;
+}
+
+.launch-screen--full .launch-txlog,
+.launch-screen--full .launch-stealth,
+.launch-screen--full .assets-strip,
+.launch-screen--full .claims-nudge {
+  width: 100%;
+  max-width: 760px;
+}
+
+/* The card widens beside its receipt (trade-layout.css); the top row follows
+   it while the Swap tab is showing, so the tabs stay at the card's width. */
+@media (min-width: 760px) {
+  .launch-screen--full .trade-card:has(.trade-card__body--split),
+  .launch-screen:has(.widget-panel:not([hidden]) .trade-card__body--split) .widget-bar {
+    max-width: 760px;
+  }
+}
+
+/* Top row: the tablist (the card's segmented toggle) and, when connected, the
+   account chip. The chip wraps under the tabs rather than squeezing them. */
+.widget-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+/* Grows into the row but never forces it full-width (trade-layout.css sets
+   .order-type-toggle to 100% on narrow screens for the card's own toggle). */
+.widget-tabs {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.widget-tabs__tab {
+  flex: 1 1 auto;
+  padding-inline: 0.5rem;
+}
+
+.account-chip {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.launch-screen--full .trade-header .order-type-toggle {
+  flex: 0 1 520px;
+  width: 100%;
+}
+
+.account-chip .chain-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Inactive panels stay mounted (so a quote in progress survives a tab switch)
+   and are hidden; the attribute must win over the flex display below. */
+.widget-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.widget-panel[hidden] {
+  display: none;
+}
+
+/* A frame without tabs (`layout=swap`) leaves the row to the account chip,
+   which renders nothing while disconnected: the empty row takes no gap. */
+.widget-bar:empty {
+  display: none;
+}
+
+/* A fixed frame height (`height=<px>`, xochi-fi/xochi-widget#38): the widget
+   is exactly that tall (never taller than the frame) and scrolls inside
+   itself, so the document never scrolls and nothing is cut off behind it. */
+.launch-screen--fixed {
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html:has(.launch-screen--fixed),
+html:has(.launch-screen--fixed) body {
+  overflow: hidden;
+}
+
+/* Never taller than the frame; vh first for browsers without dvh (inside an
+   iframe both are the frame's height). */
+.launch-screen--fixed {
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+
+/* The flow modal is portaled to <body>, outside the scroller, and the page
+   itself no longer scrolls: in a short fixed frame it scrolls on its own, so
+   its Confirm and Claim payment buttons stay reachable. */
+html:has(.launch-screen--fixed) .modal-overlay {
+  overflow-y: auto;
+  align-items: flex-start;
+}
+
+html:has(.launch-screen--fixed) .modal-content {
+  margin-block: auto;
+}
+
+/* Compact claims row, shown after the card only while a claimable settlement
+   exists. One line, one action: it switches to the Claims tab. */
+.claims-nudge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  min-height: 44px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--pearl-cream);
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth);
+}
+
+.claims-nudge:hover {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-30);
+}
+
+.claims-nudge__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.3rem;
+  font-weight: 700;
+  color: var(--obsidian);
+  background: var(--muted-gold);
+  border-radius: 999px;
+}
+
+.claims-nudge__arrow {
+  margin-left: auto;
+  color: var(--muted-gold);
+}
+
+/* Assets strip ----------------------------------------------------------- */
+.assets-strip {
+  background: var(--panel-bg-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.assets-strip__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--pearl-cream);
+  text-align: left;
+  transition: background var(--duration-fast) ease;
+}
+
+.assets-strip__summary:hover {
+  background: var(--muted-gold-subtle);
+}
+
+.assets-strip__total {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.assets-strip__label {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.assets-strip__total .value-amount {
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.assets-strip__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.assets-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.assets-chip--claim {
+  color: var(--axol-coral);
+  border-color: var(--muted-gold-25);
+}
+
+.assets-chip .inline-token-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.assets-strip__chevron {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.assets-strip__detail {
+  border-top: 1px solid var(--panel-border);
+  padding: 0.375rem 0.875rem 0.625rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.assets-strip__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.3rem 0;
+  font-size: 0.8125rem;
+}
+
+.assets-strip__sym {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--pearl-cream);
+}
+
+.assets-strip__chain {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.assets-strip__row--empty {
+  color: var(--text-muted);
+  justify-content: center;
+}
+
+.assets-strip__retry {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted-gold);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.assets-strip__retry:hover {
+  color: var(--pearl-cream);
+}
+
+.assets-strip__wrap-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.45rem;
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--muted-gold);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.assets-strip__wrap-btn:hover {
+  background: var(--muted-gold-10);
+  border-color: var(--panel-border-hover);
+  color: var(--pearl-cream);
+}
+
+.assets-strip__amt {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.assets-strip__usd {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: right;
+  min-width: 4.5rem;
+}
+
+/* Transaction log -------------------------------------------------------- */
+.launch-txlog {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+.launch-txlog .activity-strip {
+  width: 100%;
+}
+
+/* Activity strip ---------------------------------------------------------- */
+/* Compact, collapsible swap log. Collapsed to one line so the trade column
+   stays short; expands in place to the dense feed. Mirrors .assets-strip. */
+.activity-strip {
+  background: var(--panel-bg-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.activity-strip__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--pearl-cream);
+  text-align: left;
+  transition: background var(--duration-fast) ease;
+}
+
+.activity-strip__summary:hover {
+  background: var(--muted-gold-subtle);
+}
+
+.activity-strip__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.activity-strip__title .panel-icon {
+  color: var(--muted-gold);
+}
+
+.activity-strip__preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.activity-strip__latest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-strip__latest .chain-arrow {
+  color: var(--text-muted);
+}
+
+.activity-strip__latest .activity-status-badge {
+  margin-left: 0.15rem;
+}
+
+.activity-strip__count,
+.activity-strip__claim-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.activity-strip__claim-chip {
+  color: var(--axol-coral);
+  border-color: var(--muted-gold-25);
+}
+
+.activity-strip__muted {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.activity-strip__chevron {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.activity-strip__body {
+  border-top: 1px solid var(--panel-border);
+  padding: 0.5rem 0.875rem 0.75rem;
+}
+
+.activity-strip__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.activity-strip__stat {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A button now, not a statement: it carries the user to the claim (#352). */
+.activity-strip__claimable {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 0.25rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--text-secondary);
+  background: none;
+  cursor: pointer;
+}
+
+.activity-strip__claimable:hover:not(:disabled) {
+  color: var(--pearl-cream);
+}
+
+.activity-strip__claimable:disabled {
+  cursor: default;
+}
+
+/* Responsive ------------------------------------------------------------- */
+@media (max-width: 480px) {
+  .launch-screen {
+    padding: 1rem 0.75rem 1.5rem;
+  }
+
+  .assets-strip__chips {
+    justify-content: flex-start;
+  }
+}
+
+/* Authorized agents (live-stream registry) ------------------------------- */
+.agents-section {
+  border-top: 1px solid var(--panel-border);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.agents-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agents-section__title {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.agents-section__add {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted-gold);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.agents-section__add:hover {
+  color: var(--pearl-cream);
+}
+
+.agents-section__empty {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.agents-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.agents-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.agents-list__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.agents-list__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.agents-list__label {
+  font-size: 0.8125rem;
+  color: var(--pearl-cream);
+}
+
+.agents-list__wallet {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-list__badge {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+}
+
+.agents-list__badge.active {
+  color: var(--color-success);
+  border-color: var(--muted-gold-25);
+}
+
+.agents-list__badge.expired {
+  color: var(--text-muted);
+}
+
+.agents-list__revoke {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.agents-list__revoke:hover {
+  color: var(--color-error);
+}
+
+.agents-add {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.agents-add__input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: var(--panel-bg-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--pearl-cream);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.agents-add__input:focus {
+  outline: none;
+  border-color: var(--panel-border-hover);
+}
+
+.agents-add__error {
+  font-size: 0.7rem;
+  color: var(--color-error);
+}
+
+.agents-add__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Connection handoff: reveal + copy the agent's stream key. */
+.agents-list__connect {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted-gold);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.agents-list__connect:hover {
+  color: var(--pearl-cream);
+}
+
+.agents-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  background: var(--panel-bg-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.agents-connect__warning {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--color-warning);
+}
+
+.agents-connect__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.agents-connect__field-label {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.agents-connect__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.agents-connect__value {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--pearl-cream);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.agents-connect__value:focus {
+  outline: none;
+  border-color: var(--panel-border-hover);
+}
+
+.agents-connect__value--block {
+  resize: none;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.agents-connect__copy {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-gold);
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+
+.agents-connect__copy:hover {
+  color: var(--crypto-frost);
+  background: var(--muted-gold-15);
+}
+
+.agents-connect__status {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--color-warning);
+}

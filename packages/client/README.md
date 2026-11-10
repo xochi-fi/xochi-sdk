@@ -101,6 +101,35 @@ advertisement fail closed to `[]`. `trustedStealthChains()` is different: it
 lists every locally trusted chain for scanning and claiming historical payments,
 regardless of current quote availability.
 
+### Executable route model
+
+`resolveRouteModel(capabilities, state, options)` validates chain/token rows and
+indexes only exact advertised routes. `state` is `"live"`, `"stale"`,
+`"fallback"` or `"failed"`; only live, present typed routes authorize execution.
+Duplicate rows, invalid addresses/decimals and untrusted Stealth factories fail
+closed. Typed `zk_money` destinations remain distinct from chain destinations.
+
+The required `options.chainEnabledForRole(chainId, role)` applies the consuming
+application's launch gates. `options.presentationTokens` supplies names and
+optional logos only; addresses, decimals and route authority always come from
+capabilities. `RouteToken`, `RouteLeg`, `ExecutableRouteDestination`,
+`ResolvedRouteModel` and `ResolvedRouteAvailability` describe this model.
+Presentation defaults and fallback capability construction remain outside the
+client.
+
+`capabilityVmType`, destination/refund address validation, token-role accessors,
+`orderBounds` and `servedStealthChains` share the same capability interpretation.
+`stealthToggleState` and `shieldedToggleState` let quotes narrow, never expand,
+live settlement eligibility. `parseTrustFeatures` accepts only literal `true`;
+`effectiveTrustScore` returns zero while trust economics is disabled.
+
+The additional shared vocabulary was extracted from MIT-licensed
+`@xochi/shared` (Copyright 2025-2026 Xochi Contributors), under this package's
+MIT license. Fee display helpers derive their layers from the existing public
+`FEE_SCHEDULE`; they do not maintain an alternate fee schedule. Fallback token
+lists/prices and static address maps are metadata, never route authorization,
+a current market rate or a security pin.
+
 ## State machine
 
 ```ts

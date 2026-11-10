@@ -1,0 +1,104 @@
+{
+  "name": "@xochi/widget",
+  "description": "The complete Xochi React trading widget and lightweight iframe configurator.",
+  "keywords": [
+    "xochi",
+    "swap",
+    "widget",
+    "react",
+    "configurator"
+  ],
+  "homepage": "https://github.com/xochi-fi/xochi-sdk/tree/main/packages/widget#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xochi-fi/xochi-sdk.git",
+    "directory": "packages/widget"
+  },
+  "license": "SEE LICENSE IN THIRD_PARTY_NOTICES.txt",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./configurator": {
+      "types": "./dist/types/configurator.d.ts",
+      "default": "./dist/configurator.js"
+    },
+    "./configurator-model": {
+      "types": "./dist/types/configurator-model.d.ts",
+      "default": "./dist/configurator-model.js"
+    },
+    "./integration": {
+      "types": "./dist/types/integration.d.ts",
+      "default": "./dist/integration.js"
+    },
+    "./styles.css": {
+      "types": "./dist/types/styles.d.ts",
+      "default": "./dist/styles.css"
+    },
+    "./assets/*": {
+      "types": "./dist/types/asset.d.ts",
+      "default": "./dist/assets/*"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "**/*.css",
+    "./dist/browser.js"
+  ],
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.txt",
+    "licenses",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit --emitDeclarationOnly false",
+    "test": "vitest run",
+    "format": "npm run format:check -- --write",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"*.{json,md,ts}\"",
+    "check:redistribution": "node scripts/check-redistribution.mjs",
+    "check:published-dependencies": "node scripts/check-published-dependencies.mjs",
+    "prepublishOnly": "npm run check:redistribution && npm run check:published-dependencies && npm run format:check && npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.7.0",
+    "@rainbow-me/rainbowkit": "2.2.10",
+    "@tanstack/react-query": "^5.62.0",
+    "@wagmi/core": "^2.22.1",
+    "@xochi/client": "0.1.13",
+    "@xochi/signer": "0.8.0",
+    "@xochi/widget-lib": "0.5.0",
+    "buffer": "^6.0.3",
+    "qrcode-generator": "^1.5.2",
+    "viem": "^2.56.3",
+    "wagmi": "^2.14.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "fast-check": "^4.7.0",
+    "jsdom": "^26.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "vite": "^6.0.0"
+  }
+}

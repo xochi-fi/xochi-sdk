@@ -1,0 +1,1107 @@
+/* Xochi - Reusable UI Components */
+
+/* ================================
+   Inline Token & Chain Icons
+   ================================
+   Shared styles for small inline icons used across
+   activity feeds, quote details, order cards, etc.
+*/
+
+.inline-token-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: contain;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.inline-token-icon--lg {
+  width: 20px;
+  height: 20px;
+  vertical-align: -4px;
+}
+
+/* Letter fallback for tokens with no registered icon asset. Pairs with a
+   sizing class (inline-token-icon, token-icon-img, token-search-row-icon,
+   token-icon) which supplies width/height/margins; this centers the glyph. */
+.token-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--panel-border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  overflow: hidden;
+  font-size: 11px; /* default; overridden per sizing class below */
+}
+
+.token-fallback.inline-token-icon {
+  font-size: 9px;
+}
+
+.token-fallback.inline-token-icon--lg {
+  font-size: 11px;
+}
+
+.token-fallback.token-icon-img {
+  font-size: 13px;
+}
+
+.token-fallback.token-search-row-icon {
+  font-size: 14px;
+}
+
+.token-fallback.token-icon {
+  font-size: 13px;
+}
+
+.inline-chain-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: contain;
+  vertical-align: -2px;
+  margin-right: 3px;
+  opacity: 0.7;
+}
+
+.chain-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  background: var(--muted-gold-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.chain-icon-badge img {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+/* ================================
+   Panel System
+   ================================
+   Consistent panel styling across all pages.
+   Use these classes instead of ad-hoc backgrounds/borders.
+*/
+
+/* Base panel - standard card appearance */
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(8px);
+}
+
+/* Elevated panel - more prominent, for primary content */
+.panel--elevated {
+  background: var(--panel-bg-elevated);
+  border-color: var(--panel-border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Subtle panel - less prominent, for secondary content */
+.panel--subtle {
+  background: var(--panel-bg-subtle);
+  border-color: var(--muted-gold-10);
+}
+
+/* Stat card - for metric displays */
+.panel--stat {
+  background: var(--panel-bg-subtle);
+  border-color: var(--panel-border);
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+/* Interactive panel - hover state */
+.panel--interactive {
+  transition: var(--transition-base);
+  cursor: pointer;
+}
+
+.panel--interactive:hover {
+  background: var(--panel-bg-elevated);
+  border-color: var(--panel-border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Row panel - for list items */
+.panel--row {
+  background: var(--panel-bg-subtle);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  transition: var(--transition-base);
+}
+
+.panel--row:hover {
+  background: var(--panel-bg-elevated);
+  border-color: var(--panel-border-hover);
+}
+
+/* Empty state panel */
+.panel--empty {
+  background: var(--inset-bg);
+  border: 1px dashed var(--panel-border-hover);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+/* ================================
+   Button System
+   ================================
+   Consistent button styling across all pages.
+*/
+
+/* Base button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-base);
+  border: 1px solid transparent;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary button - main CTAs */
+.btn--primary {
+  background: linear-gradient(135deg, var(--coral-20) 0%, var(--coral-10) 100%);
+  border-color: var(--coral-30);
+  color: var(--axol-coral);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--coral-30) 0%, var(--coral-20) 100%);
+  border-color: rgba(255, 205, 156, 0.6);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Secondary button - secondary actions */
+.btn--secondary {
+  background: var(--inset-bg);
+  border-color: var(--panel-border);
+  color: var(--pearl-cream);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-color: var(--panel-border-hover);
+  transform: translateY(-1px);
+}
+
+/* Ghost button - minimal emphasis */
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  color: var(--pearl-cream);
+}
+
+/* Success button - confirmations */
+.btn--success {
+  background: linear-gradient(135deg, var(--sky-25) 0%, var(--sky-10) 100%);
+  border-color: var(--sky-40);
+  color: var(--cryptowave-sky);
+}
+
+.btn--success:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--sky-30) 0%, rgba(88, 161, 198, 0.2) 100%);
+  border-color: var(--sky-40);
+  transform: translateY(-1px);
+}
+
+/* Button sizes */
+.btn--sm {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-xs);
+}
+
+.btn--lg {
+  padding: var(--space-lg) var(--space-xl);
+  font-size: var(--text-base);
+}
+
+/* ================================
+   Label System
+   ================================ */
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.label--lg {
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-widest);
+}
+
+/* The xochi.fi logo's type (`.logo` in the xochi app): Argon 500, 0.3em tracking. */
+.wordmark {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted-gold);
+}
+
+/* ================================
+   Badge System
+   ================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  background: var(--muted-gold-25);
+  color: var(--muted-gold);
+}
+
+.badge--success {
+  background: var(--sky-15);
+  color: var(--cryptowave-sky);
+}
+
+.badge--warning {
+  background: var(--coral-15);
+  color: var(--axol-coral);
+}
+
+.badge--error {
+  background: rgba(229, 132, 118, 0.15);
+  color: var(--decentralized-coral);
+}
+
+/* ================================
+   Value Display
+   ================================
+   For displaying monetary values, percentages, etc.
+*/
+
+.value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--pearl-cream);
+  letter-spacing: var(--tracking-tight);
+}
+
+.value--sm {
+  font-size: var(--text-base);
+}
+.value--md {
+  font-size: var(--text-lg);
+}
+.value--lg {
+  font-size: var(--text-xl);
+}
+.value--xl {
+  font-size: var(--text-2xl);
+}
+.value--hero {
+  font-size: var(--text-3xl);
+}
+
+.value--positive {
+  color: var(--axol-coral);
+}
+.value--negative {
+  color: var(--decentralized-coral);
+}
+.value--muted {
+  color: var(--text-muted);
+}
+
+/* ================================
+   Text Utilities
+   ================================ */
+
+.text-muted {
+  color: var(--text-muted);
+}
+.text-subtle {
+  color: var(--text-secondary);
+}
+.text-default {
+  color: var(--pearl-cream);
+}
+.text-accent {
+  color: var(--muted-gold);
+}
+.text-success {
+  color: var(--cryptowave-sky);
+}
+.text-warning {
+  color: var(--axol-coral);
+}
+.text-error {
+  color: var(--decentralized-coral);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
+.text-upper {
+  text-transform: uppercase;
+}
+
+.dev-badge {
+  font-size: 0.35em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 2px 6px;
+  margin-left: 0.5em;
+  border-radius: 3px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: var(--color-warning);
+  vertical-align: middle;
+}
+
+/* ================================
+   Loading Spinner
+   ================================ */
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner-rings {
+  position: relative;
+}
+
+.loading-spinner--small .spinner-rings {
+  width: 24px;
+  height: 24px;
+}
+
+.loading-spinner--medium .spinner-rings {
+  width: 40px;
+  height: 40px;
+}
+
+.loading-spinner--large .spinner-rings {
+  width: 60px;
+  height: 60px;
+}
+
+.spinner-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  border-top-color: var(--muted-gold);
+  animation: spinRing 1.2s ease-in-out infinite;
+}
+
+.spinner-ring-1 {
+  animation-delay: 0s;
+  opacity: 1;
+}
+
+.spinner-ring-2 {
+  inset: 4px;
+  animation-delay: 0.15s;
+  opacity: 0.7;
+  animation-direction: reverse;
+}
+
+.spinner-ring-3 {
+  inset: 8px;
+  animation-delay: 0.3s;
+  opacity: 0.4;
+}
+
+@keyframes spinRing {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* ================================
+   Error Message Component
+   ================================ */
+
+.error-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 2rem;
+  background: var(--negative-08);
+  border: 1px solid var(--negative-20);
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.error-icon {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--pearl-pink);
+}
+
+.error-message .error-text {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 300;
+  color: var(--pearl-cream);
+  text-align: center;
+  margin: 0;
+}
+
+.error-retry-button {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pearl-cream);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  padding: 0.5rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 0.5rem;
+}
+
+.error-retry-button:hover {
+  border-color: var(--pearl-cream);
+  background: var(--line-subtle);
+}
+
+/* ================================
+   Share Buttons
+   ================================ */
+
+.share-section {
+  margin-top: 1.5rem;
+  text-align: center;
+  animation: fadeInUp 0.5s ease-out 0.3s both;
+}
+
+.share-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.share-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  padding: 0.6rem 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.share-button:hover {
+  color: var(--pearl-cream);
+  /* Was --text-faint (0.55) against a 0.51 base: a 0.04 alpha step, under the
+     ~7% just-noticeable difference, so this border has never actually appeared
+     to change on hover. The colour change above is what reads. Kept explicit at
+     the base weight rather than deleted, so the rule still says what the border
+     does in this state. */
+  border-color: var(--line-strong);
+}
+
+/* Share icons */
+.share-icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+  position: relative;
+}
+
+.share-icon--copy {
+  width: 10px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+
+.share-icon--copy::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 3px;
+  width: 10px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: var(--obsidian);
+}
+
+.share-icon--twitter {
+  width: 12px;
+  height: 12px;
+}
+
+.share-icon--twitter::before,
+.share-icon--twitter::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 1px;
+  background: currentColor;
+  top: 50%;
+  left: 50%;
+}
+
+.share-icon--twitter::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.share-icon--twitter::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.share-copied {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pearl-green);
+  animation: fadeInUp 0.2s ease-out;
+}
+
+/* ================================
+   Responsive
+   ================================ */
+
+@media (max-width: 480px) {
+  .error-message {
+    padding: 1rem 1.5rem;
+  }
+
+  .share-button {
+    padding: 0.5rem 1rem;
+  }
+}
+
+/* Focus styles */
+.share-button:focus-visible,
+.error-retry-button:focus-visible {
+  outline: 2px solid var(--muted-gold);
+  outline-offset: 2px;
+}
+
+/* ================================
+   Modal System
+   ================================
+   Shared overlay, content, header, actions, and button
+   patterns for all modals. Specific modals layer on top
+   with their own classes (e.g. .x402-modal, .risk-modal).
+*/
+
+/* Overlay - dark backdrop with blur */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-end);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(12px);
+  animation: fadeIn var(--duration-slow) var(--ease-out);
+}
+
+/* Content container */
+.modal-content {
+  width: 100%;
+  max-width: 400px;
+  margin: 1rem;
+  background: var(--panel-bg-elevated);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  animation: modalIn var(--duration-slow) var(--ease-out);
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Header */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--pearl-cream);
+}
+
+/* Close button */
+.modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  border-color: var(--line-strong);
+  color: var(--pearl-cream);
+}
+
+/* Body */
+.modal-body {
+  padding: 1.25rem 1.5rem;
+}
+
+/* Actions row */
+.modal-actions {
+  display: flex;
+  gap: var(--space-md);
+  padding: 0 1.5rem 1.25rem;
+}
+
+/* Base modal button */
+.modal-btn {
+  flex: 1;
+  padding: var(--space-md) var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cancel variant */
+.modal-btn--cancel {
+  background: transparent;
+  border: 1px solid var(--muted-gold-25);
+  color: var(--text-strong);
+}
+
+.modal-btn--cancel:hover:not(:disabled) {
+  background: var(--muted-gold-10);
+  border-color: var(--muted-gold-glow);
+  color: var(--pearl-cream);
+}
+
+.modal-btn--cancel:disabled,
+.modal-btn--confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: saturate(0.5);
+}
+
+/* Confirm variant */
+.modal-btn--confirm {
+  background: linear-gradient(135deg, var(--muted-gold-30) 0%, var(--panel-border-hover) 100%);
+  border: 1px solid var(--muted-gold-glow);
+  color: var(--pearl-cream);
+}
+
+.modal-btn--confirm:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--muted-gold-glow) 0%, var(--muted-gold-30) 100%);
+  border-color: rgba(168, 154, 128, 0.6);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Footer note */
+.modal-note {
+  margin: 0;
+  padding: 0.75rem 1.5rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  text-align: center;
+  border-top: 1px solid var(--muted-gold-subtle);
+}
+
+.modal-note--error {
+  color: var(--color-error);
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Route Suspense fallback. Only ever painted when a page chunk stalls past the
+   delay in RouteFallback.tsx, so it replaces a blank page rather than a fast
+   one (#351). Centered in flow, no fixed positioning: it renders inside the
+   route boundary over an already-cleared container. */
+.route-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 4rem 1.5rem;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.route-fallback__title {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--pearl-cream);
+}
+
+.route-fallback__body {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.route-fallback__action {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--pearl-cream);
+  background: transparent;
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.route-fallback__action:hover {
+  border-color: var(--muted-gold);
+}
+
+/* Session-expired / new-build reload prompt (fixed, top of viewport) */
+.reload-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  background: var(--muted-gold);
+  color: var(--obsidian);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  box-shadow: var(--shadow-md);
+}
+
+.reload-banner__text {
+  letter-spacing: 0.01em;
+}
+
+.reload-banner__btn {
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--obsidian);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--obsidian);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.reload-banner__btn:hover {
+  background: var(--obsidian);
+  color: var(--muted-gold);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .modal-content {
+    max-width: none;
+    margin: 0.5rem;
+  }
+}
+
+/* ================================
+   Error Boundary
+   ================================ */
+
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 2rem;
+  text-align: center;
+  color: var(--pearl-cream);
+}
+
+.error-boundary__art {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-error);
+  opacity: 0.6;
+  margin-bottom: 1.5rem;
+  white-space: pre;
+}
+
+.error-boundary__title {
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pearl-cream);
+  margin-bottom: 0.5rem;
+}
+
+.error-boundary__message {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  max-width: 400px;
+  margin-bottom: 1.5rem;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.error-boundary__btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  padding: 0.6rem 1.2rem;
+  background: var(--muted-gold-15);
+  border: 1px solid var(--muted-gold-25);
+  border-radius: 6px;
+  color: var(--pearl-cream);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.error-boundary__btn:hover {
+  background: var(--muted-gold-25);
+  border-color: var(--muted-gold-glow);
+}
+
+.error-boundary__btn--secondary {
+  background: transparent;
+  border-color: var(--panel-border);
+  color: var(--text-muted);
+}
+
+.error-boundary__btn--secondary:hover {
+  background: var(--muted-gold-subtle);
+  color: var(--pearl-cream);
+}
+
+/* ================================
+   Reading Progress Bar
+   ================================
+   Fixed top-of-viewport scroll indicator for long-form pages
+   (whitepaper, appendix). Pinned to the top of the viewport;
+   nothing sits above it. The storage notice is bottom-anchored
+   precisely so this stays true.
+*/
+
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(168, 154, 128, 0.08);
+  z-index: 49;
+  pointer-events: none;
+}
+
+.reading-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--axol-coral), var(--decentralized-coral));
+  box-shadow: 0 0 8px var(--muted-gold-30);
+  transition: width 0.15s ease-out;
+}
+
+/* ============================================================
+   Scroll to top button
+   ============================================================ */
+
+.scroll-to-top-btn {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+  z-index: 40;
+}
+
+.scroll-to-top-btn--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.scroll-to-top-btn:hover {
+  border-color: var(--panel-border-hover);
+  color: var(--pearl-cream);
+}
+
+/* ============================================================
+   Quote countdown -- honest "when will this number change" signal.
+   Panel timer (quote-details) counts to the next auto-reprice;
+   modal line (tx-preview) counts to hard expiry.
+   ============================================================ */
+
+.quote-countdown {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-preview-expiry {
+  margin: 0.5rem 0 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   Chevron -- shared disclosure/dropdown affordance (Chevron.tsx)
+   One glyph that rotates on open, replacing the old "^"/"v" swap
+   and the per-component copies of the same <path>.
+   ============================================================ */
+
+.glyph-chevron {
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.glyph-chevron--open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyph-chevron {
+    transition: none;
+  }
+}

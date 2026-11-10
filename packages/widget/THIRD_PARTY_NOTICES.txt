@@ -1,0 +1,36 @@
+@xochi/widget source and third-party materials
+
+Source code and styles authored by Xochi Contributors are provided under
+MIT, Copyright (c) 2025-2026 Xochi Contributors. See LICENSE for the complete
+permission and warranty notice. The extracted subset of @xochi-fi/shared
+0.2.1 carries the same MIT notice, preserved in licenses/xochi-shared-MIT.txt.
+This source license does not assign rights to third-party artwork.
+
+Monaspace fonts
+
+The 13 unchanged Monaspace Argon, Neon and Xenon WOFF2 font files under
+src/assets/fonts (emitted under dist/assets when built) are separately
+licensed under the SIL Open Font License 1.1, not MIT.
+
+Copyright (c) 2023, GitHub https://github.com/githubnext/monaspace
+with Reserved Font Name "Monaspace", including subfamilies: "Argon", "Neon",
+"Xenon", "Radon", and "Krypton".
+
+The full copyright notice, reserved-name notice and license are reproduced
+in licenses/Monaspace-OFL-1.1.txt. Upstream evidence:
+https://raw.githubusercontent.com/githubnext/monaspace/main/LICENSE
+
+Artwork redistribution authorization
+
+On 2026-11-10, the requester explicitly confirmed authority to permit public
+redistribution of all 25 listed token, chain and DefiLlama images unchanged,
+and granted that permission. No additional provenance documents or notices
+were supplied. The complete scope is recorded in licenses/assets.json.
+This authorization is not a claim that third-party artwork is MIT-licensed
+and does not transfer ownership of any trademark.
+
+Runtime packages remain separate dependencies under their own licenses;
+React and React DOM remain peer dependencies. The production build does
+not bundle their JavaScript. RainbowKit's imported stylesheet is emitted
+with widget CSS and retains its upstream license obligations (MIT;
+Copyright (c) 2024 Rainbow; see licenses/rainbowkit-MIT.txt).

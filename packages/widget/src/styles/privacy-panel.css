@@ -1,0 +1,242 @@
+/* Privacy Panel - unified control surface */
+
+.privacy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Header: tier badge + fee + score */
+.pp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.pp-tier {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pp-tier-badge {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: var(--muted-gold-15);
+  color: var(--muted-gold);
+}
+
+.pp-fee {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.pp-score {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+/* Section labels */
+.pp-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Disclosures (expandable) */
+.pp-disclosures {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+/* Glassed out until verify/attestations are live: frosted, dimmed, and
+   non-interactive so it reads as "here soon, not yet actionable." */
+.pp-disclosures--soon {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+
+.pp-disclosures--soon .pp-disclosures-toggle {
+  cursor: not-allowed;
+}
+
+.pp-disclosures--soon .pp-disclosures-toggle:hover {
+  background: transparent;
+}
+
+.pp-disclosures-soon,
+.pp-soon {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-gold);
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  background: var(--muted-gold-subtle);
+}
+
+/* Faint, not gold. destination-selector.css sets the rule the whole codebase
+   is supposed to follow: gold promises "you can act on this", faint is a
+   verdict you cannot act on. A shielded row is the second kind, and it is the
+   same verdict the trade toggle already renders faint one screen away, so the
+   concept has to be coded the same way in both places. The gold treatment on
+   the disclosures chip above predates this and is left alone. */
+.pp-soon {
+  color: var(--text-faint);
+  background: var(--panel-border);
+}
+
+.pp-disclosures-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s ease;
+}
+
+.pp-disclosures-toggle:hover {
+  background: var(--muted-gold-subtle);
+}
+
+.pp-disclosures-count {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.pp-disclosures-detail {
+  padding: 0 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pp-category {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+}
+
+.pp-category-name {
+  color: var(--text-secondary);
+}
+
+.pp-category-count {
+  color: var(--text-faint);
+}
+
+.pp-manage-link {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--cryptowave-sky);
+  text-decoration: none;
+  margin-top: 0.25rem;
+}
+
+.pp-manage-link:hover {
+  text-decoration: underline;
+}
+
+/* Status rows (stealth, aztec) */
+.pp-status-rows {
+  padding: 0.5rem 1rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pp-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pp-status-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-faint);
+}
+
+.pp-status-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+.pp-status-value {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+}
+
+.pp-status--ok {
+  color: var(--color-success);
+}
+
+.pp-status--warn {
+  color: var(--color-warning);
+}
+
+.pp-status-hint {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin: -0.15rem 0 0.4rem;
+  padding: 0;
+  line-height: 1.4;
+}
+
+.pp-status-action {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pp-status-action:hover:not(:disabled) {
+  color: var(--pearl-cream);
+  border-color: var(--panel-border-hover);
+}
+
+.pp-status-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

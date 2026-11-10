@@ -16,6 +16,10 @@ export * from "./machine/index.js";
 export * from "./transport/client.js";
 export * from "./claim.js";
 export * from "./fee.js";
+export * from "./capabilities.js";
+export * from "./routeModel.js";
+export * from "./settlementEligibility.js";
+export * from "./trustFeatures.js";
 export type { MethodPin, PinnedPullRecipients, PreparedClaim } from "@xochi/signer";
 export {
   advertisedConversionPairs,

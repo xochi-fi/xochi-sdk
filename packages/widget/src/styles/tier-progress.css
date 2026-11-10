@@ -1,0 +1,254 @@
+/* Tier Progress Component Styles */
+
+/* ============================================================
+   Compact Badge
+   ============================================================ */
+
+.tier-badge-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  background: var(--muted-gold-10);
+  border: 1px solid var(--panel-border-hover);
+  border-radius: 4px;
+}
+
+.tier-badge-compact .tier-score {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted-gold);
+}
+
+.tier-badge-compact .tier-name {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Tier-specific colors */
+.tier-badge-compact[data-tier="standard"] {
+  border-color: rgba(150, 150, 160, 0.2);
+}
+
+.tier-badge-compact[data-tier="trusted"] {
+  border-color: var(--sky-30);
+}
+
+.tier-badge-compact[data-tier="verified"] {
+  border-color: rgba(130, 160, 190, 0.3);
+}
+
+.tier-badge-compact[data-tier="premium"] {
+  border-color: rgba(176, 134, 166, 0.3);
+}
+
+.tier-badge-compact[data-tier="institutional"] {
+  border-color: rgba(219, 182, 80, 0.3);
+}
+
+/* ============================================================
+   Full Progress Component
+   ============================================================ */
+
+.tier-progress {
+  padding: 0.75rem;
+  background: var(--inset-bg);
+  border: 1px solid var(--muted-gold-15);
+  border-radius: 8px;
+}
+
+.tier-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.tier-current {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.tier-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.tier-value {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--muted-gold);
+}
+
+.tier-value[data-tier="standard"] {
+  color: rgba(150, 150, 160, 0.8);
+}
+.tier-value[data-tier="trusted"] {
+  color: var(--cryptowave-sky);
+}
+.tier-value[data-tier="verified"] {
+  color: var(--tier-verified-accent);
+}
+.tier-value[data-tier="premium"] {
+  color: var(--tier-premium-accent);
+}
+.tier-value[data-tier="institutional"] {
+  color: var(--tier-institutional-accent);
+}
+
+.tier-name-badge {
+  padding: 0.3rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--muted-gold-15);
+  border-radius: 4px;
+  color: var(--muted-gold);
+}
+
+.tier-name-badge[data-tier="standard"] {
+  background: rgba(150, 150, 160, 0.15);
+  color: rgba(150, 150, 160, 0.8);
+}
+
+.tier-name-badge[data-tier="trusted"] {
+  background: var(--sky-15);
+  color: var(--cryptowave-sky);
+}
+
+.tier-name-badge[data-tier="verified"] {
+  background: rgba(130, 160, 190, 0.15);
+  color: var(--tier-verified-accent);
+}
+
+.tier-name-badge[data-tier="premium"] {
+  background: rgba(176, 134, 166, 0.15);
+  color: var(--tier-premium-accent);
+}
+
+.tier-name-badge[data-tier="institutional"] {
+  background: rgba(219, 182, 80, 0.15);
+  color: var(--tier-institutional-accent);
+}
+
+/* Progress bar */
+.tier-progress-bar {
+  height: 6px;
+  background: var(--muted-gold-10);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.tier-progress-fill {
+  height: 100%;
+  background: var(--muted-gold);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.tier-progress-fill[data-tier="standard"] {
+  background: rgba(150, 150, 160, 0.6);
+}
+.tier-progress-fill[data-tier="trusted"] {
+  background: var(--cryptowave-sky);
+}
+.tier-progress-fill[data-tier="verified"] {
+  background: var(--tier-verified-accent);
+}
+.tier-progress-fill[data-tier="premium"] {
+  background: var(--tier-premium-accent);
+}
+.tier-progress-fill[data-tier="institutional"] {
+  background: var(--tier-institutional-accent);
+}
+
+/* Next tier info */
+.tier-next {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tier-next-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.tier-next-benefit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: rgba(88, 161, 198, 0.7);
+}
+
+/* Launch-status chip on the "Unlocks:" line. Text label plus color (never color
+   alone) mirrors the settlement roadmap chip so not-live modes read honestly. */
+.tier-next-badge {
+  padding: 0.05rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.tier-next-badge--soon {
+  background: color-mix(in srgb, var(--axol-coral) 18%, transparent);
+  border-color: color-mix(in srgb, var(--axol-coral) 42%, transparent);
+  color: var(--axol-coral);
+}
+
+.tier-next-badge--later {
+  background: color-mix(in srgb, var(--pearl-cream) 12%, transparent);
+  border-color: color-mix(in srgb, var(--pearl-cream) 26%, transparent);
+  color: var(--text-muted);
+}
+
+.tier-max {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-style: italic;
+  color: rgba(219, 182, 80, 0.7);
+  text-align: center;
+}
+
+/* Add attestation button */
+.tier-add-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  background: var(--sky-10);
+  border: 1px solid var(--sky-20);
+  border-radius: 4px;
+  color: var(--cryptowave-sky);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tier-add-btn:hover {
+  background: var(--sky-20);
+  border-color: var(--sky-40);
+}
