@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { planResume, selectPayoutSource, shouldCaptureToActivity } from "./resumeSwap.js";
-import { toActivityStatus } from "../../lib/localActivity.js";
+import { mergeHistorySwap, toActivityStatus } from "../../lib/localActivity.js";
+import { verifyStoredDeposit } from "@xochi/client";
+import { buildDepositAttestationMessage } from "@xochi/signer";
+import { privateKeyToAccount } from "viem/accounts";
 import type { SwapActivityItem } from "../../types/activity.js";
 import type { IntentStatus } from "../../types/intent.js";
 
@@ -103,6 +106,41 @@ describe("planResume (#339)", () => {
 
   it("reads a record with no settlement marker as public", () => {
     expect(planResume(makeRecord())?.destination.type).toBe("chain");
+  });
+
+  it("restores a Tron tag order as the public Ethereum DAI deposit rail", () => {
+    const plan = planResume(
+      makeRecord({
+        fromChainId: TRON,
+        fromToken: USDT_TRON,
+        toChainId: 1,
+        toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        recipientTag: "memory-rocky",
+        settlementType: "public",
+      }),
+    );
+    expect(plan?.destination).toMatchObject({ type: "chain", recipientTag: "memory-rocky" });
+    expect(plan?.toChainId).toBe(1);
+    expect(plan?.toToken.symbol).toBe("DAI");
+  });
+
+  it.each([
+    { recipientTag: "@invalid.tag" },
+    { toChainId: 42161 as const, toToken: USDC_ARB },
+    { toToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+    { settlementType: "stealth" as const },
+  ])("refuses an incoherent stored tag destination: %o", (over) => {
+    expect(
+      planResume(
+        makeRecord({
+          toChainId: 1,
+          toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+          recipientTag: "memory-rocky",
+          settlementType: "public",
+          ...over,
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("returns null for a missing record", () => {
@@ -318,5 +356,75 @@ describe("planResume deposit facts", () => {
     const plan = planResume(makeRecord({ fromChainId: TRON, fromToken: USDT_TRON }));
     expect(plan).not.toBeNull();
     expect(plan?.deposit).toBeNull();
+  });
+
+  const tagRecord = async (): Promise<SwapActivityItem> => {
+    const attester = privateKeyToAccount(
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    );
+    const attested = {
+      ...DEPOSIT.attested,
+      deposit_deadline: Math.floor(Date.now() / 1000) + 1800,
+      to_chain_id: 1,
+      to_token: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      to_amount: "49890000000000000000",
+      min_to_amount: "49640000000000000000",
+      recipient: "0x02fFD9Dcd6F0333EDA9245c8De54004012Fcf3e3",
+    };
+    const attestation = await attester.signMessage({
+      message: buildDepositAttestationMessage(attested),
+    });
+    return {
+      ...depositRecord(),
+      ownerWallet: attested.wallet,
+      data: {
+        ...depositRecord().data,
+        toChainId: 1,
+        toToken: attested.to_token,
+        toAmount: attested.to_amount,
+        settlementType: "public",
+        recipientTag: "memory-rocky",
+        deposit: { attested, attestation },
+      },
+    };
+  };
+
+  it("recovers verifiable funding after server history replaces a local tag order", async () => {
+    const local = await tagRecord();
+    const server: SwapActivityItem = {
+      ...local,
+      intentStatus: "bridging",
+      data: { ...local.data, recipientTag: undefined, deposit: undefined },
+    };
+    const plan = planResume(mergeHistorySwap(server, local));
+    const verified = await verifyStoredDeposit(
+      plan?.deposit,
+      "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      { intentId: server.id, owner: DEPOSIT.attested.wallet },
+    );
+    expect(verified.ok).toBe(true);
+    expect(plan?.destination).toMatchObject({ type: "chain", recipientTag: "memory-rocky" });
+    expect(plan?.status).toBe("bridging");
+  });
+
+  it("withholds funding when server history conflicts with the stored order amount", async () => {
+    const local = await tagRecord();
+    const server: SwapActivityItem = {
+      ...local,
+      data: {
+        ...local.data,
+        fromAmount: "49000000",
+        recipientTag: undefined,
+        deposit: undefined,
+      },
+    };
+    const plan = planResume(mergeHistorySwap(server, local));
+    const verified = await verifyStoredDeposit(
+      plan?.deposit,
+      "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      { intentId: server.id, owner: DEPOSIT.attested.wallet },
+    );
+    expect(verified.ok).toBe(false);
+    expect(plan?.destination.recipientTag).toBeUndefined();
   });
 });

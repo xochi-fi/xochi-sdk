@@ -31,6 +31,14 @@
   color: var(--text-muted);
 }
 
+.swap-flow-tag-route {
+  margin: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 /* Contextual "open in your wallet's browser" hint, shown in the awaiting-wallet
    phase on a relay-bound mobile browser. */
 .swap-flow-inapp-hint {
@@ -404,6 +412,7 @@
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .deposit-instructions__waiting {

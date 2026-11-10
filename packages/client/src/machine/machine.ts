@@ -464,8 +464,11 @@ export function update(model: Model, msg: Msg): [Model, Effect[]] {
 function step(m: Model, msg: Msg, fx: Effect[]): Model {
   switch (msg.type) {
     case "ContextChanged": {
-      const next = { ...m, ctx: msg.ctx };
-      if (m.flights.length === 0 || tradeKey(next.ctx) === tradeKey(m.ctx)) return next;
+      const tradeChanged =
+        (m.allocationKey !== null || m.flights.length > 0) &&
+        tradeKey(msg.ctx) !== tradeKey(m.ctx);
+      const next = { ...m, ctx: msg.ctx, allocationKey: tradeChanged ? null : m.allocationKey };
+      if (!tradeChanged || m.flights.length === 0) return next;
       // The quotes in the air were built from the old trade; their answers
       // describe a deal no longer on the form, so none of them may land.
       if (m.intent.status === "quoting" && m.amount) {
@@ -480,8 +483,14 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
       clearTimer(fx, "refresh");
       // A quote still in the air for another amount answers a question nobody
       // is asking any more; left in place it could land over the newer one.
-      const kept = msg.amount === m.amount ? m : supersedeFlights(m, fx);
-      const next = { ...kept, allocationKey: null, amount: msg.amount, refresh: null };
+      const amountChanged = msg.amount !== m.amount;
+      const kept = amountChanged ? supersedeFlights(m, fx) : m;
+      const next = {
+        ...kept,
+        allocationKey: amountChanged ? null : m.allocationKey,
+        amount: msg.amount,
+        refresh: null,
+      };
       if (!msg.amount || msg.amount === "0") {
         if (survivesClearedAmount(m.intent)) return next;
         // Including any half-finished two-step signing: the next quote must not
@@ -2314,6 +2323,7 @@ function watchWallet(m: Model, fx: Effect[]): Model {
   return {
     ...next,
     intent: INITIAL_INTENT_STATE,
+    allocationKey: null,
     refresh: null,
     awaitingPull: false,
     isSigningPull: false,

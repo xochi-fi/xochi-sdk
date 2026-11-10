@@ -11,7 +11,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SelectableChainId } from "../../types/intent.js";
-import { getExplorerTxUrl, CHAIN_SHORT_NAMES, isSelectableChainId } from "@xochi/client";
+import {
+  getExplorerTxUrl,
+  CHAIN_SHORT_NAMES,
+  isSelectableChainId,
+  isTronChainId,
+} from "@xochi/client";
 import { settlementTxChainId } from "../../lib/explorerLinks.js";
 import type { StructuredError } from "@xochi/client";
 import { getErrorInfo, MAY_HAVE_MOVED_NOTICE } from "../../lib/errorCategory.js";
@@ -20,6 +25,7 @@ import { type SwapFailureRef, formatFailureRef, supportMailto } from "../../lib/
 import { reportSwapFailure } from "../../lib/reportClient.js";
 import { GLYPH } from "../../lib/glyphs.js";
 import { ZKMONEY_ACTIVITY_URL, zkMoneyRefusal } from "../../pages/trade/zkMoney.js";
+import { truncateAddress } from "../../utils/format.js";
 import {
   CLAIM_IN_XOCHI_APP,
   useClaimInXochiApp,
@@ -83,6 +89,8 @@ interface SwapResultProps {
   retryAfter?: number;
   /** Plain-language refund explanation, refunded only. */
   refundReason?: string | null;
+  /** Independently verified attested refund target, never form or history metadata. */
+  refundAddress?: string | null;
   /** Solver-supported origin tokens for the unsupported-route copy. */
   originTokens?: readonly string[];
   onRetry: () => void;
@@ -133,6 +141,7 @@ export function SwapResult({
   errorCategory,
   retryAfter,
   refundReason,
+  refundAddress,
   originTokens,
   onRetry,
   onClose,
@@ -417,9 +426,21 @@ export function SwapResult({
         </div>
         <h3 className="swap-result__title">Deposit refunded</h3>
         <p className="swap-result__desc">
-          {refundReason
-            ? `${refundReason} Nothing was lost. Get a new quote to try again.`
-            : "The deposit was returned to the sending address. Nothing was lost. Get a new quote to try again."}
+          {refundReason && `${refundReason} `}
+          {refundAddress ? (
+            <>
+              The deposit was returned to{" "}
+              <code title={refundAddress}>{truncateAddress(refundAddress)}</code>.
+            </>
+          ) : isTronChainId(fromChainId) ? (
+            <>
+              The deposit was refunded. If you sent from an exchange, contact it if the refund is
+              not credited.
+            </>
+          ) : (
+            !refundReason && "The deposit was returned to the sending address."
+          )}{" "}
+          Get a new quote to try again.
         </p>
         <div className="swap-result__actions">
           <button className="modal-btn modal-btn--cancel" onClick={onClose}>

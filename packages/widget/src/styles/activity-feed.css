@@ -177,6 +177,7 @@
   font-family: var(--font-mono);
   font-size: 0.6rem;
   color: var(--text-faint);
+  overflow-wrap: anywhere;
 }
 
 .chain-arrow {
@@ -539,6 +540,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   padding: 0.2rem 0;
 }
 
@@ -549,6 +551,9 @@
 }
 
 .expanded-detail-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--pearl-cream);
@@ -827,7 +832,7 @@
   }
 
   .expanded-detail-value {
-    word-break: break-all;
+    text-align: left;
   }
 }
 

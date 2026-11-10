@@ -62,6 +62,7 @@ import {
 } from "../../lib/localActivity.js";
 import { verifyStoredDeposit } from "@xochi/client";
 import { DEPOSIT_ATTESTATION_PIN } from "../../config.js";
+import { normalizeZkMoneyTag, zkMoneyTagValid } from "./zkMoney.js";
 
 // The submit button's label while the selected privacy mode is unavailable.
 // "wallet" never shows here: the disconnected branch outranks it.
@@ -111,6 +112,8 @@ export interface SwapPrefill {
    * Absent on rows captured before the field existed, which reads as public.
    */
   settlement?: SettlementType;
+  recipientTag?: string;
+  refundAddress?: string;
 }
 
 export interface UseSwapFlowParams {
@@ -145,6 +148,8 @@ export interface UseSwapFlowParams {
   recipientInvalid: boolean;
   restoreSettlement: (next: SettlementType) => void;
   clearRecipient: () => void;
+  restoreRecipientTag: (tag: string) => void;
+  restoreRefundAddress: (address: string) => void;
   /** Flow-modal state, held by the composition (it also pauses the quote). */
   flowOpen: boolean;
   setFlowOpen: (open: boolean) => void;
@@ -203,6 +208,8 @@ export function useSwapFlow({
   recipientInvalid,
   restoreSettlement,
   clearRecipient,
+  restoreRecipientTag,
+  restoreRefundAddress,
   flowOpen,
   setFlowOpen,
   resumed,
@@ -230,6 +237,12 @@ export function useSwapFlow({
    * out of step: the moment `intent.intentId` changes or clears, this is false.
    */
   const isResumedIntent = resumed !== null && resumed.intentId === intent.intentId;
+
+  // Tag labels on a held quote describe its accepted recipient, not edits to
+  // the form behind the modal. The quote remains the funding authority.
+  const quotedDestination: IntentDestination = intent.quote
+    ? { ...destination, recipientTag: intent.quote.recipientTag }
+    : destination;
 
   /**
    * Deposit facts for a RESUMED deposit swap, so the flow modal can rebuild the
@@ -271,6 +284,21 @@ export function useSwapFlow({
       showToast("Couldn't reload that trade. Set it up again.", "error");
       return;
     }
+    const recipientTag =
+      typeof prefill.recipientTag === "string"
+        ? normalizeZkMoneyTag(prefill.recipientTag)
+        : undefined;
+    if (
+      prefill.recipientTag !== undefined &&
+      (recipientTag === undefined ||
+        !zkMoneyTagValid(recipientTag) ||
+        prefill.toChainId !== 1 ||
+        nextToToken.symbol !== "DAI" ||
+        (prefill.settlement !== undefined && prefill.settlement !== "public"))
+    ) {
+      showToast("Couldn't reload that trade. Set it up again.", "error");
+      return;
+    }
 
     intent.reset();
     // Restore the order's selected mode even if its route is no longer
@@ -294,11 +322,14 @@ export function useSwapFlow({
           : "public",
     );
     clearRecipient();
+    restoreRecipientTag(recipientTag ?? "");
+    restoreRefundAddress(prefill.refundAddress ?? "");
     applyRoute({
       fromChainId: prefill.fromChainId,
       toChainId: prefill.toChainId,
       fromToken: nextFromToken,
       toToken: nextToToken,
+      zkMoneyDestination: recipientTag !== undefined,
     });
     try {
       setAmount(formatTokenAmount(BigInt(prefill.fromAmount), nextFromToken.decimals, 6));
@@ -341,6 +372,7 @@ export function useSwapFlow({
       toChainId: plan.toChainId,
       fromToken: plan.fromToken,
       toToken: plan.toToken,
+      zkMoneyDestination: plan.destination.recipientTag !== undefined,
     });
     setAmount(plan.amount);
     // The served quote is gone and is never synthesized, so the modal's "you
@@ -520,6 +552,7 @@ export function useSwapFlow({
             ? "stealth"
             : "public"
           : settlement,
+        recipientTag: executedDestination?.recipientTag ?? intent.quote?.recipientTag,
         isCrossChain: fromChainId !== toChainId,
         // The VERIFIED deposit binding, stored verbatim, so a resumed swap gets
         // a usable screen back rather than a modal with no address on it.
@@ -616,11 +649,11 @@ export function useSwapFlow({
   }, [intent.status, intent.cancelSign, intent.reset, setFlowOpen]);
 
   // Capability refreshes can resolve while the confirmation surface is open.
-  // Close it and drop the held quote as soon as either the exact route or its
-  // selected settlement mode loses live authority.
+  // Close it and drop the held quote if its route, mode or input amount no
+  // longer matches what the user is reviewing.
   useEffect(() => {
-    if (flowOpen && !hasCurrentSettlementAuthority) invalidateHeldQuote();
-  }, [flowOpen, hasCurrentSettlementAuthority, invalidateHeldQuote]);
+    if (flowOpen && (!hasCurrentSettlementAuthority || quoteStale)) invalidateHeldQuote();
+  }, [flowOpen, hasCurrentSettlementAuthority, quoteStale, invalidateHeldQuote]);
 
   const handleMarketSubmit = useCallback(async (): Promise<void> => {
     // Reopen, never re-submit: while an order is in flight the CTA is a view
@@ -712,19 +745,20 @@ export function useSwapFlow({
   // opened the modal. Outcomes (executing/failed/completed) flow back through
   // intent status and the modal renders them; no toast, no closing here.
   const handleConfirmSwap = useCallback((): void => {
-    if (!hasCurrentSettlementAuthority || !intent.canSign) {
+    if (!hasCurrentSettlementAuthority || !intent.canSign || quoteStale) {
       invalidateHeldQuote();
       return;
     }
     setExecutionStartTime(Date.now());
-    setExecutedDestination(destination);
+    setExecutedDestination(quotedDestination);
     intent.sign();
   }, [
     hasCurrentSettlementAuthority,
     intent.canSign,
+    quoteStale,
     intent.sign,
     invalidateHeldQuote,
-    destination,
+    quotedDestination,
   ]);
 
   // A dismissed wallet prompt has not dispatched anything. End the machine's
@@ -904,7 +938,7 @@ export function useSwapFlow({
     // while one is in flight (bound at confirm, or restored from the record on
     // a resume), the live form's otherwise. Never the live toggle for an
     // executed order (see executedDestination above).
-    flowDestination: executedDestination ?? resumedDestination ?? destination,
+    flowDestination: executedDestination ?? resumedDestination ?? quotedDestination,
     executionStartTime,
     resumedDeposit,
     needsChainSwitch,

@@ -23,6 +23,11 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Fixed
 
+- Preserve a Tron allocation key across identical amount/context retries and
+  invalidate it immediately when canonical tag, refund, owner, chain, asset,
+  settlement or amount changes. Stale authentication replies cannot allocate
+  the edited trade.
+
 - Optional `getAuthGeneration` prevents stale authenticated error responses from
   expiring a replacement session, including same-token logout/re-authentication.
   The widget supplies its local wallet-session generation; no credentials enter

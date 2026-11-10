@@ -26,6 +26,7 @@ import {
   type IntentDestination,
 } from "../../types/intent.js";
 import type { SwapActivityItem, DepositActivity } from "../../types/activity.js";
+import { normalizeZkMoneyTag, zkMoneyTagValid } from "./zkMoney.js";
 
 export interface ResumePlan {
   /** The dispatched intent to adopt, so useIntent re-arms its status poll. */
@@ -96,6 +97,19 @@ export function planResume(record: SwapActivityItem | null | undefined): ResumeP
   const nextToToken = toInfo ? findTokenBySymbol(toChainId, toInfo.symbol) : undefined;
   if (!nextFromToken || !nextToToken) return null;
 
+  const storedTag = record.data.recipientTag;
+  const recipientTag = typeof storedTag === "string" ? normalizeZkMoneyTag(storedTag) : undefined;
+  if (
+    storedTag !== undefined &&
+    (recipientTag === undefined ||
+      !zkMoneyTagValid(recipientTag) ||
+      toChainId !== 1 ||
+      nextToToken.symbol !== "DAI" ||
+      (record.data.settlementType !== undefined && record.data.settlementType !== "public"))
+  ) {
+    return null;
+  }
+
   // A malformed stored amount must not throw on mount and take the panel down.
   // An empty input is a survivable degradation; the status still renders.
   let amount: string;
@@ -115,8 +129,11 @@ export function planResume(record: SwapActivityItem | null | undefined): ResumeP
     amount,
     toAmount: record.data.toAmount ?? null,
     deposit: record.data.deposit ?? null,
-    destination:
-      record.data.settlementType === "stealth" ? STEALTH_DESTINATION : DEFAULT_DESTINATION,
+    destination: recipientTag
+      ? { ...DEFAULT_DESTINATION, recipientTag }
+      : record.data.settlementType === "stealth"
+        ? STEALTH_DESTINATION
+        : DEFAULT_DESTINATION,
     startedAt: record.timestamp,
   };
 }
