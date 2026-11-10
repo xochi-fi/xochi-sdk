@@ -101,11 +101,16 @@ When a live chain requires a different receive asset, choosing that chain opens 
 ### Tron USDT to zk.money
 
 Offer this rail only when the live producer explicitly advertises the exact
-Tron USDT to `zk_money` DAI route. It remains public settlement: a manual TRC-20
-funding leg and a public Ethereum DAI deposit precede zk.money's separate Aztec
-credit. It does not enable native Shielded or Stealth funding.
+Tron USDT to `zk_money` DAI route. Its settlement endpoint is a public Ethereum
+DAI payout to the address resolved for the zk.money tag, funded by a public
+manual TRC-20 send. Subsequent zk.money/Aztec credit and shielding are separate;
+the local verification does not demonstrate funded end-to-end credit.
+This does not enable native Shielded or Stealth funding.
 
 Reservation requires explicit user action and matching wallet-bound sign-in.
+The service signs the deposit attestation; the client verifies it against the
+host's independent signer pin. EVM-owner authentication may require a wallet
+signature. The manual TRON send does not use an EVM token-pull/permit signature.
 Keep the allocation key on identical retries after unknown results; edits to
 tag, refund, owner or trade terms revoke it. Verify deposit instructions against
 the independent signer pin before display. History preserves the original tag
