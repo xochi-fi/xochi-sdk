@@ -8,7 +8,7 @@ import {
   validateOracleFeedsOnChain,
   Zkp2pClient,
 } from "@zkp2p/sdk";
-import { createPublicClient, formatUnits, http } from "viem";
+import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import {
   BASE_USDC,
@@ -95,7 +95,8 @@ export async function probeCompatibility(input) {
         recipient: input.address,
         destinationChainId: 8453,
         destinationToken: addresses.usdc,
-        amount: formatUnits(BigInt(input.amount), 6),
+        escrowAddresses: [addresses.escrowV2],
+        amount: input.amount,
         isExactFiat: false,
         quotesToReturn: 1,
         includeNearbyQuotes: false,
