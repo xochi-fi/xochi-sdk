@@ -3286,6 +3286,31 @@
           }
         }
       }
+    },
+    {
+      "id": "processing_leg_cannot_recover_even_if_advertised",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": { "name": "peer", "state": "completed", "recoverable": false },
+        "xochi": { "name": "xochi", "state": "processing", "recoverable": true },
+        "allowed_actions": ["recover_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": { "expected_revision": "7", "idempotency_key": "recovery_fixture" }
+      },
+      "expected": "action_not_allowed"
     }
   ]
 }

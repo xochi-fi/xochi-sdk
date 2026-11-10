@@ -391,6 +391,11 @@ export function checkRampCommand(
   if (!leg || snapshot.terminal || !snapshot.allowed_actions.includes(command.action))
     return "action_not_allowed";
   if (
+    (command.action === "recover_peer" || command.action === "recover_route") &&
+    !isRecoverableFailure(leg)
+  )
+    return "action_not_allowed";
+  if (
     terminalStates[leg.state] &&
     command.action !== "check_status" &&
     !(

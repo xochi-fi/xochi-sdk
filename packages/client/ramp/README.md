@@ -69,8 +69,9 @@ recognized before stale revision checking; reuse of a key for different content,
 wrong operation, or stale revision conflicts. New actions require current
 revision, an existing leg, and an allowed action. A recoverable failed leg accepts
 only its own `recover_peer` or `recover_route` action, or `check_status`; it cannot
-execute again through ordinary approval/execution actions. Completed, refunded
-and skipped legs cannot restart, and in-doubt anywhere still permits status only.
+execute again through ordinary approval/execution actions. Recovery actions cannot
+restart processing, completed, refunded or skipped legs, regardless of their
+`recoverable` flag; in-doubt anywhere still permits status only.
 Retain idempotency receipts for the operation lifetime; after uncertain submission,
 reconcile rather than invent another key or operation. Replays return the stored
 receipt snapshot; revision conflicts return the latest sanitized snapshot.
