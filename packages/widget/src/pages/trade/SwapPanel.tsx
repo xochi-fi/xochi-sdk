@@ -106,14 +106,7 @@ export function SwapPanel({
     stealthClickable,
     stealthFix,
     settlementFix,
-    dismissStealthDestinationNotice,
-    handleUseStealthDestination,
-    stealthDestinationReachable,
-    stealthDestinationTooSmall,
-    stealthDestinationFrom,
-    revertStealthDestination,
     stealthChains,
-    stealthDestinationTarget,
     stealthRefusalReason,
     showSettings,
     setShowSettings,
@@ -201,6 +194,8 @@ export function SwapPanel({
     policy,
     sourceChainIds,
     destinationChainIds,
+    destinationPickerMode,
+    stealthDestinationGuidance,
     originTokensByChain,
     destinationTokensByChain,
     classifyOriginToken,
@@ -211,11 +206,24 @@ export function SwapPanel({
   const stealthChainNames = joinChainNames(
     stealthChains.map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
   );
+  const liveStealthChainNames = joinChainNames(
+    (stealthDestinationGuidance?.chainIds ?? []).map((chainId) => EXTENDED_CHAIN_NAMES[chainId]),
+  );
+  const stealthDestinationIssue =
+    stealthDestinationGuidance !== null &&
+    (stealthDestinationGuidance.status !== "live" ||
+      !stealthDestinationGuidance.selectedPairSupported);
   const connectWallet = onConnectRequest ?? openConnectModal;
   const setupAction =
     settlementFix === "setup" && !needsChainSwitch && !flowReopenable && !routeBlocked && !flowOpen;
-  const stealthFixLine =
-    stealthFix === "destination"
+  const destinationFixExplained =
+    stealthDestinationGuidance !== null &&
+    (stealthFix === "destination" ||
+      stealthFix === "route_loading" ||
+      stealthFix === "route_unavailable");
+  const stealthFixLine = destinationFixExplained
+    ? MODE_META.stealth
+    : stealthFix === "destination"
       ? `Choose ${stealthChainNames}`
       : stealthFix === null
         ? MODE_META.stealth
@@ -296,12 +304,10 @@ export function SwapPanel({
                 className={`type-btn type-btn--privacy ${!zkMoneyDestination && settlement === "stealth" ? "active" : ""}`}
                 onClick={() => handleSettlementChange("stealth")}
                 aria-pressed={!zkMoneyDestination && settlement === "stealth"}
-                /* Disabled only for the blockers the user cannot act on (coming
-                soon, or the solver turned the route down). A missing wallet or an
-                unsupported destination leaves the button live, because the
-                click is what raises the notice that acts on it -- a title on a
-                disabled button is suppressed by most browsers and invisible on
-                touch. */
+                /* Selecting Stealth opens live destination browsing, even before
+                route data, wallet connection or key setup. Only the feature
+                gate or zk.money navigation disables this control; quote and
+                execution authorization remain separately guarded. */
                 disabled={!stealthClickable}
                 title={
                   stealthFix === "route" && stealthRefusalReason
@@ -322,7 +328,7 @@ export function SwapPanel({
                 {/* Exactly one line: what the mode does when it is available,
                 otherwise the one fix. Never both, and never a badge on top. */}
                 <span
-                  className={`type-btn__meta${stealthFix !== null ? " type-btn__meta--fix" : ""}`}
+                  className={`type-btn__meta${stealthFix !== null && !destinationFixExplained ? " type-btn__meta--fix" : ""}`}
                 >
                   {stealthFixLine}
                 </span>
@@ -400,66 +406,6 @@ export function SwapPanel({
               <span>Direct Aztec settlement isn't available yet.</span>
             ) : null}
           </div>
-
-          {/* Stealth was asked for on a destination that cannot settle it.
-          Rendered here, next to the toggle that was just clicked, rather than
-          with the quote notices at the foot of the card. role="alert" because it
-          answers a user action and has to be announced, not just discovered. */}
-          {notice === "stealth_needs_l1_destination" && stealthChains.length > 0 && (
-            <div className="error-display error-display--guidance" role="alert">
-              <div className="error-content">
-                <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
-                <div className="error-text">
-                  <span className="error-title">Stealth pays out on {stealthChainNames}</span>
-                  {/* Says what switching actually does, which is not "it costs
-                  a bit more". Sending to Ethereum costs roughly 20x what an L2
-                  costs, and past a point that is a refusal rather than a price:
-                  a small amount comes back "Amount too small" instead of a
-                  quote. No figure here on purpose. The minimum is worked out
-                  from live gas per route (cost-guard.ts: "the minimum is a
-                  consequence, not a constant"), so the only honest number is the
-                  one the server sends with the refusal, and it names it there. */}
-                  {stealthDestinationReachable ? (
-                    <span className="error-suggestion">
-                      Private payouts go to a one-time address on {stealthChainNames}, so the
-                      destination has to be {stealthChainNames} too.
-                      {stealthDestinationTarget === 1 &&
-                        ` Sending to Ethereum costs a lot more than ${EXTENDED_CHAIN_NAMES[toChainId]}, so a small amount may be turned down, with the smallest amount that works.`}
-                    </span>
-                  ) : (
-                    // The host holds the destination (a lock or list), so the
-                    // move is not offered: only the way to decline is.
-                    <span className="error-suggestion">
-                      Private payouts go to a one-time address on {stealthChainNames}, and the site
-                      embedding this widget keeps the destination on{" "}
-                      {EXTENDED_CHAIN_NAMES[toChainId]}.
-                    </span>
-                  )}
-                  <div className="error-actions">
-                    {stealthDestinationTarget !== null && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm settlement-fallback-btn"
-                        onClick={handleUseStealthDestination}
-                      >
-                        Send to {EXTENDED_CHAIN_NAMES[stealthDestinationTarget]} instead
-                      </button>
-                    )}
-                    {/* Declining is an answer. Without it the only ways out are
-                    the two branches above, so someone who wants neither is left
-                    with a standing alert over the amount field. */}
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm settlement-fallback-btn"
-                      onClick={dismissStealthDestinationNotice}
-                    >
-                      Keep {EXTENDED_CHAIN_NAMES[toChainId]}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Settings dropdown */}
           {showSettings && (
@@ -671,6 +617,45 @@ export function SwapPanel({
                 </span>
               )}
             </div>
+            {stealthDestinationGuidance && (
+              <div id="stealth-destination-guidance" className="settlement-caption" role="status">
+                {stealthDestinationGuidance.status === "checking" ? (
+                  "Checking live Stealth destinations..."
+                ) : stealthDestinationGuidance.status === "unavailable" ? (
+                  <>
+                    Live Stealth destinations couldn't be verified.
+                    {routeCheck.status === "unknown" && (
+                      <div className="settlement-caption__notice">
+                        <button
+                          type="button"
+                          onClick={routeCheck.retry}
+                          disabled={routeCheck.retrying}
+                        >
+                          {routeCheck.retrying ? "Retrying..." : "Retry"}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : stealthDestinationGuidance.chainIds.length === 0 ? (
+                  <>
+                    No live Stealth destinations are available for {fromToken.symbol} on{" "}
+                    {EXTENDED_CHAIN_NAMES[fromChainId]} within this widget's settings.
+                  </>
+                ) : (
+                  <>
+                    {!stealthDestinationGuidance.selectedPairSupported && (
+                      <>
+                        {fromToken.symbol} on {EXTENDED_CHAIN_NAMES[fromChainId]} to{" "}
+                        {toToken.symbol} on {EXTENDED_CHAIN_NAMES[toChainId]} isn't a live Stealth
+                        pair.{" "}
+                      </>
+                    )}
+                    Live Stealth destinations: {liveStealthChainNames}. Choose a receive asset from
+                    the live choices.
+                  </>
+                )}
+              </div>
+            )}
             <div
               id="swap-receive-row"
               className={`input-row ${intent.status === "quoting" ? "quoting" : ""} ${receiveFit.expanded ? "input-row--expanded" : ""}`}
@@ -685,6 +670,9 @@ export function SwapPanel({
                   className="amount-input output"
                   placeholder="0"
                   value={payoutField}
+                  aria-describedby={
+                    stealthDestinationGuidance ? "stealth-destination-guidance" : undefined
+                  }
                   readOnly
                   onClick={
                     receiveFit.truncated || receiveFit.expanded ? receiveFit.toggle : undefined
@@ -709,6 +697,7 @@ export function SwapPanel({
                 tokensByChain={destinationTokensByChain}
                 classify={classifyDestinationToken}
                 chainBlockedReason={destinationChainBlockedReason}
+                liveStealthDestination={destinationPickerMode === "stealth"}
                 zkMoney={
                   zkMoneyOffered
                     ? { selected: zkMoneyDestination, onSelect: handleZkMoneySelect }
@@ -954,7 +943,7 @@ export function SwapPanel({
         )}
 
         <div className="trade-card__actions">
-          {routeCheck.status === "checking" && (
+          {!stealthDestinationIssue && routeCheck.status === "checking" && (
             <div className="error-display error-display--liquidity" role="status">
               <div className="error-content">
                 <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
@@ -970,7 +959,7 @@ export function SwapPanel({
 
           {/* Route guidance (pre-quote): the solver structurally cannot fill this
           route, so explain why instead of quoting and failing. */}
-          {routeCheck.status === "unsupported" && (
+          {!stealthDestinationIssue && routeCheck.status === "unsupported" && (
             <div className="error-display error-display--liquidity" role="status">
               <div className="error-content">
                 <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
@@ -985,7 +974,7 @@ export function SwapPanel({
           {/* Capabilities are authoritative for route shape. A failed load
           blocks the route and stays retryable instead of guessing from the
           static fallback. */}
-          {routeCheck.status === "unknown" && (
+          {!stealthDestinationIssue && routeCheck.status === "unknown" && (
             <div className="error-display error-display--liquidity" role="status">
               <div className="error-content">
                 <span className="error-icon">{STATUS_GLYPH.liquidity}</span>
@@ -1045,6 +1034,7 @@ export function SwapPanel({
             !orderOutOfBounds &&
             !excessiveSlippage &&
             !flowOpen &&
+            !stealthDestinationIssue &&
             stealthUnavailable && (
               <div className="error-display error-display--liquidity" role="status">
                 <div className="error-content">
@@ -1144,35 +1134,6 @@ export function SwapPanel({
                 errorCategory={quoteErrorCategory}
                 mayHaveMoved={intent.receipt.phase === "may-have-moved"}
               />
-            )}
-
-          {/* Attaches the refusal above to the tap that caused it. The server's
-          own sentence already names the smallest amount that works, so this adds
-          only the cause and the way back: moving the payout to Ethereum is what
-          put this amount under the line. Rendered under the same conditions as
-          the error it explains, so it can never appear alone. */}
-          {!routeBlocked &&
-            !orderOutOfBounds &&
-            !excessiveSlippage &&
-            !flowOpen &&
-            !stealthUnavailable &&
-            stealthDestinationTooSmall &&
-            stealthDestinationFrom !== null && (
-              <div className="settlement-fallback" role="status">
-                <span className="settlement-fallback-note">
-                  This is because the payout moved to Ethereum for a private payout, and Ethereum
-                  costs much more to send to. Send a larger amount, or go back to{" "}
-                  {EXTENDED_CHAIN_NAMES[stealthDestinationFrom]} and receive it in the connected
-                  wallet.
-                </span>
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm settlement-fallback-btn"
-                  onClick={revertStealthDestination}
-                >
-                  Send to {EXTENDED_CHAIN_NAMES[stealthDestinationFrom]} instead
-                </button>
-              </div>
             )}
 
           {/* Settlement-mode escape hatch for a request the solver turned down on

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { act, render } from "@testing-library/react";
 import {
   MESSAGE,
   connectToHost,
@@ -7,7 +9,7 @@ import {
   type HostConnection,
   type HostMessage,
 } from "@xochi/widget-lib";
-import { createConfig, createConnector, http } from "wagmi";
+import { WagmiProvider, createConfig, createConnector, http } from "wagmi";
 import {
   disconnect,
   getAccount,
@@ -16,7 +18,7 @@ import {
   type GetAccountReturnType,
 } from "wagmi/actions";
 import { mainnet } from "wagmi/chains";
-import { HOST_WALLET_ID, autoConnectHostWallet, hostWallet } from "./wagmi.js";
+import { HOST_WALLET_ID, autoConnectHostWallet, createWagmiConfig, hostWallet } from "./wagmi.js";
 
 // The host wallet's wagmi connector over widget-lib's frame bridge, which runs
 // in a real child browsing context (an iframe of this jsdom window) with real
@@ -121,6 +123,33 @@ describe("hostWallet", () => {
       result: ["0x70997970c51812dc3a010c7d01b50e0d17dc79c8"],
     });
     await expect(authorized).resolves.toBe(true);
+  });
+
+  it("preserves framed connection state when WagmiProvider rerenders", () => {
+    const config = createWagmiConfig(bridge);
+    const connector = config.connectors.find((candidate) => candidate.id === HOST_WALLET_ID)!;
+    const address = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+    const { rerender, unmount } = render(
+      createElement(WagmiProvider, { config, reconnectOnMount: false }),
+    );
+    try {
+      act(() => {
+        config.setState((state) => ({
+          ...state,
+          connections: new Map([[connector.uid, { accounts: [address], chainId: 1, connector }]]),
+          current: connector.uid,
+          status: "connected",
+        }));
+      });
+      expect(getAccount(config).address).toBe(address);
+
+      rerender(createElement(WagmiProvider, { config, reconnectOnMount: false }));
+      expect(getAccount(config).status).toBe("connected");
+      expect(getAccount(config).address).toBe(address);
+      expect([...config.state.connections.keys()]).toEqual([connector.uid]);
+    } finally {
+      unmount();
+    }
   });
 
   // Wagmi's mount-time reconnect starts from the previous page's connections,

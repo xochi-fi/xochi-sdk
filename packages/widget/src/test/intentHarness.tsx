@@ -38,6 +38,7 @@ export function createTestWagmiConfig(account: `0x${string}` = TEST_WALLET): Con
     chains: [base, arbitrum],
     connectors: [mock({ accounts: [account] })],
     multiInjectedProviderDiscovery: false,
+    storage: null,
     transports: {
       [base.id]: http("http://127.0.0.1:9/"),
       [arbitrum.id]: http("http://127.0.0.1:9/"),

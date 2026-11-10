@@ -28,6 +28,13 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   The widget supplies its local wallet-session generation; no credentials enter
   the client state machine.
 
+### Fixed
+
+- Ignore late credential-expiry notifications after bearer replacement or a
+  caller-supplied `getAuthGeneration` change, including same-token re-authentication.
+- Preserve the host's origin-only bridged-USDC rule in executable route discovery,
+  even when a reverse payout is advertised.
+
 ## [0.1.13] - 2026-11-09
 
 ### Fixed

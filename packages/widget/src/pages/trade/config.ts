@@ -186,15 +186,6 @@ export const TOKENS: Record<SelectableChainId, Token[]> = {
 /** Default source chain for new users */
 export const DEFAULT_CHAIN_ID: ChainId = 8453;
 
-/** First supported destination to offer, or null when the current one works. */
-export function stealthDestinationTarget(
-  stealthChains: readonly ChainId[],
-  toChainId: SelectableChainId,
-): ChainId | null {
-  if (stealthChains.some((chainId) => chainId === toChainId)) return null;
-  return stealthChains[0] ?? null;
-}
-
 /** "Ethereum", "Base or Ethereum", "Base, Ethereum or Arbitrum". */
 export function joinChainNames(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? "";
@@ -217,10 +208,8 @@ export function joinChainNames(names: readonly string[]): string {
  * $1 order bounced with an "amount too small" notice out of the box. On an L2
  * destination the same $1 order quotes at about 1.08%.
  *
- * The stealth trade-off is paid for explicitly rather than by moving the
- * default back: selecting Stealth on an unsupported destination answers with
- * what to change and a one-tap switch, instead of a disabled button (see the
- * `stealth_needs_l1_destination` notice in useSwapPanel).
+ * An explicit Stealth choice shows live receive assets rather than silently
+ * moving the destination or changing the privacy choice.
  */
 export const DEFAULT_TO_CHAIN_ID: ChainId = 42161;
 

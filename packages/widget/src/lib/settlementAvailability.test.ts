@@ -9,57 +9,25 @@ import {
 describe("settlementSelectionDecision", () => {
   const STEALTH_BASE = { shieldedSelectable: false, shieldedPreLive: true };
 
-  it("selects Stealth anonymously without starting wallet setup", () => {
-    expect(
-      settlementSelectionDecision({
-        ...STEALTH_BASE,
-        next: "stealth",
-        connected: false,
-        stealthSelectable: true,
-        stealthBlockedByDestination: false,
-      }),
-    ).toBe("select_stealth");
-  });
+  it.each([false, true])(
+    "records explicit Stealth independently of wallet readiness (connected: %s)",
+    (connected) => {
+      expect(settlementSelectionDecision({ ...STEALTH_BASE, next: "stealth", connected })).toBe(
+        "select_stealth",
+      );
+    },
+  );
 
-  it("does not let a disconnected destination blocker replace the wallet requirement", () => {
-    expect(
-      settlementSelectionDecision({
-        ...STEALTH_BASE,
-        next: "stealth",
-        connected: false,
-        stealthSelectable: false,
-        stealthBlockedByDestination: true,
-      }),
-    ).toBe("show_wallet_nudge");
-  });
-
-  it("selects Public directly and routes connected Stealth requests by availability", () => {
-    const base = {
-      ...STEALTH_BASE,
-      connected: true,
-      stealthSelectable: true,
-      stealthBlockedByDestination: false,
-    };
-    expect(settlementSelectionDecision({ ...base, next: "public" })).toBe("select_public");
-    expect(settlementSelectionDecision({ ...base, next: "stealth" })).toBe("select_stealth");
-    expect(
-      settlementSelectionDecision({
-        ...base,
-        next: "stealth",
-        stealthBlockedByDestination: true,
-      }),
-    ).toBe("show_destination_nudge");
-    expect(
-      settlementSelectionDecision({ ...base, next: "stealth", stealthSelectable: false }),
-    ).toBe("ignore");
+  it("selects Public directly", () => {
+    expect(settlementSelectionDecision({ ...STEALTH_BASE, next: "public", connected: true })).toBe(
+      "select_public",
+    );
   });
 
   describe("shielded", () => {
     const base = {
       next: "shielded" as const,
       connected: true,
-      stealthSelectable: true,
-      stealthBlockedByDestination: false,
       shieldedSelectable: false,
       shieldedPreLive: true,
     };

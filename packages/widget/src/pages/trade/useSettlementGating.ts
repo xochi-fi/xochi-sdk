@@ -17,9 +17,7 @@
  * exists to remove. Every group downstream reads the intent from this hook's
  * result.
  *
- * Deliberately does NOT own the legs (it receives them, and moves the
- * destination through the route group's own handler so a stealth fix behaves
- * exactly like a manual chain switch), the pay amount, or the flow modal.
+ * Deliberately does NOT own the financial legs, pay amount, or flow modal.
  *
  * A new eligible route defaults to Stealth without prompting. A Public opt-in,
  * an explicit host mode, and a restored order remain sticky. Setup is explicit;
@@ -51,12 +49,7 @@ import {
 import type { RoutePrivacyMode, SolverCapabilities } from "@xochi/signer";
 import { type SelectableChainId } from "@xochi/client";
 import { validateDestinationAddress, refundAddressError } from "@xochi/client";
-import {
-  SHIELDED_SETTLEMENT_LIVE,
-  STEALTH_SETTLEMENT_LIVE,
-  stealthDestinationTarget as resolveStealthDestinationTarget,
-} from "./config.js";
-import type { ExtendedChainId } from "./Selectors.js";
+import { SHIELDED_SETTLEMENT_LIVE, STEALTH_SETTLEMENT_LIVE } from "./config.js";
 import type { CapabilityState } from "@xochi/client";
 import {
   isSettlementAvailable,
@@ -72,19 +65,10 @@ import {
   stealthFixFor,
   type SettlementFix,
 } from "../../lib/settlementAvailability.js";
-import { isAmountTooSmall } from "../../lib/errorCategory.js";
 import { normalizeZkMoneyTag, zkMoneyTagError, zkMoneyTagValid } from "./zkMoney.js";
 
-/**
- * The single guidance line the panel can be showing, or null for none.
- *
- * One slot, so one value. All three are answers to a settlement tap and they
- * render into the same place (the caption row, or the alert directly under it),
- * so at most one can ever be true -- an invariant that used to live in a
- * comment over three independent booleans and had to be re-obeyed at every one
- * of the eleven places that wrote them.
- */
-export type PanelNotice = "stealth_needs_wallet" | "stealth_needs_l1_destination" | "shielded_soon";
+/** The explicit settlement notice; live destination guidance is derived separately. */
+export type PanelNotice = "stealth_needs_wallet" | "shielded_soon";
 
 export interface UseSettlementGatingParams {
   fromChainId: SelectableChainId;
@@ -105,12 +89,6 @@ export interface UseSettlementGatingParams {
   isNonEvmOrigin: boolean;
   /** The destination is zk.money (useSwapRoute): one tag field, settled public. */
   zkMoneyDestination: boolean;
-  /**
-   * The route group's destination-chain handler. The stealth destination fix
-   * goes through it so that tap clears the recipient and resets the quote
-   * exactly as a manual chain switch does.
-   */
-  handleToChainChange: (chainId: ExtendedChainId) => void;
   isConnected: boolean;
   address: string | undefined;
   trustScore: number;
@@ -126,12 +104,6 @@ export interface UseSettlementGatingParams {
   initialSettlement?: SettlementType;
   /** Do not persist a provisional route's automatic mode before URL hydration. */
   openingSettled: boolean;
-  /**
-   * Whether the destination may move to `chainId` (false where a host's lock
-   * or allow-list holds it, xochi-widget#39). The stealth notice offers a move
-   * only to a stealth chain this allows, and none when it allows none.
-   */
-  stealthDestinationAllowed?: (chainId: number) => boolean;
   /** Referral and promo codes from the frame URL (embedParams.ts), sent on every quote. */
   codes?: EmbedCodes;
 }
@@ -163,20 +135,6 @@ export interface UseSettlementGatingResult {
   /** Trusted stealth destinations in solver-advertised order. */
   stealthChains: readonly ChainId[];
   stealthDestinationSupported: boolean;
-  /** Where the destination fix moves; null when no move is needed or possible. */
-  stealthDestinationTarget: ChainId | null;
-  stealthDestinationTooSmall: boolean;
-  stealthDestinationFrom: SelectableChainId | null;
-  dismissStealthDestinationNotice: () => void;
-  handleUseStealthDestination: () => void;
-  /** Commit Stealth on an exact advertised destination. */
-  selectStealth: (destinationChainId: ChainId) => void;
-  /**
-   * False when stealth needs another destination and the host allows none of
-   * the stealth chains (see `stealthDestinationAllowed`): no move is offered.
-   */
-  stealthDestinationReachable: boolean;
-  revertStealthDestination: () => void;
   recipientAddress: string;
   setRecipientAddress: Dispatch<SetStateAction<string>>;
   recipientInvalid: boolean;
@@ -204,8 +162,6 @@ export interface UseSettlementGatingResult {
   clearRecipient: () => void;
   /** Drop the refund address: it is origin-chain-VM-shaped. */
   clearRefund: () => void;
-  /** Forget where the stealth destination switch moved from. */
-  clearStealthDestinationOrigin: () => void;
 }
 
 export function useSettlementGating({
@@ -221,7 +177,6 @@ export function useSettlementGating({
   isNonEvmDest,
   isNonEvmOrigin,
   zkMoneyDestination,
-  handleToChainChange,
   isConnected,
   address,
   trustScore,
@@ -230,7 +185,6 @@ export function useSettlementGating({
   onStealthSettled,
   initialSettlement,
   openingSettled,
-  stealthDestinationAllowed = () => true,
   codes,
 }: UseSettlementGatingParams): UseSettlementGatingResult {
   const { showToast } = useToast();
@@ -308,16 +262,6 @@ export function useSettlementGating({
       setSettlement((selected) => defaultSettlementSelection(selected, stealthEligible));
     }
   }, [openingSettled, stealthEligible, zkMoneyDestination]);
-  // The fix moves only to a live exact route that advertises Stealth and that
-  // the host permits. Static chain metadata and the legacy stealth list never
-  // contribute a destination.
-  const stealthDestinationTarget = resolveStealthDestinationTarget(
-    stealthChains.filter((chainId) => chainId === toChainId || stealthDestinationAllowed(chainId)),
-    toChainId,
-  );
-  const stealthDestinationReachable =
-    stealthDestinationTarget !== null ||
-    resolveStealthDestinationTarget(stealthChains, toChainId) === null;
 
   const stealthRouteAuthorized =
     STEALTH_SETTLEMENT_LIVE && routeAdvertisesStealth && stealthDestinationSupported;
@@ -389,15 +333,13 @@ export function useSettlementGating({
     routeAdvertisesStealth && quotedStealthAvailable === false
       ? settlementRefusalReason(settlementOptions, "stealth")
       : null;
-  const {
-    clickable: stealthClickable,
-    selectable: stealthSelectable,
-    blockedByDestination: stealthBlockedByDestination,
-  } = stealthToggleState({
+  const { selectable: stealthSelectable } = stealthToggleState({
     live: STEALTH_SETTLEMENT_LIVE && liveCapabilities && stealthChains.length > 0,
     destinationSupported: stealthDestinationSupported,
     routeAvailable: stealthRouteAvailable,
   });
+  // Choosing privacy opens discovery; it does not grant quote or execution authority.
+  const stealthClickable = STEALTH_SETTLEMENT_LIVE;
 
   // Shielded direct settlement remains pre-live. Keep its future branch under
   // the same exact-route rule so flipping the feature flag cannot make a quote
@@ -420,41 +362,13 @@ export function useSettlementGating({
     routeAvailable: shieldedRouteAvailable,
   });
 
-  // The one caption/nudge slot, as one value.
-  //
-  // These three were three independent booleans, and their mutual exclusivity
-  // was enforced only by a comment asking every future writer to clear the
-  // other two. Six of the setter calls in `handleSettlementChange` existed for
-  // no other reason, and a single missed one puts two answers to the same tap
-  // on screen at once -- in an aria-live region, where a stale line gets
-  // announced as if it were the answer. Making the slot one nullable union
-  // makes "at most one" true by construction instead of by obedience.
-  //
-  //   stealth_needs_wallet         Explain an unavailable destination anonymously;
-  //     selecting Stealth never starts a signature flow on its own.
-  //   stealth_needs_l1_destination The user clicked Stealth on a destination
-  //     outside the stealth chains. That click is the only moment we know they want stealth,
-  //     so it is the moment to say what stands in the way.
-  //   shielded_soon                The user tapped Shielded before it ships.
+  // Explicit notices are separate from the selected mode's live destination guidance.
   const [notice, setNotice] = useState<PanelNotice | null>(null);
 
-  /**
-   * Put a notice down, but only if it is still the one on screen.
-   *
-   * Every clear in this hook is answering ONE of the three, and a blind
-   * `setNotice(null)` would also silence whichever unrelated notice happened to
-   * have replaced it since. Reading the current value keeps each clear as
-   * narrow as the three separate `setX(false)` calls it replaces.
-   */
+  /** Clear only the notice answered by this action. */
   const clearNotice = useCallback((kind: PanelNotice): void => {
     setNotice((current) => (current === kind ? null : current));
   }, []);
-
-  useEffect(() => {
-    if (stealthDestinationSupported || stealthChains.length === 0) {
-      clearNotice("stealth_needs_l1_destination");
-    }
-  }, [stealthDestinationSupported, stealthChains.length, clearNotice]);
 
   // The trade-edit clear for `shielded_soon` is wired by the composition: the
   // edit it watches for is a leg or amount change, which are two other groups'
@@ -463,33 +377,6 @@ export function useSettlementGating({
   const dismissShieldedNotice = useCallback((): void => {
     clearNotice("shielded_soon");
   }, [clearNotice]);
-
-  // Declining the offer is an answer too. Without this the notice could only be
-  // cleared by taking one of its two branches (move to Ethereum, or pick
-  // Public), so a user who wanted neither was left with a standing alert above
-  // the amount field and no way to put it down. It is guidance rather than a
-  // verdict, and guidance you cannot dismiss reads as an error.
-  const dismissStealthDestinationNotice = useCallback((): void => {
-    clearNotice("stealth_needs_l1_destination");
-  }, [clearNotice]);
-
-  // Where the destination was before the stealth destination fix moved it, or
-  // null when the user did not get here through that button.
-  //
-  // Held because that one tap can turn a working quote into a refusal. Cost is
-  // `max(gas floor of the destination, the fee rate)` and the L1 floor is about
-  // 20x an L2's, so a small order that quoted fine on Arbitrum comes back
-  // "Amount too small" on Ethereum. The server names the exact amount that would
-  // work (`minimum_amount_usd`, folded into the decline sentence the panel
-  // renders); what it cannot know is that the destination changed a moment ago,
-  // so the refusal arrives looking unrelated to the tap that caused it.
-  //
-  // Only the ORIGIN of the change is remembered, never a threshold. The minimum
-  // is gas-derived and moves per corridor -- cost-guard.ts is explicit that it
-  // is a consequence, not a constant -- so the client must not carry a copy.
-  const [stealthDestinationFrom, setStealthDestinationFrom] = useState<SelectableChainId | null>(
-    null,
-  );
 
   // Safety net for a non-public settlement the solver turns down after quoting.
   // Two shapes, two different pieces of copy (see settlementFallback):
@@ -543,35 +430,19 @@ export function useSettlementGating({
     modeFix ??
     (intent.quote && intent.receipt.settlement.mode !== requestedSettlement ? "quote" : null);
 
-  // Selection never prompts a wallet. Commit only against a destination that
-  // a live exact route advertised; setup remains explicit and retryable.
-  const selectStealth = useCallback(
-    (destinationChainId: ChainId): void => {
-      if (
-        !STEALTH_SETTLEMENT_LIVE ||
-        !liveCapabilities ||
-        !stealthChains.includes(destinationChainId)
-      ) {
-        return;
-      }
-      setSettlement("stealth");
-    },
-    [liveCapabilities, stealthChains],
-  );
   const setupStealth = useCallback(async (): Promise<void> => {
     if (!isConnected || stealth.isLoading || stealth.metaAddress) return;
     const ok = await stealth.initializeKeys();
     if (!ok) showToast("Stealth setup failed. Retry or choose Public.", "error");
   }, [isConnected, stealth, showToast]);
 
-  // Settlement toggle.
+  // Browsing Stealth never requests keys or repairs either financial leg.
   const handleSettlementChange = useCallback(
     (next: SettlementType): void => {
+      if (next === "stealth" && !STEALTH_SETTLEMENT_LIVE) return;
       const decision = settlementSelectionDecision({
         next,
         connected: isConnected,
-        stealthSelectable,
-        stealthBlockedByDestination,
         shieldedSelectable,
         shieldedPreLive,
       });
@@ -582,13 +453,11 @@ export function useSettlementGating({
         setSettlement("public");
       } else if (decision === "show_wallet_nudge") {
         setNotice("stealth_needs_wallet");
-      } else if (decision === "show_destination_nudge") {
-        setNotice("stealth_needs_l1_destination");
       } else if (decision === "show_shielded_soon") {
         setNotice("shielded_soon");
-      } else if (decision === "select_stealth" && isChainId(toChainId)) {
+      } else if (decision === "select_stealth") {
         setNotice(null);
-        selectStealth(toChainId);
+        setSettlement("stealth");
       } else if (decision === "select_shielded") {
         // Dormant until SHIELDED_SETTLEMENT_LIVE flips. Unreachable today
         // (`shieldedPreLive` short-circuits above), kept live-correct so the
@@ -597,51 +466,8 @@ export function useSettlementGating({
         setSettlement("shielded");
       }
     },
-    [
-      isConnected,
-      selectStealth,
-      shieldedPreLive,
-      shieldedSelectable,
-      stealthBlockedByDestination,
-      stealthSelectable,
-      toChainId,
-    ],
+    [isConnected, shieldedPreLive, shieldedSelectable],
   );
-
-  // Accept the notice: move to the first solver-advertised trusted chain and
-  // select stealth. Goes through handleToChainChange so recipient and quote
-  // invalidation are identical to a manual chain switch.
-  const handleUseStealthDestination = (): void => {
-    if (
-      stealthDestinationTarget === null ||
-      !liveCapabilities ||
-      !stealthChains.includes(stealthDestinationTarget)
-    ) {
-      return;
-    }
-    const previousDestination = toChainId;
-    handleToChainChange(stealthDestinationTarget);
-    setStealthDestinationFrom(previousDestination);
-    clearNotice("stealth_needs_l1_destination");
-    selectStealth(stealthDestinationTarget);
-  };
-
-  // The destination change we made is what the solver is refusing. Only ever
-  // true when all three hold: the switch happened, the destination is still the
-  // Ethereum it moved us to, and the decline the panel is showing is the
-  // below-the-minimum one. Read through the same categorizer that renders the
-  // notice, so the extra explanation cannot appear beside a different error.
-  const stealthDestinationTooSmall =
-    stealthDestinationFrom !== null &&
-    stealthDestinationSupported &&
-    toChainId === 1 &&
-    isAmountTooSmall(intent.error);
-
-  // One tap back to where the destination was. Moving off every stealth chain
-  // keeps the selection blocked and its destination fix visible.
-  const revertStealthDestination = (): void => {
-    if (stealthDestinationFrom !== null) handleToChainChange(stealthDestinationFrom);
-  };
 
   // The destination as the live form describes it. Derived here so the flow
   // group can bind it at dispatch; the modal reads `flowDestination`, which
@@ -675,10 +501,6 @@ export function useSettlementGating({
     setRefundAddress("");
   }, []);
 
-  const clearStealthDestinationOrigin = useCallback((): void => {
-    setStealthDestinationFrom(null);
-  }, []);
-
   return {
     intent,
     settlement,
@@ -703,14 +525,6 @@ export function useSettlementGating({
     stealthRefusalReason,
     stealthChains,
     stealthDestinationSupported,
-    stealthDestinationTarget,
-    stealthDestinationTooSmall,
-    stealthDestinationFrom,
-    dismissStealthDestinationNotice,
-    handleUseStealthDestination,
-    selectStealth,
-    stealthDestinationReachable,
-    revertStealthDestination,
     recipientAddress,
     setRecipientAddress,
     recipientInvalid,
@@ -731,6 +545,5 @@ export function useSettlementGating({
     restoreSettlement: setSettlement,
     clearRecipient,
     clearRefund,
-    clearStealthDestinationOrigin,
   };
 }

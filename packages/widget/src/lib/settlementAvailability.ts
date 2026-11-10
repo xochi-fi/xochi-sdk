@@ -84,26 +84,19 @@ export function shieldedFixFor(input: {
 export type SettlementSelectionDecision =
   | "select_public"
   | "show_wallet_nudge"
-  | "show_destination_nudge"
   | "show_shielded_soon"
   | "select_stealth"
   | "select_shielded"
   | "ignore";
 
 /**
- * Pure decision behind the settlement control, including anonymous preview.
- *
- * Shielded is checked FIRST, before the public fall-through. That ordering is
- * load-bearing: the fall-through reads "anything that is not stealth selects
- * public", so a shielded click reaching it would silently move the user to
- * Public instead of explaining anything. Adding a third mode without adding its
- * branch here is the failure this order prevents.
+ * Privacy navigation is separate from quote and execution authorization.
+ * Stealth records explicit intent before route discovery or wallet setup.
+ * Shielded keeps its pre-live explanation and live eligibility rules.
  */
 export function settlementSelectionDecision(input: {
   next: SettlementType;
   connected: boolean;
-  stealthSelectable: boolean;
-  stealthBlockedByDestination: boolean;
   shieldedSelectable: boolean;
   shieldedPreLive: boolean;
 }): SettlementSelectionDecision {
@@ -113,7 +106,5 @@ export function settlementSelectionDecision(input: {
     return input.shieldedSelectable ? "select_shielded" : "ignore";
   }
   if (input.next !== "stealth") return "select_public";
-  if (!input.connected && !input.stealthSelectable) return "show_wallet_nudge";
-  if (input.stealthBlockedByDestination) return "show_destination_nudge";
-  return input.stealthSelectable ? "select_stealth" : "ignore";
+  return "select_stealth";
 }

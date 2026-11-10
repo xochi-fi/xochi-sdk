@@ -78,19 +78,22 @@ type SignMessage = (args: { message: string }) => Promise<string>;
 /**
  * Ensure a wallet-bound session exists for `wallet`, signing in if absent or
  * bound to a different wallet. Returns the token. Throws if the user rejects the
- * signature or the server rejects the proof -- callers surface a retry.
+ * signature or the server rejects the proof -- callers surface a retry. The
+ * caller's authority predicate also cancels work without clearing shared sessions.
  */
 export const ensureWalletSession = async (
   wallet: string,
   signMessage: SignMessage,
+  isCurrent: () => boolean,
 ): Promise<string> => {
+  if (!isCurrent()) throw new Error("Wallet session changed during sign-in");
   const lower = wallet.toLowerCase();
   const existing = read();
   if (existing && existing.wallet === lower) return existing.token;
   if (existing) clearWalletSession();
   const generation = getWalletSessionGeneration();
   const assertCurrent = (): void => {
-    if (getWalletSessionGeneration() !== generation) {
+    if (getWalletSessionGeneration() !== generation || !isCurrent()) {
       throw new Error("Wallet session changed during sign-in");
     }
   };

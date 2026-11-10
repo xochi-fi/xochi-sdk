@@ -320,7 +320,6 @@ function FlowAuthorityProbe({
     recipientInvalid: false,
     restoreSettlement: noop,
     clearRecipient: noop,
-    clearStealthDestinationOrigin: noop,
     flowOpen: open,
     setFlowOpen: setOpen,
     resumed: null,

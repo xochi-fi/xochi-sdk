@@ -51,6 +51,7 @@
   },
   "sideEffects": [
     "**/*.css",
+    "./src/browser.ts",
     "./dist/browser.js"
   ],
   "files": [

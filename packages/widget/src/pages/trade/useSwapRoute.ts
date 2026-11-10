@@ -20,7 +20,7 @@
  * below rather than this hook reaching into state it does not own.
  */
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   EXTENDED_CHAIN_NAMES,
   isSelectableChainId,
@@ -242,9 +242,7 @@ export interface UseSwapRouteParams {
   /** Origin chain or token changed: the pay amount and the quote are dropped. */
   onOriginChange: () => void;
   /**
-   * Destination chain changed: the recipient belongs to the old destination and
-   * the stealth-switch origin no longer explains anything, so both go with the
-   * quote.
+   * Destination chain changed: clear the old destination's recipient and quote.
    */
   onDestinationChainChange: () => void;
   /** Destination token changed: the quote is dropped. */
@@ -281,8 +279,13 @@ export interface UseSwapRouteResult {
   handleToChainChange: (chainId: ExtendedChainId) => void;
   handleFromTokenChange: (token: Token) => void;
   handleToTokenChange: (token: Token) => void;
-  /** Switch to the exact token deployment advertising Stealth on this destination. */
-  handleStealthDestinationChange: (chainId: ExtendedChainId) => void;
+  /** Stealth origin picks change only the send leg, never repair the receive leg. */
+  stealthOrigins: {
+    classifyToken: (token: Token) => PairAvailability;
+    chainBlockedReason: (chainId: ExtendedChainId) => string | null;
+    handleTokenChange: (token: Token) => void;
+    handleChainChange: (chainId: ExtendedChainId) => void;
+  };
   /**
    * The destination is zk.money: DAI on Ethereum to a tag (zkMoney.ts). Set by
    * `selectZkMoneyDestination`; changing the receive leg or flipping clears it.
@@ -293,6 +296,8 @@ export interface UseSwapRouteResult {
   /** Why zk.money is not offered, or null when it is. */
   zkMoneyBlockedReason: string | null;
   selectZkMoneyDestination: () => void;
+  /** Leave the tag rail without changing either selected financial leg. */
+  leaveZkMoneyDestination: () => void;
   handleSwapTokens: () => void;
   /** Why the direction flip is unavailable for the current pair, or null. */
   flipBlockedReason: string | null;
@@ -316,6 +321,17 @@ export interface UseSwapRouteResult {
   selectedPrivacyModes: readonly RoutePrivacyMode[];
   /** Destinations where this exact origin/token and receive token support stealth. */
   stealthDestinationChainIds: readonly SelectableChainId[];
+  /** All exact live Stealth receive assets, without repairing the current origin. */
+  liveStealthDestinations: {
+    status: "checking" | "unavailable" | "live";
+    chainIds: readonly SelectableChainId[];
+    tokensByChain: ReadonlyMap<SelectableChainId, readonly Token[]>;
+    selectedPairSupported: boolean;
+    classifyToken: (token: Token) => PairAvailability;
+    chainBlockedReason: (chainId: ExtendedChainId) => string | null;
+    handleTokenChange: (token: Token) => void;
+    handleChainChange: (chainId: ExtendedChainId) => void;
+  };
   /** A solver matrix (live or stale) is held, so its VM metadata is known. */
   stealthChainsKnown: boolean;
   /** The authoritative matrix is still loading. */
@@ -756,6 +772,12 @@ export function useSwapRoute({
     onDestinationChainChange();
   };
 
+  const leaveZkMoneyDestination = (): void => {
+    if (!zkMoneyDestination) return;
+    setZkMoneyDestination(false);
+    onDestinationChainChange();
+  };
+
   const handleFromTokenChange = (token: Token): void => {
     if (!isSelectableToken(token) || classifyOriginToken(token).state === "unsupported") return;
     if (zkMoneyDestination) {
@@ -842,16 +864,151 @@ export function useSwapRoute({
     () => destinationChainIds.filter((chainId) => stealthDestinationToken(chainId) !== null),
     [destinationChainIds, stealthDestinationToken],
   );
-  const handleStealthDestinationChange = (chainId: ExtendedChainId): void => {
-    if (!isSelectableChainId(chainId)) return;
-    const token = stealthDestinationToken(chainId);
-    if (token === null || !destinationChainAllowed(chainId)) return;
-    const chainChanged = chainId !== toChainId;
+
+  const liveStealthStatus =
+    isLoading || isFetching
+      ? "checking"
+      : capabilityState === "live" && capabilities.routes !== null
+        ? "live"
+        : "unavailable";
+  const liveStealthTokensByChain = useMemo(() => {
+    if (
+      liveStealthStatus !== "live" ||
+      !(originTokensByChain.get(fromChainId) ?? []).some((token) =>
+        sameTokenDeployment(token, fromToken),
+      )
+    ) {
+      return new Map<SelectableChainId, readonly Token[]>();
+    }
+    return new Map<SelectableChainId, readonly Token[]>(
+      [...destinationTokensByChain].flatMap(([chainId, candidates]) => {
+        const tokens = candidates.filter((token) => {
+          if (
+            !policyAdmits(policy, {
+              fromChainId,
+              fromSymbol: fromToken.symbol,
+              toChainId: chainId,
+              toSymbol: token.symbol,
+            })
+          ) {
+            return false;
+          }
+          const availability = routeModel.resolve(selectedOrigin, {
+            kind: "chain",
+            chainId,
+            token,
+          });
+          return (
+            availability.status === "available" && availability.privacyModes.includes("stealth")
+          );
+        });
+        return tokens.length > 0 ? ([[chainId, tokens]] as const) : [];
+      }),
+    );
+  }, [
+    destinationTokensByChain,
+    fromChainId,
+    fromToken,
+    liveStealthStatus,
+    originTokensByChain,
+    policy,
+    routeModel,
+    selectedOrigin,
+  ]);
+  const liveStealthChainIds = useMemo(
+    () => [...liveStealthTokensByChain.keys()],
+    [liveStealthTokensByChain],
+  );
+  // A picker can retain an event handler across a capability or policy update.
+  // Revalidate against the current projection, not the render that opened it.
+  const liveStealthSelection = useRef({
+    tokensByChain: liveStealthTokensByChain,
+    toChainId,
+    toToken,
+    onDestinationChainChange,
+    onDestinationTokenChange,
+  });
+  liveStealthSelection.current = {
+    tokensByChain: liveStealthTokensByChain,
+    toChainId,
+    toToken,
+    onDestinationChainChange,
+    onDestinationTokenChange,
+  };
+  const handleLiveStealthTokenChange = useCallback((token: Token): void => {
+    if (!isSelectableToken(token)) return;
+    const current = liveStealthSelection.current;
+    const canonical = current.tokensByChain
+      .get(token.chainId)
+      ?.find((candidate) => sameTokenDeployment(candidate, token));
+    if (!canonical) return;
     setZkMoneyDestination(false);
-    setToChainId(chainId);
-    setToToken(token);
-    if (chainChanged) onDestinationChainChange();
-    else onDestinationTokenChange();
+    setToChainId(token.chainId);
+    setToToken(canonical);
+    if (token.chainId !== current.toChainId) current.onDestinationChainChange();
+    else current.onDestinationTokenChange();
+  }, []);
+  const handleLiveStealthChainChange = useCallback(
+    (chainId: ExtendedChainId): void => {
+      if (!isSelectableChainId(chainId)) return;
+      const current = liveStealthSelection.current;
+      const token = current.tokensByChain
+        .get(chainId)
+        ?.find((candidate) => candidate.symbol === current.toToken.symbol);
+      if (token) handleLiveStealthTokenChange(token);
+    },
+    [handleLiveStealthTokenChange],
+  );
+  const classifyLiveStealthToken = useCallback(
+    (token: Token): PairAvailability =>
+      isSelectableToken(token) &&
+      (liveStealthTokensByChain.get(token.chainId) ?? []).some((candidate) =>
+        sameTokenDeployment(candidate, token),
+      )
+        ? { state: "available" }
+        : { state: "unsupported", reason: "This exact route is not available in live Stealth." },
+    [liveStealthTokensByChain],
+  );
+  const liveStealthChainBlockedReason = useCallback(
+    (chainId: ExtendedChainId): string | null =>
+      isSelectableChainId(chainId) && liveStealthTokensByChain.has(chainId)
+        ? null
+        : "No live Stealth receive assets are available on this network for this send token.",
+    [liveStealthTokensByChain],
+  );
+
+  const stealthOriginSelection = useRef({
+    tokensByChain: originTokensByChain,
+    ready: liveStealthStatus === "live",
+    fromToken,
+    onOriginChange,
+  });
+  stealthOriginSelection.current = {
+    tokensByChain: originTokensByChain,
+    ready: liveStealthStatus === "live",
+    fromToken,
+    onOriginChange,
+  };
+  const handleStealthOriginTokenChange = useCallback((token: Token): void => {
+    if (!isSelectableToken(token)) return;
+    const current = stealthOriginSelection.current;
+    if (!current.ready) return;
+    const canonical = current.tokensByChain
+      .get(token.chainId)
+      ?.find((candidate) => sameTokenDeployment(candidate, token));
+    if (!canonical) return;
+    setFromChainId(token.chainId);
+    setFromToken(canonical);
+    current.onOriginChange();
+  }, []);
+  const handleStealthOriginChainChange = (chainId: ExtendedChainId): void => {
+    if (!isSelectableChainId(chainId)) return;
+    const current = stealthOriginSelection.current;
+    const tokens = current.tokensByChain.get(chainId) ?? [];
+    const token =
+      tokens.find((candidate) => candidate.symbol === current.fromToken.symbol) ??
+      pickDefaultToken(tokens, []);
+    if (token) handleStealthOriginTokenChange(token);
   };
 
   // Restore both legs without the leg-change consequences: the restore paths
@@ -876,11 +1033,32 @@ export function useSwapRoute({
     handleToChainChange,
     handleFromTokenChange,
     handleToTokenChange,
-    handleStealthDestinationChange,
+    stealthOrigins: {
+      classifyToken: (token) =>
+        isSelectableToken(token) &&
+        liveStealthStatus === "live" &&
+        (originTokensByChain.get(token.chainId) ?? []).some((candidate) =>
+          sameTokenDeployment(candidate, token),
+        )
+          ? { state: "available" }
+          : {
+              state: "unsupported",
+              reason: "This send asset is not available in live capabilities.",
+            },
+      chainBlockedReason: (chainId) =>
+        liveStealthStatus === "live" &&
+        isSelectableChainId(chainId) &&
+        originTokensByChain.has(chainId)
+          ? null
+          : "This send network is not available in live capabilities.",
+      handleTokenChange: handleStealthOriginTokenChange,
+      handleChainChange: handleStealthOriginChainChange,
+    },
     zkMoneyDestination,
     zkMoneyOffered,
     zkMoneyBlockedReason,
     selectZkMoneyDestination,
+    leaveZkMoneyDestination,
     handleSwapTokens,
     flipBlockedReason,
     swapTurns,
@@ -898,6 +1076,19 @@ export function useSwapRoute({
     retryCapabilities: retry,
     selectedPrivacyModes,
     stealthDestinationChainIds,
+    liveStealthDestinations: {
+      status: liveStealthStatus,
+      chainIds: liveStealthChainIds,
+      tokensByChain: liveStealthTokensByChain,
+      selectedPairSupported:
+        !zkMoneyDestination &&
+        toToken.chainId === toChainId &&
+        classifyLiveStealthToken(toToken).state === "available",
+      classifyToken: classifyLiveStealthToken,
+      chainBlockedReason: liveStealthChainBlockedReason,
+      handleTokenChange: handleLiveStealthTokenChange,
+      handleChainChange: handleLiveStealthChainChange,
+    },
     stealthChainsKnown: capabilityState === "live" || capabilityState === "stale",
     capabilitiesLoading: isLoading,
     thinDestination,

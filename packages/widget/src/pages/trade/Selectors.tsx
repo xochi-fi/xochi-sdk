@@ -28,6 +28,7 @@ export interface TokenSelectorProps {
   policy?: EmbedPolicy;
   chainBlockedReason?: (chainId: SelectableChainId) => string | null;
   zkMoney?: { selected: boolean; onSelect: () => void };
+  liveStealthDestination?: boolean;
 }
 
 export function TokenSelector({
@@ -43,21 +44,25 @@ export function TokenSelector({
   policy = OPEN_POLICY,
   chainBlockedReason,
   zkMoney,
+  liveStealthDestination = false,
 }: TokenSelectorProps) {
   const tokenLocked = policy.locks.includes(isSource ? "sell" : "buy");
   const chainLocked = policy.locks.includes(isSource ? "fromChain" : "toChain");
   const [modalMode, setModalMode] = useState<TokenSearchMode | null>(null);
+  const [pickerChainId, setPickerChainId] = useState<SelectableChainId | null>(null);
+  const modalTrigger = useRef<"token" | "chain">("token");
   const tokenTriggerRef = useRef<HTMLButtonElement>(null);
   const chainTriggerRef = useRef<HTMLButtonElement>(null);
 
   const closeModal = (): void => {
-    const trigger = modalMode === "chain" ? chainTriggerRef.current : tokenTriggerRef.current;
+    const trigger =
+      modalTrigger.current === "chain" ? chainTriggerRef.current : tokenTriggerRef.current;
     setModalMode(null);
     trigger?.focus();
   };
 
   const handleTokenSelect = (token: Token): void => {
-    if (token.chainId !== chainId && onChainChange) {
+    if (!liveStealthDestination && token.chainId !== chainId && onChainChange) {
       onChainChange(token.chainId);
     }
     onChange(token);
@@ -65,12 +70,22 @@ export function TokenSelector({
   };
 
   const handleChainSelect = (selection: ChainSelection): void => {
+    if (liveStealthDestination && selection.kind === "zk.money") return;
     if (selection.kind === "zk.money") {
       zkMoney?.onSelect();
       closeModal();
       return;
     }
     if ((chainBlockedReason?.(selection.chainId) ?? null) !== null) return;
+    if (
+      liveStealthDestination &&
+      !(tokensByChain.get(selection.chainId) ?? []).some((token) => token.symbol === value.symbol)
+    ) {
+      if (tokenLocked) return;
+      setPickerChainId(selection.chainId);
+      setModalMode("token");
+      return;
+    }
     onChainChange?.(selection.chainId);
     closeModal();
   };
@@ -95,8 +110,12 @@ export function TokenSelector({
             ref={tokenTriggerRef}
             type="button"
             className="token-btn__token"
-            onClick={() => setModalMode("token")}
-            aria-expanded={tokenModalOpen}
+            onClick={() => {
+              modalTrigger.current = "token";
+              setPickerChainId(null);
+              setModalMode("token");
+            }}
+            aria-expanded={modalTrigger.current === "token" && tokenModalOpen}
             aria-haspopup="dialog"
             aria-label={`${value.symbol} - Change token`}
           >
@@ -120,9 +139,13 @@ export function TokenSelector({
               type="button"
               className="chain-badge"
               onClick={() => {
-                if (onChainChange) setModalMode("chain");
+                if (onChainChange) {
+                  modalTrigger.current = "chain";
+                  setPickerChainId(null);
+                  setModalMode("chain");
+                }
               }}
-              aria-expanded={chainModalOpen}
+              aria-expanded={modalTrigger.current === "chain" && (chainModalOpen || tokenModalOpen)}
               aria-haspopup="dialog"
               aria-label={
                 zkMoneySelected
@@ -160,13 +183,16 @@ export function TokenSelector({
         chainIds={chainIds}
         tokensByChain={tokensByChain}
         initialChainId={
-          chainIds.includes(chainId as SelectableChainId) ? (chainId as SelectableChainId) : null
+          pickerChainId ??
+          (chainIds.includes(chainId as SelectableChainId) ? (chainId as SelectableChainId) : null)
         }
         classify={classify}
         chainBlockedReason={chainBlockedReason}
-        zkMoney={zkMoney ? { selected: zkMoneySelected } : undefined}
-        showAztecUnavailable={!isSource}
-        portalTarget={modalMode === "chain" ? chainTriggerRef.current : tokenTriggerRef.current}
+        zkMoney={!liveStealthDestination && zkMoney ? { selected: zkMoneySelected } : undefined}
+        showAztecUnavailable={!isSource && !liveStealthDestination}
+        portalTarget={
+          modalTrigger.current === "chain" ? chainTriggerRef.current : tokenTriggerRef.current
+        }
       />
     </div>
   );

@@ -38,9 +38,10 @@
  *     renderable, or not served by the solver's capability matrix);
  *   - a token that is not on that chain, or that the solver does not take
  *     (`sell`) or deliver (`buy`) there;
- *   - a pair the solver cannot fill: the two tokens fall back to the chains'
- *     default coins, and if that pair cannot fill either, the whole route falls
- *     back to the default route;
+ *   - a pair the solver cannot fill: unless Stealth was explicitly requested,
+ *     the two tokens fall back to the chains' default coins, then the default
+ *     route. Explicit Stealth keeps known, host-permitted deployments and amounts
+ *     for display even if inventory is empty; only live exact routes authorize execution;
  *   - an amount that is not a plain positive decimal, has more decimals than
  *     the sell token, or belongs to a `sell` token that was itself ignored;
  *   - settlement is Stealth on supported routes unless explicitly Public.
@@ -82,6 +83,7 @@
  */
 
 import {
+  isSelectableChainId,
   EXTENDED_CHAIN_NAMES,
   originTokenSymbols,
   destinationTokenSymbols,
@@ -329,6 +331,41 @@ export function embedOffer(
     live: capabilityState === "live",
     restricted: capabilities.raw.restricted === true,
     routeModel,
+  };
+}
+
+/** Catalog continuity for explicit Stealth display, never route authorization. */
+function stealthDisplayOffer(full: EmbedOffer): EmbedOffer {
+  const inventory = (role: "origin" | "destination") => {
+    const advertised =
+      role === "origin" ? full.routeModel.originTokens : full.routeModel.destinationTokens;
+    const tokensByChain = new Map(advertised);
+    for (const tokens of Object.values(TOKENS)) {
+      const chainId = tokens[0]?.chainId;
+      if (
+        chainId === undefined ||
+        !isSelectableChainId(chainId) ||
+        !chainEnabledForRole(chainId, role)
+      )
+        continue;
+      const live = advertised.get(chainId) ?? [];
+      tokensByChain.set(chainId, [
+        ...live,
+        ...tokens.filter((token) => !live.some((candidate) => candidate.symbol === token.symbol)),
+      ]);
+    }
+    return tokensByChain;
+  };
+  const originTokens = inventory("origin");
+  const destinationTokens = inventory("destination");
+  return {
+    ...full,
+    sourceChainIds: [...originTokens.keys()],
+    destinationChainIds: [...destinationTokens.keys()],
+    originSymbols: [],
+    destinationSymbols: [],
+    // resolve retains the exact original capability closure.
+    routeModel: { ...full.routeModel, originTokens, destinationTokens },
   };
 }
 export function legTokens(
@@ -602,14 +639,15 @@ export function explainEmbedDefaults(
   params: EmbedParams,
   full: EmbedOffer,
 ): { defaults: EmbedDefaults; ignored: EmbedIgnored } {
-  // The allow-lists first: everything below picks from what they leave. If
-  // they leave no route that fills, they all go and the frame opens unlisted.
-  const restriction = restrictOffer(full, params);
+  // Public retains incumbent allow-list fallback. Explicit Stealth keeps
+  // host-permitted display selections even when no advertised route remains.
+  const explicitStealth = params.settlement === "stealth";
+  const restriction = restrictOffer(explicitStealth ? stealthDisplayOffer(full) : full, params);
   const ignored: EmbedIgnored = { ...restriction.ignored };
   let offer = restriction.offer;
   let lists = restriction.lists;
   let first = firstRoute(offer);
-  if (offer.restricted && first === null) {
+  if (!explicitStealth && offer.restricted && first === null) {
     for (const field of EMBED_ALLOW_FIELDS) {
       if (lists[field] !== null) {
         ignored[field] = "the allow-lists together leave no route the solver fills";
@@ -623,7 +661,12 @@ export function explainEmbedDefaults(
   // A live empty typed inventory has no route from which to derive token
   // defaults. Keep the established defaults as display-only state; exact route
   // authorization downstream still refuses them.
-  if (first === null) {
+  if (
+    first === null &&
+    (!explicitStealth ||
+      offer.sourceChainIds.length === 0 ||
+      offer.destinationChainIds.length === 0)
+  ) {
     const reason = "the solver advertises no route the widget can use";
     for (const field of [
       "fromChainId",
@@ -646,7 +689,12 @@ export function explainEmbedDefaults(
       ignored,
     };
   }
-  const fallback = first;
+  const fallback = first ?? {
+    fromChainId: offer.sourceChainIds[0],
+    toChainId: offer.destinationChainIds[0],
+    fromToken: defaultToken(offer, offer.sourceChainIds[0], "sell"),
+    toToken: defaultToken(offer, offer.destinationChainIds[0], "buy"),
+  };
 
   // The chain a leg holds when none (or none it can use) was asked for.
   const homeFrom = offer.sourceChainIds.includes(FRAME_DEFAULTS.fromChainId)
@@ -679,12 +727,17 @@ export function explainEmbedDefaults(
     params.amount !== undefined ||
     (params.locks?.length ?? 0) > 0 ||
     EMBED_ALLOW_FIELDS.some((field) => params[field] !== undefined);
+  // Explicit Stealth presets stay visible even when the exact pair is blocked;
+  // destination discovery, not hydration, owns any subsequent financial change.
   const route =
-    (!routeConfigured && params.settlement !== "public" ? firstStealthRoute(offer) : null) ??
-    [asked, chainDefaults].find(
-      (candidate) => routeFills(offer, candidate) && routeSupportsEmbedSettlement(offer, candidate),
-    ) ??
-    fallback;
+    params.settlement === "stealth" && routeConfigured
+      ? asked
+      : ((!routeConfigured && params.settlement !== "public" ? firstStealthRoute(offer) : null) ??
+        [asked, chainDefaults].find(
+          (candidate) =>
+            routeFills(offer, candidate) && routeSupportsEmbedSettlement(offer, candidate),
+        ) ??
+        fallback);
 
   // The amount is denominated in the sell token the URL meant: the one it
   // named, else the default coin of the chain it named. If the frame does not

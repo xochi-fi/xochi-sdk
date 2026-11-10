@@ -388,7 +388,7 @@ describe("resolveEmbedDefaults", () => {
     });
   });
 
-  it("keeps display defaults without crashing when live advertises zero valid routes", () => {
+  it("keeps a valid explicit Stealth amount as display-only when no routes remain", () => {
     const empty = embedOffer(
       liveCapabilities(PAIRS, [ETHEREUM], () => null),
       true,
@@ -398,10 +398,114 @@ describe("resolveEmbedDefaults", () => {
       empty,
     );
 
-    expect(shape(resolved.defaults)).toEqual({ ...shape(FRAME_DEFAULTS), settlement: "stealth" });
+    expect(shape(resolved.defaults)).toEqual({
+      ...shape(FRAME_DEFAULTS),
+      amount: "5",
+      settlement: "stealth",
+    });
     expect(resolved.defaults.theme).toBe("light");
-    expect(resolved.ignored.amount).toMatch(/no route/);
+    expect(resolved.ignored.amount).toBeUndefined();
+    expect(stealthOffered(resolved.defaults, empty.capabilities, "live")).toBe(false);
     expect(resolved.ignored.settlement).toBeUndefined();
+  });
+
+  it.each(["deployment", "chain", "empty"] as const)(
+    "preserves an explicit Stealth deployment and amount after %s inventory withdrawal",
+    (withdrawal) => {
+      const capabilities = parseWidgetCapabilities({
+        ...LIVE.capabilities.raw,
+        ...(withdrawal === "empty" ? { chains: [] } : {}),
+        tokens:
+          withdrawal === "empty"
+            ? []
+            : [
+                {
+                  symbol: "USDC",
+                  roles: ["origin", "destination"],
+                  decimals: 6,
+                  addresses: { [ETHEREUM]: findTokenBySymbol(ETHEREUM, "USDC")!.address },
+                },
+                ...(withdrawal === "chain"
+                  ? []
+                  : [
+                      {
+                        symbol: "USDT",
+                        roles: ["destination"],
+                        decimals: 6,
+                        addresses: { [BASE]: findTokenBySymbol(BASE, "USDT")!.address },
+                      },
+                    ]),
+              ],
+        routes:
+          withdrawal === "deployment"
+            ? [
+                {
+                  origin: { chain_id: ETHEREUM, token: "USDC" },
+                  destination: { kind: "chain", chain_id: BASE, token: "USDT" },
+                  privacy_modes: ["public", "stealth"],
+                },
+              ]
+            : [],
+      });
+      if (withdrawal === "empty") expect(capabilities).toBeNull();
+      const effectiveCapabilities = withdrawal === "empty" ? FALLBACK_CAPABILITIES : capabilities;
+      if (!effectiveCapabilities) throw new Error("withdrawn inventory did not parse");
+      const capabilityState = withdrawal === "empty" ? "fallback" : "live";
+      const offer = embedOffer(effectiveCapabilities, capabilityState);
+      const { defaults, ignored } = explainEmbedDefaults(
+        parseEmbedParams(
+          "fromChain=1&sell=USDC&toChain=8453&buy=USDC&amount=12.5&settlement=stealth&lock=toChain,buy,amount",
+        ),
+        offer,
+      );
+      expect(shape(defaults)).toEqual({
+        fromChainId: ETHEREUM,
+        toChainId: BASE,
+        sell: "USDC",
+        buy: "USDC",
+        amount: "12.5",
+        settlement: "stealth",
+      });
+      expect(defaults.toToken).toEqual(findTokenBySymbol(BASE, "USDC"));
+      expect([...defaults.locks].sort()).toEqual(["amount", "buy", "fromChain", "sell", "toChain"]);
+      expect(ignored).toEqual({});
+      if (capabilityState === "live") {
+        expect(legTokens(offer, BASE, "buy").some((token) => token.symbol === "USDC")).toBe(false);
+        expect(routeFills(offer, defaults)).toBe(false);
+      }
+      expect(stealthOffered(defaults, effectiveCapabilities, capabilityState)).toBe(false);
+    },
+  );
+
+  it("keeps display continuity inside host lists and refuses unknown Stealth deployments", () => {
+    const empty = embedOffer(
+      liveCapabilities([], [], () => null),
+      "live",
+    );
+    const constrained = resolve(
+      "fromChain=1&sell=USDC&toChain=8453&buy=USDC&settlement=stealth&toChains=42161&buyTokens=USDT",
+      empty,
+    );
+    expect(constrained.toChainId).toBe(ARBITRUM);
+    expect(constrained.toToken.symbol).toBe("USDT");
+    expect(constrained.toChains).toEqual([ARBITRUM]);
+    expect(constrained.buyTokens).toEqual(["USDT"]);
+    const invalid = explainEmbedDefaults(
+      parseEmbedParams("fromChain=999&sell=DOGE&toChain=999&buy=DOGE&amount=20&settlement=stealth"),
+      empty,
+    );
+    expect(invalid.defaults.fromChainId).not.toBe(999);
+    expect(invalid.defaults.toChainId).not.toBe(999);
+    expect(invalid.defaults.fromToken.symbol).not.toBe("DOGE");
+    expect(invalid.defaults.toToken.symbol).not.toBe("DOGE");
+    expect(invalid.defaults.amount).toBe("");
+    expect(invalid.ignored).toMatchObject({
+      fromChainId: expect.any(String),
+      toChainId: expect.any(String),
+      sellSymbol: expect.any(String),
+      buySymbol: expect.any(String),
+      amount: expect.any(String),
+    });
   });
 
   it("falls back from a pair the live matrix does not fill", () => {

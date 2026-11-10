@@ -73,9 +73,14 @@ describe("authFetch wallet-session eviction", () => {
     expect(getWalletToken()).toBeNull();
   });
 
-  it.each(["other-wallet-token", "wallet-token"])(
-    "does not evict a newer session using %s when an old request fails",
-    async (replacementToken) => {
+  it.each([
+    ["other-wallet-token", 401],
+    ["wallet-token", 401],
+    ["other-wallet-token", 403],
+    ["wallet-token", 403],
+  ] as const)(
+    "does not evict a newer session using %s when an old request fails with %s",
+    async (replacementToken, status) => {
       const response = Promise.withResolvers<unknown>();
       stubApi(() => response.promise);
       const request = authFetch("https://api.example.test/history");
@@ -83,11 +88,11 @@ describe("authFetch wallet-session eviction", () => {
       storeWalletSession(replacementToken);
       response.resolve(
         new Response(JSON.stringify({ error_category: "auth_invalid" }), {
-          status: 401,
+          status,
           headers: { "Content-Type": "application/json" },
         }),
       );
-      expect((await request).status).toBe(401);
+      expect((await request).status).toBe(status);
       expect(getWalletToken()).toBe(replacementToken);
     },
   );

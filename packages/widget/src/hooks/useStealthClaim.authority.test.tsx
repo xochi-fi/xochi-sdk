@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -134,7 +134,9 @@ async function renderClaims(fetch: FetchStub) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <StealthProvider>{children}</StealthProvider>
+        <StrictMode>
+          <StealthProvider>{children}</StealthProvider>
+        </StrictMode>
       </QueryClientProvider>
     </WagmiProvider>
   );
@@ -199,35 +201,46 @@ describe("stealth claim authority", () => {
     ).toBe(owner);
   });
 
-  it.each(["switch", "disconnect", "lock", "session"] as const)(
-    "revokes retained payments and old callbacks on %s",
-    async (change) => {
-      const prepared: unknown[] = [];
-      const { result, config } = await renderClaims(claimRoutes([], prepared));
-      await act(() => result.current.claim.scan());
-      const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
-      const oldClaim = result.current.claim.claim;
-      await act(async () => {
-        if (change === "switch") switchWallet(config);
-        else if (change === "disconnect") await disconnect(config);
-        else if (change === "lock") result.current.stealth.reset();
-        else {
-          clearWalletSession();
-          // Reusing the exact token cannot revive the pre-logout authority.
-          setSession(TEST_ACCOUNT);
-        }
-        // Check in the same turn, before a React effect can protect the old callback.
-        expect(await oldClaim(payment, WALLET_B)).toMatchObject({
-          errorCategory: "claim_authority_revoked",
-        });
+  it.each([
+    "switch",
+    "disconnect",
+    "lock",
+    "session",
+    "reconnect",
+    "replace keys",
+    "unmount",
+  ] as const)("revokes retained payments and old callbacks on %s", async (change) => {
+    const prepared: unknown[] = [];
+    const { result, config, unmount } = await renderClaims(claimRoutes([], prepared));
+    await act(() => result.current.claim.scan());
+    const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
+    const oldClaim = result.current.claim.claim;
+    await act(async () => {
+      if (change === "switch") switchWallet(config);
+      else if (change === "disconnect") await disconnect(config);
+      else if (change === "lock") result.current.stealth.reset();
+      else if (change === "reconnect") {
+        config.setState((state) => ({ ...state, status: "reconnecting" }));
+        config.setState((state) => ({ ...state, status: "connected" }));
+      } else if (change === "replace keys") {
+        expect(await result.current.stealth.initializeKeys()).toBe(true);
+      } else if (change === "unmount") unmount();
+      else {
+        clearWalletSession();
+        // Reusing the exact token cannot revive the pre-logout authority.
+        setSession(TEST_ACCOUNT);
+      }
+      // Check in the same turn, before a React effect can protect the old callback.
+      expect(await oldClaim(payment, WALLET_B)).toMatchObject({
+        errorCategory: "claim_authority_revoked",
       });
-      expect(result.current.claim.payments).toEqual([]);
-      expect(payment.stealthPrivKey?.every((byte) => byte === 0)).toBe(true);
-      expect(prepared).toEqual([]);
-    },
-  );
+    });
+    if (change !== "unmount") expect(result.current.claim.payments).toEqual([]);
+    expect(payment.stealthPrivKey?.every((byte) => byte === 0)).toBe(true);
+    expect(prepared).toEqual([]);
+  });
 
-  it.each(["disconnect", "lock", "session"] as const)(
+  it.each(["disconnect", "lock", "session", "reconnect", "replace keys", "unmount"] as const)(
     "refuses a prepared operation after %s while prepare was pending",
     async (change) => {
       const submitted: unknown[] = [];
@@ -243,7 +256,7 @@ describe("stealth claim authority", () => {
         }
         return rest(input, init);
       };
-      const { result, config } = await renderClaims(fetch);
+      const { result, config, unmount } = await renderClaims(fetch);
       await act(() => result.current.claim.scan());
       const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
       let pending!: Promise<ClaimResult>;
@@ -254,13 +267,22 @@ describe("stealth claim authority", () => {
       await act(async () => {
         if (change === "disconnect") await disconnect(config);
         else if (change === "lock") result.current.stealth.reset();
+        else if (change === "reconnect") {
+          config.setState((state) => ({ ...state, status: "reconnecting" }));
+          config.setState((state) => ({ ...state, status: "connected" }));
+        } else if (change === "replace keys") {
+          expect(await result.current.stealth.initializeKeys()).toBe(true);
+        } else if (change === "unmount") unmount();
         else clearWalletSession();
         delayed.resolve(json(preparedClaim(TEST_ACCOUNT)));
         expect(await pending).toMatchObject({ errorCategory: "claim_authority_revoked" });
       });
       expect(submitted).toEqual([]);
-      expect(result.current.claim.payments).toEqual([]);
-      expect(result.current.claim.isClaiming).toBe(false);
+      expect(payment.stealthPrivKey?.every((byte) => byte === 0)).toBe(true);
+      if (change !== "unmount") {
+        expect(result.current.claim.payments).toEqual([]);
+        expect(result.current.claim.isClaiming).toBe(false);
+      }
     },
   );
 
@@ -305,98 +327,124 @@ describe("stealth claim authority", () => {
     expect(result.current.claim.isClaiming).toBe(false);
   });
 
-  it("preserves an already-submitted pending outcome after keys lock without restoring old UI authority", async () => {
-    const delayed = Promise.withResolvers<Response>();
-    const submitted: unknown[] = [];
-    const rest = claimRoutes();
-    const fetch: FetchStub = (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes("/api/stealth/claim/submit")) {
-        submitted.push(JSON.parse(String(init?.body)));
-        return delayed.promise;
-      }
-      return rest(input, init);
-    };
-    const { result } = await renderClaims(fetch);
-    await act(() => result.current.claim.scan());
-    const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
-    let pending!: Promise<ClaimResult>;
-    let outcome: ClaimResult | undefined;
-    act(() => {
-      pending = result.current.claim.claim(payment, TEST_ACCOUNT).then((value) => {
-        outcome = value;
-        return value;
+  it.each(["lock", "reconnect", "session", "replace keys", "unmount"] as const)(
+    "preserves an already-submitted pending outcome after %s without restoring old UI authority",
+    async (change) => {
+      const delayed = Promise.withResolvers<Response>();
+      const submitted: unknown[] = [];
+      const rest = claimRoutes();
+      const fetch: FetchStub = (input, init) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/api/stealth/claim/submit")) {
+          submitted.push(JSON.parse(String(init?.body)));
+          return delayed.promise;
+        }
+        return rest(input, init);
+      };
+      const { result, config, unmount } = await renderClaims(fetch);
+      await act(() => result.current.claim.scan());
+      const payment = result.current.claim.payments.find((row) => row.chainId === 1)!;
+      let pending!: Promise<ClaimResult>;
+      act(() => {
+        pending = result.current.claim.claim(payment, TEST_ACCOUNT);
       });
-    });
-    await waitFor(() =>
-      expect({ submitted, outcome }).toMatchObject({
-        submitted: [expect.anything()],
-      }),
-    );
-    await act(async () => {
-      result.current.stealth.reset();
-      delayed.resolve(
-        json(
-          {
-            success: false,
-            error: "Operation accepted",
-            error_category: "claim_pending",
-            opHash: preparedClaim(TEST_ACCOUNT).userOpHash,
-            retryAfter: 300,
-          },
-          503,
-        ),
-      );
-      expect(await pending).toMatchObject({ pending: true, errorCategory: "claim_pending" });
-    });
-    expect(submitted).toHaveLength(1);
-    expect(result.current.claim.payments).toEqual([]);
-    expect(result.current.claim.isClaiming).toBe(false);
-    expect(result.current.claim.isConfirming).toBe(false);
-    expect(result.current.claim.error).toBeNull();
-  });
-
-  it("keeps a new scan busy when a revoked scan's errors and finally arrive", async () => {
-    const responses: PromiseWithResolvers<Response>[] = [];
-    const rest = claimRoutes();
-    const fetch: FetchStub = (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes("/api/stealth/announcements")) {
-        const response = Promise.withResolvers<Response>();
-        responses.push(response);
-        return response.promise;
+      await waitFor(() => expect(submitted).toHaveLength(1));
+      await act(async () => {
+        if (change === "lock") result.current.stealth.reset();
+        else if (change === "reconnect") {
+          config.setState((state) => ({ ...state, status: "reconnecting" }));
+          config.setState((state) => ({ ...state, status: "connected" }));
+        } else if (change === "replace keys") {
+          expect(await result.current.stealth.initializeKeys()).toBe(true);
+        } else if (change === "unmount") unmount();
+        else {
+          clearWalletSession();
+          setSession(TEST_ACCOUNT);
+        }
+        delayed.resolve(
+          json(
+            {
+              success: false,
+              error: "Operation accepted",
+              error_category: "claim_pending",
+              opHash: preparedClaim(TEST_ACCOUNT).userOpHash,
+              retryAfter: 300,
+            },
+            503,
+          ),
+        );
+        expect(await pending).toMatchObject({ pending: true, errorCategory: "claim_pending" });
+      });
+      expect(submitted).toHaveLength(1);
+      expect(payment.stealthPrivKey?.every((byte) => byte === 0)).toBe(true);
+      if (change !== "unmount") {
+        expect(result.current.claim.payments).toEqual([]);
+        expect(result.current.claim.isClaiming).toBe(false);
+        expect(result.current.claim.isConfirming).toBe(false);
+        expect(result.current.claim.error).toBeNull();
       }
-      return rest(input, init);
-    };
-    const { result, config } = await renderClaims(fetch);
-    let oldScan!: Promise<void>;
-    act(() => {
-      oldScan = result.current.claim.scan();
-    });
-    await waitFor(() => expect(responses).toHaveLength(2));
-    act(() => switchWallet(config));
-    await act(async () => {
-      expect(await result.current.stealth.initializeKeys()).toBe(true);
-    });
-    let currentScan!: Promise<void>;
-    act(() => {
-      currentScan = result.current.claim.scan();
-    });
-    await waitFor(() => expect(responses).toHaveLength(4));
-    await act(async () => {
-      responses[0].resolve(json({ success: true, announcements: [announcement], count: 1 }));
-      responses[1].resolve(json({ error: "Old wallet scan failed" }, 503));
-      await oldScan;
-    });
-    expect(result.current.claim.payments).toEqual([]);
-    expect(result.current.claim.isScanning).toBe(true);
-    expect(result.current.claim.error).toBeNull();
-    await act(async () => {
-      for (const response of responses.slice(2))
-        response.resolve(json({ success: true, announcements: [], count: 0 }));
-      await currentScan;
-    });
-    expect(result.current.claim.isScanning).toBe(false);
-    expect(result.current.claim.hasScanned).toBe(true);
-  });
+    },
+  );
+
+  it.each(["switch", "reconnect", "replace keys", "session"] as const)(
+    "keeps a new scan busy when a scan revoked by %s finishes",
+    async (change) => {
+      const responses: PromiseWithResolvers<Response>[] = [];
+      const rest = claimRoutes();
+      const fetch: FetchStub = (input, init) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/api/stealth/announcements")) {
+          const response = Promise.withResolvers<Response>();
+          responses.push(response);
+          return response.promise;
+        }
+        return rest(input, init);
+      };
+      const { result, config } = await renderClaims(fetch);
+      let oldScan!: Promise<void>;
+      act(() => {
+        oldScan = result.current.claim.scan();
+      });
+      await waitFor(() => expect(responses).toHaveLength(2));
+      if (change === "switch") act(() => switchWallet(config));
+      else if (change === "reconnect") {
+        act(() => {
+          config.setState((state) => ({ ...state, status: "reconnecting" }));
+          config.setState((state) => ({ ...state, status: "connected" }));
+        });
+      } else if (change === "session") {
+        act(() => {
+          clearWalletSession();
+          setSession(TEST_ACCOUNT);
+        });
+      }
+      if (change !== "session") {
+        await act(async () => {
+          expect(await result.current.stealth.initializeKeys()).toBe(true);
+        });
+      }
+      let currentScan!: Promise<void>;
+      act(() => {
+        currentScan = result.current.claim.scan();
+      });
+      await waitFor(() => expect(responses).toHaveLength(4));
+      await act(async () => {
+        responses[0].resolve(json({ success: true, announcements: [announcement], count: 1 }));
+        responses[1].resolve(json({ error: "Old wallet scan failed" }, 503));
+        await oldScan;
+      });
+      expect(result.current.claim.payments).toEqual([]);
+      expect(result.current.claim.isScanning).toBe(true);
+      expect(result.current.claim.error).toBeNull();
+      await act(async () => {
+        for (const response of responses.slice(2))
+          response.resolve(json({ success: true, announcements: [], count: 0 }));
+        await currentScan;
+      });
+      expect(result.current.claim.isScanning).toBe(false);
+      expect(result.current.claim.hasScanned).toBe(true);
+    },
+  );
 });

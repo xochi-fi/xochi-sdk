@@ -8,7 +8,7 @@ import { parseWidgetCapabilities } from "../../hooks/useCapabilities.js";
 import { TRUST_FEATURES_OFF } from "@xochi/client";
 import { TOKENS, findTokenBySymbol } from "./config.js";
 import { OPEN_POLICY, type EmbedPolicy } from "./embedParams.js";
-import { useSwapRoute } from "./useSwapRoute.js";
+import { useSwapRoute, type SwapRouteLegs } from "./useSwapRoute.js";
 import { SIMPLE_ACCOUNT_FACTORY, type SelectableChainId } from "@xochi/client";
 
 const token = (chainId: SelectableChainId, symbol: string) => {
@@ -88,10 +88,40 @@ const matrix = {
   ],
 };
 
+const baseStealthMatrix = {
+  chains: matrix.chains.map((chain) =>
+    chain.chain_id === 8453 ? { ...chain, stealth_factory_address: SIMPLE_ACCOUNT_FACTORY } : chain,
+  ),
+  stealth_chains: [1, 8453],
+  routes: [
+    ...matrix.routes.map((route) =>
+      route.origin.chain_id === 1 &&
+      "chain_id" in route.destination &&
+      route.destination.chain_id === 8453 &&
+      route.destination.token === "USDC"
+        ? { ...route, privacy_modes: ["public", "stealth"] }
+        : route,
+    ),
+    {
+      origin: { chain_id: 8453, token: "USDC" },
+      destination: { kind: "chain", chain_id: 8453, token: "USDT" },
+      privacy_modes: ["public", "stealth"],
+    },
+  ],
+};
+
+const baseSelfPair: SwapRouteLegs = {
+  fromChainId: 8453,
+  fromToken: token(8453, "USDC"),
+  toChainId: 8453,
+  toToken: token(8453, "USDC"),
+};
+
 function routeHook(
   over: Record<string, unknown> = {},
   policy: EmbedPolicy = OPEN_POLICY,
   capabilitiesAvailable = true,
+  initial?: SwapRouteLegs,
 ) {
   const caps = parseWidgetCapabilities({ ...matrix, ...over });
   if (!caps) throw new Error("invalid test capabilities");
@@ -106,9 +136,10 @@ function routeHook(
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   const rendered = renderHook(
-    () =>
+    ({ policy: currentPolicy }) =>
       useSwapRoute({
-        policy,
+        policy: currentPolicy,
+        initial,
         onOriginChange: () => {
           originChanges += 1;
         },
@@ -116,7 +147,7 @@ function routeHook(
         onDestinationTokenChange: () => {},
         onFlip: () => {},
       }),
-    { wrapper },
+    { wrapper, initialProps: { policy } },
   );
   return { ...rendered, client, originChanges: () => originChanges };
 }
@@ -124,6 +155,107 @@ function routeHook(
 afterEach(cleanup);
 
 describe("live route discovery", () => {
+  it("changes only the Stealth origin while Public keeps incumbent opposite-leg repair", () => {
+    const initial = {
+      fromChainId: 1 as const,
+      fromToken: token(1, "USDC"),
+      toChainId: 8453 as const,
+      toToken: token(8453, "USDC"),
+    };
+    const { result, originChanges } = routeHook(baseStealthMatrix, OPEN_POLICY, true, initial);
+    act(() => result.current.stealthOrigins.handleTokenChange(token(8453, "USDC")));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.toChainId).toBe(8453);
+    expect(result.current.routeBlocked).toBe(true);
+    expect(result.current.liveStealthDestinations.selectedPairSupported).toBe(false);
+    expect(originChanges()).toBe(1);
+    act(() => result.current.applyRoute(initial));
+    act(() => result.current.handleFromTokenChange(token(8453, "USDC")));
+    expect(result.current.toToken).toEqual(token(8453, "USDT"));
+    expect(result.current.routeBlocked).toBe(false);
+  });
+
+  it("revalidates retained Stealth origin handlers against locks and withdrawn deployments", async () => {
+    const { result, client, rerender, originChanges } = routeHook(baseStealthMatrix);
+    const retained = result.current.stealthOrigins;
+    rerender({ policy: { ...OPEN_POLICY, locks: ["fromChain", "sell"] } });
+    act(() => {
+      retained.handleTokenChange(token(1, "USDC"));
+      retained.handleChainChange(1);
+    });
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(originChanges()).toBe(0);
+    rerender({ policy: OPEN_POLICY });
+    const caps = parseWidgetCapabilities({
+      ...matrix,
+      ...baseStealthMatrix,
+      tokens: matrix.tokens.filter((entry) => entry.symbol !== "USDC"),
+      routes: [],
+    });
+    if (!caps) throw new Error("withdrawn source did not parse");
+    act(() =>
+      client.setQueryData(["capabilities"], {
+        caps,
+        source: "live",
+        features: TRUST_FEATURES_OFF,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        result.current.originTokensByChain.get(1)?.some((entry) => entry.symbol === "USDC") ??
+          false,
+      ).toBe(false),
+    );
+    act(() => retained.handleTokenChange(token(1, "USDC")));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(result.current.toToken).toEqual(token(42161, "USDC"));
+    expect(originChanges()).toBe(0);
+  });
+
+  it.each(["stale", "failed", "refreshing"] as const)(
+    "refuses retained Stealth origin choices while capabilities are %s",
+    async (state) => {
+      const { result, client, originChanges } = routeHook(baseStealthMatrix);
+      const retained = result.current.stealthOrigins;
+      const query = client.getQueryCache().find({ queryKey: ["capabilities"] });
+      if (!query) throw new Error("missing capabilities query");
+      act(() => {
+        if (state === "stale") {
+          const caps = parseWidgetCapabilities({ ...matrix, ...baseStealthMatrix });
+          if (!caps) throw new Error("invalid stale capabilities");
+          client.setQueryData(["capabilities"], {
+            caps,
+            source: "stale",
+            features: TRUST_FEATURES_OFF,
+          });
+        } else {
+          query.setState(
+            state === "failed"
+              ? {
+                  status: "error",
+                  error: new Error("capabilities unavailable"),
+                  fetchStatus: "idle",
+                }
+              : { fetchStatus: "fetching" },
+          );
+        }
+      });
+      await waitFor(() =>
+        expect(result.current.stealthOrigins.classifyToken(token(1, "USDC")).state).toBe(
+          "unsupported",
+        ),
+      );
+      act(() => {
+        retained.handleTokenChange(token(1, "USDC"));
+        retained.handleChainChange(1);
+      });
+      expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+      expect(result.current.toToken).toEqual(token(42161, "USDC"));
+      expect(originChanges()).toBe(0);
+    },
+  );
+
   it("blocks route selection and quoting until exact capabilities are available", () => {
     const { result } = routeHook({}, OPEN_POLICY, false);
     expect(result.current.capabilityState).toBe("fallback");
@@ -172,7 +304,258 @@ describe("live route discovery", () => {
     expect(result.current.stealthDestinationChainIds).toEqual([1]);
   });
 
-  it("repairs Stealth destinations only to the selected receive symbol", () => {
+  it("discovers all exact live Stealth assets before any amount or quote without repairing Base USDC", () => {
+    const { result, originChanges } = routeHook(baseStealthMatrix, OPEN_POLICY, true, baseSelfPair);
+    const picker = result.current.liveStealthDestinations;
+
+    expect(picker.status).toBe("live");
+    expect(picker.chainIds).toEqual([1, 8453]);
+    expect(picker.tokensByChain.get(8453)?.map((entry) => entry.symbol)).toEqual(["USDT"]);
+    expect(picker.selectedPairSupported).toBe(false);
+    expect(picker.classifyToken(token(8453, "USDC")).state).toBe("unsupported");
+    expect(picker.classifyToken(token(8453, "USDT")).state).toBe("available");
+    expect(picker.chainBlockedReason(8453)).toBeNull();
+    expect(result.current.stealthDestinationChainIds).toEqual([1]);
+    expect(result.current.destinationTokensByChain.get(8453)?.map((entry) => entry.symbol)).toEqual(
+      ["USDC", "USDT"],
+    );
+
+    act(() => {
+      picker.handleTokenChange(token(8453, "USDC"));
+      picker.handleTokenChange({ ...token(8453, "USDT"), address: token(8453, "USDC").address });
+      picker.handleChainChange(8453);
+    });
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(originChanges()).toBe(0);
+
+    act(() => picker.handleTokenChange(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(8453, "USDT"));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(result.current.fromChainId).toBe(8453);
+    expect(result.current.liveStealthDestinations.selectedPairSupported).toBe(true);
+    expect(originChanges()).toBe(0);
+  });
+
+  it("offers Base USDC for an exact Ethereum origin instead of globally excluding Base", () => {
+    const { result, originChanges } = routeHook(baseStealthMatrix, OPEN_POLICY, true, {
+      ...baseSelfPair,
+      fromChainId: 1,
+      fromToken: token(1, "USDC"),
+    });
+    expect(result.current.liveStealthDestinations.chainIds).toEqual([8453]);
+    expect(result.current.liveStealthDestinations.selectedPairSupported).toBe(true);
+    expect(result.current.liveStealthDestinations.classifyToken(token(8453, "USDC")).state).toBe(
+      "available",
+    );
+    act(() => result.current.liveStealthDestinations.handleChainChange(8453));
+    expect(result.current.fromToken).toEqual(token(1, "USDC"));
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(originChanges()).toBe(0);
+  });
+
+  it.each([
+    { name: "missing factory", factory: undefined, chains: [1, 8453] },
+    {
+      name: "untrusted factory",
+      factory: "0x9999999999999999999999999999999999999999",
+      chains: [1, 8453],
+    },
+    { name: "unadvertised Stealth chain", factory: SIMPLE_ACCOUNT_FACTORY, chains: [1] },
+  ])("refuses Base destinations with $name", ({ factory, chains }) => {
+    const { result } = routeHook({
+      ...baseStealthMatrix,
+      stealth_chains: chains,
+      chains: baseStealthMatrix.chains.map((chain) =>
+        chain.chain_id === 8453 ? { ...chain, stealth_factory_address: factory } : chain,
+      ),
+    });
+    expect(result.current.liveStealthDestinations.chainIds).toEqual([1]);
+    act(() => result.current.liveStealthDestinations.handleTokenChange(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(42161, "USDC"));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+  });
+
+  it("does not invent Stealth choices from fallback metadata or an absent route matrix", () => {
+    const fallback = routeHook({}, OPEN_POLICY, false);
+    expect(fallback.result.current.liveStealthDestinations.chainIds).toEqual([]);
+    expect(fallback.result.current.liveStealthDestinations.status).toBe("unavailable");
+    const absent = routeHook({ ...baseStealthMatrix, routes: undefined });
+    expect(absent.result.current.liveStealthDestinations.status).toBe("unavailable");
+    expect(absent.result.current.liveStealthDestinations.chainIds).toEqual([]);
+    const empty = routeHook({ ...baseStealthMatrix, routes: [] });
+    expect(empty.result.current.liveStealthDestinations.status).toBe("live");
+    expect(empty.result.current.liveStealthDestinations.chainIds).toEqual([]);
+  });
+
+  it.each(["stale", "failed", "refreshing"] as const)(
+    "withdraws choices and retained handlers while capabilities are %s",
+    async (state) => {
+      const { result, client, originChanges } = routeHook(baseStealthMatrix);
+      const retained = result.current.liveStealthDestinations;
+      expect(retained.classifyToken(token(8453, "USDT")).state).toBe("available");
+      const query = client.getQueryCache().find({ queryKey: ["capabilities"] });
+      if (!query) throw new Error("missing capabilities query");
+      act(() => {
+        if (state === "stale") {
+          const caps = parseWidgetCapabilities({ ...matrix, ...baseStealthMatrix });
+          if (!caps) throw new Error("invalid stale capabilities");
+          client.setQueryData(["capabilities"], {
+            caps,
+            source: "stale",
+            features: TRUST_FEATURES_OFF,
+          });
+        } else {
+          query.setState(
+            state === "failed"
+              ? {
+                  status: "error",
+                  error: new Error("capabilities unavailable"),
+                  fetchStatus: "idle",
+                }
+              : { fetchStatus: "fetching" },
+          );
+        }
+      });
+      await waitFor(() => {
+        expect(result.current.liveStealthDestinations.status).toBe(
+          state === "refreshing" ? "checking" : "unavailable",
+        );
+        expect(result.current.liveStealthDestinations.chainIds).toEqual([]);
+      });
+      act(() => {
+        retained.handleTokenChange(token(8453, "USDT"));
+        retained.handleChainChange(1);
+      });
+      expect(result.current.toToken).toEqual(token(42161, "USDC"));
+      expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+      expect(originChanges()).toBe(0);
+    },
+  );
+
+  it("revalidates retained handlers against the current origin, exact routes and host policy", async () => {
+    const { result, client, rerender, originChanges } = routeHook(baseStealthMatrix);
+    const retained = result.current.liveStealthDestinations;
+    act(() =>
+      result.current.applyRoute({ ...baseSelfPair, fromChainId: 1, fromToken: token(1, "USDC") }),
+    );
+    act(() => retained.handleTokenChange(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.fromToken).toEqual(token(1, "USDC"));
+
+    act(() => result.current.applyRoute(baseSelfPair));
+    rerender({ policy: { ...OPEN_POLICY, locks: ["buy"], toChains: [8453] } });
+    expect(result.current.liveStealthDestinations.chainIds).toEqual([]);
+    act(() => retained.handleTokenChange(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+
+    rerender({
+      policy: { ...OPEN_POLICY, locks: ["fromChain", "sell", "toChain"], buyTokens: ["USDT"] },
+    });
+    expect(result.current.liveStealthDestinations.chainIds).toEqual([8453]);
+    const removed = parseWidgetCapabilities({
+      ...matrix,
+      ...baseStealthMatrix,
+      routes: matrix.routes,
+    });
+    if (!removed) throw new Error("invalid refreshed capabilities");
+    act(() =>
+      client.setQueryData(["capabilities"], {
+        caps: removed,
+        source: "live",
+        features: TRUST_FEATURES_OFF,
+      }),
+    );
+    await waitFor(() => expect(result.current.liveStealthDestinations.chainIds).toEqual([]));
+    act(() => retained.handleTokenChange(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(originChanges()).toBe(0);
+  });
+
+  it.each<{ policy: EmbedPolicy; chains: readonly SelectableChainId[] }>([
+    { policy: { ...OPEN_POLICY, buyTokens: ["USDC"] }, chains: [1] },
+    { policy: { ...OPEN_POLICY, buyTokens: ["USDT"] }, chains: [8453] },
+    { policy: { ...OPEN_POLICY, locks: ["buy"] as const }, chains: [1] },
+    { policy: { ...OPEN_POLICY, locks: ["toChain"] as const }, chains: [] },
+    { policy: { ...OPEN_POLICY, fromChains: [1] }, chains: [] },
+    { policy: { ...OPEN_POLICY, sellTokens: ["USDT"] }, chains: [] },
+  ])("narrows live discovery by host policy $policy", ({ policy, chains }) => {
+    const { result } = routeHook(baseStealthMatrix, policy);
+    expect(result.current.liveStealthDestinations.chainIds).toEqual(chains);
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(result.current.toToken).toEqual(token(42161, "USDC"));
+  });
+
+  it("refuses a retained Base choice after its independently pinned factory is withdrawn", async () => {
+    const { result, client } = routeHook(baseStealthMatrix);
+    const retained = result.current.liveStealthDestinations.handleTokenChange;
+    const caps = parseWidgetCapabilities({
+      ...matrix,
+      ...baseStealthMatrix,
+      chains: baseStealthMatrix.chains.map((chain) =>
+        chain.chain_id === 8453 ? { ...chain, stealth_factory_address: null } : chain,
+      ),
+    });
+    if (!caps) throw new Error("invalid factory refresh");
+    act(() =>
+      client.setQueryData(["capabilities"], { caps, source: "live", features: TRUST_FEATURES_OFF }),
+    );
+    await waitFor(() => expect(result.current.liveStealthDestinations.chainIds).toEqual([1]));
+    act(() => retained(token(8453, "USDT")));
+    expect(result.current.toToken).toEqual(token(42161, "USDC"));
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+  });
+
+  it("keeps bridged USDC on the send leg and refuses destination picks and flips", () => {
+    const bridged = {
+      chainId: 42161 as const,
+      address: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+      symbol: "USDC_E",
+      name: "Bridged USDC",
+      decimals: 6,
+    };
+    const { result } = routeHook({
+      tokens: [
+        ...matrix.tokens,
+        {
+          symbol: bridged.symbol,
+          decimals: bridged.decimals,
+          roles: ["origin", "destination"],
+          addresses: { [bridged.chainId]: bridged.address },
+        },
+      ],
+      routes: [
+        ...matrix.routes,
+        {
+          origin: { chain_id: 42161, token: "USDC_E" },
+          destination: { kind: "chain", chain_id: 8453, token: "USDC" },
+          privacy_modes: ["public"],
+        },
+        {
+          origin: { chain_id: 8453, token: "USDC" },
+          destination: { kind: "chain", chain_id: 42161, token: "USDC_E" },
+          privacy_modes: ["public"],
+        },
+      ],
+    });
+
+    act(() => result.current.handleFromTokenChange(bridged));
+    expect(result.current.fromToken).toMatchObject(bridged);
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.routeCheck.status).toBe("supported");
+    expect(result.current.classifyDestinationToken(bridged).state).toBe("unsupported");
+
+    act(() => {
+      result.current.handleToTokenChange(bridged);
+      result.current.handleSwapTokens();
+    });
+    expect(result.current.fromToken).toMatchObject(bridged);
+    expect(result.current.toToken).toEqual(token(8453, "USDC"));
+    expect(result.current.routeCheck.status).toBe("supported");
+  });
+
+  it("commits a same-symbol live Stealth destination from the tag rail", () => {
     const routes = matrix.routes.map((route) =>
       "chain_id" in route.destination &&
       route.destination.chain_id === 1 &&
@@ -186,7 +569,7 @@ describe("live route discovery", () => {
     expect(result.current.zkMoneyDestination).toBe(true);
     expect(result.current.stealthDestinationChainIds).toEqual([1]);
 
-    act(() => result.current.handleStealthDestinationChange(1));
+    act(() => result.current.liveStealthDestinations.handleChainChange(1));
     expect(result.current.zkMoneyDestination).toBe(false);
     expect(result.current.toToken).toEqual(token(1, "DAI"));
     expect(result.current.selectedPrivacyModes).toEqual(["public", "stealth"]);
@@ -199,10 +582,29 @@ describe("live route discovery", () => {
     expect(result.current.zkMoneyDestination).toBe(true);
 
     expect(result.current.stealthDestinationChainIds).toEqual([]);
-    act(() => result.current.handleStealthDestinationChange(1));
+    act(() => result.current.liveStealthDestinations.handleChainChange(1));
     expect(result.current.zkMoneyDestination).toBe(true);
     expect(result.current.toToken).toEqual(token(1, "DAI"));
     expect(result.current.selectedPrivacyModes).toEqual(["public"]);
+  });
+
+  it("leaves zk.money without a same-symbol Stealth route or opposite-leg repair", () => {
+    const { result, originChanges } = routeHook();
+    act(() => result.current.selectZkMoneyDestination());
+    expect(result.current.stealthDestinationChainIds).toEqual([]);
+
+    act(() => result.current.leaveZkMoneyDestination());
+    expect(result.current.zkMoneyDestination).toBe(false);
+    expect(result.current.fromChainId).toBe(8453);
+    expect(result.current.fromToken).toEqual(token(8453, "USDC"));
+    expect(result.current.toChainId).toBe(1);
+    expect(result.current.toToken).toEqual(token(1, "DAI"));
+    expect(result.current.selectedPrivacyModes).toEqual(["public"]);
+    expect(result.current.liveStealthDestinations.selectedPairSupported).toBe(false);
+    expect(
+      result.current.liveStealthDestinations.tokensByChain.get(1)?.map((entry) => entry.symbol),
+    ).toEqual(["USDC"]);
+    expect(originChanges()).toBe(0);
   });
 
   it.each([

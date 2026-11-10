@@ -169,13 +169,32 @@ function useStealthState(): UseStealthReturn {
   const [error, setError] = useState<string | null>(null);
   const walletScope = address ? `${address.toLowerCase()}:${chainId}` : null;
   const [keyScope, setKeyScope] = useState<string | null>(null);
-  const authorityRef = useRef({ walletScope });
+  const authorityRef = useRef({ walletScope, active: true });
+  const [, refreshAuthority] = useState<object>();
   const keysRef = useRef<StealthKeys | null>(null);
-  if (authorityRef.current.walletScope !== walletScope) {
-    authorityRef.current = { walletScope };
+  const revokeKeys = useCallback(() => {
+    keysRef.current?.spendingKey.fill(0);
+    keysRef.current?.viewingKey.fill(0);
     keysRef.current = null;
+  }, []);
+  if (authorityRef.current.walletScope !== walletScope) {
+    authorityRef.current.active = false;
+    authorityRef.current = { walletScope, active: true };
+    revokeKeys();
   }
   const authority = authorityRef.current;
+  useEffect(() => {
+    if (!authorityRef.current.active) {
+      authorityRef.current = { ...authorityRef.current, active: true };
+      setKeys(null);
+      setIsLoading(false);
+      refreshAuthority({});
+    }
+    return () => {
+      authorityRef.current.active = false;
+      revokeKeys();
+    };
+  }, [revokeKeys]);
   useEffect(
     () =>
       watchAccount(config, {
@@ -186,24 +205,32 @@ function useStealthState(): UseStealthReturn {
             account.chainId !== previous.chainId ||
             account.connector?.uid !== previous.connector?.uid
           ) {
-            keysRef.current = null;
+            revokeKeys();
+            authorityRef.current.active = false;
             authorityRef.current = {
               walletScope: account.address
                 ? `${account.address.toLowerCase()}:${account.chainId}`
                 : null,
+              active: true,
             };
+            setKeys(null);
             setIsLoading(false);
+            // A same-wallet reconnect can finish inside one React batch, and
+            // loading may already be false. Publish the new authority anyway.
+            refreshAuthority({});
           }
         },
       }),
-    [config],
+    [config, revokeKeys],
   );
 
   // Stable even in old callers: a reset or wallet event revokes keys immediately.
   const getKeys = useCallback((): StealthKeys | null => {
     const account = getAccount(config);
     const scope = account.address ? `${account.address.toLowerCase()}:${account.chainId}` : null;
-    return account.status === "connected" && scope === authorityRef.current.walletScope
+    return account.status === "connected" &&
+      authorityRef.current.active &&
+      scope === authorityRef.current.walletScope
       ? keysRef.current
       : null;
   }, [config]);
@@ -213,7 +240,7 @@ function useStealthState(): UseStealthReturn {
   useEffect(() => {
     setKeyScope(walletScope);
     setKeys(null);
-    keysRef.current = null;
+    revokeKeys();
     setMetaAddress(null);
     setError(null);
     setIsLoading(false);
@@ -228,7 +255,7 @@ function useStealthState(): UseStealthReturn {
       setMetaAddress(cached);
       // Keys are not cached (derived on demand from signature)
     }
-  }, [address, chainId, walletScope]);
+  }, [address, chainId, walletScope, revokeKeys]);
 
   // Check registration status when meta-address changes
   useEffect(() => {
@@ -285,12 +312,12 @@ function useStealthState(): UseStealthReturn {
 
   // Initialize keys from wallet signature
   const initializeKeys = useCallback(async (): Promise<boolean> => {
+    if (authorityRef.current !== authority || !authority.active) return false;
     const account = getAccount(config);
     if (
       !address ||
       account.status !== "connected" ||
-      `${account.address?.toLowerCase()}:${account.chainId}` !== walletScope ||
-      authorityRef.current !== authority
+      `${account.address?.toLowerCase()}:${account.chainId}` !== walletScope
     ) {
       setError("Wallet not connected");
       return false;
@@ -313,7 +340,7 @@ function useStealthState(): UseStealthReturn {
           );
         }),
       ]);
-      if (authorityRef.current !== authority) return false;
+      if (authorityRef.current !== authority || !authority.active) return false;
       const currentAccount = getAccount(config);
       if (
         currentAccount.status !== "connected" ||
@@ -324,6 +351,7 @@ function useStealthState(): UseStealthReturn {
 
       // Derive keys from signature
       const derivedKeys = deriveStealthKeys(signature);
+      revokeKeys();
       keysRef.current = derivedKeys;
       setKeys(derivedKeys);
       setKeyScope(walletScope);
@@ -341,7 +369,7 @@ function useStealthState(): UseStealthReturn {
       });
       return true;
     } catch (err) {
-      if (authorityRef.current !== authority) return false;
+      if (authorityRef.current !== authority || !authority.active) return false;
       const timedOut = err instanceof Error && err.message === "wallet_prompt_timeout";
       const msg = timedOut
         ? "The wallet didn't respond. Some mobile browsers (DuckDuckGo) block the request -- try Safari or Coinbase Wallet."
@@ -353,9 +381,9 @@ function useStealthState(): UseStealthReturn {
       return false;
     } finally {
       if (promptTimer) clearTimeout(promptTimer);
-      if (authorityRef.current === authority) setIsLoading(false);
+      if (authorityRef.current === authority && authority.active) setIsLoading(false);
     }
-  }, [address, authority, chainId, config, walletScope, signMessageAsync]);
+  }, [address, authority, chainId, config, walletScope, signMessageAsync, revokeKeys]);
 
   // Register meta-address on-chain
   const registerMetaAddress = useCallback(async (): Promise<string | null> => {
@@ -419,8 +447,10 @@ function useStealthState(): UseStealthReturn {
 
   // Reset all state
   const reset = useCallback(() => {
-    authorityRef.current = { walletScope };
-    keysRef.current = null;
+    if (authorityRef.current !== authority || !authority.active) return;
+    authorityRef.current.active = false;
+    authorityRef.current = { walletScope, active: true };
+    revokeKeys();
     if (address) {
       clearCachedMetaAddress(address, chainId);
     }
@@ -429,7 +459,7 @@ function useStealthState(): UseStealthReturn {
     setIsRegistered(false);
     setIsLoading(false);
     setError(null);
-  }, [address, chainId, walletScope]);
+  }, [address, authority, chainId, walletScope, revokeKeys]);
 
   return {
     metaAddress: currentMetaAddress,

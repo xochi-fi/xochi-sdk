@@ -18,6 +18,7 @@ import { createXochiClient } from "@xochi/client";
 const xochi = createXochiClient({
   baseUrl: "https://api.xochi.fi",
   getAuthToken: () => session.token, // optional
+  getAuthGeneration: () => session.generation, // optional in-memory credential epoch
   onAuthExpired: (e) => session.reauthenticate(e),
 });
 
@@ -52,6 +53,12 @@ const quote = await xochi.getQuote(request);
 - A confirmed missing tag still arrives as an HTTP 200 `tag_unresolved` decline. It also clears a stale held quote, including on silent refresh; the machine retains its category in `StructuredError.errorCategory`.
 - `ApiError.notAccepted` is `true` only on the Worker's not-accepted 503 for the executed intent (exact shape: `isNotAcceptedExecuteBody` in `src/transport/client.ts`); its `retryAfter` is the body's `retry_after` wait, which a later `Retry-After` header can only extend. Pass it to the machine as `ErrorReport.notAccepted`.
 - `ApiError.inDoubt` is `false` only on the three execute answers that speak for the intent (the not-accepted 503, a 502 `failed` with `substatus: "not_executed"`, a 409 `promo_unavailable`); every other execute failure, `ApiError` or not, is in doubt (`isInDoubtExecuteAnswer`). It is for the host's copy and logs; the machine never reads it. `false` does not end the order: the signed request stays executable until it expires. Word input errors from `code` and the message.
+
+Credential-failure callbacks apply only to the request's still-current bearer.
+Set `getAuthGeneration` to an in-memory counter changed on logout and
+re-authentication to invalidate earlier requests even when a token is reused.
+The transport rechecks both values after reading the error body; neither value
+is added to the callback event.
 
 ### Validation
 
