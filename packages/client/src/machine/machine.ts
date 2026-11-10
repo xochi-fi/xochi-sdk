@@ -465,8 +465,7 @@ function step(m: Model, msg: Msg, fx: Effect[]): Model {
   switch (msg.type) {
     case "ContextChanged": {
       const tradeChanged =
-        (m.allocationKey !== null || m.flights.length > 0) &&
-        tradeKey(msg.ctx) !== tradeKey(m.ctx);
+        (m.allocationKey !== null || m.flights.length > 0) && tradeKey(msg.ctx) !== tradeKey(m.ctx);
       const next = { ...m, ctx: msg.ctx, allocationKey: tradeChanged ? null : m.allocationKey };
       if (!tradeChanged || m.flights.length === 0) return next;
       // The quotes in the air were built from the old trade; their answers
