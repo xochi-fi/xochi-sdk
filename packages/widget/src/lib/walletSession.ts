@@ -20,6 +20,25 @@ import { AUTH_API_URL } from "../config.js";
 
 const WALLET_SESSION_KEY = STORAGE_KEYS.walletSession;
 
+let walletSessionGeneration = 0;
+const listeners = new Set<() => void>();
+
+/** In-memory authority epoch; never persisted with the session. */
+export const getWalletSessionGeneration = (): number => walletSessionGeneration;
+
+/** Subscribe to local sign-in/logout authority changes. */
+export const subscribeWalletSession = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+const notifySessionChanged = (): void => {
+  walletSessionGeneration += 1;
+  listeners.forEach((listener) => listener());
+};
+
 interface WalletSession {
   token: string;
   wallet: string; // lowercased
@@ -45,6 +64,7 @@ export const getWalletSessionAddress = (): string | null => read()?.wallet ?? nu
 
 export const clearWalletSession = (): void => {
   sessionStorage.removeItem(WALLET_SESSION_KEY);
+  notifySessionChanged();
 };
 
 /** True when a session exists for exactly this wallet. */
@@ -68,29 +88,41 @@ export const ensureWalletSession = async (
   const existing = read();
   if (existing && existing.wallet === lower) return existing.token;
   if (existing) clearWalletSession();
+  const generation = getWalletSessionGeneration();
+  const assertCurrent = (): void => {
+    if (getWalletSessionGeneration() !== generation) {
+      throw new Error("Wallet session changed during sign-in");
+    }
+  };
 
   const challengeRes = await fetch(`${AUTH_API_URL}/api/auth/wallet/challenge`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet: lower }),
   });
+  assertCurrent();
   if (!challengeRes.ok) {
     throw new Error(`Wallet challenge failed (${challengeRes.status})`);
   }
   const { message, nonce } = (await challengeRes.json()) as { message: string; nonce: string };
+  assertCurrent();
 
   const signature = await signMessage({ message });
+  assertCurrent();
 
   const verifyRes = await fetch(`${AUTH_API_URL}/api/auth/wallet/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nonce, signature }),
   });
+  assertCurrent();
   if (!verifyRes.ok) {
     throw new Error(`Wallet verification failed (${verifyRes.status})`);
   }
   const result = (await verifyRes.json()) as { token: string; wallet: string };
+  assertCurrent();
   const session: WalletSession = { token: result.token, wallet: result.wallet.toLowerCase() };
   sessionStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
+  notifySessionChanged();
   return session.token;
 };

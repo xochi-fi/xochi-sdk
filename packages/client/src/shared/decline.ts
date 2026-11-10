@@ -17,8 +17,6 @@
  * stay consistent off a single source.
  */
 
-import { SOLVER_ORIGIN_TOKENS, formatSupportedTokens } from "./solver-support.js";
-
 export type DeclineCategory =
   | "route_unsupported"
   | "invalid_request"
@@ -44,21 +42,19 @@ const MAX_PASSTHROUGH = 120;
  */
 export const PICK_DIFFERENT_PAIR = "Pick a different pair";
 
-/** "Send USDC, USDT or USDG to a different chain." from the current origin set. */
-export function supportedOriginSentence(
-  originTokens: readonly string[] = SOLVER_ORIGIN_TOKENS,
-): string {
-  return `Send ${formatSupportedTokens(originTokens)} to a different chain.`;
+/** Guidance from caller-supplied origin symbols, without a static support claim. */
+export function supportedOriginSentence(originTokens: readonly string[] = []): string {
+  if (originTokens.length === 0) return "Try a different route.";
+  return `Send ${originTokens.join(", ")} to a different chain.`;
 }
 
 /**
- * Map a raw solver reject reason to a terse, readable decline. `originTokens`
- * defaults to the static solver set; callers with live capabilities pass the
- * solver's current origin tokens so the guidance tracks the solver at runtime.
+ * Map a raw solver reject reason to a terse, readable decline. Callers may supply
+ * current origin tokens for guidance; omitting them makes no token support claim.
  */
 export function classifyDecline(
   rawReason: string,
-  originTokens: readonly string[] = SOLVER_ORIGIN_TOKENS,
+  originTokens: readonly string[] = [],
   maxOrderUsd?: number,
   minFillableUsd?: number,
 ): DeclineInfo {

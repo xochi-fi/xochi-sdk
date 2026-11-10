@@ -75,6 +75,7 @@ describe("useStealthScanner partial completion", () => {
       </WagmiProvider>
     );
     const { result } = renderHook(() => useStealthScanner({ keys: KEYS }), { wrapper });
+    await waitFor(() => expect(config.state.status).toBe("connected"));
 
     await act(() => result.current.scan());
     expect(result.current.hasScanned).toBe(true);
@@ -146,6 +147,7 @@ describe("useStealthScanner untrusted advertised factory", () => {
       { wrapper },
     );
     await waitFor(() => expect(result.current.caps.isLive).toBe(true));
+    await waitFor(() => expect(config.state.status).toBe("connected"));
 
     await act(() => result.current.scanner.scan());
 

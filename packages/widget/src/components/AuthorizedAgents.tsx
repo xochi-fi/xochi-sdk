@@ -13,7 +13,7 @@
 
 import { useRef, useState } from "react";
 import { isAddress } from "viem";
-import { truncateAddress } from "@xochi/client";
+import { truncateAddress } from "../utils/format.js";
 import { useAgentRegistry } from "../hooks/useAgentRegistry.js";
 import { isAgentActive, type AuthorizedAgent } from "../lib/agentRegistry.js";
 import { buildAgentConnectSnippet, revealedTopic } from "../lib/agentConnect.js";

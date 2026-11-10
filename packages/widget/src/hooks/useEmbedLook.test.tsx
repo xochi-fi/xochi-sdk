@@ -80,4 +80,32 @@ describe("live host theme consumption", () => {
     const { result } = renderHook(() => useEmbedLook(bridge));
     expect(result.current.theme).toBe("contrast");
   });
+
+  it("resubscribes when a preserved frame receives a new bridge instance", () => {
+    const { result, rerender } = renderHook(
+      ({ connection }: { connection: HostConnection }) => useEmbedLook(connection),
+      { initialProps: { connection: bridge } },
+    );
+    hostSends({ type: MESSAGE.theme, theme: "light" });
+    const initial = result.current;
+    const previousBridge = bridge;
+
+    previousBridge.destroy();
+    bridge = connectToHost({ window: frame })!;
+    hostSends({
+      type: MESSAGE.provider,
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      available: false,
+      autoConnect: false,
+      walletUi: "host",
+    });
+    hostSends({ type: MESSAGE.theme, theme: "contrast" });
+    expect(result.current).toBe(initial);
+
+    rerender({ connection: bridge });
+    expect(result.current).toEqual({ ...initial, theme: "contrast" });
+    hostSends({ type: MESSAGE.theme, theme: "dim" });
+    expect(result.current).toEqual({ ...initial, theme: "dim" });
+  });
 });

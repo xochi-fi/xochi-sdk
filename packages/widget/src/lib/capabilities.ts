@@ -2,15 +2,14 @@ import {
   CHAIN_NAMES,
   SUPPORTED_CHAIN_IDS,
   TOKENS,
-  SOLVER_DESTINATION_TOKENS,
-  SOLVER_ORIGIN_TOKENS,
   parseCapabilities,
   type SolverCapabilities,
 } from "@xochi/client";
+import { FALLBACK_DESTINATION_TOKENS, FALLBACK_ORIGIN_TOKENS } from "./displayFallbacks.js";
 
 /** Display continuity only: no exact routes, live authority or advertised Stealth factories. */
 export const FALLBACK_CAPABILITIES: SolverCapabilities = (() => {
-  const symbols = [...new Set([...SOLVER_ORIGIN_TOKENS, ...SOLVER_DESTINATION_TOKENS])];
+  const symbols = [...new Set([...FALLBACK_ORIGIN_TOKENS, ...FALLBACK_DESTINATION_TOKENS])];
   const tokens = symbols.flatMap((symbol) => {
     const entries = SUPPORTED_CHAIN_IDS.flatMap((chainId) =>
       TOKENS[chainId]
@@ -24,7 +23,9 @@ export const FALLBACK_CAPABILITIES: SolverCapabilities = (() => {
         symbol,
         decimals: entries[0]!.token.decimals,
         roles: ["origin", "destination"].filter((role) =>
-          (role === "origin" ? SOLVER_ORIGIN_TOKENS : SOLVER_DESTINATION_TOKENS).includes(symbol),
+          (role === "origin" ? FALLBACK_ORIGIN_TOKENS : FALLBACK_DESTINATION_TOKENS).includes(
+            symbol,
+          ),
         ),
         addresses: Object.fromEntries(
           entries.map(({ chainId, token }) => [chainId, token.address]),

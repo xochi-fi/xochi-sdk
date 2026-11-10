@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { FALLBACK_PRICES } from "@xochi/client";
+import { FALLBACK_PRICES } from "../lib/displayFallbacks.js";
 import { API_URL } from "../config.js";
 
 /** Where one `/api/prices` entry came from (xochi#568). */

@@ -16,14 +16,13 @@ import {
   isReportableSwapStatus,
   isRetryableSwapStatus,
 } from "../types/activity.js";
-import { formatTimeAgo, formatRawAmount } from "../utils/format.js";
+import { formatTimeAgo, formatRawAmount, truncateAddress } from "../utils/format.js";
 import {
   EXTENDED_CHAIN_NAMES,
   CHAIN_SHORT_NAMES,
   settlementDisclosure,
   getTokenInfoForChain,
 } from "@xochi/client";
-import { truncateAddress } from "@xochi/client";
 import { swapExplorerLinks } from "../lib/explorerLinks.js";
 import { getAztecTokenInfo } from "../lib/aztecTokens.js";
 import { LinksSignIn, type LinksSignInAction } from "./LinksSignIn.js";

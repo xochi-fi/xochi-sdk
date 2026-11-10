@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FALLBACK_PRICES } from "@xochi/client";
+import { FALLBACK_PRICES } from "../lib/displayFallbacks.js";
 import {
   PRICE_MAX_AGE_SECONDS,
   estimateUsdFrom,

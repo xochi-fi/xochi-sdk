@@ -5,15 +5,21 @@
  * Uses Result types and pure transformations.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useAccount } from "wagmi";
+import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useAccount, useConfig } from "wagmi";
+import { getAccount, watchAccount } from "wagmi/actions";
 import type { IntentStatus, ChainId, SettlementType } from "../types/intent.js";
 import { isOk } from "../types/result.js";
 import { apiGet, buildUrl } from "../lib/api.js";
 import { intentAPI } from "../lib/intentAPI.js";
 import { isSweepablePreDispatch } from "../lib/localActivity.js";
 import { CHAIN_NAMES, isSettlementType, isTerminalIntentStatus } from "@xochi/client";
-import { hasWalletSession } from "../lib/walletSession.js";
+import {
+  hasWalletSession,
+  getWalletToken,
+  getWalletSessionGeneration,
+  subscribeWalletSession,
+} from "../lib/walletSession.js";
 import { swapExplorerLinks } from "../lib/explorerLinks.js";
 import { PAGINATION } from "@xochi/client";
 import {
@@ -186,7 +192,16 @@ const fetchOrders = async (
 // Hook Implementation
 // ============================================================
 
+interface HistoryAuthority {
+  wallet: string | undefined;
+  token: string | null;
+  sessionGeneration: number;
+  generation: number;
+  revoked: boolean;
+}
+
 type State = {
+  authority: HistoryAuthority | null;
   orders: OrderHistoryItem[];
   isLoading: boolean;
   error: string | null;
@@ -195,6 +210,7 @@ type State = {
 };
 
 const initialState: State = {
+  authority: null,
   orders: [],
   isLoading: false,
   error: null,
@@ -215,8 +231,7 @@ type Action =
   | { type: "FETCH_START" }
   | { type: "FETCH_SUCCESS"; orders: OrderHistoryItem[]; reset: boolean }
   | { type: "FETCH_ERROR"; error: string }
-  | { type: "PATCH_STATUSES"; updates: Map<string, OrderStatusPatch> }
-  | { type: "RESET" };
+  | { type: "PATCH_STATUSES"; updates: Map<string, OrderStatusPatch> };
 
 // Apply one poll result to a row, returning the SAME row when it changes
 // nothing. A null field means "no answer yet", never "clear it", so it falls
@@ -292,8 +307,6 @@ const reducer = (state: State, action: Action): State => {
       });
       return changed ? { ...state, orders } : state;
     }
-    case "RESET":
-      return initialState;
     default:
       return state;
   }
@@ -301,27 +314,78 @@ const reducer = (state: State, action: Action): State => {
 
 export function useOrderHistory(): UseOrderHistoryReturn {
   const { address } = useAccount();
+  const config = useConfig();
+  const sessionGeneration = useSyncExternalStore(
+    subscribeWalletSession,
+    getWalletSessionGeneration,
+    getWalletSessionGeneration,
+  );
+  const wallet = address?.toLowerCase();
+  const token = wallet && hasWalletSession(wallet) ? getWalletToken() : null;
+  const authorityRef = useRef<HistoryAuthority | null>(null);
+  if (
+    !authorityRef.current ||
+    authorityRef.current.revoked ||
+    authorityRef.current.wallet !== wallet ||
+    authorityRef.current.token !== token ||
+    authorityRef.current.sessionGeneration !== sessionGeneration
+  ) {
+    authorityRef.current = {
+      wallet,
+      token,
+      sessionGeneration,
+      generation: (authorityRef.current?.generation ?? 0) + 1,
+      revoked: false,
+    };
+  }
+  const authority = authorityRef.current;
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    const unsubscribe = watchAccount(config, {
+      onChange: (account) => {
+        const current = authorityRef.current;
+        if (current && current.wallet !== account.address?.toLowerCase()) current.revoked = true;
+      },
+    });
+    return () => {
+      mountedRef.current = false;
+      unsubscribe();
+    };
+  }, [config]);
+  const isCurrentAuthority = useCallback(
+    () =>
+      mountedRef.current &&
+      authorityRef.current === authority &&
+      !authority.revoked &&
+      !!authority.wallet &&
+      !!authority.token &&
+      getAccount(config).address?.toLowerCase() === authority.wallet &&
+      getWalletSessionGeneration() === authority.sessionGeneration &&
+      hasWalletSession(authority.wallet) &&
+      getWalletToken() === authority.token,
+    [authority, config],
+  );
   const [state, dispatch] = useState(initialState);
-  // Latest orders for the status poller to read, so its interval keys on
-  // "is anything pending" rather than re-arming on every list change.
-  const ordersRef = useRef(state.orders);
-  ordersRef.current = state.orders;
+  // Scope visibility during render, before effects can reset an old wallet's feed.
+  const visibleState = state.authority === authority && token ? state : initialState;
+  // Latest scoped orders for the status poller; same-owner progress does not re-arm it.
+  const ordersRef = useRef(visibleState.orders);
+  ordersRef.current = visibleState.orders;
   // Bumped only by the public `refresh`, and part of the status-poll key, so a
   // user can re-arm a poll the give-up ceiling has stopped.
   const [pollEpoch, setPollEpoch] = useState(0);
 
-  // Memoized dispatch actions
-  const actions = useMemo(
-    () => ({
-      fetchStart: () => dispatch((s) => reducer(s, { type: "FETCH_START" })),
-      fetchSuccess: (orders: OrderHistoryItem[], reset: boolean) =>
-        dispatch((s) => reducer(s, { type: "FETCH_SUCCESS", orders, reset })),
-      fetchError: (error: string) => dispatch((s) => reducer(s, { type: "FETCH_ERROR", error })),
-      patchStatuses: (updates: Map<string, OrderStatusPatch>) =>
-        dispatch((s) => reducer(s, { type: "PATCH_STATUSES", updates })),
-      reset: () => dispatch(initialState),
-    }),
-    [],
+  const dispatchScoped = useCallback(
+    (action: Action) => {
+      if (!isCurrentAuthority()) return;
+      dispatch((previous) => {
+        if (!isCurrentAuthority()) return previous;
+        const scoped = previous.authority === authority ? previous : { ...initialState, authority };
+        return reducer(scoped, action);
+      });
+    },
+    [authority, isCurrentAuthority],
   );
 
   const doFetch = useCallback(
@@ -331,30 +395,28 @@ export function useOrderHistory(): UseOrderHistoryReturn {
       // server feed rather than a 403. The swap flow itself is wallet-first and
       // needs no session, and local activity still renders. The UI surfaces a
       // "Sign in to view" affordance via `needsSignIn`.
-      if (!address || !hasWalletSession(address)) {
-        actions.reset();
-        return;
-      }
+      if (!authority.wallet || !isCurrentAuthority()) return;
 
-      const currentOffset = reset ? 0 : state.offset;
+      const currentOffset = reset ? 0 : visibleState.offset;
 
-      actions.fetchStart();
+      dispatchScoped({ type: "FETCH_START" });
 
-      const result = await fetchOrders(address, currentOffset);
+      const result = await fetchOrders(authority.wallet, currentOffset);
+      if (!isCurrentAuthority()) return;
 
       if (result.ok && result.data) {
-        actions.fetchSuccess(result.data, reset);
+        dispatchScoped({ type: "FETCH_SUCCESS", orders: result.data, reset });
       } else {
-        actions.fetchError(result.error || "Unknown error");
+        dispatchScoped({ type: "FETCH_ERROR", error: result.error || "Unknown error" });
       }
     },
-    [address, state.offset, actions],
+    [authority, visibleState.offset, dispatchScoped, isCurrentAuthority],
   );
 
-  // Fetch on mount and address change
+  // A new wallet or wallet-session generation owns a fresh first page.
   useEffect(() => {
-    doFetch(true);
-  }, [address]); // eslint-disable-line react-hooks/exhaustive-deps
+    void doFetch(true);
+  }, [authority]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server history fetches once; re-poll its non-terminal rows via the public
   // per-intent status endpoint (no Member token) so a Member/agent order that
@@ -370,16 +432,17 @@ export function useOrderHistory(): UseOrderHistoryReturn {
   // un-throttled tick (#339, which the other two paths already handled).
   const pendingIds = useMemo(
     () =>
-      state.orders
+      visibleState.orders
         .filter((o) => !isTerminalIntentStatus(o.status))
         .map((o) => o.id)
         .sort()
         .join(","),
-    [state.orders],
+    [visibleState.orders],
   );
 
   const pollPendingOrders = useCallback(
     async ({ signal }: StatusPollContext): Promise<StatusPollVerdict> => {
+      if (!isCurrentAuthority()) return;
       const pending = ordersRef.current.filter((o) => !isTerminalIntentStatus(o.status));
       if (pending.length === 0) return;
       const results = await Promise.all(
@@ -417,7 +480,7 @@ export function useOrderHistory(): UseOrderHistoryReturn {
           ] as const;
         }),
       );
-      if (signal.aborted) return;
+      if (signal.aborted || !isCurrentAuthority()) return;
       // Only rows this actually MOVES are updates. A stuck row is re-reported
       // verbatim every tick, so counting "we got an answer" as an update would
       // report progress forever and the give-up ceiling would never fire.
@@ -431,22 +494,22 @@ export function useOrderHistory(): UseOrderHistoryReturn {
           }),
       );
       if (updates.size === 0) return;
-      actions.patchStatuses(updates);
+      dispatchScoped({ type: "PATCH_STATUSES", updates });
       // Observable progress refills the give-up budget, so a feed whose rows
       // keep advancing is never frozen mid-swap by the ceiling.
       return "progress";
     },
-    [actions],
+    [dispatchScoped, isCurrentAuthority],
   );
 
   useIntentStatusPoll({
-    active: !!address && pendingIds.length > 0,
+    active: !!token && pendingIds.length > 0,
     // The pending SET plus the refresh epoch. The set alone does NOT track
     // progress -- a row advancing executing -> bridging leaves the same set --
     // so it is `"progress"` above that restores the budget; this key only
     // re-arms for new work and for a user-initiated refresh. Re-arming also
     // re-polls immediately, which buys the next hop sooner.
-    key: `${pendingIds}|${pollEpoch}`,
+    key: `${authority.generation}|${pendingIds}|${pollEpoch}`,
     label: "useOrderHistory",
     onPoll: pollPendingOrders,
   });
@@ -455,22 +518,23 @@ export function useOrderHistory(): UseOrderHistoryReturn {
   // the key above. Only this path bumps it -- doing it from the automatic poll
   // would re-arm on every tick and restore the unbounded poll.
   const refresh = useCallback(() => {
+    if (!isCurrentAuthority()) return Promise.resolve();
     setPollEpoch((n) => n + 1);
     return doFetch(true);
-  }, [doFetch]);
+  }, [doFetch, isCurrentAuthority]);
   const loadMore = useCallback(() => {
-    if (!state.isLoading && state.hasMore) {
-      doFetch(false);
+    if (!visibleState.isLoading && visibleState.hasMore) {
+      void doFetch(false);
     }
-  }, [doFetch, state.isLoading, state.hasMore]);
+  }, [doFetch, visibleState.isLoading, visibleState.hasMore]);
 
   return {
-    orders: state.orders,
-    isLoading: state.isLoading,
-    error: state.error,
+    orders: visibleState.orders,
+    isLoading: visibleState.isLoading,
+    error: visibleState.error,
     refresh,
-    hasMore: state.hasMore,
+    hasMore: visibleState.hasMore,
     loadMore,
-    needsSignIn: !!address && !hasWalletSession(address),
+    needsSignIn: !!address && !token,
   };
 }

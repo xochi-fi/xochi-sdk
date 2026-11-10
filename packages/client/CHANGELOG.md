@@ -6,13 +6,27 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
 
 ### Added
 
-- Extract the widget-required MIT shared vocabulary: token amount formatting,
-  address maps, fee/tier helpers, aggregate-only referral schemas, agent event
-  serialization, pending claim schema, and conservative fallback metadata.
+- Extract the widget-required MIT shared vocabulary: address maps, fee/tier
+  helpers, aggregate-only referral schemas, agent event serialization, pending
+  claim schema, and caller-supplied decline guidance.
 - Own reusable capability validation, exact executable-route resolution,
   settlement eligibility and fail-closed trust flags in the public client.
   Launch gates and display metadata remain caller-supplied; fallback/stale
   capability snapshots never authorize execution.
+- Keep token-amount formatting/parsing, address truncation, supported-token list
+  formatting, popular-token ordering, offline token lists and fallback prices
+  in the widget. Decline guidance without caller-supplied symbols no longer
+  claims a static token set. Display fallbacks never authorize routes or
+  excessive-slippage decisions. This is an extraction prerequisite, not
+  publication approval; #98's producer and claim-chain prerequisites and
+  separate registry approval remain gates.
+
+### Fixed
+
+- Optional `getAuthGeneration` prevents stale authenticated error responses from
+  expiring a replacement session, including same-token logout/re-authentication.
+  The widget supplies its local wallet-session generation; no credentials enter
+  the client state machine.
 
 ## [0.1.13] - 2026-11-09
 

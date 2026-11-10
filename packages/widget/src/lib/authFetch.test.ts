@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { createServer, type Server } from "node:http";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_KEYS } from "../constants.js";
 import { authFetch } from "./authFetch.js";
-import { getWalletToken } from "./walletSession.js";
+import { clearWalletSession, getWalletToken } from "./walletSession.js";
+import { stubApi } from "../test/intentHarness.js";
 
 let server: Server;
 let baseUrl = "";
@@ -31,16 +32,21 @@ afterAll(async () => {
   );
 });
 
-function storeWalletSession(): void {
+function storeWalletSession(token = "wallet-token"): void {
   sessionStorage.setItem(
     STORAGE_KEYS.walletSession,
-    JSON.stringify({ token: "wallet-token", wallet: "0x1111111111111111111111111111111111111111" }),
+    JSON.stringify({ token, wallet: "0x1111111111111111111111111111111111111111" }),
   );
 }
 
 beforeEach(() => {
   authorization = "";
   storeWalletSession();
+});
+
+afterEach(() => {
+  sessionStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("authFetch wallet-session eviction", () => {
@@ -65,5 +71,34 @@ describe("authFetch wallet-session eviction", () => {
 
     expect(response.status).toBe(401);
     expect(getWalletToken()).toBeNull();
+  });
+
+  it.each(["other-wallet-token", "wallet-token"])(
+    "does not evict a newer session using %s when an old request fails",
+    async (replacementToken) => {
+      const response = Promise.withResolvers<unknown>();
+      stubApi(() => response.promise);
+      const request = authFetch("https://api.example.test/history");
+      clearWalletSession();
+      storeWalletSession(replacementToken);
+      response.resolve(
+        new Response(JSON.stringify({ error_category: "auth_invalid" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      expect((await request).status).toBe(401);
+      expect(getWalletToken()).toBe(replacementToken);
+    },
+  );
+
+  it("does not evict a wallet session for an explicitly supplied unrelated credential", async () => {
+    stubApi(
+      () => new Response(JSON.stringify({ error_category: "auth_invalid" }), { status: 401 }),
+    );
+    await authFetch("https://api.example.test/history", {
+      headers: { Authorization: "Bearer explicit-passkey-token" },
+    });
+    expect(getWalletToken()).toBe("wallet-token");
   });
 });

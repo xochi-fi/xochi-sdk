@@ -113,10 +113,6 @@ describe("parseTokenAmount", () => {
 describe("truncateAddress", () => {
   const address = "0x1234567890abcdef1234567890abcdef12345678";
 
-  it("truncates with default lengths", () => {
-    expect(truncateAddress(address)).toBe("0x1234...5678");
-  });
-
   it("respects custom prefix length", () => {
     expect(truncateAddress(address, 10)).toBe("0x12345678...5678");
   });

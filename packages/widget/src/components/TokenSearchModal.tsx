@@ -12,7 +12,7 @@ import {
 import type { Token } from "../types/intent.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { CHAIN_SHORT_NAMES, EXTENDED_CHAIN_NAMES, type SelectableChainId } from "@xochi/client";
-import { POPULAR_SYMBOLS } from "@xochi/client";
+import { POPULAR_SYMBOLS } from "../lib/displayFallbacks.js";
 
 const SHORT_NAMES: Readonly<Record<number, string | undefined>> = CHAIN_SHORT_NAMES;
 

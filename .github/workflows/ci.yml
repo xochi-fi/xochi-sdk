@@ -84,6 +84,7 @@ jobs:
         run: |
           npm run format:check -w @xochi/widget
           npm run typecheck -w @xochi/widget
+          npm run check:redistribution -w @xochi/widget
           npm test -w @xochi/widget
           npm run build -w @xochi/widget
       - name: Rehearse packed public consumer

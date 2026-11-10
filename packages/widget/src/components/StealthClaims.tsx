@@ -5,10 +5,10 @@
  * Users can scan for payments, view details, and claim (gasless via Pimlico).
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { decodeAnnouncementMetadata } from "@xochi/signer";
 import { getTokenInfoForChain } from "@xochi/client";
-import { formatTokenAmount } from "@xochi/client";
+import { formatTokenAmount } from "../utils/format.js";
 import type { ClaimResult } from "../hooks/useStealthClaim.js";
 import type { ChainStealthPayment } from "../hooks/useStealthScanner.js";
 
@@ -93,16 +93,37 @@ export function StealthClaims({
   onClaim,
   onClaimAll,
 }: StealthClaimsProps) {
-  const [claimingId, setClaimingId] = useState<string | null>(null);
-  const [claimResults, setClaimResults] = useState<Record<string, ClaimResult>>({});
+  const scope = `${walletAddress?.toLowerCase() ?? ""}:${isStealthReady}:${needsSignIn}`;
+  const scopeRef = useRef({ scope });
+  const paymentsRef = useRef(payments);
+  paymentsRef.current = payments;
+  if (scopeRef.current.scope !== scope) scopeRef.current = { scope };
+  const authority = scopeRef.current;
+  const [claimingPayment, setClaimingPayment] = useState<ChainStealthPayment | null>(null);
+  const [claimResults, setClaimResults] = useState(new Map<ChainStealthPayment, ClaimResult>());
+  const [resultAuthority, setResultAuthority] = useState(authority);
+  if (resultAuthority !== authority) {
+    setResultAuthority(authority);
+    setClaimingPayment(null);
+    setClaimResults(new Map());
+  }
+  const operationRef = useRef<object | null>(null);
 
   const handleClaim = async (payment: ChainStealthPayment) => {
-    if (!walletAddress) return;
-    const id = `${payment.chainId}-${payment.announcement.txHash}-${String(payment.announcement.logIndex)}`;
-    setClaimingId(id);
+    if (!walletAddress || scopeRef.current !== authority || !paymentsRef.current.includes(payment))
+      return;
+    const operation = {};
+    operationRef.current = operation;
+    setClaimingPayment(payment);
     const result = await onClaim(payment, walletAddress);
-    setClaimResults((prev) => ({ ...prev, [id]: result }));
-    setClaimingId(null);
+    if (
+      scopeRef.current !== authority ||
+      operationRef.current !== operation ||
+      !paymentsRef.current.includes(payment)
+    )
+      return;
+    setClaimResults((prev) => new Map(prev).set(payment, result));
+    setClaimingPayment(null);
   };
 
   const handleClaimAll = async () => {
@@ -199,8 +220,8 @@ export function StealthClaims({
           <div className="stealth-claims-list">
             {payments.map((payment) => {
               const id = `${payment.chainId}-${payment.announcement.txHash}-${String(payment.announcement.logIndex)}`;
-              const result = claimResults[id];
-              const claiming = claimingId === id;
+              const result = claimResults.get(payment);
+              const claiming = claimingPayment === payment;
               const amount = formatPaymentAmount(payment);
 
               return (

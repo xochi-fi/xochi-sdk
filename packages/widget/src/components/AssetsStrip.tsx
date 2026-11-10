@@ -20,7 +20,7 @@ import { useSettlements } from "../hooks/useSettlements.js";
 import { TokenIcon } from "./TokenIcon.js";
 import { Chevron } from "./Chevron.js";
 import { CHAIN_NAMES, type ChainId } from "@xochi/client";
-import { formatSupportedTokens } from "@xochi/client";
+import { formatSupportedTokens } from "../utils/format.js";
 import { pricingSymbol } from "../lib/balances.js";
 import { useCapabilities } from "../hooks/useCapabilities.js";
 import { WrapModal } from "./WrapModal.js";

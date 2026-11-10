@@ -11,14 +11,17 @@
  * disconnects) but never triggers a wallet popup on its own.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useAccount, useConfig, useSignMessage } from "wagmi";
+import { getAccount, watchAccount } from "wagmi/actions";
 import {
   ensureWalletSession,
   getWalletSessionAddress,
   getWalletToken,
   hasWalletSession,
   clearWalletSession,
+  getWalletSessionGeneration,
+  subscribeWalletSession,
 } from "../lib/walletSession.js";
 
 export type WalletSessionState = "idle" | "signing" | "active" | "rejected";
@@ -33,46 +36,86 @@ export interface UseWalletSessionReturn {
 
 export function useWalletSession(): UseWalletSessionReturn {
   const { address } = useAccount();
+  const config = useConfig();
   const { signMessageAsync } = useSignMessage();
-  const [state, setState] = useState<WalletSessionState>("idle");
+  const wallet = address?.toLowerCase();
+  const generation = useSyncExternalStore(
+    subscribeWalletSession,
+    getWalletSessionGeneration,
+    getWalletSessionGeneration,
+  );
+  const [attempt, setAttempt] = useState<{
+    wallet: string;
+    generation: number;
+    state: "signing" | "rejected";
+  } | null>(null);
+  const requestRef = useRef(0);
+  const mountedRef = useRef(false);
 
-  // Reflect the stored session for the current wallet and drop a stale one when
-  // the wallet changes or disconnects. No signature is requested here.
   useEffect(() => {
+    mountedRef.current = true;
+    const currentWallet = getAccount(config).address?.toLowerCase();
     const bound = getWalletSessionAddress();
-    if (!address) {
-      if (bound) clearWalletSession();
-      setState("idle");
-      return;
-    }
-    if (bound && bound !== address.toLowerCase()) {
-      clearWalletSession();
-      setState("idle");
-      return;
-    }
-    setState(hasWalletSession(address) ? "active" : "idle");
-  }, [address]);
+    if (!currentWallet || (bound && bound !== currentWallet)) clearWalletSession();
+    const unsubscribe = watchAccount(config, {
+      onChange: (account, previous) => {
+        if (
+          account.address?.toLowerCase() !== previous.address?.toLowerCase() ||
+          account.connector?.uid !== previous.connector?.uid
+        ) {
+          requestRef.current += 1;
+          // Invalidate pending first sign-ins too: they have no stored bound wallet yet.
+          clearWalletSession();
+        }
+      },
+    });
+    return () => {
+      mountedRef.current = false;
+      requestRef.current += 1;
+      unsubscribe();
+    };
+  }, [config]);
+
+  const state: WalletSessionState =
+    wallet && hasWalletSession(wallet)
+      ? "active"
+      : attempt && attempt.wallet === wallet && attempt.generation === generation
+        ? attempt.state
+        : "idle";
 
   const ensureSession = useCallback(async (): Promise<string | null> => {
-    if (!address) return null;
-    if (hasWalletSession(address)) {
-      setState("active");
-      return getWalletToken();
-    }
-    setState("signing");
+    if (!wallet || getAccount(config).address?.toLowerCase() !== wallet) return null;
+    if (hasWalletSession(wallet)) return getWalletToken();
+    const request = ++requestRef.current;
+    const startedGeneration = getWalletSessionGeneration();
+    setAttempt({ wallet, generation: startedGeneration, state: "signing" });
     try {
-      const token = await ensureWalletSession(address, ({ message }) =>
+      const token = await ensureWalletSession(wallet, ({ message }) =>
         signMessageAsync({ message }),
       );
-      setState("active");
+      if (
+        !mountedRef.current ||
+        requestRef.current !== request ||
+        getAccount(config).address?.toLowerCase() !== wallet ||
+        getWalletSessionGeneration() !== startedGeneration + 1 ||
+        getWalletToken() !== token
+      ) {
+        return null;
+      }
       return token;
     } catch {
-      // User rejected or the server refused. Leave it to the caller's affordance
-      // to offer a retry; do not loop.
-      setState("rejected");
+      // User rejection stays actionable; an obsolete wallet/session answer is discarded.
+      if (
+        mountedRef.current &&
+        requestRef.current === request &&
+        getAccount(config).address?.toLowerCase() === wallet &&
+        getWalletSessionGeneration() === startedGeneration
+      ) {
+        setAttempt({ wallet, generation: startedGeneration, state: "rejected" });
+      }
       return null;
     }
-  }, [address, signMessageAsync]);
+  }, [wallet, config, signMessageAsync]);
 
   return { state, isActive: state === "active", ensureSession };
 }
