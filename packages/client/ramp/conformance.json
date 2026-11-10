@@ -669,9 +669,9 @@
           "state": "failed",
           "recoverable": true
         },
-        "allowed_actions": [],
+        "allowed_actions": ["recover_peer"],
         "updated_at": "2026-11-10T00:00:00Z",
-        "terminal": true
+        "terminal": false
       },
       "valid": true,
       "expected_outcome": "failed"
@@ -779,9 +779,9 @@
           "state": "completed",
           "recoverable": false
         },
-        "allowed_actions": [],
+        "allowed_actions": ["recover_route"],
         "updated_at": "2026-11-10T00:00:00Z",
-        "terminal": true,
+        "terminal": false,
         "xochi": {
           "name": "xochi",
           "state": "failed",
@@ -805,9 +805,9 @@
           "state": "failed",
           "recoverable": true
         },
-        "allowed_actions": [],
+        "allowed_actions": ["recover_peer"],
         "updated_at": "2026-11-10T00:00:00Z",
-        "terminal": true,
+        "terminal": false,
         "xochi": {
           "name": "xochi",
           "state": "completed",
@@ -941,7 +941,7 @@
         "xochi": {
           "name": "xochi",
           "state": "failed",
-          "recoverable": true
+          "recoverable": false
         }
       },
       "valid": true,
@@ -2371,6 +2371,99 @@
       },
       "valid": true,
       "expected_outcome": "partial_success"
+    },
+    {
+      "id": "peer_failure_without_recovery_is_terminal",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": false
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": true,
+      "expected_outcome": "failed"
+    },
+    {
+      "id": "partial_success_without_recovery_is_terminal",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true,
+        "xochi": {
+          "name": "xochi",
+          "state": "failed",
+          "recoverable": false
+        }
+      },
+      "valid": true,
+      "expected_outcome": "partial_success"
+    },
+    {
+      "id": "completed_legs_cannot_reopen_from_recoverable_flag",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": true
+        },
+        "allowed_actions": [],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true,
+        "xochi": {
+          "name": "xochi",
+          "state": "completed",
+          "recoverable": true
+        }
+      },
+      "valid": true,
+      "expected_outcome": "completed"
+    },
+    {
+      "id": "recoverable_failure_cannot_claim_terminal",
+      "input": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": true
+        },
+        "allowed_actions": ["recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "valid": false
     }
   ],
   "atomic_cases": [
@@ -2778,6 +2871,421 @@
         "accepted_disclosure_codes": ["base_settlement"]
       },
       "expected": "action_not_allowed"
+    },
+    {
+      "id": "recover_peer_after_peer_only_failure",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": true
+        },
+        "allowed_actions": ["recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "recover_peer",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "recover_route_after_peer_success",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["recover_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "failed",
+          "recoverable": true
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "recover_peer_after_prerequisite_success",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": ["xochi", "peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": true
+        },
+        "allowed_actions": ["recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "completed",
+          "recoverable": false
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "recover_peer",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "stale_recovery_revision",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["recover_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "failed",
+          "recoverable": true
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": {
+          "expected_revision": "6",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "session_conflict"
+    },
+    {
+      "id": "recovery_cannot_repeat_completed_peer",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["recover_route", "recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "failed",
+          "recoverable": true
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "recover_peer",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "recovery_cannot_repeat_completed_prerequisite",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "offramp",
+        "leg_order": ["xochi", "peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": true
+        },
+        "allowed_actions": ["recover_peer", "recover_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "completed",
+          "recoverable": false
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "failed_recoverable_leg_cannot_execute_again",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["recover_route", "execute_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "failed",
+          "recoverable": true
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "execute_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "in_doubt_cannot_recover_even_if_advertised",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["check_status", "recover_route"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "in_doubt",
+          "recoverable": true
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "nonrecoverable_failure_cannot_recover",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "failed",
+          "recoverable": false
+        },
+        "allowed_actions": ["recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "recover_peer",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "refunded_leg_cannot_reopen_from_recoverable_flag",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "7",
+        "direction": "onramp",
+        "leg_order": ["peer"],
+        "peer": {
+          "name": "peer",
+          "state": "refunded",
+          "recoverable": true
+        },
+        "allowed_actions": ["recover_peer"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": true
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "peer",
+        "action": "recover_peer",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "action_not_allowed"
+    },
+    {
+      "id": "repeated_recovery_key_returns_existing_receipt",
+      "snapshot": {
+        "contract_version": "ramp/1",
+        "kind": "snapshot",
+        "operation_id": "op_fixture",
+        "revision": "8",
+        "direction": "onramp",
+        "leg_order": ["peer", "xochi"],
+        "peer": {
+          "name": "peer",
+          "state": "completed",
+          "recoverable": false
+        },
+        "allowed_actions": ["check_status"],
+        "updated_at": "2026-11-10T00:00:00Z",
+        "terminal": false,
+        "xochi": {
+          "name": "xochi",
+          "state": "processing",
+          "recoverable": false
+        }
+      },
+      "command": {
+        "contract_version": "ramp/1",
+        "kind": "command",
+        "operation_id": "op_fixture",
+        "leg": "xochi",
+        "action": "recover_route",
+        "context": {
+          "expected_revision": "7",
+          "idempotency_key": "recovery_fixture"
+        }
+      },
+      "expected": "replayed",
+      "receipt": {
+        "command": {
+          "contract_version": "ramp/1",
+          "kind": "command",
+          "operation_id": "op_fixture",
+          "leg": "xochi",
+          "action": "recover_route",
+          "context": {
+            "expected_revision": "7",
+            "idempotency_key": "recovery_fixture"
+          }
+        },
+        "snapshot": {
+          "contract_version": "ramp/1",
+          "kind": "snapshot",
+          "operation_id": "op_fixture",
+          "revision": "8",
+          "direction": "onramp",
+          "leg_order": ["peer", "xochi"],
+          "peer": {
+            "name": "peer",
+            "state": "completed",
+            "recoverable": false
+          },
+          "allowed_actions": ["check_status"],
+          "updated_at": "2026-11-10T00:00:00Z",
+          "terminal": false,
+          "xochi": {
+            "name": "xochi",
+            "state": "processing",
+            "recoverable": false
+          }
+        }
+      }
     }
   ]
 }

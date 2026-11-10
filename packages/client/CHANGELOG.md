@@ -40,6 +40,10 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   expiring a replacement session, including same-token logout/re-authentication.
   The widget supplies its local wallet-session generation; no credentials enter
   the client state machine.
+- Keep recoverable failed legs nonterminal while preserving failed/partial-success
+  outcomes. Permit only the failed leg's explicit recovery action; never repeat a
+  completed sibling, reopen a refunded leg or execute an in-doubt operation again.
+  Add canonical recovery, finality, stale-revision and replay conformance vectors.
 
 ### Fixed
 

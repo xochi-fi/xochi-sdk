@@ -243,6 +243,10 @@ const terminalStates: Readonly<Partial<Record<RampLegState, true>>> = {
   skipped: true,
 };
 
+function isRecoverableFailure(leg: RampLegSnapshot): boolean {
+  return leg.state === "failed" && leg.recoverable;
+}
+
 /** No mutable overall status: a completed leg survives failure of the other leg. */
 export function rampOutcome(snapshot: Pick<RampSnapshot, "peer" | "xochi">): {
   terminal: boolean;
@@ -256,18 +260,22 @@ export function rampOutcome(snapshot: Pick<RampSnapshot, "peer" | "xochi">): {
     | "partial_success";
 } {
   const states = [snapshot.peer.state, ...(snapshot.xochi ? [snapshot.xochi.state] : [])];
-  const terminal = states.every((state) => terminalStates[state] === true);
+  const statesEnded = states.every((state) => terminalStates[state] === true);
+  const terminal =
+    statesEnded &&
+    !isRecoverableFailure(snapshot.peer) &&
+    !(snapshot.xochi && isRecoverableFailure(snapshot.xochi));
   if (states.includes("in_doubt")) return { terminal: false, state: "in_doubt" };
-  if (!terminal) return { terminal: false, state: "pending" };
+  if (!statesEnded) return { terminal: false, state: "pending" };
   if (
     snapshot.peer.state === "completed" &&
     states.every((state) => state === "completed" || state === "skipped")
   ) {
-    return { terminal: true, state: "completed" };
+    return { terminal, state: "completed" };
   }
-  if (states.includes("completed")) return { terminal: true, state: "partial_success" };
+  if (states.includes("completed")) return { terminal, state: "partial_success" };
   return {
-    terminal: true,
+    terminal,
     state: states.includes("failed")
       ? "failed"
       : states.includes("refunded")
@@ -385,7 +393,10 @@ export function checkRampCommand(
   if (
     terminalStates[leg.state] &&
     command.action !== "check_status" &&
-    !(leg.state === "failed" && leg.recoverable)
+    !(
+      isRecoverableFailure(leg) &&
+      command.action === (command.leg === "peer" ? "recover_peer" : "recover_route")
+    )
   )
     return "action_not_allowed";
   if (
