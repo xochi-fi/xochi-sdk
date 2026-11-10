@@ -4,6 +4,20 @@ All notable changes to `@xochi/widget-lib` are documented here. Format follows [
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-10
+
+Runtime-additive on protocol v1. Custom TypeScript implementations must add `XochiWidget.updateTheme`, `HostConnection.theme` and `HostConnection.onTheme`; exhaustive `HostMessage` switches must handle `xochi:theme`.
+
+### Added
+
+- `widget.updateTheme(theme: EmbedTheme)` changes the frame's theme without navigation, wallet/provider handshake changes, trade state loss, or invalidating pending wallet requests. Calls before readiness coalesce to the latest value, replayed after every accepted ownership acknowledgement.
+- `HostConnection.theme()` returns the runtime theme, initially `null`; `onTheme(listener)` observes changed values and returns an unsubscribe. The frame accepts only exact `xochi:theme` messages with an `EMBED_THEMES` value from its pinned parent origin after the provider handshake, under the existing JSON size cap. Destroy removes theme listeners.
+
+### Changed
+
+- Actual `updateParams` navigation resets any runtime theme override to the new URL's explicit theme or its default when omitted. Identically encoded params preserve the current override. URL themes still paint before the runtime bridge is ready.
+- Deploy the updated frame app and its theme subscription before hosts rely on runtime updates. New frames remain compatible with old hosts; old frames ignore the additive message and keep their URL theme. No protocol version bump.
+
 ## [0.4.0] - 2026-11-09
 
 Runtime-additive: widget-owned wallet UI remains the default and existing RPC methods remain unchanged. TypeScript consumers that implement `HostConnection` must add `walletUi`, `onWalletUi` and `requestConnect`; exhaustive `FrameMessage` switches must handle `xochi:connect:request`, versioned `xochi:ready`, and `xochi:provider:ack`. `XochiWidget` implementations must add the bounded readiness status behavior described below.

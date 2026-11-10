@@ -11,7 +11,7 @@
  */
 
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
-import { encodeEmbedParams, type EmbedParams } from "./params.js";
+import { EMBED_THEMES, encodeEmbedParams, type EmbedParams, type EmbedTheme } from "./params.js";
 import {
   ALLOWED_RPC_METHODS,
   DEFAULT_WIDGET_ORIGIN,
@@ -94,6 +94,8 @@ export interface XochiWidgetOptions {
 export interface XochiWidget {
   /** Reload the frame on new params. A no-op when they encode identically. */
   updateParams(params: EmbedParams): void;
+  /** Apply a theme without reloading or changing wallet or trade state. */
+  updateTheme(theme: EmbedTheme): void;
   /** Attach, replace or (with null) detach the host wallet. */
   updateProvider(provider: Eip1193Provider | null): void;
   /** Remove the frame and every listener. Idempotent. */
@@ -181,6 +183,7 @@ export function createXochiWidget(
 ): XochiWidget {
   const origin = normalizeWidgetOrigin(options.origin ?? DEFAULT_WIDGET_ORIGIN);
   let src = embedUrl(origin, options.params);
+  let theme: EmbedTheme | null = options.params.theme ?? null;
   const walletUi = options.walletUi ?? "widget";
   if (walletUi !== "widget" && walletUi !== "host") {
     throw new TypeError('walletUi must be "widget" or "host"');
@@ -307,6 +310,10 @@ export function createXochiWidget(
       autoConnect,
       walletUi,
     });
+  }
+
+  function postTheme(): void {
+    if (theme !== null) post({ type: MESSAGE.theme, theme });
   }
 
   function reply(id: RpcId, outcome: { result: unknown } | { error: RpcErrorObject }): void {
@@ -501,6 +508,7 @@ export function createXochiWidget(
         ready = true;
         clearReadyTimer();
         iframe.hidden = false;
+        postTheme();
         reportStatus({
           state: "ready",
           protocolVersion: WIDGET_PROTOCOL_VERSION,
@@ -547,6 +555,7 @@ export function createXochiWidget(
       const next = embedUrl(origin, params);
       if (next === src) return;
       src = next;
+      theme = params.theme ?? null;
       session += 1;
       pending.clear();
       connected = autoConnect;
@@ -555,6 +564,15 @@ export function createXochiWidget(
       if (params.height !== undefined) iframe.style.height = `${params.height}px`;
       beginLoading();
       iframe.src = next;
+    },
+    updateTheme(next) {
+      if (destroyed) throw new Error("the Xochi widget was destroyed");
+      if (!EMBED_THEMES.includes(next)) {
+        throw new TypeError(`theme must be one of ${EMBED_THEMES.join(", ")}`);
+      }
+      if (next === theme) return;
+      theme = next;
+      if (ready) postTheme();
     },
     updateProvider(next) {
       if (destroyed) throw new Error("the Xochi widget was destroyed");
