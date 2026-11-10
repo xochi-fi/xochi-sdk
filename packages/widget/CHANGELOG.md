@@ -15,6 +15,8 @@
 - Verify the default installed dependency graph without copying workspace overrides into the isolated consumer.
 - Reconcile the workspace lockfile with its declared WalletConnect, UUID and WebSocket overrides using npm 10.
 - Fail packing when declared files, licenses, notices or export targets are missing, and check redistribution permission in widget CI.
+- Keep RainbowKit CSS in the stylesheet entry rather than emitted wallet-provider
+  declarations, so strict isolated consumers need no ambient CSS shim.
 - Reuse the existing wallet/session authority repair: synchronously revoke scanned
   keys on wallet/key/session changes, reject late scan/prepare replies, and verify
   authority immediately before signing. Preserve already-submitted outcomes.

@@ -6,7 +6,6 @@ import { config, createWagmiConfig } from "../wagmi.js";
 import { PALETTE } from "../constants.js";
 import { useResolvedTheme, type AppTheme } from "../hooks/useTheme.js";
 import type { HostConnection } from "@xochi/widget-lib";
-import "@rainbow-me/rainbowkit/styles.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
