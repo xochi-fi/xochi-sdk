@@ -296,6 +296,35 @@ if (publishedDependencies) {
 } else if (!reactPeerValidation.valid) {
   console.warn("RELEASE BLOCKER — React peer closure:", reactPeerValidation.problems.join("; "));
 }
+console.log(
+  run("node", [
+    "--input-type=module",
+    "-e",
+    `import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { atomic, parseRamp, rampOutcome } from '@xochi/client';
+const cjs = createRequire(import.meta.url)('@xochi/client');
+const schema = JSON.parse(readFileSync(new URL(import.meta.resolve('@xochi/client/ramp/contract.schema.json')), 'utf8'));
+const fixtures = JSON.parse(readFileSync(new URL(import.meta.resolve('@xochi/client/ramp/conformance.json')), 'utf8'));
+assert.equal(schema.$id, 'https://xochi.fi/contracts/ramp/1');
+assert.equal(atomic(90071992547409931234567890n), '90071992547409931234567890');
+assert.equal(cjs.atomic(90071992547409931234567890n), '90071992547409931234567890');
+for (const row of fixtures.wire_cases) {
+  const parsed = parseRamp(row.input);
+  assert.equal(parsed.ok, row.valid, row.id);
+  assert.deepEqual(cjs.parseRamp(row.input), parsed, row.id);
+  if (parsed.ok && parsed.value.kind === 'snapshot' && row.expected_outcome) {
+    assert.equal(rampOutcome(parsed.value).state, row.expected_outcome, row.id);
+  }
+}
+for (const row of fixtures.atomic_cases) {
+  if (row.valid) assert.equal(atomic(row.value), row.value);
+  else assert.throws(() => atomic(row.value));
+}
+console.log(JSON.stringify({ contract_version: fixtures.contract_version, wire_vectors: fixtures.wire_cases.length, atomic_vectors: fixtures.atomic_cases.length, formats: ['esm', 'cjs'] }));`,
+  ]),
+);
 const installedRoot = join(consumer, "node_modules/@xochi/widget");
 const installed = json(join(installedRoot, "package.json"));
 assertExports(installed, installedRoot, new Set(globSync("**/*", { cwd: installedRoot })));
@@ -344,10 +373,14 @@ import { Widget, configureWidget } from '@xochi/widget';
 import { Configurator } from '@xochi/widget/configurator';
 import * as model from '@xochi/widget/configurator-model';
 import widgetAsset from '@xochi/widget/assets/${basename(asset)}';
+import { atomic, parseRamp, type AtomicAmount } from '@xochi/client';
 import '@xochi/widget/styles.css';
 configureWidget({ apiUrl: 'http://localhost:8788', development: true,
   solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true }, depositAttestationSigner: '' });
 void model;
+const exact: AtomicAmount = atomic('90071992547409931234567890');
+void exact;
+void parseRamp({ contract_version: 'ramp/1', kind: 'error', code: 'capabilities_unavailable' });
 void import('@xochi/widget/integration');
 document.documentElement.dataset.widgetAsset = widgetAsset;
 createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallback={null}>
