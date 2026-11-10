@@ -8,7 +8,7 @@
  * build cached from that answer must not be reused.
  */
 
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -55,7 +55,9 @@ async function renderStealth() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <StealthProvider>{children}</StealthProvider>
+        <StrictMode>
+          <StealthProvider>{children}</StealthProvider>
+        </StrictMode>
       </QueryClientProvider>
     </WagmiProvider>
   );
@@ -107,7 +109,96 @@ describe("stealth setup with a wallet that cannot hold stealth keys", () => {
   });
 });
 
-describe.each(["connector", "reconnect"] as const)(
+describe("stealth setup lifetime", () => {
+  it("requires explicit setup after effect replay and zeroes retained keys on unmount", async () => {
+    const walletRequests: string[] = [];
+    vi.stubGlobal("fetch", apiStub({}, { onWalletRpc: (method) => walletRequests.push(method) }));
+    const { result, unmount } = await renderStealth();
+    expect(walletRequests).not.toContain("eth_sign");
+
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    const retainedKeys = result.current.getKeys()!;
+    const initialize = result.current.initializeKeys;
+    const getKeys = result.current.getKeys;
+    expect(retainedKeys.spendingKey.some((byte) => byte !== 0)).toBe(true);
+
+    unmount();
+    expect(getKeys()).toBeNull();
+    expect(retainedKeys.spendingKey.every((byte) => byte === 0)).toBe(true);
+    expect(retainedKeys.viewingKey.every((byte) => byte === 0)).toBe(true);
+    expect(await initialize()).toBe(false);
+    expect(walletRequests.filter((method) => method === "eth_sign")).toHaveLength(1);
+  });
+
+  it("revokes initialized keys across a batched reconnect and permits explicit setup again", async () => {
+    vi.stubGlobal("fetch", apiStub({}));
+    const { result, config } = await renderStealth();
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    const retainedKeys = result.current.getKeys()!;
+    const obsoleteInitialize = result.current.initializeKeys;
+    const getKeys = result.current.getKeys;
+
+    await act(async () => {
+      config.setState((state) => ({ ...state, status: "reconnecting" }));
+      config.setState((state) => ({ ...state, status: "connected" }));
+      expect(getKeys()).toBeNull();
+      expect(retainedKeys.spendingKey.every((byte) => byte === 0)).toBe(true);
+      expect(retainedKeys.viewingKey.every((byte) => byte === 0)).toBe(true);
+      expect(await obsoleteInitialize()).toBe(false);
+    });
+    expect(result.current.keysReady).toBe(false);
+    expect(result.current.initializeKeys).not.toBe(obsoleteInitialize);
+
+    await act(async () => {
+      expect(await result.current.initializeKeys()).toBe(true);
+    });
+    expect(result.current.keysReady).toBe(true);
+    expect(result.current.getKeys()).not.toBe(retainedKeys);
+    expect(result.current.getKeys()!.spendingKey.some((byte) => byte !== 0)).toBe(true);
+  });
+
+  it("refuses a pending setup signature after its provider unmounts without caching keys", async () => {
+    const reply = Promise.withResolvers<Response>();
+    let requestId: unknown;
+    const rest = apiStub({});
+    const fetch: FetchStub = (input, init) => {
+      const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      if (body && typeof body === "object" && "method" in body && body.method === "eth_sign") {
+        requestId = "id" in body ? body.id : 0;
+        return reply.promise;
+      }
+      return rest(input, init);
+    };
+    vi.stubGlobal("fetch", fetch);
+    const { result, unmount } = await renderStealth();
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.initializeKeys();
+    });
+    await waitFor(() => expect(requestId).toBeDefined());
+    const getKeys = result.current.getKeys;
+    unmount();
+
+    reply.resolve(
+      new Response(
+        JSON.stringify({ id: requestId, jsonrpc: "2.0", result: `0x${"ab".repeat(64)}1b` }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    expect(await pending).toBe(false);
+    expect(getKeys()).toBeNull();
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull();
+  });
+});
+
+describe.each(["connector", "reconnect", "batched reconnect"] as const)(
   "stealth setup after same-wallet %s changes",
   (event) => {
     it.each(["obsolete first", "current first"] as const)(
@@ -140,6 +231,7 @@ describe.each(["connector", "reconnect"] as const)(
           });
         }
 
+        const obsoleteReset = result.current.reset;
         let obsoleteAttempt!: Promise<boolean>;
         act(() => {
           obsoleteAttempt = result.current.initializeKeys();
@@ -149,6 +241,11 @@ describe.each(["connector", "reconnect"] as const)(
 
         if (event === "connector") {
           await act(() => switchAccount(config, { connector: replacementConnector }));
+        } else if (event === "batched reconnect") {
+          act(() => {
+            config.setState((state) => ({ ...state, status: "reconnecting" }));
+            config.setState((state) => ({ ...state, status: "connected" }));
+          });
         } else {
           act(() => config.setState((state) => ({ ...state, status: "reconnecting" })));
           expect(result.current.isLoading).toBe(false);
@@ -198,6 +295,7 @@ describe.each(["connector", "reconnect"] as const)(
         });
         const currentKeys = deriveStealthKeys(currentSignature);
         const currentMetaAddress = computeMetaAddressFromKeys(currentKeys, mainnet.id);
+        act(() => obsoleteReset());
         expect(result.current.keysReady).toBe(true);
         expect(result.current.getKeys()).toEqual(currentKeys);
         expect(result.current.metaAddress).toEqual(currentMetaAddress);

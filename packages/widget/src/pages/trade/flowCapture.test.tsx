@@ -118,7 +118,6 @@ function FlowProbe({ initial }: { initial: UseIntentReturn }) {
     recipientInvalid: false,
     restoreSettlement: noop,
     clearRecipient: noop,
-    clearStealthDestinationOrigin: noop,
     flowOpen: true,
     setFlowOpen: noop,
     resumed: null,

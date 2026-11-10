@@ -84,19 +84,29 @@ export function useWalletSession(): UseWalletSessionReturn {
         : "idle";
 
   const ensureSession = useCallback(async (): Promise<string | null> => {
-    if (!wallet || getAccount(config).address?.toLowerCase() !== wallet) return null;
+    const account = getAccount(config);
+    if (!mountedRef.current || !wallet || account.address?.toLowerCase() !== wallet) return null;
     if (hasWalletSession(wallet)) return getWalletToken();
     const request = ++requestRef.current;
     const startedGeneration = getWalletSessionGeneration();
+    const isCurrent = (): boolean => {
+      const current = getAccount(config);
+      return (
+        mountedRef.current &&
+        requestRef.current === request &&
+        current.address?.toLowerCase() === wallet &&
+        current.connector?.uid === account.connector?.uid
+      );
+    };
     setAttempt({ wallet, generation: startedGeneration, state: "signing" });
     try {
-      const token = await ensureWalletSession(wallet, ({ message }) =>
-        signMessageAsync({ message }),
+      const token = await ensureWalletSession(
+        wallet,
+        ({ message }) => signMessageAsync({ message }),
+        isCurrent,
       );
       if (
-        !mountedRef.current ||
-        requestRef.current !== request ||
-        getAccount(config).address?.toLowerCase() !== wallet ||
+        !isCurrent() ||
         getWalletSessionGeneration() !== startedGeneration + 1 ||
         getWalletToken() !== token
       ) {
@@ -105,12 +115,7 @@ export function useWalletSession(): UseWalletSessionReturn {
       return token;
     } catch {
       // User rejection stays actionable; an obsolete wallet/session answer is discarded.
-      if (
-        mountedRef.current &&
-        requestRef.current === request &&
-        getAccount(config).address?.toLowerCase() === wallet &&
-        getWalletSessionGeneration() === startedGeneration
-      ) {
+      if (isCurrent() && getWalletSessionGeneration() === startedGeneration) {
         setAttempt({ wallet, generation: startedGeneration, state: "rejected" });
       }
       return null;

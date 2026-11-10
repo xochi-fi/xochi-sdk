@@ -29,8 +29,7 @@ export interface PriceResponse {
  * served price is not necessarily a recent one. CoinGecko-keyed coins update
  * about every minute and contract-priced ones (RAXOL, EURe, ZCHF) were sampled
  * about 12 minutes old (2026-10-31); 30 minutes clears both with room for the
- * worker's 60s edge cache and this hook's 60s refetch. Same value as
- * `PRICE_MAX_AGE_SECONDS` in xochi's `@xochi/shared`.
+ * worker's 60s edge cache and this hook's 60s refetch.
  */
 export const PRICE_MAX_AGE_SECONDS = 30 * 60;
 
@@ -46,7 +45,6 @@ export interface LivePrice {
  * PRICE_MAX_AGE_SECONDS at `nowSeconds`. Anything graded against "the market"
  * (the spot-price row, the excessiveSlippage guard) reads this map; a missing
  * symbol means unpriced, never a static fallback passed off as a market rate.
- * Mirrors `livePriceMap` in xochi's `@xochi/shared`.
  */
 export function livePriceMap(feed: PriceResponse, nowSeconds: number): Record<string, LivePrice> {
   const live: Record<string, LivePrice> = {};

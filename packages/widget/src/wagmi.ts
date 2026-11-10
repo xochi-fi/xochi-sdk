@@ -275,8 +275,16 @@ export function autoConnectHostWallet(config: Config, bridge: HostConnection): (
   };
 }
 
+// StrictMode can discard a render's useMemo result, but not its config's
+// connector initialization. Reuse one config for each bridge authority.
+const hostConfigs = new WeakMap<HostConnection, Config>();
+
 export function createWagmiConfig(bridge: HostConnection | null = null): Config {
-  return getDefaultConfig({
+  if (bridge !== null) {
+    const cached = hostConfigs.get(bridge);
+    if (cached) return cached;
+  }
+  const wagmiConfig = getDefaultConfig({
     appName: "Xochi",
     appDescription: "The agentic dark pool on Ethereum",
     appIcon: `${SITE_URL}/android-chrome-512x512.png`,
@@ -294,6 +302,10 @@ export function createWagmiConfig(bridge: HostConnection | null = null): Config 
     ] as const,
     transports,
     ssr: false,
+    // A frame's connection belongs to this host lease, never widget-origin
+    // persistence or ambient injected-provider discovery.
+    storage: bridge === null ? undefined : null,
+    multiInjectedProviderDiscovery: bridge === null,
     wallets: [
       // The host connector exists only while the embedding page has actually
       // attached a provider. A frame alone is not a wallet choice.
@@ -313,6 +325,8 @@ export function createWagmiConfig(bridge: HostConnection | null = null): Config 
       },
     ],
   });
+  if (bridge !== null) hostConfigs.set(bridge, wagmiConfig);
+  return wagmiConfig;
 }
 
 /** Standalone config: no embedding page means no "This site's wallet" option. */

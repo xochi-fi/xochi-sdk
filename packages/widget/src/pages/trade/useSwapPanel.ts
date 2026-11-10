@@ -36,7 +36,6 @@ import type { ResumedSwap } from "./resumeSwap.js";
 import type { SettlementType } from "../../types/index.js";
 import { useSwapRoute } from "./useSwapRoute.js";
 import { useSettlementGating } from "./useSettlementGating.js";
-import { isChainId } from "../../types/intent.js";
 import { useSwapAmount } from "./useSwapAmount.js";
 import { useSwapFlow, type SwapPrefill } from "./useSwapFlow.js";
 import { useEmbedDefaults } from "./useEmbedDefaults.js";
@@ -147,9 +146,6 @@ export function useSwapPanel(
     onDestinationChainChange: () => {
       routeEdited.current = true;
       gating.clearRecipient();
-      // Any manual destination change supersedes the stealth switch: whatever
-      // happens on the new destination is no longer that button's doing.
-      gating.clearStealthDestinationOrigin();
       gating.intent.reset();
     },
     onDestinationTokenChange: () => {
@@ -167,9 +163,6 @@ export function useSwapPanel(
           ? formatTokenAmount(BigInt(gating.intent.quote.toAmount), nextFromToken.decimals, 6)
           : amounts.amount;
       amounts.setAmount(carriedAmount);
-      // The destination is no longer the one the stealth notice moved us to, so
-      // its "this is why" explanation no longer applies to whatever comes back.
-      gating.clearStealthDestinationOrigin();
       // Both leg-scoped inputs go, for the same reason. The recipient belongs to
       // the old destination; the refund address belongs to the old ORIGIN and is
       // origin-chain-VM-shaped (base58 on Tron, hex on EVM), so after a flip that
@@ -195,7 +188,6 @@ export function useSwapPanel(
     isNonEvmDest: route.isNonEvmDest,
     isNonEvmOrigin: route.isNonEvmOrigin,
     zkMoneyDestination: route.zkMoneyDestination,
-    handleToChainChange: route.handleStealthDestinationChange,
     isConnected,
     address,
     trustScore,
@@ -204,9 +196,68 @@ export function useSwapPanel(
     onStealthSettled,
     initialSettlement: embed.settlementPreference,
     openingSettled: pinnedSettled !== null,
-    stealthDestinationAllowed: route.destinationChainAllowed,
     codes: embed.codes,
   });
+
+  const destinationPickerMode: "public" | "stealth" =
+    gating.settlement === "stealth" ? "stealth" : "public";
+  const stealthDestinations = route.liveStealthDestinations;
+  const stealthDestinationGuidance =
+    destinationPickerMode === "stealth"
+      ? {
+          status: stealthDestinations.status,
+          chainIds: stealthDestinations.chainIds,
+          selectedPairSupported: stealthDestinations.selectedPairSupported,
+        }
+      : null;
+  const destinationHandlers = useRef({
+    mode: destinationPickerMode,
+    chainChange: route.handleToChainChange,
+    tokenChange: route.handleToTokenChange,
+  });
+  destinationHandlers.current = {
+    mode: destinationPickerMode,
+    chainChange:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.handleChainChange
+        : route.handleToChainChange,
+    tokenChange:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.handleTokenChange
+        : route.handleToTokenChange,
+  };
+  const handleToChainChange: typeof route.handleToChainChange = (chainId) => {
+    const current = destinationHandlers.current;
+    if (current.mode === destinationPickerMode) current.chainChange(chainId);
+  };
+  const handleToTokenChange: typeof route.handleToTokenChange = (token) => {
+    const current = destinationHandlers.current;
+    if (current.mode === destinationPickerMode) current.tokenChange(token);
+  };
+  const originHandlers = useRef({
+    mode: destinationPickerMode,
+    chainChange: route.handleFromChainChange,
+    tokenChange: route.handleFromTokenChange,
+  });
+  originHandlers.current = {
+    mode: destinationPickerMode,
+    chainChange:
+      destinationPickerMode === "stealth"
+        ? route.stealthOrigins.handleChainChange
+        : route.handleFromChainChange,
+    tokenChange:
+      destinationPickerMode === "stealth"
+        ? route.stealthOrigins.handleTokenChange
+        : route.handleFromTokenChange,
+  };
+  const handleFromChainChange: typeof route.handleFromChainChange = (chainId) => {
+    const current = originHandlers.current;
+    if (current.mode === destinationPickerMode) current.chainChange(chainId);
+  };
+  const handleFromTokenChange: typeof route.handleFromTokenChange = (token) => {
+    const current = originHandlers.current;
+    if (current.mode === destinationPickerMode) current.tokenChange(token);
+  };
 
   const amounts = useSwapAmount({
     fromChainId: route.fromChainId,
@@ -253,25 +304,16 @@ export function useSwapPanel(
     recipientInvalid: gating.recipientInvalid,
     restoreSettlement: gating.restoreSettlement,
     clearRecipient: gating.clearRecipient,
-    clearStealthDestinationOrigin: gating.clearStealthDestinationOrigin,
     flowOpen,
     setFlowOpen,
     resumed,
     setResumed,
   });
 
-  // Privacy buttons remain navigation while zk.money quotes public Ethereum DAI.
-  // Stealth leaves the tag rail through an exact route-scoped destination.
+  // Leaving the tag rail is navigation, not permission to repair either leg.
   const handleSettlementChange = (next: SettlementType): void => {
-    if (route.zkMoneyDestination && next === "stealth") {
-      const destination = route.stealthDestinationChainIds[0];
-      if (destination !== undefined && isChainId(destination)) {
-        route.handleStealthDestinationChange(destination);
-        gating.selectStealth(destination);
-        return;
-      }
-    } else if (route.zkMoneyDestination && next !== "shielded") {
-      route.handleToChainChange(route.toChainId);
+    if (route.zkMoneyDestination && next !== "shielded") {
+      route.leaveZkMoneyDestination();
     }
     gating.handleSettlementChange(next);
   };
@@ -377,7 +419,6 @@ export function useSwapPanel(
     gating.intent.reset();
     gating.clearRecipient();
     gating.clearRefund();
-    gating.clearStealthDestinationOrigin();
     route.applyRoute(opened);
     amounts.setAmount(opened.amount);
     // The route and amount are what it compares; the setters are stable and
@@ -438,15 +479,8 @@ export function useSwapPanel(
     stealthFix: gating.stealthFix,
     shieldedFix: gating.shieldedFix,
     settlementFix: gating.settlementFix,
-    dismissStealthDestinationNotice: gating.dismissStealthDestinationNotice,
-    handleUseStealthDestination: gating.handleUseStealthDestination,
-    stealthDestinationReachable: gating.stealthDestinationReachable,
-    stealthDestinationTooSmall: gating.stealthDestinationTooSmall,
-    stealthDestinationFrom: gating.stealthDestinationFrom,
-    revertStealthDestination: gating.revertStealthDestination,
     stealthChains: gating.stealthChains,
     stealthDestinationSupported: gating.stealthDestinationSupported,
-    stealthDestinationTarget: gating.stealthDestinationTarget,
     stealthRouteAvailable: gating.stealthRouteAvailable,
     stealthRefusalReason: gating.stealthRefusalReason,
     showSettings,
@@ -497,13 +531,33 @@ export function useSwapPanel(
     refundError: gating.refundError,
     refundInvalid: gating.refundInvalid,
     sourceChainIds: route.sourceChainIds,
-    destinationChainIds: route.destinationChainIds,
+    destinationPickerMode,
+    stealthDestinationGuidance,
+    destinationChainIds:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.chainIds
+        : route.destinationChainIds,
     originTokensByChain: route.originTokensByChain,
-    destinationTokensByChain: route.destinationTokensByChain,
-    classifyOriginToken: route.classifyOriginToken,
-    classifyDestinationToken: route.classifyDestinationToken,
-    originChainBlockedReason: route.originChainBlockedReason,
-    destinationChainBlockedReason: route.destinationChainBlockedReason,
+    destinationTokensByChain:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.tokensByChain
+        : route.destinationTokensByChain,
+    classifyOriginToken:
+      destinationPickerMode === "stealth"
+        ? route.stealthOrigins.classifyToken
+        : route.classifyOriginToken,
+    classifyDestinationToken:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.classifyToken
+        : route.classifyDestinationToken,
+    originChainBlockedReason:
+      destinationPickerMode === "stealth"
+        ? route.stealthOrigins.chainBlockedReason
+        : route.originChainBlockedReason,
+    destinationChainBlockedReason:
+      destinationPickerMode === "stealth"
+        ? stealthDestinations.chainBlockedReason
+        : route.destinationChainBlockedReason,
     routeCheck: route.routeCheck,
     routeBlocked: route.routeBlocked,
     orderOutOfBounds: amounts.orderOutOfBounds,
@@ -527,13 +581,28 @@ export function useSwapPanel(
     resumedDeposit: flow.resumedDeposit,
     handleSwapTokens: route.handleSwapTokens,
     flipBlockedReason: route.flipBlockedReason,
-    handleFromChainChange: route.handleFromChainChange,
-    handleToChainChange: route.handleToChainChange,
-    handleFromTokenChange: route.handleFromTokenChange,
-    handleToTokenChange: route.handleToTokenChange,
+    handleFromChainChange,
+    handleToChainChange,
+    handleFromTokenChange,
+    handleToTokenChange,
     thinDestination: route.thinDestination,
-    canSwitchDestination: route.canSwitchDestination,
-    switchToPreferredDestination: route.switchToPreferredDestination,
+    canSwitchDestination:
+      destinationPickerMode === "stealth"
+        ? route.thinDestination !== null &&
+          (stealthDestinations.tokensByChain.get(route.toChainId) ?? []).some(
+            (token) => token.symbol === route.thinDestination?.preferred,
+          )
+        : route.canSwitchDestination,
+    switchToPreferredDestination: () => {
+      const tokensByChain =
+        destinationPickerMode === "stealth"
+          ? stealthDestinations.tokensByChain
+          : route.destinationTokensByChain;
+      const token = tokensByChain
+        .get(route.toChainId)
+        ?.find((candidate) => candidate.symbol === route.thinDestination?.preferred);
+      if (token) handleToTokenChange(token);
+    },
     recipientBalance: amounts.recipientBalance,
     showExplainer,
     setShowExplainer,

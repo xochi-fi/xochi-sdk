@@ -145,7 +145,6 @@ export interface UseSwapFlowParams {
   recipientInvalid: boolean;
   restoreSettlement: (next: SettlementType) => void;
   clearRecipient: () => void;
-  clearStealthDestinationOrigin: () => void;
   /** Flow-modal state, held by the composition (it also pauses the quote). */
   flowOpen: boolean;
   setFlowOpen: (open: boolean) => void;
@@ -204,7 +203,6 @@ export function useSwapFlow({
   recipientInvalid,
   restoreSettlement,
   clearRecipient,
-  clearStealthDestinationOrigin,
   flowOpen,
   setFlowOpen,
   resumed,
@@ -296,7 +294,6 @@ export function useSwapFlow({
           : "public",
     );
     clearRecipient();
-    clearStealthDestinationOrigin();
     applyRoute({
       fromChainId: prefill.fromChainId,
       toChainId: prefill.toChainId,
@@ -339,7 +336,6 @@ export function useSwapFlow({
     if (!plan) return;
 
     resumedForAddress.current = address;
-    clearStealthDestinationOrigin();
     applyRoute({
       fromChainId: plan.fromChainId,
       toChainId: plan.toChainId,

@@ -15,8 +15,8 @@
  *   - the user's selection is never switched without a user action;
  *   - Shielded enters zk.money through a public Ethereum deposit;
  *     direct Aztec settlement remains gated (#142);
- *   - Stealth's blockers are triaged: an answerable one (wrong destination) is
- *     explained with a fix, an unanswerable one is not offered;
+ *   - Stealth discovery stays available before wallet setup or a supported pair;
+ *     live exact routes still gate private quoting and execution;
  *   - AT MOST ONE guidance line is on screen. That invariant used to be three
  *     independent booleans and a comment asking the reader to clear the other
  *     two; it is now a single nullable union, and this is the test that says so;
@@ -134,9 +134,12 @@ const selected = (): string[] =>
     (name) => mode(name).getAttribute("aria-pressed") === "true",
   );
 
-/** The solver's stealth chains have landed: the toggle is no longer dead. */
+/** Wait for route guidance, not merely the always-browsable Stealth control. */
 const stealthOffered = (): Promise<void> =>
-  waitFor(() => expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false), WAIT);
+  waitFor(() => {
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
+    expect(mode("Stealth").textContent).not.toContain("Loading routes");
+  }, WAIT);
 
 /** The pay-amount field. Queried by id: its placeholder is a bare "0". */
 const payAmount = (): HTMLInputElement => {
@@ -166,6 +169,12 @@ function RefreshCapabilities() {
   return <button onClick={retry}>Refresh capabilities</button>;
 }
 
+async function chooseEthereumDestination(): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "On Arbitrum - Change network" }));
+  const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+  fireEvent.click(within(dialog).getByRole("button", { name: /^Ethereum/ }));
+}
+
 describe("peer options with non-color cues", () => {
   it("offers three privacy choices with supporting descriptions", async () => {
     await renderTrade(<SwapPanel />);
@@ -180,19 +189,18 @@ describe("peer options with non-color cues", () => {
 });
 
 describe("zk.money privacy shortcut", () => {
-  it("enters zk.money directly and clears a pending Stealth notice", async () => {
+  it("enters zk.money directly from explicit Stealth discovery", async () => {
     await renderTrade(<SwapPanel />);
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
-    expect(notices()).toEqual(["stealth_needs_wallet"]);
+    expect(selected()).toEqual(["Stealth"]);
 
     fireEvent.click(mode("Shielded"));
     expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
     expect(screen.getByLabelText("zk.money tag")).toBeTruthy();
     expect(selected()).toEqual(["Shielded"]);
-    // "Shielded" is the public typed zk.money deposit route. Stealth remains
-    // navigation to a separate exact route; it is not enabled on the tag route.
-    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(true);
+    // The tag rail stays Public internally; Stealth is still navigation out.
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     expect(mode("Stealth").getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(notices()).toEqual([]);
@@ -213,54 +221,86 @@ describe("zk.money privacy shortcut", () => {
 });
 
 describe("stealth blockers are triaged, not collapsed", () => {
-  it("answers an anonymous tap inline and keeps the public preview", async () => {
+  it("selects Stealth anonymously and offers discovery without wallet setup", async () => {
+    const walletMethods: string[] = [];
+    const quoteRequests: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      apiStub(
+        {
+          "/api/capabilities": LIVE_ROUTE_CAPABILITIES,
+          "/api/intent/quote": {
+            answer: (request) => {
+              quoteRequests.push(request);
+              throw new Error("Stealth discovery must not request a quote");
+            },
+          },
+        },
+        { onWalletRpc: (method) => walletMethods.push(method) },
+      ),
+    );
     await renderTrade(<SwapPanel />);
     await stealthOffered();
     expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
     fireEvent.click(mode("Stealth"));
-    expect(captionNotice()).toBe("stealth_needs_wallet");
-    const notice = document.querySelector<HTMLElement>(".settlement-caption__notice");
-    expect(notice?.querySelector("button")?.textContent).toBe("Connect wallet");
-    // Public-only preview: the mode does not move, so the anonymous quote path
-    // is never swapped for a signature flow that cannot complete.
+    expect(captionNotice()).toBeNull();
+    expect(document.querySelector(".settlement-caption")?.textContent).toContain(
+      "Stealth derives its one-time address from a connected wallet.",
+    );
+    expect(selected()).toEqual(["Stealth"]);
+    expect(payAmount().value).toBe("");
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "isn't a live Stealth",
+    );
+    const connect = screen.getByRole<HTMLButtonElement>("button", { name: "Connect wallet" });
+    expect(connect.disabled).toBe(false);
+    fireEvent.click(connect);
+    expect(await screen.findByRole("dialog", undefined, WAIT)).toBeTruthy();
+    expect(quoteRequests).toEqual([]);
+    expect(walletMethods).not.toContain("personal_sign");
+    expect(walletMethods).not.toContain("eth_sign");
+  });
+
+  it("keeps the unsupported pair visible until a live destination is explicitly chosen", async () => {
+    await renderTrade(<SwapPanel />, { connected: true });
+    await stealthOffered();
+    fireEvent.click(mode("Stealth"));
+
+    expect(selected()).toEqual(["Stealth"]);
+    expect(screen.getByRole("button", { name: "On Arbitrum - Change network" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send to Ethereum instead" })).toBeNull();
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "Ethereum",
+    );
+    fireEvent.click(mode("Public"));
+    expect(document.querySelector("#stealth-destination-guidance")).toBeNull();
     expect(selected()).toEqual(["Public"]);
   });
 
-  it("explains an unsupported destination at the tap, with a fix and a way to decline", async () => {
-    // Default destination is Arbitrum, so stealth is blocked by the user's OWN
-    // input -- answerable, so the button stays live and the click explains.
-    await renderTrade(<SwapPanel />, { connected: true });
-    await stealthOffered();
-    expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
-    fireEvent.click(mode("Stealth"));
-
-    expect(screen.getByRole("alert")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Send to Ethereum instead" })).toBeTruthy();
-
-    // Declining is an answer too: without it the only exits are the two
-    // branches, leaving a standing alert over the amount field.
-    fireEvent.click(screen.getByRole("button", { name: /^Keep / }));
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("switches the destination and commits to stealth in one tap", async () => {
+  it("selects the destination only after a separate explicit receive choice", async () => {
     await renderTrade(<SwapPanel />, { connected: true });
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
-    fireEvent.click(screen.getByRole("button", { name: "Send to Ethereum instead" }));
+    await chooseEthereumDestination();
 
     // The destination now carries Stealth; keys still require an explicit setup.
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("does not let a public-only route or static chain metadata offer Stealth", async () => {
+  it("allows Stealth discovery without inventing choices from a public-only route", async () => {
     vi.stubGlobal("fetch", apiStub({ "/api/capabilities": PUBLIC_ONLY_CAPABILITIES }));
     await renderTrade(<SwapPanel />, { connected: true });
 
     await waitFor(() => expect(mode("Stealth").textContent).toContain("Try another route"), WAIT);
-    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(true);
-    expect(selected()).toEqual(["Public"]);
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(mode("Stealth"));
+    expect(selected()).toEqual(["Stealth"]);
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "No live Stealth destinations",
+    );
+    expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
   });
 
   it("preserves Stealth through the hosted-wallet EIP-1193 bridge", async () => {
@@ -275,7 +315,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
     await renderTrade(<SwapPanel />, { connected: true, hostWallet: true, walletChainId: 8453 });
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
-    fireEvent.click(screen.getByRole("button", { name: "Send to Ethereum instead" }));
+    await chooseEthereumDestination();
 
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
     expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
@@ -299,15 +339,20 @@ describe("stealth blockers are triaged, not collapsed", () => {
     );
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
-    fireEvent.click(
-      await waitFor(() => screen.getByRole("button", { name: "Send to Ethereum instead" }), WAIT),
-    );
+    await chooseEthereumDestination();
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
 
     vi.stubGlobal("fetch", apiStub({ "/api/capabilities": NO_STEALTH_CAPABILITIES }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh capabilities" }));
 
-    await waitFor(() => expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(true), WAIT);
+    await waitFor(
+      () =>
+        expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+          "No live Stealth destinations",
+        ),
+      WAIT,
+    );
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
     expect(selected()).toEqual(["Stealth"]);
     expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 });
     expect(screen.queryByText(/Stealth pays out on/)).toBeNull();
@@ -349,7 +394,7 @@ describe("stealth blockers are triaged, not collapsed", () => {
 
   // No solver matrix (every capability read fails): neither Public nor Stealth
   // can quote from static display-only metadata.
-  it("disables stealth with a route-data reason and no guessed chain", async () => {
+  it("keeps discovery available on failed route data without guessing a chain", async () => {
     vi.stubGlobal("fetch", apiStub({}, { serveDefaultCapabilities: false }));
     await renderTrade(<SwapPanel />, { connected: true });
 
@@ -361,7 +406,12 @@ describe("stealth blockers are triaged, not collapsed", () => {
       WAIT,
     );
     expect(mode("Stealth").getAttribute("title")).toBe("Stealth route data could not be loaded");
-    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(true);
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(mode("Stealth"));
+    expect(selected()).toEqual(["Stealth"]);
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "couldn't be verified",
+    );
     expect(document.body.textContent).not.toMatch(/temporarily unavailable/i);
     expect(screen.queryByText(/Stealth pays out on/)).toBeNull();
   });
@@ -385,7 +435,11 @@ describe("stealth blockers are triaged, not collapsed", () => {
       () => expect(mode("Stealth").textContent).toContain("Route data unavailable"),
       WAIT,
     );
-    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(true);
+    expect((mode("Stealth") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(mode("Stealth"));
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "couldn't be verified",
+    );
   });
 
   it("fails closed on a stale route matrix without requesting a wallet signature", async () => {
@@ -404,31 +458,36 @@ describe("stealth blockers are triaged, not collapsed", () => {
       WAIT,
     );
     fireEvent.click(mode("Stealth"));
-    expect(selected()).toEqual(["Public"]);
+    expect(selected()).toEqual(["Stealth"]);
+    expect(document.querySelector<HTMLButtonElement>(".submit-btn")?.disabled).toBe(true);
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "couldn't be verified",
+    );
     expect(walletMethods).not.toContain("personal_sign");
     expect(walletMethods).not.toContain("eth_sign");
   });
 });
 
 describe("the selection is never switched for the user", () => {
-  it("keeps Stealth selected when the destination leaves Ethereum, showing its fix", async () => {
+  it("limits the Stealth picker to live routes and restores the public catalog explicitly", async () => {
     await renderTrade(<SwapPanel />, { connected: true });
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
-    fireEvent.click(screen.getByRole("button", { name: "Send to Ethereum instead" }));
+    await chooseEthereumDestination();
     await waitFor(() => expect(selected()).toEqual(["Stealth"]), WAIT);
 
-    // Moving the destination is a route edit, not a mode choice.
     fireEvent.click(screen.getByRole("button", { name: "On Ethereum - Change network" }));
-    const dialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
-    const option = within(dialog).getByRole("button", { name: /^Arbitrum/ });
-    fireEvent.click(option);
-
-    await waitFor(() => expect(metaLines("Stealth")).toEqual({ lines: 1, fixes: 1 }), WAIT);
+    const stealthDialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    expect(within(stealthDialog).queryByRole("button", { name: /^Arbitrum/ })).toBeNull();
+    fireEvent.keyDown(stealthDialog, { key: "Escape" });
     expect(selected()).toEqual(["Stealth"]);
-    // Blocked rather than silently settled publicly.
-    const submit = document.querySelector<HTMLButtonElement>(".submit-btn");
-    expect(submit?.disabled).toBe(true);
+
+    fireEvent.click(mode("Public"));
+    fireEvent.click(screen.getByRole("button", { name: "On Ethereum - Change network" }));
+    const publicDialog = await screen.findByRole("dialog", { name: "Select network" }, WAIT);
+    fireEvent.click(within(publicDialog).getByRole("button", { name: /^Arbitrum/ }));
+    expect(screen.getByRole("button", { name: "On Arbitrum - Change network" })).toBeTruthy();
+    expect(selected()).toEqual(["Public"]);
   });
 });
 
@@ -438,21 +497,22 @@ describe("the guidance slot holds at most one notice", () => {
     await stealthOffered();
 
     fireEvent.click(mode("Stealth"));
-    expect(notices()).toEqual(["stealth_needs_wallet"]);
+    expect(selected()).toEqual(["Stealth"]);
+    expect(captionNotice()).toBeNull();
 
     // Picking a real mode clears the slot entirely.
     fireEvent.click(mode("Public"));
     expect(notices()).toEqual([]);
   });
 
-  it("does not silence an unrelated notice when the trade is edited", async () => {
-    // Each clear is scoped to the line it answers. A blind reset would take the
-    // wallet nudge down too, and that one is still unanswered.
+  it("keeps explicit Stealth and its destination guidance when the amount is edited", async () => {
     await renderTrade(<SwapPanel />);
     await stealthOffered();
     fireEvent.click(mode("Stealth"));
     fireEvent.change(payAmount(), { target: { value: "5" } });
-    expect(notices()).toEqual(["stealth_needs_wallet"]);
+    expect(selected()).toEqual(["Stealth"]);
+    expect(captionNotice()).toBeNull();
+    expect(document.querySelector("#stealth-destination-guidance")).toBeTruthy();
   });
 });
 

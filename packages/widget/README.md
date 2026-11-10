@@ -17,9 +17,21 @@ npm run build -w @xochi/widget
 node scripts/verify-widget-consumer.mjs
 ```
 
-The verifier installs tarballs outside the repository with empty npm configuration, no registry credentials and no workspace dependency overrides. It requires each declared package file, license and third-party notice, checks every packed export (including declarations, CSS and the asset wildcard), typechecks declarations and builds Vite consumers for the complete widget and wallet-free configurator. Its temporary widget version is inherited from the source host's `0.1.0` metadata, marked rehearsal-only, and is not an approved npm version. The resulting directory and SHA-512 artifact pairing are printed. Never copy those temporary dependencies into a production host manifest.
+The default verifier installs the four local signer/client/loader/widget tarballs outside the repository with empty npm configuration, no registry credentials and **no workspace dependency overrides**. It requires declared package files, licenses and notices, checks every packed export including declarations, CSS and assets, and builds strict production consumers for the complete widget and wallet-free configurator. This is a **local-artifact rehearsal, not published-dependency qualification**. Only this mode may use the historical host's temporary `0.1.0` widget metadata, marked rehearsal-only. Never copy temporary artifacts or dependencies into a production host manifest.
 
-The root workspace's npm overrides are development integration policy, not published dependency constraints. Consumer verification deliberately uses the package manifests' default dependency graph. If a host needs overrides or bundler configuration, declare and review them explicitly in that host; do not inherit the SDK workspace's configuration or treat an override-assisted build as default-consumer verification.
+### Published-dependencies release gate
+
+After prerequisites are actually published, pin their exact versions in the widget manifest, assign the approved widget source version, build, and run:
+
+```sh
+node scripts/verify-widget-consumer.mjs --published-dependencies
+```
+
+This mode packs only the local widget. All prerequisites resolve anonymously from the public registry without overrides. It checks installed versions, registry tarballs and integrity against registry metadata and rejects non-registry resolutions. It never synthesizes a release version. Both modes strip credential-related environment variables, use isolated npm configuration and `NODE_ENV=production`, typecheck declarations without `skipLibCheck`, and check the configurator's wallet-free graph. The verification record distinguishes source/packed versions, dependency provenance and rehearsal status.
+
+`npm run check:published-dependencies -w @xochi/widget` checks the default declared runtime/peer closure and required public exports before release; it does not replace the packed-widget gate. Until approved versions exist, release qualification must fail closed. Workspace overrides are development policy, not published dependency constraints. Neither verifier publishes, deploys or qualifies live trading.
+
+The current default wallet dependency chain (`wagmi@2.19.5` → WalletConnect/Reown → `valtio` → `use-sync-external-store@1.2.0`) declares a transitive React peer range that excludes React 19. The anonymous production build succeeds, but `npm ls react react-dom` reports that conflict. Rehearsal records it explicitly; published-dependencies verification refuses it. Resolving the public dependency compatibility is a release prerequisite, not permission to add hidden consumer overrides or upgrade the wallet stack during extraction. Current RainbowKit `2.2.11` supports Wagmi 2, not the current Wagmi 3 release.
 
 ## Rendering
 
@@ -77,6 +89,14 @@ the current scanner authority. Wallet, chain, connector or session changes cance
 that requested scan. A connector change or reconnect also cancels an in-flight
 Stealth setup and releases its busy state; deriving replacement keys still
 requires a new explicit wallet signature. Late replies cannot replace newer keys.
+
+Provider teardown revokes pending key setup and zeroes retained secret buffers. Abandoned sign-in callbacks cannot prompt, verify or store a session after their caller loses authority. Effect reactivation does not itself sign; a same-wallet reconnect requires fresh explicit key setup.
+
+### Live Stealth destinations
+
+Selecting Stealth is navigation, not wallet setup or signing consent. Before an amount is entered, receive choices come from exact live routes for the selected source, independently trusted factories and host constraints. Unsupported explicit presets remain visible with guidance; they do not silently become Public or another token. Public selection keeps its existing catalog and repair behavior.
+
+When a live chain requires a different receive asset, choosing that chain opens its eligible asset picker without changing either leg until the user selects the asset. Unlaunched Shielded destinations and the Public-only zk.money rail are excluded from Stealth choices. Switching out of zk.money clears its tag and quote, not the source leg. Quotes and execution retain all existing amount, authorization and signing checks.
 
 ## Self-hosting and origin permissions
 

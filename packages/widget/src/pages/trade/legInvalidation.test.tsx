@@ -33,7 +33,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { cleanup, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QuoteResponseSchema, TRON_CHAIN_ID, EXTENDED_CHAIN_NAMES } from "@xochi/client";
-import { costRatioDeclineMessage } from "@xochi/client";
 import { quoteWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
 import { renderTrade, apiStub, L1_STEALTH_CAPABILITIES } from "./harness.js";
@@ -41,18 +40,7 @@ import { SwapPanel } from "./SwapPanel.js";
 import { TRON_DESTINATION_LIVE } from "./config.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
 
-/**
- * Longest test: "clears the typed recipient, not just the field" -- one render,
- * then three `changeChain` calls each followed by a wait on the field, which is
- * SIX waits. The stealth round-trip ties it: the solver's stealth chains
- * landing, then the five that actually failed. Count the worst path rather
- * than the loudest.
- *
- * This file is why `waitBudget.ts` exists: its eleven waits held
- * 10s + 12s + 10s + 10s + 12s = 54s of inner budget on the stealth path against
- * a 20s outer ceiling, so the outer timeout always won and reported no
- * assertion at all. Three more waits were on RTL's 1000ms default.
- */
+/** The recipient round trip uses three chain changes and three field waits. */
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 6 }) });
 
 const TRON_NAME = EXTENDED_CHAIN_NAMES[TRON_CHAIN_ID];
@@ -224,117 +212,45 @@ describe("a flip carries the quote's output into the pay field", () => {
   });
 });
 
-// ============================================================
-// The stealth switch owns its offer only until the user moves the leg
-// ============================================================
-
-/** The revert affordance the stealth destination switch leaves behind. */
-const revertOffer = (): HTMLElement | null =>
-  screen.queryByRole("button", { name: /^Send to .+ instead$/ });
-
-/**
- * Take the stealth switch's offer: pick Stealth on a non-L1 destination, which
- * refuses with an answerable notice, then accept the fix. That moves the
- * destination to Ethereum and records where it came from.
- *
- * The revert affordance is deliberately not shown on the switch alone -- it
- * appears only once the move has actually cost the user the quote, i.e. beside
- * a below-the-minimum decline on the new destination. So the quote route has to
- * serve that decline for the offer to exist at all.
- */
-const takeStealthDestination = async (): Promise<void> => {
-  fireEvent.change(payAmount(), { target: { value: "20" } });
-  // The toggle is dead until the solver's stealth chains land.
-  await waitFor(
-    () =>
-      expect((screen.getByRole("button", { name: /^Stealth/ }) as HTMLButtonElement).disabled).toBe(
-        false,
-      ),
-    WAIT,
-  );
-  fireEvent.click(screen.getByRole("button", { name: /^Stealth/ }));
-  const offer = await waitFor(
-    () => screen.getByRole("button", { name: "Send to Ethereum instead" }),
-    WAIT,
-  );
-  fireEvent.click(offer);
-  fireEvent.click(await screen.findByRole("button", { name: "Set up Stealth" }));
-  await waitFor(() => expect(revertOffer()).not.toBeNull(), WAIT);
-};
-
-describe("moving a leg yourself supersedes the stealth switch", () => {
-  beforeEach(() => {
-    // A below-the-minimum decline on every quote: what the L1 destination costs
-    // a small order, and the precondition for the revert offer.
+describe("an explicit live Stealth receive choice invalidates the public receipt", () => {
+  it("keeps the source and amount while replacing the receive route without setup", async () => {
+    const walletMethods: string[] = [];
+    let quoteRequests = 0;
     vi.stubGlobal(
       "fetch",
-      apiStub({
-        "/api/capabilities": L1_STEALTH_CAPABILITIES,
-        "/api/intent/quote": {
-          body: QuoteResponseSchema.parse({
-            success: true,
-            intent_id: "55555555-5555-5555-5555-555555555555",
-            quote_id: "66666666-6666-6666-6666-666666666666",
-            can_solve: false,
-            expiry: new Date(Date.now() + 60_000).toISOString(),
-            // The canonical wire sentence. `isAmountTooSmall` categorizes by
-            // MESSAGE, not by `error_category`, so a hand-written string here
-            // parses as a generic failure and the revert offer never appears.
-            error: costRatioDeclineMessage(10.07, 672),
-            error_category: "amount_too_small",
-            minimum_amount_usd: 672,
-            min_fillable_usd: 10.07,
-            settlement_options: [],
-          }),
+      apiStub(
+        {
+          "/api/capabilities": L1_STEALTH_CAPABILITIES,
+          "/api/intent/quote": {
+            answer: () => {
+              quoteRequests += 1;
+              return quoteBody;
+            },
+          },
         },
-      }),
+        { onWalletRpc: (method) => walletMethods.push(method) },
+      ),
     );
-    intentAPI.clearQuoteCache();
-  });
+    await renderTrade(<SwapPanel />, { connected: true });
+    fireEvent.change(payAmount(), { target: { value: "1000" } });
+    await waitForReceipt();
+    const publicQuoteRequests = quoteRequests;
 
-  /**
-   * A round TRIP, and it has to be. The offer's own render condition includes
-   * "the destination is still the Ethereum we moved you to", so simply moving
-   * away hides it whether or not the origin marker was dropped -- an assertion
-   * there passes on the guard alone and defends nothing. Coming back to
-   * Ethereum is what separates the two: a marker that survived reinstates the
-   * offer, now naming a chain the user has since left.
-   */
-  it.each<[string, () => Promise<void>]>([
-    [
-      "the destination is changed by hand",
-      async () => {
-        await changeChain("Ethereum", "Optimism");
-        await changeChain("Optimism", "Ethereum");
-      },
-    ],
-    [
-      "the direction is flipped",
-      async () => {
-        flip();
-        flip();
-      },
-    ],
-  ])("does not reinstate the revert offer after %s", async (_label, move) => {
-    await renderTrade(<SwapPanel />, { connected: true, walletChainId: 8453 });
-    await takeStealthDestination();
+    fireEvent.click(screen.getByRole("button", { name: /^Stealth/ }));
+    await waitFor(() => expect(receiptShown()).toBe(false), WAIT);
+    await changeChain("Arbitrum", "Ethereum");
 
-    await move();
-
-    // Wait for the decline to land on the pair we came BACK to, before
-    // asserting absence. Without this anchor the assertion is satisfied by
-    // the moment right after the move, when the quote has been reset and the
-    // offer is transiently gone for every implementation -- which is how an
-    // absence check passes while the marker is still set.
-    await waitFor(
-      () => expect(screen.getByRole("button", { name: /^Increase to at least/ })).toBeTruthy(),
-      WAIT,
+    expect(payAmount().value).toBe("1000");
+    expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Stealth/ }).getAttribute("aria-pressed")).toBe(
+      "true",
     );
-
-    // Every other condition for the offer holds again: destination Ethereum,
-    // below-the-minimum decline on screen. Only the dropped marker keeps the
-    // offer off it.
-    expect(revertOffer()).toBeNull();
+    expect(receiptShown()).toBe(false);
+    expect(quoteRequests).toBe(publicQuoteRequests);
+    expect(walletMethods).not.toContain("personal_sign");
+    expect(walletMethods).not.toContain("eth_sign");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

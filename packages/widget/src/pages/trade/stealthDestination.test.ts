@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SIMPLE_ACCOUNT_FACTORY, stealthDestinationChains } from "@xochi/client";
 import { parseCapabilities, type SolverCapabilities } from "@xochi/signer";
-import type { ChainId } from "../../types/intent.js";
-import { joinChainNames, stealthDestinationTarget } from "./config.js";
+import { joinChainNames } from "./config.js";
 
 const TRUSTED: Readonly<Record<number, readonly string[]>> = {
   1: [SIMPLE_ACCOUNT_FACTORY],
@@ -52,21 +51,6 @@ describe("stealthDestinationChains", () => {
     for (const malformed of [null, "8453", { 1: true }]) {
       expect(stealthDestinationChains(served(malformed), TRUSTED)).toEqual([]);
     }
-  });
-});
-
-describe("stealthDestinationTarget", () => {
-  const BASE_AND_L1: readonly ChainId[] = [8453, 1];
-
-  it("does not move a destination that already carries stealth", () => {
-    expect(stealthDestinationTarget(BASE_AND_L1, 8453)).toBeNull();
-    expect(stealthDestinationTarget(BASE_AND_L1, 1)).toBeNull();
-  });
-
-  it("uses the first chain in solver order", () => {
-    expect(stealthDestinationTarget(BASE_AND_L1, 42161)).toBe(8453);
-    expect(stealthDestinationTarget([1, 8453], 42161)).toBe(1);
-    expect(stealthDestinationTarget([], 42161)).toBeNull();
   });
 });
 

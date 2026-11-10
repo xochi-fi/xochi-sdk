@@ -7,7 +7,6 @@ import {
   clearWalletSession,
   ensureWalletSession,
   getWalletSessionAddress,
-  getWalletSessionGeneration,
   getWalletToken,
   subscribeWalletSession,
 } from "./walletSession.js";
@@ -23,10 +22,9 @@ afterEach(() => {
 
 describe("wallet session authority", () => {
   it("notifies synchronously after sign-in and logout without changing the stored format", async () => {
-    const generation = getWalletSessionGeneration();
-    const snapshots: { generation: number; token: string | null }[] = [];
+    const snapshots: (string | null)[] = [];
     const unsubscribe = subscribeWalletSession(() => {
-      snapshots.push({ generation: getWalletSessionGeneration(), token: getWalletToken() });
+      snapshots.push(getWalletToken());
     });
     stubApi((call) =>
       call.url.endsWith("/challenge")
@@ -35,10 +33,14 @@ describe("wallet session authority", () => {
     );
     const signedMessages: string[] = [];
     try {
-      const token = await ensureWalletSession(TEST_WALLET, async ({ message }) => {
-        signedMessages.push(message);
-        return "0xsignature";
-      });
+      const token = await ensureWalletSession(
+        TEST_WALLET,
+        async ({ message }) => {
+          signedMessages.push(message);
+          return "0xsignature";
+        },
+        () => true,
+      );
       expect(token).toBe("wallet.session.jwt");
       expect(signedMessages).toEqual(["Sign in"]);
       expect(getWalletSessionAddress()).toBe(TEST_WALLET.toLowerCase());
@@ -46,13 +48,10 @@ describe("wallet session authority", () => {
         token: "wallet.session.jwt",
         wallet: TEST_WALLET.toLowerCase(),
       });
-      expect(snapshots).toEqual([{ generation: generation + 1, token: "wallet.session.jwt" }]);
+      expect(snapshots).toEqual(["wallet.session.jwt"]);
 
       clearWalletSession();
-      expect(snapshots).toEqual([
-        { generation: generation + 1, token: "wallet.session.jwt" },
-        { generation: generation + 2, token: null },
-      ]);
+      expect(snapshots).toEqual(["wallet.session.jwt", null]);
       expect(getWalletToken()).toBeNull();
     } finally {
       unsubscribe();
@@ -60,6 +59,33 @@ describe("wallet session authority", () => {
     clearWalletSession();
     expect(snapshots).toHaveLength(2);
   });
+
+  it.each([null, "shared.wallet.jwt"])(
+    "refuses abandoned authority before requesting a challenge or using shared token %s",
+    async (token) => {
+      if (token) {
+        sessionStorage.setItem(
+          STORAGE_KEYS.walletSession,
+          JSON.stringify({ token, wallet: TEST_WALLET.toLowerCase() }),
+        );
+      }
+      const api = stubApi(() => ({ message: "Sign in", nonce: "nonce" }));
+      const signedMessages: string[] = [];
+      await expect(
+        ensureWalletSession(
+          TEST_WALLET,
+          async ({ message }) => {
+            signedMessages.push(message);
+            return "0xsignature";
+          },
+          () => false,
+        ),
+      ).rejects.toThrow("Wallet session changed during sign-in");
+      expect(api.calls).toEqual([]);
+      expect(signedMessages).toEqual([]);
+      expect(getWalletToken()).toBe(token);
+    },
+  );
 
   it.each(["challenge", "signature", "verification"] as const)(
     "does not resurrect a session cleared while awaiting %s",
@@ -78,17 +104,20 @@ describe("wallet session authority", () => {
           ? { message: "Sign in", nonce: "nonce" }
           : { token: "wallet.session.jwt", wallet: TEST_WALLET };
       });
-      const signIn = ensureWalletSession(TEST_WALLET, async () => {
-        signed += 1;
-        if (stage === "signature") {
-          entered.resolve();
-          return signature.promise;
-        }
-        return "0xsignature";
-      });
+      const signIn = ensureWalletSession(
+        TEST_WALLET,
+        async () => {
+          signed += 1;
+          if (stage === "signature") {
+            entered.resolve();
+            return signature.promise;
+          }
+          return "0xsignature";
+        },
+        () => true,
+      );
       const rejected = expect(signIn).rejects.toThrow("Wallet session changed during sign-in");
       await entered.promise;
-      const generation = getWalletSessionGeneration();
       clearWalletSession();
       response.resolve(
         stage === "challenge"
@@ -98,7 +127,6 @@ describe("wallet session authority", () => {
       signature.resolve("0xsignature");
       await rejected;
 
-      expect(getWalletSessionGeneration()).toBe(generation + 1);
       expect(getWalletToken()).toBeNull();
       expect(getWalletSessionAddress()).toBeNull();
       expect(signed).toBe(stage === "challenge" ? 0 : 1);

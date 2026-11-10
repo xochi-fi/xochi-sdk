@@ -230,6 +230,11 @@
   background: var(--panel-bg-elevated);
 }
 
+.stealth-claims .section-header .btn {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .stealth-claims-badge {
   display: inline-flex;
   align-items: center;

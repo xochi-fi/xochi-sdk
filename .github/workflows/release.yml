@@ -247,7 +247,7 @@ jobs:
           npm run typecheck -w @xochi/widget
           npm test -w @xochi/widget
           npm run build -w @xochi/widget
-          node scripts/verify-widget-consumer.mjs
+          node scripts/verify-widget-consumer.mjs --published-dependencies
 
       # --- @xochi/sdk: the ci.yml `check` gate (drift tests need ERC-8262) ----
 

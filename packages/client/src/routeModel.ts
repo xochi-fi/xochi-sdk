@@ -171,6 +171,7 @@ function validatedTokensByChain(
       if (
         symbolCounts.get(capability.symbol.toLowerCase()) !== 1 ||
         !capability.roles.includes(role) ||
+        (role === "destination" && capability.symbol === "USDC_E") ||
         address === undefined ||
         !validateAddressForVm(address, vm).valid ||
         capability.decimals === null ||
@@ -320,6 +321,7 @@ function displayTokens(
  * Resolve the complete trade surface from one capability snapshot. Capability
  * addresses, decimals, typed routes and privacy modes are authoritative. Static
  * token data supplies display metadata only and never grants an endpoint.
+ * Bridged USDC is accepted as payment, but never offered as a payout token.
  */
 export function resolveRouteModel(
   capabilities: SolverCapabilities,

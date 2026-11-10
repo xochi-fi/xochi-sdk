@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { QUOTE_DEBOUNCE_MS, QuoteResponseSchema, SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
 import { quoteWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
@@ -19,6 +20,8 @@ import { renderTrade, apiStub, type FetchStub, type StubbedRoute } from "./harne
 import { SwapPanel } from "./SwapPanel.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
 import { findTokenBySymbol } from "./config.js";
+import { parseWidgetCapabilities } from "../../hooks/useCapabilities.js";
+import { TRUST_FEATURES_OFF } from "@xochi/client";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 3 }) });
 
@@ -41,7 +44,7 @@ const capabilityToken = (symbol: string, roles: readonly string[]) => {
 };
 
 /** A live matrix that fills DAI on Ethereum from Base USDC. */
-const CAPABILITIES: StubbedRoute = {
+const CAPABILITIES = {
   body: {
     source: "live",
     capabilities: {
@@ -80,7 +83,7 @@ const CAPABILITIES: StubbedRoute = {
       ],
     },
   },
-};
+} satisfies StubbedRoute;
 
 /**
  * 1000 USDC in, 998 DAI out, as a preview (the panel is disconnected) that
@@ -116,11 +119,20 @@ const unavailable = quoteWire({
 });
 
 /** Serves `quote` and records every quote request body. */
-function recordingStub(quote: unknown, bodies: Record<string, unknown>[], status = 200): FetchStub {
-  const rest = apiStub({
-    "/api/intent/quote": { body: quote, status },
-    "/api/capabilities": CAPABILITIES,
-  });
+function recordingStub(
+  quote: unknown,
+  bodies: Record<string, unknown>[],
+  status = 200,
+  capabilities: StubbedRoute = CAPABILITIES,
+  walletMethods?: string[],
+): FetchStub {
+  const rest = apiStub(
+    {
+      "/api/intent/quote": { body: quote, status },
+      "/api/capabilities": capabilities,
+    },
+    { onWalletRpc: (method) => walletMethods?.push(method) },
+  );
   return (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("/api/intent/quote") && typeof init?.body === "string") {
@@ -370,6 +382,102 @@ describe("zk.money destination", () => {
     expect(tagField()?.value).toBe("");
   });
 
+  it.each(["token", "network"] as const)(
+    "leaves zk.money for Public without changing either leg after %s withdrawal",
+    async (withdrawal) => {
+      const bodies: Record<string, unknown>[] = [];
+      const walletMethods: string[] = [];
+      let client: QueryClient | undefined;
+      function CapabilityClient() {
+        client = useQueryClient();
+        return null;
+      }
+      vi.stubGlobal(
+        "fetch",
+        recordingStub({ ...taggedQuote, preview: false }, bodies, 200, CAPABILITIES, walletMethods),
+      );
+      await renderTrade(
+        <>
+          <CapabilityClient />
+          <SwapPanel />
+        </>,
+        {
+          connected: true,
+          walletChainId: 8453,
+        },
+      );
+      fireEvent.click(await offeredZkMoneyShortcut());
+      fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
+      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+      await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
+      const original = parseWidgetCapabilities(CAPABILITIES.body.capabilities);
+      const caps = parseWidgetCapabilities({
+        ...CAPABILITIES.body.capabilities,
+        chains: CAPABILITIES.body.capabilities.chains.filter(
+          (chain) => withdrawal !== "network" || chain.chain_id !== 1,
+        ),
+        tokens: CAPABILITIES.body.capabilities.tokens.filter(
+          (token) => withdrawal !== "token" || token.symbol !== "DAI",
+        ),
+        routes: [CAPABILITIES.body.capabilities.routes[0]],
+      });
+      if (!client || !caps || !original) throw new Error("missing withdrawal capabilities");
+      const capabilityClient = client;
+      act(() =>
+        capabilityClient.setQueryData(["capabilities"], {
+          caps,
+          source: "live",
+          features: TRUST_FEATURES_OFF,
+        }),
+      );
+      await waitFor(
+        () =>
+          expect(
+            screen.getByRole<HTMLButtonElement>("button", {
+              name: /^Shielded/,
+            }).disabled,
+          ).toBe(true),
+        WAIT,
+      );
+      const quoteCount = bodies.length;
+      fireEvent.click(screen.getByRole("button", { name: /^Public/ }));
+      expect(screen.getByRole("button", { name: /^Public/ }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      expect(tagField()).toBeNull();
+      expect(document.querySelector(".zkmoney-privacy")).toBeNull();
+      expect(document.querySelector(".quote-details")).toBeNull();
+      expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+      const send = document.getElementById("swap-pay-row")!;
+      const receive = document.getElementById("swap-receive-row")!;
+      expect(send.querySelector(".token-symbol")?.textContent).toBe("USDC");
+      expect(send.querySelector(".chain-badge__name")?.textContent).toBe("Base");
+      expect(receive.querySelector(".token-symbol")?.textContent).toBe("DAI");
+      expect(receive.querySelector(".chain-badge__name")?.textContent).toBe("Ethereum");
+      vi.useFakeTimers();
+      try {
+        await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
+        expect(bodies).toHaveLength(quoteCount);
+      } finally {
+        vi.useRealTimers();
+      }
+      act(() =>
+        capabilityClient.setQueryData(["capabilities"], {
+          caps: original,
+          source: "live",
+          features: TRUST_FEATURES_OFF,
+        }),
+      );
+      fireEvent.click(await offeredZkMoneyShortcut());
+      expect(tagField()?.value).toBe("");
+      expect(
+        walletMethods.filter(
+          (method) => method === "personal_sign" || method.startsWith("eth_sign"),
+        ),
+      ).toEqual([]);
+    },
+  );
+
   it("leaves a public-only tag quote for Stealth without retaining the tag", async () => {
     const bodies = await quoteToTag(
       QuoteResponseSchema.parse(
@@ -385,12 +493,18 @@ describe("zk.money destination", () => {
       true,
     );
     await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
+    const taggedQuoteCount = bodies.length;
     const stealth = screen.getByRole<HTMLButtonElement>("button", { name: /^Stealth/ });
     expect(stealth.disabled).toBe(false);
     fireEvent.click(stealth);
     await waitFor(() => expect(stealth.getAttribute("aria-pressed")).toBe("true"), WAIT);
     expect(tagField()).toBeNull();
     expect(document.querySelector(".zkmoney-privacy")).toBeNull();
+    expect(document.querySelector(".quote-details")).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+    expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
+    expect(bodies).toHaveLength(taggedQuoteCount);
     fireEvent.click(screen.getByRole("button", { name: "Set up Stealth" }));
     await waitFor(
       () =>
@@ -401,6 +515,60 @@ describe("zk.money destination", () => {
         ).toBe(true),
       WAIT,
     );
+  });
+
+  it("leaves the tag rail for Stealth discovery when only a different receive asset is live", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const walletMethods: string[] = [];
+    const capabilities = {
+      body: {
+        ...CAPABILITIES.body,
+        capabilities: {
+          ...CAPABILITIES.body.capabilities,
+          routes: CAPABILITIES.body.capabilities.routes.map((route) =>
+            route.destination.kind === "chain" && route.destination.chain_id === 1
+              ? { ...route, destination: { ...route.destination, token: "USDC" } }
+              : route,
+          ),
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      recordingStub({ ...taggedQuote, preview: false }, bodies, 200, capabilities, walletMethods),
+    );
+    await renderTrade(<SwapPanel />, { connected: true, walletChainId: 8453 });
+    fireEvent.click(await offeredZkMoneyShortcut());
+    fireEvent.change(screen.getByLabelText("zk.money tag"), { target: { value: TAG } });
+    fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+    await waitFor(() => expect(document.querySelector(".quote-details")).toBeTruthy(), WAIT);
+    const taggedQuoteCount = bodies.length;
+
+    fireEvent.click(screen.getByRole("button", { name: /^Stealth/ }));
+    expect(screen.getByRole("button", { name: /^Stealth/ }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(tagField()).toBeNull();
+    expect(document.querySelector(".quote-details")).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>("Send").value).toBe("1000");
+    expect(screen.getByRole("button", { name: "On Base - Change network" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On Ethereum - Change network" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "DAI - Change token" })).toBeTruthy();
+    expect(document.querySelector("#stealth-destination-guidance")?.textContent).toContain(
+      "isn't a live Stealth",
+    );
+    vi.useFakeTimers();
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(QUOTE_DEBOUNCE_MS * 2));
+      expect(bodies).toHaveLength(taggedQuoteCount);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(
+      walletMethods.filter((method) => method === "personal_sign" || method.startsWith("eth_sign")),
+    ).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /^Shielded/ }));
+    expect(tagField()?.value).toBe("");
   });
 
   it("returns to automatic Stealth after tag navigation without a Public opt-in", async () => {

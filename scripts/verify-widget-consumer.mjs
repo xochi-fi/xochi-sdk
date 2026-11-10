@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -16,12 +16,46 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const args = process.argv.slice(2);
+assert(
+  args.length === 0 || (args.length === 1 && args[0] === "--published-dependencies"),
+  "Usage: node scripts/verify-widget-consumer.mjs [--published-dependencies]",
+);
+const publishedDependencies = args.includes("--published-dependencies");
+const mode = publishedDependencies ? "published-dependencies" : "local-artifact-rehearsal";
+const registry = "https://registry.npmjs.org/";
+const json = (path) => JSON.parse(readFileSync(path, "utf8"));
+const widgetManifest = json(join(root, "packages/widget/package.json"));
+const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const prerequisites = Object.entries(widgetManifest.dependencies).filter(([name]) =>
+  name.startsWith("@xochi/"),
+);
+if (publishedDependencies) {
+  assert(
+    typeof widgetManifest.version === "string" && exactVersion.test(widgetManifest.version),
+    "Published-dependencies gate blocked: assign the real approved widget source version before release verification",
+  );
+  assert(!widgetManifest.xochiRehearsalOnly, "Rehearsal metadata cannot qualify a release");
+  for (const name of ["@xochi/client", "@xochi/signer", "@xochi/widget-lib"]) {
+    assert(
+      prerequisites.some(([dependency]) => dependency === name),
+      `Missing prerequisite ${name}`,
+    );
+  }
+  for (const [name, version] of prerequisites) {
+    assert(
+      typeof version === "string" && exactVersion.test(version),
+      `${name}: release verification requires an exact, already published prerequisite version`,
+    );
+  }
+}
 const publicCache = execFileSync("npm", ["config", "get", "cache"], {
   cwd: root,
   encoding: "utf8",
 }).trim();
 const rehearsal = mkdtempSync(join(tmpdir(), "xochi-widget-consumer-"));
-console.log("Private rehearsal directory:", rehearsal);
+console.log("Consumer verification mode:", mode);
+console.log("Isolated verification directory:", rehearsal);
 const artifacts = join(rehearsal, "artifacts");
 const consumer = join(rehearsal, "consumer");
 const home = join(rehearsal, "home");
@@ -50,7 +84,29 @@ const run = (command, args, cwd = consumer) =>
     stdio: ["ignore", "pipe", "inherit"],
     maxBuffer: 32 * 1024 * 1024,
   });
-const json = (path) => JSON.parse(readFileSync(path, "utf8"));
+const publishedPrerequisites = publishedDependencies
+  ? prerequisites.map(([name, version]) => {
+      const metadata = JSON.parse(
+        run("npm", [
+          "view",
+          `${name}@${version}`,
+          "--json",
+          "--prefer-online",
+          "--registry",
+          registry,
+        ]),
+      );
+      assert(
+        metadata.name === name && metadata.version === version,
+        `${name}: registry version mismatch`,
+      );
+      assert(
+        metadata.dist?.tarball?.startsWith(registry) && metadata.dist.integrity,
+        `${name}@${version}: public registry tarball and integrity are required`,
+      );
+      return { name, version, tarball: metadata.dist.tarball, integrity: metadata.dist.integrity };
+    })
+  : [];
 const exportTargets = (value) =>
   typeof value === "string"
     ? [value]
@@ -70,11 +126,14 @@ const assertExports = (manifest, directory, included) => {
 };
 const records = [];
 const tarballs = [];
-for (const name of ["signer", "client", "widget-lib", "widget"]) {
+for (const name of publishedDependencies
+  ? ["widget"]
+  : ["signer", "client", "widget-lib", "widget"]) {
   const source = join(root, "packages", name);
   const stage = join(rehearsal, `stage-${name}`);
   mkdirSync(stage);
   const manifest = json(join(source, "package.json"));
+  const sourceVersion = manifest.version ?? null;
   const required = new Set([
     ...manifest.files,
     "LICENSE",
@@ -100,6 +159,7 @@ for (const name of ["signer", "client", "widget-lib", "widget"]) {
   }
   assert(existsSync(join(stage, "dist")), `${name}: build before packing`);
   if (name === "widget" && !manifest.version) {
+    assert(!publishedDependencies, "Release verification must never invent a widget version");
     // Metadata inherited from the extracted host manifest, not an approved npm release version.
     manifest.version = "0.1.0";
     manifest.xochiRehearsalOnly = true;
@@ -135,8 +195,10 @@ for (const name of ["signer", "client", "widget-lib", "widget"]) {
   tarballs.push(tarball);
   records.push({
     name: manifest.name,
-    sourceVersion: name === "widget" ? null : manifest.version,
-    rehearsalVersion: manifest.version,
+    sourceVersion,
+    packedVersion: manifest.version,
+    provenance: "local source artifact",
+    rehearsalOnly: !publishedDependencies,
     sha512: createHash("sha512").update(readFileSync(tarball)).digest("hex"),
     file: tarball,
   });
@@ -169,11 +231,71 @@ console.log(
     "@types/node@^26.4.1",
   ]),
 );
+const installedLock = json(join(consumer, "package-lock.json"));
+for (const prerequisite of publishedPrerequisites) {
+  const installed = installedLock.packages[`node_modules/${prerequisite.name}`];
+  assert(installed, `${prerequisite.name}: missing from installed consumer`);
+  assert.equal(
+    installed.version,
+    prerequisite.version,
+    `${prerequisite.name}: installed version mismatch`,
+  );
+  assert.equal(
+    installed.resolved,
+    prerequisite.tarball,
+    `${prerequisite.name}: non-registry resolution`,
+  );
+  assert.equal(
+    installed.integrity,
+    prerequisite.integrity,
+    `${prerequisite.name}: registry integrity mismatch`,
+  );
+}
+if (publishedDependencies) {
+  for (const [path, entry] of Object.entries(installedLock.packages)) {
+    if (!path || path === "node_modules/@xochi/widget") continue;
+    assert(
+      typeof entry.resolved === "string" && entry.resolved.startsWith(registry),
+      `${path}: published-dependencies mode requires default public-registry resolution`,
+    );
+  }
+}
 const lock = readFileSync(join(consumer, "package-lock.json"), "utf8");
 assert(
   !/npm\.pkg\.github\.com|@xochi-fi\/|workspace:|git\+ssh|git@github/.test(lock),
   "private dependency or workspace alias in installed closure",
 );
+const peerCheck = spawnSync("npm", ["ls", "react", "react-dom", "--json"], {
+  cwd: consumer,
+  env,
+  encoding: "utf8",
+  maxBuffer: 16 * 1024 * 1024,
+});
+if (peerCheck.error)
+  throw new Error("React peer validation could not start", { cause: peerCheck.error });
+assert(
+  peerCheck.status === 0 || peerCheck.status === 1,
+  `React peer validation failed unexpectedly: ${peerCheck.stderr}`,
+);
+const peerGraph = JSON.parse(peerCheck.stdout);
+const reactPeerValidation = {
+  valid: peerCheck.status === 0,
+  react: peerGraph.dependencies?.react?.version,
+  reactDom: peerGraph.dependencies?.["react-dom"]?.version,
+  problems: peerGraph.problems ?? [],
+};
+assert(
+  reactPeerValidation.valid || reactPeerValidation.problems.length > 0,
+  `React peer validation returned no usable result: ${peerCheck.stderr}`,
+);
+if (publishedDependencies) {
+  assert(
+    reactPeerValidation.valid,
+    `Published-dependencies gate blocked by React peers: ${reactPeerValidation.problems.join("; ")}`,
+  );
+} else if (!reactPeerValidation.valid) {
+  console.warn("RELEASE BLOCKER — React peer closure:", reactPeerValidation.problems.join("; "));
+}
 const installedRoot = join(consumer, "node_modules/@xochi/widget");
 const installed = json(join(installedRoot, "package.json"));
 assertExports(installed, installedRoot, new Set(globSync("**/*", { cwd: installedRoot })));
@@ -264,7 +386,17 @@ export default defineConfig({
 );
 console.log(run("npx", ["--no-install", "vite", "build", "--config", "configurator.config.mjs"]));
 const result = {
-  state: "PRIVATE REHEARSAL ONLY — NOT PUBLISHED OR DEPLOYED",
+  mode,
+  state: publishedDependencies
+    ? "LOCAL WIDGET ARTIFACT VERIFIED AGAINST PUBLISHED DEPENDENCIES — NOT PUBLISHED OR DEPLOYED"
+    : "LOCAL-ARTIFACT REHEARSAL ONLY — NOT RELEASE QUALIFICATION",
+  widgetSourceVersion: widgetManifest.version ?? null,
+  prerequisiteProvenance: publishedDependencies
+    ? "public npm registry"
+    : "local workspace tarballs",
+  publishedPrerequisites,
+  workspaceOverridesApplied: false,
+  reactPeerValidation,
   artifacts: records,
   consumer,
   credentialFreeInstall: true,

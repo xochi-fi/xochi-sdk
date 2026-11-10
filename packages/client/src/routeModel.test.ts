@@ -178,6 +178,53 @@ describe("resolveRouteModel", () => {
     }
   });
 
+  it("accepts bridged USDC as payment but rejects its advertised reverse payout", () => {
+    const caps = capabilities(
+      [
+        chainRoute(ARBITRUM, "USDC_E", BASE, "USDC"),
+        chainRoute(BASE, "USDC", ARBITRUM, "USDC_E"),
+        chainRoute(BASE, "USDC", ETHEREUM, "USDC"),
+      ],
+      {
+        tokens: [
+          wireToken("USDC", [BASE, ETHEREUM]),
+          {
+            symbol: "USDC_E",
+            decimals: 6,
+            roles: ["origin", "destination"],
+            addresses: { [ARBITRUM]: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8" },
+          },
+        ],
+      },
+    );
+    const model = resolveRouteModel(caps, "live");
+    const payment = selectedRoute(model, ARBITRUM, "USDC_E", BASE, "USDC");
+    expect(model.resolve(payment.origin, payment.destination)).toEqual({
+      status: "available",
+      privacyModes: ["public"],
+    });
+    expect(model.destinationTokens.get(ARBITRUM)).toBeUndefined();
+
+    const native = selectedRoute(model, BASE, "USDC", ETHEREUM, "USDC");
+    expect(model.resolve(native.origin, native.destination).status).toBe("available");
+    expect(
+      model.resolve(native.origin, {
+        kind: "chain",
+        chainId: ARBITRUM,
+        token: payment.origin.token,
+      }),
+    ).toEqual({
+      status: "unavailable",
+      reason: "USDC_E cannot be received on this chain.",
+    });
+
+    const offline = resolveRouteModel({ ...caps, routes: null }, "fallback");
+    expect(offline.originTokens.get(ARBITRUM)?.[0].symbol).toBe("USDC_E");
+    expect(
+      [...offline.destinationTokens.values()].flat().some((token) => token.symbol === "USDC_E"),
+    ).toBe(false);
+  });
+
   it("only exposes validated tokens that participate in a typed route", () => {
     const model = resolveRouteModel(
       capabilities([chainRoute(BASE, "USDC", ARBITRUM, "DAI")], {

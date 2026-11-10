@@ -12,6 +12,12 @@
 
 ### Fixed
 
+- Show exact live Stealth receive choices and unsupported-pair guidance before amount entry, while preserving explicit presets, host locks and Public selection.
+- Require explicit asset selection when a live Stealth chain needs a different receive token; leave zk.money without retaining its tag or repairing the source.
+- Preserve integration-only browser initialization through package tree-shaking.
+- Isolate framed Wagmi storage/discovery and reuse each bridge's config, preserving connected wallets across theme renders without relaxing auto-connect consent.
+- Add an anonymous, exact published-prerequisite consumer mode alongside the explicitly local-artifact rehearsal.
+- Revoke abandoned key-setup and sign-in attempts on teardown; publish reconnect authority changes even when React batches the transition, without retaining secret buffers or stale claim UI.
 - Verify the default installed dependency graph without copying workspace overrides into the isolated consumer.
 - Reconcile the workspace lockfile with its declared WalletConnect, UUID and WebSocket overrides using npm 10.
 - Fail packing when declared files, licenses, notices or export targets are missing, and check redistribution permission in widget CI.

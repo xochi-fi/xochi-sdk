@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider, darkTheme, lightTheme, type Locale } from "@rainbow-me/rainbowkit";
@@ -45,13 +45,9 @@ interface WalletProviderProps {
 
 export function WalletProvider({ children, theme = null, hostWallet = null }: WalletProviderProps) {
   const resolvedTheme = useResolvedTheme(theme);
-  // Keep one framed config for the bridge's lifetime. Swapping back to the
-  // standalone config when a host detaches can revive a persisted widget-origin
-  // wallet while the parent header is disconnected.
-  const wagmiConfig = useMemo(
-    () => (hostWallet === null ? config : createWagmiConfig(hostWallet)),
-    [hostWallet],
-  );
+  // The factory caches by bridge identity, including across StrictMode's
+  // discarded renders. A detached host never falls back to standalone storage.
+  const wagmiConfig = hostWallet === null ? config : createWagmiConfig(hostWallet);
 
   return (
     <WagmiProvider config={wagmiConfig} reconnectOnMount={hostWallet === null}>
