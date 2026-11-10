@@ -19,16 +19,25 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import type { Config } from "wagmi";
 import { QuoteResponseSchema } from "@xochi/client";
 import { quoteWire, statusWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
-import { renderTrade, apiStub, TEST_ACCOUNT, type StubbedRoute } from "./harness.js";
+import {
+  renderTrade,
+  makeTestConfig,
+  apiStub,
+  TEST_ACCOUNT,
+  type ApiStubOptions,
+  type StubbedRoute,
+} from "./harness.js";
 import { Trade } from "../Trade.js";
 import { FULL_LOOK } from "./embedParams.js";
 import { STORAGE_KEYS } from "../../constants.js";
 import type { SwapActivityItem } from "../../types/activity.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
+import { clearWalletSession, getWalletToken } from "../../lib/walletSession.js";
 
 // Longest tests: "lands the stealth receipt's Claim your payment on Claims"
 // (the restored modal, the stealth ending, the modal closing) and the activity
@@ -61,9 +70,12 @@ const quoteRoute: StubbedRoute = {
  * Stub `fetch` and count quote requests, so "the quote was kept" can be told
  * apart from "an identical quote was fetched again".
  */
-const stubApi = (routes: Record<string, StubbedRoute> = {}): { quotes: () => number } => {
+const stubApi = (
+  routes: Record<string, StubbedRoute> = {},
+  options: ApiStubOptions = {},
+): { quotes: () => number } => {
   let quotes = 0;
-  const stub = apiStub({ "/api/intent/quote": quoteRoute, ...routes });
+  const stub = apiStub({ "/api/intent/quote": quoteRoute, ...routes }, options);
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("/api/intent/quote")) quotes += 1;
@@ -73,6 +85,7 @@ const stubApi = (routes: Record<string, StubbedRoute> = {}): { quotes: () => num
 };
 
 beforeEach(() => {
+  clearWalletSession();
   window.localStorage.clear();
   intentAPI.clearQuoteCache();
 });
@@ -80,7 +93,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
-  sessionStorage.clear();
+  clearWalletSession();
   intentAPI.clearQuoteCache();
 });
 
@@ -343,6 +356,144 @@ describe("claim paths land on the Claims tab", () => {
     fireEvent.click(claim);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), WAIT);
     expect(selectedTab()).toBe("Claims");
+  });
+});
+
+describe("Claims sign-in scans", () => {
+  const openSignIn = async (): Promise<Config> => {
+    const { config } = await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    await waitFor(() => expect(config.state.status).toBe("connected"));
+    fireEvent.click(tab("Claims"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    });
+    await screen.findByRole("button", { name: "Sign in to scan" }, WAIT);
+    return config;
+  };
+
+  it("signs in only on request and completes a scan with the post-auth authority", async () => {
+    const signatures: string[] = [];
+    stubApi(
+      {
+        "/api/auth/wallet/challenge": { body: { message: "Sign in", nonce: "claims-nonce" } },
+        "/api/auth/wallet/verify": {
+          body: { token: "claims-session", wallet: TEST_ACCOUNT },
+        },
+        "/api/stealth/announcements": {
+          body: { announcements: [], count: 0 },
+        },
+      },
+      {
+        onWalletRpc: (method) => {
+          if (method === "eth_sign" || method === "personal_sign") signatures.push(method);
+        },
+      },
+    );
+    const { config } = await renderTrade(<Trade look={FULL_LOOK} />, { connected: true });
+    await waitFor(() => expect(config.state.status).toBe("connected"));
+    expect(signatures).toEqual([]);
+    expect(getWalletToken()).toBeNull();
+    fireEvent.click(tab("Claims"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    });
+    const signIn = await screen.findByRole("button", { name: "Sign in to scan" }, WAIT);
+    expect(signatures).toHaveLength(1);
+    expect(screen.queryByText("No stealth payments found")).toBeNull();
+
+    fireEvent.click(signIn);
+
+    await screen.findByText("No stealth payments found", {}, WAIT);
+    expect(getWalletToken()).toBe("claims-session");
+    expect(signatures).toHaveLength(2);
+  });
+
+  it.each(["chain", "chain round trip", "wallet", "connector", "disconnect"] as const)(
+    "does not transfer a pending sign-in scan across a %s change",
+    async (change) => {
+      let config!: Config;
+      const replacement = makeTestConfig();
+      let verifications = 0;
+      let scans = 0;
+      const changeConnection = (chainId: number): void => {
+        config.setState((state) => {
+          const connection = state.current && state.connections.get(state.current);
+          if (!connection || !state.current) throw new Error("Harness wallet is not connected");
+          return {
+            ...state,
+            status: change === "disconnect" ? "disconnected" : state.status,
+            connections: new Map(state.connections).set(state.current, {
+              ...connection,
+              chainId,
+              accounts:
+                change === "wallet"
+                  ? (["0x2222222222222222222222222222222222222222"] as const)
+                  : connection.accounts,
+              connector: change === "connector" ? replacement.connectors[0] : connection.connector,
+            }),
+          };
+        });
+      };
+      stubApi({
+        "/api/auth/wallet/challenge": { body: { message: "Sign in", nonce: "claims-nonce" } },
+        "/api/auth/wallet/verify": {
+          answer: () => {
+            verifications += 1;
+            const connection =
+              config.state.current && config.state.connections.get(config.state.current);
+            if (!connection) throw new Error("Harness wallet is not connected");
+            const otherChain = connection.chainId === 8453 ? 1 : 8453;
+            changeConnection(change.startsWith("chain") ? otherChain : connection.chainId);
+            if (change === "chain round trip") changeConnection(connection.chainId);
+            return { token: "claims-session", wallet: TEST_ACCOUNT };
+          },
+        },
+        "/api/stealth/announcements": {
+          answer: () => {
+            scans += 1;
+            return { announcements: [], count: 0 };
+          },
+        },
+      });
+      config = await openSignIn();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Sign in to scan" }));
+      });
+
+      expect(verifications).toBe(1);
+      expect(scans).toBe(0);
+      expect(screen.queryByText("No stealth payments found")).toBeNull();
+      if (change.startsWith("chain")) {
+        expect(getWalletToken()).toBe("claims-session");
+      }
+    },
+  );
+
+  it("keeps rejected sign-in actionable without scanning", async () => {
+    let scans = 0;
+    stubApi({
+      "/api/auth/wallet/challenge": { body: { message: "Sign in", nonce: "claims-nonce" } },
+      "/api/auth/wallet/verify": { status: 401, body: { error: "Signature rejected" } },
+      "/api/stealth/announcements": {
+        answer: () => {
+          scans += 1;
+          return { announcements: [], count: 0 };
+        },
+      },
+    });
+    await openSignIn();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sign in to scan" }));
+    });
+
+    expect(getWalletToken()).toBeNull();
+    expect(scans).toBe(0);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Sign in to scan" }).disabled,
+    ).toBe(false);
+    expect(screen.queryByText("No stealth payments found")).toBeNull();
   });
 });
 

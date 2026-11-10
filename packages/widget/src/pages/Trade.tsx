@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useConfig } from "wagmi";
+import { watchAccount } from "wagmi/actions";
 import { useOrderHistory } from "../hooks/useOrderHistory.js";
 import { useWalletSession } from "../hooks/useWalletSession.js";
 import { useLocalActivity } from "../hooks/useLocalActivity.js";
@@ -43,7 +44,12 @@ import {
 import { HOST_WALLET_ID } from "../wagmi.js";
 import { reportSwapFailure } from "../lib/reportClient.js";
 import { buildHistoryFailureRef } from "../lib/swapFlowPhase.js";
-import { getWalletSessionAddress, hasWalletSession } from "../lib/walletSession.js";
+import {
+  getWalletSessionAddress,
+  getWalletSessionGeneration,
+  getWalletToken,
+  hasWalletSession,
+} from "../lib/walletSession.js";
 import { getTokenInfoForChain } from "@xochi/client";
 import type { SwapActivityItem } from "../types/activity.js";
 import { hostBridge } from "../lib/hostBridge.js";
@@ -84,6 +90,7 @@ function useWalletUi(connection: WalletUiConnection | null): WalletUi {
 
 export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
   const { isConnected, address, connector } = useAccount();
+  const config = useConfig();
   const { showToast } = useToast();
   const tabsShown = look.layout === "full";
   // A tabless frame on the host page's wallet cannot claim in a tab of its own.
@@ -326,14 +333,56 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
   // (the documented default: no passkey, no sign-in) cannot scan at all. Offer
   // the sign-in from the panel rather than only reporting it as an error.
   const stealthNeedsSignIn = isConnected && !!address && !hasWalletSession(address);
+  const stealthSignInRequest = useRef<object | null>(null);
+  const [pendingStealthScan, setPendingStealthScan] = useState<{
+    request: object;
+    token: string;
+    generation: number;
+  } | null>(null);
+  useEffect(() => {
+    const unsubscribe = watchAccount(config, {
+      onChange(account, previous) {
+        if (
+          account.status !== "connected" ||
+          account.address?.toLowerCase() !== previous.address?.toLowerCase() ||
+          account.chainId !== previous.chainId ||
+          account.connector?.uid !== previous.connector?.uid
+        ) {
+          stealthSignInRequest.current = null;
+        }
+      },
+    });
+    return () => {
+      stealthSignInRequest.current = null;
+      unsubscribe();
+    };
+  }, [config]);
   const handleStealthSignIn = useCallback((): void => {
+    const request = {};
+    stealthSignInRequest.current = request;
     void ensureSession().then((token) => {
-      if (token) {
-        void stealthClaim.scan();
-        refreshSettlements();
+      if (token && stealthSignInRequest.current === request) {
+        setPendingStealthScan({ request, token, generation: getWalletSessionGeneration() });
       }
     });
-  }, [ensureSession, stealthClaim, refreshSettlements]);
+  }, [ensureSession]);
+  // Signing in revokes the pre-auth scanner. Consume the explicit request only
+  // after rendering its replacement, never through the callback that signed in.
+  useEffect(() => {
+    if (!pendingStealthScan) return;
+    setPendingStealthScan(null);
+    if (
+      stealthSignInRequest.current !== pendingStealthScan.request ||
+      sessionState !== "active" ||
+      getWalletToken() !== pendingStealthScan.token ||
+      getWalletSessionGeneration() !== pendingStealthScan.generation
+    ) {
+      return;
+    }
+    stealthSignInRequest.current = null;
+    void stealthClaim.scan();
+    refreshSettlements();
+  }, [pendingStealthScan, sessionState, stealthClaim.scan, refreshSettlements]);
 
   const handleRetrySwap = useCallback(
     (item: SwapActivityItem): void => {
