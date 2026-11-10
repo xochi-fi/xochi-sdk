@@ -118,6 +118,8 @@ function FlowProbe({ initial }: { initial: UseIntentReturn }) {
     recipientInvalid: false,
     restoreSettlement: noop,
     clearRecipient: noop,
+    restoreRecipientTag: noop,
+    restoreRefundAddress: noop,
     flowOpen: true,
     setFlowOpen: noop,
     resumed: null,

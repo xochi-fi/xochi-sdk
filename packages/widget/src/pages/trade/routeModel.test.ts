@@ -86,4 +86,51 @@ describe("widget route launch gates", () => {
       });
     }
   });
+
+  it.each(["live", "stale", "fallback", "failed"] as const)(
+    "authorizes Tron USDT to the tag rail only from its exact live route (%s)",
+    (state) => {
+      const tagRoute = {
+        origin: { chain_id: TRON_CHAIN_ID, token: "USDT" },
+        destination: { kind: "zk_money", token: "DAI" },
+        privacy_modes: ["public"],
+      };
+      const wire = {
+        chains: [
+          { chain_id: TRON_CHAIN_ID, chain_name: "Tron", vm_type: "tvm" },
+          { chain_id: 1, chain_name: "Ethereum", vm_type: "evm" },
+        ],
+        tokens: [wireToken("USDT", [TRON_CHAIN_ID]), wireToken("DAI", [1])],
+        routes: [chainRoute(TRON_CHAIN_ID, "USDT", 1, "DAI"), tagRoute],
+        stealth_chains: [],
+      };
+      const capabilities = parseCapabilities(wire);
+      const chainOnly = parseCapabilities({ ...wire, routes: wire.routes.slice(0, 1) });
+      if (!capabilities || !chainOnly) throw new Error("Tron tag capabilities did not parse");
+      const model = resolveRouteModel(capabilities, state, {
+        chainEnabledForRole,
+        presentationTokens: TOKENS,
+      });
+      const origin: Parameters<typeof model.resolve>[0] = {
+        chainId: TRON_CHAIN_ID,
+        token: configuredToken(TRON_CHAIN_ID, "USDT"),
+      };
+      const destination = model.zkMoneyDestination;
+      if (state === "live" && TRON_ORIGIN_LIVE) {
+        expect(destination).not.toBeNull();
+        if (!destination) throw new Error("missing advertised tag destination");
+        expect(model.resolve(origin, destination)).toMatchObject({
+          status: "available",
+          privacyModes: ["public"],
+        });
+      } else if (destination) {
+        expect(model.resolve(origin, destination).status).not.toBe("available");
+      }
+      const ordinary = resolveRouteModel(chainOnly, state, {
+        chainEnabledForRole,
+        presentationTokens: TOKENS,
+      });
+      expect(ordinary.zkMoneyDestination).toBeNull();
+    },
+  );
 });

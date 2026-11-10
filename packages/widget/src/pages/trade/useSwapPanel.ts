@@ -304,6 +304,8 @@ export function useSwapPanel(
     recipientInvalid: gating.recipientInvalid,
     restoreSettlement: gating.restoreSettlement,
     clearRecipient: gating.clearRecipient,
+    restoreRecipientTag: gating.setRecipientTag,
+    restoreRefundAddress: gating.setRefundAddress,
     flowOpen,
     setFlowOpen,
     resumed,

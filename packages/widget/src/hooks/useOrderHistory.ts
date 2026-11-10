@@ -53,6 +53,7 @@ export interface OrderHistoryItem {
   substatus: string | null;
   /** The owner's history serves it; null when absent or not a mode this build models. */
   settlementType: SettlementType | null;
+  recipientTag?: string;
   createdAt: string;
   timestamp: number;
   explorerUrl: string | null;
@@ -141,6 +142,7 @@ export const toOrderHistoryItem = (record: Record<string, unknown>): OrderHistor
     settlementChainId,
     substatus: (record.substatus as string | undefined) ?? null,
     settlementType: isSettlementType(record.settlement_type) ? record.settlement_type : null,
+    ...(typeof record.recipient_tag === "string" && { recipientTag: record.recipient_tag }),
     createdAt,
     timestamp: new Date(createdAt).getTime(),
     explorerUrl: pickExplorerUrl(

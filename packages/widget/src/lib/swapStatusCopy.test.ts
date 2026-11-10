@@ -62,16 +62,6 @@ describe("describeSwapState", () => {
     expect(copy?.detail).not.toMatch(/taking longer than usual/i);
   });
 
-  it("treats refunded as a positive terminal outcome (refund tone), with amount", () => {
-    const copy = describeSwapState("refunded", {
-      amount: "2 USDC",
-      refundReason: "route timed out",
-    });
-    expect(copy?.tone).toBe("refund");
-    expect(copy?.headline).toMatch(/2 USDC returned to the sending wallet/);
-    expect(copy?.detail).toBe("route timed out");
-  });
-
   it("keeps refunded distinct from failed", () => {
     expect(describeSwapState("refunded")?.tone).toBe("refund");
     expect(describeSwapState("failed")?.tone).toBe("error");

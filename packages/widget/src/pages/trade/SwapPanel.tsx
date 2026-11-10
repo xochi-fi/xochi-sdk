@@ -376,7 +376,10 @@ export function SwapPanel({
 
           {zkMoneyDestination && (
             <div className="zkmoney-privacy">
-              <p>{ZKMONEY_PRIVACY_COPY}</p>
+              <p>
+                {isTronChainId(fromChainId) && "Your TRON send is public. "}
+                {ZKMONEY_PRIVACY_COPY}
+              </p>
               <a href={ZKMONEY_ACCOUNT_URL} target="_blank" rel="noopener noreferrer">
                 Need a zk.money account? Create one <span aria-hidden="true">↗</span>
                 <span className="sr-only"> (opens in new tab)</span>

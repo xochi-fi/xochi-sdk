@@ -20,6 +20,7 @@ import {
   EXTENDED_CHAIN_NAMES as CHAIN_NAMES,
   destinationDisclosure,
   extractPullAmount,
+  isTronChainId,
 } from "@xochi/client";
 import { usePrices } from "../hooks/usePrices.js";
 import { quoteExpiryLabel } from "../lib/quoteCountdown.js";
@@ -74,7 +75,7 @@ export function TransactionPreview({
   fromDecimals,
   toSymbol,
   toDecimals,
-  fromChainId: _fromChainId,
+  fromChainId,
   toChainId,
   destination,
   onConfirm,
@@ -92,7 +93,6 @@ export function TransactionPreview({
   // Suppressed while signing; at 0 the modal's expired notice takes over.
   const expiryLabel = isLoading ? null : quoteExpiryLabel(quoteExpiresIn);
 
-  // Note: fromChainId available as _fromChainId for future chain display
   // Parse amounts
   const fromBigInt = safeBigInt(fromAmount);
   const toAmount = safeBigInt(quote.toAmount);
@@ -242,7 +242,12 @@ export function TransactionPreview({
                 {destination.recipientTag !== undefined ? (
                   // A tag is credited on zk.money from a one-time Ethereum
                   // deposit address the quote bound; the venue is zk.money.
-                  <>arrives at @{destination.recipientTag} on zk.money</>
+                  <>
+                    Public {toSymbol} deposit on Ethereum for @{destination.recipientTag} on
+                    zk.money.
+                    {isTronChainId(fromChainId) && " Your TRON send is public."} Aztec credit is
+                    separate.
+                  </>
                 ) : (
                   <>
                     arrives in {destLabel}

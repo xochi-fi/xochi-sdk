@@ -41,6 +41,12 @@ import { STORAGE_KEYS } from "../../constants.js";
 import type { SwapActivityItem } from "../../types/activity.js";
 import type { IntentStatus } from "../../types/intent.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
+import { DEPOSIT_ATTESTATION_PIN } from "../../config.js";
+import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
+import { privateKeyToAccount } from "viem/accounts";
+import { truncateAddress } from "../../utils/format.js";
+
+const originalDepositSigner = DEPOSIT_ATTESTATION_PIN.signer;
 
 /**
  * Longest test: "ends an unmarked failure on may-have-moved, and Close frees the
@@ -118,6 +124,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  Object.assign(DEPOSIT_ATTESTATION_PIN, { signer: originalDepositSigner });
 });
 
 describe("an in-flight swap survives losing the tab", () => {
@@ -222,6 +229,44 @@ describe("a resumed order ends as the order it was dispatched", () => {
       WAIT,
     );
     expect(document.querySelector(".swap-result__txlink")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Claim payment" })).toBeNull();
+  });
+
+  it("shows the stored Tron tag after a reload without requiring a currently advertised route", async () => {
+    const tronTagOrder = record({
+      data: {
+        ...record().data,
+        fromChainId: 728126428,
+        fromToken: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        toChainId: 1,
+        toToken: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        toAmount: "4989000000000000000",
+        recipientTag: "memory-rocky",
+        settlementType: "public",
+      },
+    });
+    seed(tronTagOrder);
+    vi.stubGlobal(
+      "fetch",
+      apiStub({
+        "/status": {
+          body: statusWire({
+            intent_id: RESUMED_ID,
+            status: "completed",
+            terminal: true,
+            settlement_chain_id: 1,
+          }),
+        },
+      }),
+    );
+    await renderTrade(<SwapPanel />, { connected: true });
+    await waitFor(
+      () => expect(screen.getByRole("heading", { name: "Sent to @memory-rocky" })).toBeTruthy(),
+      WAIT,
+    );
+    expect(screen.getByRole("link", { name: /Open zk.money/ }).getAttribute("href")).toBe(
+      "https://wallet.zk.money/activity",
+    );
     expect(screen.queryByRole("button", { name: "Claim payment" })).toBeNull();
   });
 });
@@ -379,6 +424,75 @@ describe("terminal rows name the next action", () => {
     const row = document.querySelector(".activity-row");
     fireEvent.click(row as HTMLElement);
   };
+
+  it.each(["valid", "changed-refund", "foreign-owner", "foreign-intent", "missing-pin"] as const)(
+    "names only the independently verified refund target: %s",
+    async (binding) => {
+      const attester = privateKeyToAccount(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      );
+      Object.assign(DEPOSIT_ATTESTATION_PIN, {
+        signer: binding === "missing-pin" ? "" : attester.address,
+      });
+      const refund = "TNaRAoLUyYEV2uF7GUrzSjRQTU8v5ZJ5VR";
+      const fields: DepositAttestationFields = {
+        intent_id: "11111111-1111-1111-1111-111111111111",
+        quote_id: "22222222-2222-2222-2222-222222222222",
+        wallet: TEST_ACCOUNT,
+        from_chain_id: 728126428,
+        from_token: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+        from_amount: "1000000000",
+        deposit_address: "TMuA6YqfCeX8EhbfYEg5y7S4DqzSJireY9",
+        deposit_deadline: Math.floor(Date.now() / 1000) + 1800,
+        refund_address: refund,
+        to_chain_id: 1,
+        to_token: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        to_amount: "998000000000000000000",
+        min_to_amount: "996000000000000000000",
+        recipient: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+        stealth_spending_pub_key: null,
+        stealth_viewing_pub_key: null,
+        settlement_preference: "public",
+      };
+      const attestation = await attester.signMessage({
+        message: buildDepositAttestationMessage(fields),
+      });
+      const attested =
+        binding === "changed-refund"
+          ? { ...fields, refund_address: fields.deposit_address }
+          : fields;
+      await feed([
+        record({
+          id: binding === "foreign-intent" ? fields.quote_id : fields.intent_id,
+          ownerWallet:
+            binding === "foreign-owner"
+              ? "0x2222222222222222222222222222222222222222"
+              : TEST_ACCOUNT,
+          intentStatus: "refunded",
+          status: "failed",
+          data: {
+            ...record().data,
+            fromChainId: 728126428,
+            toChainId: 1,
+            fromToken: fields.from_token,
+            toToken: fields.to_token,
+            fromAmount: fields.from_amount,
+            toAmount: fields.to_amount,
+            deposit: { attested, attestation },
+          },
+        }),
+      ]);
+      expandRow();
+      const outcome = document.querySelector(".expanded-status--refund");
+      expect(outcome).not.toBeNull();
+      if (binding === "valid") {
+        expect(outcome?.textContent).toContain(truncateAddress(refund));
+      } else {
+        expect(outcome?.textContent).not.toContain(truncateAddress(refund));
+        expect(outcome?.textContent).not.toContain(truncateAddress(fields.deposit_address));
+      }
+    },
+  );
 
   it("renders Ethereum DAI history with canonical precision", async () => {
     await feed([

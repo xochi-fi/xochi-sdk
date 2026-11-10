@@ -199,6 +199,22 @@ export function useSwapAmount({
   // Hard stop: never let the user sign a fill worse than the protection ceiling.
   const excessiveSlippage = intent.quote != null && priceImpactPct > MAX_PRICE_IMPACT_PERCENT;
 
+  // Clearing an input revokes pre-dispatch allocation identity without quoting
+  // zero. Never clear an issued deposit or an in-flight settlement this way.
+  useEffect(() => {
+    if (
+      !flowOpen &&
+      amountBigInt === 0n &&
+      (intent.status === "idle" ||
+        intent.status === "quoting" ||
+        intent.status === "quoted" ||
+        intent.status === "expired" ||
+        intent.status === "failed")
+    ) {
+      intent.requestQuote("0");
+    }
+  }, [amountBigInt, flowOpen, intent.status, intent.requestQuote]);
+
   // Quotes work even when disconnected (read-only exploration). Skip routes the
   // solver structurally cannot fill and amounts below its stable minimum. A maximum
   // is quote-time inventory state and must always round-trip to the solver.

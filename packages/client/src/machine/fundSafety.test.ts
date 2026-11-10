@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
 import { TRON_CHAIN_ID } from "../shared/index.js";
-import type { Effect, MachineConfig } from "./machine.js";
+import type { Context, Effect, MachineConfig } from "./machine.js";
 import { verifyStoredDeposit } from "./deposit.js";
 import type { QuoteResponse } from "./wire.js";
 import {
@@ -376,6 +376,153 @@ function allocate(s: Session, served: QuoteResponse) {
 
 const DEPOSIT_CONFIG: MachineConfig = { ...CONFIG, depositAttestationSigner: ATTESTER };
 
+describe("Tron tag allocation identity", () => {
+  const context: Context = {
+    ...depositCtx(),
+    toChainId: 1,
+    toToken: DAI_MAINNET,
+    recipientTag: "alice",
+  };
+
+  it("keeps one identity across a refused sign-in, equivalent inputs and explicit retry", () => {
+    const s = new Session(context, DEPOSIT_CONFIG);
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const first = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+    );
+    s.send({ type: "SessionReplied", flight: first.flight, result: "refused" });
+    s.send({ type: "ContextChanged", ctx: { ...context, recipientTag: " @ALICE " } });
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const retry = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k2", ref: "r2" }), "ensureSession"),
+    );
+    const call = only(
+      apiCalls(s.send({ type: "SessionReplied", flight: retry.flight, result: "ok" }), "quote"),
+    );
+    expect(call.request).toMatchObject({
+      preview: false,
+      allocationKey: "k1",
+      recipientTag: "alice",
+      refundAddress: REFUND,
+      toChainId: 1,
+      toToken: DAI_MAINNET,
+      settlementPreference: "public",
+    });
+  });
+
+  it("retries a timed-out allocation with the same key after upstream outcome becomes unknown", () => {
+    const s = new Session(context, DEPOSIT_CONFIG);
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const first = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+    );
+    const call = only(
+      apiCalls(s.send({ type: "SessionReplied", flight: first.flight, result: "ok" }), "quote"),
+    );
+    s.send({
+      type: "QuoteReplied",
+      flight: call.flight,
+      result: { ok: false, error: { rejected: false, value: null, detail: "fetch failed" } },
+    });
+    const retry = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k2", ref: "r2" }), "ensureSession"),
+    );
+    const repeated = only(
+      apiCalls(s.send({ type: "SessionReplied", flight: retry.flight, result: "ok" }), "quote"),
+    );
+    expect(repeated.request.allocationKey).toBe(call.request.allocationKey);
+    expect(repeated.request.allocationKey).toBe("k1");
+  });
+
+  it.each([
+    ["tag", { recipientTag: "bob" }],
+    ["refund", { refundAddress: "TJYeasTPa6gpEEfYGfp5LQjWXmdZQBpLzX" }],
+    ["origin chain", { fromChainId: 8453 }],
+    ["origin asset", { fromToken: TRON_USDT.toLowerCase() }],
+    ["destination chain", { toChainId: 42161 }],
+    ["destination asset", { toToken: WETH_ARBITRUM }],
+    ["settlement", { settlementPreference: "stealth" }],
+    ["owner", { wallet: { ...context.wallet, address: ATTACKER } }],
+    ["wallet chain", { wallet: { ...context.wallet, chainId: 1 } }],
+  ] satisfies [string, Partial<Context>][])(
+    "invalidates the allocation immediately when %s changes, even without an active flight",
+    (_name, changed) => {
+      const s = new Session(context, DEPOSIT_CONFIG);
+      s.send({ type: "QuoteRequested", amount: AMOUNT });
+      const first = only(
+        walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+      );
+      s.send({ type: "SessionReplied", flight: first.flight, result: "refused" });
+      expect(s.model.allocationKey).toBe("k1");
+      s.send({ type: "ContextChanged", ctx: { ...context, ...changed } });
+      expect(s.model.allocationKey).toBeNull();
+      s.send({ type: "ContextChanged", ctx: context });
+      const replacement = only(
+        walletCalls(s.send({ type: "AllocateRequested", key: "k2", ref: "r2" }), "ensureSession"),
+      );
+      const call = only(
+        apiCalls(
+          s.send({ type: "SessionReplied", flight: replacement.flight, result: "ok" }),
+          "quote",
+        ),
+      );
+      expect(call.request.allocationKey).toBe("k2");
+    },
+  );
+
+  it("clears a failed allocation identity when its amount changes or is cleared", () => {
+    for (const amount of ["2000000", "0"]) {
+      const s = new Session(context, DEPOSIT_CONFIG);
+      s.send({ type: "QuoteRequested", amount: AMOUNT });
+      const first = only(
+        walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+      );
+      s.send({ type: "SessionReplied", flight: first.flight, result: "refused" });
+      s.send({ type: "QuoteRequested", amount });
+      expect(s.model.allocationKey).toBeNull();
+      s.send({ type: "QuoteRequested", amount: AMOUNT });
+      const replacement = only(
+        walletCalls(s.send({ type: "AllocateRequested", key: "k2", ref: "r2" }), "ensureSession"),
+      );
+      const call = only(
+        apiCalls(
+          s.send({ type: "SessionReplied", flight: replacement.flight, result: "ok" }),
+          "quote",
+        ),
+      );
+      expect(call.request.allocationKey).toBe("k2");
+    }
+  });
+
+  it("drops pending wallet authority on a tag edit and mints a fresh identity after an amount edit", () => {
+    const s = new Session(context, DEPOSIT_CONFIG);
+    s.send({ type: "QuoteRequested", amount: AMOUNT });
+    const first = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k1", ref: "r1" }), "ensureSession"),
+    );
+    s.send({ type: "ContextChanged", ctx: { ...context, recipientTag: "bob" } });
+    expect(
+      apiCalls(s.send({ type: "SessionReplied", flight: first.flight, result: "ok" }), "quote"),
+    ).toEqual([]);
+    expect(s.model.allocationKey).toBeNull();
+    s.send({ type: "QuoteRequested", amount: "2000000" });
+    const replacement = only(
+      walletCalls(s.send({ type: "AllocateRequested", key: "k2", ref: "r2" }), "ensureSession"),
+    );
+    const call = only(
+      apiCalls(
+        s.send({ type: "SessionReplied", flight: replacement.flight, result: "ok" }),
+        "quote",
+      ),
+    );
+    expect(call.request).toMatchObject({
+      allocationKey: "k2",
+      recipientTag: "bob",
+      fromAmount: "2000000",
+    });
+  });
+});
+
 describe("deposit attestation verified by the signer at ingest", () => {
   it("accepts a route attested by the pinned signer and stores the verified binding", async () => {
     const fields = signedFields();
@@ -388,6 +535,47 @@ describe("deposit attestation verified by the signer at ingest", () => {
     // No signature on a deposit route: Confirm reveals the address.
     s.send({ type: "SignRequested" });
     expect(s.intent.status).toBe("awaiting_deposit");
+  });
+
+  it("binds a Tron tag deposit to public Ethereum DAI without an intent signature", async () => {
+    const fields = signedFields({
+      to_chain_id: 1,
+      to_token: DAI_MAINNET,
+      recipient: BOUND,
+    });
+    const s = new Session(
+      { ...depositCtx(), toChainId: 1, toToken: DAI_MAINNET, recipientTag: "alice" },
+      DEPOSIT_CONFIG,
+    );
+    const attestation = await attest(fields);
+    allocate(s, {
+      ...depositQuote(fields, attestation),
+      recipientTag: "alice",
+      recipientAddress: BOUND,
+    });
+    expect(s.intent.status).toBe("quoted");
+    expect(s.intent.attestedDeposit).toEqual({ attested: fields, attestation });
+    const reveal = s.send({ type: "SignRequested" });
+    expect(s.intent.status).toBe("awaiting_deposit");
+    expect(s.receipt.settlement.mode).toBe("public");
+    expect(walletCalls(reveal, "signTypedData")).toEqual([]);
+    expect(apiCalls(reveal, "execute")).toEqual([]);
+  });
+
+  it("refuses a genuine Tron tag attestation paying the wallet rather than the resolved address", async () => {
+    const fields = signedFields({ to_chain_id: 1, to_token: DAI_MAINNET });
+    const s = new Session(
+      { ...depositCtx(), toChainId: 1, toToken: DAI_MAINNET, recipientTag: "alice" },
+      DEPOSIT_CONFIG,
+    );
+    allocate(s, {
+      ...depositQuote(fields, await attest(fields)),
+      recipientTag: "alice",
+      recipientAddress: BOUND,
+    });
+    expect(s.intent.status).toBe("failed");
+    expect(s.intent.attestedDeposit).toBeNull();
+    expect(s.intent.quote).toBeNull();
   });
 
   it("refuses every deposit route when no signer is pinned", async () => {

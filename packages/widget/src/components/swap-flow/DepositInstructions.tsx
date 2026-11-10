@@ -13,7 +13,7 @@
 
 import { useState, useEffect } from "react";
 import { formatTokenAmount } from "../../utils/format.js";
-import { EXTENDED_CHAIN_NAMES } from "@xochi/client";
+import { EXTENDED_CHAIN_NAMES, isTronChainId } from "@xochi/client";
 import type { SelectableChainId } from "../../types/intent.js";
 import { QrCode } from "./QrCode.js";
 
@@ -30,6 +30,8 @@ interface DepositInstructionsProps {
   toChainId: SelectableChainId;
   /** Formatted payout estimate, if known. */
   receivedAmount?: string;
+  /** Accepted-order display metadata, never a source of attested funding facts. */
+  recipientTag?: string;
   /**
    * EVM payout address the attestation was VERIFIED against, not the connected
    * wallet. Those are the same value at quote time and diverge afterwards: an
@@ -96,6 +98,7 @@ export function DepositInstructions({
   toSymbol,
   toChainId,
   receivedAmount,
+  recipientTag,
   payoutAddress,
   refundAddress,
   depositDeadline,
@@ -248,7 +251,15 @@ export function DepositInstructions({
       {receivedAmount && (
         <p className="deposit-instructions__payout">
           Receive about {receivedAmount} {toSymbol} on {destName}
+          {recipientTag ? ` for @${recipientTag} on zk.money` : ""}
           {payoutAddress ? ` at ${shortenAddress(payoutAddress)}` : ""}.
+          {recipientTag && (
+            <>
+              {" "}
+              This payout deposit is public.
+              {isTronChainId(fromChainId) && " Your TRON send is public."} Aztec credit is separate.
+            </>
+          )}
         </p>
       )}
 

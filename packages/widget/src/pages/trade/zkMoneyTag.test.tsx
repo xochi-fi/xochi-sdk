@@ -13,15 +13,32 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { QUOTE_DEBOUNCE_MS, QuoteResponseSchema, SIMPLE_ACCOUNT_FACTORY } from "@xochi/client";
+import { privateKeyToAccount } from "viem/accounts";
+import { buildDepositAttestationMessage, type DepositAttestationFields } from "@xochi/signer";
+import {
+  QUOTE_DEBOUNCE_MS,
+  QuoteResponseSchema,
+  SIMPLE_ACCOUNT_FACTORY,
+  TRON_CHAIN_ID,
+} from "@xochi/client";
 import { quoteWire } from "../../test/intentHarness.js";
 import { intentAPI } from "../../lib/intentAPI.js";
-import { renderTrade, apiStub, type FetchStub, type StubbedRoute } from "./harness.js";
+import {
+  renderTrade,
+  apiStub,
+  TEST_ACCOUNT,
+  type FetchStub,
+  type StubbedRoute,
+} from "./harness.js";
 import { SwapPanel } from "./SwapPanel.js";
 import { WAIT, testBudget } from "../../test/waitBudget.js";
-import { findTokenBySymbol } from "./config.js";
+import { findTokenBySymbol, TRON_ORIGIN_LIVE } from "./config.js";
 import { parseWidgetCapabilities } from "../../hooks/useCapabilities.js";
 import { TRUST_FEATURES_OFF } from "@xochi/client";
+import { DEPOSIT_ATTESTATION_PIN } from "../../config.js";
+import { STORAGE_KEYS } from "../../constants.js";
+
+const originalDepositSigner = DEPOSIT_ATTESTATION_PIN.signer;
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 3 }) });
 
@@ -125,6 +142,7 @@ function recordingStub(
   status = 200,
   capabilities: StubbedRoute = CAPABILITIES,
   walletMethods?: string[],
+  authorizations?: (string | null)[],
 ): FetchStub {
   const rest = apiStub(
     {
@@ -137,7 +155,10 @@ function recordingStub(
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("/api/intent/quote") && typeof init?.body === "string") {
       const body: unknown = JSON.parse(init.body);
-      if (typeof body === "object" && body !== null) bodies.push({ ...body });
+      if (typeof body === "object" && body !== null) {
+        bodies.push({ ...body });
+        authorizations?.push(new Headers(init.headers).get("Authorization"));
+      }
     }
     return rest(input, init);
   };
@@ -205,6 +226,8 @@ afterEach(() => {
   vi.useRealTimers();
   window.history.replaceState({}, "", "/");
   intentAPI.clearQuoteCache();
+  Object.assign(DEPOSIT_ATTESTATION_PIN, { signer: originalDepositSigner });
+  sessionStorage.removeItem(STORAGE_KEYS.walletSession);
 });
 
 describe("zk.money destination", () => {
@@ -233,6 +256,184 @@ describe("zk.money destination", () => {
     expect(receipt).toContain("DAI");
     expect(receipt).toContain("zk.money charges about $0.35 on arrival");
   });
+
+  it.skipIf(!TRON_ORIGIN_LIVE)(
+    "restores a Tron tag retry and binds its refund only after explicit authenticated allocation",
+    async () => {
+      const bodies: Record<string, unknown>[] = [];
+      const walletMethods: string[] = [];
+      const authorizations: (string | null)[] = [];
+      const refund = "TNaRAoLUyYEV2uF7GUrzSjRQTU8v5ZJ5VR";
+      const usdt = findTokenBySymbol(TRON_CHAIN_ID, "USDT");
+      const dai = findTokenBySymbol(1, "DAI");
+      if (!usdt || !dai) throw new Error("missing Tron tag deployments");
+      // Published Anvil account 0, matching the genuine-signature safety tests.
+      const attester = privateKeyToAccount(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      );
+      Object.assign(DEPOSIT_ATTESTATION_PIN, { signer: attester.address });
+      const fields: DepositAttestationFields = {
+        intent_id: "11111111-1111-1111-1111-111111111111",
+        quote_id: "22222222-2222-2222-2222-222222222222",
+        wallet: TEST_ACCOUNT,
+        from_chain_id: TRON_CHAIN_ID,
+        from_token: usdt.address,
+        from_amount: "1000000000",
+        deposit_address: "TMuA6YqfCeX8EhbfYEg5y7S4DqzSJireY9",
+        deposit_deadline: Math.floor(Date.now() / 1000) + 1800,
+        refund_address: refund,
+        to_chain_id: 1,
+        to_token: dai.address,
+        to_amount: "998000000000000000000",
+        min_to_amount: "996000000000000000000",
+        recipient: BOUND_ADDRESS,
+        stealth_spending_pub_key: null,
+        stealth_viewing_pub_key: null,
+        settlement_preference: "public",
+      };
+      const attestation = await attester.signMessage({
+        message: buildDepositAttestationMessage(fields),
+      });
+      const capabilities = {
+        body: {
+          ...CAPABILITIES.body,
+          capabilities: {
+            ...CAPABILITIES.body.capabilities,
+            chains: [
+              ...CAPABILITIES.body.capabilities.chains,
+              { chain_id: TRON_CHAIN_ID, chain_name: "Tron", vm_type: "tvm" },
+            ],
+            tokens: [
+              ...CAPABILITIES.body.capabilities.tokens,
+              {
+                symbol: "USDT",
+                roles: ["origin"],
+                decimals: usdt.decimals,
+                addresses: { [TRON_CHAIN_ID]: usdt.address },
+              },
+            ],
+            routes: [
+              ...CAPABILITIES.body.capabilities.routes,
+              {
+                origin: { chain_id: TRON_CHAIN_ID, token: "USDT" },
+                destination: { kind: "zk_money", token: "DAI" },
+                privacy_modes: ["public"],
+              },
+            ],
+          },
+        },
+      };
+      vi.stubGlobal(
+        "fetch",
+        recordingStub(taggedQuote, bodies, 200, capabilities, walletMethods, authorizations),
+      );
+      await renderTrade(
+        <SwapPanel
+          prefill={{
+            nonce: 1,
+            fromChainId: TRON_CHAIN_ID,
+            fromToken: usdt.address,
+            toChainId: 1,
+            toToken: dai.address,
+            fromAmount: "1000000000",
+            settlement: "public",
+            recipientTag: TAG,
+            refundAddress: refund,
+          }}
+        />,
+        { connected: true, walletChainId: 8453 },
+      );
+      await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
+      expect(screen.getByRole("button", { name: "On zk.money - Change network" })).toBeTruthy();
+      expect(tagField()?.value).toBe(TAG);
+      expect(document.querySelector<HTMLInputElement>("#swap-refund")?.value).toBe(refund);
+      expect(
+        document.querySelector<HTMLInputElement>("#swap-refund")?.getAttribute("aria-invalid"),
+      ).toBe("false");
+      for (const body of bodies) {
+        expect(body).toMatchObject({
+          preview: true,
+          from_chain_id: TRON_CHAIN_ID,
+          from_token: usdt.address,
+          from_amount: "1000000000",
+          to_chain_id: 1,
+          to_token: dai.address,
+          recipient_tag: TAG,
+          refund_address: refund,
+          settlement_preference: "public",
+        });
+        expect(body).not.toHaveProperty("allocation_key");
+        expect(body).not.toHaveProperty("wallet");
+        expect(body).not.toHaveProperty("recipient_address");
+      }
+      expect(
+        walletMethods.filter(
+          (method) => method === "personal_sign" || method.startsWith("eth_sign"),
+        ),
+      ).toEqual([]);
+      const quotedBodies = bodies.length;
+      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "" } });
+      await waitFor(() => expect(document.querySelector(".quote-details")).toBeNull(), WAIT);
+      expect(bodies).toHaveLength(quotedBodies);
+      fireEvent.change(screen.getByLabelText("Send"), { target: { value: "1000" } });
+      await screen.findByText(`@${TAG} receives ≈ 998 DAI`, {}, WAIT);
+      sessionStorage.setItem(
+        STORAGE_KEYS.walletSession,
+        JSON.stringify({ token: "wallet.session.jwt", wallet: TEST_ACCOUNT.toLowerCase() }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        recordingStub(
+          quoteWire({
+            preview: false,
+            intent_id: fields.intent_id,
+            quote_id: fields.quote_id,
+            to_amount: fields.to_amount,
+            min_to_amount: fields.min_to_amount,
+            payment_method: "deposit",
+            gasless: false,
+            deposit_address: fields.deposit_address,
+            deposit_deadline: fields.deposit_deadline,
+            deposit_attestation: attestation,
+            recipient_tag: TAG,
+            recipient_address: fields.recipient,
+            route: { settlement_type: "public" },
+          }),
+          bodies,
+          200,
+          capabilities,
+          walletMethods,
+          authorizations,
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Review & reserve route" }));
+      const continueButton = await screen.findByRole<HTMLButtonElement>(
+        "button",
+        { name: "Continue" },
+        WAIT,
+      );
+      expect(continueButton.disabled).toBe(false);
+      const allocated = bodies.filter((body) => body.preview === false);
+      expect(allocated).toHaveLength(1);
+      expect(allocated[0]).toMatchObject({
+        wallet: TEST_ACCOUNT,
+        recipient_tag: TAG,
+        refund_address: refund,
+        allocation_key: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
+      });
+      expect(authorizations[bodies.findIndex((body) => body.preview === false)]).toBe(
+        "Bearer wallet.session.jwt",
+      );
+      expect(
+        walletMethods.filter(
+          (method) => method === "personal_sign" || method.startsWith("eth_sign"),
+        ),
+      ).toEqual([]);
+    },
+    testBudget({ renders: 1, waits: 4 }),
+  );
 
   it("offers spelling guidance without retry for a confirmed missing tag", async () => {
     await quoteToTag(unresolved, true);

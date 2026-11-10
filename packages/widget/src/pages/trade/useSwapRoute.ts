@@ -172,6 +172,8 @@ export interface SwapRouteLegs {
   toChainId: SelectableChainId;
   fromToken: Token;
   toToken: Token;
+  /** Restore a public tag rail without granting it live quote authority. */
+  zkMoneyDestination?: boolean;
 }
 
 /**
@@ -1015,7 +1017,7 @@ export function useSwapRoute({
   // (retry prefill, resumed swap) set the amount and the settlement mode from
   // the record themselves, so clearing them here would undo the restore.
   const applyRoute = useCallback((legs: SwapRouteLegs): void => {
-    setZkMoneyDestination(false);
+    setZkMoneyDestination(legs.zkMoneyDestination === true);
     setFromChainId(legs.fromChainId);
     setToChainId(legs.toChainId);
     setFromToken(legs.fromToken);

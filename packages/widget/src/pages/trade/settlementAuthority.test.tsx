@@ -13,6 +13,8 @@ import { TEST_ACCOUNT, L1_STEALTH_CAPABILITIES, apiStub, renderTrade } from "./h
 import { TOKENS } from "./config.js";
 import { SwapPanel } from "./SwapPanel.js";
 import { useSwapFlow, type UseSwapFlowResult } from "./useSwapFlow.js";
+import { mapQuoteResponse, QuoteResponseSchema } from "@xochi/client";
+import { listLocalSwaps } from "../../lib/localActivity.js";
 
 vi.setConfig({ testTimeout: testBudget({ renders: 1, waits: 4 }) });
 
@@ -284,30 +286,41 @@ function FlowAuthorityProbe({
   sign,
   reset,
   status = "quoted",
+  heldQuote = null,
+  recipientTag,
+  amountBigInt = 5_000_000n,
 }: {
   sign: () => void;
   reset: () => void;
   status?: "quoted" | "executing";
+  heldQuote?: UseIntentReturn["quote"];
+  recipientTag?: string;
+  amountBigInt?: bigint;
 }) {
   const [authorized, setAuthorized] = useState(true);
   const [open, setOpen] = useState(false);
   openAuthorityFlow = () => setOpen(true);
   revokeFlowAuthority = () => setAuthorized(false);
   flowOpen = open;
+  const toToken =
+    recipientTag === undefined
+      ? TOKENS[ARBITRUM][0]
+      : TOKENS[ETHEREUM].find((token) => token.symbol === "DAI");
+  if (!toToken) throw new Error("missing destination token for authority probe");
   latestFlow = useSwapFlow({
     prefill: null,
-    intent: flowIntent(status, sign, reset),
+    intent: { ...flowIntent(status, sign, reset), quote: heldQuote },
     isConnected: true,
     address: TEST_ACCOUNT,
     connectedChainId: BASE,
     fromChainId: BASE,
-    toChainId: ARBITRUM,
+    toChainId: recipientTag === undefined ? ARBITRUM : ETHEREUM,
     fromToken: TOKENS[BASE][0],
-    toToken: TOKENS[ARBITRUM][0],
+    toToken,
     routeCheck: { status: "supported" },
     applyRoute: noop,
     amount: "5",
-    amountBigInt: 5_000_000n,
+    amountBigInt,
     insufficientBalance: false,
     currentBalance: 5_000_000n,
     excessiveSlippage: false,
@@ -315,11 +328,14 @@ function FlowAuthorityProbe({
     setAmount: noop,
     settlement: "public",
     settlementFix: authorized ? null : "route",
-    destination: DEFAULT_DESTINATION,
+    destination:
+      recipientTag === undefined ? DEFAULT_DESTINATION : { ...DEFAULT_DESTINATION, recipientTag },
     recipientMissing: false,
     recipientInvalid: false,
     restoreSettlement: noop,
     clearRecipient: noop,
+    restoreRecipientTag: noop,
+    restoreRefundAddress: noop,
     flowOpen: open,
     setFlowOpen: setOpen,
     resumed: null,
@@ -329,6 +345,29 @@ function FlowAuthorityProbe({
 }
 
 describe("confirmation dispatch boundary", () => {
+  it("refuses confirmation when the input amount no longer matches the held quote", async () => {
+    let signs = 0;
+    let resets = 0;
+    vi.stubGlobal("fetch", apiStub({}));
+    await renderTrade(
+      <FlowAuthorityProbe
+        amountBigInt={6_000_000n}
+        sign={() => {
+          signs += 1;
+        }}
+        reset={() => {
+          resets += 1;
+        }}
+      />,
+      { connected: true },
+    );
+    act(() => openAuthorityFlow());
+    act(() => latestFlow?.handleConfirmSwap());
+    expect(flowOpen).toBe(false);
+    expect(resets).toBeGreaterThan(0);
+    expect(signs).toBe(0);
+  });
+
   it("rechecks settlement authority immediately before sign", async () => {
     let signs = 0;
     let resets = 0;
@@ -352,6 +391,40 @@ describe("confirmation dispatch boundary", () => {
     expect(flowOpen).toBe(false);
     expect(resets).toBeGreaterThan(0);
     expect(signs).toBe(0);
+  });
+
+  it("binds the accepted tag through funding and persistence, not later form edits", async () => {
+    const heldQuote = mapQuoteResponse(
+      QuoteResponseSchema.parse(
+        quoteWire({
+          recipient_tag: "alice",
+          recipient_address: "0x2222222222222222222222222222222222222222",
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", apiStub({}));
+    let advance = noop;
+    function TagOrderProbe() {
+      const [dispatched, setDispatched] = useState(false);
+      advance = () => setDispatched(true);
+      return (
+        <FlowAuthorityProbe
+          sign={noop}
+          reset={noop}
+          status={dispatched ? "executing" : "quoted"}
+          heldQuote={dispatched ? null : heldQuote}
+          recipientTag={dispatched ? "mallory" : "bob"}
+        />
+      );
+    }
+    await renderTrade(<TagOrderProbe />, { connected: true });
+    expect(latestFlow?.flowDestination.recipientTag).toBe("alice");
+    act(() => latestFlow?.handleConfirmSwap());
+    act(() => advance());
+    expect(latestFlow?.flowDestination.recipientTag).toBe("alice");
+    expect(
+      listLocalSwaps(TEST_ACCOUNT).find((order) => order.id === "xi_authority")?.data.recipientTag,
+    ).toBe("alice");
   });
 
   it("does not cancel an order after execution may have dispatched", async () => {

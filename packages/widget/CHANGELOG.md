@@ -12,6 +12,12 @@
 
 ### Fixed
 
+- Preserve Tron USDT tag/refund retry prefills without allocating or signing on
+  mount. Keep the accepted tag through funding, history refresh and recovery;
+  stored deposit facts still require the independently pinned attestation.
+- Reject stale-amount confirmation and clear quote identity when Send is cleared.
+- Name verified Tron refund destinations instead of assuming the sender, and
+  keep long zk.money tags inside mobile and desktop confirmation/history layouts.
 - Show exact live Stealth receive choices and unsupported-pair guidance before amount entry, while preserving explicit presets, host locks and Public selection.
 - Require explicit asset selection when a live Stealth chain needs a different receive token; leave zk.money without retaining its tag or repairing the source.
 - Preserve integration-only browser initialization through package tree-shaking.

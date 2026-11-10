@@ -121,6 +121,8 @@ export interface SwapActivity {
    * index and do not depend on history rows.
    */
   settlementType?: SettlementType;
+  /** Immutable zk.money recipient captured from the dispatched public tag order. */
+  recipientTag?: string;
   /**
    * Deposit-route facts, present only on a swap the user funds by hand. See
    * `DepositActivity`.

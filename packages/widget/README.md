@@ -98,6 +98,26 @@ Selecting Stealth is navigation, not wallet setup or signing consent. Before an 
 
 When a live chain requires a different receive asset, choosing that chain opens its eligible asset picker without changing either leg until the user selects the asset. Unlaunched Shielded destinations and the Public-only zk.money rail are excluded from Stealth choices. Switching out of zk.money clears its tag and quote, not the source leg. Quotes and execution retain all existing amount, authorization and signing checks.
 
+### Tron USDT to zk.money
+
+Offer this rail only when the live producer explicitly advertises the exact
+Tron USDT to `zk_money` DAI route. It remains public settlement: a manual TRC-20
+funding leg and a public Ethereum DAI deposit precede zk.money's separate Aztec
+credit. It does not enable native Shielded or Stealth funding.
+
+Reservation requires explicit user action and matching wallet-bound sign-in.
+Keep the allocation key on identical retries after unknown results; edits to
+tag, refund, owner or trade terms revoke it. Verify deposit instructions against
+the independent signer pin before display. History preserves the original tag
+as display metadata, not signing authority, and re-verifies stored deposits on
+resume. A refreshed or withdrawn route cannot relabel an already-issued order.
+No new storage namespace/version or persisted secret key is introduced.
+
+Server-only history does not contain the original refund address or deposit
+attestation. Retry is a new order: review and re-enter its refund destination
+when local recovery data is unavailable. Never reconstruct funding instructions
+from history metadata.
+
 ## Self-hosting and origin permissions
 
 Source availability does not grant access to a production API, solver or iframe origin. Obtain the required API-origin and service permissions independently. Preserve explicit `frame-ancestors` origins and the existing parent-window/origin/RPC validation. Never add wildcards or loosen validation to make an example work. The deployment host owns security headers and keeps versioned loader files available.

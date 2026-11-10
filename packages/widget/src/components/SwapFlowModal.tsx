@@ -22,7 +22,7 @@ import type {
   OriginApproval,
   RaceWebSocketMessage,
 } from "../types/intent.js";
-import { EXTENDED_CHAIN_NAMES } from "@xochi/client";
+import { EXTENDED_CHAIN_NAMES, isTronChainId } from "@xochi/client";
 import {
   type Receipt,
   type SignRefusal,
@@ -393,6 +393,19 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
           {PHASE_TITLES[phase]}
         </span>
 
+        {props.destination.recipientTag &&
+          phase !== "confirm" &&
+          phase !== "deposit" &&
+          phase !== "success" && (
+            <p className="swap-flow-tag-route">
+              Route: public Ethereum DAI payout to @{props.destination.recipientTag} on zk.money.
+              {depositView &&
+                isTronChainId(depositView.from_chain_id) &&
+                " TRON funding is public."}{" "}
+              Aztec credit is separate.
+            </p>
+          )}
+
         {phase === "confirm" && quote && (
           <>
             {(softRejected || expired) && (
@@ -449,7 +462,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
 
         {phase === "deposit" && depositScreen && (
           <div className="swap-flow-body">
-            {/* Every prop below reads off `depositScreen`, which is built from
+            {/* Funding facts below read off `depositScreen`, which is built from
                 the signed fields alone. Nothing on this screen may come from
                 live panel or wallet state: the recipient input stays editable,
                 an account switch is deliberately not interrupted at this phase,
@@ -466,6 +479,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               toSymbol={depositScreen.toSymbol}
               toChainId={depositScreen.toChainId}
               receivedAmount={depositScreen.receivedAmount}
+              recipientTag={props.destination.recipientTag}
               payoutAddress={depositScreen.payoutAddress}
               refundAddress={depositScreen.refundAddress}
               depositDeadline={depositScreen.depositDeadline}
@@ -677,6 +691,7 @@ export function SwapFlowModal(props: SwapFlowModalProps) {
               errorCategory={quote?.errorCategory ?? structuredError?.errorCategory}
               retryAfter={structuredError?.retryAfter}
               refundReason={refundReason}
+              refundAddress={depositView?.refund_address}
               originTokens={originTokens}
               onRetry={props.onRetry}
               onClose={onClose}

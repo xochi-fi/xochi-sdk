@@ -90,6 +90,42 @@ export function toActivityStatus(status: IntentStatus): ActivityStatus {
   return "pending";
 }
 
+const sameHistoryToken = (left: string, right: string): boolean =>
+  left === right ||
+  (left.startsWith("0x") && right.startsWith("0x") && left.toLowerCase() === right.toLowerCase());
+
+/** Preserve recovery-only facts without attaching them to another trade. */
+export function mergeHistorySwap(
+  server: SwapActivityItem,
+  local: SwapActivityItem | undefined,
+): SwapActivityItem {
+  const compatible =
+    local !== undefined &&
+    server.id === local.id &&
+    server.data.fromChainId === local.data.fromChainId &&
+    server.data.toChainId === local.data.toChainId &&
+    sameHistoryToken(server.data.fromToken, local.data.fromToken) &&
+    sameHistoryToken(server.data.toToken, local.data.toToken) &&
+    server.data.fromAmount === local.data.fromAmount &&
+    (!server.ownerWallet ||
+      !local.ownerWallet ||
+      server.ownerWallet.toLowerCase() === local.ownerWallet.toLowerCase());
+  if (!compatible) return server;
+  const recipientTag =
+    server.data.recipientTag ??
+    (server.data.settlementType === "public" ? local.data.recipientTag : undefined);
+  return {
+    ...server,
+    ownerWallet: local?.ownerWallet ?? server.ownerWallet,
+    legsWithheld: local?.legsWithheld,
+    data: {
+      ...server.data,
+      ...(recipientTag !== undefined && { recipientTag }),
+      ...(local.data.deposit && { deposit: local.data.deposit }),
+    },
+  };
+}
+
 const keyFor = (address: string): string =>
   `${STORAGE_KEYS.localActivityPrefix}${address.toLowerCase()}`;
 

@@ -44,6 +44,7 @@ import {
 import { HOST_WALLET_ID } from "../wagmi.js";
 import { reportSwapFailure } from "../lib/reportClient.js";
 import { buildHistoryFailureRef } from "../lib/swapFlowPhase.js";
+import { mergeHistorySwap } from "../lib/localActivity.js";
 import {
   getWalletSessionAddress,
   getWalletSessionGeneration,
@@ -188,7 +189,10 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
         receivingTxHash: order.receivingTxHash,
         isCrossChain: order.isCrossChain,
         substatus: order.substatus,
-        // Only the shielded mode is carried: it alone names the venue (Aztec).
+        ...(order.settlementType === "public" && {
+          settlementType: "public" as const,
+          ...(order.recipientTag !== undefined && { recipientTag: order.recipientTag }),
+        }),
         // Stealth would also put the claim action on server rows, a change of its own.
         ...(order.settlementType === "shielded" && {
           settlementType: "shielded" as const,
@@ -201,11 +205,7 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
     for (const s of localSwaps) byId.set(s.id, s);
     for (const s of serverSwaps) {
       const local = byId.get(s.id);
-      byId.set(s.id, {
-        ...s,
-        ownerWallet: local?.ownerWallet ?? s.ownerWallet,
-        legsWithheld: local?.legsWithheld,
-      });
+      byId.set(s.id, mergeHistorySwap(s, local));
     }
     return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp);
   }, [orders, localSwaps]);
@@ -395,6 +395,8 @@ export function Trade({ look, hostConnection = hostBridge }: TradeProps) {
         toToken: item.data.toToken,
         fromAmount: item.data.fromAmount,
         settlement: item.data.settlementType,
+        recipientTag: item.data.recipientTag,
+        refundAddress: item.data.deposit?.attested.refund_address ?? undefined,
       });
       selectTab("swap");
     },

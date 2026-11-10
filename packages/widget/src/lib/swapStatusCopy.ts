@@ -13,6 +13,7 @@
 
 import type { IntentStatus } from "../types/intent.js";
 import { isAwaitingRecipient } from "./recipientReceipt.js";
+import { truncateAddress } from "../utils/format.js";
 
 /** Visual tone the caller maps to a colour. Refund is deliberately distinct from
  *  both success (filled) and error (failed). */
@@ -36,6 +37,9 @@ export interface SwapStateInput {
   amount?: string;
   /** Plain-language refund reason from /status (refunded rows). */
   refundReason?: string | null;
+  depositRoute?: boolean;
+  /** Verified attested refund target; absent when history cannot prove it. */
+  refundAddress?: string | null;
   /**
    * True once a public fill receipt (Riddler #632 `settlementTxHash`) has landed.
    * The fill is on-chain, so the order is settled even if the status row still
@@ -149,14 +153,22 @@ export function describeSwapState(
       return { tone: "progress", headline: `Settling on ${dest}`, detail: crossChainNote };
     case "completed":
       return { tone: "success", headline: "Complete" };
-    case "refunded":
+    case "refunded": {
+      const target = input.refundAddress
+        ? truncateAddress(input.refundAddress)
+        : input.depositRoute
+          ? null
+          : "the sending wallet";
       return {
         tone: "refund",
         headline: amount
-          ? `Refunded -- ${amount} returned to the sending wallet`
-          : "Refunded to the sending wallet",
-        detail: refundReason ?? undefined,
+          ? `Refunded -- ${amount}${target ? ` returned to ${target}` : ""}`
+          : `Refunded${target ? ` to ${target}` : ""}`,
+        detail: target
+          ? (refundReason ?? undefined)
+          : `${refundReason ? `${refundReason} ` : ""}If you sent from an exchange, contact it if the refund is not credited.`,
       };
+    }
     case "failed":
       return { tone: "error", headline: "Swap failed" };
     case "expired":

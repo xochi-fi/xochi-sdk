@@ -42,6 +42,9 @@ import { TokenIcon } from "./TokenIcon.js";
 import { Chevron } from "./Chevron.js";
 import { AuthorizedAgents } from "./AuthorizedAgents.js";
 import { CHAIN_ICONS, AZTEC_ICON } from "../assets/chains/index.js";
+import { normalizeZkMoneyTag, zkMoneyTagValid } from "../pages/trade/zkMoney.js";
+import { isTronChainId, verifyStoredDeposit } from "@xochi/client";
+import { DEPOSIT_ATTESTATION_PIN } from "../config.js";
 
 /** USD helper: null when the swapped token is outside the priced set (avoids a
  *  misleading $1 par fallback). Takes raw smallest-unit amount + decimals. */
@@ -200,6 +203,15 @@ function SwapRow({
   const toToken = getTokenInfo(data.toToken, data.toChainId);
   const fromSymbol = fromToken?.symbol ?? truncateAddress(data.fromToken);
   const toSymbol = toToken?.symbol ?? truncateAddress(data.toToken);
+  const normalizedTag =
+    typeof data.recipientTag === "string" ? normalizeZkMoneyTag(data.recipientTag) : "";
+  const recipientTag =
+    data.toChainId === 1 &&
+    toSymbol === "DAI" &&
+    (data.settlementType === undefined || data.settlementType === "public") &&
+    zkMoneyTagValid(normalizedTag)
+      ? normalizedTag
+      : null;
   const fromAmount = fromToken ? formatRawAmount(data.fromAmount, fromToken.decimals) : "--";
   const toAmount = data.toAmount
     ? toToken
@@ -227,6 +239,14 @@ function SwapRow({
     onClaimNudge !== undefined && intentStatus === "completed" && data.settlementType === "stealth";
   // The recipient's receipt step on a shielded payout, behind its kill switch.
   const command = receiptCommand(item, RECIPIENT_RECEIPTS_LIVE);
+  const refundAddress = useMemo(() => {
+    if (intentStatus !== "refunded" || !data.deposit || !item.ownerWallet) return null;
+    const verified = verifyStoredDeposit(data.deposit, DEPOSIT_ATTESTATION_PIN.signer, {
+      owner: item.ownerWallet,
+      intentId: item.id,
+    });
+    return verified.ok ? verified.stored.attested.refund_address : null;
+  }, [data.deposit, intentStatus, item.id, item.ownerWallet, DEPOSIT_ATTESTATION_PIN.signer]);
 
   // Human-readable state line so a fund-moving order never reads as a blank
   // spinner: "settling" (with a cross-chain hint + slow reassurance) while live,
@@ -236,6 +256,8 @@ function SwapRow({
     destChainName,
     elapsedMs: live ? Date.now() - timestamp : undefined,
     amount: `${fromAmount} ${fromSymbol}`,
+    depositRoute: isTronChainId(data.fromChainId),
+    refundAddress,
     // The status-only view withholds the receipt hash and substatus; its
     // `settlement_confirmed` stands in, so a delivered private swap never reads
     // as stuck.
@@ -260,8 +282,11 @@ function SwapRow({
     onReport?.(item);
   };
 
-  const destinationLabel =
-    data.destinationType === "aztec" ? "Aztec" : CHAIN_SHORT_NAMES[data.toChainId];
+  const destinationLabel = recipientTag
+    ? `@${recipientTag} on zk.money`
+    : data.destinationType === "aztec"
+      ? "Aztec"
+      : CHAIN_SHORT_NAMES[data.toChainId];
   const aztecPrivacyLabel =
     data.destinationType === "aztec" &&
     data.settlementType !== undefined &&
@@ -343,9 +368,11 @@ function SwapRow({
             <DetailRow
               label="Destination"
               value={
-                data.destinationType === "aztec"
-                  ? `Aztec Network${aztecPrivacyLabel ? ` (${aztecPrivacyLabel})` : ""}`
-                  : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`
+                recipientTag
+                  ? `@${recipientTag} on zk.money (public Ethereum DAI deposit)`
+                  : data.destinationType === "aztec"
+                    ? `Aztec Network${aztecPrivacyLabel ? ` (${aztecPrivacyLabel})` : ""}`
+                    : `${CHAIN_FULL_NAMES[data.toChainId]} (${toSymbol})`
               }
             />
             {data.isCrossChain && <DetailRow label="Type" value="Cross-chain swap" />}
