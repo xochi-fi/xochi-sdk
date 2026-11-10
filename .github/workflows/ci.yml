@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   # @xochi/sdk (packages/sdk). The job key stays `check`.
@@ -89,6 +88,25 @@ jobs:
           npm run build -w @xochi/widget
       - name: Rehearse packed public consumer
         run: node scripts/verify-widget-consumer.mjs
+
+  peer-compatibility:
+    name: Peer package compatibility
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/peer-compatibility
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/peer-compatibility/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run verify:graph
+      - run: npm test
+      - run: npm start
+      - run: npm run build
 
   # The protocol packages (packages/{signer,spec,solver-sdk,reference}).
   # @xochi/signer builds first: every other workspace consumes its .d.ts. The
