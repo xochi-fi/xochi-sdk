@@ -1,4 +1,4 @@
-import { truncateAddress } from "@xochi/client";
+import { truncateAddress } from "../utils/format.js";
 
 export const LINKS_SIGN_IN_LABEL = "Sign in with your wallet to see transaction links";
 

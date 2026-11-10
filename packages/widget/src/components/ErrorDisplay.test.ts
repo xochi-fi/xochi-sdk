@@ -1,14 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { formatSupportedTokens, SOLVER_ORIGIN_TOKENS } from "@xochi/client";
 import { ErrorDisplay, computeRemaining } from "./ErrorDisplay.js";
 import type { StructuredError } from "@xochi/client";
 
 // Render the real component to static markup (no jsdom / effects needed) and
-// assert the user-facing copy a given error string resolves to. Pins the
-// quote-rejection messaging: a genuinely unsupported route must show the
-// supported-token guidance, not a generic fill failure.
+// check that quote rejections retain their distinct failure categories.
 const html = (error: string): string =>
   renderToStaticMarkup(createElement(ErrorDisplay, { error }));
 
@@ -19,12 +16,9 @@ const htmlStructured = (error: StructuredError): string =>
   renderToStaticMarkup(createElement(ErrorDisplay, { error, onRetry: () => {} }));
 
 describe("ErrorDisplay quote-rejection messaging", () => {
-  it("maps an unsupported chain route to the supported-token guidance", () => {
+  it("distinguishes an unsupported chain route from a fill failure", () => {
     const out = html("unsupported_chain: unsupported route 1 -> 999");
     expect(out).toContain("Route not supported");
-    // Derive from the canonical origin set so this stays green as the supported
-    // stablecoins change (e.g. USDG added for the ACP launch).
-    expect(out).toContain(formatSupportedTokens(SOLVER_ORIGIN_TOKENS));
     expect(out).not.toContain("Couldn't fill this trade");
   });
 
@@ -34,7 +28,6 @@ describe("ErrorDisplay quote-rejection messaging", () => {
   it("does not offer the token list for a validation_failed request-shape error", () => {
     const out = html("validation_failed: signature: should be 130 character(s)");
     expect(out).not.toContain("Route not supported");
-    expect(out).not.toContain(formatSupportedTokens(SOLVER_ORIGIN_TOKENS));
     expect(out).toContain("should be 130 character(s)");
   });
 

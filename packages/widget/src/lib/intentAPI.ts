@@ -9,7 +9,7 @@
 import { createXochiClient, type TransportLogger } from "@xochi/client";
 import { API_URL, TIMEOUTS, RETRY } from "../config.js";
 import { getActiveToken } from "./authFetch.js";
-import { clearWalletSession, getWalletToken } from "./walletSession.js";
+import { clearWalletSession, getWalletToken, getWalletSessionGeneration } from "./walletSession.js";
 import { debugLog } from "./debug.js";
 import { notifySessionExpired } from "./sessionExpiry.js";
 
@@ -37,6 +37,7 @@ const transport = {
 export const intentAPI = createXochiClient({
   ...transport,
   getAuthToken: getActiveToken,
+  getAuthGeneration: getWalletSessionGeneration,
   onAuthExpired: (event) => {
     if (event.reason === "expired") notifySessionExpired();
     // Same rule authFetch applies: evict the wallet session only when the

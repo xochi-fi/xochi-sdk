@@ -6,7 +6,7 @@
  */
 
 import { getAuthToken } from "./auth.js";
-import { getWalletToken, clearWalletSession } from "./walletSession.js";
+import { getWalletToken, getWalletSessionGeneration, clearWalletSession } from "./walletSession.js";
 
 const WALLET_SESSION_REAUTH_CATEGORIES: Readonly<Record<string, true>> = {
   auth_invalid: true,
@@ -25,6 +25,7 @@ export function getActiveToken(): string | null {
 
 export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const walletToken = getWalletToken();
+  const generation = getWalletSessionGeneration();
   const token = getActiveToken();
   if (!token) return fetch(input, init);
 
@@ -49,7 +50,13 @@ export async function authFetch(input: RequestInfo | URL, init?: RequestInit): P
       )
       .catch(() => undefined);
 
-    if (typeof category === "string" && category in WALLET_SESSION_REAUTH_CATEGORIES) {
+    if (
+      typeof category === "string" &&
+      category in WALLET_SESSION_REAUTH_CATEGORIES &&
+      headers.get("Authorization") === `Bearer ${walletToken}` &&
+      getWalletSessionGeneration() === generation &&
+      getWalletToken() === walletToken
+    ) {
       clearWalletSession();
     }
   }

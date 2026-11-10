@@ -7,16 +7,17 @@
  * payload: the copy is not the cause.
  */
 
-import { SOLVER_ORIGIN_TOKENS, formatSupportedTokens } from "@xochi/client";
+import { formatSupportedTokens } from "../utils/format.js";
 import { classifyFailure, type Failure, type StructuredError } from "@xochi/client";
+import { FALLBACK_ORIGIN_TOKENS } from "./displayFallbacks.js";
 import { STATUS_GLYPH } from "./glyphs.js";
 
 /**
- * "What you can send" copy, from the solver-supported set. Callers with live
- * capabilities pass `useCapabilities().originTokens` so it tracks the solver.
+ * Display guidance only. Callers with live capabilities pass
+ * `useCapabilities().originTokens`; the default preserves offline widget copy.
  */
 export function supportedOriginCopy(
-  originTokens: readonly string[] = SOLVER_ORIGIN_TOKENS,
+  originTokens: readonly string[] = FALLBACK_ORIGIN_TOKENS,
 ): string {
   return `Only ${formatSupportedTokens(originTokens)} can be sent to a different chain.`;
 }
@@ -222,7 +223,7 @@ export function isAmountTooSmall(error: string | StructuredError | null): boolea
  */
 export function getErrorInfo(
   error: string | StructuredError,
-  originTokens: readonly string[] = SOLVER_ORIGIN_TOKENS,
+  originTokens: readonly string[] = FALLBACK_ORIGIN_TOKENS,
   errorCategory?: string,
 ): ErrorInfo & { retryAfter?: number; code?: number; reason?: string } {
   const category = errorCategory || (typeof error === "object" ? error.errorCategory : undefined);

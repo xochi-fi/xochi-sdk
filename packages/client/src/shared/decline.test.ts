@@ -3,29 +3,24 @@
 
 import { describe, it, expect } from "vitest";
 import { PICK_DIFFERENT_PAIR, classifyDecline, supportedOriginSentence } from "./decline.js";
-import { SOLVER_ORIGIN_TOKENS } from "./solver-support.js";
-
-describe("supportedOriginSentence", () => {
-  it("lists the current origin set", () => {
-    expect(supportedOriginSentence(["USDC", "USDT", "USDG"])).toBe(
-      "Send USDC, USDT and USDG to a different chain.",
-    );
-  });
-
-  it("defaults to the static solver origin set", () => {
-    expect(supportedOriginSentence()).toContain(SOLVER_ORIGIN_TOKENS[0]);
-  });
-});
 
 describe("classifyDecline", () => {
-  it("normalizes an unsupported-route reject and keeps the origin guidance", () => {
-    const info = classifyDecline("unsupported_chain: pair not enabled", ["USDC", "USDT", "USDG"]);
+  it("uses caller-supplied origin guidance for an unsupported route", () => {
+    const info = classifyDecline("unsupported_chain: pair not enabled", ["EURe"]);
     expect(info.category).toBe("route_unsupported");
-    expect(info.message).toBe(
-      "Route not supported. Send USDC, USDT and USDG to a different chain.",
-    );
+    expect(info.message).toContain("EURe");
+    expect(info.message).not.toContain("USDC");
     // Preserves the substring the frontend categorizer matches on.
     expect(info.message.toLowerCase()).toContain("not supported");
+  });
+
+  it("does not invent token support when origin guidance is unavailable", () => {
+    for (const originTokens of [undefined, []]) {
+      const info = classifyDecline("unsupported_chain", originTokens);
+      expect(info.category).toBe("route_unsupported");
+      expect(info.message).not.toMatch(/USDC|USDT|USDG/);
+      expect(info.message).not.toContain("Send  ");
+    }
   });
 
   // A schema rejection is not a route verdict. It used to answer a malformed

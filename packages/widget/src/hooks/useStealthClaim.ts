@@ -14,7 +14,7 @@
  *    re-prepared or re-signed. See claimSubmitPoll.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   decodeAnnouncementMetadata,
   signUserOpHash,
@@ -111,29 +111,54 @@ export function useStealthClaim(): UseStealthClaimReturn {
   const stealth = useStealth();
   const scanner = useStealthScanner({
     keys: stealth.getKeys(),
+    getKeys: stealth.getKeys,
     autoScan: false,
   });
 
-  const [isClaiming, setIsClaiming] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [claimError, setClaimError] = useState<string | null>(null);
+  const authority = scanner.authority;
+  const currentAuthorityRef = useRef(authority);
+  currentAuthorityRef.current = authority;
+  const activeClaimRef = useRef<object | null>(null);
+  const [claimState, setClaimState] = useState({
+    authority,
+    isClaiming: false,
+    isConfirming: false,
+    error: null as string | null,
+  });
+  if (claimState.authority !== authority) {
+    activeClaimRef.current = null;
+    setClaimState({ authority, isClaiming: false, isConfirming: false, error: null });
+  }
 
   const scan = useCallback(async () => {
-    setClaimError(null);
+    if (currentAuthorityRef.current !== authority) return;
+    setClaimState((prev) => ({ ...prev, error: null }));
     // The scanner surfaces a visible reason when keys are missing (prompting a
     // re-sign) instead of silently no-opping.
     await scanner.scan();
-  }, [scanner]);
+  }, [authority, scanner]);
 
   const claim = useCallback(
     async (payment: ChainStealthPayment, recipientAddress: string): Promise<ClaimResult> => {
+      const revoked = (): ClaimResult => ({
+        success: false,
+        error: "Wallet, unlocked keys, or sign-in session changed. Scan again before claiming.",
+        errorCategory: "claim_authority_revoked",
+      });
+      if (!scanner.isPaymentAuthorized(payment)) return revoked();
       if (!payment.stealthPrivKey || payment.stealthPrivKey.length === 0) {
         return { success: false, error: "Stealth spending key not derived" };
       }
-      const stealthPrivHex = bytesToHex(payment.stealthPrivKey);
-
-      setIsClaiming(true);
-      setClaimError(null);
+      const operation = {};
+      activeClaimRef.current = operation;
+      const canUpdateUI = () =>
+        currentAuthorityRef.current === authority &&
+        activeClaimRef.current === operation &&
+        scanner.isPaymentAuthorized(payment);
+      const setClaimError = (error: string) => {
+        if (canUpdateUI()) setClaimState((prev) => ({ ...prev, error }));
+      };
+      setClaimState({ authority, isClaiming: true, isConfirming: false, error: null });
 
       // Taken before prepare, so the poll deadline below falls inside the
       // server's window (which starts when it serves the prepare) rather than
@@ -158,6 +183,9 @@ export function useStealthClaim(): UseStealthClaimReturn {
           chainId: payment.chainId,
         });
 
+        // Preparing is not authorization: the wallet/key/session may have changed
+        // while the backend was building the operation.
+        if (!scanner.isPaymentAuthorized(payment)) return revoked();
         if (!prepared.success) {
           const errorMsg = prepared.error || "Claim prepare failed";
           setClaimError(errorMsg);
@@ -176,6 +204,7 @@ export function useStealthClaim(): UseStealthClaimReturn {
         // the announcement's metadata was read off chain during the scan, and
         // the owner is the address of the key three lines below that signs.
         const announced = decodeAnnouncementMetadata(payment.announcement.metadata);
+        const stealthPrivHex = bytesToHex(payment.stealthPrivKey);
         const verified = verifyClaimUserOp({
           userOperation: prepared.data.userOperation,
           entryPoint: prepared.data.entryPoint,
@@ -204,7 +233,9 @@ export function useStealthClaim(): UseStealthClaimReturn {
 
         // Sign the raw 32-byte userOpHash locally with the per-payment stealth
         // spending key. The key never leaves the client.
+        if (!scanner.isPaymentAuthorized(payment)) return revoked();
         const signature = signUserOpHash(userOpHash, stealthPrivHex);
+        if (!scanner.isPaymentAuthorized(payment)) return revoked();
 
         // Phase 2 -- submit: send only the echoed hash + signature. The prepared
         // op is keyed by userOpHash alone; no intent id crosses the wire. While
@@ -216,7 +247,9 @@ export function useStealthClaim(): UseStealthClaimReturn {
             deadline: preparedAt + CLAIM_PREPARE_WINDOW_MS,
             now: Date.now,
             sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-            onPending: () => setIsConfirming(true),
+            onPending: () => {
+              if (canUpdateUI()) setClaimState((prev) => ({ ...prev, isConfirming: true }));
+            },
           },
         );
 
@@ -245,14 +278,13 @@ export function useStealthClaim(): UseStealthClaimReturn {
         setClaimError(message);
         return { success: false, error: message };
       } finally {
-        setIsConfirming(false);
-        setIsClaiming(false);
+        if (canUpdateUI()) {
+          setClaimState((prev) => ({ ...prev, isConfirming: false, isClaiming: false }));
+          activeClaimRef.current = null;
+        }
       }
     },
-    // Nothing from a hook or a provider is read here. The owner the verification
-    // compares against is derived from the payment's own spending key, which
-    // arrives as an argument, so this callback is stable across renders.
-    [],
+    [authority, scanner.isPaymentAuthorized],
   );
 
   const claimAll = useCallback(
@@ -292,7 +324,8 @@ export function useStealthClaim(): UseStealthClaimReturn {
         // collect the same refusal. This is the harm shape of #468.
         if (
           result.errorCategory === "claim_rate_limited" ||
-          result.errorCategory === "claim_op_unverified"
+          result.errorCategory === "claim_op_unverified" ||
+          result.errorCategory === "claim_authority_revoked"
         ) {
           break;
         }
@@ -306,9 +339,12 @@ export function useStealthClaim(): UseStealthClaimReturn {
   return {
     payments: scanner.payments,
     isScanning: scanner.isScanning,
-    isClaiming,
-    isConfirming,
-    error: claimError || scanner.error || stealth.error,
+    isClaiming: claimState.authority === authority && claimState.isClaiming,
+    isConfirming: claimState.authority === authority && claimState.isConfirming,
+    error:
+      (claimState.authority === authority ? claimState.error : null) ||
+      scanner.error ||
+      stealth.error,
     lastScannedBlock: scanner.lastScannedBlock,
     hasScanned: scanner.hasScanned,
     isInitialized: stealth.isInitialized,

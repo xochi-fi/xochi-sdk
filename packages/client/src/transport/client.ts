@@ -120,7 +120,9 @@ export interface XochiClientOptions {
   fetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** Bearer token for authenticated calls; absent or null sends none. */
   getAuthToken?: () => string | null | undefined;
-  /** Called when the server names a credential failure (see AuthExpiredEvent). */
+  /** In-memory credential epoch; change on logout/re-authentication, even when the token is reused. */
+  getAuthGeneration?: () => number;
+  /** Called for a still-current credential when the server names a failure (see AuthExpiredEvent). */
   onAuthExpired?: (event: AuthExpiredEvent) => void;
   /** Defaults to warn/error on the console, debug dropped. */
   log?: TransportLogger;
@@ -648,6 +650,7 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
     read: (response: Response) => Promise<T>,
   ): Promise<T> {
     const token = options.getAuthToken?.() ?? null;
+    const authGeneration = options.onAuthExpired ? options.getAuthGeneration?.() : undefined;
     const headers = new Headers(init.headers);
     if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
@@ -750,16 +753,21 @@ export function createXochiClient(options: XochiClientOptions): XochiClient {
             { highWaterMark: 0 },
           ),
         );
-        if (response.status === 401 && /expired/i.test(body)) {
-          options.onAuthExpired({ reason: "expired", status: response.status });
-        } else if (token) {
-          const category = parseJsonObject(body)?.error_category;
-          if (typeof category === "string" && WALLET_SESSION_REAUTH_CATEGORIES[category]) {
-            options.onAuthExpired({
-              reason: "invalid",
-              status: response.status,
-              errorCategory: category,
-            });
+        if (
+          token === (options.getAuthToken?.() ?? null) &&
+          authGeneration === options.getAuthGeneration?.()
+        ) {
+          if (response.status === 401 && /expired/i.test(body)) {
+            options.onAuthExpired({ reason: "expired", status: response.status });
+          } else if (token) {
+            const category = parseJsonObject(body)?.error_category;
+            if (typeof category === "string" && WALLET_SESSION_REAUTH_CATEGORIES[category]) {
+              options.onAuthExpired({
+                reason: "invalid",
+                status: response.status,
+                errorCategory: category,
+              });
+            }
           }
         }
       }

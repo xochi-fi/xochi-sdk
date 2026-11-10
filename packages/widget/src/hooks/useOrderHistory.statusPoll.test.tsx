@@ -20,10 +20,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import { connect } from "wagmi/actions";
-import type { Config } from "wagmi";
+import { useAccount, type Config } from "wagmi";
 import { useOrderHistory } from "./useOrderHistory.js";
-import { STATUS_POLL_MS, STATUS_POLL_FLAT_CEILING_ATTEMPTS } from "@xochi/client";
+import { PAGINATION, STATUS_POLL_MS, STATUS_POLL_FLAT_CEILING_ATTEMPTS } from "@xochi/client";
 import { STORAGE_KEYS } from "../constants.js";
+import { clearWalletSession } from "../lib/walletSession.js";
 import {
   createTestWagmiConfig,
   testWrapper,
@@ -93,6 +94,232 @@ async function renderFeed(handler: ApiHandler) {
   });
   return { ...rendered, api };
 }
+
+const OTHER_WALLET = "0x2222222222222222222222222222222222222222";
+
+describe("wallet and session authority", () => {
+  it.each(["success", "error"] as const)(
+    "discards an old wallet's deferred %s without clearing the new wallet's loading state",
+    async (outcome) => {
+      const oldHistory = Promise.withResolvers<unknown>();
+      const newHistory = Promise.withResolvers<unknown>();
+      const { result } = await renderFeed((call) =>
+        new URL(call.url).searchParams.get("wallet")?.toLowerCase() === TEST_WALLET.toLowerCase()
+          ? oldHistory.promise
+          : newHistory.promise,
+      );
+      expect(result.current.isLoading).toBe(true);
+
+      await act(async () => {
+        sessionStorage.setItem(
+          STORAGE_KEYS.walletSession,
+          JSON.stringify({ token: "other.wallet.jwt", wallet: OTHER_WALLET }),
+        );
+        config.connectors[0].onAccountsChanged([OTHER_WALLET]);
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.error).toBeNull();
+      expect(result.current.isLoading).toBe(true);
+
+      await act(async () => {
+        oldHistory.resolve(
+          outcome === "success"
+            ? { intents: [historyRow("completed")] }
+            : new Response(JSON.stringify({ error: "Old wallet unavailable" }), { status: 500 }),
+        );
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.error).toBeNull();
+      expect(result.current.isLoading).toBe(true);
+
+      await act(async () => {
+        newHistory.resolve({ intents: [{ ...historyRow("completed"), id: "xi_other_wallet" }] });
+      });
+      expect(result.current.orders.map((order) => order.id)).toEqual(["xi_other_wallet"]);
+      expect(result.current.isLoading).toBe(false);
+    },
+  );
+
+  it.each(["logout", "disconnect"] as const)(
+    "does not restore deferred history after %s",
+    async (action) => {
+      const history = Promise.withResolvers<unknown>();
+      const { result } = await renderFeed(() => history.promise);
+      expect(result.current.isLoading).toBe(true);
+
+      await act(async () => {
+        if (action === "logout") clearWalletSession();
+        else config.connectors[0].onAccountsChanged([]);
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.error).toBeNull();
+      expect(result.current.needsSignIn).toBe(action === "logout");
+
+      await act(async () => {
+        history.resolve({ intents: [historyRow("completed")] });
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.error).toBeNull();
+    },
+  );
+
+  it("hides loaded rows on the first render for another wallet and after logout", async () => {
+    const renders: { address: string | undefined; ids: string[] }[] = [];
+    stubApi(() => ({ intents: [historyRow("completed")] }));
+    const { result } = renderHook(
+      () => {
+        const { address } = useAccount();
+        const history = useOrderHistory();
+        renders.push({ address, ids: history.orders.map((order) => order.id) });
+        return history;
+      },
+      { wrapper: testWrapper(config) },
+    );
+    await act(async () => {
+      await connect(config, { connector: config.connectors[0] });
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(result.current.orders).toHaveLength(1);
+
+    await act(async () => {
+      config.connectors[0].onAccountsChanged([OTHER_WALLET]);
+    });
+    expect(renders.filter((render) => render.address === OTHER_WALLET)).not.toHaveLength(0);
+    expect(
+      renders
+        .filter((render) => render.address === OTHER_WALLET)
+        .every((render) => render.ids.length === 0),
+    ).toBe(true);
+    expect(result.current.orders).toEqual([]);
+
+    await act(async () => {
+      config.connectors[0].onAccountsChanged([TEST_WALLET]);
+    });
+    expect(result.current.orders).toHaveLength(1);
+    await act(async () => {
+      clearWalletSession();
+    });
+    expect(result.current.orders).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.needsSignIn).toBe(true);
+  });
+
+  it("keeps pagination and refresh scoped to their wallet, including callbacks retained by callers", async () => {
+    const pageSize = PAGINATION.defaultPageSize;
+    const { result, api } = await renderFeed((call) => {
+      const url = new URL(call.url);
+      const wallet = url.searchParams.get("wallet")?.toLowerCase();
+      const offset = Number(url.searchParams.get("offset"));
+      if (wallet === OTHER_WALLET) return { intents: [] };
+      return {
+        intents: Array.from({ length: pageSize }, (_, index) => ({
+          ...historyRow("completed"),
+          id: `xi_page_${offset + index}`,
+        })),
+      };
+    });
+    expect(result.current.orders).toHaveLength(pageSize);
+    await act(async () => {
+      result.current.loadMore();
+    });
+    expect(result.current.orders).toHaveLength(pageSize * 2);
+    expect(result.current.orders.at(-1)?.id).toBe(`xi_page_${pageSize * 2 - 1}`);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.orders).toHaveLength(pageSize);
+    expect(result.current.orders.at(-1)?.id).toBe(`xi_page_${pageSize - 1}`);
+    const oldRefresh = result.current.refresh;
+    const oldLoadMore = result.current.loadMore;
+    await act(async () => {
+      sessionStorage.setItem(
+        STORAGE_KEYS.walletSession,
+        JSON.stringify({ token: "other.wallet.jwt", wallet: OTHER_WALLET }),
+      );
+      config.connectors[0].onAccountsChanged([OTHER_WALLET]);
+    });
+    const callsAfterSwitch = api.calls.length;
+    await act(async () => {
+      await oldRefresh();
+      oldLoadMore();
+    });
+    expect(api.calls).toHaveLength(callsAfterSwitch);
+    expect(result.current.orders).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("does not apply a deferred status poll to a new wallet's row with the same id", async () => {
+    const oldStatus = Promise.withResolvers<unknown>();
+    let statusCalls = 0;
+    const { result } = await renderFeed((call) => {
+      if (call.url.includes("/api/intent/history")) return { intents: [historyRow("executing")] };
+      statusCalls += 1;
+      return statusCalls === 1 ? oldStatus.promise : statusWire({ status: "executing" });
+    });
+    expect(result.current.orders[0].status).toBe("executing");
+    await act(async () => {
+      sessionStorage.setItem(
+        STORAGE_KEYS.walletSession,
+        JSON.stringify({ token: "other.wallet.jwt", wallet: OTHER_WALLET }),
+      );
+      config.connectors[0].onAccountsChanged([OTHER_WALLET]);
+    });
+    expect(result.current.orders[0].status).toBe("executing");
+    await act(async () => {
+      oldStatus.resolve(statusWire({ status: "completed", terminal: true }));
+    });
+    expect(result.current.orders[0].status).toBe("executing");
+  });
+
+  it.each(["refresh", "pagination"] as const)(
+    "discards an old wallet's pending %s page after a switch",
+    async (operation) => {
+      const pendingPage = Promise.withResolvers<unknown>();
+      let walletReads = 0;
+      const { result } = await renderFeed((call) => {
+        if (new URL(call.url).searchParams.get("wallet")?.toLowerCase() === OTHER_WALLET) {
+          return { intents: [] };
+        }
+        walletReads += 1;
+        return walletReads === 1
+          ? {
+              intents: Array.from({ length: PAGINATION.defaultPageSize }, (_, index) => ({
+                ...historyRow("completed"),
+                id: `xi_initial_${index}`,
+              })),
+            }
+          : pendingPage.promise;
+      });
+      let refresh: Promise<void> | undefined;
+      await act(async () => {
+        if (operation === "refresh") refresh = result.current.refresh();
+        else result.current.loadMore();
+      });
+      expect(result.current.isLoading).toBe(true);
+      await act(async () => {
+        sessionStorage.setItem(
+          STORAGE_KEYS.walletSession,
+          JSON.stringify({ token: "other.wallet.jwt", wallet: OTHER_WALLET }),
+        );
+        config.connectors[0].onAccountsChanged([OTHER_WALLET]);
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      await act(async () => {
+        pendingPage.resolve({ intents: [historyRow("completed")] });
+        await refresh;
+      });
+      expect(result.current.orders).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.error).toBeNull();
+    },
+  );
+});
 
 /** History once, then whatever `wire` currently says for the status poll. */
 const feedHandler =

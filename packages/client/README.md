@@ -126,9 +126,25 @@ live settlement eligibility. `parseTrustFeatures` accepts only literal `true`;
 The additional shared vocabulary was extracted from MIT-licensed
 `@xochi/shared` (Copyright 2025-2026 Xochi Contributors), under this package's
 MIT license. Fee display helpers derive their layers from the existing public
-`FEE_SCHEDULE`; they do not maintain an alternate fee schedule. Fallback token
-lists/prices and static address maps are metadata, never route authorization,
-a current market rate or a security pin.
+`FEE_SCHEDULE`; they do not maintain an alternate fee schedule. Static address
+maps are metadata, never route authorization or a security pin.
+
+Widget presentation stays in `@xochi/widget`: popular-token ordering, offline
+origin/destination display lists and estimated fallback USD prices are not client
+exports. These preserve the extracted widget's display continuity only; typed
+live routes remain the execution authority, and only fresh live prices can feed
+market comparisons or the excessive-slippage guard. The fallback lists do not
+advertise executable routes.
+
+Token-amount formatting/parsing, address truncation, `formatSupportedTokens` and
+its display cap are owned by the widget's formatting utilities, not exported
+from the client. `classifyDecline` and `supportedOriginSentence` accept
+caller-supplied origin symbols for guidance; without them they give generic
+advice, not a static token support claim.
+
+This #98 ownership disposition is an extraction prerequisite only: publication
+remains gated on the producer/claim-chain prerequisites tracked in #98 and
+separate registry approval.
 
 ## State machine
 

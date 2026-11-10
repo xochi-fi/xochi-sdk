@@ -1337,6 +1337,56 @@ describe("auth injection", () => {
     expect(events).toEqual([{ reason: "expired", status: 401 }]);
   });
 
+  it.each([
+    { transition: "credential replacement", nextToken: "next", nextGeneration: 0 },
+    { transition: "logout", nextToken: null, nextGeneration: 1 },
+    { transition: "same-token re-authentication", nextToken: "old", nextGeneration: 1 },
+  ])(
+    "does not expire a newer session after $transition during the error body",
+    async ({ nextToken, nextGeneration }) => {
+      let token: string | null = "old";
+      let generation = 0;
+      const events: AuthExpiredEvent[] = [];
+      const bodyRead = Promise.withResolvers<void>();
+      const bodyReady = Promise.withResolvers<void>();
+      let controller!: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>(
+        {
+          start: (stream) => {
+            controller = stream;
+          },
+          pull: () => {
+            bodyRead.resolve();
+            return bodyReady.promise;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const { c } = client(() => new Response(body, { status: 401 }), {
+        getAuthToken: () => token,
+        getAuthGeneration: () => generation,
+        onAuthExpired: (event) => events.push(event),
+      });
+      const outcome = rejection(c.getQuote(req));
+      await bodyRead.promise;
+      token = nextToken;
+      generation = nextGeneration;
+      controller.enqueue(
+        new TextEncoder().encode(
+          JSON.stringify({
+            success: false,
+            error: "Invalid session",
+            error_category: "auth_invalid",
+          }),
+        ),
+      );
+      controller.close();
+      bodyReady.resolve();
+      expect(((await outcome) as ApiError).code).toBe(401);
+      expect(events).toEqual([]);
+    },
+  );
+
   it("does not report a business-rule 403 as a credential failure", async () => {
     const events: AuthExpiredEvent[] = [];
     const { c } = client(() => json({ success: false, error: "wallet mismatch" }, 403), {

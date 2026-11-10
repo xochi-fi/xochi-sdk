@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  globSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,6 +51,23 @@ const run = (command, args, cwd = consumer) =>
     maxBuffer: 32 * 1024 * 1024,
   });
 const json = (path) => JSON.parse(readFileSync(path, "utf8"));
+const exportTargets = (value) =>
+  typeof value === "string"
+    ? [value]
+    : value && typeof value === "object"
+      ? Object.values(value).flatMap(exportTargets)
+      : [];
+const assertExports = (manifest, directory, included) => {
+  for (const target of exportTargets(manifest.exports)) {
+    const matches = globSync(target, { cwd: directory }).filter((path) =>
+      statSync(join(directory, path)).isFile(),
+    );
+    assert(matches.length, `${manifest.name}: missing export target ${target}`);
+    for (const path of matches) {
+      assert(included.has(path.replace(/^\.\//, "")), `${manifest.name}: unpacked export ${path}`);
+    }
+  }
+};
 const records = [];
 const tarballs = [];
 for (const name of ["signer", "client", "widget-lib", "widget"]) {
@@ -49,16 +75,28 @@ for (const name of ["signer", "client", "widget-lib", "widget"]) {
   const stage = join(rehearsal, `stage-${name}`);
   mkdirSync(stage);
   const manifest = json(join(source, "package.json"));
-  for (const item of [
-    "dist",
+  const required = new Set([
+    ...manifest.files,
     "LICENSE",
     "README.md",
-    "CHANGELOG.md",
-    "THIRD_PARTY_NOTICES.txt",
-    "licenses",
-  ]) {
-    if (existsSync(join(source, item)))
+    ...(name === "widget"
+      ? [
+          "THIRD_PARTY_NOTICES.txt",
+          "licenses",
+          "licenses/assets.json",
+          "licenses/Monaspace-OFL-1.1.txt",
+          "licenses/rainbowkit-MIT.txt",
+          "licenses/xochi-shared-MIT.txt",
+        ]
+      : []),
+  ]);
+  for (const pattern of required) {
+    const matches = globSync(pattern, { cwd: source });
+    assert(matches.length, `${name}: missing required package content ${pattern}`);
+    for (const item of matches) {
+      mkdirSync(dirname(join(stage, item)), { recursive: true });
       cpSync(join(source, item), join(stage, item), { recursive: true });
+    }
   }
   assert(existsSync(join(stage, "dist")), `${name}: build before packing`);
   if (name === "widget" && !manifest.version) {
@@ -70,6 +108,29 @@ for (const name of ["signer", "client", "widget-lib", "widget"]) {
   const packed = JSON.parse(
     run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", artifacts], stage),
   )[0];
+  const included = new Set(packed.files.map(({ path }) => path));
+  for (const path of globSync("**/*", { cwd: stage })) {
+    if (statSync(join(stage, path)).isFile()) {
+      assert(included.has(path), `${name}: package omitted required file ${path}`);
+    }
+  }
+  assertExports(manifest, stage, included);
+  if (name === "widget") {
+    for (const subpath of [
+      ".",
+      "./configurator",
+      "./configurator-model",
+      "./integration",
+      "./styles.css",
+      "./assets/*",
+      "./package.json",
+    ]) {
+      assert(manifest.exports[subpath], `missing widget export ${subpath}`);
+    }
+    for (const pattern of ["dist/types/**/*.d.ts", "dist/*.css", "dist/assets/*"]) {
+      assert(globSync(pattern, { cwd: stage }).length, `widget: missing ${pattern}`);
+    }
+  }
   const tarball = join(artifacts, packed.filename);
   tarballs.push(tarball);
   records.push({
@@ -87,7 +148,6 @@ writeFileSync(
       name: "widget-packed-consumer",
       private: true,
       type: "module",
-      overrides: json(join(root, "package.json")).overrides,
     },
     null,
     2,
@@ -114,10 +174,13 @@ assert(
   !/npm\.pkg\.github\.com|@xochi-fi\/|workspace:|git\+ssh|git@github/.test(lock),
   "private dependency or workspace alias in installed closure",
 );
-const installed = json(join(consumer, "node_modules/@xochi/widget/package.json"));
-for (const subpath of [".", "./configurator", "./configurator-model"]) {
-  assert(installed.exports[subpath], `missing export ${subpath}`);
-}
+const installedRoot = join(consumer, "node_modules/@xochi/widget");
+const installed = json(join(installedRoot, "package.json"));
+assertExports(installed, installedRoot, new Set(globSync("**/*", { cwd: installedRoot })));
+const asset = globSync("dist/assets/*", { cwd: installedRoot }).find((path) =>
+  statSync(join(installedRoot, path)).isFile(),
+);
+assert(asset, "installed widget has no assets");
 assert(
   installed.peerDependencies.react && installed.peerDependencies["react-dom"],
   "React must be a peer",
@@ -158,10 +221,13 @@ import { createRoot } from 'react-dom/client';
 import { Widget, configureWidget } from '@xochi/widget';
 import { Configurator } from '@xochi/widget/configurator';
 import * as model from '@xochi/widget/configurator-model';
+import widgetAsset from '@xochi/widget/assets/${basename(asset)}';
 import '@xochi/widget/styles.css';
 configureWidget({ apiUrl: 'http://localhost:8788', development: true,
   solverPin: { erc3009Allowlist: [], permit2Allowlist: [], requirePin: true }, depositAttestationSigner: '' });
 void model;
+void import('@xochi/widget/integration');
+document.documentElement.dataset.widgetAsset = widgetAsset;
 createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallback={null}>
 {location.pathname === '/embed' ? <Widget /> : <Configurator />}
 </Suspense></StrictMode>);

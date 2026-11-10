@@ -17,7 +17,9 @@ npm run build -w @xochi/widget
 node scripts/verify-widget-consumer.mjs
 ```
 
-The verifier installs tarballs outside the repository with empty npm configuration and no registry credentials, typechecks declarations and builds a Vite consumer. Its temporary widget version is inherited from the source host's `0.1.0` metadata, marked rehearsal-only, and is not an approved npm version. The resulting directory and SHA-512 artifact pairing are printed. Never copy those temporary dependencies into a production host manifest.
+The verifier installs tarballs outside the repository with empty npm configuration, no registry credentials and no workspace dependency overrides. It requires each declared package file, license and third-party notice, checks every packed export (including declarations, CSS and the asset wildcard), typechecks declarations and builds Vite consumers for the complete widget and wallet-free configurator. Its temporary widget version is inherited from the source host's `0.1.0` metadata, marked rehearsal-only, and is not an approved npm version. The resulting directory and SHA-512 artifact pairing are printed. Never copy those temporary dependencies into a production host manifest.
+
+The root workspace's npm overrides are development integration policy, not published dependency constraints. Consumer verification deliberately uses the package manifests' default dependency graph. If a host needs overrides or bundler configuration, declare and review them explicitly in that host; do not inherit the SDK workspace's configuration or treat an override-assisted build as default-consumer verification.
 
 ## Rendering
 

@@ -53,7 +53,9 @@ async function renderStealth() {
       </QueryClientProvider>
     </WagmiProvider>
   );
-  return renderHook(() => useStealth(), { wrapper });
+  const hook = renderHook(() => useStealth(), { wrapper });
+  await waitFor(() => expect(config.state.status).toBe("connected"));
+  return hook;
 }
 
 afterEach(() => {

@@ -44,7 +44,7 @@ writeFileSync(
   `import * as client from '@xochi/client';
 import * as signer from '@xochi/signer';
 import * as bridge from '@xochi/widget-lib';
-for (const name of ['resolveRouteModel', 'stealthToggleState', 'shieldedToggleState', 'parseTrustFeatures', 'agentActivityDigest', 'ReferralEarningsResponseSchema', 'formatTokenAmount', 'thinDestinationWarning']) {
+for (const name of ['resolveRouteModel', 'stealthToggleState', 'shieldedToggleState', 'parseTrustFeatures', 'agentActivityDigest', 'ReferralEarningsResponseSchema', 'thinDestinationWarning']) {
   if (!(name in client)) throw new Error('Published client lacks widget-required export: ' + name);
 }
 if (!signer.assertPullMatchesIntent || !bridge.connectToHost) throw new Error('Published signing/bridge contract is missing');
