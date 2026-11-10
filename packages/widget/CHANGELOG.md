@@ -22,5 +22,11 @@
   authority immediately before signing. Preserve already-submitted outcomes.
 - Scope history and authentication responses to the initiating session generation.
   Preserve explicit bridge ownership and consumer resubscription across effect restarts.
+- Consume explicit sign-in scans through the fresh authenticated scanner. Wallet,
+  chain, connector and session changes cancel the pending scan instead of moving
+  it to another authority.
+- Release Stealth setup loading when its wallet authority is revoked, including
+  same-wallet connector changes and reconnects. Obsolete signature replies cannot
+  clear a newer attempt's loading or replace its keys/cache.
 
 No package has been published or host deployment changed by this extraction. Release versions require approval; the production host cutover follows real package publication.

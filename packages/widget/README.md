@@ -72,6 +72,12 @@ The host supplies settings, never alternate trading algorithms. Exact route auth
 
 Browser RPC URLs and WalletConnect identifiers are public bundle settings, not a place for secret provider keys. Preserve wallet telemetry opt-outs. Existing storage namespaces and history/session formats remain unchanged; signing keys are not persisted.
 
+“Sign in to scan” starts scanning only after explicit authentication has produced
+the current scanner authority. Wallet, chain, connector or session changes cancel
+that requested scan. A connector change or reconnect also cancels an in-flight
+Stealth setup and releases its busy state; deriving replacement keys still
+requires a new explicit wallet signature. Late replies cannot replace newer keys.
+
 ## Self-hosting and origin permissions
 
 Source availability does not grant access to a production API, solver or iframe origin. Obtain the required API-origin and service permissions independently. Preserve explicit `frame-ancestors` origins and the existing parent-window/origin/RPC validation. Never add wildcards or loosen validation to make an example work. The deployment host owns security headers and keeps versioned loader files available.

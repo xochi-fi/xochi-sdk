@@ -192,6 +192,7 @@ function useStealthState(): UseStealthReturn {
                 ? `${account.address.toLowerCase()}:${account.chainId}`
                 : null,
             };
+            setIsLoading(false);
           }
         },
       }),
