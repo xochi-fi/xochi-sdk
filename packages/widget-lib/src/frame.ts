@@ -19,6 +19,7 @@
  */
 
 import { asJson, isRecord, normalizeOrigin, truncate } from "./internal.js";
+import { EMBED_THEMES, type EmbedTheme } from "./params.js";
 import {
   ALLOWED_RPC_METHODS,
   MAX_ERROR_MESSAGE_LENGTH,
@@ -94,6 +95,10 @@ export interface HostConnection {
   walletUi(): WalletUi;
   /** Called when `walletUi()` changes after a valid provider message. Returns an unsubscribe. */
   onWalletUi(listener: (walletUi: WalletUi) => void): () => void;
+  /** Runtime theme override, or null until the host sends a valid theme message. */
+  theme(): EmbedTheme | null;
+  /** Called when the runtime theme changes. Returns an unsubscribe. */
+  onTheme(listener: (theme: EmbedTheme) => void): () => void;
   /**
    * Ask the host to open its wallet UI. Before the handshake, at most one
    * request waits for origin pinning. A widget-owned host ignores it.
@@ -175,6 +180,7 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   let isAvailable = false;
   let hostAutoConnect = false;
   let hostWalletUi: WalletUi = "widget";
+  let hostTheme: EmbedTheme | null = null;
   let pendingConnectRequest = false;
   let nextId = 1;
   let pendingHeight: number | null = null;
@@ -183,6 +189,7 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
   const listeners = new Map<string, Set<Listener>>();
   const availability = new Set<(available: boolean) => void>();
   const walletUiListeners = new Set<(walletUi: WalletUi) => void>();
+  const themeListeners = new Set<(theme: EmbedTheme) => void>();
 
   /** Post to the pinned origin only. Every message is plain JSON, so cloning cannot throw. */
   const post = (message: FrameMessage): void => {
@@ -303,6 +310,13 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
             if (hostWalletUi === "host") post({ type: MESSAGE.connectRequest });
           }
         }
+        return;
+      case MESSAGE.theme:
+        if (!isRecord(message) || Object.keys(raw).length !== 2) return;
+        if (!EMBED_THEMES.includes(message.theme as EmbedTheme)) return;
+        if (message.theme === hostTheme) return;
+        hostTheme = message.theme as EmbedTheme;
+        for (const listener of themeListeners) listener(hostTheme);
         return;
       case MESSAGE.rpcResult: {
         const id = raw.id;
@@ -438,6 +452,13 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
         walletUiListeners.delete(listener);
       };
     },
+    theme: () => hostTheme,
+    onTheme(listener) {
+      themeListeners.add(listener);
+      return () => {
+        themeListeners.delete(listener);
+      };
+    },
     requestConnect() {
       if (destroyed) return;
       if (origin === null) {
@@ -467,6 +488,7 @@ export function connectToHost(options: HostConnectionOptions = {}): HostConnecti
       listeners.clear();
       availability.clear();
       walletUiListeners.clear();
+      themeListeners.clear();
     },
   };
 }

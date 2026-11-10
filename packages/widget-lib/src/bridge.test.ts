@@ -19,8 +19,10 @@ import {
   connectToHost,
   createXochiWidget,
   type Eip1193Provider,
+  type EmbedTheme,
   type HostConnection,
   type XochiWidgetEvent,
+  type XochiWidgetStatus,
   type XochiWidgetOptions,
 } from "./index.js";
 
@@ -176,6 +178,15 @@ function nextWalletUi(frame: HostConnection): Promise<"widget" | "host"> {
   return promise;
 }
 
+function nextTheme(frame: HostConnection): Promise<EmbedTheme> {
+  const { promise, resolve } = Promise.withResolvers<EmbedTheme>();
+  const stop = frame.onTheme((theme) => {
+    stop();
+    resolve(theme);
+  });
+  return promise;
+}
+
 /**
  * A request the host answers from its wallet. Once it resolves, everything
  * either side posted before it has been delivered (delivery is FIFO).
@@ -259,6 +270,90 @@ describe("host and frame", () => {
     await roundTrip(frame);
     expect(iframe.style.height).toBe("641px");
     expect(events).toEqual([{ name: "trade:completed", tradeRef: TRADE_REF }]);
+  });
+
+  it("coalesces runtime themes before readiness through the real bridge without a wallet", async () => {
+    const { widget, frame, iframe } = mount({ params: { theme: "light" } });
+    const src = iframe.src;
+    const seen: EmbedTheme[] = [];
+    frame.onTheme((theme) => seen.push(theme));
+    expect(frame.theme()).toBeNull();
+    widget.updateTheme("dim");
+    widget.updateTheme("contrast");
+    expect(frame.theme()).toBeNull();
+    const applied = nextTheme(frame);
+    await expect(applied).resolves.toBe("contrast");
+    expect(frame.theme()).toBe("contrast");
+    expect(frame.available()).toBe(false);
+    expect(seen).toEqual(["contrast"]);
+    expect(iframe.src).toBe(src);
+  });
+
+  it("changes theme without interrupting wallet requests, connection or trade events", async () => {
+    const signing = Promise.withResolvers<unknown>();
+    const started = Promise.withResolvers<void>();
+    const wallet = new TestWallet((method) => {
+      if (method === "personal_sign") {
+        started.resolve();
+        return signing.promise;
+      }
+      return defaultAnswer(method);
+    });
+    const statuses: XochiWidgetStatus[] = [];
+    const { widget, frame, frameWin, iframe, events } = mount({
+      params: { amount: "250", theme: "dim" },
+      provider: wallet,
+      walletUi: "host",
+      onConnectRequest: () => {},
+      onStatusChange: (status) => statuses.push(status),
+      autoConnect: true,
+    });
+    await nextAvailability(frame);
+    await roundTrip(frame);
+    const src = iframe.src;
+    const readyStatuses = [...statuses];
+    const availability: boolean[] = [];
+    const ownership: string[] = [];
+    const accounts: unknown[] = [];
+    let connects = 0;
+    frame.onAvailability((available) => availability.push(available));
+    frame.onWalletUi((walletUi) => ownership.push(walletUi));
+    frame.onAutoConnect(() => connects++);
+    frame.provider.on("accountsChanged", (value) => accounts.push(value));
+    frame.emit({ name: "trade:submitted", tradeRef: TRADE_REF });
+    const pending = frame.provider.request({
+      method: "personal_sign",
+      params: ["0x00", ACCOUNT],
+    });
+    await started.promise;
+    const applied = nextTheme(frame);
+    widget.updateTheme("contrast");
+    await expect(applied).resolves.toBe("contrast");
+    wallet.emit("accountsChanged", [ACCOUNT]);
+    frame.emit({ name: "trade:completed", tradeRef: TRADE_REF });
+    await roundTrip(frame);
+    signing.resolve("0xsigned");
+    await expect(pending).resolves.toBe("0xsigned");
+    expect(iframe.src).toBe(src);
+    expect(iframe.contentWindow).toBe(frameWin);
+    expect(iframe.hidden).toBe(false);
+    expect(frame.available()).toBe(true);
+    expect(frame.autoConnect()).toBe(true);
+    expect(frame.walletUi()).toBe("host");
+    expect(availability).toEqual([]);
+    expect(ownership).toEqual([]);
+    expect(connects).toBe(1);
+    expect(statuses).toEqual(readyStatuses);
+    expect(accounts).toEqual([[ACCOUNT]]);
+    expect(events).toEqual([
+      { name: "trade:submitted", tradeRef: TRADE_REF },
+      { name: "trade:completed", tradeRef: TRADE_REF },
+    ]);
+    expect(wallet.calls.map(({ method }) => method)).toEqual([
+      "eth_chainId",
+      "personal_sign",
+      "eth_chainId",
+    ]);
   });
 
   it("pass the wallet's rejection through as a HostRpcError", async () => {

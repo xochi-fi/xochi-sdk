@@ -15,7 +15,10 @@
  *                                          wallet UI ownership and protocol version
  *                   xochi:rpc:result       the answer to one xochi:rpc, by id
  *                   xochi:provider:event   accountsChanged / chainChanged / disconnect
+ *                   xochi:theme            runtime theme, independent of wallet state
  */
+
+import type { EmbedTheme } from "./params.js";
 
 /** Where the widget is served. */
 export const DEFAULT_WIDGET_ORIGIN = "https://widget.xochi.fi";
@@ -37,6 +40,7 @@ export const MESSAGE = {
   resize: "xochi:resize",
   event: "xochi:event",
   provider: "xochi:provider",
+  theme: "xochi:theme",
   rpcResult: "xochi:rpc:result",
   providerEvent: "xochi:provider:event",
 } as const;
@@ -171,6 +175,7 @@ export type HostMessage =
       /** Which surface owns persistent wallet and account UI. */
       walletUi: WalletUi;
     }
+  | { type: typeof MESSAGE.theme; theme: EmbedTheme }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; result: unknown }
   | { type: typeof MESSAGE.rpcResult; id: RpcId; error: RpcErrorObject }
   | { type: typeof MESSAGE.providerEvent; event: "accountsChanged"; data: string[] }

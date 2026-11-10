@@ -373,6 +373,90 @@ describe("handshake and provider state", () => {
   });
 });
 
+describe("updateTheme", () => {
+  it("coalesces until an accepted handshake and replays the latest theme on every readiness", async () => {
+    const { widget, iframe, frame } = mount({ params: { theme: "light" } });
+    const win = frame();
+    const src = iframe.src;
+    const inbox = new Inbox(win);
+    widget.updateTheme("dim");
+    widget.updateTheme("contrast");
+    expect(await inbox.drain()).toEqual([]);
+    fromFrame(win, { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 1 });
+    widget.updateTheme("light");
+    const ack = {
+      type: "xochi:provider:ack",
+      protocolVersion: WIDGET_PROTOCOL_VERSION,
+      handshakeId: 1,
+      walletUi: "widget",
+    };
+    fromFrame(win, ack, "https://evil.example");
+    fromFrame(window, ack);
+    fromFrame(win, { ...ack, handshakeId: 0 });
+    expect(await inbox.drain()).toEqual([]);
+    fromFrame(win, ack);
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "light" }]);
+    widget.updateTheme("dim");
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "dim" }]);
+
+    fromFrame(win, { type: "xochi:ready", protocolVersion: WIDGET_PROTOCOL_VERSION });
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 2 });
+    widget.updateTheme("contrast");
+    fromFrame(win, ack);
+    expect(await inbox.drain()).toEqual([]);
+    fromFrame(win, { ...ack, handshakeId: 2 });
+    fromFrame(win, { ...ack, handshakeId: 2 });
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "contrast" }]);
+
+    iframe.dispatchEvent(new Event("load"));
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 3 });
+    fromFrame(win, { ...ack, handshakeId: 3 });
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "contrast" }]);
+    expect(iframe.src).toBe(src);
+    expect(frame()).toBe(win);
+  });
+
+  it("rejects invalid runtime values without losing the queued theme", async () => {
+    const { widget, frame } = mount();
+    const inbox = new Inbox(frame());
+    widget.updateTheme("dim");
+    for (const invalid of [undefined, null, true, 1, "dark", "DIM", ["light"], {}]) {
+      expect(() => widget.updateTheme(invalid as never)).toThrow(/theme/);
+    }
+    announceReady(frame());
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider" });
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "dim" }]);
+  });
+
+  it("resets runtime overrides to the new route params only on actual navigation", async () => {
+    const { widget, iframe, frame } = mount({ params: { theme: "light" } });
+    let inbox = new Inbox(frame());
+    widget.updateTheme("dim");
+    widget.updateParams({ theme: "light", amount: undefined });
+    expect(() => widget.updateParams({ fromChainId: -1 })).toThrow(/fromChainId/);
+    announceReady(frame());
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 1 });
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "dim" }]);
+
+    widget.updateParams({ sellSymbol: "USDC", theme: "contrast" });
+    expect(iframe.src).toBe(`${ORIGIN}/embed?sell=USDC&theme=contrast`);
+    inbox = new Inbox(frame());
+    announceReady(frame(), "widget", 2);
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 2 });
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "contrast" }]);
+    widget.updateTheme("light");
+    expect(await inbox.drain()).toEqual([{ type: "xochi:theme", theme: "light" }]);
+
+    widget.updateParams({ sellSymbol: "USDT" });
+    expect(iframe.src).toBe(`${ORIGIN}/embed?sell=USDT`);
+    inbox = new Inbox(frame());
+    announceReady(frame(), "widget", 3);
+    expect(await inbox.next()).toMatchObject({ type: "xochi:provider", handshakeId: 3 });
+    expect(await inbox.drain()).toEqual([]);
+  });
+});
+
 describe("bounded readiness", () => {
   it("keeps host-owned UI hidden until the frame acknowledges ownership", async () => {
     const statuses: XochiWidgetStatus[] = [];
@@ -1061,5 +1145,6 @@ describe("destroy", () => {
     expect(wallet.calls).toEqual([]);
     expect(() => widget.updateParams({})).toThrow(/destroyed/);
     expect(() => widget.updateProvider(null)).toThrow(/destroyed/);
+    expect(() => widget.updateTheme("dim")).toThrow(/destroyed/);
   });
 });
