@@ -44,6 +44,9 @@ All notable changes to `@xochi/client` are documented here. Format follows [Keep
   outcomes. Permit only the failed leg's explicit recovery action; never repeat a
   completed sibling, reopen a refunded leg or execute an in-doubt operation again.
   Add canonical recovery, finality, stale-revision and replay conformance vectors.
+- Snapshot bounded data descriptors at the `parseRamp` boundary; reject accessors
+  without invoking them and contain throwing or revoked Proxies as `invalid_request`.
+  Never log or retain escaped provider errors.
 
 ### Fixed
 

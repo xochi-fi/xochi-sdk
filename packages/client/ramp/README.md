@@ -19,9 +19,12 @@ Every message has `contract_version: "ramp/1"` and a required `kind`:
 snake_case. TypeScript uses the same wire names; there is no second camelCase wire
 schema. Unknown required discriminants fail closed. Bounded unknown optional
 fields are discarded, never forwarded. `parseRamp(unknown)` is the public boundary:
-it performs structural and semantic checks and returns sanitized data or only
-`invalid_request` / `unsupported_version`. The individual schemas describe shapes;
-do not substitute shape validation for `parseRamp`.
+it snapshots bounded own data descriptors before structural and semantic checks,
+rejects accessors without invoking them (including discarded fields), and returns
+sanitized data or only `invalid_request` / `unsupported_version`. Reflection failures,
+including revoked Proxies, return `invalid_request`; escaped errors are neither
+logged nor retained. The individual schemas describe shapes; do not substitute
+shape validation for `parseRamp`.
 
 Amounts are unsigned base-10 **atomic unit strings**, matching
 `/^(0|[1-9][0-9]*)$/` over the entire string (including rejecting trailing newlines).

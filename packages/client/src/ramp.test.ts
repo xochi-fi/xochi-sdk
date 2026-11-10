@@ -121,3 +121,86 @@ describe("ramp/1 cross-runtime conformance", () => {
     expect(parseRamp(cyclic)).toEqual({ ok: false, code: "invalid_request" });
   });
 });
+
+describe("untrusted ramp objects", () => {
+  const input = fixtures.wire_cases.find((row) => row.id === "intent_exact_large_amount")!
+    .input as object;
+
+  it("rejects own accessors without invoking them, even in discarded fields", () => {
+    let reads = 0;
+    const getter = () => {
+      reads++;
+      throw new Error("private provider credentials");
+    };
+    const inputs = [
+      Object.defineProperty({ ...input }, "kind", { get: getter, enumerable: true }),
+      { ...input, future: Object.defineProperty({}, "secret", { get: getter, enumerable: true }) },
+      { ...input, future: Object.defineProperty([0], "0", { get: getter, enumerable: true }) },
+      { ...input, future: Object.defineProperty([], "every", { get: getter }) },
+      Object.defineProperty({ ...input }, "hidden", { get: getter }),
+      Object.defineProperty({ ...input }, Symbol("secret"), { get: getter }),
+      Object.defineProperty({ ...input }, "setter", {
+        set: () => {
+          reads++;
+        },
+        enumerable: true,
+      }),
+    ];
+    for (const value of inputs) {
+      expect(parseRamp(value)).toEqual({ ok: false, code: "invalid_request" });
+    }
+    expect(reads).toBe(0);
+  });
+
+  it.each(["object", "array"])("contains revoked %s Proxies at the root and nested", (kind) => {
+    const { proxy, revoke } = Proxy.revocable(kind === "array" ? [] : { ...input }, {});
+    revoke();
+    expect(parseRamp(proxy)).toEqual({ ok: false, code: "invalid_request" });
+    expect(parseRamp({ ...input, future: proxy })).toEqual({
+      ok: false,
+      code: "invalid_request",
+    });
+    expect(parseRamp({ ...input, future: [proxy] })).toEqual({
+      ok: false,
+      code: "invalid_request",
+    });
+  });
+
+  it.each(["getPrototypeOf", "ownKeys", "getOwnPropertyDescriptor"])(
+    "contains throwing %s traps without exposing the escaped error",
+    (trap) => {
+      const proxy = new Proxy(
+        { ...input },
+        {
+          [trap]() {
+            throw new Error("private provider credentials");
+          },
+        },
+      );
+      expect(parseRamp(proxy)).toEqual({ ok: false, code: "invalid_request" });
+      expect(parseRamp({ ...input, future: proxy })).toEqual({
+        ok: false,
+        code: "invalid_request",
+      });
+    },
+  );
+
+  it("validates descriptor snapshots without reading Proxy properties again", () => {
+    let reads = 0;
+    const proxy = new Proxy(input, {
+      get() {
+        reads++;
+        throw new Error("private provider credentials");
+      },
+      has() {
+        reads++;
+        throw new Error("private provider credentials");
+      },
+    });
+    const expected = parseRamp(input);
+    expect(expected.ok).toBe(true);
+    expect(parseRamp(proxy)).toEqual(expected);
+    expect(parseRamp({ ...input, future: proxy })).toEqual(expected);
+    expect(reads).toBe(0);
+  });
+});

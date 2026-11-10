@@ -331,41 +331,71 @@ function coherent(value: RampWire): boolean {
   return !value.terminal || value.allowed_actions.length === 0;
 }
 
-// Bounds apply before unknown fields are discarded, including fields in future ramp/1 messages.
-function boundedJson(value: unknown, depth = 0, budget = { remaining: 2048 }): boolean {
-  if (--budget.remaining < 0 || depth > 16) return false;
-  if (value === null || typeof value === "boolean") return true;
-  if (typeof value === "string") return value.length <= 2048;
-  if (typeof value === "number") return Number.isSafeInteger(value);
-  if (typeof value !== "object") return false;
-  if (Array.isArray(value))
-    return value.length <= 128 && value.every((item) => boundedJson(item, depth + 1, budget));
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
-    return false;
-  const entries = Object.entries(value);
-  return (
-    entries.length <= 64 &&
-    entries.every(([key, item]) => key.length <= 64 && boundedJson(item, depth + 1, budget))
-  );
+type JsonData = null | boolean | string | number | JsonData[] | { [key: string]: JsonData };
+
+// Snapshot descriptors once so bounds and schema validation never read untrusted properties.
+function boundedJsonSnapshot(
+  value: unknown,
+  depth = 0,
+  budget = { remaining: 2048 },
+): JsonData | undefined {
+  if (--budget.remaining < 0 || depth > 16) return undefined;
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") return value.length <= 2048 ? value : undefined;
+  if (typeof value === "number") return Number.isSafeInteger(value) ? value : undefined;
+  if (typeof value !== "object") return undefined;
+  const array = Array.isArray(value);
+  if (!array) {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return undefined;
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > (array ? 129 : 64)) return undefined;
+  const snapshot: JsonData[] | { [key: string]: JsonData } = array ? [] : Object.create(null);
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    if (array && key === "length") {
+      if (!Number.isSafeInteger(descriptor.value) || descriptor.value > 128) return undefined;
+      Object.defineProperty(snapshot, key, { value: descriptor.value });
+      continue;
+    }
+    if (typeof key !== "string" || !descriptor.enumerable) continue;
+    if (key.length > 64) return undefined;
+    const item = boundedJsonSnapshot(descriptor.value, depth + 1, budget);
+    if (item === undefined) return undefined;
+    Object.defineProperty(snapshot, key, {
+      value: item,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return Array.isArray(snapshot) && snapshot.length > 128 ? undefined : snapshot;
 }
 
 /** Returns only sanitized contract data or a bounded error code; never a provider payload/error. */
 export function parseRamp(
   value: unknown,
 ): { ok: true; value: RampWire } | { ok: false; code: "invalid_request" | "unsupported_version" } {
-  if (!boundedJson(value)) return { ok: false, code: "invalid_request" };
-  if (
-    value &&
-    typeof value === "object" &&
-    "contract_version" in value &&
-    value.contract_version !== RAMP_CONTRACT_VERSION
-  ) {
-    return { ok: false, code: "unsupported_version" };
+  try {
+    const snapshot = boundedJsonSnapshot(value);
+    if (snapshot === undefined) return { ok: false, code: "invalid_request" };
+    if (
+      snapshot &&
+      typeof snapshot === "object" &&
+      "contract_version" in snapshot &&
+      snapshot.contract_version !== RAMP_CONTRACT_VERSION
+    ) {
+      return { ok: false, code: "unsupported_version" };
+    }
+    const result = RampWireSchema.safeParse(snapshot);
+    return result.success && coherent(result.data)
+      ? { ok: true, value: result.data }
+      : { ok: false, code: "invalid_request" };
+  } catch {
+    return { ok: false, code: "invalid_request" };
   }
-  const result = RampWireSchema.safeParse(value);
-  return result.success && coherent(result.data)
-    ? { ok: true, value: result.data }
-    : { ok: false, code: "invalid_request" };
 }
 
 export type RampCommandCheck = "accepted" | "replayed" | "session_conflict" | "action_not_allowed";
